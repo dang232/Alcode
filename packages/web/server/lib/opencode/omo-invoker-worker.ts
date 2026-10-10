@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import path from "node:path";
 import { z } from "zod";
 
 const SELF_TEST_FLAG = "--self-test";
@@ -46,8 +48,14 @@ const barrelSpecifier = barrelIndex === -1
   ? `${engineRoot}/packages/omo-opencode/src/cli/run/index.ts`
   : args[barrelIndex + 1]?.trim();
 if (!barrelSpecifier) fail("missing --barrel-path <file>");
+// Bare relative paths are package names to the loader and module-relative
+// paths anchor to this file, not the shell: resolve everything that is not
+// already absolute or URL-shaped against the working directory.
+const anchoredBarrel = /^[a-zA-Z]+:/.test(barrelSpecifier)
+  ? barrelSpecifier
+  : pathToFileURL(path.resolve(barrelSpecifier)).href;
 // SAFETY: dynamic import of a third-party barrel; shape verified below by the run-function check (and by --self-test output).
-const barrel = (await import(barrelSpecifier).catch((error) => {
+const barrel = (await import(anchoredBarrel).catch((error) => {
   fail(`cannot import engine run barrel: ${error instanceof Error ? error.message : error}`);
 })) as Record<string, RunFn>;
 
