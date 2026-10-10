@@ -11,6 +11,10 @@ import {
 import { SettingsCardPill } from '@/components/sections/shared/SettingsCards';
 import { fetchEngineStatus, type EngineStatus } from '@/lib/engine/engineStatus';
 import { useUIStore } from '@/stores/useUIStore';
+import { useSettingsDirectory } from '@/hooks/useSettingsDirectory';
+import { selectProvidersForDirectory, useConfigStore } from '@/stores/useConfigStore';
+import { loadIntegrationCatalog, peekIntegrationCatalog, type IntegrationCatalog } from '@/lib/opencode/integration-catalog';
+import { getProviderCardStatus, readProviderApiKeySetting, type ProviderCardStatus } from '@/components/sections/providers/providerAuth';
 
 /**
  * Settings → Engine: the user-installed OmO engine behind background runs,
@@ -110,27 +114,84 @@ const StatusSection: React.FC<{ load: LoadState; onRefresh: () => void; refreshi
   );
 };
 
-const RoutingSection: React.FC<{ status: EngineStatus }> = ({ status }) => {
+const RoutingStatusPill: React.FC<{ status: ProviderCardStatus }> = ({ status }) => {
+  const { t } = useI18n();
+  let label: string;
+  switch (status.kind) {
+    case 'reauthNeeded': label = t('settings.providers.card.status.reauthNeeded'); break;
+    case 'accounts': label = t('settings.providers.card.status.accounts', { count: status.count }); break;
+    case 'connected': label = t('settings.providers.card.status.connected'); break;
+    case 'environment': label = t('settings.providers.card.status.environment'); break;
+    case 'signInNeeded': label = t('settings.providers.card.status.signInNeeded'); break;
+  }
+  const tone = status.kind === 'signInNeeded' || status.kind === 'reauthNeeded'
+    ? 'warning'
+    : status.kind === 'environment'
+      ? 'neutral'
+      : 'success';
+  return <SettingsCardPill tone={tone}>{label}</SettingsCardPill>;
+};
+
+// Live provider routing: every provider OpenCode reports for this project
+// with its models and sign-in state — nothing hardcoded. Choosing a
+// default engine model is a later step: it needs a persisted setting plus
+// bridge wiring, and a selector that changes nothing would lie.
+const RoutingSection: React.FC = () => {
   const { t } = useI18n();
   const setSettingsPage = useUIStore((state) => state.setSettingsPage);
+  const directory = useSettingsDirectory();
+  const providers = useConfigStore((state) => selectProvidersForDirectory(state, directory));
+  const loadProviders = useConfigStore((state) => state.loadProviders);
+  const [catalog, setCatalog] = React.useState<IntegrationCatalog | null>(() => peekIntegrationCatalog());
+  React.useEffect(() => {
+    let cancelled = false;
+    void loadProviders({ directory, source: 'settings:engine' });
+    if (peekIntegrationCatalog() === null) {
+      loadIntegrationCatalog()
+        .then((next) => { if (!cancelled) setCatalog(next); })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [directory, loadProviders]);
+  const integrations = catalog?.integrations ?? null;
+  const alphabetical = [...providers].sort((a, b) =>
+    (a.name || a.id).localeCompare(b.name || b.id, undefined, { sensitivity: 'base' }));
   return (
     <SettingsSection
       title={t('settings.engine.section.routing')}
       description={t('settings.engine.routing.description')}
       settingsItem="engine.routing"
     >
-      <div className={SETTINGS_FIELDS_STACK_CLASS}>
-        {status.binding.alcoreModels.map((modelId) => (
-          <SettingsFieldRow key={modelId} label={modelId}>
-            <SettingsCardPill tone="success">{t('settings.engine.routing.usesLogin')}</SettingsCardPill>
-          </SettingsFieldRow>
-        ))}
-        <p className={SETTINGS_HELPER_CLASS}>{t('settings.engine.routing.othersNote')}</p>
-        <div>
-          <Button variant="outline" size="sm" onClick={() => setSettingsPage('providers')}>
-            {t('settings.engine.action.manageProviders')}
-          </Button>
+      {providers.length === 0 ? (
+        <p className={SETTINGS_HELPER_CLASS}>{t('settings.engine.routing.empty')}</p>
+      ) : (
+        <div className={SETTINGS_FIELDS_STACK_CLASS}>
+          {alphabetical.map((provider) => {
+            const status = getProviderCardStatus({
+              integrations,
+              providerId: provider.id,
+              optionsApiKey: readProviderApiKeySetting(provider),
+            });
+            return (
+              <div key={provider.id}>
+                <SettingsFieldRow label={provider.name || provider.id}>
+                  {status ? <RoutingStatusPill status={status} /> : null}
+                </SettingsFieldRow>
+                {provider.models.map((model) => (
+                  <div key={model.id} className="typography-meta text-muted-foreground pl-4">
+                    {model.name || model.id}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
+      )}
+      <p className={SETTINGS_HELPER_CLASS}>{t('settings.engine.routing.othersNote')}</p>
+      <div>
+        <Button variant="outline" size="sm" onClick={() => setSettingsPage('providers')}>
+          {t('settings.engine.action.manageProviders')}
+        </Button>
       </div>
     </SettingsSection>
   );
@@ -168,7 +229,7 @@ export const EnginePage: React.FC = () => {
       showSaveStatus={false}
     >
       <StatusSection load={load} onRefresh={() => void loadStatus()} refreshing={refreshing} />
-      {load.state === 'ready' ? <RoutingSection status={load.status} /> : null}
+      <RoutingSection />
     </SettingsPageLayout>
   );
 };
