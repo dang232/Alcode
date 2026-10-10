@@ -16,9 +16,12 @@ import {
   createOmoBridgeRuntime,
   createSnapshotWriter,
   defaultSnapshotPath,
+  defaultWorkerEntry,
   engineAbsentMessage,
   parseEventLine,
   providerForModel,
+  resolveEngineRoot,
+  resolveNativeRunner,
   resolveRunModel,
   splitModelRef,
 } from './omo-bridge-runtime.js';
@@ -418,6 +421,127 @@ describe('model binding (Slice E: catalog role to provider gate)', () => {
     const { spawn, calls } = stubSpawn();
     const bridge = createOmoBridgeRuntime(engine({ spawn }));
     bridge.invoke({ message: 'hi', port: 4321 });
+    expect(calls[0].argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+  });
+});
+
+describe('native invoker (bun worker, opt-in)', () => {
+  const nativeEngine = (extra = {}) => ({
+    resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
+    existsSync: () => true,
+    ...extra,
+  });
+
+  it('explicit engine root wins, derived root needs the run barrel', () => {
+    expect(resolveEngineRoot('/user/engine/bin/oh-my-opencode.js', {
+      env: { OMO_ENGINE_ROOT: '/custom/root' },
+      existsSync: () => { throw new Error('must not probe'); },
+    })).toBe('/custom/root');
+    const seen = [];
+    expect(resolveEngineRoot('/user/engine/bin/oh-my-opencode.js', {
+      env: {},
+      existsSync: (p) => { seen.push(p); return true; },
+    })).toBe('/user/engine');
+    expect(seen.some((p) => String(p).includes('run') && String(p).includes('index.ts'))).toBe(true);
+    for (const bad of [
+      () => resolveEngineRoot('/user/engine/bin/oh-my-opencode.js', { env: {}, existsSync: () => false }),
+      () => resolveEngineRoot(null, { env: {}, existsSync: () => true }),
+    ]) {
+      let thrown = null;
+      try {
+        bad();
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(OmoBridgeError);
+      expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    }
+  });
+
+  it('missing worker file refuses before any spawn', () => {
+    let thrown = null;
+    try {
+      resolveNativeRunner({
+        wrapperEntry: '/user/engine/bin/oh-my-opencode.js',
+        env: {},
+        existsSync: (p) => !String(p).endsWith('.ts'),
+        workerEntry: '/user/worker/omo-invoker-worker.ts',
+        bunPath: 'bun',
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+  });
+
+  it('default worker entry is the module sibling', () => {
+    expect(defaultWorkerEntry().endsWith('omo-invoker-worker.ts')).toBe(true);
+  });
+
+  it('native invoke spawns bun with the job on stdin and the same handle shape', async () => {
+    const calls = [];
+    let stdinText = '';
+    let stdinEnded = false;
+    const child = new FakeChild();
+    child.stdin = {
+      write: (text) => { stdinText += String(text); },
+      end: () => { stdinEnded = true; },
+    };
+    const spawn = (entry, argv, options) => {
+      calls.push({ entry, argv, options });
+      setImmediate(() => {
+        child.stdout.emit('data', `${JSON.stringify(fixture.runResult)}\n`);
+        child.exitCode = 0;
+        child.emit('exit', 0, null);
+        child.emit('close', 0, null);
+      });
+      return child;
+    };
+    const bridge = createOmoBridgeRuntime(nativeEngine({
+      spawn,
+      nativeRunner: {
+        workerEntry: '/user/worker/omo-invoker-worker.ts',
+        bunPath: 'bun',
+        engineRoot: '/user/engine',
+      },
+    }));
+    const handle = bridge.invoke({ message: 'hi', sessionId: 'ses_n1' });
+    expect(handle.native).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].entry).toBe('bun');
+    expect(calls[0].argv).toEqual(['/user/worker/omo-invoker-worker.ts', '--engine-root', '/user/engine']);
+    expect(calls[0].options.stdio).toEqual(['pipe', 'pipe', 'pipe']);
+    expect(JSON.parse(stdinText)).toMatchObject({ message: 'hi' });
+    expect(stdinEnded).toBe(true);
+    const settled = await handle.wait();
+    expect(settled.exitCode).toBe(0);
+    expect(settled.result).toMatchObject({ sessionId: 'ses_fixture01', success: true });
+  });
+
+  it('opt-in flag with unresolvable setup fails fast naming native, never downgrades', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(nativeEngine({
+      spawn,
+      env: { OMO_NATIVE_RUN: '1' },
+      existsSync: (p) => !String(p).endsWith('.ts'),
+    }));
+    let thrown = null;
+    try {
+      bridge.invoke({ message: 'hi' });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(calls).toEqual([]);
+  });
+
+  it('flag off keeps the wrapper path with native:false', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(nativeEngine({ spawn, env: {} }));
+    const handle = bridge.invoke({ message: 'hi', port: 4321 });
+    expect(handle.native).toBe(false);
     expect(calls[0].argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
   });
 });

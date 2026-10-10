@@ -19,6 +19,13 @@
 //            (the omo-herdr-dag pattern: subscribe, filter session, snapshot
 //            to local JSON, watcher renders the file).
 //   cancel -> PROVISIONAL kill-with-reason (see cancelRun below).
+//   native -> opt-in `OMO_NATIVE_RUN=1`: spawns `bun omo-invoker-worker.ts`
+//             (same directory as this module; bun-only, never imported by
+//             plain-Node consumers) which imports the engine run barrel
+//             in-process. Contains run()'s stdio/env/telemetry globals in
+//             the worker. Same handle shape (wait/cancel/writer); explicit
+//             opt-in never silently downgrades — unresolvable native setup
+//             throws OMO_NATIVE_UNAVAILABLE.
 //
 // Transport note: the `senpi:extension-rpc-event` bus string from the proto
 // doc has zero hits in the checked-out engine sources (only
@@ -28,7 +35,8 @@
 // calls into the writer; the pane reads the file.
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from 'node:child_process';
 import { existsSync as nodeExistsSync } from 'node:fs';
-import { join as nodeJoinPath } from 'node:path';
+import { dirname as nodeDirname, join as nodeJoinPath } from 'node:path';
+import { fileURLToPath as nodeFileURLToPath } from 'node:url';
 
 export const OMO_BRIDGE_EVENT_DAG_UPDATED = 'omo.dag.updated';
 export const OMO_BRIDGE_EVENT_TASK_UPDATED = 'omo.task.updated';
@@ -49,6 +57,12 @@ export const OMO_BRIDGE_MAX_SNAPSHOT_BYTES = 1_000_000;
 // alcore model IDs; every binding input is injectable per runtime/call.
 export const OMO_BRIDGE_DEFAULT_ALCORE_MODELS = ['al-1-2', 'al-1-2-flash', 'al-1-3-max'];
 export const OMO_BRIDGE_DEFAULT_MODEL_ROLE = 'default';
+export const OMO_NATIVE_RUN_ENV = 'OMO_NATIVE_RUN';
+export const OMO_BUN_PATH_ENV = 'OMO_BUN_PATH';
+export const OMO_ENGINE_ROOT_ENV = 'OMO_ENGINE_ROOT';
+// Subpath from an engine checkout root to the run barrel (see
+// cli-program.ts run contract + run/index.ts barrel).
+export const OMO_ENGINE_RUN_BARREL = 'packages/omo-opencode/src/cli/run/index.ts';
 
 export class OmoBridgeError extends Error {
   constructor(code, message, details) {
@@ -144,6 +158,46 @@ export const providerForModel = (model, { alcoreModels = OMO_BRIDGE_DEFAULT_ALCO
   const hit = table[ref.provider ? `${ref.provider}/${ref.name}` : ref.name] ?? table[ref.name] ?? null;
   const named = hit?.trim?.() ?? '';
   return named === '' ? null : named;
+};
+
+// Engine checkout root for native runs: explicit env wins, else the
+// wrapper entry's grandparent (bin/oh-my-opencode.js lives at
+// <root>/bin/). Throws OMO_NATIVE_UNAVAILABLE naming the reason.
+export const resolveEngineRoot = (wrapperEntry, { env = process.env, existsSync = nodeExistsSync } = {}) => {
+  const explicit = env?.[OMO_ENGINE_ROOT_ENV]?.trim?.() ?? '';
+  if (explicit !== '') return explicit;
+  if (!isNonEmptyString(wrapperEntry)) {
+    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native runs need ${OMO_ENGINE_ROOT_ENV} or a wrapper entry to derive the engine root from.`);
+  }
+  const root = nodeDirname(nodeDirname(wrapperEntry));
+  if (!existsSync(nodeJoinPath(root, OMO_ENGINE_RUN_BARREL))) {
+    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `No engine run barrel under derived root "${root}". Set ${OMO_ENGINE_ROOT_ENV} explicitly.`);
+  }
+  return root;
+};
+
+// Default worker entry: the sibling file of this module. Plain-Node
+// consumers never import it (they spawn it); bun executes it.
+export const defaultWorkerEntry = () => nodeFileURLToPath(new URL('./omo-invoker-worker.ts', import.meta.url));
+
+// Resolve one native-runner config or throw OMO_NATIVE_UNAVAILABLE.
+// Never returns a half-configured runner: bun path, worker file, and
+// engine barrel must all resolve first.
+export const resolveNativeRunner = ({
+  wrapperEntry,
+  env = process.env,
+  existsSync = nodeExistsSync,
+  workerEntry,
+  bunPath,
+} = {}) => {
+  const worker = workerEntry ?? defaultWorkerEntry();
+  if (!existsSync(worker)) {
+    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native worker missing at "${worker}".`);
+  }
+  const bun = bunPath ?? env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? '';
+  const resolvedBun = bun !== '' ? bun : 'bun';
+  const engineRoot = resolveEngineRoot(wrapperEntry, { env, existsSync });
+  return { workerEntry: worker, bunPath: resolvedBun, engineRoot };
 };
 
 export const buildRunArgv = ({
@@ -338,6 +392,13 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     isProviderReady = null,
     modelCatalog = null,
     modelRole = OMO_BRIDGE_DEFAULT_MODEL_ROLE,
+    // Native-runner seam (Phase 4+): explicit `{ workerEntry, bunPath,
+    // engineRoot }` wins; when null and `nativeFromEnv` holds, an
+    // `OMO_NATIVE_RUN=1` env opts in via resolveNativeRunner (throws
+    // OMO_NATIVE_UNAVAILABLE instead of silently downgrading).
+    nativeRunner = null,
+    nativeFromEnv = true,
+    env = process.env,
   } = dependencies;
 
   const resolveEntry = () => {
@@ -485,14 +546,18 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
       model: argvModel,
       agent: isNonEmptyString(agent) ? agent.trim() : undefined,
     });
-    const writer = sessionId !== undefined && fs
-      ? createSnapshotWriter({
-        sessionId,
-        snapshotPath: explicitSnapshotPath ?? (snapshotDir ? defaultSnapshotPath(snapshotDir, sessionId) : null),
-        fs,
-        now,
-      })
-      : null;
+    let runner = nativeRunner ?? null;
+    if (runner === null && nativeFromEnv && env?.[OMO_NATIVE_RUN_ENV] === '1') {
+      runner = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
+    }
+    if (runner !== null) {
+      return invokeNative({
+        runner, entry, argv, message, port, attachUrl, sessionId,
+        agent: isNonEmptyString(agent) ? agent.trim() : undefined,
+        model: argvModel,
+        onEvent, explicitSnapshotPath,
+      });
+    }
     let child;
     try {
       child = spawn(entry, argv, {
@@ -502,6 +567,25 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     } catch (error) {
       throw new OmoBridgeError('OMO_SPAWN_FAILED', `OmO engine at "${entry}" could not be started: ${error.message ?? error}.`, { entry });
     }
+    return launchHandle({
+      child, entry, argv, sessionId, onEvent, explicitSnapshotPath, native: false,
+    });
+  };
+
+  // Shared launch tail: snapshot writer + stdout pump + wait + cancel.
+  // Both spawn paths (wrapper CLI, native bun worker) funnel through here
+  // so the handle shape and event semantics stay identical.
+  const launchHandle = ({
+    child, entry, argv, sessionId, onEvent, explicitSnapshotPath, native,
+  }) => {
+    const writer = sessionId !== undefined && fs
+      ? createSnapshotWriter({
+        sessionId,
+        snapshotPath: explicitSnapshotPath ?? (snapshotDir ? defaultSnapshotPath(snapshotDir, sessionId) : null),
+        fs,
+        now,
+      })
+      : null;
     let stdoutRemainder = '';
     let finalResult = null;
     let streamError = null;
@@ -558,7 +642,45 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
       writer,
       wait,
       cancel: (reason) => cancelRun({ child }, reason, { timers, cancelGraceMs }),
+      native,
     };
+  };
+
+  // Native path: spawn the bun worker (engine run() isolated in its own
+  // process), hand it the job on stdin, and funnel stdio through the
+  // shared launch tail. Same handle shape as the wrapper path.
+  const invokeNative = ({
+    runner, entry, argv, message, port, attachUrl, sessionId, agent, model, onEvent, explicitSnapshotPath,
+  }) => {
+    let child;
+    try {
+      child = spawn(runner.bunPath, [runner.workerEntry, '--engine-root', runner.engineRoot], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+    } catch (error) {
+      throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native bun worker could not start via "${runner.bunPath}": ${error.message ?? error}. Install bun or set ${OMO_BUN_PATH_ENV}.`, { entry });
+    }
+    const job = { message };
+    if (agent !== undefined) job.agent = agent;
+    if (model !== undefined) job.model = model;
+    if (port !== undefined) job.port = port;
+    if (attachUrl !== undefined) job.attach = attachUrl;
+    if (sessionId !== undefined) job.sessionId = sessionId;
+    try {
+      child.stdin?.write(`${JSON.stringify(job)}\n`);
+      child.stdin?.end();
+    } catch (error) {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // Already dead; the error below still reports the cause.
+      }
+      throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native bun worker rejected the job: ${error.message ?? error}.`, { entry });
+    }
+    return launchHandle({
+      child, entry, argv, sessionId, onEvent, explicitSnapshotPath, native: true,
+    });
   };
 
   return {
