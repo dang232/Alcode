@@ -151,6 +151,48 @@ describe('dag service handlers', () => {
     expect(again.body.code).toBe('OMO_DAG_NO_RUN');
   });
 
+  test('steer with OMO_NATIVE_RUN steers through the bun worker, not the wrapper', async () => {
+    const engineRoot = nodeFs.mkdtempSync(join(tmpdir(), 'fake-engine-'));
+    scratchDirs.push(engineRoot);
+    const barrelDir = join(engineRoot, 'packages', 'omo-opencode', 'src', 'cli', 'run');
+    nodeFs.mkdirSync(barrelDir, { recursive: true });
+    nodeFs.writeFileSync(join(barrelDir, 'index.ts'),
+      'export async function run(options: Record<string, unknown>): Promise<number> {\n' +
+      '  console.log(JSON.stringify({ sessionId: \'ses_native01\', success: true, summary: \'native ok\' }));\n' +
+      '  return 0;\n' +
+      '}\n');
+    nodeFs.mkdirSync(join(engineRoot, 'bin'), { recursive: true });
+    const wrapperFile = join(engineRoot, 'bin', 'oh-my-opencode.js');
+    nodeFs.writeFileSync(wrapperFile, '// fixture wrapper entry (existence only)\n');
+    const prev = {
+      OMO_NATIVE_RUN: process.env.OMO_NATIVE_RUN,
+      OMO_ENGINE_ROOT: process.env.OMO_ENGINE_ROOT,
+      OMO_WRAPPER_PATH: process.env.OMO_WRAPPER_PATH,
+    };
+    process.env.OMO_NATIVE_RUN = '1';
+    process.env.OMO_ENGINE_ROOT = engineRoot;
+    process.env.OMO_WRAPPER_PATH = wrapperFile;
+    try {
+      const { handleRequest, live } = createDagServiceHandlers({ fs: nodeFs, snapshotDir: makeSnapshotDir() });
+      const steered = await handleRequest({
+        method: 'POST', path: '/steer', body: { message: 'Native go', sessionId: 'ses_native01' },
+      });
+      expect(steered.status).toBe(200);
+      expect(steered.body.native).toBe(true);
+      expect(live.has('ses_native01')).toBe(true);
+      const cancelled = await handleRequest({
+        method: 'POST', path: '/cancel', body: { sessionId: 'ses_native01', reason: 'test done' },
+      });
+      expect(cancelled.status).toBe(200);
+      expect(live.has('ses_native01')).toBe(false);
+    } finally {
+      for (const [key, value] of Object.entries(prev)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   test('unknown paths 404 with the path echoed', async () => {
     const { handleRequest } = handlersWith(makeSnapshotDir(), absentBridge);
     const answer = await handleRequest({ method: 'GET', path: '/nope' });

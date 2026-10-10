@@ -171,6 +171,7 @@ export const createDagServiceHandlers = (dependencies = {}) => {
         status: 200,
         body: {
           ok: true, sessionId: sessionId.trim(), entry: handle.entry, argv: handle.argv, startedAt,
+          native: handle.native === true,
         },
       };
     }
