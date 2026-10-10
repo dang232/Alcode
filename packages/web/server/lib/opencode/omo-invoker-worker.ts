@@ -39,10 +39,15 @@ const engineRoot = engineRootIndex === -1 ? null : args[engineRootIndex + 1]?.tr
 if (!engineRoot) fail(`missing ${ENGINE_ROOT_FLAG} <dir>`);
 const selfTest = args.includes(SELF_TEST_FLAG);
 
+// Optional direct barrel override for vendored trees that do not keep
+// the engine packages/ layout (e.g. Alwork packages/omo-engine).
+const barrelIndex = args.indexOf("--barrel-path");
+const barrelSpecifier = barrelIndex === -1
+  ? `${engineRoot}/packages/omo-opencode/src/cli/run/index.ts`
+  : args[barrelIndex + 1]?.trim();
+if (!barrelSpecifier) fail("missing --barrel-path <file>");
 // SAFETY: dynamic import of a third-party barrel; shape verified below by the run-function check (and by --self-test output).
-const barrel = (await import(
-  `${engineRoot}/packages/omo-opencode/src/cli/run/index.ts`
-).catch((error) => {
+const barrel = (await import(barrelSpecifier).catch((error) => {
   fail(`cannot import engine run barrel: ${error instanceof Error ? error.message : error}`);
 })) as Record<string, RunFn>;
 
