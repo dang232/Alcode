@@ -276,12 +276,16 @@ describe('alcore login sync', () => {
       settings: { baseURL: `${TOKENPANEL_DEFAULT_BASE}/v1` },
     });
     expect(Object.keys(config.models).sort()).toEqual(['alcore-deep', 'alcore-fast']);
-    // The ambient credential is memory-only: the config names the variable,
-    // the value never touches disk or logs. The value is the MINTED personal
-    // key — never the rotating login Bearer, so rotation/expiry cannot
-    // touch the stored provider key.
-    expect(env[ALCORE_ENV_CREDENTIAL]).toBe('personal-key-1');
-    expect(personalKeys.calls.minted).toEqual(['user-1']);
+    // Slice B (task 52, Gap 2): stored-credential-only inference. The sync
+    // never writes the ambient variable — the minted personal key reaches
+    // OpenCode solely through the integration credential — and any stale
+    // value is dropped, so a previous session's key can never linger in
+    // this process's environment for future children to inherit.
+    env[ALCORE_ENV_CREDENTIAL] = 'stale-access';
+    const outcome2 = await runtime.syncOnLogin('user-1');
+    expect(outcome2).toEqual({ ok: true, models: 2, ready: true });
+    expect(env[ALCORE_ENV_CREDENTIAL]).toBeUndefined();
+    expect(personalKeys.calls.minted).toEqual(['user-1', 'user-1']);
   });
 
   test('an empty catalog skips registration instead of writing no models', async () => {
@@ -410,7 +414,7 @@ describe('alcore OpenCode credential sync (task 48 — badge flip, task 51 — p
     const { runtime, upserts, env } = createHarness({ openCodeCredentials: openCode });
     expect(await runtime.syncOnLogin('user-1')).toEqual({ ok: true, models: 2, ready: true });
     expect(upserts).toHaveLength(1);
-    expect(env[ALCORE_ENV_CREDENTIAL]).toBe('personal-key-1');
+    expect(env[ALCORE_ENV_CREDENTIAL]).toBeUndefined();
   });
 
   test('unwired OpenCode keeps the task-42 block-only behavior', async () => {
@@ -516,8 +520,48 @@ describe('alcore OpenCode credential sync (task 48 — badge flip, task 51 — p
     // The stored credential is always a minted key — a login Bearer never
     // lands there, so rotation/expiry of login tokens cannot touch it.
     expect(openCode.calls.connected).toEqual(['personal-key-1', 'personal-key-2']);
-    expect(env[ALCORE_ENV_CREDENTIAL]).toBe('personal-key-2');
+    expect(env[ALCORE_ENV_CREDENTIAL]).toBeUndefined();
     expect(personalKeys.keyIds.get('user-1')).toBe('key-id-2');
+  });
+
+  test('reuses the recorded key while the store entry survives (one key per device)', async () => {
+    const openCode = memoryOpenCodeCredentials({ existingIds: ['cred-live'] });
+    const { runtime, upserts, env, personalKeys } = createHarness({ openCodeCredentials: openCode });
+    personalKeys.keyIds.set('user-1', 'key-id-1');
+    expect(await runtime.syncOnLogin('user-1')).toEqual({ ok: true, models: 2, ready: true });
+    // No mint, no new server row, no revoke — and the surviving entry is
+    // never swept: the sweep would delete the only copy of a key we hold.
+    expect(personalKeys.calls.minted).toHaveLength(0);
+    expect(openCode.calls.connected).toHaveLength(0);
+    expect(openCode.calls.removed).toHaveLength(0);
+    expect(upserts).toHaveLength(1);
+    expect(env[ALCORE_ENV_CREDENTIAL]).toBeUndefined();
+  });
+
+  test('mints fresh when the ref survives but the store entry is gone', async () => {
+    const openCode = memoryOpenCodeCredentials({ existingIds: [] });
+    const { runtime, personalKeys } = createHarness({ openCodeCredentials: openCode });
+    personalKeys.keyIds.set('user-1', 'key-id-1');
+    expect(await runtime.syncOnLogin('user-1')).toEqual({ ok: true, models: 2, ready: true });
+    expect(personalKeys.calls.minted).toEqual(['user-1']);
+    expect(openCode.calls.connected).toEqual(['personal-key-1']);
+  });
+
+  test('an unreadable store falls through to a fresh mint', async () => {
+    const openCode = memoryOpenCodeCredentials({
+      listImpl: async () => { throw new Error('store down'); },
+    });
+    const { runtime, personalKeys } = createHarness({ openCodeCredentials: openCode });
+    personalKeys.keyIds.set('user-1', 'key-id-1');
+    expect(await runtime.syncOnLogin('user-1')).toEqual({ ok: true, models: 2, ready: true });
+    expect(personalKeys.calls.minted).toEqual(['user-1']);
+  });
+
+  test('an unwired credential store mints even with a recorded ref', async () => {
+    const { runtime, personalKeys } = createHarness({ openCodeCredentials: null });
+    personalKeys.keyIds.set('user-1', 'key-id-1');
+    expect(await runtime.syncOnLogin('user-1')).toEqual({ ok: true, models: 2, ready: true });
+    expect(personalKeys.calls.minted).toEqual(['user-1']);
   });
 
   test('no stored pair mints nothing and stores nothing', async () => {

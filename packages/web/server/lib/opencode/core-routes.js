@@ -1,4 +1,9 @@
 import { buildExternalManualRestartResponse } from './config-mutation-response.js';
+import {
+  OMO_BRIDGE_DEFAULT_ALCORE_MODELS,
+  OMO_BRIDGE_DEFAULT_MODEL_ROLE,
+  createOmoBridgeRuntime,
+} from './omo-bridge-runtime.js';
 import { ThemeImportStorageError } from './theme-runtime.js';
 import { registerThemeCatalogRoutes } from './theme-catalog.js';
 import { createDesktopAuthRuntime } from '../desktop-auth/desktop-auth.js';
@@ -734,6 +739,31 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
     } catch {
       res.json(unreadable);
     }
+  });
+
+  // Engine status for the Settings → Engine page: probe the user-installed
+  // OmO wrapper plus the Slice-E binding defaults. Gated behind UI auth:
+  // the probe spawns a subprocess and the answer names a server-local
+  // path. Never a secret. The probe is bounded well under the bridge
+  // default so a wedged engine cannot hold the settings page hostage.
+  app.get('/api/engine/status', async (req, res, next) => {
+    await runWithUiAuth(req, res, next, async () => {
+      const bridge = createOmoBridgeRuntime();
+      const probe = await bridge.probe({ timeoutMs: 5000 });
+      res.json({
+        entry: probe.entry ?? null,
+        available: probe.available === true,
+        compatible: probe.compatible === true,
+        version: probe.version ?? null,
+        runFlags: probe.runFlags ?? [],
+        missingRunFlags: probe.missingRunFlags ?? [],
+        message: probe.message ?? null,
+        binding: {
+          alcoreModels: [...OMO_BRIDGE_DEFAULT_ALCORE_MODELS],
+          defaultRole: OMO_BRIDGE_DEFAULT_MODEL_ROLE,
+        },
+      });
+    });
   });
 
   app.post('/auth/url-token', async (req, res, next) => {

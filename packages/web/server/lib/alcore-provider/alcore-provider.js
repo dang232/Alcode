@@ -50,10 +50,15 @@
 // and retries; anything still failing skips the registration and leaves
 // the login standing — a catalog outage must never break a proven login
 // nor masquerade as an empty model list. The config block itself carries
-// NO secret: auth travels via `env: [ALCORE_USER_TOKEN]`, whose value the
-// server holds in process memory only (the MINTED personal key after a
-// successful sync, deleted on sign-out or when the mint fails so no stale
-// login Bearer can linger). Nothing here logs tokens, subs, or responses.
+// NO secret: inference auth travels via the stored OpenCode integration
+// credential (the MINTED personal key, provisioned below). The block
+// still names `env: [ALCORE_USER_TOKEN]` as a user-settable fallback
+// (Settings variables reach the managed process at spawn), but the
+// server never writes that variable itself — a post-login write would
+// never reach the running managed process, while every future child
+// would inherit the live key (task 52, Slice B). Sign-out and mint
+// failure still drop the variable so no stale value can linger.
+// Nothing here logs tokens, subs, or responses.
 //
 // Enterprise boundary (provider-entry class): registration is refused
 // while enterprise mode is on — providers come from the administrator's
@@ -83,8 +88,9 @@ export const ALCORE_PROVIDER_NAME = 'Alcore';
 // Same spelling the Settings custom-provider form writes for OpenAI-chat
 // endpoints; the server normalizes it to the `aisdk:` provider package.
 export const ALCORE_PROVIDER_PACKAGE = 'aisdk:@ai-sdk/openai-compatible';
-// Ambient credential name the provider block references. The VALUE lives
-// in process memory only (never config, never disk, never logs).
+// Ambient credential name the provider block references as a
+// user-settable fallback. The server never writes a value here itself
+// (task 52, Slice B) — it only deletes stale ones on sync/sign-out.
 export const ALCORE_ENV_CREDENTIAL = 'ALCORE_USER_TOKEN';
 const ALCORE_CATALOG_TIMEOUT_MS = 15_000;
 // Same retry the Settings custom-provider form uses after its config write
@@ -328,22 +334,49 @@ export const createAlcoreProviderRuntime = ({
     }
   };
 
-  // Mint the provider credential: one personal API key for the caller's
-  // own link (see `./personal-key.js`). Resolves `{ key }` on success or
-  // `{ reason }` when no key is available (unwired mint runtime, refused or
-  // unreachable mint, malformed answer) — the caller degrades to the
-  // block-only "Not signed in" card, never a broken login.
-  const mintProviderCredential = async (sub) => {
+  // Resolve the provider credential, Codex-style: ONE key per device,
+  // reused across logins — never a fresh mint per login (see
+  // `./personal-key.js`). When a key-id ref is recorded for this subject
+  // AND OpenCode still holds an `alcore` credential entry, the stored key
+  // is reused as-is: no mint, no new server row, no revoke. Otherwise
+  // mint fresh (the server revokes the old row via rotate-with-revoke-old).
+  // Any doubt falls through to mint — a missing/unreadable ref, an
+  // unwired or unreadable credential store, or an empty store all mint —
+  // so reuse only ever skips provably redundant work, never auth.
+  // Resolves `{ key, reused }` on success or `{ key: null, reason }` when
+  // no key is available — the caller degrades to the block-only
+  // "Not signed in" card, never a broken login.
+  // Staleness note: a key revoked out-of-band (portal, operator) while
+  // its ref + store entry survive reads as reusable until the next
+  // sign-out clears both and the following login mints fresh. Inference
+  // against a dead key fails provider-side, exactly as a mid-session
+  // portal revoke does today.
+  const resolveProviderCredential = async (sub) => {
     if (personalKeys === null || personalKeys === undefined) {
-      return { key: null, reason: 'not_wired' };
+      return { key: null, reused: false, reason: 'not_wired' };
+    }
+    try {
+      const recorded = subSchema.safeParse(await personalKeys.readKeyId(sub)).data;
+      if (recorded !== undefined
+        && openCodeCredentials !== null && openCodeCredentials !== undefined) {
+        let held = [];
+        try {
+          held = (await openCodeCredentials.listCredentialIDs()) ?? [];
+        } catch {
+          held = [];
+        }
+        if (held.length > 0) return { key: null, reused: true, reason: null };
+      }
+    } catch {
+      // Best-effort: any doubt falls through to a fresh mint below.
     }
     try {
       const minted = await personalKeys.mintPersonalKey(sub);
       const key = z.string().min(1).safeParse(minted?.key).data ?? '';
-      if (key === '') return { key: null, reason: 'personal_key_unavailable' };
-      return { key, reason: null };
+      if (key === '') return { key: null, reused: false, reason: 'personal_key_unavailable' };
+      return { key, reused: false, reason: null };
     } catch (error) {
-      return { key: null, reason: error?.code ?? 'personal_key_unavailable' };
+      return { key: null, reused: false, reason: error?.code ?? 'personal_key_unavailable' };
     }
   };
   // OpenCode still reports a custom provider as "Not signed in" until its
@@ -426,9 +459,14 @@ export const createAlcoreProviderRuntime = ({
   // entries (bounded ~30 s, task 55) before reporting complete, so the
   // first prompt finds the provider instead of racing the watcher. The
   // credential stored is
-  // the freshly minted personal API key for the caller's own link (see
-  // `./personal-key.js`) — never the rotating login Bearer, never a
-  // service or management key, never in config/disk/URL/logs. When the
+  // the caller's personal API key for its own link (see
+  // `./personal-key.js`) — freshly minted on first login, then REUSED
+  // while its key-id ref + store entry survive (one key per device,
+  // Codex-style; no mint storm, no revoked-row pile-up) — never the
+  // rotating login Bearer, never a service or management key, never in
+  // config/disk/URL/logs, and never mirrored into this process's
+  // environment (task 52, Slice B: the stored integration credential is
+  // the only inference path). When the
   // mint is unavailable the provider block is still written but no secret
   // is stored, so the card reads "Not signed in" while the rest works.
   const syncOnLogin = async (sub) => {
@@ -457,8 +495,8 @@ export const createAlcoreProviderRuntime = ({
         'user',
         {},
       );
-      const credential = await mintProviderCredential(id);
-      if (credential.key === null) {
+      const credential = await resolveProviderCredential(id);
+      if (credential.key === null && credential.reused !== true) {
         // Mint failure never breaks the login: the block above is written
         // (live models listed) but no secret is stored, so the card reads
         // "Not signed in". Any stale ambient value is dropped so an old
@@ -470,13 +508,23 @@ export const createAlcoreProviderRuntime = ({
         }
         return { ok: false, reason: credential.reason };
       }
+      // Slice B (task 52, Gap 2): the minted key is stored ONLY as the
+      // OpenCode integration credential (provisionOpenCodeCredential
+      // below) — never mirrored into this process's environment. The
+      // managed OpenCode process snapshots its env once at spawn, so a
+      // post-login write here never reaches the running server, while
+      // every future child would inherit the live key. Drop any stale
+      // value instead, so a previous session's key can never linger.
       try {
-        env[ALCORE_ENV_CREDENTIAL] = credential.key;
+        delete env[ALCORE_ENV_CREDENTIAL];
       } catch {
-        // A frozen env object must not fail the sync: the config entry is
-        // written and the card lists live models either way.
+        // Best-effort: the stored credential below is what matters.
       }
-      await provisionOpenCodeCredential(credential.key);
+      // Reuse stores nothing: the entry is already there, and the sweep
+      // inside would delete the only copy of a key we no longer hold.
+      if (credential.reused !== true) {
+        await provisionOpenCodeCredential(credential.key);
+      }
       // Readiness gate (task 55): the inference path builds its provider
       // client from the managed model surface, which lags the config +
       // credential writes by seconds (task-54: attempt 1 lost ~26 s after

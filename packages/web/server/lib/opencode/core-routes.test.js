@@ -1109,6 +1109,64 @@ describe('global sign-out alcore cleanup', () => {
         .expect(200, { state: 'idle', needsRestart: false });
     });
   });
+  describe('engine status route', () => {
+    const mountEngineApp = (requireAuth) => {
+      const app = express();
+      registerAuthAndAccessRoutes(app, {
+        express,
+        tunnelAuthController: {
+          classifyRequestScope: () => 'local',
+          requireTunnelSession: (_req, _res, next) => next(),
+          getTunnelSessionFromRequest: () => null,
+          clearTunnelSessionCookie: () => {},
+        },
+        uiAuthController: {
+          requireAuth,
+          handleSessionStatus: (_req, res) => res.json({ authenticated: true }),
+          handleSessionCreate: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyStatus: (_req, res) => res.json({ enabled: false }),
+          handlePasskeyAuthenticationOptions: (_req, res) => res.json({}),
+          handlePasskeyAuthenticationVerify: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyRegistrationOptions: (_req, res) => res.json({}),
+          handlePasskeyRegistrationVerify: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyList: (_req, res) => res.json({ passkeys: [] }),
+          handlePasskeyRevoke: (_req, res) => res.json({ revoked: true }),
+          handleResetAuth: (_req, res) => res.json({ cleared: true, clearedPasskeys: 0, signedOutEverywhere: true }),
+        },
+        readSettingsFromDiskMigrated: async () => ({}),
+        normalizeTunnelSessionTtlMs: () => 1000,
+      });
+      return app;
+    };
+
+    it('refuses unauthenticated callers before probing', async () => {
+      const app = mountEngineApp((_req, res) => res.status(401).json({ error: 'Unauthorized' }));
+      await request(app).get('/api/engine/status').expect(401);
+    });
+
+    it('serves the absent-engine shape with binding defaults, never a secret', async () => {
+      const previous = process.env.OMO_WRAPPER_PATH;
+      delete process.env.OMO_WRAPPER_PATH;
+      try {
+        const app = mountEngineApp((_req, _res, next) => next());
+        const response = await request(app).get('/api/engine/status').expect(200);
+        expect(response.body).toMatchObject({
+          entry: null,
+          available: false,
+          compatible: false,
+          binding: {
+            defaultRole: 'default',
+          },
+        });
+        expect(Array.isArray(response.body.binding.alcoreModels)).toBe(true);
+        expect(response.body.binding.alcoreModels.length).toBeGreaterThan(0);
+        expect(JSON.stringify(response.body)).not.toMatch(/tp_live_|Bearer/);
+      } finally {
+        if (previous === undefined) delete process.env.OMO_WRAPPER_PATH;
+        else process.env.OMO_WRAPPER_PATH = previous;
+      }
+    });
+  });
   it('keeps the pid but not where the server is reachable on /api/system/info before login', async () => {
     const app = express();
     registerServerStatusRoutes(app, {

@@ -42,6 +42,7 @@ import { GitPage } from '@/components/sections/git-identities/GitPage';
 import { IntegrationsPage } from '@/components/sections/integrations/IntegrationsPage';
 import { RoutingPage } from '@/components/sections/routing/RoutingPage';
 import { ExtensionsPage } from '@/components/sections/extensions/ExtensionsPage';
+import { EnginePage } from '@/components/sections/engine/EnginePage';
 import type { OpenChamberSection } from '@/components/sections/openchamber/types';
 import { OpenChamberPage } from '@/components/sections/openchamber/OpenChamberPage';
 import { AboutSettings } from '@/components/sections/openchamber/AboutSettings';
@@ -112,6 +113,7 @@ const pageOrder: SettingsPageSlug[] = [
   'voice',
   'integrations',
   'extensions',
+  'engine',
   'usage',
   'about',
   // 'projects' group — Workspace
@@ -357,6 +359,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
         return t('settings.page.integrations.title');
       case 'extensions':
         return t('settings.page.extensions.title');
+      case 'engine':
+        return t('settings.page.engine.title');
       case 'appearance':
         return t('settings.page.appearance.title');
       case 'chat':
@@ -698,6 +702,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
         return <RoutingPage />;
       case 'extensions':
         return <ExtensionsPage />;
+      case 'engine':
+        return <EnginePage />;
       case 'general':
       case 'appearance':
       case 'chat':

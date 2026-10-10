@@ -51,8 +51,14 @@ the shared discovery normalizer; writes the provider block into the
 OpenCode **user** config via `upsertProviderConfig` (the same registry
 the Settings form uses); mints ONE personal API key for the caller's own
 link (`POST {origin}/admin/ide/personal-key` with the caller's Bearer via
-`personal-key.js`); holds the MINTED key in process memory as
-`ALCORE_USER_TOKEN` for the `env` credential the block references; then
+`personal-key.js`) — but only when no live key exists: a recorded key-id
+ref plus a surviving OpenCode `alcore` credential entry means the stored
+key is reused as-is (one key per device, Codex-style — no mint, no new
+server row, no revoke); drops any stale `ALCORE_USER_TOKEN` from this
+process's environment instead of mirroring the key there (task 52,
+Slice B — the managed process snapshots its env once at spawn, so a
+post-login write never reaches the running server while every future
+child would inherit the live key); then
 stores that SAME minted key as the OpenCode `alcore` integration
 credential (`POST /api/integration/alcore/connect/key` — the exact path
 the Settings API-key save uses), sweeping stale entries first so one
@@ -79,7 +85,10 @@ login stands (and any stale ambient value is dropped) — and every failure
 keeps the `{ ok: true }` block write while the proven login stands. The
 minted key id persists per subject in `alcore-personal-keys.json` (row
 reference only, never the secret) so a restart still knows which row to
-revoke. No interactive
+revoke. Inference auth travels solely through that stored integration
+credential: the block still names `env: [ALCORE_USER_TOKEN]` as a
+user-settable fallback (Settings variables reach the managed process at
+spawn), but the server never writes the variable itself. No interactive
 per-provider OAuth dance is involved: `alcore` is a key-method custom
 provider, so the credential is fully provisionable server-side.
 
@@ -97,8 +106,9 @@ an unknown subject (ambient + OpenCode credentials are still dropped).
 The catalog fetch presents the CALLER's own access Bearer as
 `Authorization: Bearer` against the derived base. No management key is
 read on this path. The config block carries no secret (only the
-variable name); the value lives in process memory, never disk, logs, or
-the browser. Base and pair resolve per sync, so rotation applies
+variable name); the server holds no ambient value — the minted key lives
+only in OpenCode's credential store, never disk, logs, the browser, or
+this process's environment. Base and pair resolve per sync, so rotation applies
 without a restart.
 
 ## Public exports (alcore-provider.js)

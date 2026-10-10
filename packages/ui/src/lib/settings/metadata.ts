@@ -31,7 +31,8 @@ export type SettingsPageSlug =
   | 'isolated-spaces'
   | 'about'
   | 'integrations'
-  | 'extensions';
+  | 'extensions'
+  | 'engine';
 
 type SettingsPageGroup =
   | 'general'
@@ -247,6 +248,14 @@ export const SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
     keywords: ['extension', 'extensions', 'guest', 'panel', 'rail', 'folder', 'zip', 'git', 'url'],
     isAvailable: (ctx) => !ctx.isVSCode && !ctx.isMobile,
   },
+  {
+    slug: 'engine',
+    title: 'Engine',
+    group: 'general',
+    kind: 'single',
+    keywords: ['engine', 'omo', 'background runs', 'model routing', 'alcore models', 'wrapper'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
 ] as const;
 
 const LEGACY_SIDEBAR_SECTION_TO_SETTINGS_SLUG: Record<SidebarSection, SettingsPageSlug> = {
@@ -340,6 +349,8 @@ export function getSettingsNavIcon(slug: SettingsPageSlug): IconName | null {
       return 'plug';
     case 'extensions':
       return 'apps';
+    case 'engine':
+      return 'robot-2';
 
     case 'usage':
       return 'bar-chart-2';

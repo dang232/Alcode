@@ -129,12 +129,13 @@ export const createBootstrapRuntime = (dependencies) => {
     // The Alcore provider card shares the desktop-login keychain: a pair
     // captured at loopback completion is the pair the catalog sync
     // presents, and global sign-out clears it beside the provider entry.
-    // The OpenCode credential is the freshly minted personal API key for
-    // the caller's own link (never the rotating login Bearer, never a
-    // service key): stored via `integration.connect.key` so the card reads
-    // Connected, revoked by id plus removed on sign-out so no orphan
-    // survives. Unwired (no OpenCode URL/auth) keeps the block-only
-    // behavior.
+    // The OpenCode credential is the caller's personal API key for its own
+    // link (never the rotating login Bearer, never a service key): minted
+    // once, then reused across logins while its key-id ref + store entry
+    // survive (one key per device, Codex-style). Stored via
+    // `integration.connect.key` so the card reads Connected, revoked by
+    // id plus removed on sign-out so no orphan survives. Unwired (no
+    // OpenCode URL/auth) keeps the block-only behavior.
     const openCodeWired = buildOpenCodeUrl !== null && buildOpenCodeUrl !== undefined
       && getOpenCodeAuthHeaders !== null && getOpenCodeAuthHeaders !== undefined;
     const openCodeCredentials = openCodeWired

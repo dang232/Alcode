@@ -8,7 +8,12 @@
 //
 // Wrapper contract (pinned, see .omo/evidence/task-7-project-ide.md):
 //   probe  -> `<entry> --version` + `<entry> run --help` (bounded)
-//   invoke -> `run <message> [--port N | --attach URL] [--session-id ID] --json`
+//   invoke -> `run <message> [--port N | --attach URL] [--session-id ID] [--model P/M] --json`
+//   gate   -> Slice E (task 52, Gap 5): the effective model (explicit >
+//             catalog role > catalog current) maps to a provider; a wired
+//             readiness predicate fail-closed here throws
+//             OMO_PROVIDER_NOT_SIGNED_IN naming model + provider before
+//             any spawn, and alcore-bound runs pin `--model alcore/<id>`.
 //   stream -> `omo.dag.updated` + `omo.task.updated` filtered by
 //             `parent_session_id`, written to a local snapshot file
 //            (the omo-herdr-dag pattern: subscribe, filter session, snapshot
@@ -37,6 +42,13 @@ export const OMO_BRIDGE_CANCEL_GRACE_MS = 2_000;
 // A snapshot file holds the last dag + task payloads only; past this the
 // writer drops the update and counts it instead of growing the file.
 export const OMO_BRIDGE_MAX_SNAPSHOT_BYTES = 1_000_000;
+// Model→provider binding (task 52, Slice E / Gap 5): harness runs pick
+// models from the engine catalog, which pins non-alcore IDs
+// (model-catalog.json: gpt-6-astra everywhere) — an Alcore login only
+// covers the `alcore` provider. The default list names the proven-live
+// alcore model IDs; every binding input is injectable per runtime/call.
+export const OMO_BRIDGE_DEFAULT_ALCORE_MODELS = ['al-1-2', 'al-1-2-flash', 'al-1-3-max'];
+export const OMO_BRIDGE_DEFAULT_MODEL_ROLE = 'default';
 
 export class OmoBridgeError extends Error {
   constructor(code, message, details) {
@@ -88,7 +100,55 @@ export const defaultSnapshotPath = (snapshotDir, sessionId, joinPath = nodeJoinP
   return joinPath(snapshotDir, `${sessionId}.snapshot.json`);
 };
 
-export const buildRunArgv = ({ message, port, attachUrl, sessionId }) => {
+// Split a `provider/model` ref into its parts; a bare id reads as
+// `{ provider: null, name }`. Null on blank input (no model = no gate).
+export const splitModelRef = (model) => {
+  const text = model?.trim?.() ?? '';
+  if (text === '') return null;
+  const slash = text.indexOf('/');
+  if (slash === -1) return { provider: null, name: text };
+  return { provider: text.slice(0, slash).trim() || null, name: text.slice(slash + 1).trim() };
+};
+
+// Effective model for a run: an explicit model wins, else the catalog role
+// (default `default`), else the catalog current. Null when nothing
+// resolves — the run proceeds exactly as before (no gate, no --model).
+export const resolveRunModel = ({ model, role = OMO_BRIDGE_DEFAULT_MODEL_ROLE, catalog } = {}) => {
+  if (isNonEmptyString(model)) return model.trim();
+  if (!isRecord(catalog)) return null;
+  const wanted = isNonEmptyString(role) ? role.trim() : OMO_BRIDGE_DEFAULT_MODEL_ROLE;
+  const roles = isRecord(catalog.roles) ? catalog.roles : null;
+  if (roles && isRecord(roles[wanted]) && isNonEmptyString(roles[wanted].model)) {
+    return roles[wanted].model.trim();
+  }
+  if (isRecord(catalog.current) && isNonEmptyString(catalog.current.model)) {
+    return catalog.current.model.trim();
+  }
+  return null;
+};
+
+// Which provider serves a model: `alcore` for its model IDs (bare or
+// `alcore/`-prefixed), an explicit `modelProviders` table hit otherwise,
+// null when unknown — unknown proceeds ungated (nothing to name).
+export const providerForModel = (model, { alcoreModels = OMO_BRIDGE_DEFAULT_ALCORE_MODELS, modelProviders = {} } = {}) => {
+  const ref = splitModelRef(model);
+  if (!ref || ref.name === '') return null;
+  if ((ref.provider ?? '').toLowerCase() === 'alcore') return 'alcore';
+  if (Array.isArray(alcoreModels)) {
+    const wanted = ref.name.toLowerCase();
+    for (const id of alcoreModels) {
+      if ((id?.trim?.() ?? '').toLowerCase() === wanted) return 'alcore';
+    }
+  }
+  const table = isRecord(modelProviders) ? modelProviders : {};
+  const hit = table[ref.provider ? `${ref.provider}/${ref.name}` : ref.name] ?? table[ref.name] ?? null;
+  const named = hit?.trim?.() ?? '';
+  return named === '' ? null : named;
+};
+
+export const buildRunArgv = ({
+  message, port, attachUrl, sessionId, model,
+}) => {
   if (!isNonEmptyString(message)) {
     throw new OmoBridgeError('OMO_INVOKE_ARGS_INVALID', 'run needs a non-empty message.');
   }
@@ -106,6 +166,9 @@ export const buildRunArgv = ({ message, port, attachUrl, sessionId }) => {
   if (sessionId !== undefined && !isNonEmptyString(sessionId)) {
     throw new OmoBridgeError('OMO_INVOKE_ARGS_INVALID', 'session-id must be a non-empty string when given.');
   }
+  if (model !== undefined && (!isNonEmptyString(model) || /\s/.test(model))) {
+    throw new OmoBridgeError('OMO_INVOKE_ARGS_INVALID', 'model must be a non-empty provider/model ref without whitespace when given.');
+  }
   const argv = ['run', message];
   if (port !== undefined) {
     argv.push('--port', String(port));
@@ -115,6 +178,9 @@ export const buildRunArgv = ({ message, port, attachUrl, sessionId }) => {
   }
   if (sessionId !== undefined) {
     argv.push('--session-id', sessionId);
+  }
+  if (model !== undefined) {
+    argv.push('--model', model.trim());
   }
   argv.push('--json');
   return argv;
@@ -253,6 +319,19 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     snapshotDir = null,
     probeTimeoutMs = OMO_BRIDGE_PROBE_TIMEOUT_MS,
     cancelGraceMs = OMO_BRIDGE_CANCEL_GRACE_MS,
+    // Slice E binding inputs (all optional, per-call overrides win):
+    // `modelProviders` maps model refs to provider ids, `alcoreModels`
+    // lists the alcore-served IDs, `isProviderReady(provider)` is a SYNC
+    // predicate (null skips the gate), `modelCatalog` carries the engine
+    // catalog shape ({ current: { model }, roles: { [role]: { model } } })
+    // with `modelRole` selecting the role. Production can back
+    // isProviderReady with the provider card snapshot; the bridge itself
+    // never phones OpenCode here, so invoke stays synchronous.
+    modelProviders = {},
+    alcoreModels = OMO_BRIDGE_DEFAULT_ALCORE_MODELS,
+    isProviderReady = null,
+    modelCatalog = null,
+    modelRole = OMO_BRIDGE_DEFAULT_MODEL_ROLE,
   } = dependencies;
 
   const resolveEntry = () => {
@@ -336,15 +415,64 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     };
   };
 
-  // Spawn `run <message> --port/--attach/--session-id/--json` through the
-  // wrapper contract. Throws OMO_ENGINE_ABSENT before spawning when the
-  // entry is missing, so engine-absent degrades instead of hanging.
-  const invoke = ({ message, port, attachUrl, sessionId, onEvent, snapshotPath: explicitSnapshotPath } = {}) => {
+  // Spawn `run <message> --port/--attach/--session-id/--model/--json`
+  // through the wrapper contract. Throws OMO_ENGINE_ABSENT before spawning
+  // when the entry is missing, so engine-absent degrades instead of
+  // hanging. Slice E gate: when the effective model maps to a known
+  // provider and a readiness predicate is wired, an unsigned provider
+  // throws OMO_PROVIDER_NOT_SIGNED_IN naming model + provider BEFORE any
+  // spawn — nothing is spent. Alcore-bound runs pin `--model
+  // alcore/<id>` so the spend cannot land on the engine catalog default.
+  const invoke = ({
+    message,
+    port,
+    attachUrl,
+    sessionId,
+    onEvent,
+    snapshotPath: explicitSnapshotPath,
+    model,
+    role,
+    catalog,
+    modelProviders: callModelProviders,
+    alcoreModels: callAlcoreModels,
+    isProviderReady: callIsProviderReady,
+  } = {}) => {
     const entry = resolveEntry();
     if (!entry || !existsSync(entry)) {
       throw new OmoBridgeError('OMO_ENGINE_ABSENT', engineAbsentMessage(entry), { entry });
     }
-    const argv = buildRunArgv({ message, port, attachUrl, sessionId });
+    const effectiveModel = resolveRunModel({ model, role: role ?? modelRole, catalog: catalog ?? modelCatalog });
+    let argvModel;
+    if (effectiveModel !== null) {
+      const provider = providerForModel(effectiveModel, {
+        alcoreModels: callAlcoreModels ?? alcoreModels,
+        modelProviders: callModelProviders ?? modelProviders,
+      });
+      const ready = callIsProviderReady ?? isProviderReady;
+      if (provider !== null && ready !== null && ready !== undefined) {
+        let ok = false;
+        try {
+          ok = ready(provider) === true;
+        } catch {
+          ok = true; // A broken checker must not wedge runs: skip the gate.
+        }
+        if (!ok) {
+          throw new OmoBridgeError(
+            'OMO_PROVIDER_NOT_SIGNED_IN',
+            `Model "${effectiveModel}" needs provider "${provider}" — sign it in first. No run was started.`,
+            { model: effectiveModel, provider },
+          );
+        }
+      }
+      if (provider === 'alcore') {
+        argvModel = `alcore/${splitModelRef(effectiveModel)?.name ?? effectiveModel}`;
+      } else if (isNonEmptyString(model)) {
+        argvModel = effectiveModel;
+      }
+    }
+    const argv = buildRunArgv({
+      message, port, attachUrl, sessionId, model: argvModel,
+    });
     const writer = sessionId !== undefined && fs
       ? createSnapshotWriter({
         sessionId,

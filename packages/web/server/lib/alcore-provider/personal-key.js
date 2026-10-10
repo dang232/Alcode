@@ -1,9 +1,12 @@
-// Personal API-key provisioning client (task 51).
+// Personal API-key provisioning client (task 51; reuse since task 57).
 //
 // What this owns: the TokenPanel `POST/DELETE /admin/ide/personal-key`
 // calls that turn a desktop login into a long-lived provider credential.
 // On login the Alcore provider sync mints ONE customer API key with the
-// CALLER's own keychained Bearer and stores that key (never the rotating
+// CALLER's own keychained Bearer — once per device, then reused while its
+// key-id ref + OpenCode store entry survive (Codex-style; the provider
+// runtime owns that decision, this module stays the transport) — and
+// stores that key (never the rotating
 // login token) as the OpenCode `alcore` credential; on global sign-out it
 // revokes the minted key id, then the existing removal runs. The minted
 // secret crosses exactly two seams — the mint response into the OpenCode

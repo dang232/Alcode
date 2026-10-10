@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  OMO_BRIDGE_DEFAULT_ALCORE_MODELS,
   OmoBridgeError,
   buildRunArgv,
   cancelRun,
@@ -17,6 +18,9 @@ import {
   defaultSnapshotPath,
   engineAbsentMessage,
   parseEventLine,
+  providerForModel,
+  resolveRunModel,
+  splitModelRef,
 } from './omo-bridge-runtime.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./omo-bridge-fixture.json', import.meta.url), 'utf8'));
@@ -177,9 +181,11 @@ describe('probe (version/capability handshake)', () => {
     const result = await bridge.probe({ timeoutMs: 10000 });
     expect(result.available).toBe(true);
     expect(result.version).toMatch(/^\d+\.\d+\.\d+/);
-    // node has no `run` subcommand: the flag check honestly reports that.
+    // Neither node nor bun has a `run` subcommand: the flag check honestly
+    // reports incompatibility. Assert the stable subset: bun's own help text
+    // mentions --port, so exact equality would couple the test to the runner.
     expect(result.compatible).toBe(false);
-    expect(result.missingRunFlags).toEqual(['--port', '--attach', '--session-id', '--json']);
+    expect(result.missingRunFlags).toEqual(expect.arrayContaining(['--attach', '--session-id', '--json']));
   });
 });
 
@@ -259,6 +265,147 @@ describe('invoke (wrapper contract argv)', () => {
     expect(settled.exitCode).not.toBe(0);
     expect(settled.result).toBeNull();
   }, 15000);
+});
+
+describe('model binding (Slice E: catalog role to provider gate)', () => {
+  const engine = (extra = {}) => ({
+    resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
+    existsSync: () => true,
+    ...extra,
+  });
+
+  it('explicit model wins over catalog role and current', () => {
+    expect(resolveRunModel({
+      model: 'alcore/al-1-2',
+      catalog: { current: { model: 'gpt-6-astra' }, roles: { default: { model: 'gpt-5' } } },
+    })).toBe('alcore/al-1-2');
+  });
+
+  it('role model wins over current, current is the fallback', () => {
+    expect(resolveRunModel({
+      catalog: { current: { model: 'gpt-6-astra' }, roles: { default: { model: 'al-1-2-flash' } } },
+    })).toBe('al-1-2-flash');
+    expect(resolveRunModel({ catalog: { current: { model: 'gpt-6-astra' } } })).toBe('gpt-6-astra');
+    expect(resolveRunModel({ role: 'worker', catalog: { roles: { worker: { model: 'al-1-2' } } } }))
+      .toBe('al-1-2');
+  });
+
+  it('malformed catalogs resolve to null (run proceeds ungated)', () => {
+    expect(resolveRunModel({})).toBeNull();
+    expect(resolveRunModel({ catalog: null })).toBeNull();
+    expect(resolveRunModel({ catalog: { roles: { default: {} } } })).toBeNull();
+    expect(resolveRunModel({ model: '   ' })).toBeNull();
+  });
+
+  it('alcore ids map to alcore bare or prefixed, case-insensitively', () => {
+    expect(providerForModel('al-1-3-max')).toBe('alcore');
+    expect(providerForModel('alcore/al-1-2')).toBe('alcore');
+    expect(providerForModel('ALCORE/AL-1-2-FLASH')).toBe('alcore');
+    expect(OMO_BRIDGE_DEFAULT_ALCORE_MODELS.length).toBeGreaterThan(0);
+  });
+
+  it('explicit map hits by full ref then bare id, unknown reads null', () => {
+    const map = { 'openai/gpt-6-astra': 'openai', 'gpt-5': 'openai' };
+    expect(providerForModel('openai/gpt-6-astra', { modelProviders: map })).toBe('openai');
+    expect(providerForModel('gpt-5', { modelProviders: map })).toBe('openai');
+    expect(providerForModel('gpt-9', { modelProviders: map })).toBeNull();
+    expect(providerForModel('   ', { modelProviders: map })).toBeNull();
+  });
+
+  it('splitModelRef separates provider and bare id', () => {
+    expect(splitModelRef('openai/gpt-5')).toEqual({ provider: 'openai', name: 'gpt-5' });
+    expect(splitModelRef('al-1-2')).toEqual({ provider: null, name: 'al-1-2' });
+    expect(splitModelRef('  ')).toBeNull();
+  });
+
+  it('--model builds into argv, blank or whitespacey models are rejected', () => {
+    expect(buildRunArgv({ message: 'x', model: 'alcore/al-1-2' }))
+      .toEqual(['run', 'x', '--model', 'alcore/al-1-2', '--json']);
+    expect(() => buildRunArgv({ message: 'x', model: '  ' })).toThrow(/model must be/);
+    expect(() => buildRunArgv({ message: 'x', model: 'openai/gpt 5' })).toThrow(/model must be/);
+  });
+
+  it('unsigned provider fails fast naming model and provider before any spawn', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({
+      spawn,
+      modelProviders: { 'gpt-6-astra': 'openai' },
+      isProviderReady: () => false,
+    }));
+    let thrown = null;
+    try {
+      bridge.invoke({ message: 'hi', model: 'gpt-6-astra' });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_PROVIDER_NOT_SIGNED_IN');
+    expect(thrown.message).toContain('gpt-6-astra');
+    expect(thrown.message).toContain('openai');
+    expect(thrown.details).toMatchObject({ model: 'gpt-6-astra', provider: 'openai' });
+    expect(calls).toEqual([]);
+  });
+
+  it('alcore-bound run pins --model alcore/<id>', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({
+      spawn,
+      isProviderReady: (provider) => provider === 'alcore',
+    }));
+    bridge.invoke({ message: 'hi', model: 'al-1-3-max' });
+    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-3-max', '--json']);
+  });
+
+  it('catalog role resolving to alcore pins --model from the role', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({
+      spawn,
+      isProviderReady: () => true,
+      modelCatalog: { current: { model: 'gpt-6-astra' }, roles: { default: { model: 'al-1-2-flash' } } },
+    }));
+    bridge.invoke({ message: 'hi' });
+    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2-flash', '--json']);
+  });
+
+  it('explicit non-alcore model with a ready provider travels as-given', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({
+      spawn,
+      modelProviders: { 'openai/gpt-5': 'openai' },
+      isProviderReady: () => true,
+    }));
+    bridge.invoke({ message: 'hi', model: 'openai/gpt-5' });
+    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'openai/gpt-5', '--json']);
+  });
+
+  it('unknown provider proceeds ungated without --model', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({ spawn, isProviderReady: () => false }));
+    bridge.invoke({
+      message: 'hi',
+      catalog: { current: { model: 'gpt-9' } },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].argv).toEqual(['run', 'hi', '--json']);
+  });
+
+  it('a broken checker never wedges runs (gate skipped)', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({
+      spawn,
+      isProviderReady: () => { throw new Error('checker down'); },
+    }));
+    bridge.invoke({ message: 'hi', model: 'al-1-2' });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2', '--json']);
+  });
+
+  it('unwired gate keeps the exact legacy argv (no model anywhere)', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({ spawn }));
+    bridge.invoke({ message: 'hi', port: 4321 });
+    expect(calls[0].argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+  });
 });
 
 describe('stream (session-filtered snapshot writer)', () => {

@@ -773,6 +773,22 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
+    id: 'engine.status',
+    page: 'engine',
+    titleKey: 'settings.engine.section.status',
+    descriptionKey: 'settings.page.engine.description',
+    keywords: ['engine', 'omo', 'wrapper', 'installed', 'version', 'background runs'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'engine.routing',
+    page: 'engine',
+    titleKey: 'settings.engine.section.routing',
+    descriptionKey: 'settings.engine.routing.description',
+    keywords: ['model routing', 'alcore models', 'provider', 'login'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
     id: 'routing.enabled',
     page: 'routing',
     titleKey: 'settings.routing.auto.enable',
