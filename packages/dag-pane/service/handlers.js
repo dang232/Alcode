@@ -75,6 +75,9 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     if (code === 'OMO_INVOKE_ARGS_INVALID' || code === 'OMO_SESSION_ID_INVALID' || code === 'OMO_SNAPSHOT_DIR_INVALID') {
       return { status: 400, body: { ok: false, code, message: error.message } };
     }
+    if (code === 'OMO_PROVIDER_NOT_SIGNED_IN') {
+      return { status: 409, body: { ok: false, code, message: error.message } };
+    }
     return { status: 500, body: { ok: false, code, message: error?.message ?? 'The DAG service failed.' } };
   };
 
@@ -142,6 +145,8 @@ export const createDagServiceHandlers = (dependencies = {}) => {
       } catch (error) {
         return { status: 400, body: { ok: false, code: error.code ?? 'OMO_SESSION_ID_INVALID', message: error.message } };
       }
+      const model = isNonEmptyString(body?.model) ? body.model.trim() : undefined;
+      const agent = isNonEmptyString(body?.agent) ? body.agent.trim() : undefined;
       const bridge = createBridge(entry);
       let handle;
       try {
@@ -149,6 +154,8 @@ export const createDagServiceHandlers = (dependencies = {}) => {
           message: message.trim(),
           sessionId: sessionId.trim(),
           snapshotPath,
+          model,
+          agent,
         });
       } catch (error) {
         return bridgeError(error, 'OMO_SPAWN_FAILED');

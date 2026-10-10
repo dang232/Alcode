@@ -114,6 +114,32 @@ describe('dag service handlers', () => {
     expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
   });
 
+  test('steer forwards model and agent, unsigned provider answers 409', async () => {
+    const seen = [];
+    const { handleRequest } = handlersWith(makeSnapshotDir(), () => ({
+      invoke: (args) => {
+        seen.push(args);
+        if (args.model === 'openai/gpt-5') {
+          const error = new Error('Model "openai/gpt-5" needs provider "openai" — sign it in first. No run was started.');
+          error.code = 'OMO_PROVIDER_NOT_SIGNED_IN';
+          throw error;
+        }
+        return { entry: 'e', argv: ['run'], writer: null, wait: async () => ({}), cancel: () => ({}) };
+      },
+    }));
+    const refused = await handleRequest({
+      method: 'POST', path: '/steer', body: { message: 'Go', sessionId: 'ses_m1', model: 'openai/gpt-5', agent: 'atlas' },
+    });
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe('OMO_PROVIDER_NOT_SIGNED_IN');
+    expect(seen[0]).toMatchObject({ model: 'openai/gpt-5', agent: 'atlas' });
+    const passed = await handleRequest({
+      method: 'POST', path: '/steer', body: { message: 'Go', sessionId: 'ses_m2', model: 'alcore/al-1-2' },
+    });
+    expect(passed.status).toBe(200);
+    expect(seen[1]).toMatchObject({ model: 'alcore/al-1-2', agent: undefined });
+  });
+
   test('steer without an engine answers 503 with the degraded message', async () => {
     const { handleRequest } = handlersWith(makeSnapshotDir(), absentBridge);
     const answer = await handleRequest({
