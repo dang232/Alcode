@@ -11,6 +11,7 @@ const statusJson = <T>(body: T, status = 200) =>
 
 const validBody = () => ({
   entry: "/user/engine/bin/oh-my-opencode.js",
+  builtin: false,
   available: true,
   compatible: true,
   version: "1.2.3",

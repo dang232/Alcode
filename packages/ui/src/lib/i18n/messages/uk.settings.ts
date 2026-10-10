@@ -146,6 +146,8 @@ export const settingsDict = {
   "settings.engine.status.entry": "Шлях до рушія",
   "settings.engine.status.version": "Версія",
   "settings.engine.status.state": "Стан",
+  "settings.engine.state.builtIn": "Вбудований",
+  "settings.engine.status.builtInHint": "Рушій вбудовано в цей застосунок: нічого встановлювати, жодних шляхів.",
   "settings.engine.state.ready": "Готовий",
   "settings.engine.state.notInstalled": "Не встановлено",
   "settings.engine.state.needsUpdate": "Потрібне оновлення",

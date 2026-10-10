@@ -146,6 +146,8 @@ export const settingsDict = {
   'settings.engine.status.entry': 'エンジンのパス',
   'settings.engine.status.version': 'バージョン',
   'settings.engine.status.state': '状態',
+  'settings.engine.state.builtIn': '内蔵',
+  'settings.engine.status.builtInHint': 'エンジンはこのアプリに内蔵されている。インストールもパス設定も不要。',
   'settings.engine.state.ready': '準備完了',
   'settings.engine.state.notInstalled': '未インストール',
   'settings.engine.state.needsUpdate': '更新が必要',

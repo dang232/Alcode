@@ -4,6 +4,7 @@ import { runtimeFetch } from "@/lib/runtime-fetch";
 
 const engineStatusSchema = z.object({
   entry: z.string().nullable(),
+  builtin: z.boolean(),
   available: z.boolean(),
   compatible: z.boolean(),
   version: z.string().nullable(),

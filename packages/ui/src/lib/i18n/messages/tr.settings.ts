@@ -125,6 +125,8 @@ export const settingsDict = {
   'settings.engine.status.entry': 'Motor yolu',
   'settings.engine.status.version': 'Sürüm',
   'settings.engine.status.state': 'Durum',
+  'settings.engine.state.builtIn': 'Yerleşik',
+  'settings.engine.status.builtInHint': 'Motor bu uygulamanın içinde geliyor: kurulacak bir şey, ayarlanacak yol yok.',
   'settings.engine.state.ready': 'Hazır',
   'settings.engine.state.notInstalled': 'Yüklü değil',
   'settings.engine.state.needsUpdate': 'Güncelleme gerekli',

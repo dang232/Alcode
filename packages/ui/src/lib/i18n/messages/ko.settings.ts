@@ -146,6 +146,8 @@ export const settingsDict = {
   'settings.engine.status.entry': '엔진 경로',
   'settings.engine.status.version': '버전',
   'settings.engine.status.state': '상태',
+  'settings.engine.state.builtIn': '내장됨',
+  'settings.engine.status.builtInHint': '엔진이 이 앱에 내장되어 있어 설치나 경로 설정이 필요 없다.',
   'settings.engine.state.ready': '준비됨',
   'settings.engine.state.notInstalled': '설치되지 않음',
   'settings.engine.state.needsUpdate': '업데이트 필요',

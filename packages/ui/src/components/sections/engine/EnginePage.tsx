@@ -61,7 +61,9 @@ const StatusSection: React.FC<{ load: LoadState; onRefresh: () => void; refreshi
   }
 
   const { status } = load;
-  const state = !status.available ? 'notInstalled' : !status.compatible ? 'needsUpdate' : 'ready';
+  const state = !status.available
+    ? (status.builtin ? 'builtIn' : 'notInstalled')
+    : !status.compatible ? 'needsUpdate' : 'ready';
   return (
     <SettingsSection
       title={t('settings.engine.section.status')}
@@ -94,6 +96,9 @@ const StatusSection: React.FC<{ load: LoadState; onRefresh: () => void; refreshi
         ) : null}
         {state === 'notInstalled' ? (
           <p className={SETTINGS_HELPER_CLASS}>{t('settings.engine.status.setupHint')}</p>
+        ) : null}
+        {state === 'builtIn' ? (
+          <p className={SETTINGS_HELPER_CLASS}>{t('settings.engine.status.builtInHint')}</p>
         ) : null}
         {status.message !== null && state !== 'notInstalled' ? (
           <p className={SETTINGS_HELPER_CLASS}>{status.message}</p>

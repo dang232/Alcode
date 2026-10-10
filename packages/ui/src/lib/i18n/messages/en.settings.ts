@@ -145,6 +145,8 @@ export const settingsDict = {
   'settings.engine.status.entry': 'Engine path',
   'settings.engine.status.version': 'Version',
   'settings.engine.status.state': 'State',
+  'settings.engine.state.builtIn': 'Built in',
+  'settings.engine.status.builtInHint': 'The engine ships inside this app — nothing to install, no paths to set.',
   'settings.engine.state.ready': 'Ready',
   'settings.engine.state.notInstalled': 'Not installed',
   'settings.engine.state.needsUpdate': 'Needs update',

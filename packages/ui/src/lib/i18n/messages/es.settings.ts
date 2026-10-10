@@ -146,6 +146,8 @@ export const settingsDict = {
   "settings.engine.status.entry": "Ruta del motor",
   "settings.engine.status.version": "Versión",
   "settings.engine.status.state": "Estado",
+  "settings.engine.state.builtIn": "Integrado",
+  "settings.engine.status.builtInHint": "El motor viene incluido en esta app: nada que instalar, ninguna ruta que definir.",
   "settings.engine.state.ready": "Listo",
   "settings.engine.state.notInstalled": "No instalado",
   "settings.engine.state.needsUpdate": "Necesita actualizarse",

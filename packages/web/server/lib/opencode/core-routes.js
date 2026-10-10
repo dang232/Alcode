@@ -3,6 +3,7 @@ import {
   OMO_BRIDGE_DEFAULT_ALCORE_MODELS,
   OMO_BRIDGE_DEFAULT_MODEL_ROLE,
   createOmoBridgeRuntime,
+  resolveVendoredRoot,
 } from './omo-bridge-runtime.js';
 import { ThemeImportStorageError } from './theme-runtime.js';
 import { registerThemeCatalogRoutes } from './theme-catalog.js';
@@ -752,6 +753,7 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
       const probe = await bridge.probe({ timeoutMs: 5000 });
       res.json({
         entry: probe.entry ?? null,
+        builtin: resolveVendoredRoot() !== null,
         available: probe.available === true,
         compatible: probe.compatible === true,
         version: probe.version ?? null,

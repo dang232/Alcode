@@ -147,6 +147,8 @@ export const settingsDict = {
   'settings.engine.status.entry': 'Enginepad',
   'settings.engine.status.version': 'Versie',
   'settings.engine.status.state': 'Status',
+  'settings.engine.state.builtIn': 'Ingebouwd',
+  'settings.engine.status.builtInHint': 'De engine zit in deze app: niets te installeren, geen paden in te stellen.',
   'settings.engine.state.ready': 'Gereed',
   'settings.engine.state.notInstalled': 'Niet geïnstalleerd',
   'settings.engine.state.needsUpdate': 'Update nodig',

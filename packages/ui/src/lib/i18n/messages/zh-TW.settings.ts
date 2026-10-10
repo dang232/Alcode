@@ -143,6 +143,8 @@ export const settingsDict = {
   'settings.engine.status.entry': '引擎路徑',
   'settings.engine.status.version': '版本',
   'settings.engine.status.state': '狀態',
+  'settings.engine.state.builtIn': '內建',
+  'settings.engine.status.builtInHint': '引擎內建於此應用，無需安裝，無需設定路徑。',
   'settings.engine.state.ready': '就緒',
   'settings.engine.state.notInstalled': '未安裝',
   'settings.engine.state.needsUpdate': '需要更新',

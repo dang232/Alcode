@@ -2366,6 +2366,8 @@ export const settingsDict = {
   'settings.engine.status.entry': 'Engine-Pfad',
   'settings.engine.status.version': 'Version',
   'settings.engine.status.state': 'Zustand',
+  'settings.engine.state.builtIn': 'Integriert',
+  'settings.engine.status.builtInHint': 'Die Engine ist in dieser App enthalten — nichts zu installieren, keine Pfade zu setzen.',
   'settings.engine.state.ready': 'Bereit',
   'settings.engine.state.notInstalled': 'Nicht installiert',
   'settings.engine.state.needsUpdate': 'Update nötig',

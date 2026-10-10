@@ -146,6 +146,8 @@ export const settingsDict = {
   'settings.engine.status.entry': '引擎路径',
   'settings.engine.status.version': '版本',
   'settings.engine.status.state': '状态',
+  'settings.engine.state.builtIn': '内置',
+  'settings.engine.status.builtInHint': '引擎内置于此应用，无需安装，无需设置路径。',
   'settings.engine.state.ready': '就绪',
   'settings.engine.state.notInstalled': '未安装',
   'settings.engine.state.needsUpdate': '需要更新',

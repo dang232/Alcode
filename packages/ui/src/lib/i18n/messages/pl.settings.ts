@@ -1424,6 +1424,8 @@ export const settingsDict = {
   'settings.engine.status.entry': 'Ścieżka silnika',
   'settings.engine.status.version': 'Wersja',
   'settings.engine.status.state': 'Stan',
+  'settings.engine.state.builtIn': 'Wbudowany',
+  'settings.engine.status.builtInHint': 'Silnik jest wbudowany w tę aplikację — nic do instalowania, żadnych ścieżek do ustawiania.',
   'settings.engine.state.ready': 'Gotowy',
   'settings.engine.state.notInstalled': 'Niezainstalowany',
   'settings.engine.state.needsUpdate': 'Wymaga aktualizacji',

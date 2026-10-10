@@ -1158,6 +1158,7 @@ describe('global sign-out alcore cleanup', () => {
             defaultRole: 'default',
           },
         });
+        expect(typeof response.body.builtin).toBe('boolean');
         expect(Array.isArray(response.body.binding.alcoreModels)).toBe(true);
         expect(response.body.binding.alcoreModels.length).toBeGreaterThan(0);
         expect(JSON.stringify(response.body)).not.toMatch(/tp_live_|Bearer/);
