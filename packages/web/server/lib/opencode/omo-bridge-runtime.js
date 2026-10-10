@@ -34,7 +34,7 @@
 // not assume any particular bus. Whatever transport delivers the channels
 // calls into the writer; the pane reads the file.
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from 'node:child_process';
-import { existsSync as nodeExistsSync } from 'node:fs';
+import { existsSync as nodeExistsSync, readFileSync as nodeReadFileSync } from 'node:fs';
 import { dirname as nodeDirname, join as nodeJoinPath } from 'node:path';
 import { fileURLToPath as nodeFileURLToPath } from 'node:url';
 
@@ -161,6 +161,155 @@ export const providerForModel = (model, { alcoreModels = OMO_BRIDGE_DEFAULT_ALCO
   const hit = table[ref.provider ? `${ref.provider}/${ref.name}` : ref.name] ?? table[ref.name] ?? null;
   const named = hit?.trim?.() ?? '';
   return named === '' ? null : named;
+};
+
+// Live predicate sources (omo-full-integration T4, closes GAP-5).
+//
+// `modelCatalog` feeds from the engine codex catalog file
+//   `packages/omo-engine/omo-codex/plugin/model-catalog.json`
+// (`{ current: { model }, roles: { [role]: { model } }, ... }`, the same file
+// `readCodexModelCatalog(codexPackageRoot)` reads from `<root>/plugin/`); a
+// run caller may instead pass its own role choice in the same bridge shape.
+// `isProviderReady` feeds from the provider-card snapshot: OpenCode
+// `GET /api/integration` read once by the async caller (ui:
+// `loadIntegrationCatalog()` in
+// `packages/ui/src/lib/opencode/integration-catalog.ts`; server:
+// `readOpenCodeCredentials()` in `auth.js`), interpreted per provider by
+// the card rule (`getProviderCardStatus` in
+// `packages/ui/src/components/sections/providers/providerAuth.ts`).
+// Both adapters below are SYNC and fail-closed: the bridge never phones
+// OpenCode, so the live fetch happens outside and the snapshot crosses in
+// as data. Reads are never cached — every call re-reads, so a credential
+// write cannot leave a stale ready behind (resolve at call time; a failed
+// read throws upstream and never arrives as an empty list).
+
+// Read one catalog file into the bridge catalog shape
+// (`{ current: { model }?, roles: { [role]: { model } }? }`), accepting both
+// the codex file shape and the bare bridge shape. Throws
+// OMO_MODEL_CATALOG_UNREADABLE (missing/unreadable path) or
+// OMO_MODEL_CATALOG_MALFORMED (bad JSON, wrong top-level shape, or no
+// usable model) — never a silent empty catalog: a failed read must not
+// clear the gate to "no model". Fail-closed: the caller cannot invoke
+// with a catalog it cannot read, so nothing spawns.
+export const readModelCatalogFileSync = (catalogPath, { readFileSync = nodeReadFileSync } = {}) => {
+  if (!isNonEmptyString(catalogPath)) {
+    throw new OmoBridgeError('OMO_MODEL_CATALOG_UNREADABLE', 'A catalog file path is required to feed modelCatalog.');
+  }
+  let text;
+  try {
+    text = readFileSync(catalogPath, 'utf8');
+  } catch (error) {
+    throw new OmoBridgeError(
+      'OMO_MODEL_CATALOG_UNREADABLE',
+      `Model catalog at "${catalogPath}" could not be read: ${error?.message ?? error}.`,
+      { catalogPath },
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(String(text));
+  } catch (error) {
+    throw new OmoBridgeError(
+      'OMO_MODEL_CATALOG_MALFORMED',
+      `Model catalog at "${catalogPath}" is not JSON: ${error?.message ?? error}.`,
+      { catalogPath },
+    );
+  }
+  if (!isRecord(parsed)) {
+    throw new OmoBridgeError(
+      'OMO_MODEL_CATALOG_MALFORMED',
+      `Model catalog at "${catalogPath}" must be a JSON object.`,
+      { catalogPath },
+    );
+  }
+  const catalog = {};
+  if (parsed.current !== undefined) {
+    if (!isRecord(parsed.current) || !isNonEmptyString(parsed.current.model)) {
+      throw new OmoBridgeError(
+        'OMO_MODEL_CATALOG_MALFORMED',
+        `Model catalog at "${catalogPath}" has a current without a model string.`,
+        { catalogPath },
+      );
+    }
+    catalog.current = { model: parsed.current.model.trim() };
+  }
+  if (parsed.roles !== undefined) {
+    if (!isRecord(parsed.roles)) {
+      throw new OmoBridgeError(
+        'OMO_MODEL_CATALOG_MALFORMED',
+        `Model catalog at "${catalogPath}" has roles that are not an object.`,
+        { catalogPath },
+      );
+    }
+    const roles = {};
+    for (const [role, entry] of Object.entries(parsed.roles)) {
+      if (isRecord(entry) && isNonEmptyString(entry.model)) {
+        roles[role] = { model: entry.model.trim() };
+      }
+    }
+    if (Object.keys(roles).length > 0) catalog.roles = roles;
+  }
+  if (catalog.current === undefined && catalog.roles === undefined) {
+    throw new OmoBridgeError(
+      'OMO_MODEL_CATALOG_MALFORMED',
+      `Model catalog at "${catalogPath}" names no model (need current.model or a roles entry).`,
+      { catalogPath },
+    );
+  }
+  return catalog;
+};
+
+// Build the sync readiness predicate from a provider-card snapshot. The
+// snapshot is `{ integrations: [{ id, connections: [{ type, status? }] }],
+// optionsApiKeys?: { [providerId]: key } }` — the `GET /api/integration`
+// list shape behind `IntegrationCatalog`, passed in as data (never fetched
+// here). Ready mirrors the card: `connected` / `accounts` (a credential
+// connection) and `environment` (an env connection the server can see, or
+// an inline options key) read true; `signInNeeded` (no usable connection)
+// and `reauthNeeded` (any connection whose `status.status === 'needs_auth'`,
+// i.e. revoked — reauth wins, as on the card) read false. An unknown
+// provider (no integration — e.g. a custom opencode.json provider keyed
+// inline, which the card shows with no status rather than a false "not
+// signed in") proceeds, preserving the bridge's unknown-proceeds
+// contract. A null/undefined snapshot returns null (gate unwired — the
+// legacy skip); a malformed snapshot throws OMO_PROVIDER_SNAPSHOT_MALFORMED
+// before any invoke can run, so nothing spawns.
+export const isProviderReadyFromCardSnapshot = (snapshot, { signInIntegrations = { 'opencode-go': 'opencode' } } = {}) => {
+  if (snapshot === null || snapshot === undefined) return null;
+  if (!isRecord(snapshot) || !Array.isArray(snapshot.integrations)) {
+    throw new OmoBridgeError(
+      'OMO_PROVIDER_SNAPSHOT_MALFORMED',
+      'The provider snapshot must be { integrations: [...] } from GET /api/integration.',
+    );
+  }
+  const optionsApiKeys = isRecord(snapshot.optionsApiKeys) ? snapshot.optionsApiKeys : {};
+  const signIns = isRecord(signInIntegrations) ? signInIntegrations : {};
+  const byId = new Map();
+  for (const integration of snapshot.integrations) {
+    if (isRecord(integration) && isNonEmptyString(integration.id)) {
+      byId.set(integration.id.trim(), Array.isArray(integration.connections) ? integration.connections : []);
+    }
+  }
+  const connectionsFor = (providerId) => {
+    const own = byId.get(providerId);
+    const signInId = isNonEmptyString(signIns[providerId]) ? signIns[providerId].trim() : providerId;
+    const extra = signInId === providerId ? [] : (byId.get(signInId) ?? []);
+    if (own === undefined && extra.length === 0) return undefined;
+    return [...(own ?? []), ...extra];
+  };
+  return (provider) => {
+    if (!isNonEmptyString(provider)) return false;
+    const id = provider.trim();
+    const connections = connectionsFor(id);
+    if (connections === undefined) return true;
+    if (connections.some((connection) => isRecord(connection) && isRecord(connection.status) && connection.status.status === 'needs_auth')) {
+      return false;
+    }
+    if (connections.some((connection) => isRecord(connection) && connection.type === 'credential')) return true;
+    if (isNonEmptyString(optionsApiKeys[id])) return true;
+    if (connections.some((connection) => isRecord(connection) && connection.type === 'env')) return true;
+    return false;
+  };
 };
 
 // Vendored in-tree engine root: the sibling packages/omo-engine dir when
@@ -401,8 +550,11 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     // lists the alcore-served IDs, `isProviderReady(provider)` is a SYNC
     // predicate (null skips the gate), `modelCatalog` carries the engine
     // catalog shape ({ current: { model }, roles: { [role]: { model } } })
-    // with `modelRole` selecting the role. Production can back
-    // isProviderReady with the provider card snapshot; the bridge itself
+    // with `modelRole` selecting the role. Production backs modelCatalog
+    // with readModelCatalogFileSync over the engine codex catalog file
+    // (packages/omo-engine/omo-codex/plugin/model-catalog.json) and
+    // isProviderReady with isProviderReadyFromCardSnapshot over the
+    // GET /api/integration provider-card snapshot; the bridge itself
     // never phones OpenCode here, so invoke stays synchronous.
     modelProviders = {},
     alcoreModels = OMO_BRIDGE_DEFAULT_ALCORE_MODELS,
