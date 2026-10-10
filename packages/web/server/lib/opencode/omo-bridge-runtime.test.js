@@ -325,6 +325,20 @@ describe('model binding (Slice E: catalog role to provider gate)', () => {
     expect(() => buildRunArgv({ message: 'x', model: 'openai/gpt 5' })).toThrow(/model must be/);
   });
 
+  it('--agent builds into argv between session-id and model, blanks rejected', () => {
+    expect(buildRunArgv({ message: 'x', sessionId: 's1', agent: 'atlas', model: 'alcore/al-1-2' }))
+      .toEqual(['run', 'x', '--session-id', 's1', '--agent', 'atlas', '--model', 'alcore/al-1-2', '--json']);
+    expect(() => buildRunArgv({ message: 'x', agent: '  ' })).toThrow(/agent must be/);
+    expect(() => buildRunArgv({ message: 'x', agent: 'my agent' })).toThrow(/agent must be/);
+  });
+
+  it('invoke passes an explicit agent straight to argv', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({ spawn }));
+    bridge.invoke({ message: 'hi', agent: 'atlas' });
+    expect(calls[0].argv).toEqual(['run', 'hi', '--agent', 'atlas', '--json']);
+  });
+
   it('unsigned provider fails fast naming model and provider before any spawn', () => {
     const { spawn, calls } = stubSpawn();
     const bridge = createOmoBridgeRuntime(engine({

@@ -147,7 +147,7 @@ export const providerForModel = (model, { alcoreModels = OMO_BRIDGE_DEFAULT_ALCO
 };
 
 export const buildRunArgv = ({
-  message, port, attachUrl, sessionId, model,
+  message, port, attachUrl, sessionId, model, agent,
 }) => {
   if (!isNonEmptyString(message)) {
     throw new OmoBridgeError('OMO_INVOKE_ARGS_INVALID', 'run needs a non-empty message.');
@@ -169,6 +169,9 @@ export const buildRunArgv = ({
   if (model !== undefined && (!isNonEmptyString(model) || /\s/.test(model))) {
     throw new OmoBridgeError('OMO_INVOKE_ARGS_INVALID', 'model must be a non-empty provider/model ref without whitespace when given.');
   }
+  if (agent !== undefined && (!isNonEmptyString(agent) || /\s/.test(agent))) {
+    throw new OmoBridgeError('OMO_INVOKE_ARGS_INVALID', 'agent must be a non-empty name without whitespace when given.');
+  }
   const argv = ['run', message];
   if (port !== undefined) {
     argv.push('--port', String(port));
@@ -178,6 +181,9 @@ export const buildRunArgv = ({
   }
   if (sessionId !== undefined) {
     argv.push('--session-id', sessionId);
+  }
+  if (agent !== undefined) {
+    argv.push('--agent', agent.trim());
   }
   if (model !== undefined) {
     argv.push('--model', model.trim());
@@ -436,6 +442,7 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     modelProviders: callModelProviders,
     alcoreModels: callAlcoreModels,
     isProviderReady: callIsProviderReady,
+    agent,
   } = {}) => {
     const entry = resolveEntry();
     if (!entry || !existsSync(entry)) {
@@ -471,7 +478,12 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
       }
     }
     const argv = buildRunArgv({
-      message, port, attachUrl, sessionId, model: argvModel,
+      message,
+      port,
+      attachUrl,
+      sessionId,
+      model: argvModel,
+      agent: isNonEmptyString(agent) ? agent.trim() : undefined,
     });
     const writer = sessionId !== undefined && fs
       ? createSnapshotWriter({
