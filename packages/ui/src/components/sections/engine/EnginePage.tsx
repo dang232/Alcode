@@ -81,9 +81,11 @@ const StatusSection: React.FC<{ load: LoadState; onRefresh: () => void; refreshi
             {t(`settings.engine.state.${state}`)}
           </SettingsCardPill>
         </SettingsFieldRow>
-        <SettingsFieldRow label={t('settings.engine.status.entry')}>
-          <span className="min-w-0 truncate">{status.entry ?? t('settings.engine.status.notConfigured')}</span>
-        </SettingsFieldRow>
+        {state === 'builtIn' && status.entry === null ? null : (
+          <SettingsFieldRow label={t('settings.engine.status.entry')}>
+            <span className="min-w-0 truncate">{status.entry ?? t('settings.engine.status.notConfigured')}</span>
+          </SettingsFieldRow>
+        )}
         {status.version !== null ? (
           <SettingsFieldRow label={t('settings.engine.status.version')}>
             <span className="tabular-nums">{status.version}</span>
@@ -100,7 +102,7 @@ const StatusSection: React.FC<{ load: LoadState; onRefresh: () => void; refreshi
         {state === 'builtIn' ? (
           <p className={SETTINGS_HELPER_CLASS}>{t('settings.engine.status.builtInHint')}</p>
         ) : null}
-        {status.message !== null && state !== 'notInstalled' ? (
+        {status.message !== null && state !== 'notInstalled' && state !== 'builtIn' ? (
           <p className={SETTINGS_HELPER_CLASS}>{status.message}</p>
         ) : null}
       </div>
