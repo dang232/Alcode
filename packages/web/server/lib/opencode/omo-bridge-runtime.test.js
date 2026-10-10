@@ -436,26 +436,36 @@ describe('native invoker (bun worker, opt-in)', () => {
     expect(resolveEngineRoot('/user/engine/bin/oh-my-opencode.js', {
       env: { OMO_ENGINE_ROOT: '/custom/root' },
       existsSync: () => { throw new Error('must not probe'); },
-    })).toBe('/custom/root');
+    })).toEqual({ root: '/custom/root', vendored: false });
     const seen = [];
     expect(resolveEngineRoot('/user/engine/bin/oh-my-opencode.js', {
       env: {},
       existsSync: (p) => { seen.push(p); return true; },
-    })).toBe('/user/engine');
+    })).toEqual({ root: '/user/engine', vendored: false });
     expect(seen.some((p) => String(p).includes('run') && String(p).includes('index.ts'))).toBe(true);
-    for (const bad of [
-      () => resolveEngineRoot('/user/engine/bin/oh-my-opencode.js', { env: {}, existsSync: () => false }),
-      () => resolveEngineRoot(null, { env: {}, existsSync: () => true }),
-    ]) {
-      let thrown = null;
-      try {
-        bad();
-      } catch (error) {
-        thrown = error;
-      }
-      expect(thrown).toBeInstanceOf(OmoBridgeError);
-      expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    let thrown = null;
+    try {
+      resolveEngineRoot('/user/engine/bin/oh-my-opencode.js', { env: {}, existsSync: () => false });
+    } catch (error) {
+      thrown = error;
     }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+  });
+
+  it('missing wrapper falls back to the vendored in-tree engine, else refuses', () => {
+    expect(resolveEngineRoot(null, {
+      env: {},
+      existsSync: (p) => String(p).includes('omo-engine'),
+    })).toEqual(expect.objectContaining({ vendored: true }));
+    let thrown = null;
+    try {
+      resolveEngineRoot(null, { env: {}, existsSync: () => false });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
   });
 
   it('missing worker file refuses before any spawn', () => {
@@ -535,6 +545,38 @@ describe('native invoker (bun worker, opt-in)', () => {
     expect(thrown).toBeInstanceOf(OmoBridgeError);
     expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
     expect(calls).toEqual([]);
+  });
+
+  it('vendored runner passes --barrel-path to the worker', async () => {
+    const calls = [];
+    const child = new FakeChild();
+    child.stdin = { write: () => {}, end: () => {} };
+    const spawn = (entry, argv) => {
+      calls.push({ entry, argv });
+      setImmediate(() => {
+        child.exitCode = 0;
+        child.emit('exit', 0, null);
+        child.emit('close', 0, null);
+      });
+      return child;
+    };
+    const bridge = createOmoBridgeRuntime(nativeEngine({
+      spawn,
+      nativeRunner: {
+        workerEntry: '/user/worker/omo-invoker-worker.ts',
+        bunPath: 'bun',
+        engineRoot: '/user/tree/packages/omo-engine',
+        barrelPath: '/user/tree/packages/omo-engine/omo-opencode/src/cli/run/index.ts',
+      },
+    }));
+    const handle = bridge.invoke({ message: 'hi' });
+    expect(handle.native).toBe(true);
+    expect(calls[0].argv).toEqual([
+      '/user/worker/omo-invoker-worker.ts',
+      '--engine-root', '/user/tree/packages/omo-engine',
+      '--barrel-path', '/user/tree/packages/omo-engine/omo-opencode/src/cli/run/index.ts',
+    ]);
+    await handle.wait();
   });
 
   it('flag off keeps the wrapper path with native:false', () => {

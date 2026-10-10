@@ -63,6 +63,9 @@ export const OMO_ENGINE_ROOT_ENV = 'OMO_ENGINE_ROOT';
 // Subpath from an engine checkout root to the run barrel (see
 // cli-program.ts run contract + run/index.ts barrel).
 export const OMO_ENGINE_RUN_BARREL = 'packages/omo-opencode/src/cli/run/index.ts';
+// In-tree engine (direct vendor): no wrapper, no download, no env.
+export const OMO_VENDORED_ENGINE_DIR = 'omo-engine';
+export const OMO_VENDORED_RUN_BARREL = 'omo-opencode/src/cli/run/index.ts';
 
 export class OmoBridgeError extends Error {
   constructor(code, message, details) {
@@ -160,20 +163,29 @@ export const providerForModel = (model, { alcoreModels = OMO_BRIDGE_DEFAULT_ALCO
   return named === '' ? null : named;
 };
 
+// Vendored in-tree engine root: the sibling packages/omo-engine dir when
+// its run barrel exists. Null when absent (engine predates the vendor).
+export const resolveVendoredRoot = ({ existsSync = nodeExistsSync, bridgeDir } = {}) => {
+  const dir = bridgeDir ?? nodeDirname(nodeFileURLToPath(import.meta.url));
+  const root = nodeJoinPath(dir, '..', '..', '..', '..', OMO_VENDORED_ENGINE_DIR);
+  if (!existsSync(nodeJoinPath(root, OMO_VENDORED_RUN_BARREL))) return null;
+  return root;
+};
 // Engine checkout root for native runs: explicit env wins, else the
 // wrapper entry's grandparent (bin/oh-my-opencode.js lives at
-// <root>/bin/). Throws OMO_NATIVE_UNAVAILABLE naming the reason.
+// <root>/bin/), else the vendored in-tree engine (install means use — no
+// wrapper, no download, no env). Throws OMO_NATIVE_UNAVAILABLE naming
+// the reason. Returns { root, vendored } so callers know the layout.
 export const resolveEngineRoot = (wrapperEntry, { env = process.env, existsSync = nodeExistsSync } = {}) => {
   const explicit = env?.[OMO_ENGINE_ROOT_ENV]?.trim?.() ?? '';
-  if (explicit !== '') return explicit;
-  if (!isNonEmptyString(wrapperEntry)) {
-    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native runs need ${OMO_ENGINE_ROOT_ENV} or a wrapper entry to derive the engine root from.`);
+  if (explicit !== '') return { root: explicit, vendored: false };
+  if (isNonEmptyString(wrapperEntry)) {
+    const root = nodeDirname(nodeDirname(wrapperEntry));
+    if (existsSync(nodeJoinPath(root, OMO_ENGINE_RUN_BARREL))) return { root, vendored: false };
   }
-  const root = nodeDirname(nodeDirname(wrapperEntry));
-  if (!existsSync(nodeJoinPath(root, OMO_ENGINE_RUN_BARREL))) {
-    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `No engine run barrel under derived root "${root}". Set ${OMO_ENGINE_ROOT_ENV} explicitly.`);
-  }
-  return root;
+  const vendored = resolveVendoredRoot({ existsSync });
+  if (vendored !== null) return { root: vendored, vendored: true };
+  throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native runs need ${OMO_ENGINE_ROOT_ENV}, a wrapper entry with a run barrel, or the vendored in-tree engine.`);
 };
 
 // Default worker entry: the sibling file of this module. Plain-Node
@@ -196,8 +208,13 @@ export const resolveNativeRunner = ({
   }
   const bun = bunPath ?? env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? '';
   const resolvedBun = bun !== '' ? bun : 'bun';
-  const engineRoot = resolveEngineRoot(wrapperEntry, { env, existsSync });
-  return { workerEntry: worker, bunPath: resolvedBun, engineRoot };
+  const { root: engineRoot, vendored } = resolveEngineRoot(wrapperEntry, { env, existsSync });
+  return {
+    workerEntry: worker,
+    bunPath: resolvedBun,
+    engineRoot,
+    barrelPath: vendored ? nodeJoinPath(engineRoot, OMO_VENDORED_RUN_BARREL) : undefined,
+  };
 };
 
 export const buildRunArgv = ({
@@ -652,9 +669,11 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
   const invokeNative = ({
     runner, entry, argv, message, port, attachUrl, sessionId, agent, model, onEvent, explicitSnapshotPath,
   }) => {
+    const workerArgv = [runner.workerEntry, '--engine-root', runner.engineRoot];
+    if (runner.barrelPath !== undefined) workerArgv.push('--barrel-path', runner.barrelPath);
     let child;
     try {
-      child = spawn(runner.bunPath, [runner.workerEntry, '--engine-root', runner.engineRoot], {
+      child = spawn(runner.bunPath, workerArgv, {
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
       });
