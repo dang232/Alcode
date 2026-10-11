@@ -1,6 +1,6 @@
-import { GIT_MASTER_COMMIT_ATOMIC_PLANNING_SECTION } from "./commit-atomic-planning"
-import { GIT_MASTER_COMMIT_CONTEXT_ANALYSIS_SECTION } from "./commit-context-analysis"
-import { GIT_MASTER_COMMIT_EXECUTION_VERIFICATION_SECTION } from "./commit-execution-verification"
+import { GIT_MASTER_COMMIT_ATOMIC_PLANNING_SECTION } from "./commit-atomic-planning.ts"
+import { GIT_MASTER_COMMIT_CONTEXT_ANALYSIS_SECTION } from "./commit-context-analysis.ts"
+import { GIT_MASTER_COMMIT_EXECUTION_VERIFICATION_SECTION } from "./commit-execution-verification.ts"
 
 export const GIT_MASTER_COMMIT_WORKFLOW_SECTION = [
 	GIT_MASTER_COMMIT_CONTEXT_ANALYSIS_SECTION,

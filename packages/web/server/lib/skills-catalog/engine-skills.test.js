@@ -124,6 +124,22 @@ describe('resolveEngineRoot', () => {
   it('returns null when no candidate carries the loader marker', () => {
     expect(resolveEngineRoot({ env: {}, moduleDir: withTempRoot() })).toBe(null);
   });
+
+  it('resolves the packaged resources engine copy without an override', () => {
+    const resources = withTempRoot();
+    const previous = process.resourcesPath;
+    try {
+      fs.mkdirSync(path.join(resources, 'omo-engine', 'skills-loader-core'), { recursive: true });
+      fs.writeFileSync(path.join(resources, 'omo-engine', 'skills-loader-core', 'package.json'), '{}');
+      process.resourcesPath = resources;
+      expect(resolveEngineRoot({ env: {}, moduleDir: '/nonexistent' }))
+        .toBe(path.join(resources, 'omo-engine'));
+    } finally {
+      if (previous === undefined) delete process.resourcesPath;
+      else process.resourcesPath = previous;
+      fs.rmSync(resources, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('resolveEngineSkillForInstall through the real loader matcher', () => {

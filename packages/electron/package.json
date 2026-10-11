@@ -90,6 +90,10 @@
       {
         "from": "resources/opencode-cli",
         "to": "opencode-cli"
+      },
+      {
+        "from": "../omo-engine",
+        "to": "omo-engine"
       }
     ],
     "afterPack": "scripts/after-pack.cjs",

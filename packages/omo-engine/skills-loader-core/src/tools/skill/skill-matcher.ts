@@ -1,4 +1,4 @@
-import { sortByScopePriority } from "./scope-priority"
+import { sortByScopePriority } from "./scope-priority.ts"
 import type { CommandInfoLike } from "../../types"
 import type { LoadedSkill } from "../../features/opencode-skill-loader"
 

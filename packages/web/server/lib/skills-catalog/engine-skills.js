@@ -74,15 +74,20 @@ const isValidSkillName = (name) => {
 };
 
 // Engine root: explicit override first (tests, containers), else the
-// vendored `packages/omo-engine` beside this checkout. A root counts only
+// vendored `packages/omo-engine` beside this checkout, else the engine copy
+// the installer stages under the Electron resources dir (`resources/omo-engine`
+// via the electron-builder extraResources entry). A root counts only
 // when the loader package marker is on disk, so a checkout without the
 // engine (or a bare install) degrades to `engine_unavailable` instead of a
-// half-resolved catalog.
+// half-resolved catalog. Plain-node dev/test runs have no
+// `process.resourcesPath`, so their resolution is unchanged.
 export function resolveEngineRoot({ env = process.env, moduleDir = path.dirname(fileURLToPath(import.meta.url)) } = {}) {
   const override = decodedText(env?.OMO_ENGINE_ROOT);
   const candidates = [];
   if (override) candidates.push(path.resolve(override));
   candidates.push(path.resolve(moduleDir, '..', '..', '..', '..', 'omo-engine'));
+  const packagedResources = typeof process?.resourcesPath === 'string' ? process.resourcesPath : '';
+  if (packagedResources) candidates.push(path.join(packagedResources, 'omo-engine'));
   for (const candidate of candidates) {
     try {
       if (fs.statSync(path.join(candidate, 'skills-loader-core', 'package.json')).isFile()) {
