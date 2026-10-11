@@ -21,8 +21,6 @@ export type DagPaneStrings = {
   offlineTitle: string;
   offlineBody: string;
   retry: string;
-  wrapperLabel: string;
-  wrapperHelper: string;
 };
 
 const en: DagPaneStrings = {
@@ -39,8 +37,6 @@ const en: DagPaneStrings = {
   offlineTitle: 'Engine disconnected',
   offlineBody: 'Close the pane and reopen it after the engine is back.',
   retry: 'Retry',
-  wrapperLabel: 'Engine wrapper',
-  wrapperHelper: 'Path to bin/oh-my-opencode.js on this machine. Used when steering a run.',
 };
 
 const de: DagPaneStrings = {
@@ -57,8 +53,6 @@ const de: DagPaneStrings = {
   offlineTitle: 'Engine getrennt',
   offlineBody: 'Schließen Sie den Bereich und öffnen Sie ihn erneut, sobald die Engine zurück ist.',
   retry: 'Erneut versuchen',
-  wrapperLabel: 'Engine-Wrapper',
-  wrapperHelper: 'Pfad zu bin/oh-my-opencode.js auf diesem Rechner. Wird beim Steuern eines Laufs verwendet.',
 };
 
 const es: DagPaneStrings = {
@@ -75,8 +69,6 @@ const es: DagPaneStrings = {
   offlineTitle: 'Motor desconectado',
   offlineBody: 'Cierre el panel y vuelva a abrirlo cuando el motor esté disponible.',
   retry: 'Reintentar',
-  wrapperLabel: 'Contenedor del motor',
-  wrapperHelper: 'Ruta a bin/oh-my-opencode.js en este equipo. Se usa al dirigir una ejecución.',
 };
 
 const fr: DagPaneStrings = {
@@ -93,8 +85,6 @@ const fr: DagPaneStrings = {
   offlineTitle: 'Moteur déconnecté',
   offlineBody: 'Fermez le panneau et rouvrez-le quand le moteur est de retour.',
   retry: 'Réessayer',
-  wrapperLabel: 'Lanceur du moteur',
-  wrapperHelper: 'Chemin vers bin/oh-my-opencode.js sur cette machine. Utilisé pour piloter une exécution.',
 };
 
 const ja: DagPaneStrings = {
@@ -111,8 +101,6 @@ const ja: DagPaneStrings = {
   offlineTitle: 'エンジン切断',
   offlineBody: 'エンジン復帰後にペインを閉じて開き直してください。',
   retry: '再試行',
-  wrapperLabel: 'エンジンラッパー',
-  wrapperHelper: 'このマシンの bin/oh-my-opencode.js へのパス。実行の誘導に使用します。',
 };
 
 const ko: DagPaneStrings = {
@@ -129,8 +117,6 @@ const ko: DagPaneStrings = {
   offlineTitle: '엔진 연결 끊김',
   offlineBody: '엔진이 돌아온 뒤 창을 닫았다가 다시 여세요.',
   retry: '다시 시도',
-  wrapperLabel: '엔진 래퍼',
-  wrapperHelper: '이 컴퓨터의 bin/oh-my-opencode.js 경로. 실행 조정에 사용합니다.',
 };
 
 const nl: DagPaneStrings = {
@@ -147,8 +133,6 @@ const nl: DagPaneStrings = {
   offlineTitle: 'Engine verbroken',
   offlineBody: 'Sluit het paneel en open het opnieuw als de engine terug is.',
   retry: 'Opnieuw proberen',
-  wrapperLabel: 'Engine-wrapper',
-  wrapperHelper: 'Pad naar bin/oh-my-opencode.js op deze machine. Gebruikt bij het bijsturen van een uitvoering.',
 };
 
 const pl: DagPaneStrings = {
@@ -165,8 +149,6 @@ const pl: DagPaneStrings = {
   offlineTitle: 'Silnik rozłączony',
   offlineBody: 'Zamknij panel i otwórz go ponownie, gdy silnik wróci.',
   retry: 'Ponów',
-  wrapperLabel: 'Wrapper silnika',
-  wrapperHelper: 'Ścieżka do bin/oh-my-opencode.js na tym komputerze. Używana podczas sterowania uruchomieniem.',
 };
 
 const ptBr: DagPaneStrings = {
@@ -183,8 +165,6 @@ const ptBr: DagPaneStrings = {
   offlineTitle: 'Mecanismo desconectado',
   offlineBody: 'Feche o painel e reabra-o quando o mecanismo voltar.',
   retry: 'Repetir',
-  wrapperLabel: 'Invólucro do mecanismo',
-  wrapperHelper: 'Caminho para bin/oh-my-opencode.js nesta máquina. Usado ao direcionar uma execução.',
 };
 
 const tr: DagPaneStrings = {
@@ -201,8 +181,6 @@ const tr: DagPaneStrings = {
   offlineTitle: 'Motor bağlantısı kesildi',
   offlineBody: 'Motor döndükten sonra bölmeyi kapatıp yeniden açın.',
   retry: 'Yeniden dene',
-  wrapperLabel: 'Motor sarmalayıcı',
-  wrapperHelper: 'Bu makinedeki bin/oh-my-opencode.js yolu. Çalıştırma yönlendirirken kullanılır.',
 };
 
 const uk: DagPaneStrings = {
@@ -219,8 +197,6 @@ const uk: DagPaneStrings = {
   offlineTitle: 'Рушій від’єднано',
   offlineBody: 'Закрийте панель і відкрийте її знову, коли рушій повернеться.',
   retry: 'Повторити',
-  wrapperLabel: 'Обгортка рушія',
-  wrapperHelper: 'Шлях до bin/oh-my-opencode.js на цьому комп’ютері. Використовується для скерування запуску.',
 };
 
 const zhCn: DagPaneStrings = {
@@ -237,8 +213,6 @@ const zhCn: DagPaneStrings = {
   offlineTitle: '引擎已断开',
   offlineBody: '引擎恢复后关闭窗格并重新打开。',
   retry: '重试',
-  wrapperLabel: '引擎包装器',
-  wrapperHelper: '本机 bin/oh-my-opencode.js 的路径。引导运行时使用。',
 };
 
 const zhTw: DagPaneStrings = {
@@ -255,8 +229,6 @@ const zhTw: DagPaneStrings = {
   offlineTitle: '引擎已中斷連線',
   offlineBody: '引擎恢復後關閉窗格並重新開啟。',
   retry: '重試',
-  wrapperLabel: '引擎包裝器',
-  wrapperHelper: '本機 bin/oh-my-opencode.js 的路徑。引導執行時使用。',
 };
 
 const DICTIONARIES = {

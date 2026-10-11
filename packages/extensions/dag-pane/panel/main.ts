@@ -129,14 +129,10 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   const steerFieldSlot = el('div', 'dag-steer-field');
   const steerButtons = el('div', 'dag-steer-buttons');
   steerBar.append(steerFieldSlot, steerButtons);
-  const wrapperRow = el('div', 'dag-wrapper-row');
-  const wrapperFieldSlot = el('div', 'dag-wrapper-field');
-  wrapperRow.append(wrapperFieldSlot);
 
-  root.append(header, noticeSlot, content, steerBar, wrapperRow);
+  root.append(header, noticeSlot, content, steerBar);
 
   let selectHandle: ReturnType<typeof mountSelect> | null = null;
-  let wrapperField: ReturnType<typeof mountTextField> | null = null;
   let sectionHandles: { dispose(): void }[] = [];
   let noticeHandle: { dispose(): void } | null = null;
 
@@ -456,17 +452,6 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       size: 'sm',
       onClick: () => void cancel(),
     });
-    wrapperFieldSlot.replaceChildren();
-    wrapperField = mountTextField(wrapperFieldSlot, {
-      label: strings.wrapperLabel,
-      helper: strings.wrapperHelper,
-      value: wrapperEntry,
-      mono: true,
-      onChange: (value) => {
-        wrapperEntry = value;
-        void host.storage.set(WRAPPER_STORAGE_KEY, value);
-      },
-    });
   };
 
   const steer = async (): Promise<void> => {
@@ -518,11 +503,12 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   void host.onReady((context) => {
     strings = stringsFor(context.locale);
     applyHostReady(context, doc.documentElement);
+    // Silent override: a previously saved path keeps steering through it;
+    // empty storage means auto-resolve, never a prompt (no visible input).
     void host.storage.get(WRAPPER_STORAGE_KEY).then((stored) => {
       const entry = wireString(stored ?? undefined);
       if (entry !== null) {
         wrapperEntry = entry;
-        wrapperField?.update({ value: entry });
       }
     }).catch(() => {});
     paintChrome();

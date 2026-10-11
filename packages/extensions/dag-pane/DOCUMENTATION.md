@@ -68,9 +68,9 @@ process inherits user env — the CLI; the service sandbox does not, so the
 service always uses the default and the CLI defaults to the same). The
 panel never touches the filesystem: it calls `serviceRequest`, and the
 service reads the file. The wrapper entry for steering is per-guest
-storage (`wrapperEntry`, edited in the panel); with no entry anywhere the
+storage (`wrapperEntry`, kept silently — no visible input); with no entry anywhere the
 bridge resolves the native/vendored engine before answering engine-absent,
-so the field is an optional override rather than a mandatory setup step.
+so a saved path stays an optional override and empty means auto-resolve.
 
 ## Ship (desktop, no manual install)
 
