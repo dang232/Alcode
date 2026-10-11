@@ -114,6 +114,19 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let selectedNodeId: string | null = null;
   let wrapperEntry = '';
+  // Diagnostics debugger state: live values from the last refresh, never prose.
+  let paneDirectory: string | null = null;
+  let statusReachable = false;
+  let statusLatencyMs = 0;
+  let statusError: string | null = null;
+  let probeSummary: { code: string | null; available: boolean; compatible: boolean; entry: string | null; message: string | null } | null = null;
+  let statusSnapshotDir = '';
+  let refreshedAt: string | null = null;
+  let flowBody: JsonValue | null = null;
+  let flowError: string | null = null;
+  let flowLatencyMs = 0;
+  let diagOpen = false;
+  let flowOpen = false;
 
   const header = el('header', 'dag-header');
   const titleNode = text('h1', 'dag-title', '');
@@ -129,8 +142,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   const steerFieldSlot = el('div', 'dag-steer-field');
   const steerButtons = el('div', 'dag-steer-buttons');
   steerBar.append(steerFieldSlot, steerButtons);
+  const diagRoot = el('section', 'dag-diagnostics');
 
-  root.append(header, noticeSlot, content, steerBar);
+  root.append(header, noticeSlot, content, steerBar, diagRoot);
 
   let selectHandle: ReturnType<typeof mountSelect> | null = null;
   let sectionHandles: { dispose(): void }[] = [];
@@ -343,21 +357,30 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     }
   };
 
-  const refresh = async (): Promise<void> => {
+  const refreshRuns = async (): Promise<void> => {
     clearSection();
     if (!sessionId) {
       sectionHandles.push(mountSpinner(content, {}));
       let statusAnswer: ServiceAnswer;
+      const statusStart = Date.now();
       try {
         statusAnswer = await serviceCall('GET', '/status');
-      } catch {
+        statusReachable = true;
+        statusLatencyMs = Date.now() - statusStart;
+        statusError = null;
+      } catch (error) {
         // The service itself is unreachable: fail closed on the banner and
         // keep the empty state below it.
+        statusReachable = false;
+        statusLatencyMs = Date.now() - statusStart;
+        statusError = error instanceof Error ? error.message : String(error);
         showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
         sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
         return;
       }
       const body = isWireRecord(statusAnswer.body) ? statusAnswer.body : {};
+      probeSummary = summarizeProbe(body);
+      statusSnapshotDir = wireString(body.snapshotDir) ?? '';
       // The offline banner reflects engine health from our own service — a
       // missing or unavailable probe reads as engine down (fail closed).
       const probeRecord = isWireRecord(body.probe) ? body.probe : null;
@@ -381,8 +404,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     let answer: ServiceAnswer;
     try {
       answer = await serviceCall('GET', '/snapshot', { sessionId });
-    } catch {
+    } catch (error) {
       // Reachable at /status but not now: fail closed on the banner too.
+      statusError = error instanceof Error ? error.message : String(error);
       showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
       clearSection();
       sectionHandles.push(mountBanner(content, {
@@ -410,6 +434,241 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       return;
     }
     paintContent(outcome.view.runs);
+  };
+
+  // Probe body summary for Diagnostics: code, flags, entry, and the
+  // message truncated to 140 chars. Reads the /status body the pane
+  // already fetches; no new channel.
+  const summarizeProbe = (body: Record<string, JsonValue>): {
+    code: string | null; available: boolean; compatible: boolean; entry: string | null; message: string | null;
+  } => {
+    const probe = isWireRecord(body.probe) ? body.probe : null;
+    if (!probe) {
+      return { code: null, available: false, compatible: false, entry: null, message: null };
+    }
+    const code = wireString(probe.code);
+    const message = wireString(probe.message);
+    return {
+      code,
+      available: probe.available === true,
+      compatible: probe.compatible === true,
+      entry: wireString(probe.entry),
+      message: message === null ? null : message.slice(0, 140),
+    };
+  };
+
+  const refreshFlow = async (): Promise<void> => {
+    if (!sessionId) {
+      flowBody = null;
+      flowError = null;
+      flowLatencyMs = 0;
+      return;
+    }
+    const query: Record<string, string> = { sessionId };
+    if (paneDirectory) {
+      query.directory = paneDirectory;
+    }
+    const start = Date.now();
+    try {
+      const answer = await serviceCall('GET', '/debug', query);
+      flowLatencyMs = Date.now() - start;
+      if (answer.status >= 400) {
+        const code = isWireRecord(answer.body) ? wireString(answer.body.code) : null;
+        flowBody = null;
+        flowError = code ?? `http ${answer.status}`;
+        return;
+      }
+      flowBody = answer.body ?? null;
+      flowError = null;
+    } catch (error) {
+      flowLatencyMs = Date.now() - start;
+      flowBody = null;
+      flowError = error instanceof Error ? error.message : String(error);
+    }
+  };
+
+  const refresh = async (): Promise<void> => {
+    await refreshRuns();
+    refreshedAt = new Date().toISOString();
+    await refreshFlow();
+    paintDiag();
+  };
+
+  const diagValue = (value: string | number | boolean | null | undefined): string => {
+    if (value === null || value === undefined) {
+      return '—';
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'true' : 'false';
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? String(value) : '—';
+    }
+    return value.length > 0 ? value : '—';
+  };
+
+  const wireCount = (record: Record<string, JsonValue>, key: string): number | null => {
+    const value: JsonValue = record[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  };
+
+  const wireFlag = (record: Record<string, JsonValue>, key: string): boolean | null => {
+    const value: JsonValue = record[key];
+    return typeof value === 'boolean' ? value : null;
+  };
+
+  const wireText = (record: Record<string, JsonValue>, key: string): string | null => {
+    const value = wireString(record[key] ?? undefined);
+    return value !== null && value.length > 0 ? value : null;
+  };
+
+  type FlowStage = { id: string; ok: boolean; values: [string, string][] };
+
+  const evalFlowStages = (): FlowStage[] => {
+    const body = isWireRecord(flowBody) ? flowBody : null;
+    const route = body !== null && isWireRecord(body.route) ? body.route : null;
+    const hook = body !== null && isWireRecord(body.hook) ? body.hook : null;
+    const loop = body !== null && isWireRecord(body.loop) ? body.loop : null;
+    const snapshot = body !== null && isWireRecord(body.snapshot) ? body.snapshot : null;
+    const routeCommand = route !== null ? wireText(route, 'command') : null;
+    const routeDecision = route !== null ? wireText(route, 'decision') : null;
+    const routeSample = route !== null ? wireText(route, 'sample') : null;
+    const routeSession = route !== null ? wireText(route, 'sessionId') : null;
+    const hookHit = hook !== null ? wireFlag(hook, 'hit') : null;
+    const hookPattern = hook !== null ? wireText(hook, 'pattern') : null;
+    const hookSample = hook !== null ? wireText(hook, 'sample') : null;
+    const loopDir = loop !== null ? wireText(loop, 'dir') : null;
+    const loopPlan = loop !== null ? wireFlag(loop, 'plan') : null;
+    const loopGoals = loop !== null ? wireFlag(loop, 'goals') : null;
+    const loopLedger = loop !== null ? wireFlag(loop, 'ledger') : null;
+    const loopEvents = loop !== null ? wireCount(loop, 'events') : null;
+    const snapPath = snapshot !== null ? wireText(snapshot, 'path') : null;
+    const snapExists = snapshot !== null ? wireFlag(snapshot, 'exists') : null;
+    const snapUpdated = snapshot !== null ? wireText(snapshot, 'updatedAt') : null;
+    const snapMatch = snapshot !== null ? wireFlag(snapshot, 'sessionMatch') : null;
+    return [
+      {
+        id: 'route',
+        ok: route !== null,
+        values: [
+          ['decision', diagValue(routeDecision)],
+          ['sample', diagValue(routeSample)],
+          ['session', diagValue(routeSession)],
+        ],
+      },
+      {
+        id: 'command',
+        ok: routeCommand !== null,
+        values: [
+          ['command', diagValue(routeCommand)],
+          ['arguments', diagValue(route !== null ? wireText(route, 'arguments') : null)],
+        ],
+      },
+      {
+        id: 'hook',
+        ok: hookHit === true,
+        values: [
+          ['pattern', diagValue(hookPattern)],
+          ['hit', diagValue(hookHit)],
+          ['sample', diagValue(hookSample)],
+        ],
+      },
+      {
+        id: 'loop',
+        ok: loopLedger === true && (loopEvents ?? 0) > 0 && (loopPlan === true || loopGoals === true),
+        values: [
+          ['dir', diagValue(loopDir)],
+          ['plan', diagValue(loopPlan)],
+          ['goals', diagValue(loopGoals)],
+          ['ledger', diagValue(loopLedger)],
+          ['events', diagValue(loopEvents)],
+        ],
+      },
+      {
+        id: 'snapshot',
+        ok: snapExists === true && snapMatch === true,
+        values: [
+          ['path', diagValue(snapPath)],
+          ['exists', diagValue(snapExists)],
+          ['updatedAt', diagValue(snapUpdated)],
+          ['sessionMatch', diagValue(snapMatch)],
+        ],
+      },
+      {
+        id: 'pane',
+        ok: statusReachable && probeSummary?.available === true,
+        values: [
+          ['reachable', diagValue(statusReachable)],
+          ['latencyMs', diagValue(statusReachable ? statusLatencyMs : null)],
+          ['code', diagValue(probeSummary?.code ?? null)],
+          ['available', diagValue(probeSummary?.available ?? null)],
+          ['sessions', diagValue(sessions.length)],
+        ],
+      },
+    ];
+  };
+
+  const paintDiag = (): void => {
+    diagRoot.replaceChildren();
+    const diagDetails = doc.createElement('details');
+    diagDetails.className = 'dag-diagnostics-box';
+    diagDetails.open = diagOpen;
+    diagDetails.addEventListener('toggle', () => {
+      diagOpen = diagDetails.open;
+    });
+    const diagSummary = doc.createElement('summary');
+    diagSummary.textContent = strings.diagnostics;
+    diagDetails.append(diagSummary);
+    const diagList = el('dl', 'dag-diagnostics-list');
+    const diagRows: [string, string][] = [
+      ['reachable', diagValue(statusReachable)],
+      ['latencyMs', diagValue(statusReachable ? statusLatencyMs : null)],
+      ['probeCode', diagValue(probeSummary?.code ?? null)],
+      ['available', diagValue(probeSummary?.available ?? null)],
+      ['compatible', diagValue(probeSummary?.compatible ?? null)],
+      ['entry', diagValue(probeSummary?.entry ?? null)],
+      ['message', diagValue(probeSummary?.message ?? null)],
+      ['snapshotDir', diagValue(statusSnapshotDir.length > 0 ? statusSnapshotDir : null)],
+      ['sessions', diagValue(sessions.length)],
+      ['refreshedAt', diagValue(refreshedAt)],
+      ['lastError', diagValue(statusError)],
+    ];
+    for (const [term, value] of diagRows) {
+      diagList.append(text('dt', 'dag-diagnostics-term', term), text('dd', 'dag-diagnostics-value', value));
+    }
+    diagDetails.append(diagList);
+    diagRoot.append(diagDetails);
+
+    const flowDetails = doc.createElement('details');
+    flowDetails.className = 'dag-flow-box';
+    flowDetails.open = flowOpen;
+    flowDetails.addEventListener('toggle', () => {
+      flowOpen = flowDetails.open;
+    });
+    const flowSummary = doc.createElement('summary');
+    flowSummary.textContent = strings.flowTrace;
+    flowDetails.append(flowSummary);
+    if (flowError !== null) {
+      flowDetails.append(text('p', 'dag-flow-error', flowError));
+    } else if (flowBody === null) {
+      const empty = el('dl', 'dag-flow-list');
+      empty.append(text('dt', 'dag-flow-term', 'session'), text('dd', 'dag-flow-value', '—'));
+      flowDetails.append(empty);
+    } else {
+      for (const stage of evalFlowStages()) {
+        const row = el('div', 'dag-flow-stage');
+        const status = text('span', `dag-flow-status dag-flow-${stage.ok ? 'pass' : 'fail'}`, stage.ok ? 'PASS' : 'FAIL');
+        row.append(text('span', 'dag-flow-id', stage.id), status);
+        const list = el('dl', 'dag-flow-list');
+        for (const [term, value] of stage.values) {
+          list.append(text('dt', 'dag-flow-term', term), text('dd', 'dag-flow-value', value));
+        }
+        row.append(list);
+        flowDetails.append(row);
+      }
+      flowDetails.append(text('p', 'dag-flow-meta', `latencyMs ${flowLatencyMs}`));
+    }
+    diagRoot.append(flowDetails);
   };
 
   const stopPolling = (): void => {
@@ -520,6 +779,12 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   // this integration-less guest permanently reads connected:false, so the
   // flag must never drive the offline banner nor stop polling. A reconnect
   // still refreshes into current state.
+  // The repo root for the flow trace's loop-state stage. Refreshes into
+  // current state on change; a null directory leaves stage 4 unevaluated.
+  void host.onDirectory((directory) => {
+    paneDirectory = directory;
+  });
+
   void host.onConnection((connection) => {
     const was = connected;
     connected = connection.connected;

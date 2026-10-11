@@ -219,6 +219,86 @@ describe('dag service handlers', () => {
     }
   });
 
+  test('debug route stores the last route decision and rejects unknown ones', async () => {
+    const { handleRequest } = handlersWith(makeSnapshotDir(), absentBridge);
+    const stored = await handleRequest({
+      method: 'POST', path: '/debug/route',
+      body: { decision: 'captured-to-/ulw', sample: 'ulw test hello', command: 'ulw', arguments: 'test hello', sessionId: 'ses_live01' },
+    });
+    expect(stored.status).toBe(200);
+    expect(stored.body.route).toMatchObject({
+      decision: 'captured-to-/ulw', sample: 'ulw test hello', command: 'ulw', arguments: 'test hello', sessionId: 'ses_live01',
+    });
+    expect(typeof stored.body.route.at).toBe('string');
+    const bad = await handleRequest({ method: 'POST', path: '/debug/route', body: { decision: 'teleport' } });
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe('OMO_DAG_ROUTE_INVALID');
+  });
+
+  test('debug aggregates hook, loop, snapshot, and probe evidence for a healthy flow', async () => {
+    const dir = makeSnapshotDir();
+    nodeFs.writeFileSync(join(dir, 'ses_live01.snapshot.json'), JSON.stringify({
+      schemaVersion: 1, sessionId: 'ses_live01', updatedAt: '2026-10-11T00:00:00.000Z', dag: null, tasks: null,
+    }), 'utf8');
+    const repo = nodeFs.mkdtempSync(join(tmpdir(), 'dag-dbg-repo-'));
+    scratchDirs.push(repo);
+    const loop = join(repo, '.omo', 'ulw-loop', 'ses_live01');
+    nodeFs.mkdirSync(loop, { recursive: true });
+    nodeFs.writeFileSync(join(loop, 'plan.json'), '{"title":"t"}', 'utf8');
+    nodeFs.writeFileSync(join(loop, 'ledger.jsonl'), '{"seq":1,"event":"started"}\n{"seq":2,"event":"goal_started"}\n', 'utf8');
+    const { handleRequest } = handlersWith(dir, () => sleeperBridge({ available: true, compatible: true, code: 'OMO_PROBE_OK' }));
+    await handleRequest({
+      method: 'POST', path: '/debug/route',
+      body: { decision: 'captured-to-/ulw', sample: 'ulw test hello', command: 'ulw', arguments: 'test hello', sessionId: 'ses_live01' },
+    });
+    const answer = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: 'ses_live01', directory: repo } });
+    expect(answer.status).toBe(200);
+    expect(answer.body.route.decision).toBe('captured-to-/ulw');
+    expect(answer.body.hook).toMatchObject({ pattern: '(?:ultrawork|ulw)', hit: true, sample: 'ulw test hello' });
+    expect(answer.body.loop).toMatchObject({ plan: true, ledger: true, events: 2 });
+    expect(answer.body.snapshot).toMatchObject({ exists: true, sessionMatch: true });
+    expect(typeof answer.body.snapshot.updatedAt).toBe('string');
+    expect(answer.body.probe).toMatchObject({ code: 'OMO_PROBE_OK', available: true, compatible: true });
+    expect(answer.body.sessions).toEqual(['ses_live01']);
+  });
+
+  test('debug shows exactly which stage fails: no run yet and probe unavailable', async () => {
+    const dir = makeSnapshotDir();
+    const repo = nodeFs.mkdtempSync(join(tmpdir(), 'dag-dbg-empty-'));
+    scratchDirs.push(repo);
+    const { handleRequest } = handlersWith(dir, absentBridge);
+    await handleRequest({
+      method: 'POST', path: '/debug/route',
+      body: { decision: 'plain-prompt', sample: 'hello world', sessionId: 'ses_live01' },
+    });
+    const answer = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: 'ses_live01', directory: repo } });
+    expect(answer.status).toBe(200);
+    expect(answer.body.route).toMatchObject({ decision: 'plain-prompt', command: null });
+    expect(answer.body.hook.hit).toBe(false);
+    expect(answer.body.loop).toMatchObject({ plan: false, goals: false, ledger: false, events: 0 });
+    expect(answer.body.snapshot).toMatchObject({ exists: false, sessionMatch: false });
+    expect(answer.body.probe).toMatchObject({ code: 'OMO_ENGINE_ABSENT', available: false });
+    expect(answer.body.sessions).toEqual([]);
+  });
+
+  test('debug rejects bad input and never throws on malformed state', async () => {
+    const dir = makeSnapshotDir();
+    nodeFs.writeFileSync(join(dir, 'ses_bad.snapshot.json'), 'not json{', 'utf8');
+    const { handleRequest } = handlersWith(dir, absentBridge);
+    const noSession = await handleRequest({ method: 'GET', path: '/debug', query: {} });
+    expect(noSession.status).toBe(400);
+    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    const escape = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: '../x', directory: tmpdir() } });
+    expect(escape.status).toBe(400);
+    expect(escape.body.code).toBe('OMO_SESSION_ID_INVALID');
+    const malformed = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: 'ses_bad' } });
+    expect(malformed.status).toBe(200);
+    expect(malformed.body.snapshot).toMatchObject({ exists: true, sessionMatch: false });
+    const noDir = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: 'ses_bad' } });
+    expect(noDir.status).toBe(200);
+    expect(noDir.body.loop).toMatchObject({ dir: null, events: 0 });
+  });
+
   test('unknown paths 404 with the path echoed', async () => {
     const { handleRequest } = handlersWith(makeSnapshotDir(), absentBridge);
     const answer = await handleRequest({ method: 'GET', path: '/nope' });

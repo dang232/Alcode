@@ -5,6 +5,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSessionWorktreeStore } from './session-worktree-store';
 import { expandSlashCommandGoalObjective, routeMessage, useSessionUIStore } from './session-ui-store';
+import { recordDagRouteDecision } from '@/lib/dagRouteLog';
 import { setActionRefs, setOptimisticRefs } from './session-actions';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { useCommandsStore } from '@/stores/useCommandsStore';
@@ -463,6 +464,131 @@ describe('routeMessage bare ulw capture', () => {
     expect(shellCalls[0].command).toBe('ulw x');
     expect(sendCommandCalls).toHaveLength(0);
     expect(sendMessageCalls).toHaveLength(0);
+  });
+});
+
+describe('routeMessage dag route log', () => {
+  // Every send reports its evaluated trigger for the DAG flow trace: a
+  // console.debug line (emitted synchronously, asserted through
+  // routeMessage) plus one proxied service POST (asserted through the
+  // helper). Both carry the decision and the 60-char sample.
+  const debugLines = [];
+  const fetchCalls = [];
+  let originalDebug;
+  let originalFetch;
+  let originalSendCommand;
+  let originalSendMessage;
+  let originalListCommands;
+  let originalLoadSkills;
+
+  beforeEach(() => {
+    debugLines.length = 0;
+    fetchCalls.length = 0;
+    const childStore = {
+      getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
+      setState: () => {},
+    };
+    const childStores = {
+      children: new Map(),
+      ensureChild: () => childStore,
+      getChild: () => childStore,
+    };
+    setActionRefs(childStores, () => '/ulw/project');
+    setOptimisticRefs(() => {}, () => {});
+    useConfigStore.setState({ isConnected: true });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {} });
+
+    originalDebug = console.debug;
+    console.debug = (...args) => {
+      debugLines.push(args);
+    };
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options) => {
+      fetchCalls.push({ url: String(url), options });
+      return new Response('{}', { status: 200 });
+    };
+    originalSendCommand = opencodeClient.sendCommand;
+    originalSendMessage = opencodeClient.sendMessage;
+    originalListCommands = opencodeClient.listCommands;
+    originalLoadSkills = useSkillsStore.getState().loadSkills;
+    useSkillsStore.setState({ loadSkills: async () => true });
+    opencodeClient.listCommands = async () => [{ name: 'ulw' }];
+    opencodeClient.sendCommand = async () => 'msg';
+    opencodeClient.sendMessage = async () => 'msg';
+  });
+
+  afterEach(() => {
+    console.debug = originalDebug;
+    globalThis.fetch = originalFetch;
+    opencodeClient.sendCommand = originalSendCommand;
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.listCommands = originalListCommands;
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+  });
+
+  const send = (content, inputMode) => routeMessage({
+    sessionId: 'session-ulw',
+    directory: '/ulw/project',
+    content,
+    providerID: 'provider-a',
+    modelID: 'model-a',
+    inputMode,
+  });
+
+  test('logs captured-to-/ulw with the content sample for a bare trigger', async () => {
+    expect(await send('ulw test hello')).toBe('command');
+    expect(debugLines).toHaveLength(1);
+    expect(debugLines[0][0]).toBe('[dag] route decision:');
+    expect(debugLines[0][1]).toBe('captured-to-/ulw');
+    expect(debugLines[0][2]).toBe('"ulw test hello"');
+  });
+
+  test('logs plain-prompt with the content sample for ordinary chat', async () => {
+    expect(await send('soulwork')).toBe('prompt');
+    expect(debugLines).toHaveLength(1);
+    expect(debugLines[0][0]).toBe('[dag] route decision:');
+    expect(debugLines[0][1]).toBe('plain-prompt');
+    expect(debugLines[0][2]).toBe('"soulwork"');
+  });
+
+  test('truncates the sample to the first 60 chars', async () => {
+    const long = `ulw ${'x'.repeat(100)}`;
+    expect(await send(long)).toBe('command');
+    expect(debugLines).toHaveLength(1);
+    expect(debugLines[0][2]).toBe(JSON.stringify(long.slice(0, 60)));
+  });
+
+  test('posts the decision and resolved command to the pane service route', async () => {
+    await recordDagRouteDecision({
+      decision: 'captured-to-/ulw',
+      sample: 'ulw test hello',
+      sessionId: 'session-ulw',
+      command: 'ulw',
+      arguments: 'test hello',
+    });
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0].url).toBe('/api/guests/openchamber-builtin-dag-pane/service/request');
+    const outer = JSON.parse(fetchCalls[0].options.body);
+    expect(outer.method).toBe('POST');
+    expect(outer.path).toBe('/debug/route');
+    expect(JSON.parse(outer.body)).toEqual({
+      decision: 'captured-to-/ulw',
+      sample: 'ulw test hello',
+      sessionId: 'session-ulw',
+      command: 'ulw',
+      arguments: 'test hello',
+    });
+  });
+
+  test('a failed post never rejects the report', async () => {
+    globalThis.fetch = async () => {
+      throw new Error('offline');
+    };
+    await recordDagRouteDecision({ decision: 'plain-prompt', sample: 'hi', sessionId: 'session-ulw' });
+    expect(debugLines).toHaveLength(1);
+    expect(debugLines[0][1]).toBe('plain-prompt');
   });
 });
 

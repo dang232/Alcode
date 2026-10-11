@@ -21,6 +21,8 @@ export type DagPaneStrings = {
   offlineTitle: string;
   offlineBody: string;
   retry: string;
+  diagnostics: string;
+  flowTrace: string;
 };
 
 const en: DagPaneStrings = {
@@ -37,6 +39,8 @@ const en: DagPaneStrings = {
   offlineTitle: 'Engine disconnected',
   offlineBody: 'Close the pane and reopen it after the engine is back.',
   retry: 'Retry',
+  diagnostics: 'Diagnostics',
+  flowTrace: 'Flow trace',
 };
 
 const de: DagPaneStrings = {
@@ -53,6 +57,8 @@ const de: DagPaneStrings = {
   offlineTitle: 'Engine getrennt',
   offlineBody: 'Schließen Sie den Bereich und öffnen Sie ihn erneut, sobald die Engine zurück ist.',
   retry: 'Erneut versuchen',
+  diagnostics: 'Diagnose',
+  flowTrace: 'Ablaufverfolgung',
 };
 
 const es: DagPaneStrings = {
@@ -69,6 +75,8 @@ const es: DagPaneStrings = {
   offlineTitle: 'Motor desconectado',
   offlineBody: 'Cierre el panel y vuelva a abrirlo cuando el motor esté disponible.',
   retry: 'Reintentar',
+  diagnostics: 'Diagnóstico',
+  flowTrace: 'Traza de flujo',
 };
 
 const fr: DagPaneStrings = {
@@ -85,6 +93,8 @@ const fr: DagPaneStrings = {
   offlineTitle: 'Moteur déconnecté',
   offlineBody: 'Fermez le panneau et rouvrez-le quand le moteur est de retour.',
   retry: 'Réessayer',
+  diagnostics: 'Diagnostic',
+  flowTrace: 'Trace de flux',
 };
 
 const ja: DagPaneStrings = {
@@ -101,6 +111,8 @@ const ja: DagPaneStrings = {
   offlineTitle: 'エンジン切断',
   offlineBody: 'エンジン復帰後にペインを閉じて開き直してください。',
   retry: '再試行',
+  diagnostics: '診断',
+  flowTrace: 'フロートレース',
 };
 
 const ko: DagPaneStrings = {
@@ -117,6 +129,8 @@ const ko: DagPaneStrings = {
   offlineTitle: '엔진 연결 끊김',
   offlineBody: '엔진이 돌아온 뒤 창을 닫았다가 다시 여세요.',
   retry: '다시 시도',
+  diagnostics: '진단',
+  flowTrace: '흐름 추적',
 };
 
 const nl: DagPaneStrings = {
@@ -133,6 +147,8 @@ const nl: DagPaneStrings = {
   offlineTitle: 'Engine verbroken',
   offlineBody: 'Sluit het paneel en open het opnieuw als de engine terug is.',
   retry: 'Opnieuw proberen',
+  diagnostics: 'Diagnostiek',
+  flowTrace: 'Flowtrace',
 };
 
 const pl: DagPaneStrings = {
@@ -149,6 +165,8 @@ const pl: DagPaneStrings = {
   offlineTitle: 'Silnik rozłączony',
   offlineBody: 'Zamknij panel i otwórz go ponownie, gdy silnik wróci.',
   retry: 'Ponów',
+  diagnostics: 'Diagnostyka',
+  flowTrace: 'Śledzenie przepływu',
 };
 
 const ptBr: DagPaneStrings = {
@@ -165,6 +183,8 @@ const ptBr: DagPaneStrings = {
   offlineTitle: 'Mecanismo desconectado',
   offlineBody: 'Feche o painel e reabra-o quando o mecanismo voltar.',
   retry: 'Repetir',
+  diagnostics: 'Diagnóstico',
+  flowTrace: 'Rastreamento de fluxo',
 };
 
 const tr: DagPaneStrings = {
@@ -181,6 +201,8 @@ const tr: DagPaneStrings = {
   offlineTitle: 'Motor bağlantısı kesildi',
   offlineBody: 'Motor döndükten sonra bölmeyi kapatıp yeniden açın.',
   retry: 'Yeniden dene',
+  diagnostics: 'Tanılama',
+  flowTrace: 'Akış izleme',
 };
 
 const uk: DagPaneStrings = {
@@ -197,6 +219,8 @@ const uk: DagPaneStrings = {
   offlineTitle: 'Рушій від’єднано',
   offlineBody: 'Закрийте панель і відкрийте її знову, коли рушій повернеться.',
   retry: 'Повторити',
+  diagnostics: 'Діагностика',
+  flowTrace: 'Трасування потоку',
 };
 
 const zhCn: DagPaneStrings = {
@@ -213,6 +237,8 @@ const zhCn: DagPaneStrings = {
   offlineTitle: '引擎已断开',
   offlineBody: '引擎恢复后关闭窗格并重新打开。',
   retry: '重试',
+  diagnostics: '诊断',
+  flowTrace: '流程跟踪',
 };
 
 const zhTw: DagPaneStrings = {
@@ -229,6 +255,8 @@ const zhTw: DagPaneStrings = {
   offlineTitle: '引擎已中斷連線',
   offlineBody: '引擎恢復後關閉窗格並重新開啟。',
   retry: '重試',
+  diagnostics: '診斷',
+  flowTrace: '流程追蹤',
 };
 
 const DICTIONARIES = {

@@ -33,6 +33,7 @@ import { selectSkillsForDirectory, useSkillsStore } from "@/stores/useSkillsStor
 import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
 import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
+import { dagRouteSample, recordDagRouteDecision, type DagRouteDecision, type DagRouteReport } from "@/lib/dagRouteLog"
 import { normalizePath } from "@/lib/pathNormalization"
 import { CHAT_DRAFT_PROJECT_ID, createChatDirectory, deleteChatDirectory, getChatsRootFromDirectory, isChatDirectoryPath, warmChatsRootDirectory } from "@/lib/chatDirectories"
 import { isVSCodeRuntime } from "@/lib/desktop"
@@ -214,6 +215,7 @@ export async function routeMessage(params: {
       directory: requestDirectory,
       command: params.content,
     })
+    void recordDagRouteDecision({ decision: 'shell', sample: dagRouteSample(params.content), sessionId: params.sessionId })
     return 'shell'
   }
 
@@ -223,6 +225,22 @@ export async function routeMessage(params: {
   // form. Mid-sentence mentions stay plain chat; shell input diverted above.
   const bareUlwArguments = params.content.match(/^\s*ulw\b([\s\S]*)$/i)?.[1]
   const content = bareUlwArguments === undefined ? params.content : `/ulw${bareUlwArguments}`
+  // The evaluated trigger for the flow trace: the bare capture, an explicit
+  // slash command, or a plain prompt. Reported at each return below with the
+  // resolved command once one matched.
+  const routeTrigger: DagRouteDecision = bareUlwArguments !== undefined
+    ? 'captured-to-/ulw'
+    : params.content.startsWith("/") ? 'slash-command' : 'plain-prompt'
+  const reportRoute = (command?: string | null, args?: string | null): void => {
+    const report: DagRouteReport = {
+      decision: routeTrigger,
+      sample: dagRouteSample(params.content),
+      sessionId: params.sessionId,
+    }
+    if (command != null) report.command = command
+    if (args != null) report.arguments = args
+    void recordDagRouteDecision(report)
+  }
   // Slash commands use the command route; skills attach to a normal prompt.
   if (content.startsWith("/")) {
     const [head, ...tail] = content.split(" ")
@@ -286,6 +304,7 @@ export async function routeMessage(params: {
         delivery: params.delivery,
         directory: requestDirectory,
       })
+      reportRoute(cmdName, tail.join(" "))
       return 'command'
     }
 
@@ -324,6 +343,7 @@ export async function routeMessage(params: {
       skills,
     }).then(() => {}),
   })
+  reportRoute()
   return 'prompt'
 }
 

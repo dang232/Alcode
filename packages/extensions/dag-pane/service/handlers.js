@@ -24,11 +24,84 @@ export const DAG_SERVICE_NAME = 'openchamber-builtin-dag-pane';
 export const DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX = 'omo-dag-snapshots';
 export const DAG_SERVICE_MAX_BODY_BYTES = 1_000_000;
 
+// Flow-trace debugger (dag-diagnostics): the composer route decision the UI
+// last reported plus per-stage engine-side evidence, all machine values.
+export const DAG_DEBUG_ROUTE_DECISIONS = ['captured-to-/ulw', 'plain-prompt', 'shell', 'slash-command'];
+export const DAG_DEBUG_SAMPLE_MAX = 60;
+export const DAG_DEBUG_MESSAGE_MAX = 140;
+export const DAG_DEBUG_MAX_LEDGER_BYTES = 1_048_576;
+// Mirrors ULTRAWORK_CURRENT_PROMPT_PATTERN in
+// packages/omo-engine/omo-codex/plugin/components/ulw-loop/src/ultrawork-directive.ts.
+// The service ships plain JS, so the literal is duplicated, not imported.
+export const DAG_DEBUG_HOOK_PATTERN = '(?:ultrawork|ulw)';
+
 export const defaultServiceSnapshotDir = (tmpdir = osTmpdir, join = joinPath) => (
   join(tmpdir(), DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX)
 );
 
 const isNonEmptyString = (value) => (value?.trim?.() ?? '').length > 0;
+
+const existsFile = (fs, path) => {
+  try {
+    return fs.statSync(path).isFile();
+  } catch {
+    return false;
+  }
+};
+
+// Engine-side loop evidence for GET /debug: which state files exist under
+// .omo/ulw-loop/<session> plus the ledger event count. Never throws: every
+// read degrades to a false/zero value the pane renders as-is.
+const readLoopState = (fs, directory, sessionId) => {
+  if (!isNonEmptyString(directory)) {
+    return { dir: null, plan: false, goals: false, ledger: false, events: 0 };
+  }
+  const root = directory.trim().replace(/[/\\]+$/, '');
+  const dir = `${root}/.omo/ulw-loop/${sessionId}`;
+  const plan = existsFile(fs, `${dir}/plan.json`);
+  const goals = existsFile(fs, `${dir}/goals.json`);
+  const ledgerPath = `${dir}/ledger.jsonl`;
+  const ledger = existsFile(fs, ledgerPath);
+  let events = 0;
+  if (ledger) {
+    try {
+      const text = fs.readFileSync(ledgerPath, 'utf8').slice(0, DAG_DEBUG_MAX_LEDGER_BYTES);
+      events = text.split('\n').filter((line) => line.trim().length > 0).length;
+    } catch {
+      events = 0;
+    }
+  }
+  return { dir, plan, goals, ledger, events };
+};
+
+// Bridge-snapshot evidence for GET /debug: file presence, mtime, and
+// whether the stored session matches the requested one. Never throws.
+const readSnapshotState = (fs, snapshotPathFor, sessionId) => {
+  let snapshotPath;
+  try {
+    snapshotPath = snapshotPathFor(sessionId);
+  } catch {
+    return { path: null, exists: false, updatedAt: null, sessionMatch: false };
+  }
+  let mtime = null;
+  try {
+    mtime = fs.statSync(snapshotPath).mtime;
+  } catch {
+    return { path: snapshotPath, exists: false, updatedAt: null, sessionMatch: false };
+  }
+  let sessionMatch = false;
+  try {
+    sessionMatch = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'))?.sessionId === sessionId;
+  } catch {
+    sessionMatch = false;
+  }
+  let updatedAt = null;
+  try {
+    updatedAt = mtime instanceof Date ? mtime.toISOString() : new Date(mtime).toISOString();
+  } catch {
+    updatedAt = null;
+  }
+  return { path: snapshotPath, exists: true, updatedAt, sessionMatch };};
 
 const snapshotSessions = (fs, snapshotDir) => {
   let entries;
@@ -66,6 +139,11 @@ export const createDagServiceHandlers = (dependencies = {}) => {
   // not reported their child closing yet. Cancel targets the latest steer
   // per session; a closed child removes its own entry.
   const live = new Map();
+
+  // Latest composer route decision reported via POST /debug/route, merged
+  // per report: { decision, sample, command, arguments, sessionId, at }.
+  // Bounded by construction (one record); a service restart clears it.
+  let lastRoute = null;
 
   const bridgeError = (error, fallbackCode) => {
     const code = error?.code ?? fallbackCode;
@@ -116,6 +194,73 @@ export const createDagServiceHandlers = (dependencies = {}) => {
         body: {
           ok: true,
           probe,
+          sessions: snapshotSessions(fs, snapshotDir),
+          snapshotDir,
+          now: new Date(now()).toISOString(),
+        },
+      };
+    }
+    if (method === 'POST' && path === '/debug/route') {
+      const decision = body?.decision;
+      if (!DAG_DEBUG_ROUTE_DECISIONS.includes(decision)) {
+        return { status: 400, body: { ok: false, code: 'OMO_DAG_ROUTE_INVALID', message: 'Route reports one decision: captured-to-/ulw, plain-prompt, shell, or slash-command.' } };
+      }
+      const sample = typeof body?.sample === 'string' ? body.sample.slice(0, DAG_DEBUG_SAMPLE_MAX) : '';
+      const command = isNonEmptyString(body?.command) ? body.command.trim().slice(0, 128) : null;
+      const args = typeof body?.arguments === 'string' ? body.arguments.slice(0, 512) : null;
+      const routeSessionId = isNonEmptyString(body?.sessionId) ? body.sessionId.trim() : null;
+      lastRoute = {
+        decision,
+        sample,
+        command,
+        arguments: args,
+        sessionId: routeSessionId,
+        at: new Date(now()).toISOString(),
+      };
+      return { status: 200, body: { ok: true, route: lastRoute } };
+    }
+    if (method === 'GET' && path === '/debug') {
+      const sessionId = query?.sessionId;
+      if (!isNonEmptyString(sessionId)) {
+        return { status: 400, body: { ok: false, code: 'OMO_DAG_SESSION_REQUIRED', message: 'Pass ?sessionId=<run session>.' } };
+      }
+      const trimmedSession = sessionId.trim();
+      if (trimmedSession.includes('/') || trimmedSession.includes('\\') || trimmedSession.includes('..')) {
+        return { status: 400, body: { ok: false, code: 'OMO_SESSION_ID_INVALID', message: 'Session ids stay inside one directory.' } };
+      }
+      const hookSample = lastRoute?.sample
+        ?? (typeof query?.sample === 'string' ? query.sample.slice(0, DAG_DEBUG_SAMPLE_MAX) : '');
+      let hookHit = false;
+      try {
+        hookHit = new RegExp(DAG_DEBUG_HOOK_PATTERN, 'i').test(hookSample);
+      } catch {
+        hookHit = false;
+      }
+      const loop = readLoopState(fs, query?.directory, trimmedSession);
+      const snapshot = readSnapshotState(fs, snapshotPathFor, trimmedSession);
+      let probe;
+      try {
+        const entry = isNonEmptyString(query?.entry) ? query.entry.trim() : undefined;
+        probe = await createBridge(entry).probe();
+      } catch (error) {
+        probe = { available: false, compatible: false, code: 'OMO_DEBUG_PROBE_THROW', message: String(error?.message ?? error).slice(0, DAG_DEBUG_MESSAGE_MAX) };
+      }
+      const probeRecord = probe !== null && typeof probe === 'object' ? probe : {};
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          route: lastRoute,
+          hook: { pattern: DAG_DEBUG_HOOK_PATTERN, hit: hookHit, sample: hookSample },
+          loop,
+          snapshot,
+          probe: {
+            code: typeof probeRecord.code === 'string' ? probeRecord.code : null,
+            available: probeRecord.available === true,
+            compatible: probeRecord.compatible === true,
+            entry: typeof probeRecord.entry === 'string' || probeRecord.entry === null ? probeRecord.entry ?? null : null,
+            message: typeof probeRecord.message === 'string' ? probeRecord.message.slice(0, DAG_DEBUG_MESSAGE_MAX) : null,
+          },
           sessions: snapshotSessions(fs, snapshotDir),
           snapshotDir,
           now: new Date(now()).toISOString(),
