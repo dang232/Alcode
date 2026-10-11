@@ -218,9 +218,14 @@ export async function routeMessage(params: {
   }
 
   let skills = params.skills
+  // A leading word-bound `ulw` takes the /ulw command route, so the bare
+  // trigger runs the same template, context, and skill plumbing as the slash
+  // form. Mid-sentence mentions stay plain chat; shell input diverted above.
+  const bareUlwArguments = params.content.match(/^\s*ulw\b([\s\S]*)$/i)?.[1]
+  const content = bareUlwArguments === undefined ? params.content : `/ulw${bareUlwArguments}`
   // Slash commands use the command route; skills attach to a normal prompt.
-  if (params.content.startsWith("/")) {
-    const [head, ...tail] = params.content.split(" ")
+  if (content.startsWith("/")) {
+    const [head, ...tail] = content.split(" ")
     const cmdName = head.slice(1)
 
     // Commands and skills are resolved for the session's own directory. A

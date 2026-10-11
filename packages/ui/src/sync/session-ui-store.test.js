@@ -308,6 +308,164 @@ describe('routeMessage inline skills', () => {
   });
 });
 
+describe('routeMessage bare ulw capture', () => {
+  // A leading word-bound `ulw` normalizes to the /ulw command route; every
+  // other shape keeps the path it already had.
+  const sendCommandCalls = [];
+  const sendMessageCalls = [];
+  const shellCalls = [];
+  const liveLookupCalls = [];
+  let originalSendCommand;
+  let originalSendMessage;
+  let originalListCommands;
+  let originalShellSession;
+  let originalLoadSkills;
+
+  beforeEach(() => {
+    sendCommandCalls.length = 0;
+    sendMessageCalls.length = 0;
+    shellCalls.length = 0;
+    liveLookupCalls.length = 0;
+
+    // Minimal optimistic + connection machinery so routeMessage can dispatch.
+    const childStore = {
+      getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
+      setState: () => {},
+    };
+    const childStores = {
+      children: new Map(),
+      ensureChild: () => childStore,
+      getChild: () => childStore,
+    };
+    setActionRefs(childStores, () => '/ulw/project');
+    setOptimisticRefs(() => {}, () => {});
+    useConfigStore.setState({ isConnected: true });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {} });
+
+    originalSendCommand = opencodeClient.sendCommand;
+    originalSendMessage = opencodeClient.sendMessage;
+    originalListCommands = opencodeClient.listCommands;
+    originalShellSession = opencodeClient.shellSession;
+    originalLoadSkills = useSkillsStore.getState().loadSkills;
+    useSkillsStore.setState({ loadSkills: async () => true });
+    opencodeClient.listCommands = async (directory) => {
+      liveLookupCalls.push(directory);
+      return [{ name: 'ulw' }];
+    };
+    opencodeClient.sendCommand = async (params) => {
+      sendCommandCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.sendMessage = async (params) => {
+      sendMessageCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.shellSession = async (params) => {
+      shellCalls.push(params);
+      return { info: {}, parts: [] };
+    };
+  });
+
+  afterEach(() => {
+    opencodeClient.sendCommand = originalSendCommand;
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.listCommands = originalListCommands;
+    opencodeClient.shellSession = originalShellSession;
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+  });
+
+  const send = (content, inputMode) => routeMessage({
+    sessionId: 'session-ulw',
+    directory: '/ulw/project',
+    content,
+    providerID: 'provider-a',
+    modelID: 'model-a',
+    inputMode,
+  });
+
+  test('routes leading ulw to the ulw command with trailing arguments', async () => {
+    const decision = await send('ulw test hello');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'test hello' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('routes bare ulw without arguments to the ulw command', async () => {
+    const decision = await send('ulw');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: '' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('routes leading ulw case-insensitively past leading whitespace', async () => {
+    const decision = await send('  ULW go');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'go' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('leaves soulwork as a plain prompt', async () => {
+    const decision = await send('soulwork');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('soulwork');
+  });
+
+  test('leaves ulwazi as a plain prompt', async () => {
+    const decision = await send('ulwazi');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('ulwazi');
+  });
+
+  test('leaves a mid-sentence ulw mention as a plain prompt', async () => {
+    const decision = await send('can you ulw this?');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('can you ulw this?');
+  });
+
+  test('leaves empty and whitespace content as plain prompts', async () => {
+    expect(await send('')).toBe('prompt');
+    expect(await send('   ')).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(2);
+  });
+
+  test('keeps the slash /ulw path on the command route', async () => {
+    const decision = await send('/ulw test hello');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'test hello' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('keeps shell-mode ulw on the shell route', async () => {
+    const decision = await send('ulw x', 'shell');
+
+    expect(decision).toBe('shell');
+    expect(shellCalls).toHaveLength(1);
+    expect(shellCalls[0].command).toBe('ulw x');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+});
+
 describe('sendMessage captured target', () => {
   let originalSendMessage;
   const calls = [];
