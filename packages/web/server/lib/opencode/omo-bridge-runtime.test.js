@@ -118,7 +118,15 @@ const stubSpawn = ({ lines = [], exitCode = 0 } = {}) => {
 describe('probe (version/capability handshake)', () => {
   it('engine-absent yields the documented degraded message and never hangs', async () => {
     const startedAt = Date.now();
-    const bridge = createOmoBridgeRuntime({ resolveEngineEntry: () => '/nonexistent/oh-my-opencode.js' });
+    // Hermetic no-engine-anywhere deps: a bare entry path plus stubs that
+    // resolve nothing, so neither the wrapper nor the native/vendored
+    // fallback can answer (the default real env/fs would find the vendored
+    // in-tree engine and take the native path instead).
+    const bridge = createOmoBridgeRuntime({
+      resolveEngineEntry: () => '/nonexistent/oh-my-opencode.js',
+      existsSync: () => false,
+      env: {},
+    });
     const result = await bridge.probe({ timeoutMs: 1000 });
     expect(Date.now() - startedAt).toBeLessThan(1000);
     expect(result.available).toBe(false);
@@ -128,10 +136,37 @@ describe('probe (version/capability handshake)', () => {
   });
 
   it('unresolved entry degrades the same way', async () => {
-    const bridge = createOmoBridgeRuntime({ resolveEngineEntry: () => null });
+    const bridge = createOmoBridgeRuntime({
+      resolveEngineEntry: () => null,
+      existsSync: () => false,
+      env: {},
+    });
     const result = await bridge.probe({ timeoutMs: 1000 });
     expect(result.available).toBe(false);
     expect(result.code).toBe('OMO_ENGINE_ABSENT');
+  });
+
+  it('missing entry with a resolvable native engine probes available over native', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omo-probe-native-'));
+    try {
+      const barrel = join(root, 'packages', 'omo-engine', 'omo-opencode', 'src', 'cli', 'run', 'index.ts');
+      mkdirSync(dirname(barrel), { recursive: true });
+      writeFileSync(barrel, '// fixture vendored barrel');
+      const worker = join(root, 'omo-invoker-worker.ts');
+      writeFileSync(worker, '// fixture worker');
+      const bun = join(root, 'bun');
+      writeFileSync(bun, '#!/bin/sh\n');
+      const bridge = createOmoBridgeRuntime({
+        resolveEngineEntry: () => null,
+        env: { OMO_BUN_PATH: bun },
+      });
+      const result = await bridge.probe({ workerEntry: worker, bridgeDir: join(root, 'packages', 'web', 'server', 'lib', 'opencode') });
+      expect(result.available).toBe(true);
+      expect(result.code).toBe('OMO_PROBE_OK');
+      expect(result.native).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('compatible stub answers version plus all four run flags', async () => {
@@ -236,7 +271,14 @@ describe('invoke (wrapper contract argv)', () => {
 
   it('engine-absent throws the degraded message instead of spawning', () => {
     const { spawn, calls } = stubSpawn();
-    const bridge = createOmoBridgeRuntime({ resolveEngineEntry: () => null, spawn });
+    // Hermetic no-engine-anywhere deps (see the probe cases above): with
+    // nothing resolvable the absent error still throws before any spawn.
+    const bridge = createOmoBridgeRuntime({
+      resolveEngineEntry: () => null,
+      existsSync: () => false,
+      env: {},
+      spawn,
+    });
     let thrown = null;
     try {
       bridge.invoke({ message: 'hi' });
@@ -247,6 +289,25 @@ describe('invoke (wrapper contract argv)', () => {
     expect(thrown.code).toBe('OMO_ENGINE_ABSENT');
     expect(thrown.message).toContain('stays empty');
     expect(calls).toEqual([]);
+  });
+
+  it('missing entry invokes native through the default path instead of throwing absent', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime({
+      resolveEngineEntry: () => null,
+      // Deterministic native setup: the runner's own binary answers
+      // OMO_BUN_PATH (existence is all the gate checks; spawn is stubbed),
+      // while the worker and the vendored engine resolve from this checkout.
+      env: { OMO_BUN_PATH: process.execPath },
+      spawn,
+    });
+    let handle = null;
+    expect(() => { handle = bridge.invoke({ message: 'hi', sessionId: 'ses_n1' }); }).not.toThrow();
+    expect(handle.native).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].entry).toBe(process.execPath);
+    expect(calls[0].argv[0].endsWith('omo-invoker-worker.ts')).toBe(true);
+    expect(calls[0].argv).toContain('--engine-root');
   });
 
   it('wait resolves the --json final result from stub stdout', async () => {

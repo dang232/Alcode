@@ -355,10 +355,21 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       try {
         statusAnswer = await serviceCall('GET', '/status');
       } catch {
+        // The service itself is unreachable: fail closed on the banner and
+        // keep the empty state below it.
+        showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
         sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
         return;
       }
       const body = isWireRecord(statusAnswer.body) ? statusAnswer.body : {};
+      // The offline banner reflects engine health from our own service — a
+      // missing or unavailable probe reads as engine down (fail closed).
+      const probeRecord = isWireRecord(body.probe) ? body.probe : null;
+      if (probeRecord === null || probeRecord.available !== true) {
+        showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
+      } else {
+        showNotice('none');
+      }
       const listed = Array.isArray(body.sessions)
         ? body.sessions.map((entry) => wireString(entry)).filter((entry): entry is string => entry !== null)
         : [];
@@ -375,6 +386,8 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     try {
       answer = await serviceCall('GET', '/snapshot', { sessionId });
     } catch {
+      // Reachable at /status but not now: fail closed on the banner too.
+      showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
       clearSection();
       sectionHandles.push(mountBanner(content, {
         tone: 'error',
@@ -412,10 +425,10 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
 
   const startPolling = (): void => {
     stopPolling();
+    // Polling is driven by engine health from our own service, never by
+    // the OAuth-account connection flag (see onConnection below).
     pollTimer = setInterval(() => {
-      if (connected) {
-        void refresh();
-      }
+      void refresh();
     }, POLL_MS);
   };
 
@@ -517,14 +530,14 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     startPolling();
   });
 
+  // The connection flag carries OAuth-account state, not engine health:
+  // this integration-less guest permanently reads connected:false, so the
+  // flag must never drive the offline banner nor stop polling. A reconnect
+  // still refreshes into current state.
   void host.onConnection((connection) => {
+    const was = connected;
     connected = connection.connected;
-    if (!connected) {
-      stopPolling();
-      showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
-    } else {
-      showNotice('none');
-      startPolling();
+    if (connected && !was) {
       void refresh();
     }
   });

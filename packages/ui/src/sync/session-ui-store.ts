@@ -32,6 +32,7 @@ import { selectCommandsForDirectory, useCommandsStore } from "@/stores/useComman
 import { selectSkillsForDirectory, useSkillsStore } from "@/stores/useSkillsStore"
 import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
+import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
 import { normalizePath } from "@/lib/pathNormalization"
 import { CHAT_DRAFT_PROJECT_ID, createChatDirectory, deleteChatDirectory, getChatsRootFromDirectory, isChatDirectoryPath, warmChatsRootDirectory } from "@/lib/chatDirectories"
 import { isVSCodeRuntime } from "@/lib/desktop"
@@ -1882,6 +1883,9 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
           })),
         })),
       })
+      // A ulw run starts with this send: reveal the DAG pane once so the
+      // flow is visible with zero configuration (a no-op for other sends).
+      revealDagPaneForUlvStart(content, createdDraftSession.directory, { inputMode })
       // Recorded only after the send resolves: a failed send must carry the
       // pinned context again rather than assume the agent already saw it.
       if (draftKnowledge.text && messageRoute !== 'shell') {
@@ -2003,6 +2007,8 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         })),
       })),
     })
+    // Same reveal as the draft path: this send starts the run.
+    revealDagPaneForUlvStart(content, currentSessionDirectory, { inputMode })
     if (knowledge.text && messageRoute !== 'shell') {
       void reportSessionKnowledgeDelivered(currentSessionDirectory, targetSessionId || "", knowledge.signature)
     }

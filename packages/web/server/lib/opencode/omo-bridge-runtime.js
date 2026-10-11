@@ -3,8 +3,8 @@
 // Spawns the USER-INSTALLED engine wrapper (`bin/oh-my-opencode.js`) and
 // funnels its run-graph events into a local JSON snapshot the DAG pane
 // (todo 13) renders. Nothing here bundles, fetches, or auto-installs engine
-// code: when the wrapper entry is absent every path answers the documented
-// degraded message and never hangs.
+// code: when no wrapper entry AND no native/vendored engine resolve, every
+// path answers the documented degraded message and never hangs.
 //
 // Wrapper contract (pinned, see .omo/evidence/task-7-project-ide.md):
 //   probe  -> `<entry> --version` + `<entry> run --help` (bounded)
@@ -725,10 +725,23 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
 
   // Version/capability handshake against the user-installed wrapper entry.
   // Bounded by spawnSync timeout: engine-absent or wedged always answers a
-  // degraded object, never a hang.
-  const probe = async ({ timeoutMs = probeTimeoutMs } = {}) => {
+  // degraded object, never a hang. A missing entry resolves the
+  // native/vendored engine first (install means use — no wrapper, no
+  // download, no env): only when both fail does probe degrade.
+  const probe = async ({ timeoutMs = probeTimeoutMs, ...gateOverrides } = {}) => {
     const entry = resolveEntry();
     if (!entry || !existsSync(entry)) {
+      const gate = checkGate(gateOverrides);
+      if (gate.ok) {
+        return {
+          available: true,
+          compatible: true,
+          code: 'OMO_PROBE_OK',
+          entry,
+          native: true,
+          message: null,
+        };
+      }
       return {
         available: false,
         compatible: false,
@@ -800,9 +813,10 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
   };
 
   // Spawn `run <message> --port/--attach/--session-id/--model/--json`
-  // through the selected path. Throws OMO_ENGINE_ABSENT before spawning
-  // when the entry is missing, so engine-absent degrades instead of
-  // hanging. Slice E gate: when the effective model maps to a known
+  // through the selected path. A missing entry resolves the native/vendored
+  // engine BEFORE any OMO_ENGINE_ABSENT throw, so zero-config runs take
+  // the native path; the absent error throws only when both the entry and
+  // native resolution fail, and never after a spawn. Slice E gate: when the effective model maps to a known
   // provider and a readiness predicate is wired, an unsigned provider
   // throws OMO_PROVIDER_NOT_SIGNED_IN naming model + provider BEFORE any
   // spawn — nothing is spent. Alcore-bound runs pin `--model
@@ -833,9 +847,10 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     native,
   } = {}) => {
     const entry = resolveEntry();
-    if (!entry || !existsSync(entry)) {
-      throw new OmoBridgeError('OMO_ENGINE_ABSENT', engineAbsentMessage(entry), { entry });
-    }
+    // No usable wrapper entry yet: native/vendored resolution below may
+    // still take the run (zero-config). The absent error throws only when
+    // the wrapper path is actually selected, or when native fails too.
+    const entryMissing = !entry || !existsSync(entry);
     const effectiveModel = resolveRunModel({ model, role: role ?? modelRole, catalog: catalog ?? modelCatalog });
     let argvModel;
     if (effectiveModel !== null) {
@@ -894,10 +909,16 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
       } else {
         const gate = checkGate();
         if (!gate.ok) {
+          if (entryMissing) {
+            throw new OmoBridgeError('OMO_ENGINE_ABSENT', engineAbsentMessage(entry), { entry });
+          }
           throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', gate.message, { entry });
         }
         runner = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
       }
+    }
+    if (runner === null && entryMissing) {
+      throw new OmoBridgeError('OMO_ENGINE_ABSENT', engineAbsentMessage(entry), { entry });
     }
     if (runner !== null) {
       return invokeNative({

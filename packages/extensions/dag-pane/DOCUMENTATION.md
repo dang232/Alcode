@@ -18,14 +18,19 @@ exists for this guest.
   `panel.entry` is `panel/index.html`; `service.entry` is
   `service/main.js` (`runtime: "host"`, no permissions declared).
   `attach: false`, so the guest never appears on composer + menus; the
-  rail icon is the only entry point.
+  rail icon is the manual entry point, and a sent ulw/ultrawork prompt
+  reveals the pane once (`revealDagPaneForUlvStart` in
+  `packages/ui/src/lib/dagAutoOpen.ts`, called from the composer send
+  path — never on render).
 - `panel/index.html` — iframe entry. Loads the checked-in classic IIFE
   `panel/main.js` (the sandbox cannot load ESM). Page CSS uses only
   `var(--oc-*)` host tokens; spacing follows the 8px scale.
 - `panel/main.ts` — guest source. `connectHost`, `applyHostReady` from the
   first `onReady`, kit primitives (`mountButton`, `mountTextField`,
   `mountSelect`, `mountBadge`, `mountBanner`, `mountEmpty`,
-  `mountSpinner`). The graph itself is custom inline SVG (the kit ships no
+  `mountSpinner`). The offline banner follows the pane service's
+  `GET /status` probe, never the OAuth-account connection flag (which
+  reads permanently disconnected for this integration-less guest). The graph itself is custom inline SVG (the kit ships no
   graph primitive): nodes laid out by payload `waves`, edges as lines,
   click/Enter selects a node for the details card. Colors come only from
   host tokens (running = primary, completed = success, failed = error,
@@ -63,8 +68,9 @@ process inherits user env — the CLI; the service sandbox does not, so the
 service always uses the default and the CLI defaults to the same). The
 panel never touches the filesystem: it calls `serviceRequest`, and the
 service reads the file. The wrapper entry for steering is per-guest
-storage (`wrapperEntry`, edited in the panel); the service falls back to
-`OMO_WRAPPER_PATH` when the request carries no entry.
+storage (`wrapperEntry`, edited in the panel); with no entry anywhere the
+bridge resolves the native/vendored engine before answering engine-absent,
+so the field is an optional override rather than a mandatory setup step.
 
 ## Ship (desktop, no manual install)
 
