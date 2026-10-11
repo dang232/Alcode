@@ -18,9 +18,9 @@ import nodeFs from 'node:fs';
 import {
   createOmoBridgeRuntime,
   defaultSnapshotPath,
-} from '../../web/server/lib/opencode/omo-bridge-runtime.js';
+} from '../../../web/server/lib/opencode/omo-bridge-runtime.js';
 
-export const DAG_SERVICE_NAME = 'omo-dag-pane';
+export const DAG_SERVICE_NAME = 'openchamber-builtin-dag-pane';
 export const DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX = 'omo-dag-snapshots';
 export const DAG_SERVICE_MAX_BODY_BYTES = 1_000_000;
 

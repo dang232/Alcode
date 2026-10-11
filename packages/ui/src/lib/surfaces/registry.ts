@@ -54,7 +54,7 @@ export type ContextSurfaceDescriptor = {
  * id (`plugin:<guest-id>`); guests outside this list keep the existing
  * desktop/web behavior.
  */
-export const DESKTOP_ONLY_PLUGIN_SURFACE_IDS: readonly string[] = ['plugin:omo-dag-pane'];
+export const DESKTOP_ONLY_PLUGIN_SURFACE_IDS: readonly string[] = ['plugin:openchamber-builtin-dag-pane'];
 
 export const CONTEXT_SURFACES: readonly ContextSurfaceDescriptor[] = [
   {
