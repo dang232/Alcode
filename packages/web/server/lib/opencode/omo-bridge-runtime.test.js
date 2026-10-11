@@ -5,14 +5,16 @@
 import { describe, expect, it, afterEach } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { spawn as realSpawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   OMO_BRIDGE_DEFAULT_ALCORE_MODELS,
+  OMO_NATIVE_OK,
   OmoBridgeError,
   buildRunArgv,
   cancelRun,
+  checkNativeParity,
   createOmoBridgeRuntime,
   createSnapshotWriter,
   defaultSnapshotPath,
@@ -20,6 +22,7 @@ import {
   engineAbsentMessage,
   parseEventLine,
   providerForModel,
+  resolveBunCommand,
   resolveEngineRoot,
   resolveNativeRunner,
   resolveRunModel,
@@ -200,7 +203,7 @@ describe('invoke (wrapper contract argv)', () => {
       existsSync: () => true,
       spawn,
     });
-    const handle = bridge.invoke({ message: 'Fix the bug', port: 4321 });
+    const handle = bridge.invoke({ message: 'Fix the bug', port: 4321, native: false });
     expect(handle.entry).toBe('/user/engine/bin/oh-my-opencode.js');
     expect(handle.argv).toEqual(['run', 'Fix the bug', '--port', '4321', '--json']);
   });
@@ -212,7 +215,7 @@ describe('invoke (wrapper contract argv)', () => {
       existsSync: () => true,
       spawn,
     });
-    bridge.invoke({ message: 'Continue', attachUrl: 'http://127.0.0.1:4321', sessionId: 'ses_abc123' });
+    bridge.invoke({ message: 'Continue', attachUrl: 'http://127.0.0.1:4321', sessionId: 'ses_abc123', native: false });
     expect(calls[0].argv).toEqual(['run', 'Continue', '--attach', 'http://127.0.0.1:4321', '--session-id', 'ses_abc123', '--json']);
   });
 
@@ -253,7 +256,7 @@ describe('invoke (wrapper contract argv)', () => {
       existsSync: () => true,
       spawn,
     });
-    const settled = await bridge.invoke({ message: 'hi' }).wait();
+    const settled = await bridge.invoke({ message: 'hi', native: false }).wait();
     expect(settled.exitCode).toBe(0);
     expect(settled.result).toMatchObject({ sessionId: 'ses_fixture01', success: true });
     expect(settled.sessionId).toBe('ses_fixture01');
@@ -261,7 +264,9 @@ describe('invoke (wrapper contract argv)', () => {
 
   it('real spawn of the node binary exits and wait captures it', async () => {
     const bridge = createOmoBridgeRuntime({ resolveEngineEntry: () => process.execPath });
-    const handle = bridge.invoke({ message: 'hi' });
+    // Per-call opt-out: the wrapper path is asserted here, the T9 default is
+    // covered by the native-default describe below.
+    const handle = bridge.invoke({ message: 'hi', native: false });
     liveChildren.push(handle.child);
     const settled = await handle.wait();
     // node tries to run a script literally named `run` and exits non-zero.
@@ -274,6 +279,11 @@ describe('model binding (Slice E: catalog role to provider gate)', () => {
   const engine = (extra = {}) => ({
     resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
     existsSync: () => true,
+    // Pin the wrapper path: these tests assert Slice-E argv on the wrapper
+    // contract, and the T9 default would otherwise take the native path
+    // (existsSync stubs everything resolvable). The rollback itself is
+    // covered by the native-default describe below.
+    env: { OMO_NATIVE_RUN: '0' },
     ...extra,
   });
 
@@ -579,12 +589,331 @@ describe('native invoker (bun worker, opt-in)', () => {
     await handle.wait();
   });
 
-  it('flag off keeps the wrapper path with native:false', () => {
+  it('env rollback keeps the wrapper path with native:false', () => {
     const { spawn, calls } = stubSpawn();
-    const bridge = createOmoBridgeRuntime(nativeEngine({ spawn, env: {} }));
+    const bridge = createOmoBridgeRuntime(nativeEngine({ spawn, env: { OMO_NATIVE_RUN: '0' } }));
     const handle = bridge.invoke({ message: 'hi', port: 4321 });
     expect(handle.native).toBe(false);
     expect(calls[0].argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+  });
+});
+
+describe('native parity gate (structured, carried forward from T1)', () => {
+  const BUN_ABSENT_MESSAGE = 'Native runner unavailable: bun was not found on PATH and OMO_BUN_PATH is unset. The wrapper path is kept; install bun or set OMO_BUN_PATH to run natively.';
+  const noBunScrubbedPath = { env: {}, pathValue: '', platform: 'linux' };
+
+  it('bun-absent yields wrapper path plus the exact degraded message', () => {
+    const result = checkNativeParity({
+      ...noBunScrubbedPath,
+      existsSync: () => true,
+      workerEntry: '/user/worker/omo-invoker-worker.ts',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(result.path).toBe('wrapper');
+    expect(result.message).toBe(BUN_ABSENT_MESSAGE);
+    expect(result.details).toMatchObject({ bunFound: false, bunSource: 'path' });
+  });
+
+  it('gate passes with a fixture engine root (derived wrapper layout)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omo-gate-derived-'));
+    try {
+      const barrel = join(root, 'packages', 'omo-opencode', 'src', 'cli', 'run', 'index.ts');
+      mkdirSync(dirname(barrel), { recursive: true });
+      writeFileSync(barrel, '// fixture barrel');
+      const worker = join(root, 'omo-invoker-worker.ts');
+      writeFileSync(worker, '// fixture worker');
+      const bun = join(root, 'bun');
+      writeFileSync(bun, '#!/bin/sh\n');
+      const result = checkNativeParity({
+        wrapperEntry: join(root, 'bin', 'oh-my-opencode.js'),
+        env: { OMO_BUN_PATH: bun },
+        workerEntry: worker,
+      });
+      expect(result.ok).toBe(true);
+      expect(result.code).toBe(OMO_NATIVE_OK);
+      expect(result.path).toBe('native');
+      expect(result.message).toBeNull();
+      expect(result.details).toMatchObject({
+        bunSource: 'env',
+        bunFound: true,
+        workerFound: true,
+        engineRoot: root,
+        vendored: false,
+        engineFound: true,
+        barrelPath: barrel,
+        barrelFound: true,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('vendored layout resolves its own barrel', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omo-gate-vendored-'));
+    try {
+      const barrel = join(root, 'packages', 'omo-engine', 'omo-opencode', 'src', 'cli', 'run', 'index.ts');
+      mkdirSync(dirname(barrel), { recursive: true });
+      writeFileSync(barrel, '// fixture vendored barrel');
+      const worker = join(root, 'worker.ts');
+      writeFileSync(worker, '// fixture worker');
+      const bun = join(root, 'bun');
+      writeFileSync(bun, '#!/bin/sh\n');
+      const result = checkNativeParity({
+        wrapperEntry: null,
+        env: { OMO_BUN_PATH: bun },
+        workerEntry: worker,
+        bridgeDir: join(root, 'packages', 'web', 'server', 'lib', 'opencode'),
+      });
+      expect(result.ok).toBe(true);
+      expect(result.path).toBe('native');
+      expect(result.details).toMatchObject({ vendored: true, barrelPath: barrel, barrelFound: true });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('bun found by scanning PATH resolves with source path', () => {
+    const wanted = join('/nothing-here', 'bun');
+    const result = checkNativeParity({
+      env: {},
+      pathValue: ['/nothing-here', '/also-nothing'].join(':'),
+      platform: 'linux',
+      workerEntry: '/user/worker/omo-invoker-worker.ts',
+      wrapperEntry: '/user/engine/bin/oh-my-opencode.js',
+      existsSync: () => true,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.path).toBe('native');
+    expect(result.details).toMatchObject({ bunSource: 'path', bunPath: wanted, bunFound: true });
+  });
+
+  it('empty OMO_BUN_PATH fails closed as unset, never crashes', () => {
+    let result = null;
+    expect(() => {
+      result = checkNativeParity({
+        env: { OMO_BUN_PATH: '   ' },
+        existsSync: () => true,
+        workerEntry: '/user/worker/omo-invoker-worker.ts',
+      });
+    }).not.toThrow();
+    expect(result.path).toBe('wrapper');
+    expect(result.message).toBe(BUN_ABSENT_MESSAGE);
+  });
+
+  it('unresolvable OMO_BUN_PATH names the path exactly', () => {
+    const result = checkNativeParity({
+      env: { OMO_BUN_PATH: '/nope/bun' },
+      existsSync: () => false,
+      workerEntry: '/user/worker/omo-invoker-worker.ts',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(result.path).toBe('wrapper');
+    expect(result.message).toBe(
+      'Native runner unavailable: OMO_BUN_PATH points at "/nope/bun" which does not resolve. '
+      + 'The wrapper path is kept; fix OMO_BUN_PATH or install bun on PATH to run natively.',
+    );
+    expect(result.details).toMatchObject({ bunSource: 'env', bunFound: false });
+  });
+
+  it('missing worker file fails closed with the exact message', () => {
+    const result = checkNativeParity({
+      env: { OMO_BUN_PATH: '/x/bun' },
+      existsSync: (p) => p === '/x/bun',
+      workerEntry: '/user/worker/omo-invoker-worker.ts',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.path).toBe('wrapper');
+    expect(result.message).toBe(
+      'Native runner unavailable: native worker missing at "/user/worker/omo-invoker-worker.ts". The wrapper path is kept.',
+    );
+    expect(result.details).toMatchObject({ bunFound: true, workerFound: false });
+  });
+
+  it('nonexistent engine root fails closed on the barrel probe', () => {
+    let result = null;
+    expect(() => {
+      result = checkNativeParity({
+        env: { OMO_BUN_PATH: '/x/bun', OMO_ENGINE_ROOT: '/nope/root' },
+        existsSync: (p) => p === '/x/bun' || p === '/user/worker/omo-invoker-worker.ts',
+        workerEntry: '/user/worker/omo-invoker-worker.ts',
+      });
+    }).not.toThrow();
+    expect(result.ok).toBe(false);
+    expect(result.path).toBe('wrapper');
+    expect(result.message).toBe(
+      `Native runner unavailable: engine run barrel missing at "${join('/nope/root', 'packages', 'omo-opencode', 'src', 'cli', 'run', 'index.ts')}". The wrapper path is kept.`,
+    );
+    expect(result.details).toMatchObject({ engineRoot: '/nope/root', barrelFound: false });
+  });
+
+  it('runtime gate binds wrapper entry and env from its deps', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omo-gate-runtime-'));
+    try {
+      const barrel = join(root, 'packages', 'omo-opencode', 'src', 'cli', 'run', 'index.ts');
+      mkdirSync(dirname(barrel), { recursive: true });
+      writeFileSync(barrel, '// fixture barrel');
+      const worker = join(root, 'omo-invoker-worker.ts');
+      writeFileSync(worker, '// fixture worker');
+      const bun = join(root, 'bun');
+      writeFileSync(bun, '#!/bin/sh\n');
+      const bridge = createOmoBridgeRuntime({
+        resolveEngineEntry: () => join(root, 'bin', 'oh-my-opencode.js'),
+        env: { OMO_BUN_PATH: bun },
+      });
+      const result = bridge.checkNativeParity({ workerEntry: worker });
+      expect(result.ok).toBe(true);
+      expect(result.path).toBe('native');
+      expect(result.details).toMatchObject({ engineRoot: root, barrelFound: true });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('resolveBunCommand never throws on a missing PATH', () => {
+    expect(resolveBunCommand({ env: {}, pathValue: '', platform: 'linux', existsSync: () => true }))
+      .toEqual({ source: 'path', path: 'bun', found: false });
+    expect(resolveBunCommand({ env: { OMO_BUN_PATH: '  ' }, existsSync: () => { throw new Error('must not probe'); } }))
+      .toEqual({ source: 'path', path: 'bun', found: false });
+  });
+});
+
+describe('native default (T9 flip: gate decides, rollback kept)', () => {
+  const BUN_ABSENT_MESSAGE = 'Native runner unavailable: bun was not found on PATH and OMO_BUN_PATH is unset. The wrapper path is kept; install bun or set OMO_BUN_PATH to run natively.';
+  const capable = (extra = {}) => ({
+    resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
+    existsSync: () => true,
+    env: { OMO_BUN_PATH: '/x/bun' },
+    ...extra,
+  });
+
+  it('default on a capable machine runs native with the job on stdin', async () => {
+    const calls = [];
+    let stdinText = '';
+    const child = new FakeChild();
+    child.stdin = {
+      write: (text) => { stdinText += String(text); },
+      end: () => {},
+    };
+    const spawn = (entry, argv, options) => {
+      calls.push({ entry, argv, options });
+      setImmediate(() => {
+        child.stdout.emit('data', `${JSON.stringify(fixture.runResult)}\n`);
+        child.exitCode = 0;
+        child.emit('exit', 0, null);
+        child.emit('close', 0, null);
+      });
+      return child;
+    };
+    const bridge = createOmoBridgeRuntime(capable({ spawn }));
+    const handle = bridge.invoke({ message: 'hi', sessionId: 'ses_n1' });
+    expect(handle.native).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].entry).toBe('/x/bun');
+    expect(calls[0].argv[0].endsWith('omo-invoker-worker.ts')).toBe(true);
+    expect(calls[0].argv).toContain('--engine-root');
+    expect(JSON.parse(stdinText)).toMatchObject({ message: 'hi', sessionId: 'ses_n1' });
+    const settled = await handle.wait();
+    expect(settled.exitCode).toBe(0);
+    expect(settled.result).toMatchObject({ sessionId: 'ses_fixture01', success: true });
+  });
+
+  it('default with bun absent throws the exact degraded message and spawns nothing', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn, env: {} }));
+    let thrown = null;
+    try {
+      bridge.invoke({ message: 'hi' });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(thrown.message).toBe(BUN_ABSENT_MESSAGE);
+    expect(calls).toEqual([]);
+  });
+
+  it('default with an unresolvable OMO_BUN_PATH names the path and spawns nothing', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn, env: { OMO_BUN_PATH: '/nope/bun' }, existsSync: (p) => p !== '/nope/bun' }));
+    let thrown = null;
+    try {
+      bridge.invoke({ message: 'hi' });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(thrown.message).toBe(
+      'Native runner unavailable: OMO_BUN_PATH points at "/nope/bun" which does not resolve. '
+      + 'The wrapper path is kept; fix OMO_BUN_PATH or install bun on PATH to run natively.',
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it('unrecognized OMO_NATIVE_RUN values fail closed before any spawn', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn, env: { OMO_NATIVE_RUN: '2' } }));
+    let thrown = null;
+    try {
+      bridge.invoke({ message: 'hi' });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(thrown.message).toContain('"2"');
+    expect(thrown.message).toContain('Nothing was started');
+    expect(calls).toEqual([]);
+  });
+
+  it('per-call native:false restores the wrapper even when the gate passes', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn }));
+    const handle = bridge.invoke({ message: 'hi', port: 4321, native: false });
+    expect(handle.native).toBe(false);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+  });
+
+  it('per-call native:true with an unresolvable setup throws and spawns nothing', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({
+      spawn,
+      existsSync: (p) => !String(p).endsWith('.ts'),
+    }));
+    let thrown = null;
+    try {
+      bridge.invoke({ message: 'hi', native: true });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(calls).toEqual([]);
+  });
+
+  it('nativeFromEnv:false keeps the legacy wrapper default', () => {
+    const { spawn, calls } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn, nativeFromEnv: false }));
+    const handle = bridge.invoke({ message: 'hi' });
+    expect(handle.native).toBe(false);
+    expect(calls[0].argv).toEqual(['run', 'hi', '--json']);
+  });
+
+  it('cancel on the wrapper path still settles a receipt after the flip', async () => {
+    const { spawn } = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn }));
+    const handle = bridge.invoke({ message: 'long run', native: false });
+    expect(handle.native).toBe(false);
+    const receipt = await handle.cancel('user asked to stop');
+    expect(receipt).toMatchObject({
+      provisional: true,
+      alreadyExited: false,
+      escalated: false,
+      reason: 'user asked to stop',
+    });
   });
 });
 
@@ -670,7 +999,7 @@ describe('stream (session-filtered snapshot writer)', () => {
       snapshotDir: '/snap',
     });
     const seen = [];
-    const handle = bridge.invoke({ message: 'hi', sessionId: fixture.sessionId, onEvent: (name, data) => seen.push([name, data]) });
+    const handle = bridge.invoke({ message: 'hi', sessionId: fixture.sessionId, native: false, onEvent: (name, data) => seen.push([name, data]) });
     const settled = await handle.wait();
     expect(settled.exitCode).toBe(0);
     expect(seen).toHaveLength(1);
@@ -698,6 +1027,9 @@ describe('cancel (PROVISIONAL kill-with-reason)', () => {
       spawn,
     });
     const handle = bridge.invoke({ message: 'long run' });
+    // T9 default with a stub-resolvable setup takes the native path, so this
+    // pins cancel-on-native; the wrapper path is probed below.
+    expect(handle.native).toBe(true);
     const receipt = await handle.cancel('user asked to stop');
     expect(receipt).toMatchObject({
       provisional: true,

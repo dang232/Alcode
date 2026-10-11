@@ -72,6 +72,10 @@ const countingSpawn = () => {
 const engine = (extra = {}) => ({
   resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
   existsSync: () => true,
+  // Pin the wrapper path: this file asserts Slice-E argv on the wrapper
+  // contract, and the T9 native default would otherwise take the native
+  // path (existsSync stubs everything resolvable).
+  env: { OMO_NATIVE_RUN: '0' },
   ...extra,
 });
 

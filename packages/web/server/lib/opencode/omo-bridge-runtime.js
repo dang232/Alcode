@@ -19,13 +19,18 @@
 //            (the omo-herdr-dag pattern: subscribe, filter session, snapshot
 //            to local JSON, watcher renders the file).
 //   cancel -> PROVISIONAL kill-with-reason (see cancelRun below).
-//   native -> opt-in `OMO_NATIVE_RUN=1`: spawns `bun omo-invoker-worker.ts`
+//   native -> DEFAULT behind the parity gate (omo-full-integration T9,
+//             breaking): `checkNativeParity` answers capable-or-not as data;
+//             a passing gate takes this path, a failing gate throws the exact
+//             `OMO_NATIVE_UNAVAILABLE` degraded message — never a silent
+//             downgrade to the wrapper. Rollback without a code change:
+//             per-call `native: false` or `OMO_NATIVE_RUN=0` restores the
+//             wrapper path (kept until deletion); `OMO_NATIVE_RUN=1` keeps
+//             the legacy opt-in throw. Spawns `bun omo-invoker-worker.ts`
 //             (same directory as this module; bun-only, never imported by
 //             plain-Node consumers) which imports the engine run barrel
 //             in-process. Contains run()'s stdio/env/telemetry globals in
-//             the worker. Same handle shape (wait/cancel/writer); explicit
-//             opt-in never silently downgrades — unresolvable native setup
-//             throws OMO_NATIVE_UNAVAILABLE.
+//             the worker. Same handle shape (wait/cancel/writer).
 //
 // Transport note: the `senpi:extension-rpc-event` bus string from the proto
 // doc has zero hits in the checked-out engine sources (only
@@ -325,14 +330,14 @@ export const resolveVendoredRoot = ({ existsSync = nodeExistsSync, bridgeDir } =
 // <root>/bin/), else the vendored in-tree engine (install means use — no
 // wrapper, no download, no env). Throws OMO_NATIVE_UNAVAILABLE naming
 // the reason. Returns { root, vendored } so callers know the layout.
-export const resolveEngineRoot = (wrapperEntry, { env = process.env, existsSync = nodeExistsSync } = {}) => {
+export const resolveEngineRoot = (wrapperEntry, { env = process.env, existsSync = nodeExistsSync, bridgeDir } = {}) => {
   const explicit = env?.[OMO_ENGINE_ROOT_ENV]?.trim?.() ?? '';
   if (explicit !== '') return { root: explicit, vendored: false };
   if (isNonEmptyString(wrapperEntry)) {
     const root = nodeDirname(nodeDirname(wrapperEntry));
     if (existsSync(nodeJoinPath(root, OMO_ENGINE_RUN_BARREL))) return { root, vendored: false };
   }
-  const vendored = resolveVendoredRoot({ existsSync });
+  const vendored = resolveVendoredRoot({ existsSync, bridgeDir });
   if (vendored !== null) return { root: vendored, vendored: true };
   throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native runs need ${OMO_ENGINE_ROOT_ENV}, a wrapper entry with a run barrel, or the vendored in-tree engine.`);
 };
@@ -350,6 +355,7 @@ export const resolveNativeRunner = ({
   existsSync = nodeExistsSync,
   workerEntry,
   bunPath,
+  bridgeDir,
 } = {}) => {
   const worker = workerEntry ?? defaultWorkerEntry();
   if (!existsSync(worker)) {
@@ -357,13 +363,150 @@ export const resolveNativeRunner = ({
   }
   const bun = bunPath ?? env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? '';
   const resolvedBun = bun !== '' ? bun : 'bun';
-  const { root: engineRoot, vendored } = resolveEngineRoot(wrapperEntry, { env, existsSync });
+  const { root: engineRoot, vendored } = resolveEngineRoot(wrapperEntry, { env, existsSync, bridgeDir });
   return {
     workerEntry: worker,
     bunPath: resolvedBun,
     engineRoot,
     barrelPath: vendored ? nodeJoinPath(engineRoot, OMO_VENDORED_RUN_BARREL) : undefined,
   };
+};
+
+// Native parity gate (omo-full-integration T1, GAP-1 data half).
+//
+// `checkNativeParity` answers whether this machine can take the native path
+// RIGHT NOW as DATA — it never spawns, never throws for a missing setup,
+// and never flips the default. A failing gate reports `path: 'wrapper'`
+// with the exact `OMO_NATIVE_UNAVAILABLE` degraded message, and the T9
+// default keeps its never-downgrade contract by throwing that message
+// instead of silently taking the wrapper (pinned by the native-invoker
+// test; the five messages below are byte-exact and asserted with `toBe`).
+// Checks run in a fixed order — bun, worker, engine root, barrel — and
+// every check is evaluated, so the result names the first failure while
+// `details` carries each check's machine outcome. Presence is resolvability
+// only: the gate does not execute bun and performs no version check.
+export const OMO_NATIVE_OK = 'OMO_NATIVE_OK';
+
+// Resolve the bun command for native runs: an explicit non-blank
+// `OMO_BUN_PATH` wins (verified resolvable, never trusted blind), else the
+// first `bun` found by scanning PATH with the platform's executable
+// extensions. Always `{ source: 'env' | 'path', path, found }` — never
+// throws, so a scrubbed PATH degrades to `found: false`, not a crash.
+export const resolveBunCommand = ({
+  env = process.env,
+  existsSync = nodeExistsSync,
+  pathValue,
+  executableExtensions,
+  platform = process.platform,
+  joinPath = nodeJoinPath,
+} = {}) => {
+  const override = env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? '';
+  if (override !== '') {
+    return { source: 'env', path: override, found: existsSync(override) };
+  }
+  const rawPath = pathValue !== undefined ? pathValue : (env?.PATH ?? env?.Path ?? '');
+  const delimiter = platform === 'win32' ? ';' : ':';
+  const extensions = executableExtensions ?? (platform === 'win32' ? ['', '.exe', '.cmd', '.bat'] : ['']);
+  for (const dir of String(rawPath ?? '').split(delimiter)) {
+    const trimmed = dir.trim().replace(/^"|"$/g, '');
+    if (trimmed === '') continue;
+    for (const ext of extensions) {
+      const candidate = joinPath(trimmed, `bun${ext}`);
+      if (existsSync(candidate)) {
+        return { source: 'path', path: candidate, found: true };
+      }
+    }
+  }
+  return { source: 'path', path: 'bun', found: false };
+};
+
+// Structured parity result. Pass reads
+// `{ ok: true, code: 'OMO_NATIVE_OK', path: 'native', message: null,
+// details }`; any failure reads `{ ok: false,
+// code: 'OMO_NATIVE_UNAVAILABLE', path: 'wrapper', message, details }`
+// where `message` is the exact degraded text and `details` names every
+// check (`bunFound`/`workerFound`/`engineFound`/`barrelFound` plus the
+// resolved paths, `vendored` naming the engine layout). `wrapperEntry`
+// feeds the derived-root layout; `bridgeDir` overrides the vendored
+// lookup base (fixtures); `pathValue`/`platform` override PATH scanning.
+export const checkNativeParity = ({
+  wrapperEntry,
+  env = process.env,
+  existsSync = nodeExistsSync,
+  workerEntry,
+  bridgeDir,
+  pathValue,
+  platform,
+  joinPath = nodeJoinPath,
+} = {}) => {
+  const bun = resolveBunCommand({ env, existsSync, pathValue, platform, joinPath });
+  const worker = workerEntry ?? defaultWorkerEntry();
+  const workerFound = existsSync(worker);
+  let engineRoot = null;
+  let vendored = false;
+  let engineFound = false;
+  let engineReason = null;
+  try {
+    const resolved = resolveEngineRoot(wrapperEntry, { env, existsSync, bridgeDir });
+    engineRoot = resolved.root;
+    vendored = resolved.vendored;
+    engineFound = true;
+  } catch (error) {
+    engineReason = error?.message ?? String(error);
+  }
+  const barrelPath = engineFound
+    ? joinPath(engineRoot, vendored ? OMO_VENDORED_RUN_BARREL : OMO_ENGINE_RUN_BARREL)
+    : null;
+  // An explicit OMO_ENGINE_ROOT is trusted by resolveEngineRoot without an
+  // existence check, so the barrel probe is what fails a nonexistent root
+  // closed: no crash, just found: false.
+  const barrelFound = barrelPath !== null && existsSync(barrelPath);
+  const details = {
+    bunPath: bun.path,
+    bunSource: bun.source,
+    bunFound: bun.found,
+    workerEntry: worker,
+    workerFound,
+    engineRoot,
+    vendored,
+    engineFound,
+    barrelPath,
+    barrelFound,
+  };
+  if (!bun.found) {
+    const message = bun.source === 'env'
+      ? `Native runner unavailable: ${OMO_BUN_PATH_ENV} points at "${bun.path}" which does not resolve. The wrapper path is kept; fix ${OMO_BUN_PATH_ENV} or install bun on PATH to run natively.`
+      : `Native runner unavailable: bun was not found on PATH and ${OMO_BUN_PATH_ENV} is unset. The wrapper path is kept; install bun or set ${OMO_BUN_PATH_ENV} to run natively.`;
+    return { ok: false, code: 'OMO_NATIVE_UNAVAILABLE', path: 'wrapper', message, details };
+  }
+  if (!workerFound) {
+    return {
+      ok: false,
+      code: 'OMO_NATIVE_UNAVAILABLE',
+      path: 'wrapper',
+      message: `Native runner unavailable: native worker missing at "${worker}". The wrapper path is kept.`,
+      details,
+    };
+  }
+  if (!engineFound) {
+    return {
+      ok: false,
+      code: 'OMO_NATIVE_UNAVAILABLE',
+      path: 'wrapper',
+      message: `${engineReason} The wrapper path is kept.`,
+      details,
+    };
+  }
+  if (!barrelFound) {
+    return {
+      ok: false,
+      code: 'OMO_NATIVE_UNAVAILABLE',
+      path: 'wrapper',
+      message: `Native runner unavailable: engine run barrel missing at "${barrelPath}". The wrapper path is kept.`,
+      details,
+    };
+  }
+  return { ok: true, code: OMO_NATIVE_OK, path: 'native', message: null, details };
 };
 
 export const buildRunArgv = ({
@@ -561,10 +704,15 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     isProviderReady = null,
     modelCatalog = null,
     modelRole = OMO_BRIDGE_DEFAULT_MODEL_ROLE,
-    // Native-runner seam (Phase 4+): explicit `{ workerEntry, bunPath,
-    // engineRoot }` wins; when null and `nativeFromEnv` holds, an
-    // `OMO_NATIVE_RUN=1` env opts in via resolveNativeRunner (throws
-    // OMO_NATIVE_UNAVAILABLE instead of silently downgrading).
+    // Native-runner seam: explicit `{ workerEntry, bunPath,
+    // engineRoot }` wins; otherwise selection is per-call `native`, then
+    // env/default. `native: false` (or `OMO_NATIVE_RUN=0`) restores the
+    // wrapper path; `native: true` (or `OMO_NATIVE_RUN=1`) resolves via
+    // resolveNativeRunner (throws OMO_NATIVE_UNAVAILABLE instead of
+    // silently downgrading). Unset/blank reads the parity gate: native on
+    // a capable machine, the exact degraded message on a failing gate.
+    // Unrecognized non-blank values fail closed. `nativeFromEnv: false`
+    // keeps the legacy wrapper default (per-call `native` still applies).
     nativeRunner = null,
     nativeFromEnv = true,
     env = process.env,
@@ -652,13 +800,20 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
   };
 
   // Spawn `run <message> --port/--attach/--session-id/--model/--json`
-  // through the wrapper contract. Throws OMO_ENGINE_ABSENT before spawning
+  // through the selected path. Throws OMO_ENGINE_ABSENT before spawning
   // when the entry is missing, so engine-absent degrades instead of
   // hanging. Slice E gate: when the effective model maps to a known
   // provider and a readiness predicate is wired, an unsigned provider
   // throws OMO_PROVIDER_NOT_SIGNED_IN naming model + provider BEFORE any
   // spawn — nothing is spent. Alcore-bound runs pin `--model
   // alcore/<id>` so the spend cannot land on the engine catalog default.
+  // Path selection (T9 native default, breaking): per-call `native` wins
+  // (`true` forces native-or-throw, `false` forces the wrapper); otherwise
+  // `OMO_NATIVE_RUN=0` restores the wrapper and `OMO_NATIVE_RUN=1` forces
+  // native-or-throw; unset/blank runs the parity gate — native on a
+  // capable machine, the exact OMO_NATIVE_UNAVAILABLE message on a
+  // failing gate, never a silent downgrade. Any other non-blank value
+  // fails closed before any spawn.
   const invoke = ({
     message,
     port,
@@ -673,6 +828,9 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     alcoreModels: callAlcoreModels,
     isProviderReady: callIsProviderReady,
     agent,
+    // Path selection: true forces native-or-throw, false forces the
+    // wrapper, undefined defers to env/default (see the seam note above).
+    native,
   } = {}) => {
     const entry = resolveEntry();
     if (!entry || !existsSync(entry)) {
@@ -716,8 +874,30 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
       agent: isNonEmptyString(agent) ? agent.trim() : undefined,
     });
     let runner = nativeRunner ?? null;
-    if (runner === null && nativeFromEnv && env?.[OMO_NATIVE_RUN_ENV] === '1') {
+    if (native === false) {
+      runner = null; // Per-call opt-out wins over everything: wrapper path.
+    } else if (native === true && runner === null) {
       runner = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
+    } else if (runner === null && nativeFromEnv) {
+      const flag = env?.[OMO_NATIVE_RUN_ENV]?.trim?.() ?? '';
+      if (flag === '0') {
+        runner = null; // Env rollback: wrapper path, kept until deletion.
+      } else if (flag === '1') {
+        runner = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
+      } else if (flag !== '') {
+        throw new OmoBridgeError(
+          'OMO_NATIVE_UNAVAILABLE',
+          `Native runner unavailable: ${OMO_NATIVE_RUN_ENV} has an unrecognized value ${JSON.stringify(flag)} `
+          + '(want "0" for the wrapper path, "1" for native, or unset for the parity-gated default). Nothing was started.',
+          { entry },
+        );
+      } else {
+        const gate = checkGate();
+        if (!gate.ok) {
+          throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', gate.message, { entry });
+        }
+        runner = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
+      }
     }
     if (runner !== null) {
       return invokeNative({
@@ -854,9 +1034,21 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     });
   };
 
+  // Parity gate bound to this runtime's deps (wrapper entry, env,
+  // existsSync). Data only — calling it never spawns; per-call overrides
+  // win for fixtures. `invoke` consults it on the default path (no
+  // per-call `native`, no recognized `OMO_NATIVE_RUN` value).
+  const checkGate = (overrides = {}) => checkNativeParity({
+    wrapperEntry: resolveEntry(),
+    env,
+    existsSync,
+    ...overrides,
+  });
+
   return {
     probe,
     invoke,
+    checkNativeParity: checkGate,
     createSnapshotWriter: (options) => createSnapshotWriter({ ...options, fs: options.fs ?? fs, now }),
     buildRunArgv,
     parseEventLine,
