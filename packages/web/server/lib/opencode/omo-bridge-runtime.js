@@ -319,25 +319,59 @@ export const isProviderReadyFromCardSnapshot = (snapshot, { signInIntegrations =
 
 // Vendored in-tree engine root: the sibling packages/omo-engine dir when
 // its run barrel exists. Null when absent (engine predates the vendor).
-export const resolveVendoredRoot = ({ existsSync = nodeExistsSync, bridgeDir } = {}) => {
+//
+// The dag-pane service bundle inlines this module, so the bridge-relative
+// base below points at `.../built-in-extensions/dag-pane/service/` there
+// instead of `.../server/lib/opencode/` and always misses. The first
+// candidate keeps the source layout (and every fixture override); the
+// later ones cover the bundled service without baked absolutes: the
+// packaged Electron resources dir (`resources/omo-engine`, same marker as
+// the skill-catalog row-7 fix) and an upward search from the service's own
+// package root (the host spawns services with cwd = package dir, so this
+// is `packages/omo-engine` in dev and `resources/omo-engine` packaged).
+// First candidate whose run barrel exists wins; all probes go through the
+// injected existsSync, so hermetic no-engine fixtures keep failing closed.
+export const OMO_VENDORED_SEARCH_DEPTH = 8;
+export const resolveVendoredRootCandidates = ({ bridgeDir, packageCwd, resourcesPath } = {}) => {
+  const candidates = [];
   const dir = bridgeDir ?? nodeDirname(nodeFileURLToPath(import.meta.url));
-  const root = nodeJoinPath(dir, '..', '..', '..', '..', OMO_VENDORED_ENGINE_DIR);
-  if (!existsSync(nodeJoinPath(root, OMO_VENDORED_RUN_BARREL))) return null;
-  return root;
+  candidates.push(nodeJoinPath(dir, '..', '..', '..', '..', OMO_VENDORED_ENGINE_DIR));
+  const packaged = resourcesPath ?? process?.resourcesPath ?? null;
+  if (packaged) candidates.push(nodeJoinPath(packaged, OMO_VENDORED_ENGINE_DIR));
+  let level = packageCwd ?? process.cwd();
+  for (let depth = 0; depth <= OMO_VENDORED_SEARCH_DEPTH; depth += 1) {
+    candidates.push(nodeJoinPath(level, OMO_VENDORED_ENGINE_DIR));
+    const parent = nodeDirname(level);
+    if (parent === level) break;
+    level = parent;
+  }
+  return candidates;
+};
+export const resolveVendoredRoot = ({
+  existsSync = nodeExistsSync, bridgeDir, packageCwd, resourcesPath,
+} = {}) => {
+  for (const root of resolveVendoredRootCandidates({ bridgeDir, packageCwd, resourcesPath })) {
+    if (existsSync(nodeJoinPath(root, OMO_VENDORED_RUN_BARREL))) return root;
+  }
+  return null;
 };
 // Engine checkout root for native runs: explicit env wins, else the
 // wrapper entry's grandparent (bin/oh-my-opencode.js lives at
 // <root>/bin/), else the vendored in-tree engine (install means use — no
 // wrapper, no download, no env). Throws OMO_NATIVE_UNAVAILABLE naming
 // the reason. Returns { root, vendored } so callers know the layout.
-export const resolveEngineRoot = (wrapperEntry, { env = process.env, existsSync = nodeExistsSync, bridgeDir } = {}) => {
+export const resolveEngineRoot = (wrapperEntry, {
+  env = process.env, existsSync = nodeExistsSync, bridgeDir, packageCwd, resourcesPath,
+} = {}) => {
   const explicit = env?.[OMO_ENGINE_ROOT_ENV]?.trim?.() ?? '';
   if (explicit !== '') return { root: explicit, vendored: false };
   if (isNonEmptyString(wrapperEntry)) {
     const root = nodeDirname(nodeDirname(wrapperEntry));
     if (existsSync(nodeJoinPath(root, OMO_ENGINE_RUN_BARREL))) return { root, vendored: false };
   }
-  const vendored = resolveVendoredRoot({ existsSync, bridgeDir });
+  const vendored = resolveVendoredRoot({
+    existsSync, bridgeDir, packageCwd, resourcesPath,
+  });
   if (vendored !== null) return { root: vendored, vendored: true };
   throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native runs need ${OMO_ENGINE_ROOT_ENV}, a wrapper entry with a run barrel, or the vendored in-tree engine.`);
 };
@@ -345,6 +379,39 @@ export const resolveEngineRoot = (wrapperEntry, { env = process.env, existsSync 
 // Default worker entry: the sibling file of this module. Plain-Node
 // consumers never import it (they spawn it); bun executes it.
 export const defaultWorkerEntry = () => nodeFileURLToPath(new URL('./omo-invoker-worker.ts', import.meta.url));
+
+// Worker file for native runs. An explicit entry is honored exactly (and
+// reported exactly when missing); otherwise the module sibling wins (the
+// source layout), then the service-relative copy (`../../lib/opencode/`
+// from the spawned package root — the same relative shape in dev and in
+// the unpacked packaged tree), then the unpacked packaged copy under the
+// Electron resources dir. First existing file wins; when none exists the
+// reported path stays the module sibling so the degraded message is
+// unchanged. In the packaged Electron service `process.resourcesPath` is
+// unset (plain-Node spawn), so the service-relative candidate is the one
+// that answers there — it needs the asarUnpack entry for this file.
+export const resolveWorkerEntry = ({
+  workerEntry,
+  existsSync = nodeExistsSync,
+  packageCwd,
+  resourcesPath,
+} = {}) => {
+  if (workerEntry) return { path: workerEntry, found: existsSync(workerEntry) };
+  const candidates = [defaultWorkerEntry()];
+  const cwd = packageCwd ?? process.cwd();
+  candidates.push(nodeJoinPath(cwd, '..', '..', 'lib', 'opencode', 'omo-invoker-worker.ts'));
+  const packaged = resourcesPath ?? process?.resourcesPath ?? null;
+  if (packaged) {
+    candidates.push(nodeJoinPath(
+      packaged, 'app.asar.unpacked', 'node_modules', '@openchamber', 'web',
+      'server', 'lib', 'opencode', 'omo-invoker-worker.ts',
+    ));
+  }
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return { path: candidate, found: true };
+  }
+  return { path: candidates[0], found: false };
+};
 
 // Resolve one native-runner config or throw OMO_NATIVE_UNAVAILABLE.
 // Never returns a half-configured runner: bun path, worker file, and
@@ -356,16 +423,22 @@ export const resolveNativeRunner = ({
   workerEntry,
   bunPath,
   bridgeDir,
+  packageCwd,
+  resourcesPath,
 } = {}) => {
-  const worker = workerEntry ?? defaultWorkerEntry();
-  if (!existsSync(worker)) {
-    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native worker missing at "${worker}".`);
+  const worker = resolveWorkerEntry({
+    workerEntry, existsSync, packageCwd, resourcesPath,
+  });
+  if (!worker.found) {
+    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native worker missing at "${worker.path}".`);
   }
   const bun = bunPath ?? env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? '';
   const resolvedBun = bun !== '' ? bun : 'bun';
-  const { root: engineRoot, vendored } = resolveEngineRoot(wrapperEntry, { env, existsSync, bridgeDir });
+  const { root: engineRoot, vendored } = resolveEngineRoot(wrapperEntry, {
+    env, existsSync, bridgeDir, packageCwd, resourcesPath,
+  });
   return {
-    workerEntry: worker,
+    workerEntry: worker.path,
     bunPath: resolvedBun,
     engineRoot,
     barrelPath: vendored ? nodeJoinPath(engineRoot, OMO_VENDORED_RUN_BARREL) : undefined,
@@ -428,26 +501,36 @@ export const resolveBunCommand = ({
 // check (`bunFound`/`workerFound`/`engineFound`/`barrelFound` plus the
 // resolved paths, `vendored` naming the engine layout). `wrapperEntry`
 // feeds the derived-root layout; `bridgeDir` overrides the vendored
-// lookup base (fixtures); `pathValue`/`platform` override PATH scanning.
+// lookup base (fixtures); `packageCwd` overrides the service-root base for
+// the vendored search and the service-relative worker (fixtures, engine-less
+// simulations); `resourcesPath` overrides the packaged resources base
+// (default `process.resourcesPath`); `pathValue`/`platform` override PATH
+// scanning.
 export const checkNativeParity = ({
   wrapperEntry,
   env = process.env,
   existsSync = nodeExistsSync,
   workerEntry,
   bridgeDir,
+  packageCwd,
+  resourcesPath,
   pathValue,
   platform,
   joinPath = nodeJoinPath,
 } = {}) => {
   const bun = resolveBunCommand({ env, existsSync, pathValue, platform, joinPath });
-  const worker = workerEntry ?? defaultWorkerEntry();
-  const workerFound = existsSync(worker);
+  const worker = resolveWorkerEntry({
+    workerEntry, existsSync, packageCwd, resourcesPath,
+  });
+  const workerFound = worker.found;
   let engineRoot = null;
   let vendored = false;
   let engineFound = false;
   let engineReason = null;
   try {
-    const resolved = resolveEngineRoot(wrapperEntry, { env, existsSync, bridgeDir });
+    const resolved = resolveEngineRoot(wrapperEntry, {
+      env, existsSync, bridgeDir, packageCwd, resourcesPath,
+    });
     engineRoot = resolved.root;
     vendored = resolved.vendored;
     engineFound = true;
@@ -465,7 +548,7 @@ export const checkNativeParity = ({
     bunPath: bun.path,
     bunSource: bun.source,
     bunFound: bun.found,
-    workerEntry: worker,
+    workerEntry: worker.path,
     workerFound,
     engineRoot,
     vendored,
@@ -484,7 +567,7 @@ export const checkNativeParity = ({
       ok: false,
       code: 'OMO_NATIVE_UNAVAILABLE',
       path: 'wrapper',
-      message: `Native runner unavailable: native worker missing at "${worker}". The wrapper path is kept.`,
+      message: `Native runner unavailable: native worker missing at "${worker.path}". The wrapper path is kept.`,
       details,
     };
   }
