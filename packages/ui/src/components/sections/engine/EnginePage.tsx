@@ -10,6 +10,7 @@ import {
 } from '@/components/sections/shared/SettingsSection';
 import { SettingsCardPill } from '@/components/sections/shared/SettingsCards';
 import { fetchEngineStatus, type EngineStatus } from '@/lib/engine/engineStatus';
+import { EngineUsageSection } from './EngineUsageSection';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSettingsDirectory } from '@/hooks/useSettingsDirectory';
 import { selectProvidersForDirectory, useConfigStore } from '@/stores/useConfigStore';
@@ -229,6 +230,7 @@ export const EnginePage: React.FC = () => {
       showSaveStatus={false}
     >
       <StatusSection load={load} onRefresh={() => void loadStatus()} refreshing={refreshing} />
+      <EngineUsageSection />
       <RoutingSection />
     </SettingsPageLayout>
   );
