@@ -69,36 +69,88 @@ if (selfTest) {
 }
 
 // Loop-status mode: pure state reads over a ulw-loop state tree, no
-// execution, no session, no spend. Used as:
-//   --loop-status <repoRoot> [--session-id <id>] [--ledger-limit N]
-//   [--loop-src <dir>] (defaults to the engine-layout component dir).
-// Prints one JSON line { ok:true, sessionId, plan, ledgerTail }.
+// execution, no session, no spend. T2 loop-status contract:
+//   --loop-status [--session <id>] [--limit <n>] [--loop-src <dir>]
+// (--loop-src selects the reader modules and defaults to the engine-layout
+// component dir; the repo root handed to those readers is the working
+// directory.) Prints one JSON line { ok:true, sessionId, plan, ledgerTail }.
+// A bad session id, missing state, or unreadable readers degrade to
+// plan:null + ledgerTail:[] with exit 0; only unknown flags or missing
+// values fail closed with exit 2.
+const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const DEFAULT_LOOP_LIMIT = 50;
+const MAX_LOOP_LIMIT = 500;
+const clampLoopLimit = (limit: number): number => {
+  if (!Number.isFinite(limit)) return DEFAULT_LOOP_LIMIT;
+  return Math.max(1, Math.min(MAX_LOOP_LIMIT, Math.floor(limit)));
+};
+
 const loopStatusIndex = args.indexOf("--loop-status");
 if (loopStatusIndex !== -1) {
-  const loopArgSchema = z.object({
-    repoRoot: z.string().trim().min(1),
-    sessionId: z.string().trim().min(1).nullable().optional(),
-    ledgerLimit: z.number().int().min(1).max(500).optional(),
-    loopSrc: z.string().trim().min(1).optional(),
-  });
-  const parsedLoop = loopArgSchema.safeParse({
-    repoRoot: args[loopStatusIndex + 1]?.trim(),
-    sessionId: args.includes("--session-id") ? args[args.indexOf("--session-id") + 1]?.trim() : undefined,
-    ledgerLimit: args.includes("--ledger-limit") ? Number(args[args.indexOf("--ledger-limit") + 1]) : undefined,
-    loopSrc: args.includes("--loop-src") ? args[args.indexOf("--loop-src") + 1]?.trim() : undefined,
-  });
-  if (!parsedLoop.success) fail("loop-status needs a repo root with optional --session-id/--ledger-limit/--loop-src");
-  // SAFETY: success branch narrows data to the schema output; the alias names it for the block below.
-  const loopArgs = parsedLoop.data as z.infer<typeof loopArgSchema>;
-  const loopSrc = loopArgs.loopSrc ?? `${engineRoot}/packages/omo-codex/plugin/components/ulw-loop/src`;
+  let sessionId: string | null = null;
+  let sessionValid = true;
+  let ledgerLimit = DEFAULT_LOOP_LIMIT;
+  let loopSrc = `${engineRoot}/packages/omo-codex/plugin/components/ulw-loop/src`;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--loop-status") continue;
+    if (arg === "--engine-root" || arg === "--barrel-path") {
+      if (args[i + 1] === undefined) fail(`missing value for ${arg}`);
+      i++;
+      continue;
+    }
+    if (arg === "--session") {
+      const raw = args[i + 1];
+      if (raw === undefined) fail("missing value for --session");
+      i++;
+      // SAFETY: fail() above exits the process, so raw is a string here.
+      const value = raw as string;
+      if (!SESSION_ID_PATTERN.test(value)) {
+        sessionValid = false;
+        sessionId = null;
+      } else {
+        sessionId = value;
+      }
+      continue;
+    }
+    if (arg === "--limit") {
+      const raw = args[i + 1];
+      if (raw === undefined) fail("missing value for --limit");
+      i++;
+      // SAFETY: fail() above exits the process, so raw is a string here.
+      const parsed = Number.parseInt(raw as string, 10);
+      ledgerLimit = Number.isNaN(parsed) || parsed < 1 ? DEFAULT_LOOP_LIMIT : parsed;
+      continue;
+    }
+    if (arg === "--loop-src") {
+      const raw = args[i + 1];
+      if (raw === undefined || raw.trim() === "") fail("missing value for --loop-src");
+      i++;
+      // SAFETY: fail() above exits the process, so raw is a non-empty string here.
+      loopSrc = raw as string;
+      continue;
+    }
+    fail(`unknown argument: ${arg}`);
+  }
+  ledgerLimit = clampLoopLimit(ledgerLimit);
+  if (!sessionValid) {
+    console.log(JSON.stringify({ ok: true, sessionId: null, plan: null, ledgerTail: [] }));
+    process.exit(0);
+  }
   const anchorLoop = /^[a-zA-Z]+:/.test(loopSrc) ? loopSrc : pathToFileURL(path.resolve(loopSrc)).href;
-  const [planIo, planCrud, ledgerMod]: unknown[] = await Promise.all([
-    import(`${anchorLoop}/plan-io.ts`),
-    import(`${anchorLoop}/plan-crud.ts`),
-    import(`${anchorLoop}/ledger.ts`),
-  ]).catch((error) => {
-    fail(`cannot import loop state readers: ${error instanceof Error ? error.message : error}`);
-  });
+  let planIo: unknown;
+  let planCrud: unknown;
+  let ledgerMod: unknown;
+  try {
+    [planIo, planCrud, ledgerMod] = await Promise.all([
+      import(`${anchorLoop}/plan-io.ts`),
+      import(`${anchorLoop}/plan-crud.ts`),
+      import(`${anchorLoop}/ledger.ts`),
+    ]);
+  } catch {
+    console.log(JSON.stringify({ ok: true, sessionId, plan: null, ledgerTail: [] }));
+    process.exit(0);
+  }
   interface LoopScope { sessionId?: string }
   type LoopJson = string | number | boolean | null | LoopJson[] | { [key: string]: LoopJson };
   interface LoopPlanIo { readUlwLoopPlanSync: (repoRoot: string, scope?: LoopScope) => LoopJson }
@@ -110,20 +162,23 @@ if (loopStatusIndex !== -1) {
   const planSummarizer = planCrud as LoopPlanCrud;
   // SAFETY: same vendored module shape as above; guarded call below.
   const ledgerReader = ledgerMod as LoopLedger;
-  const loopScope: LoopScope | undefined = loopArgs.sessionId ? { sessionId: loopArgs.sessionId } : undefined;
+  const loopScope: LoopScope | undefined = sessionId ? { sessionId } : undefined;
+  // The readers resolve state from a repo root; with no repoRoot flag the
+  // working directory is the root (mirrors the T2 loop-src default of cwd).
+  const loopRoot = process.cwd();
   let plan: LoopJson | null = null;
   try {
-    plan = planSummarizer.summarizeUlwLoopPlan(planReader.readUlwLoopPlanSync(loopArgs.repoRoot, loopScope));
+    plan = planSummarizer.summarizeUlwLoopPlan(planReader.readUlwLoopPlanSync(loopRoot, loopScope));
   } catch {
     plan = null;
   }
   let ledgerTail: LoopJson[] = [];
   try {
-    ledgerTail = ledgerReader.readLedger(loopArgs.repoRoot, loopScope).slice(-(loopArgs.ledgerLimit ?? 20));
+    ledgerTail = ledgerReader.readLedger(loopRoot, loopScope).slice(-ledgerLimit);
   } catch {
     ledgerTail = [];
   }
-  console.log(JSON.stringify({ ok: true, sessionId: loopArgs.sessionId ?? null, plan, ledgerTail }));
+  console.log(JSON.stringify({ ok: true, sessionId, plan, ledgerTail }));
   process.exit(0);
 }
 
@@ -142,9 +197,20 @@ const readJobLine = async (): Promise<string> => {
   return line as string;
 };
 
-const parsed = jobSchema.safeParse(JSON.parse(await readJobLine()));
-if (!parsed.success) fail("job needs a non-empty message with optional agent/model/directory/sessionId/port/attach");
-const job: Job = parsed.data;
+const readJob = async (): Promise<Job> => {
+  const line = await readJobLine();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(line);
+  } catch {
+    fail("job on stdin is not valid JSON");
+  }
+  const parsedJob = jobSchema.safeParse(raw);
+  if (!parsedJob.success) fail("job needs a non-empty message with optional agent/model/directory/sessionId/port/attach");
+  return parsedJob.data;
+};
+
+const job: Job = await readJob();
 
 // SAFETY: narrowed by the undefined/null check immediately below; self-test prints the real export names.
 const barrel = await loadBarrel();
