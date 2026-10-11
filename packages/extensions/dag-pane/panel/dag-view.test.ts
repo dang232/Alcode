@@ -1,4 +1,4 @@
-// View-model tests for the omo-dag-pane guest (project-ide todo 13).
+// View-model tests for the openchamber-builtin-dag-pane guest (project-ide todo 13).
 // bun:test, no DOM: the pure helpers only. The happy path consumes the
 // real todo-6 fixture through the real bridge writer shape, so the test
 // proves the pane renders what the adapter actually writes.
@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { parseSnapshotDoc } from './dag-view.ts';
 import { DAG_PANE_LOCALES, stringsFor } from './strings.ts';
-import fixture from '../../web/server/lib/opencode/omo-bridge-fixture.json';
+import fixture from '../../../web/server/lib/opencode/omo-bridge-fixture.json';
 
 const snapshotDoc = (sessionId: string) => {
   const writer = {
