@@ -1,4 +1,4 @@
-// Snapshot -> view parser for the omo-dag-pane guest (project-ide todo 13).
+// Snapshot -> view parser for the openchamber-builtin-dag-pane guest (project-ide todo 13).
 //
 // This module is the panel's I/O boundary: it reads the bridge snapshot
 // document the adapter-A writer produces (`{ schemaVersion: 1, sessionId,

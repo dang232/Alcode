@@ -1,6 +1,6 @@
 // DAG side-pane guest entry (project-ide todo 13).
 //
-// Third-party SDK guest (`omo-dag-pane`, never the builtin prefix): an
+// Built-in SDK guest (`openchamber-builtin-dag-pane`): an
 // iframe panel plus `connectHost` that renders bridge snapshots as run
 // graphs with node details, and steers/cancels the live session through
 // its own host-spawned service (`serviceRequest`), which wraps the
@@ -546,7 +546,7 @@ const boot = (): void => {
     document.getElementById('app')?.replaceChildren(
       (() => {
         const note = document.createElement('p');
-        note.textContent = 'omo-dag-pane loads only as a guest iframe.';
+        note.textContent = 'openchamber-builtin-dag-pane loads only as a guest iframe.';
         return note;
       })(),
     );

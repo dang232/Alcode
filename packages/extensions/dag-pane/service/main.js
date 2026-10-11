@@ -14,11 +14,11 @@ const port = Number.parseInt(process.env.OPENCHAMBER_SERVICE_PORT ?? '', 10);
 const token = process.env.OPENCHAMBER_SERVICE_TOKEN ?? '';
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  console.error('omo-dag-pane service: OPENCHAMBER_SERVICE_PORT is missing or invalid.');
+  console.error('openchamber-builtin-dag-pane service: OPENCHAMBER_SERVICE_PORT is missing or invalid.');
   process.exit(1);
 }
 if (token.length === 0) {
-  console.error('omo-dag-pane service: OPENCHAMBER_SERVICE_TOKEN is missing.');
+  console.error('openchamber-builtin-dag-pane service: OPENCHAMBER_SERVICE_TOKEN is missing.');
   process.exit(1);
 }
 
@@ -76,5 +76,5 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`omo-dag-pane service ready on 127.0.0.1:${port}`);
+  console.log(`openchamber-builtin-dag-pane service ready on 127.0.0.1:${port}`);
 });
