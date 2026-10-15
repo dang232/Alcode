@@ -1,5 +1,5 @@
 // The client-owned part of a project's config file
-// (`~/.config/openchamber/projects/<projectId>.json`): worktree setup
+// (`~/.config/alcode/projects/<projectId>.json`): worktree setup
 // commands, project actions, and pinned draft starters. A mirror of the
 // server's `packages/web/server/lib/projects/project-setup.js`; keep the
 // sanitizing rules in sync so a value written from VS Code reads back the

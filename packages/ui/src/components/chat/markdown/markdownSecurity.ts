@@ -21,7 +21,7 @@ export const DOCUMENT_HTML_ALLOWED_TAGS = [
 export const DOCUMENT_HTML_ALLOWED_ATTR = [
   'align', 'alt', 'checked', 'class', 'colspan', 'disabled', 'height', 'href', 'media', 'open',
   'rel', 'rowspan', 'src', 'srcset', 'start', 'target', 'title', 'type', 'width',
-  'data-md-details', 'data-oc-math', 'data-openchamber-agent-mention', 'data-skill-name',
+  'data-md-details', 'data-oc-math', 'data-alcode-agent-mention', 'data-skill-name',
 ] as const;
 
 // Author classes would reach the app's utility classes (`fixed inset-0 ...`),

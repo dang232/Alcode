@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-ui-auth-test-'));
-process.env.OPENCHAMBER_DATA_DIR = dataDir;
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-ui-auth-test-'));
+process.env.ALCODE_DATA_DIR = dataDir;
 
 afterAll(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
@@ -402,7 +402,7 @@ describe('ui auth client credential seam', () => {
       body: {
         alcoreToken: mintAlcoreToken(),
         issueClientToken: true,
-        clientLabel: 'OpenChamber Desktop',
+        clientLabel: 'Alcode Desktop',
       },
     };
     const res = createResponse();
@@ -410,7 +410,7 @@ describe('ui auth client credential seam', () => {
     await auth.handleSessionCreate(req, res);
 
     expect(res.body.clientToken).toBe('client-token');
-    expect(createClientInput.fallbackLabel).toBe('OpenChamber Desktop');
+    expect(createClientInput.fallbackLabel).toBe('Alcode Desktop');
     const expiresAt = Date.parse(createClientInput.expiresAt);
     expect(expiresAt).toBeGreaterThanOrEqual(before + 122_000);
     expect(expiresAt).toBeLessThanOrEqual(Date.now() + 124_000);
@@ -486,13 +486,13 @@ describe('ui auth service-verified session seam', () => {
     });
     const res = createResponse();
     await auth.handleServiceVerifiedSessionCreate(
-      { method: 'POST', headers: {}, socket: sock(30), body: { issueClientToken: true, clientLabel: 'OpenChamber Desktop' } },
+      { method: 'POST', headers: {}, socket: sock(30), body: { issueClientToken: true, clientLabel: 'Alcode Desktop' } },
       res,
       { sub: 'user-9', sid: 'sess-9' },
     );
     expect(res.statusCode).toBe(200);
     expect(res.body.clientToken).toBe('client-token');
-    expect(createClientInput).toMatchObject({ fallbackLabel: 'OpenChamber Desktop', authMethod: 'alcore' });
+    expect(createClientInput).toMatchObject({ fallbackLabel: 'Alcode Desktop', authMethod: 'alcore' });
   });
 });
 
@@ -578,7 +578,7 @@ describe('ui auth session profile read-through', () => {
     const issued = await loginRes(auth, {
       alcoreToken: mintAlcoreToken({ sub: 'user-9' }),
       issueClientToken: true,
-      clientLabel: 'OpenChamber Desktop',
+      clientLabel: 'Alcode Desktop',
       profile: PROFILE,
     });
     expect(issued.statusCode).toBe(200);

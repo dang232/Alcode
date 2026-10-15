@@ -20,7 +20,7 @@ const SWATCH_CLASS = 'flex h-6 w-6 shrink-0 items-center justify-center rounded-
 const SELECTED_CLASS = 'ring-2 ring-foreground ring-offset-2 ring-offset-background';
 
 /**
- * Colour picker for an agent's `color` config: automatic (OpenChamber picks a
+ * Colour picker for an agent's `color` config: automatic (Alcode picks a
  * theme colour), one of the presets, or a custom colour from the system picker
  * with its hex editable next to it. An empty value means automatic.
  */

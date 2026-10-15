@@ -1,4 +1,4 @@
-// Vendor OmO engine subset into Alwork packages/omo-engine (repeatable).
+// Vendor OmO engine subset into Alcode packages/omo-engine (repeatable).
 // Usage: bun script/vendor-omo-engine.mjs [--apply]
 //   default (no flag): dry run — prints what WOULD copy, changes nothing.
 //   --apply: wipe target, copy, rewrite @oh-my-opencode/* imports to
@@ -10,7 +10,7 @@ import path from "node:path";
 const APPLY = process.argv.includes("--apply");
 const MIGRATION_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 const ENGINE_PKGS = path.join(MIGRATION_ROOT, "oh-my-openAlcore", "packages");
-const TARGET = path.join(MIGRATION_ROOT, "Alwork-wt", "wave1", "packages", "omo-engine");
+const TARGET = path.join(MIGRATION_ROOT, "Alcode-wt", "wave1", "packages", "omo-engine");
 
 // Full packages vendored whole.
 const WHOLE = [

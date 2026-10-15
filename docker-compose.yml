@@ -1,34 +1,34 @@
 services:
-  openchamber:
+  alcode:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: openchamber
+    container_name: alcode
     ports:
       - "3000:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./data/openchamber:/home/openchamber/.config/openchamber
-      - ./data/opencode/share:/home/openchamber/.local/share/opencode
-      - ./data/opencode/state:/home/openchamber/.local/state/opencode
-      - ./data/opencode/config:/home/openchamber/.config/opencode
-      - ./data/ssh:/home/openchamber/.ssh
-      - ./workspaces:/home/openchamber/workspaces
+      - ./data/alcode:/home/alcode/.config/alcode
+      - ./data/opencode/share:/home/alcode/.local/share/opencode
+      - ./data/opencode/state:/home/alcode/.local/state/opencode
+      - ./data/opencode/config:/home/alcode/.config/opencode
+      - ./data/ssh:/home/alcode/.ssh
+      - ./workspaces:/home/alcode/workspaces
     environment:
-      # Docker binds OpenChamber to 0.0.0.0 for port mapping, so Alcore login is required.
+      # Docker binds Alcode to 0.0.0.0 for port mapping, so Alcore login is required.
       # Set this before starting, for example:
       #   ALCORE_JWT_SECRET="$(openssl rand -base64 32)" docker compose up -d
       # (JWT_SECRET is accepted as a server-side alias; rotation: ALCORE_JWT_SECRET_PREVIOUS.)
-      ALCORE_JWT_SECRET: ${ALCORE_JWT_SECRET:?Set ALCORE_JWT_SECRET before exposing OpenChamber through Docker}
-    # OPENCHAMBER_HOST: 0.0.0.0  # Bind address (default in Docker entrypoint: 0.0.0.0)
-    # OPENCHAMBER_TUNNEL_PROVIDER: cloudflare
-    # OPENCHAMBER_TUNNEL_MODE: quick  # quick | managed-remote | managed-local
-    # OPENCHAMBER_TUNNEL_HOSTNAME: app.example.com  # required for managed-remote
-    # OPENCHAMBER_TUNNEL_TOKEN: your_cloudflare_token  # required for managed-remote
-    # OPENCHAMBER_TUNNEL_CONFIG: /home/openchamber/.cloudflared/config.yml  # optional for managed-local
+      ALCORE_JWT_SECRET: ${ALCORE_JWT_SECRET:?Set ALCORE_JWT_SECRET before exposing Alcode through Docker}
+    # ALCODE_HOST: 0.0.0.0  # Bind address (default in Docker entrypoint: 0.0.0.0)
+    # ALCODE_TUNNEL_PROVIDER: cloudflare
+    # ALCODE_TUNNEL_MODE: quick  # quick | managed-remote | managed-local
+    # ALCODE_TUNNEL_HOSTNAME: app.example.com  # required for managed-remote
+    # ALCODE_TUNNEL_TOKEN: your_cloudflare_token  # required for managed-remote
+    # ALCODE_TUNNEL_CONFIG: /home/alcode/.cloudflared/config.yml  # optional for managed-local
     # OH_MY_OPENCODE: true # enable oh-my-opencode
     # OPENCODE_HOST: http://172.17.0.1:4096 # Connect to external OpenCode server
     # OPENCODE_SKIP_START: true # skip start opencode
-    # OPENCHAMBER_OPENCODE_HOSTNAME: 0.0.0.0 # Bind OpenCode to all interfaces
+    # ALCODE_OPENCODE_HOSTNAME: 0.0.0.0 # Bind OpenCode to all interfaces
     restart: unless-stopped

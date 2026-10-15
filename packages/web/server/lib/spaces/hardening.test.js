@@ -7,13 +7,13 @@ import { bridgeNetworkEntry, hardenedContainerEntry, internalNetworkEntry } from
 
 const ID = 'a1b2c3d4e5f6';
 const OWNER = 'install-a';
-const NETWORK = `openchamber-space-${ID}-network`;
-const WORK = `openchamber-space-${ID}-volume-work`;
-const HOME = `openchamber-space-${ID}-volume-home`;
+const NETWORK = `alcode-space-${ID}-network`;
+const WORK = `alcode-space-${ID}-volume-work`;
+const HOME = `alcode-space-${ID}-volume-home`;
 const GATEWAY_MODE = 'com.docker.network.bridge.gateway_mode_ipv4';
 const KEY = '0123456789abcdef';
-const TOOLS = `openchamber-tools-${OWNER}-${KEY}`;
-const TOOLS_PATH = '/opt/openchamber-tools';
+const TOOLS = `alcode-tools-${OWNER}-${KEY}`;
+const TOOLS_PATH = '/opt/alcode-tools';
 
 const labels = (role, change = {}) => buildSpaceLabels({
   id: ID,
@@ -27,7 +27,7 @@ const labels = (role, change = {}) => buildSpaceLabels({
 
 const toolsLabels = (change = {}) => buildToolsLabels({ role: 'tools', owner: OWNER, key: KEY, description: 'web 1.24.2, opencode 1.18.31', created: '2026-09-19T10:00:00.000Z', ...change });
 
-const goodContainer = () => hardenedContainerEntry({ name: `openchamber-space-${ID}-space`, labels: labels('space'), network: NETWORK, volumes: [WORK, HOME], toolsVolume: TOOLS });
+const goodContainer = () => hardenedContainerEntry({ name: `alcode-space-${ID}-space`, labels: labels('space'), network: NETWORK, volumes: [WORK, HOME], toolsVolume: TOOLS });
 const goodNetwork = () => internalNetworkEntry({ name: NETWORK, labels: labels('network') });
 const goodToolsVolume = () => ({ Name: TOOLS, Labels: toolsLabels() });
 
@@ -157,8 +157,8 @@ describe('findHardeningViolations', () => {
   });
 
   it('refuses any other variable, whatever its name says', () => {
-    const violations = findHardeningViolations({ spaceId: ID, owner: OWNER, container: withEnv(['NOT_OPENCHAMBER_UI_PASSWORD=x']), network: goodNetwork(), toolsVolume: goodToolsVolume() });
-    expect(violations).toEqual([{ check: 'environment', message: 'The container environment holds variables nobody set for it: NOT_OPENCHAMBER_UI_PASSWORD' }]);
+    const violations = findHardeningViolations({ spaceId: ID, owner: OWNER, container: withEnv(['NOT_ALCODE_UI_PASSWORD=x']), network: goodNetwork(), toolsVolume: goodToolsVolume() });
+    expect(violations).toEqual([{ check: 'environment', message: 'The container environment holds variables nobody set for it: NOT_ALCODE_UI_PASSWORD' }]);
   });
 
   describe('tools mount', () => {
@@ -178,14 +178,14 @@ describe('findHardeningViolations', () => {
     });
 
     it('reports a second tools mount', () => {
-      const second = { Type: 'volume', Name: `openchamber-tools-${OWNER}-ffffffffffffffff`, Source: '/var/lib/docker/volumes/x/_data', Destination: '/opt/more-tools', RW: false };
+      const second = { Type: 'volume', Name: `alcode-tools-${OWNER}-ffffffffffffffff`, Source: '/var/lib/docker/volumes/x/_data', Destination: '/opt/more-tools', RW: false };
       expect(checksFor({ container: withMount(second) })).toEqual(['mounts']);
       // Docker allows one mount per destination. An inspect result that shows two is not a space of ours.
       expect(checksFor({ container: withMount({ ...second, Destination: TOOLS_PATH }) })).toEqual(['tools_mount']);
     });
 
     it('reports the tools volume of another installation', () => {
-      const name = `openchamber-tools-install-b-${KEY}`;
+      const name = `alcode-tools-install-b-${KEY}`;
       const toolsVolume = { Name: name, Labels: toolsLabels({ owner: 'install-b' }) };
       expect(checksFor({ container: withToolsMount({ Name: name }), toolsVolume })).toEqual(['tools_mount', 'tools_labels']);
     });
@@ -207,7 +207,7 @@ describe('findHardeningViolations', () => {
 
     it('reports a tools volume that was not inspected, or another volume than the mounted one', () => {
       expect(checksFor({ toolsVolume: null })).toEqual(['tools_labels']);
-      expect(checksFor({ toolsVolume: { Name: `openchamber-tools-${OWNER}-ffffffffffffffff`, Labels: toolsLabels({ key: 'ffffffffffffffff' }) } })).toEqual(['tools_labels']);
+      expect(checksFor({ toolsVolume: { Name: `alcode-tools-${OWNER}-ffffffffffffffff`, Labels: toolsLabels({ key: 'ffffffffffffffff' }) } })).toEqual(['tools_labels']);
     });
 
     it('still reports a read-only mount that is not the tools mount', () => {
@@ -265,12 +265,12 @@ describe('findHardeningViolations', () => {
 });
 
 describe('findGatekeeperHardeningViolations', () => {
-  const OUTER = `openchamber-space-${ID}-outer-network`;
+  const OUTER = `alcode-space-${ID}-outer-network`;
   const GATEKEEPER_MEMORY = 268435456;
 
   const goodGatekeeper = () => {
     const container = hardenedContainerEntry({
-      name: `openchamber-space-${ID}-gatekeeper`,
+      name: `alcode-space-${ID}-gatekeeper`,
       labels: labels('gatekeeper'),
       network: NETWORK,
       mounts: [],
@@ -353,7 +353,7 @@ describe('findGatekeeperHardeningViolations', () => {
   it('demands exactly the two networks of this space, by name', () => {
     expect(gatekeeperChecks({ container: attachedTo({ [NETWORK]: { Aliases: ['gatekeeper'] } }) })).toEqual(['gatekeeper_networks']);
     expect(gatekeeperChecks({ container: attachedTo({ [NETWORK]: { Aliases: ['gatekeeper'] }, [OUTER]: {}, bridge: {} }) })).toEqual(['gatekeeper_networks']);
-    expect(gatekeeperChecks({ container: attachedTo({ [NETWORK]: { Aliases: ['gatekeeper'] }, 'openchamber-space-ffffffffffff-outer-network': {} }) })).toEqual(['gatekeeper_networks']);
+    expect(gatekeeperChecks({ container: attachedTo({ [NETWORK]: { Aliases: ['gatekeeper'] }, 'alcode-space-ffffffffffff-outer-network': {} }) })).toEqual(['gatekeeper_networks']);
     expect(gatekeeperChecks({ container: attachedTo({}) })).toEqual(['gatekeeper_networks']);
   });
 

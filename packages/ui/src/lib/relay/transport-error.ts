@@ -17,7 +17,7 @@
  * the engine is already answering, producing two independent AI responses.
  */
 
-const AMBIGUOUS_TRANSPORT_FLAG = '__openchamberAmbiguousTransport';
+const AMBIGUOUS_TRANSPORT_FLAG = '__alcodeAmbiguousTransport';
 const definiteRejections = new WeakSet<Error>();
 
 /** A routing response proves the request never reached its intended API. */

@@ -1,16 +1,16 @@
 {
-  "name": "@openchamber/electron",
+  "name": "@alcode/electron",
   "version": "2.1.1",
   "private": true,
-  "description": "Electron desktop runtime for OpenChamber",
-  "author": "OpenChamber",
+  "description": "Electron desktop runtime for Alcode",
+  "author": "Alcode",
   "type": "module",
   "main": "./dist-bundle/entry.mjs",
   "opencodeCli": {
     "version": "2.0.23"
   },
   "dependencies": {
-    "@openchamber/web": "workspace:*",
+    "@alcode/web": "workspace:*",
     "electron-context-menu": "^4.1.2",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
@@ -60,13 +60,13 @@
   },
   "build": {
     "appId": "dev.openchamber.desktop",
-    "productName": "OpenChamber",
+    "productName": "Alcode",
     "asarUnpack": [
-      "node_modules/@openchamber/web/server/built-in-extensions/**/*",
-      "node_modules/@openchamber/web/server/lib/opencode/omo-invoker-worker.ts",
-      "node_modules/@openchamber/web/server/lib/git/credential-helper.js",
-      "node_modules/@openchamber/web/server/lib/git/ssh-wrapper.js",
-      "node_modules/@openchamber/web/server/lib/git/repository-credential-helper.js"
+      "node_modules/@alcode/web/server/built-in-extensions/**/*",
+      "node_modules/@alcode/web/server/lib/opencode/omo-invoker-worker.ts",
+      "node_modules/@alcode/web/server/lib/git/credential-helper.js",
+      "node_modules/@alcode/web/server/lib/git/ssh-wrapper.js",
+      "node_modules/@alcode/web/server/lib/git/repository-credential-helper.js"
     ],
     "files": [
       "dist-bundle/entry.mjs",
@@ -117,7 +117,7 @@
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
       "extendInfo": {
         "CFBundleIconName": "AppIcon",
-        "NSLocalNetworkUsageDescription": "OpenChamber needs access to devices and services on your local network."
+        "NSLocalNetworkUsageDescription": "Alcode needs access to devices and services on your local network."
       },
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -143,14 +143,14 @@
       ],
       "category": "Development",
       "icon": "resources/icons/app-icon.svg",
-      "executableName": "openchamber",
+      "executableName": "alcode",
       "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
       "desktop": {
         "entry": {
-          "Name": "OpenChamber",
-          "Comment": "Desktop runtime for OpenChamber",
-          "Icon": "openchamber",
-          "StartupWMClass": "openchamber"
+          "Name": "Alcode",
+          "Comment": "Desktop runtime for Alcode",
+          "Icon": "alcode",
+          "StartupWMClass": "alcode"
         }
       }
     },
@@ -187,8 +187,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "openchamber",
-      "repo": "openchamber"
+      "owner": "dang232",
+      "repo": "Alcode"
     }
   }
 }

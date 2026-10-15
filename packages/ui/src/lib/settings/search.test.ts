@@ -28,7 +28,7 @@ describe('settings search', () => {
     }
   });
   test('finds the Claude Code integration by name and package, never in VS Code', () => {
-    for (const query of ['claude', '@openchamber/opencode-claude']) {
+    for (const query of ['claude', '@alcode/opencode-claude']) {
       for (const isVSCode of [false, true]) {
         const results = buildSettingsSearchResults({
           query,

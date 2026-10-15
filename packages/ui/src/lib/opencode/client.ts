@@ -6,9 +6,9 @@
  * does not: runtime-aware transport (`runtimeFetch`, read timeouts, directory
  * scoping through `x-opencode-directory`), error normalisation (v2 throws
  * tagged error bodies without an HTTP status), and projection of wire shapes
- * into the OpenChamber domain model (`./model`, `./projection`).
+ * into the Alcode domain model (`./model`, `./projection`).
  *
- * OpenChamber-owned server routes (`/api/fs/*`, `/api/opencode/*`) also live
+ * Alcode-owned server routes (`/api/fs/*`, `/api/opencode/*`) also live
  * here when they are part of the same directory/session workflows.
  */
 
@@ -149,7 +149,7 @@ class RuntimeRoutingResponseError extends Error {
 }
 
 const validateRuntimeResponse = (response: Response): Response => {
-  const unavailable = response.headers.get('x-openchamber-error') === 'runtime-unavailable'
+  const unavailable = response.headers.get('x-alcode-error') === 'runtime-unavailable'
   const html = response.ok && (response.headers.get('content-type') ?? '').toLowerCase().includes('text/html')
   if (!unavailable && !html) return response
   void response.body?.cancel().catch(() => undefined)
@@ -817,7 +817,7 @@ class OpencodeService {
    * Offline, permission, and other transport failures stay `unknown` so callers
    * do not treat a temporary outage as proof the path was deleted.
    *
-   * The probe is OpenChamber's own `/api/fs/directory-stat`, which asks the
+   * The probe is Alcode's own `/api/fs/directory-stat`, which asks the
    * server to stat the path without listing its contents. A runtime without
    * that route (VS Code) answers `unknown`.
    */
@@ -879,7 +879,7 @@ class OpencodeService {
         id: params?.id,
         title: params?.title,
         agent: params?.agent,
-        // Auto is OpenChamber's sentinel, not a model OpenCode can start a
+        // Auto is Alcode's sentinel, not a model OpenCode can start a
         // session on; the first send puts the session on Auto through the
         // model switch the server intercepts.
         model: params?.model && isAutoModel(params.model.providerID, params.model.id) ? undefined : params?.model,
@@ -1384,7 +1384,7 @@ class OpencodeService {
   }
 
   /**
-   * Cross-project busy/retry/idle map kept by the OpenChamber host from the
+   * Cross-project busy/retry/idle map kept by the Alcode host from the
    * single upstream event stream. One request that creates no OpenCode
    * instance, unlike `/session/status?directory=`. `null` means the fetch
    * failed; callers must preserve their current state.
@@ -1850,7 +1850,7 @@ class OpencodeService {
   }
 
   /**
-   * Classifies the OpenCode health probe. "unreachable" means the OpenChamber
+   * Classifies the OpenCode health probe. "unreachable" means the Alcode
    * server did not answer (network error or timeout); "unhealthy" means it
    * answered but OpenCode is not ready.
    */
@@ -1884,7 +1884,7 @@ class OpencodeService {
   }
 
   // -------------------------------------------------------------------------
-  // File System Operations (OpenChamber routes)
+  // File System Operations (Alcode routes)
   // -------------------------------------------------------------------------
 
   async createDirectory(
@@ -1902,7 +1902,7 @@ class OpencodeService {
     }
 
     if (options?.asProject) {
-      const response = await runtimeFetch('/api/openchamber/directory', {
+      const response = await runtimeFetch('/api/alcode/directory', {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2144,7 +2144,7 @@ class OpencodeService {
       return null
     }
 
-    const url = '/api/openchamber/directory'
+    const url = '/api/alcode/directory'
 
     try {
       const response = await runtimeFetch(url, {

@@ -396,7 +396,7 @@ const FileRow: React.FC<FileRowProps> = ({
     recordFileTreeDragStart(e);
     const path = getRelativePath(root, node.path);
     if (!path || path === '.') return;
-    e.dataTransfer.setData('application/x-openchamber-file-path', path);
+    e.dataTransfer.setData('application/x-alcode-file-path', path);
     e.dataTransfer.effectAllowed = 'copy';
   }, [node.path, root]);
 
@@ -1466,7 +1466,7 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
                       recordFileTreeDragStart(e);
                       const path = node.relativePath || getRelativePath(root ?? '', node.path);
                       if (!path || path === '.') return;
-                      e.dataTransfer.setData('application/x-openchamber-file-path', path);
+                      e.dataTransfer.setData('application/x-alcode-file-path', path);
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={(e) => {

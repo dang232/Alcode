@@ -100,7 +100,7 @@ describe('realtime proxy URL builders', () => {
     const url = new URL(buildRealtimeProxySseUrl('http://127.0.0.1:57123', 'https://remote.example/api/global/event?x=1'));
 
     expect(url.origin).toBe('http://127.0.0.1:57123');
-    expect(url.pathname).toBe('/api/openchamber/realtime-proxy/sse');
+    expect(url.pathname).toBe('/api/alcode/realtime-proxy/sse');
     expect(url.searchParams.get('url')).toBe('https://remote.example/api/global/event?x=1');
   });
 
@@ -109,7 +109,7 @@ describe('realtime proxy URL builders', () => {
 
     expect(url.protocol).toBe('wss:');
     expect(url.host).toBe('127.0.0.1:57123');
-    expect(url.pathname).toBe('/api/openchamber/realtime-proxy/ws');
+    expect(url.pathname).toBe('/api/alcode/realtime-proxy/ws');
     expect(url.searchParams.get('url')).toBe('wss://remote.example/api/global/event/ws');
   });
 });
@@ -124,7 +124,7 @@ describe('realtime proxy', () => {
         headers: {
           Accept: 'text/event-stream',
           'Last-Event-ID': 'evt-42',
-          Origin: 'openchamber-ui://app',
+          Origin: 'alcode-ui://app',
         },
       });
 
@@ -145,7 +145,7 @@ describe('realtime proxy', () => {
 
     try {
       const response = await fetch(buildRealtimeProxySseUrl(origin, `${upstream.origin}/api/global/event`), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app' },
       });
 
       expect(response.status).toBe(401);
@@ -177,7 +177,7 @@ describe('realtime proxy', () => {
 
     try {
       const response = await fetch(buildRealtimeProxySseUrl(origin, `${upstream.origin}/api/global/event`), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app' },
       });
 
       expect(response.status).toBe(404);
@@ -193,7 +193,7 @@ describe('realtime proxy', () => {
 
     try {
       const response = await fetch(buildRealtimeProxySseUrl(origin, `${upstream.origin}/api/config/settings`), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app' },
       });
 
       expect(response.status).toBe(404);
@@ -219,7 +219,7 @@ describe('realtime proxy', () => {
     try {
       const target = `${upstreamOrigin.replace(/^http:/, 'ws:')}/api/global/event/ws?lastEventId=evt-1`;
       const client = new WebSocket(buildRealtimeProxyWsUrl(origin, target), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app' },
       });
       await new Promise((resolve, reject) => {
         client.once('open', resolve);
@@ -252,7 +252,7 @@ describe('realtime proxy', () => {
     const upstreamOrigin = await listen(upstreamServer);
     const { origin, runtime } = await startProxyServer({ apiBaseUrl: upstreamOrigin });
     const attempt = (path) => new Promise((resolve, reject) => {
-      const client = new WebSocket(buildRealtimeProxyWsUrl(origin, `${upstreamOrigin.replace(/^http:/, 'ws:')}${path}`), { headers: { Origin: 'openchamber-ui://app' } });
+      const client = new WebSocket(buildRealtimeProxyWsUrl(origin, `${upstreamOrigin.replace(/^http:/, 'ws:')}${path}`), { headers: { Origin: 'alcode-ui://app' } });
       client.once('message', (data) => { client.close(); resolve({ message: data.toString() }); });
       client.once('close', (code) => resolve({ code }));
       client.once('error', reject);
@@ -283,7 +283,7 @@ describe('realtime proxy', () => {
     try {
       const target = `${upstreamOrigin.replace(/^http:/, 'ws:')}/api/global/event/ws`;
       const client = new WebSocket(buildRealtimeProxyWsUrl(origin, target), {
-        headers: { Origin: 'openchamber-ui://app', Authorization: `Bearer ${mintAlcoreToken()}` },
+        headers: { Origin: 'alcode-ui://app', Authorization: `Bearer ${mintAlcoreToken()}` },
       });
       const message = await new Promise((resolve, reject) => {
         client.once('message', (data) => resolve(data.toString()));

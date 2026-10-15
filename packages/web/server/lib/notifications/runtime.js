@@ -19,7 +19,7 @@ export const createNotificationTriggerRuntime = (deps) => {
     isAnyInteractiveClientVisible,
     buildOpenCodeUrl,
     getOpenCodeAuthHeaders,
-    // OpenChamber's own session metadata (the goal lives there, not on the
+    // Alcode's own session metadata (the goal lives there, not on the
     // OpenCode record). Optional: without it no goal can suppress a push.
     readSessionMetadata = null,
   } = deps;
@@ -366,7 +366,7 @@ export const createNotificationTriggerRuntime = (deps) => {
     if (!sessionId || typeof readSessionMetadata !== 'function') return false;
     try {
       const metadata = await readSessionMetadata(sessionId);
-      const goal = metadata?.openchamber?.goal;
+      const goal = metadata?.alcode?.goal;
       return Boolean(goal && typeof goal === 'object' && goal.status === 'active');
     } catch {
       return false;

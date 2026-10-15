@@ -22,7 +22,7 @@ permissions:
 jobs:
   collect:
     name: Collect pull requests
-    if: ${{ github.repository == 'openchamber/openchamber' }}
+    if: ${{ github.repository == 'dang232/Alcode' }}
     runs-on: ubuntu-latest
     outputs:
       targets: ${{ steps.collect.outputs.targets }}
@@ -188,7 +188,7 @@ jobs:
 
             // Parking rule: XL or bigger, no Ideas discussion linked, author without
             // write access. The team agrees on product decisions off GitHub.
-            const discussionLink = /github\.com\/openchamber\/openchamber\/discussions\/\d+/i;
+            const discussionLink = /github\.com\/alcode\/alcode\/discussions\/\d+/i;
             const isLarge = sizeLabel === "size:XL" || sizeLabel === "size:XXL";
             const hasDiscussion = discussionLink.test(pr.body ?? "");
             const parkingExempt = ["pinned", "help wanted", "security"];

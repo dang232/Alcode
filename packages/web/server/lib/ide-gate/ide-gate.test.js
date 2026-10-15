@@ -72,10 +72,10 @@ describe('ide gate fixture', () => {
     expect(IDE_GATE_DEFAULT_TTL_MINUTES).toBe(15);
   });
 
-  it('matches the Alwork matrix fixture tier-for-tier', () => {
+  it('matches the Alcode matrix fixture tier-for-tier', () => {
     const vendored = readFixtureTiers();
     const upstream = loadTierMatrixFixture(
-      readFileSync('I:/migration/Alwork/config/ide-tier-matrix.json', 'utf8'),
+      readFileSync('I:/migration/Alcode/config/ide-tier-matrix.json', 'utf8'),
     ).tiers;
     expect(upstream).toEqual(vendored);
   });

@@ -14,16 +14,16 @@ export const parseServeCliOptions = ({
     env.ALCORE_ISSUER ||
     env.AUTH_ISSUER ||
     undefined;
-  const envCfTunnel = env.OPENCHAMBER_TRY_CF_TUNNEL === 'true';
-  const envTunnelProvider = env.OPENCHAMBER_TUNNEL_PROVIDER || undefined;
-  const envTunnelMode = env.OPENCHAMBER_TUNNEL_MODE || undefined;
-  const envTunnelConfigRaw = env.OPENCHAMBER_TUNNEL_CONFIG;
+  const envCfTunnel = env.ALCODE_TRY_CF_TUNNEL === 'true';
+  const envTunnelProvider = env.ALCODE_TUNNEL_PROVIDER || undefined;
+  const envTunnelMode = env.ALCODE_TUNNEL_MODE || undefined;
+  const envTunnelConfigRaw = env.ALCODE_TUNNEL_CONFIG;
   const envTunnelConfig = typeof envTunnelConfigRaw === 'string'
     ? (envTunnelConfigRaw.trim().length > 0 ? envTunnelConfigRaw.trim() : null)
     : undefined;
-  const envTunnelToken = env.OPENCHAMBER_TUNNEL_TOKEN || undefined;
-  const envTunnelHostname = env.OPENCHAMBER_TUNNEL_HOSTNAME || undefined;
-  const envApiOnly = env.OPENCHAMBER_API_ONLY === '1' || env.OPENCHAMBER_API_ONLY === 'true';
+  const envTunnelToken = env.ALCODE_TUNNEL_TOKEN || undefined;
+  const envTunnelHostname = env.ALCODE_TUNNEL_HOSTNAME || undefined;
+  const envApiOnly = env.ALCODE_API_ONLY === '1' || env.ALCODE_API_ONLY === 'true';
 
   const options = {
     port: defaultPort,

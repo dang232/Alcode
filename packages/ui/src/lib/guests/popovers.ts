@@ -1,4 +1,4 @@
-import type { GuestPopoverRequest, GuestPopoverSide } from '@openchamber/sdk';
+import type { GuestPopoverRequest, GuestPopoverSide } from '@alcode/sdk';
 
 type GuestPopoverFrameBounds = {
   left: number;

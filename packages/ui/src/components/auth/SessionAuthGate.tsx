@@ -9,7 +9,7 @@ import { syncDesktopSettings, initializeAppearancePreferences } from '@/lib/pers
 import { applyPersistedDirectoryPreferences } from '@/lib/directoryPersistence';
 import { ensureHomeDirectoryResolved, useDirectoryStore } from '@/stores/useDirectoryStore';
 import { DesktopHostSwitcherInline } from '@/components/desktop/DesktopHostSwitcher';
-import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
+import { AlcodeLogo } from '@/components/ui/AlcodeLogo';
 import { Icon } from "@/components/icon/Icon";
 import { useI18n } from '@/lib/i18n';
 import { runtimeFetch } from '@/lib/runtime-fetch';
@@ -42,13 +42,13 @@ const HOME_RESOLUTION_WAIT_MS = 10_000;
 // answers (200/401/429) are never retried.
 const TRANSIENT_RETRY_MAX_ATTEMPTS = 4;
 const TRANSIENT_RETRY_BASE_DELAY_MS = 1_500;
-const TRUST_DEVICE_STORAGE_KEY = 'openchamber.uiAuth.trustDevice';
+const TRUST_DEVICE_STORAGE_KEY = 'alcode.uiAuth.trustDevice';
 const LOCAL_DESKTOP_CLIENT_KIND = 'desktop-local';
 const LOCAL_DESKTOP_CLIENT_DEDUPE_KEY = 'desktop-local';
 
 const readLocalOrigin = (): string => {
   if (typeof window === 'undefined') return '';
-  const injected = (window as typeof window & { __OPENCHAMBER_LOCAL_ORIGIN__?: string }).__OPENCHAMBER_LOCAL_ORIGIN__;
+  const injected = (window as typeof window & { __ALCODE_LOCAL_ORIGIN__?: string }).__ALCODE_LOCAL_ORIGIN__;
   return typeof injected === 'string' ? injected.trim() : '';
 };
 
@@ -158,7 +158,7 @@ const issueDesktopClientToken = async (): Promise<string> => {
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: JSON.stringify({ label: 'OpenChamber Desktop', ...desktopClientAuthMetadata() }),
+    body: JSON.stringify({ label: 'Alcode Desktop', ...desktopClientAuthMetadata() }),
   }).catch(() => null);
   if (!response?.ok) {
     return '';
@@ -276,7 +276,7 @@ const AuthShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const LoadingScreen: React.FC = () => (
   <div className="flex min-h-dvh items-center justify-center bg-[var(--splash-background,var(--surface-background))] text-foreground">
-    <OpenChamberLogo width={120} height={120} variant="splash" />
+    <AlcodeLogo width={120} height={120} variant="splash" />
   </div>
 );
 
@@ -721,7 +721,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({
   const sessionRequestFields = () => ({
     trustDevice,
     issueClientToken: shouldIssueDesktopClientToken(),
-    clientLabel: 'OpenChamber Desktop',
+    clientLabel: 'Alcode Desktop',
     ...desktopClientAuthMetadata(),
   });
 
@@ -1045,7 +1045,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({
     try {
       const payload = await authenticateWithPasskey(trustDevice, {
         issueClientToken: shouldIssueDesktopClientToken(),
-        clientLabel: 'OpenChamber Desktop',
+        clientLabel: 'Alcode Desktop',
         ...desktopClientAuthMetadata(),
       }) as { clientToken?: unknown } | null;
       const clientToken = shouldIssueDesktopClientToken() && typeof payload?.clientToken === 'string' && payload.clientToken.trim()
@@ -1176,7 +1176,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({
                 className="w-full space-y-2"
               >
                 <Input
-                  id="openchamber-signin-email"
+                  id="alcode-signin-email"
                   ref={emailInputRef}
                   type="email"
                   autoComplete="email"
@@ -1281,7 +1281,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({
             >
               <p className="typography-meta text-muted-foreground truncate text-center">{email.trim()}</p>
               <Input
-                id="openchamber-signin-password"
+                id="alcode-signin-password"
                 type="password"
                 autoComplete="current-password"
                 placeholder={t('sessionAuth.signin.passwordPlaceholder')}
@@ -1349,7 +1349,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({
             >
               <p className="typography-meta text-muted-foreground truncate text-center">{email.trim()}</p>
               <Input
-                id="openchamber-signin-new-password"
+                id="alcode-signin-new-password"
                 type="password"
                 autoComplete="new-password"
                 placeholder={t('sessionAuth.signin.passwordPlaceholder')}
@@ -1419,7 +1419,7 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({
                 {t('sessionAuth.signin.codeDescription', { email: email.trim() })}
               </p>
               <Input
-                id="openchamber-signin-code"
+                id="alcode-signin-code"
                 type="text"
                 autoComplete="one-time-code"
                 inputMode="numeric"

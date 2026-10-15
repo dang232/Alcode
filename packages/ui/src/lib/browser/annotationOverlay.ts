@@ -48,16 +48,16 @@ export type BrowserAnnotationOverlayLabels = {
   readonly submit: string;
 };
 
-const ANNOTATION_ACTIVE_FLAG = '__openchamberBrowserAnnotationActive';
+const ANNOTATION_ACTIVE_FLAG = '__alcodeBrowserAnnotationActive';
 
 /** Cancels an overlay left behind by an earlier session. Safe when none is active. */
 export const ANNOTATION_TEARDOWN_SCRIPT = `(() => {
   try {
-    var host = document.querySelector('[data-openchamber-annotation]');
+    var host = document.querySelector('[data-alcode-annotation]');
     if (host && host.parentNode) host.parentNode.removeChild(host);
   } catch (error) { /* page navigated away */ }
   try {
-    var cursor = document.getElementById('openchamber-annotation-cursor');
+    var cursor = document.getElementById('alcode-annotation-cursor');
     if (cursor && cursor.parentNode) cursor.parentNode.removeChild(cursor);
   } catch (error) { /* page navigated away */ }
   try { delete window['${ANNOTATION_ACTIVE_FLAG}']; } catch (error) { /* non-configurable */ }
@@ -72,7 +72,7 @@ export const buildAnnotationOverlayScript = (
   var CONFIG = ${config};
   var THEME = CONFIG.theme;
   var LABELS = CONFIG.labels;
-  var OVERLAY_ATTR = 'data-openchamber-annotation';
+  var OVERLAY_ATTR = 'data-alcode-annotation';
   var Z_OVERLAY = 2147483646;
   var MAX_TEXT = 400;
   var MIN_RECT = 3;
@@ -239,7 +239,7 @@ export const buildAnnotationOverlayScript = (
   shadow.appendChild(style);
 
   var cursorStyle = document.createElement('style');
-  cursorStyle.id = 'openchamber-annotation-cursor';
+  cursorStyle.id = 'alcode-annotation-cursor';
   document.head.appendChild(cursorStyle);
   var setCursor = function (value) {
     cursorStyle.textContent = value ? '*{cursor:' + value + ' !important}' : '';

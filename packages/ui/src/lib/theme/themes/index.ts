@@ -4,24 +4,24 @@ import { withPrColors } from './prColors';
 import { requireTheme } from '../definition';
 import flexokiLightRaw from './flexoki-light.json';
 import flexokiDarkRaw from './flexoki-dark.json';
-import openchamberLightRaw from './openchamber-light.json';
-import openchamberDarkRaw from './openchamber-dark.json';
+import alcodeLightRaw from './alcode-light.json';
+import alcodeDarkRaw from './alcode-dark.json';
 
 const flexokiLightTheme = withPrColors(requireTheme(flexokiLightRaw));
 const flexokiDarkTheme = withPrColors(requireTheme(flexokiDarkRaw));
-const openchamberLightTheme = withPrColors(requireTheme(openchamberLightRaw));
-const openchamberDarkTheme = withPrColors(requireTheme(openchamberDarkRaw));
+const alcodeLightTheme = withPrColors(requireTheme(alcodeLightRaw));
+const alcodeDarkTheme = withPrColors(requireTheme(alcodeDarkRaw));
 
-export const DEFAULT_LIGHT_THEME_ID = 'openchamber-light' as const;
-export const DEFAULT_DARK_THEME_ID = 'openchamber-dark' as const;
+export const DEFAULT_LIGHT_THEME_ID = 'alcode-light' as const;
+export const DEFAULT_DARK_THEME_ID = 'alcode-dark' as const;
 
 export const themes: Theme[] = [
-  openchamberLightTheme,
-  openchamberDarkTheme,
+  alcodeLightTheme,
+  alcodeDarkTheme,
   flexokiLightTheme,
   flexokiDarkTheme,
   ...presetThemes.filter(
-    (theme) => theme.metadata.id !== 'openchamber-light' && theme.metadata.id !== 'openchamber-dark',
+    (theme) => theme.metadata.id !== 'alcode-light' && theme.metadata.id !== 'alcode-dark',
   ),
 ];
 

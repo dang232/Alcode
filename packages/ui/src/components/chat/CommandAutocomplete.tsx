@@ -15,7 +15,7 @@ import { commandMatchesSearch, mergeCommandAutocompleteItems } from './commandAu
 import { useGuestCommands } from '@/hooks/useGuestSurfaces';
 import { AutocompleteRowTooltip } from './composer/ui/AutocompleteRowTooltip';
 
-type CommandSource = 'openchamber' | 'opencode' | 'skill' | 'extension';
+type CommandSource = 'alcode' | 'opencode' | 'skill' | 'extension';
 
 export interface CommandInfo {
   id: string;
@@ -26,7 +26,7 @@ export interface CommandInfo {
   agent?: string;
   model?: string;
   isBuiltIn?: boolean;
-  isOpenChamber?: boolean;
+  isAlcode?: boolean;
   isSkill?: boolean;
   scope?: string;
   /** Name of the extension that contributed the command; shown as its badge. */
@@ -164,64 +164,64 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
 
         const builtInCommands: CommandInfo[] = [
           ...(hasSession
-            ? [{ id: 'openchamber:init', name: 'init', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.initDescription'), isBuiltIn: true }]
+            ? [{ id: 'alcode:init', name: 'init', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.initDescription'), isBuiltIn: true }]
             : []
           ),
           ...(hasSession  // Show when session exists, not when hasMessages
             ? [
-                { id: 'openchamber:undo', name: 'undo', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.undoDescription'), isBuiltIn: true },
-                { id: 'openchamber:redo', name: 'redo', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.redoDescription'), isBuiltIn: true },
-                { id: 'openchamber:timeline', name: 'timeline', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.timelineDescription'), isBuiltIn: true },
-                { id: 'openchamber:compact', name: 'compact', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.compactDescription'), isBuiltIn: true },
+                { id: 'alcode:undo', name: 'undo', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.undoDescription'), isBuiltIn: true },
+                { id: 'alcode:redo', name: 'redo', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.redoDescription'), isBuiltIn: true },
+                { id: 'alcode:timeline', name: 'timeline', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.timelineDescription'), isBuiltIn: true },
+                { id: 'alcode:compact', name: 'compact', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.compactDescription'), isBuiltIn: true },
               ]
             : []
           ),
           ...(hasSession
-            ? [{ id: 'openchamber:btw', name: 'btw', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.btwDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:btw', name: 'btw', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.btwDescription'), isAlcode: true }]
             : []
           ),
           ...(hasSession
-            ? [{ id: 'openchamber:fork', name: 'fork', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.forkDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:fork', name: 'fork', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.forkDescription'), isAlcode: true }]
             : []
           ),
           ...(hasSession
-            ? [{ id: 'openchamber:summary', name: 'summary', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.summaryDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:summary', name: 'summary', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.summaryDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:workspace-review', name: 'workspace-review', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.workspaceReviewDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:workspace-review', name: 'workspace-review', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.workspaceReviewDescription'), isAlcode: true }]
             : []
           ),
           ...(canUseReviewHandoffFlow
-            ? [{ id: 'openchamber:handoff-review', name: 'handoff-review', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.handoffReviewDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:handoff-review', name: 'handoff-review', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.handoffReviewDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:plan-feature', name: 'plan-feature', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.featurePlanDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:plan-feature', name: 'plan-feature', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.featurePlanDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:craft-goal', name: 'craft-goal', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.craftGoalDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:craft-goal', name: 'craft-goal', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.craftGoalDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:schedule-task', name: 'schedule-task', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.scheduleTaskDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:schedule-task', name: 'schedule-task', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.scheduleTaskDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:catch-up', name: 'catch-up', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.catchUpDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:catch-up', name: 'catch-up', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.catchUpDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:debug', name: 'debug', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.debugDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:debug', name: 'debug', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.debugDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:weigh', name: 'weigh', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.weighDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:weigh', name: 'weigh', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.weighDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:explore', name: 'explore', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.exploreDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:explore', name: 'explore', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.exploreDescription'), isAlcode: true }]
             : []
           ),
         ];
@@ -254,64 +254,64 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
 
         const builtInCommands: CommandInfo[] = [
           ...(hasSession
-            ? [{ id: 'openchamber:init', name: 'init', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.initDescription'), isBuiltIn: true }]
+            ? [{ id: 'alcode:init', name: 'init', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.initDescription'), isBuiltIn: true }]
             : []
           ),
           ...(hasSession  // Show when session exists, not when hasMessages
             ? [
-                { id: 'openchamber:undo', name: 'undo', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.undoDescription'), isBuiltIn: true },
-                { id: 'openchamber:redo', name: 'redo', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.redoDescription'), isBuiltIn: true },
-                { id: 'openchamber:timeline', name: 'timeline', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.timelineDescription'), isBuiltIn: true },
+                { id: 'alcode:undo', name: 'undo', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.undoDescription'), isBuiltIn: true },
+                { id: 'alcode:redo', name: 'redo', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.redoDescription'), isBuiltIn: true },
+                { id: 'alcode:timeline', name: 'timeline', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.timelineDescription'), isBuiltIn: true },
               ]
             : []
           ),
-          { id: 'openchamber:compact', name: 'compact', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.compactDescription'), isBuiltIn: true },
+          { id: 'alcode:compact', name: 'compact', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.compactDescription'), isBuiltIn: true },
           ...(hasSession
-            ? [{ id: 'openchamber:btw', name: 'btw', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.btwDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:btw', name: 'btw', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.btwDescription'), isAlcode: true }]
             : []
           ),
           ...(hasSession
-            ? [{ id: 'openchamber:fork', name: 'fork', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.forkDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:fork', name: 'fork', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.forkDescription'), isAlcode: true }]
             : []
           ),
           ...(hasSession
-            ? [{ id: 'openchamber:summary', name: 'summary', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.summaryDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:summary', name: 'summary', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.summaryDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:workspace-review', name: 'workspace-review', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.workspaceReviewDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:workspace-review', name: 'workspace-review', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.workspaceReviewDescription'), isAlcode: true }]
             : []
           ),
           ...(canUseReviewHandoffFlow
-            ? [{ id: 'openchamber:handoff-review', name: 'handoff-review', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.handoffReviewDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:handoff-review', name: 'handoff-review', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.handoffReviewDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:plan-feature', name: 'plan-feature', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.featurePlanDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:plan-feature', name: 'plan-feature', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.featurePlanDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:craft-goal', name: 'craft-goal', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.craftGoalDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:craft-goal', name: 'craft-goal', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.craftGoalDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:schedule-task', name: 'schedule-task', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.scheduleTaskDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:schedule-task', name: 'schedule-task', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.scheduleTaskDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:catch-up', name: 'catch-up', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.catchUpDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:catch-up', name: 'catch-up', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.catchUpDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:debug', name: 'debug', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.debugDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:debug', name: 'debug', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.debugDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:weigh', name: 'weigh', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.weighDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:weigh', name: 'weigh', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.weighDescription'), isAlcode: true }]
             : []
           ),
           ...(canStartSessionCommand
-            ? [{ id: 'openchamber:explore', name: 'explore', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.exploreDescription'), isOpenChamber: true }]
+            ? [{ id: 'alcode:explore', name: 'explore', source: 'alcode' as const, description: t('chat.commandAutocomplete.command.exploreDescription'), isAlcode: true }]
             : []
           ),
         ];
@@ -425,7 +425,7 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
           <div>
             {commands.map((command, index) => {
               const isSystem = command.isBuiltIn;
-              const isOpenChamberBadge = command.isOpenChamber;
+              const isAlcodeBadge = command.isAlcode;
               return (
                 <AutocompleteRowTooltip description={command.description} active={!isMobile && index === selectedIndex}>
                 <div
@@ -508,9 +508,9 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
                         <span className={NEUTRAL_BADGE_CLASS}>
                           {command.extensionName}
                         </span>
-                      ) : isOpenChamberBadge ? (
+                      ) : isAlcodeBadge ? (
                         <span className={NEUTRAL_BADGE_CLASS}>
-                          OpenChamber
+                          Alcode
                         </span>
                       ) : isSystem ? (
                         <span className={NEUTRAL_BADGE_CLASS}>

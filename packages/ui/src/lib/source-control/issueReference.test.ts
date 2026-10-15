@@ -11,15 +11,15 @@ describe('parseIssueReference', () => {
     expect(parseIssueReference('https://github.com/openchamber/openchamber/issues/42')).toEqual({
       number: 42,
       identity: { provider: 'github', instance: 'github.com' },
-      project: { owner: 'openchamber', name: 'openchamber' },
+      project: { owner: 'dang232', name: 'alcode' },
     });
   });
 
   test('parses GitLab issue URLs with nested groups', () => {
-    expect(parseIssueReference('https://gitlab.example.com/platform/tools/openchamber/-/issues/42')).toEqual({
+    expect(parseIssueReference('https://gitlab.example.com/platform/tools/alcode/-/issues/42')).toEqual({
       number: 42,
       identity: { provider: 'gitlab', instance: 'https://gitlab.example.com' },
-      project: { owner: 'platform/tools', name: 'openchamber' },
+      project: { owner: 'platform/tools', name: 'alcode' },
     });
   });
 

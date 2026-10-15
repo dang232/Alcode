@@ -1,4 +1,4 @@
-import { HostRequestError, type GuestStatusControl, type GuestStatusControlEvent } from '@openchamber/sdk';
+import { HostRequestError, type GuestStatusControl, type GuestStatusControlEvent } from '@alcode/sdk';
 
 export type GuestStatusControlBinding = {
   controls: GuestStatusControl[];

@@ -1,5 +1,5 @@
 
-import { OPENCHAMBER_SDK_API_VERSION, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL } from './api-version.ts';
 import type { FileEditorChange, FileEditorDocument, FileSnapshotRequest, FileSnapshotResultPayload } from './file-editor.ts';
 import type { GuestRunningShellsSnapshot, GuestShellOutputRequest, GuestShellOutputResult, GuestShellStopResult, GuestShellsSubscription } from './shells.ts';
 import type { GuestSessionWorktree, GuestStorageRequest, GuestStorageResult, GuestWorkspaceQuery, GuestWorkspaceSnapshot, GuestWorkspaceSubscription, GuestWorkspaceUpdate, GuestWorktree } from './workspace.ts';
@@ -584,8 +584,8 @@ export const isGuestRequestPath = (value: string): boolean => {
 // the two agree at compile time.
 
 type Envelope = {
-  channel: typeof OPENCHAMBER_SDK_CHANNEL;
-  v: typeof OPENCHAMBER_SDK_API_VERSION;
+  channel: typeof ALCODE_SDK_CHANNEL;
+  v: typeof ALCODE_SDK_API_VERSION;
 };
 
 export type HostReadyMessage = Envelope & { type: 'ready'; payload: HostReadyContext };
@@ -802,8 +802,8 @@ const readResultMessage = (wire: WireRecord): HostResultMessage | null => {
   if (!isNonEmptyString(wire.id)) return null;
   if (wire.ok === true) {
     const message: HostResultMessage = {
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'result',
       id: wire.id,
       ok: true,
@@ -818,8 +818,8 @@ const readResultMessage = (wire: WireRecord): HostResultMessage | null => {
   }
   if (wire.ok === false && isNonEmptyString(wire.error)) {
     return {
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'result',
       id: wire.id,
       ok: false,
@@ -835,11 +835,11 @@ const readResultMessage = (wire: WireRecord): HostResultMessage | null => {
  * (the client only listens to `event.source === parent`), so this checks the
  * envelope and the discriminant rather than every field, and the guest bundle
  * carries no schema library for it. The host side parses guest input with
- * `guestMessageSchema` in `@openchamber/sdk/schemas`.
+ * `guestMessageSchema` in `@alcode/sdk/schemas`.
  */
 export const readHostMessage = (data: MessageEvent['data']): HostMessage | null => {
   const wire = asWireRecord(data);
-  if (!wire || wire.channel !== OPENCHAMBER_SDK_CHANNEL || wire.v !== OPENCHAMBER_SDK_API_VERSION) return null;
+  if (!wire || wire.channel !== ALCODE_SDK_CHANNEL || wire.v !== ALCODE_SDK_API_VERSION) return null;
   if (wire.type === 'result') return readResultMessage(wire);
   if (!HOST_PUSH_TYPES.has(String(wire.type)) || Object(wire.payload) !== wire.payload) return null;
   // SAFETY: envelope and discriminant verified above and the sender is the

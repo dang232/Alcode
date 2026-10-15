@@ -46,12 +46,12 @@ import {
   SURFACE_WIDTH_HEADER,
   isGuestApproved,
   requestedGuestCapabilities,
-} from '@openchamber/sdk';
+} from '@alcode/sdk';
 import {
   surfaceClipboardAnswerSchema,
   surfaceResizeAnswerSchema,
   surfaceViewerMessageSchema,
-} from '@openchamber/sdk/schemas';
+} from '@alcode/sdk/schemas';
 
 import { GuestServiceError, holdGuestService, openGuestServiceRequest } from './service.js';
 

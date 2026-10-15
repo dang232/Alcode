@@ -1,4 +1,4 @@
-// Service handler tests for the openchamber-builtin-dag-pane guest (project-ide todo 13).
+// Service handler tests for the alcode-builtin-dag-pane guest (project-ide todo 13).
 // bun:test, no servers: `handleRequest` is called directly with a scripted
 // bridge. The live steer/cancel path spawns a REAL sleeper child (the
 // platform node binary) and kills it through the REAL bridge `cancelRun`,
@@ -104,7 +104,7 @@ describe('dag service handlers', () => {
     const { handleRequest } = handlersWith(makeSnapshotDir(), absentBridge);
     const answer = await handleRequest({ method: 'GET', path: '/health' });
     expect(answer.status).toBe(200);
-    expect(answer.body).toEqual({ ok: true, service: 'openchamber-builtin-dag-pane' });
+    expect(answer.body).toEqual({ ok: true, service: 'alcode-builtin-dag-pane' });
   });
 
   test('status passes the probe through and lists snapshot sessions', async () => {

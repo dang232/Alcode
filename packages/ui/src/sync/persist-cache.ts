@@ -18,7 +18,7 @@ import { z } from "zod"
 const PERSISTED_SESSION_LIMIT = 50
 const SESSION_CACHE_FALLBACK_LIMITS = [PERSISTED_SESSION_LIMIT, 25, 10, 5, 1] as const
 const SESSION_PERSIST_DEBOUNCE_MS = 50
-const MANAGED_CHATS_CACHE_SCOPE = "openchamber:managed-chats"
+const MANAGED_CHATS_CACHE_SCOPE = "alcode:managed-chats"
 
 type PendingSessionWrite = {
   runtimeKey: string
@@ -219,7 +219,7 @@ export type PersistedDirCache = {
 /** Read all cached metadata for a directory */
 /**
  * The fields the stores dereference before bootstrap replaces a cached list.
- * localStorage is shared by every OpenChamber build that ran on this origin,
+ * localStorage is shared by every Alcode build that ran on this origin,
  * so a record written by another version is data, not a `Session`: a record
  * missing any of these is dropped instead of crashing the first render.
  */

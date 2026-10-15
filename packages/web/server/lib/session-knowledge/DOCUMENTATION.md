@@ -19,14 +19,14 @@ on believing it does and never sends it again.
 
 ## The contract
 
-`session.metadata.openchamber.project_context_pins` owns the note and plan ids
+`session.metadata.alcode.project_context_pins` owns the note and plan ids
 attached to that session. Pins never come from project-wide note or plan state.
 A new-session draft passes its pins into this metadata when its first message
 creates the session.
 
-Directories beneath the managed `~/.config/openchamber/chats` root resolve to that root before project context and project memory are read. Every ordinary chat therefore shares one Chats knowledge owner instead of creating an unreachable context store for each dated session directory.
+Directories beneath the managed `~/.config/alcode/chats` root resolve to that root before project context and project memory are read. Every ordinary chat therefore shares one Chats knowledge owner instead of creating an unreachable context store for each dated session directory.
 
-`session.metadata.openchamber.knowledge_context_delivered` holds the signature
+`session.metadata.alcode.knowledge_context_delivered` holds the signature
 of what the session is carrying. It lives with the session, so it survives the
 tab closing and is visible to every sender, including the ones with no tab.
 
@@ -68,8 +68,8 @@ received.
 
 ## When to link
 
-A session whose agent has the managed `openchamber` tool (the setting is on and
-OpenChamber launched OpenCode) is also told when to link an issue or change to
+A session whose agent has the managed `alcode` tool (the setting is on and
+Alcode launched OpenCode) is also told when to link an issue or change to
 it with `session.link` (`SESSION_LINK_GUIDANCE`). The same rule leads the tool's
 own description. Stated only in the action's description it went unread: an
 agent handed an issue to investigate saw no reason to open a session-control
@@ -94,7 +94,7 @@ cases only, which is the honest expectation.
 
 ## Shipping dark
 
-Agent memory is complete but unreleased. `OPENCHAMBER_MEMORY_ENABLE` decides
+Agent memory is complete but unreleased. `ALCODE_MEMORY_ENABLE` decides
 whether it exists in a given process at all: unset, there is no tool, no routes,
 no session index, no settings row and no panel tab — absent rather than switched
 off, which would invite turning on something never announced. The setting itself

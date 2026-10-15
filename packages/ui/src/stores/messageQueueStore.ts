@@ -48,7 +48,7 @@ const normalizeFollowUpBehavior = (
 };
 
 /**
- * Who delivers the queue. Web, desktop, and mobile talk to an OpenChamber
+ * Who delivers the queue. Web, desktop, and mobile talk to an Alcode
  * server that owns the queue and sends it whether or not any UI is open. VS
  * Code has no server of its own, so the extension UI keeps the local queue
  * and the foreground auto-send hook.
@@ -890,13 +890,13 @@ export const useMessageQueueStore = create<MessageQueueStore>()(
 );
 
 export const messageQueueUpdatedEventSchema = z.object({
-    type: z.literal('openchamber:message-queue.updated'),
+    type: z.literal('alcode:message-queue.updated'),
     properties: z.object({ revision: z.number(), session: serverSessionSchema }),
 });
 
 export type MessageQueueUpdatedEvent = z.infer<typeof messageQueueUpdatedEventSchema>;
 
-/** `openchamber:message-queue.updated` broadcast → projection. */
+/** `alcode:message-queue.updated` broadcast → projection. */
 export const applyMessageQueueUpdatedEvent = (payload: SyncEvent | MessageQueueUpdatedEvent, expectedRuntimeKey: string): void => {
     if (!isServerOwnedMessageQueue()) return;
     const parsed = messageQueueUpdatedEventSchema.safeParse(payload);

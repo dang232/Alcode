@@ -456,10 +456,10 @@ describe("resyncBlockingRequestsForDirectory", () => {
   })
 })
 
-// OpenChamber's server publishes these two frames on the same stream as
+// Alcode's server publishes these two frames on the same stream as
 // OpenCode's events. They address the app, not a directory, so they must be
 // consumed before any directory routing happens.
-describe("OpenChamber-native frames", () => {
+describe("Alcode-native frames", () => {
   beforeEach(() => {
     infoToasts.length = 0
     agentCompletions.length = 0
@@ -478,7 +478,7 @@ describe("OpenChamber-native frames", () => {
     const childStores = new ChildStoreManager()
     const routingIndex = createEventRoutingIndex()
     const event: SyncEvent = {
-      type: "openchamber.notification",
+      type: "alcode.notification",
       properties: {
         kind: "opencode-restart-interrupted",
         sessionId: "ses_a",
@@ -514,7 +514,7 @@ describe("OpenChamber-native frames", () => {
     const childStores = new ChildStoreManager()
     const routingIndex = createEventRoutingIndex()
     const event: SyncEvent = {
-      type: "openchamber.notification",
+      type: "alcode.notification",
       properties: {
         kind: "plugin",
         title: "Build done",
@@ -546,7 +546,7 @@ describe("OpenChamber-native frames", () => {
     const childStores = new ChildStoreManager()
     const routingIndex = createEventRoutingIndex()
     const event: SyncEvent = {
-      type: "openchamber.permission-auto-accept",
+      type: "alcode.permission-auto-accept",
       properties: { sessions: { ses_a: true, ses_b: false }, revision: 7 },
     }
 
@@ -570,7 +570,7 @@ describe("OpenChamber-native frames", () => {
 // never flashes a card and a held one is never lost.
 describe("permission.asked in a session the server may answer", () => {
   const leftForUser = (permissionId: string, directory: string | null = "/repo"): SyncEvent => ({
-    type: "openchamber.permission-left-for-user",
+    type: "alcode.permission-left-for-user",
     properties: { permissionId, sessionId: "ses_a", directory },
   })
   const asked = (id: string): SyncEvent => ({ type: "permission.asked", properties: buildPermission({ id }) })

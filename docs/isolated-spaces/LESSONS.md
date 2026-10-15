@@ -4,7 +4,7 @@ Background for [DESIGN.md](DESIGN.md). Everything here was read from code, pull 
 
 ## The earlier attempt
 
-Draft pull request #2393 ("secure workspace orchestration") with the companion repository `openchamber/opencode-container-workspace`. It stalled. Use that repository as a parts bin only. Do not read it for architecture or UI.
+Draft pull request #2393 ("secure workspace orchestration") with the companion repository `alcode/opencode-container-workspace`. It stalled. Use that repository as a parts bin only. Do not read it for architecture or UI.
 
 Why it stalled:
 
@@ -40,11 +40,11 @@ Measured there: a Kubernetes create took 80 to 120 seconds with a 1.3 GB image p
 
 An experimental routing and sync layer, not a sandbox. Behind `OPENCODE_EXPERIMENTAL_WORKSPACES`, every route under `/experimental/`, no documentation, 94 commits of churn since February 2026. A plugin can register an adaptor whose target is a remote OpenCode server; the controller then proxies requests, re-emits events, and replays session data locally. It does nothing for process isolation, egress, credentials scoping, or apply and discard, and `create` hands the adaptor every stored credential.
 
-Decision: stay independent. It covers only OpenCode's API, while files, git, terminal, and preview belong to OpenChamber and need our own forwarding anyway. Keep "merge sessions and events" a replaceable piece so it could move onto workspaces if they stabilise. We do not use the `workspace` parameter, so the two do not conflict.
+Decision: stay independent. It covers only OpenCode's API, while files, git, terminal, and preview belong to Alcode and need our own forwarding anyway. Keep "merge sessions and events" a replaceable piece so it could move onto workspaces if they stabilise. We do not use the `workspace` parameter, so the two do not conflict.
 
 ## Provider logins
 
-- OpenChamber users log in both ways. The Usage page tracks quotas for browser-login providers and for key providers.
+- Alcode users log in both ways. The Usage page tracks quotas for browser-login providers and for key providers.
 - OpenAI browser login: OpenCode's Codex plugin refreshes only when the stored token has expired, hard-codes the ChatGPT endpoint, and shapes requests differently when the auth type is `oauth`. So a base URL plus a dummy key does not work, and a record with a real short access token and no usable refresh token does. Access tokens last about an hour. Refresh tokens rotate, so two refreshers log each other out. The allowlist needs `chatgpt.com`.
 - Copilot: one long-lived GitHub token sent directly, no refresh, no conflict. The gatekeeper could hold it later.
 - Claude Pro/Max: OpenCode removed this login in 1.3.0 because Anthropic prohibits it. API keys only.
@@ -62,12 +62,12 @@ Recorded workarounds from the earlier attempt: volumes come up root-owned and ne
 ## The existing server
 
 - One OpenCode upstream per server process, held in a mutable singleton that about two dozen runtimes receive as a function. This is why the dispatcher forwards whole requests in front of the existing code.
-- `validateDirectoryPath` stats every directory before an OpenChamber-owned route acts. A space path does not exist on the host, so space requests must be forwarded before that gate. Leave the gate as it is.
+- `validateDirectoryPath` stats every directory before an Alcode-owned route acts. A space path does not exist on the host, so space requests must be forwarded before that gate. Leave the gate as it is.
 - Events already carry a directory. One shared reader serves all clients today, with a fixed reconnect delay and one replay buffer. A space's connection needs its own state and buffer.
 - The Windows branch of the session list in `proxy.js` already merges several upstream lists. It is the precedent for the merged list.
 - `/api/sessions/status` derives from the server's event stream, so space events must reach the same watcher.
 - Dev server detection and the raw TCP dev tunnel already live on the server and work in the web runtime.
-- No pattern exists for this server calling another OpenChamber server with credentials. The relay rules forbid the host injecting credentials on the relay path and forbid trusting loopback as authentication.
+- No pattern exists for this server calling another Alcode server with credentials. The relay rules forbid the host injecting credentials on the relay path and forbid trusting loopback as authentication.
 - SSH remote instances are Electron-only by rule and by storage. The SSH place avoids them by letting the docker CLI use the system `ssh`.
 - The "connect another device" funnel in `RemoteInstancesPage.tsx` is the UX pattern for the places funnel: a configure phase and a result phase, with option cards gated by probed availability.
 

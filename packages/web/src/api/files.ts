@@ -3,14 +3,14 @@ import type {
   FileSearchQuery,
   FileSearchResult,
   FilesAPI,
-} from '@openchamber/ui/lib/api/types';
+} from '@alcode/ui/lib/api/types';
 import {
   FilesystemError,
   parseFilesystemErrorReason,
   type FilesystemErrorReason,
-} from '@openchamber/ui/lib/api/files-errors';
-import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
-import { shareFileFromNativeApp } from '@openchamber/ui/lib/nativeFileShare';
+} from '@alcode/ui/lib/api/files-errors';
+import { runtimeFetch } from '@alcode/ui/lib/runtime-fetch';
+import { shareFileFromNativeApp } from '@alcode/ui/lib/nativeFileShare';
 
 const normalizePath = (path: string): string => path.replace(/\\/g, '/');
 

@@ -15,10 +15,10 @@
     "noEmit": true,
     "baseUrl": "./src",
     "paths": {
-      "@openchamber/sdk": ["../../sdk/src/index.ts"],
-      "@openchamber/sdk/schemas": ["../../sdk/src/schemas.ts"],
+      "@alcode/sdk": ["../../sdk/src/index.ts"],
+      "@alcode/sdk/schemas": ["../../sdk/src/schemas.ts"],
       "@/*": ["./*"],
-      "@openchamber/ui/*": ["./*"]
+      "@alcode/ui/*": ["./*"]
     }
   },
   "include": ["src"]

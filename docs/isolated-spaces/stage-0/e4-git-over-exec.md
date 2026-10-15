@@ -10,7 +10,7 @@ Run on 2026-09-19. Host: macOS, git 2.50.1. Container: `node:22-bookworm-slim` p
 
 ## Recommended layout inside the container
 
-A plain non-bare repository at `/spaces/<id>/<project>`, created with `git init`. The host pushes only to `refs/openchamber/*`, never to `refs/heads/*`, so `receive.denyCurrentBranch` never matters and needs no setting. The only config set inside is `receive.shallowUpdate=true`. Tried.
+A plain non-bare repository at `/spaces/<id>/<project>`, created with `git init`. The host pushes only to `refs/alcode/*`, never to `refs/heads/*`, so `receive.denyCurrentBranch` never matters and needs no setting. The only config set inside is `receive.shallowUpdate=true`. Tried.
 
 A bare repository plus a worktree also works, tried, but it adds a second path and a `.git` file for no gain. `receive.denyCurrentBranch=updateInstead` works, tried, but it lets a push rewrite the agent's working tree, which we never want.
 
@@ -28,9 +28,9 @@ STAGED_TREE=$(GIT_INDEX_FILE=$TMP git write-tree)
 GIT_INDEX_FILE=$TMP git add -A
 WORK_TREE=$(GIT_INDEX_FILE=$TMP git write-tree); rm -f "$TMP"
 BASE=$(git rev-parse HEAD)
-STAGED=$(git commit-tree $STAGED_TREE -p $BASE -m "openchamber: staged snapshot")
-START=$(git commit-tree $WORK_TREE -p $STAGED -m "openchamber: working tree snapshot")
-git update-ref refs/openchamber/spaces/abc123/start $START
+STAGED=$(git commit-tree $STAGED_TREE -p $BASE -m "alcode: staged snapshot")
+START=$(git commit-tree $WORK_TREE -p $STAGED -m "alcode: working tree snapshot")
+git update-ref refs/alcode/spaces/abc123/start $START
 ```
 
 ### In, snapshot first
@@ -40,45 +40,45 @@ git update-ref refs/openchamber/spaces/abc123/start $START
 S=$(mktemp -d); git init -q --bare $S
 echo "$(git rev-parse --git-path objects)" > $S/objects/info/alternates
 echo $BASE > $S/shallow
-$G -C $S push "$EXT" $BASE:refs/openchamber/base
-$G -C $S push "$EXT" $STAGED:refs/openchamber/start-index $START:refs/openchamber/start
+$G -C $S push "$EXT" $BASE:refs/alcode/base
+$G -C $S push "$EXT" $STAGED:refs/alcode/start-index $START:refs/alcode/start
 rm -rf $S
 # inside, unfold as uncommitted changes
-git checkout -q -B <branch> refs/openchamber/start
-git reset -q --soft refs/openchamber/base
-git read-tree refs/openchamber/start-index
+git checkout -q -B <branch> refs/alcode/start
+git reset -q --soft refs/alcode/base
+git read-tree refs/alcode/start-index
 ```
 
 ### In, history later
 
 ```sh
 # inside: git init --bare /spaces/abc123/history.git
-$G push "ext::docker exec -i <container> %S /spaces/abc123/history.git" $BASE:refs/openchamber/base
+$G push "ext::docker exec -i <container> %S /spaces/abc123/history.git" $BASE:refs/alcode/base
 # inside
-git fetch -q --unshallow --no-tags /spaces/abc123/history.git +refs/openchamber/base:refs/openchamber/base
+git fetch -q --unshallow --no-tags /spaces/abc123/history.git +refs/alcode/base:refs/alcode/base
 rm -rf /spaces/abc123/history.git
 ```
 
 ### Out
 
-Inside, build `refs/openchamber/result` with the same temp-index steps, parent `HEAD`. Then on the host:
+Inside, build `refs/alcode/result` with the same temp-index steps, parent `HEAD`. Then on the host:
 
 ```sh
 Q=$(mktemp -d); git init -q --bare $Q
 echo "$(git rev-parse --git-path objects)" > $Q/objects/info/alternates
 FLAGS="--no-tags --no-recurse-submodules --no-write-fetch-head --no-auto-gc --refmap="
 $G -C $Q -c fetch.fsckObjects=true -c transfer.fsckObjects=true fetch $FLAGS "$EXT" \
-  +refs/openchamber/result:refs/openchamber/result
+  +refs/alcode/result:refs/alcode/result
 # our code: timeout on the process group, size cap on $Q, then promote
 git -c fetch.fsckObjects=true fetch $FLAGS $Q \
-  +refs/openchamber/result:refs/openchamber/spaces/abc123/result
+  +refs/alcode/result:refs/alcode/spaces/abc123/result
 rm -rf $Q
 ```
 
 ### Apply
 
 ```sh
-NS=refs/openchamber/spaces/abc123
+NS=refs/alcode/spaces/abc123
 # a) as a branch, no checkout, working tree untouched
 git branch space/abc123 $NS/result
 # b) as uncommitted changes
@@ -88,7 +88,7 @@ git apply --check --binary $P && git apply --binary $P
 
 ## Timings
 
-Repository: a copy of OpenChamber `main`. 3687 commits, 5118 files, 93 MB pack. Local Colima. All tried.
+Repository: a copy of Alcode `main`. 3687 commits, 5118 files, 93 MB pack. Local Colima. All tried.
 
 | Step | Time | Bytes inside |
 |---|---|---|
@@ -153,7 +153,7 @@ On local Docker the full push is already fast. Snapshot first pays off on Docker
 
 - "Quarantine ref namespace" becomes a quarantine repository first, then the ref namespace. Add the size cap and the timeout as host code.
 - "Send the snapshot first and the history in the background" needs the mechanism named: shallow push from a temp sender, then a side repository and a local unshallow. Push alone cannot deepen.
-- The start snapshot must be kept as a host ref, `refs/openchamber/spaces/<id>/start`. Otherwise gc can prune it and the patch has no base. This is host state inside the user's repository, next to the "no state file" rule.
+- The start snapshot must be kept as a host ref, `refs/alcode/spaces/<id>/start`. Otherwise gc can prune it and the patch has no base. This is host state inside the user's repository, next to the "no state file" rule.
 - The staged and unstaged split survives. Say so.
 - Add a creation warning: untracked files that are not ignored travel into the space.
 - "Apply as a branch" should create the branch without checking it out.

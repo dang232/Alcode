@@ -1,4 +1,4 @@
-// View-model tests for the openchamber-builtin-dag-pane guest (project-ide todo 13).
+// View-model tests for the alcode-builtin-dag-pane guest (project-ide todo 13).
 // bun:test, no DOM: the pure helpers only. The happy path consumes the
 // real todo-6 fixture through the real bridge writer shape, so the test
 // proves the pane renders what the adapter actually writes.

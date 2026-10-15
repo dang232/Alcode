@@ -1,4 +1,4 @@
-(()=>{var S="openchamber.sdk",g=1;var qe=`
+(()=>{var S="alcode.sdk",g=1;var qe=`
 :root {
   --oc-scrollbar-thumb: color-mix(in srgb, var(--oc-muted, currentColor) 40%, transparent);
   --oc-scrollbar-thumb-hover: color-mix(in srgb, var(--oc-muted, currentColor) 65%, transparent);

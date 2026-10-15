@@ -5,7 +5,7 @@ import path from 'path';
 import { setLinearAuth, clearLinearAuth } from './auth.js';
 import { getLinearIssue, getLinearIssueSummaries, listLinearIssues, listLinearIssueStates, parseLinearIssueRef, createLinearIssueComment, updateLinearIssue } from './issues.js';
 
-const makeTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-linear-issues-'));
+const makeTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-linear-issues-'));
 
 const jsonResponse = (payload, status = 200) => new Response(JSON.stringify(payload), {
   status,
@@ -16,7 +16,7 @@ const issueNode = {
   id: 'issue-uuid-1',
   identifier: 'ENG-12',
   title: 'Broken login',
-  url: 'https://linear.app/openchamber/issue/ENG-12',
+  url: 'https://linear.app/alcode/issue/ENG-12',
   priority: 1,
   updatedAt: '2026-09-30T10:00:00.000Z',
   state: { id: 'state-started', name: 'In Progress', type: 'started' },
@@ -28,7 +28,7 @@ const issueNode = {
 describe('parseLinearIssueRef', () => {
   it('reads identifiers, URLs, and UUIDs', () => {
     expect(parseLinearIssueRef('eng-12')).toEqual({ kind: 'identifier', value: 'ENG-12' });
-    expect(parseLinearIssueRef('https://linear.app/openchamber/issue/ENG-12/broken-login'))
+    expect(parseLinearIssueRef('https://linear.app/alcode/issue/ENG-12/broken-login'))
       .toEqual({ kind: 'identifier', value: 'ENG-12' });
     expect(parseLinearIssueRef('11111111-2222-3333-4444-555555555555'))
       .toEqual({ kind: 'id', value: '11111111-2222-3333-4444-555555555555' });
@@ -41,9 +41,9 @@ describe('Linear issue list/get', () => {
   let previousDataDir;
 
   beforeEach(() => {
-    previousDataDir = process.env.OPENCHAMBER_DATA_DIR;
+    previousDataDir = process.env.ALCODE_DATA_DIR;
     dataDir = makeTempDir();
-    process.env.OPENCHAMBER_DATA_DIR = dataDir;
+    process.env.ALCODE_DATA_DIR = dataDir;
     setLinearAuth({
       accessToken: 'access-1',
       refreshToken: 'refresh-1',
@@ -57,9 +57,9 @@ describe('Linear issue list/get', () => {
     vi.unstubAllGlobals();
     clearLinearAuth();
     if (previousDataDir === undefined) {
-      delete process.env.OPENCHAMBER_DATA_DIR;
+      delete process.env.ALCODE_DATA_DIR;
     } else {
-      process.env.OPENCHAMBER_DATA_DIR = previousDataDir;
+      process.env.ALCODE_DATA_DIR = previousDataDir;
     }
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
@@ -150,7 +150,7 @@ describe('Linear issue list/get', () => {
         id: 'issue-uuid-1',
         identifier: 'ENG-12',
         title: 'Broken login',
-        url: 'https://linear.app/openchamber/issue/ENG-12',
+        url: 'https://linear.app/alcode/issue/ENG-12',
         state: { id: 'state-started', name: 'In Progress', type: 'started' },
         assignee: { name: 'Ada', displayName: 'Ada Lovelace', avatarUrl: 'https://example.com/a.png' },
         team: { id: 'team-eng', key: 'ENG', name: 'Engineering' },
@@ -230,7 +230,7 @@ describe('Linear issue list/get', () => {
     expect(search.issues).toHaveLength(1);
     expect(search.hasMore).toBe(false);
 
-    const byId = await listLinearIssues({ query: 'https://linear.app/openchamber/issue/ENG-12' });
+    const byId = await listLinearIssues({ query: 'https://linear.app/alcode/issue/ENG-12' });
     expect(byId.issues?.[0]?.identifier).toBe('ENG-12');
     expect(byId.hasMore).toBe(false);
   });
@@ -404,7 +404,7 @@ describe('Linear issue list/get', () => {
       expect(body.query).toContain('mutation CommentCreate');
       expect(body.variables.input).toEqual({
         issueId: 'issue-uuid-1',
-        body: 'OpenChamber session started.',
+        body: 'Alcode session started.',
       });
       expect(options.headers.Authorization).toBe('Bearer access-1');
       return jsonResponse({
@@ -419,7 +419,7 @@ describe('Linear issue list/get', () => {
 
     const result = await createLinearIssueComment({
       issueId: 'ENG-12',
-      body: 'OpenChamber session started.',
+      body: 'Alcode session started.',
     });
     expect(result).toEqual({ connected: true, comment: { id: 'comment-9' } });
     expect(JSON.stringify(result)).not.toContain('access-1');

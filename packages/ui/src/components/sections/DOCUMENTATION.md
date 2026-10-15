@@ -91,7 +91,7 @@ OpenCode config only when they are known (saved config, discovery, or the
 user's edit, `capabilitiesKnown`); otherwise the key is left out so a save
 never replaces what OpenCode knows about a model with a text-only default.
 
-Custom-provider icons are OpenChamber profile preferences, keyed by provider
+Custom-provider icons are Alcode profile preferences, keyed by provider
 ID. They are not written into OpenCode config because OpenCode has no provider
 icon field. "Default" stores nothing, so the provider's own logo (or the
 generic fallback) still shows; `ProviderLogo` reads a chosen icon before trying

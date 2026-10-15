@@ -1,6 +1,6 @@
-# OpenChamber Docs Source
+# Alcode Docs Source
 
-This package is the source-of-truth for OpenChamber public docs content.
+This package is the source-of-truth for Alcode public docs content.
 
 ## Layout
 

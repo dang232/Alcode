@@ -15,7 +15,7 @@ const OLDER_KEY = 'fedcba9876543210';
 const NOW = new Date('2026-09-30T08:00:00.000Z');
 const ID = 'a1b2c3d4e5f6';
 
-const toolsName = (owner, key) => `openchamber-tools-${owner}-${key}`;
+const toolsName = (owner, key) => `alcode-tools-${owner}-${key}`;
 const toolsVolume = (owner, key) => ({
   kind: 'volume',
   name: toolsName(owner, key),
@@ -30,11 +30,11 @@ const oneShot = (key, { running }) => {
 const spaceLabels = (role) => buildSpaceLabels({ id: ID, role, owner: OWNER, project: hashProjectDirectory('/home/me/project'), name: 'Fix it', created: NOW.toISOString() });
 /** A stopped space of ours on the tools of `key`, with its two volumes. */
 const stoppedSpace = (key) => {
-  const name = `openchamber-space-${ID}-space`;
-  const work = `openchamber-space-${ID}-volume-work`;
-  const home = `openchamber-space-${ID}-volume-home`;
+  const name = `alcode-space-${ID}-space`;
+  const work = `alcode-space-${ID}-volume-work`;
+  const home = `alcode-space-${ID}-volume-home`;
   return [
-    { kind: 'container', name, entry: hardenedContainerEntry({ name, labels: spaceLabels('space'), network: `openchamber-space-${ID}-network`, running: false, mounts: [{ volume: work, destination: `/spaces/${ID}` }, { volume: home, destination: '/home/space' }, { volume: toolsName(OWNER, key), destination: '/opt/openchamber-tools', readOnly: true }] }) },
+    { kind: 'container', name, entry: hardenedContainerEntry({ name, labels: spaceLabels('space'), network: `alcode-space-${ID}-network`, running: false, mounts: [{ volume: work, destination: `/spaces/${ID}` }, { volume: home, destination: '/home/space' }, { volume: toolsName(OWNER, key), destination: '/opt/alcode-tools', readOnly: true }] }) },
     { kind: 'volume', name: work, entry: { Name: work, Labels: spaceLabels('volume') } },
     { kind: 'volume', name: home, entry: { Name: home, Labels: spaceLabels('volume') } },
   ];
@@ -47,8 +47,8 @@ const SIZES = {
   [toolsName(OWNER, OLD_KEY)]: '440MB',
   [toolsName(OWNER, OLDER_KEY)]: '441MB',
   [toolsName(STRANGER, OLD_KEY)]: '439MB',
-  [`openchamber-space-${ID}-volume-work`]: '1.2GB',
-  [`openchamber-space-${ID}-volume-home`]: '300MB',
+  [`alcode-space-${ID}-volume-work`]: '1.2GB',
+  [`alcode-space-${ID}-volume-home`]: '300MB',
   'their-data': '5GB',
 };
 

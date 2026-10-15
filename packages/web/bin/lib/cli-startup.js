@@ -70,11 +70,11 @@ function getStartupEnvFilePath() {
 }
 
 function getMacosStartupWrapperPath() {
-  return path.join(getDataDir(), 'bin', 'OpenChamber');
+  return path.join(getDataDir(), 'bin', 'Alcode');
 }
 
 function getWindowsStartupWrapperPath() {
-  return path.join(getDataDir(), 'bin', 'OpenChamber.ps1');
+  return path.join(getDataDir(), 'bin', 'Alcode.ps1');
 }
 
 function collectStartupEnv(options = {}) {
@@ -91,10 +91,10 @@ function collectStartupEnv(options = {}) {
     }
   }
   if (options.apiOnly === true) {
-    env.OPENCHAMBER_API_ONLY = 'true';
+    env.ALCODE_API_ONLY = 'true';
   }
-  if (typeof process.env.OPENCHAMBER_DATA_DIR === 'string' && process.env.OPENCHAMBER_DATA_DIR.trim().length > 0) {
-    env.OPENCHAMBER_DATA_DIR = path.resolve(process.env.OPENCHAMBER_DATA_DIR.trim());
+  if (typeof process.env.ALCODE_DATA_DIR === 'string' && process.env.ALCODE_DATA_DIR.trim().length > 0) {
+    env.ALCODE_DATA_DIR = path.resolve(process.env.ALCODE_DATA_DIR.trim());
   }
   return env;
 }
@@ -156,7 +156,7 @@ function removeStartupEnvFile() {
 }
 
 const PNPM_STORE_SEGMENT = `${path.sep}.pnpm${path.sep}`;
-const PACKAGE_SEGMENT = `${path.sep}node_modules${path.sep}@openchamber${path.sep}web${path.sep}`;
+const PACKAGE_SEGMENT = `${path.sep}node_modules${path.sep}@alcode${path.sep}web${path.sep}`;
 
 // pnpm keeps every installed version in its own store directory and links the
 // current one into node_modules. A startup service pointed at the store path
@@ -168,7 +168,7 @@ function stablePnpmEntrypoint(resolved, exists = fs.existsSync) {
   if (packageIndex < 0) return null;
   const stable = path.join(
     resolved.slice(0, storeIndex),
-    '@openchamber',
+    '@alcode',
     'web',
     resolved.slice(packageIndex + PACKAGE_SEGMENT.length),
   );
@@ -232,7 +232,7 @@ function buildMacosLaunchAgent(options = {}) {
   const wrapperPath = writeMacosStartupWrapper(options);
   const args = [wrapperPath];
   const env = collectStartupEnv(options);
-  const logDir = path.join(os.homedir(), 'Library', 'Logs', 'OpenChamber');
+  const logDir = path.join(os.homedir(), 'Library', 'Logs', 'Alcode');
   const argXml = args.map((arg) => `    <string>${escapeXml(arg)}</string>`).join('\n');
   const envXml = Object.entries(env).length > 0
     ? `  <key>EnvironmentVariables</key>\n  <dict>\n${Object.entries(env).map(([key, value]) => `    <key>${escapeXml(key)}</key>\n    <string>${escapeXml(value)}</string>`).join('\n')}\n  </dict>\n`
@@ -268,7 +268,7 @@ function buildSystemdUserService(options = {}) {
   const args = buildStartupArgs(options).map((arg) => `"${systemdEscapeArg(arg)}"`).join(' ');
   const envFilePath = getStartupEnvFilePath();
   return `[Unit]
-Description=OpenChamber web server
+Description=Alcode web server
 After=network-online.target
 
 [Service]
@@ -391,7 +391,7 @@ function enableStartupService(options = {}) {
   if (paths.platform === 'macos') {
     removeStartupEnvFile();
     fs.mkdirSync(path.dirname(paths.servicePath), { recursive: true, mode: 0o700 });
-    fs.mkdirSync(path.join(os.homedir(), 'Library', 'Logs', 'OpenChamber'), { recursive: true, mode: 0o700 });
+    fs.mkdirSync(path.join(os.homedir(), 'Library', 'Logs', 'Alcode'), { recursive: true, mode: 0o700 });
     fs.writeFileSync(paths.servicePath, buildMacosLaunchAgent(options), { mode: 0o600 });
     runStartupCommand('/bin/launchctl', ['bootout', `gui/${process.getuid()}`, paths.servicePath], { allowFailure: true });
     runStartupCommand('/bin/launchctl', ['bootstrap', `gui/${process.getuid()}`, paths.servicePath]);

@@ -208,9 +208,9 @@ const TIMELINE_CHAT_PAGE_SIZE = 3;
 // worktree sessions sit one level deeper. SessionRow adds 16px (dot + gap) on top.
 const PROJECT_SESSION_INDENT = 40;
 /** Expansion key of the "In work" section, alongside project ids. */
-const WORK_SECTION_ID = 'openchamber:work';
+const WORK_SECTION_ID = 'alcode:work';
 /** Expansion key of the optional Recent section in the grouped view. */
-const RECENT_SECTION_ID = 'openchamber:recent';
+const RECENT_SECTION_ID = 'alcode:recent';
 // Timeline chats align with the timeline rows' text, which has no gutter.
 const TIMELINE_CHAT_INDENT = 12;
 // Extra left padding applied to each nested subsession level.
@@ -991,7 +991,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     [childrenBySessionId],
   );
 
-  // Managed Chats (sessions under ~/.config/openchamber/chats) are not owned
+  // Managed Chats (sessions under ~/.config/alcode/chats) are not owned
   // by any registered project; they get their own section above the project
   // tree, the same split the desktop sidebar makes. Temporary /btw forks are
   // dropped here as well.

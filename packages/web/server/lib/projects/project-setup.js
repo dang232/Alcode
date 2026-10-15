@@ -1,7 +1,7 @@
 // A project's setup — worktree setup commands, project actions, pinned draft
 // starters — comes from two files:
 //
-// - the personal file `~/.config/openchamber/projects/<projectId>.json`
+// - the personal file `~/.config/alcode/projects/<projectId>.json`
 //   (client-owned keys; server-owned `version` / `scheduledTasks` live beside
 //   them and are never touched here), and
 // - the shared file `<repo>/.openchamber/project.json`, committed by a team so
@@ -206,7 +206,7 @@ export const projectSetupPatchToStored = (patch) => {
 
 export const SHARED_CONFIG_RELATIVE_PATH = '.openchamber/project.json';
 /** Where repository plans live unless the shared file's `plansDir` says otherwise. */
-export const DEFAULT_PLANS_DIR = '.openchamber/plans';
+export const DEFAULT_PLANS_DIR = '.alcode/plans';
 const SHARED_CONFIG_VERSION = 1;
 
 /**

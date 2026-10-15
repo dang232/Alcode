@@ -66,7 +66,7 @@ describe('skills', () => {
   it('resolves built-in OpenCode skill content without parsing virtual locations as files', () => {
     const sources = getSkillSources(
       'customize-opencode',
-      '/tmp/openchamber-skills-test-missing-project',
+      '/tmp/alcode-skills-test-missing-project',
       {
         name: 'customize-opencode',
         path: '<built-in>',
@@ -88,10 +88,10 @@ describe('skills', () => {
   });
 
   it('clears file metadata when a discovered skill path is unreadable', () => {
-    const missingPath = path.join(os.tmpdir(), 'openchamber-skills-test-missing-file', 'SKILL.md');
+    const missingPath = path.join(os.tmpdir(), 'alcode-skills-test-missing-file', 'SKILL.md');
     const sources = getSkillSources(
       'missing-agent-skill',
-      '/tmp/openchamber-skills-test-missing-project',
+      '/tmp/alcode-skills-test-missing-project',
       {
         name: 'missing-agent-skill',
         path: missingPath,

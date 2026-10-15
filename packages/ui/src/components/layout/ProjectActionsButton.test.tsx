@@ -6,7 +6,7 @@ import { Window } from 'happy-dom';
 import { I18nProvider } from '@/lib/i18n';
 import type { CreateTerminalOptions, TerminalHandlers, TerminalStreamEvent } from '@/lib/api/types';
 import { useTerminalStore } from '@/stores/useTerminalStore';
-import type { OpenChamberProjectAction } from '@/lib/openchamberConfig';
+import type { AlcodeProjectAction } from '@/lib/alcodeConfig';
 
 const toastCalls = {
   error: new Array<string>(),
@@ -51,7 +51,7 @@ type SubscriptionRecord = {
 };
 
 interface MockedActionsState {
-  actions: OpenChamberProjectAction[];
+  actions: AlcodeProjectAction[];
 }
 
 interface MockedDetectedDevServer {
@@ -151,7 +151,7 @@ mock.module('@/stores/useUIStore', () => ({ useUIStore: useUiStoreMock }));
 mock.module('@/contexts/useThemeSystem', () => ({ useThemeSystem: () => ({ currentTheme: { metadata: { variant: 'dark' }, colors: { surface: { background: '#000' }, syntax: { base: { foreground: '#fff' } } } } }) }));
 mock.module('@/stores/useDesktopSshStore', () => ({ useDesktopSshStore: useDesktopSshStoreMock }));
 mock.module('@/lib/url', () => ({ openExternalUrl: async (url: string) => { openExternalCalls.push(url); } }));
-mock.module('@/lib/openchamberConfig', () => ({
+mock.module('@/lib/alcodeConfig', () => ({
   getProjectActionsState: async () => mockedActionsState,
   // The button loads the merged setup; the test's actions are personal, so nothing asks for trust.
   getProjectSetup: async () => ({
@@ -485,7 +485,7 @@ describe('ProjectActionsButton lifecycle', () => {
     });
 
     const autoDiscoverTab = useTerminalStore.getState().getDirectoryState('/repo')?.tabs.find((tab) => (
-      tab.purpose.type === 'project-action' && tab.purpose.actionId === '__openchamber_auto_discover_preview__'
+      tab.purpose.type === 'project-action' && tab.purpose.actionId === '__alcode_auto_discover_preview__'
     ));
     expect(autoDiscoverTab?.terminalSessionId).toBe(firstSessionId());
 

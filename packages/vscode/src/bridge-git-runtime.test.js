@@ -148,7 +148,7 @@ describe('bridge git runtime index mutations', () => {
     const created = {
       head: '',
       name: 'feature',
-      branch: 'openchamber/feature',
+      branch: 'alcode/feature',
       path: '/repo-worktree',
       directoryCreated: true,
       bootstrapStatus: {

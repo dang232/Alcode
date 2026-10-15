@@ -39,7 +39,7 @@ describe('provider writes in enterprise mode', () => {
   ];
 
   it('refuses connecting a provider, adding a key, or creating a custom provider', async () => {
-    process.env.OPENCHAMBER_ENTERPRISE_MODE = '1';
+    process.env.ALCODE_ENTERPRISE_MODE = '1';
     try {
       const agent = request(createApp(vi.fn()));
       for (const response of await Promise.all(writes(agent))) {
@@ -61,7 +61,7 @@ describe('provider writes in enterprise mode', () => {
         expect(response.status).toBe(404);
       }
     } finally {
-      delete process.env.OPENCHAMBER_ENTERPRISE_MODE;
+      delete process.env.ALCODE_ENTERPRISE_MODE;
     }
   });
 
@@ -87,13 +87,13 @@ describe('the stored credential list', () => {
     }
     expect((await agent.get('/api/credential')).body.code).toBe('credential_list_refused');
 
-    process.env.OPENCHAMBER_ENTERPRISE_MODE = '1';
+    process.env.ALCODE_ENTERPRISE_MODE = '1';
     try {
       for (const response of await Promise.all(reads(agent))) {
         expect(response.status).toBe(403);
       }
     } finally {
-      delete process.env.OPENCHAMBER_ENTERPRISE_MODE;
+      delete process.env.ALCODE_ENTERPRISE_MODE;
     }
   });
 

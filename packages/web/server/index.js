@@ -74,7 +74,7 @@ import {
   registerCommonRequestMiddleware,
   registerServerStatusRoutes,
 } from './lib/opencode/core-routes.js';
-import { registerOpenChamberRoutes } from './lib/opencode/openchamber-routes.js';
+import { registerAlcodeRoutes } from './lib/opencode/alcode-routes.js';
 import { createServerUtilsRuntime } from './lib/opencode/server-utils-runtime.js';
 import { createStaticRoutesRuntime } from './lib/opencode/static-routes-runtime.js';
 import { createSettingsRuntime } from './lib/opencode/settings-runtime.js';
@@ -118,7 +118,7 @@ import { beginGuestServiceHost, beginGuestServiceShutdown, stopAllGuestServices 
 import { findInstalledGuest } from './lib/guests/catalog.js';
 import { extensionsPersistPath } from './lib/guests/persist.js';
 import { createGuestSurfaceRuntime } from './lib/guests/surface.js';
-import { BROWSER_PROVIDER_IDLE_MS } from '@openchamber/sdk';
+import { BROWSER_PROVIDER_IDLE_MS } from '@alcode/sdk';
 import { createProjectConfigRuntime } from './lib/projects/project-config.js';
 import { ensureChatsDir, migrateLegacyUserDirs } from './lib/data-dir-migration.js';
 import { createProjectContextRuntime } from './lib/project-context/runtime.js';
@@ -149,15 +149,15 @@ import { createDevServerScanner } from './lib/dev-servers/routes.js';
 import { createDevTunnelRuntime } from './lib/dev-tunnel/runtime.js';
 import { registerBrowserControlRoutes } from './lib/browser-control/routes.js';
 import { createManagedConfigRuntime } from './lib/opencode/managed-config-file.js';
-import { createOpenChamberSessionService } from './lib/openchamber-sessions/routes.js';
-import { createSessionMetadataStore, createOpenCodeSessionMetadata } from './lib/openchamber-sessions/session-metadata-store.js';
-import { createOpenCodeClient } from './lib/openchamber-sessions/opencode-client.js';
+import { createAlcodeSessionService } from './lib/alcode-sessions/routes.js';
+import { createSessionMetadataStore, createOpenCodeSessionMetadata } from './lib/alcode-sessions/session-metadata-store.js';
+import { createOpenCodeClient } from './lib/alcode-sessions/opencode-client.js';
 import { createScheduledTaskService } from './lib/scheduled-tasks/service.js';
-import { createOpenChamberControlService } from './lib/openchamber-control/service.js';
+import { createAlcodeControlService } from './lib/alcode-control/service.js';
 import { createPluginNotificationEmitter } from './lib/notifications/emit-route.js';
-import { OpenChamberControlError } from './lib/openchamber-control/error.js';
-import { createSessionLinker } from './lib/openchamber-sessions/session-link.js';
-import { createFileOpenRequester } from './lib/openchamber-control/file-open.js';
+import { AlcodeControlError } from './lib/alcode-control/error.js';
+import { createSessionLinker } from './lib/alcode-sessions/session-link.js';
+import { createFileOpenRequester } from './lib/alcode-control/file-open.js';
 import { applyConnectAttemptTimeout } from './lib/network-defaults.js';
 import { applyOutboundProxyFromEnv } from './lib/outbound-proxy.js';
 
@@ -169,10 +169,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DEFAULT_PORT = 3000;
-const DESKTOP_NOTIFY_PREFIX = '[OpenChamberDesktopNotify] ';
+const DESKTOP_NOTIFY_PREFIX = '[AlcodeDesktopNotify] ';
 const uiNotificationClients = new Set();
 const uiNotificationWsClients = new Set();
-const uiOpenChamberEventClients = new Set();
+const uiAlcodeEventClients = new Set();
 const HEALTH_CHECK_INTERVAL = 15000;
 const SHUTDOWN_TIMEOUT = 10000;
 const MODELS_DEV_API_URL = 'https://models.dev/api.json';
@@ -212,12 +212,12 @@ const SSE_PATH_PREFIXES = [
   '/api/event',
   '/api/global/event',
   '/api/notifications/stream',
-  '/api/openchamber/events',
-  '/api/openchamber/realtime-proxy/sse',
+  '/api/alcode/events',
+  '/api/alcode/realtime-proxy/sse',
 ];
 
 function shouldSkipCompression(req, res) {
-  if (process.env.OPENCHAMBER_RUNTIME === 'desktop') {
+  if (process.env.ALCODE_RUNTIME === 'desktop') {
     return true;
   }
 
@@ -239,7 +239,7 @@ function shouldSkipCompression(req, res) {
   return headerIncludesEventStream(res.getHeader('Content-Type'));
 }
 
-const OPENCHAMBER_VERSION = (() => {
+const ALCODE_VERSION = (() => {
   try {
     const packagePath = path.resolve(__dirname, '..', 'package.json');
     const raw = fs.readFileSync(packagePath, 'utf8');
@@ -267,13 +267,13 @@ const isEnvFlagDisabled = (value) => {
 };
 
 const shouldSkipApiCompression = () => {
-  if (isEnvFlagEnabled(process.env.OPENCHAMBER_SKIP_API_COMPRESSION)) return true;
-  if (isEnvFlagEnabled(process.env.OPENCHAMBER_COMPRESS_API)) return false;
-  if (isEnvFlagDisabled(process.env.OPENCHAMBER_COMPRESS_API)) return true;
-  return process.env.OPENCHAMBER_RUNTIME === 'desktop';
+  if (isEnvFlagEnabled(process.env.ALCODE_SKIP_API_COMPRESSION)) return true;
+  if (isEnvFlagEnabled(process.env.ALCODE_COMPRESS_API)) return false;
+  if (isEnvFlagDisabled(process.env.ALCODE_COMPRESS_API)) return true;
+  return process.env.ALCODE_RUNTIME === 'desktop';
 };
 
-const OPENCHAMBER_VERBOSE_REQUEST_LOGS = isEnvFlagEnabled(process.env.OPENCHAMBER_VERBOSE_REQUEST_LOGS);
+const ALCODE_VERBOSE_REQUEST_LOGS = isEnvFlagEnabled(process.env.ALCODE_VERBOSE_REQUEST_LOGS);
 
 const PLAN_MODE_EXPERIMENT_ENABLED =
   isEnvFlagEnabled(process.env.OPENCODE_EXPERIMENTAL_PLAN_MODE)
@@ -312,22 +312,22 @@ const sanitizeModelRefs = (...args) => settingsNormalizationRuntime.sanitizeMode
 const sanitizeSkillCatalogs = (...args) => settingsNormalizationRuntime.sanitizeSkillCatalogs(...args);
 const sanitizeProjects = (...args) => settingsNormalizationRuntime.sanitizeProjects(...args);
 
-// Every OpenChamber-owned file and folder hangs off one root: the default
-// `~/.config/openchamber`, or `OPENCHAMBER_DATA_DIR` when set. The user
+// Every Alcode-owned file and folder hangs off one root: the default
+// `~/.config/alcode`, or `ALCODE_DATA_DIR` when set. The user
 // folders (`projects/`, `themes/`, `speech-models/`) are copied into a custom
 // root once at startup (`migrateLegacyUserDirs`), because they used to ignore
 // the variable.
-const OPENCHAMBER_DEFAULT_CONFIG_ROOT = path.join(os.homedir(), '.config', 'openchamber');
-const OPENCHAMBER_USER_CONFIG_ROOT = process.env.OPENCHAMBER_DATA_DIR
-  ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-  : OPENCHAMBER_DEFAULT_CONFIG_ROOT;
-const OPENCHAMBER_USER_THEMES_DIR = path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'themes');
-const OPENCHAMBER_PROJECTS_CONFIG_DIR = path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'projects');
-// OPENCHAMBER_CHATS_DIR relocates managed chat worktrees — needed when the
+const ALCODE_DEFAULT_CONFIG_ROOT = path.join(os.homedir(), '.config', 'alcode');
+const ALCODE_USER_CONFIG_ROOT = process.env.ALCODE_DATA_DIR
+  ? path.resolve(process.env.ALCODE_DATA_DIR)
+  : ALCODE_DEFAULT_CONFIG_ROOT;
+const ALCODE_USER_THEMES_DIR = path.join(ALCODE_USER_CONFIG_ROOT, 'themes');
+const ALCODE_PROJECTS_CONFIG_DIR = path.join(ALCODE_USER_CONFIG_ROOT, 'projects');
+// ALCODE_CHATS_DIR relocates managed chat worktrees — needed when the
 // OpenCode server runs as a separate user that cannot traverse $HOME.
-const OPENCHAMBER_CHATS_DIR = process.env.OPENCHAMBER_CHATS_DIR && process.env.OPENCHAMBER_CHATS_DIR.trim()
-  ? path.resolve(process.env.OPENCHAMBER_CHATS_DIR.trim())
-  : path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'chats');
+const ALCODE_CHATS_DIR = process.env.ALCODE_CHATS_DIR && process.env.ALCODE_CHATS_DIR.trim()
+  ? path.resolve(process.env.ALCODE_CHATS_DIR.trim())
+  : path.join(ALCODE_USER_CONFIG_ROOT, 'chats');
 
 const MAX_THEME_JSON_BYTES = 512 * 1024;
 
@@ -335,7 +335,7 @@ const MAX_THEME_JSON_BYTES = 512 * 1024;
 const themeRuntime = createThemeRuntime({
   fsPromises,
   path,
-  themesDir: OPENCHAMBER_USER_THEMES_DIR,
+  themesDir: ALCODE_USER_THEMES_DIR,
   maxThemeJsonBytes: MAX_THEME_JSON_BYTES,
   logger: console,
 });
@@ -360,17 +360,17 @@ const maybeCacheSessionInfoFromEvent = (...args) => notificationTemplateRuntime.
 const buildTemplateVariables = (...args) => notificationTemplateRuntime.buildTemplateVariables(...args);
 const getCachedZenModels = (...args) => notificationTemplateRuntime.getCachedZenModels(...args);
 
-const OPENCHAMBER_DATA_DIR = OPENCHAMBER_USER_CONFIG_ROOT;
-const SETTINGS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'settings.json');
-const PUSH_SUBSCRIPTIONS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'push-subscriptions.json');
-const APNS_TOKENS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'apns-tokens.json');
-const REMOTE_CLIENTS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'remote-clients.json');
-const CLIENT_PAIRING_SESSIONS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'client-pairing-sessions.json');
-const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'cloudflare-managed-remote-tunnels.json');
-const CLOUDFLARE_LEGACY_NAMED_TUNNELS_FILE_PATH = path.join(OPENCHAMBER_DATA_DIR, 'cloudflare-named-tunnels.json');
+const ALCODE_DATA_DIR = ALCODE_USER_CONFIG_ROOT;
+const SETTINGS_FILE_PATH = path.join(ALCODE_DATA_DIR, 'settings.json');
+const PUSH_SUBSCRIPTIONS_FILE_PATH = path.join(ALCODE_DATA_DIR, 'push-subscriptions.json');
+const APNS_TOKENS_FILE_PATH = path.join(ALCODE_DATA_DIR, 'apns-tokens.json');
+const REMOTE_CLIENTS_FILE_PATH = path.join(ALCODE_DATA_DIR, 'remote-clients.json');
+const CLIENT_PAIRING_SESSIONS_FILE_PATH = path.join(ALCODE_DATA_DIR, 'client-pairing-sessions.json');
+const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_FILE_PATH = path.join(ALCODE_DATA_DIR, 'cloudflare-managed-remote-tunnels.json');
+const CLOUDFLARE_LEGACY_NAMED_TUNNELS_FILE_PATH = path.join(ALCODE_DATA_DIR, 'cloudflare-named-tunnels.json');
 const CLOUDFLARE_MANAGED_REMOTE_TUNNELS_VERSION = 1;
 const worktreeBootstrapStore = createWorktreeBootstrapStore({
-  filePath: path.join(OPENCHAMBER_DATA_DIR, 'git-worktree-bootstrap.json'),
+  filePath: path.join(ALCODE_DATA_DIR, 'git-worktree-bootstrap.json'),
   fsImpl: fsPromises,
 });
 
@@ -521,7 +521,7 @@ const notificationEmitterRuntime = createNotificationEmitterRuntime({
   getDesktopNotifyEnabled: () => ENV_DESKTOP_NOTIFY,
   desktopNotifyPrefix: DESKTOP_NOTIFY_PREFIX,
   getUiNotificationClients: () => uiNotificationClients,
-  getOpenChamberEventClients: () => uiOpenChamberEventClients,
+  getAlcodeEventClients: () => uiAlcodeEventClients,
   getBroadcastGlobalUiEvent: () => broadcastGlobalUiEvent,
 });
 
@@ -534,23 +534,23 @@ const broadcastGlobalUiEvent = createGlobalUiEventBroadcaster({
 });
 const broadcastUiNotification = (...args) => notificationEmitterRuntime.broadcastUiNotification(...args);
 
-// OpenChamber-owned events (queue changes, archive state) travel on the shared
+// Alcode-owned events (queue changes, archive state) travel on the shared
 // control stream, not on OpenCode's event proxy. One broadcaster so every owner
 // reaches the same clients.
-const broadcastOpenChamberUiEvent = createGlobalUiEventBroadcaster({
-  sseClients: uiOpenChamberEventClients,
+const broadcastAlcodeUiEvent = createGlobalUiEventBroadcaster({
+  sseClients: uiAlcodeEventClients,
   wsClients: uiNotificationWsClients,
   writeSseEvent,
 });
 
 /**
- * Per-session OpenChamber state (goal progress, the assist recap, the
+ * Per-session Alcode state (goal progress, the assist recap, the
  * obligatory-context cursor, pinned notes) lives in OpenCode's session
  * metadata. The store merge-patches it there and migrates what older
- * OpenChamber versions kept in `sessions-metadata.json`.
+ * Alcode versions kept in `sessions-metadata.json`.
  */
 const sessionMetadataStore = createSessionMetadataStore({
-  dataDir: OPENCHAMBER_DATA_DIR,
+  dataDir: ALCODE_DATA_DIR,
   // Called, not captured: the OpenCode URL and auth helpers are declared
   // further down and only ever used once a request arrives.
   openCode: {
@@ -565,14 +565,14 @@ const persistSessionMetadataPatch = async (sessionID, patch, { directory = '' } 
   const metadata = await sessionMetadataStore.setSessionMetadata(sessionID, patch, { directory });
   // The full merged object, so a client that missed an earlier patch does not
   // have to reconstruct it.
-  broadcastOpenChamberUiEvent({
-    type: 'openchamber:session-metadata',
+  broadcastAlcodeUiEvent({
+    type: 'alcode:session-metadata',
     properties: { sessionID, metadata },
   });
   // The write itself arms the goal loop: it is the authoritative signal and
   // does not depend on the event stream being connected.
   // Called, not captured: the runtime is declared further down.
-  if (patch?.openchamber && 'goal' in patch.openchamber) {
+  if (patch?.alcode && 'goal' in patch.alcode) {
     void Promise.resolve(sessionGoalRuntime.notifyGoalChanged(sessionID, directory, metadata))
       .catch((error) => console.warn('[session-goal] could not arm after a goal change:', error?.message ?? error));
   }
@@ -583,8 +583,8 @@ const persistSessionMetadataPatch = async (sessionID, patch, { directory = '' } 
 const updateSessionMetadataWith = async (sessionID, decide, { directory = '' } = {}) => {
   const result = await sessionMetadataStore.updateSessionMetadata(sessionID, decide, { directory });
   if (result.changed) {
-    broadcastOpenChamberUiEvent({
-      type: 'openchamber:session-metadata',
+    broadcastAlcodeUiEvent({
+      type: 'alcode:session-metadata',
       properties: { sessionID, metadata: result.metadata },
     });
   }
@@ -608,32 +608,32 @@ const getUpstreamStallTimeoutMs = () => (
 const movedUserDirs = await migrateLegacyUserDirs({
   fsPromises,
   path,
-  dataDir: OPENCHAMBER_USER_CONFIG_ROOT,
-  legacyRoot: OPENCHAMBER_DEFAULT_CONFIG_ROOT,
+  dataDir: ALCODE_USER_CONFIG_ROOT,
+  legacyRoot: ALCODE_DEFAULT_CONFIG_ROOT,
   warn: (message) => console.warn(`[data-dir] ${message}`),
 });
 if (movedUserDirs.length > 0) {
-  console.log(`[data-dir] Copied ${movedUserDirs.join(', ')} into ${OPENCHAMBER_USER_CONFIG_ROOT}`);
+  console.log(`[data-dir] Copied ${movedUserDirs.join(', ')} into ${ALCODE_USER_CONFIG_ROOT}`);
 }
 
 const projectConfigRuntime = createProjectConfigRuntime({
   fsPromises,
   path,
-  projectsDirPath: OPENCHAMBER_PROJECTS_CONFIG_DIR,
+  projectsDirPath: ALCODE_PROJECTS_CONFIG_DIR,
 });
 
 const projectContextRuntime = createProjectContextRuntime({
   fsPromises,
   path,
-  projectsDirPath: OPENCHAMBER_PROJECTS_CONFIG_DIR,
+  projectsDirPath: ALCODE_PROJECTS_CONFIG_DIR,
   resolveSharedPlansDir: (projectId) => projectConfigRuntime.resolveSharedPlansDir(projectId),
 });
 
 const agentMemoryRuntime = createAgentMemoryRuntime({
   fsPromises,
   path,
-  projectsDirPath: OPENCHAMBER_PROJECTS_CONFIG_DIR,
-  userConfigRoot: OPENCHAMBER_USER_CONFIG_ROOT,
+  projectsDirPath: ALCODE_PROJECTS_CONFIG_DIR,
+  userConfigRoot: ALCODE_USER_CONFIG_ROOT,
 });
 
 /**
@@ -657,7 +657,7 @@ const hmrStateRuntime = createHmrStateRuntime({
   globalThisLike: globalThis,
   os,
   processLike: process,
-  stateKey: '__openchamberHmrState',
+  stateKey: '__alcodeHmrState',
 });
 const hmrState = hmrStateRuntime.getOrCreateHmrState();
 hmrStateRuntime.ensureUserProvidedOpenCodePassword(hmrState);
@@ -761,19 +761,19 @@ const {
 });
 
 const ENV_SKIP_OPENCODE_START = process.env.OPENCODE_SKIP_START === 'true' ||
-                                    process.env.OPENCHAMBER_SKIP_OPENCODE_START === 'true';
+                                    process.env.ALCODE_SKIP_OPENCODE_START === 'true';
 const ENV_DESKTOP_NOTIFY = (() => {
-  if (process.env.OPENCHAMBER_DESKTOP_NOTIFY === 'true') {
+  if (process.env.ALCODE_DESKTOP_NOTIFY === 'true') {
     return true;
   }
 
-  if (process.env.OPENCHAMBER_RUNTIME === 'desktop') {
+  if (process.env.ALCODE_RUNTIME === 'desktop') {
     return true;
   }
 
   const argv0 = typeof process.argv?.[0] === 'string' ? process.argv[0] : '';
   const argv1 = typeof process.argv?.[1] === 'string' ? process.argv[1] : '';
-  return /openchamber-server/i.test(argv0) || /openchamber-server/i.test(argv1);
+  return /alcode-server/i.test(argv0) || /alcode-server/i.test(argv1);
 })();
 const openCodeAuthStateRuntime = createOpenCodeAuthStateRuntime({
   crypto,
@@ -826,7 +826,7 @@ configureOpenCodeRuntimeProviders({
 });
 
 const ENV_CONFIGURED_API_PREFIX = normalizeApiPrefix(
-  process.env.OPENCODE_API_PREFIX || process.env.OPENCHAMBER_API_PREFIX || ''
+  process.env.OPENCODE_API_PREFIX || process.env.ALCODE_API_PREFIX || ''
 );
 
   if (ENV_CONFIGURED_API_PREFIX && ENV_CONFIGURED_API_PREFIX !== '') {
@@ -939,9 +939,9 @@ const sessionAssistRuntime = createSessionAssistRuntime({
   getOpenCodeAuthHeaders,
   getSmallModelService: async () => import('./lib/small-model/index.js'),
   persistSessionAssist: (sessionID, directory, assist) =>
-    persistSessionMetadataPatch(sessionID, { openchamber: { assist } }, { directory }),
+    persistSessionMetadataPatch(sessionID, { alcode: { assist } }, { directory }),
   // Declared further down; only ever called after startup.
-  isSessionArchived: (sessionID) => openChamberSessionService.archiveStore.isArchived(sessionID),
+  isSessionArchived: (sessionID) => alcodeSessionService.archiveStore.isArchived(sessionID),
   // Declared further down; only ever called after startup.
   evaluateTurn: (input) => sessionWorkRuntime.evaluateTurnEnd(input),
   lineage: sessionLineage,
@@ -955,7 +955,7 @@ const sessionGoalRuntime = createSessionGoalRuntime({
   jev: createJevClient(),
   readSessionMetadata: readStoredSessionMetadata,
   persistSessionGoal: (sessionID, directory, goal) =>
-    persistSessionMetadataPatch(sessionID, { openchamber: { goal } }, { directory }),
+    persistSessionMetadataPatch(sessionID, { alcode: { goal } }, { directory }),
   emitGoalNotification: async ({ sessionId, directory, status, goal }) => {
     // The goal settle notification replaces the per-turn ready notifications
     // (suppressed while the goal is active) — so it obeys the same toggle.
@@ -1011,7 +1011,7 @@ const sessionKnowledgeRuntime = createSessionKnowledgeRuntime({
   },
   readSessionMetadata: readStoredSessionMetadata,
   // Pins and the delivered-signature cursor are read from and written to
-  // OpenChamber's own store; nothing here talks to OpenCode any more.
+  // Alcode's own store; nothing here talks to OpenCode any more.
   persistSessionMetadata: (sessionID, directory, patch) => persistSessionMetadataPatch(sessionID, patch, { directory }),
 });
 
@@ -1035,10 +1035,10 @@ const globalMessageStreamHub = createGlobalMessageStreamHub({
 // Jev model routing and the permission safety net. Every failure keeps the
 // user's own model or the auto-accept reply it was asked about.
 const routingRuntime = createRoutingRuntime({
-  dataDir: OPENCHAMBER_DATA_DIR,
+  dataDir: ALCODE_DATA_DIR,
   buildOpenCodeUrl,
   getOpenCodeAuthHeaders,
-  broadcastGlobalUiEvent: broadcastOpenChamberUiEvent,
+  broadcastGlobalUiEvent: broadcastAlcodeUiEvent,
 });
 
 // "In work": Jev opens a session when real work starts in it and hints when a
@@ -1050,8 +1050,8 @@ const sessionWorkRuntime = createSessionWorkRuntime({
   jev: createJevClient(),
   readMetadata: (sessionID, directory) => sessionMetadataStore.get(sessionID, { directory }),
   updateMetadata: updateSessionMetadataWith,
-  isSessionArchived: (sessionID) => openChamberSessionService.archiveStore.isArchived(sessionID),
-  chatRoots: [path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'chats'), OPENCHAMBER_CHATS_DIR],
+  isSessionArchived: (sessionID) => alcodeSessionService.archiveStore.isArchived(sessionID),
+  chatRoots: [path.join(ALCODE_USER_CONFIG_ROOT, 'chats'), ALCODE_CHATS_DIR],
   lineage: sessionLineage,
 });
 
@@ -1080,12 +1080,12 @@ const messageQueueRuntime = createMessageQueueRuntime({
   buildOpenCodeUrl,
   getOpenCodeAuthHeaders,
   sessionKnowledgeRuntime,
-  // OpenCode's event SSE proxy cannot carry OpenChamber-owned events. Use the
+  // OpenCode's event SSE proxy cannot carry Alcode-owned events. Use the
   // shared control stream for SSE clients and the existing WS fan-out.
-  broadcastGlobalUiEvent: broadcastOpenChamberUiEvent,
+  broadcastGlobalUiEvent: broadcastAlcodeUiEvent,
   resolveAutoSelection: (send) => routingRuntime.resolveAutoSelection(send),
   onPromptSent: (sessionId) => sessionRuntime.markUserMessageSent(sessionId),
-  dataDir: OPENCHAMBER_DATA_DIR,
+  dataDir: ALCODE_DATA_DIR,
 });
 messageQueueRuntime.start();
 
@@ -1095,9 +1095,9 @@ const dispatchResultsRuntime = createDispatchResultsRuntime({
   globalEventHub: globalMessageStreamHub,
   buildOpenCodeUrl,
   getOpenCodeAuthHeaders,
-  dataDir: OPENCHAMBER_DATA_DIR,
+  dataDir: ALCODE_DATA_DIR,
   // Declared further down; only ever called after startup.
-  isSessionArchived: (sessionID) => openChamberSessionService.archiveStore.isArchived(sessionID),
+  isSessionArchived: (sessionID) => alcodeSessionService.archiveStore.isArchived(sessionID),
 });
 dispatchResultsRuntime.start();
 
@@ -1105,7 +1105,7 @@ dispatchResultsRuntime.start();
 // replies). Opt-in: off by default, and off means idle. The index is derived
 // data in the data dir, fed from the same event stream; see lib/message-search.
 const messageSearchRuntime = createMessageSearchRuntime({
-  dataDir: OPENCHAMBER_DATA_DIR,
+  dataDir: ALCODE_DATA_DIR,
   buildOpenCodeUrl,
   getOpenCodeAuthHeaders,
   globalEventHub: globalMessageStreamHub,
@@ -1138,7 +1138,7 @@ globalMessageStreamHub.subscribeEvent((event) => {
   // The hub translates v2 wire events into the server's vocabulary once; these
   // consumers were written against it and stay unaware of the wire shape.
   for (const payload of event?.translated?.() ?? []) {
-    // The user cancelled the turn: stop the OpenChamber tool actions that
+    // The user cancelled the turn: stop the Alcode tool actions that
     // turn still has running (a browser action, a memory write). OpenCode 2
     // gives the plugin no abort signal, so this is where the cancel lands.
     if (payload.type === 'session.idle' && payload.properties?.aborted === true) {
@@ -1155,7 +1155,7 @@ globalMessageStreamHub.subscribeEvent((event) => {
 
 /**
  * Browser bridges hand us the raw v2 wire payload (they forward it untouched to
- * the client). The synthetic OpenChamber frames the UI also expects are derived
+ * the client). The synthetic Alcode frames the UI also expects are derived
  * from the translated event, so the translation happens here.
  */
 const processForwardedEventPayload = (payload, emitSyntheticEvent) => {
@@ -1188,7 +1188,7 @@ const processForwardedServerEvent = (payload, emitSyntheticEvent) => {
   }
 
   emitSyntheticEvent({
-    type: 'openchamber:session-status',
+    type: 'alcode:session-status',
     properties: {
       sessionID: sessionId,
       status,
@@ -1209,7 +1209,7 @@ const processForwardedServerEvent = (payload, emitSyntheticEvent) => {
   });
 
   emitSyntheticEvent({
-    type: 'openchamber:session-activity',
+    type: 'alcode:session-activity',
     properties: {
       sessionId,
       phase: status === 'busy' || status === 'retry' ? 'busy' : 'idle',
@@ -1221,7 +1221,7 @@ const processForwardedServerEvent = (payload, emitSyntheticEvent) => {
 const serverUtilsRuntime = createServerUtilsRuntime({
   // Read lazily: the archive store is created with the session service further
   // down, while the proxy is registered later still.
-  getArchivedSessions: () => openChamberSessionService.archiveStore.getAll(),
+  getArchivedSessions: () => alcodeSessionService.archiveStore.getAll(),
   getStoredSessionMetadata: () => sessionMetadataStore.listUnmigrated(),
   // Isolated spaces: with the switch on, the session list carries every space's sessions and
   // the global SSE stream their events. Called, not captured: the host is made in `main`.
@@ -1273,10 +1273,10 @@ const waitForOpenCodePort = (...args) => serverUtilsRuntime.waitForOpenCodePort(
 const buildAugmentedPath = (...args) => serverUtilsRuntime.buildAugmentedPath(...args);
 const buildManagedOpenCodePath = (...args) => serverUtilsRuntime.buildManagedOpenCodePath(...args);
 
-// Variables from Settings for the processes OpenChamber starts: the managed
+// Variables from Settings for the processes Alcode starts: the managed
 // OpenCode, Git, the terminal and command execution (lib/environment).
 const environmentStore = createEnvironmentStore({
-  filePath: path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'environment.json'),
+  filePath: path.join(ALCODE_USER_CONFIG_ROOT, 'environment.json'),
 });
 const listConfiguredProjects = async () => {
   const settings = await readSettingsFromDiskMigrated();
@@ -1332,7 +1332,7 @@ const bootstrapRuntime = createBootstrapRuntime({
   registerAuthAndAccessRoutes,
   registerTtsRoutes,
   registerNotificationRoutes,
-  registerOpenChamberRoutes,
+  registerAlcodeRoutes,
   registerAgentToolRoutes: (app, options) => options.agentToolRuntime.registerRoutes(app, options.express),
   express,
 });
@@ -1377,7 +1377,7 @@ const startupPipelineRuntime = createStartupPipelineRuntime({
   createServerStartupRuntime,
   // Lets an isolated QA instance boot next to a running app (Google login
   // stays bound to the fixed-port listener and will not complete there).
-  skipDesktopCallbackListener: process.env.OPENCHAMBER_SKIP_DESKTOP_CALLBACK === '1',
+  skipDesktopCallbackListener: process.env.ALCODE_SKIP_DESKTOP_CALLBACK === '1',
 });
 
 const openCodeLifecycleState = {};
@@ -1541,7 +1541,7 @@ const waitForAgentPresence = (...args) => openCodeLifecycleRuntime.waitForAgentP
 const refreshOpenCodeAfterConfigChange = (...args) => openCodeLifecycleRuntime.refreshOpenCodeAfterConfigChange(...args);
 const startHealthMonitoring = () => openCodeLifecycleRuntime.startHealthMonitoring(HEALTH_CHECK_INTERVAL);
 const triggerHealthCheck = () => openCodeLifecycleRuntime.triggerHealthCheck();
-const scheduledChatsScope = createChatsScope(OPENCHAMBER_CHATS_DIR);
+const scheduledChatsScope = createChatsScope(ALCODE_CHATS_DIR);
 const scheduledTasksRuntime = createScheduledTasksRuntime({
   projectConfigRuntime,
   chatsScope: scheduledChatsScope,
@@ -1559,13 +1559,13 @@ const scheduledTasksRuntime = createScheduledTasksRuntime({
   waitForOpenCodeReady,
   sessionKnowledgeRuntime,
   persistSessionGoal: (sessionID, directory, goal) =>
-    persistSessionMetadataPatch(sessionID, { openchamber: { goal } }, { directory }),
+    persistSessionMetadataPatch(sessionID, { alcode: { goal } }, { directory }),
   setSessionAutoAccept: (sessionId, enabled, directory) => permissionAutoAcceptRuntime.setSessionPolicy(sessionId, enabled, directory),
   emitTaskRunEvent: (event) => {
-    for (const client of uiOpenChamberEventClients) {
+    for (const client of uiAlcodeEventClients) {
       try {
         writeSseEvent(client, {
-          type: 'openchamber:scheduled-task-ran',
+          type: 'alcode:scheduled-task-ran',
           properties: {
             projectId: scheduledChatsScope.toPublicID(event.projectID),
             taskId: event.taskID,
@@ -1575,17 +1575,17 @@ const scheduledTasksRuntime = createScheduledTasksRuntime({
           },
         });
       } catch {
-        uiOpenChamberEventClients.delete(client);
+        uiAlcodeEventClients.delete(client);
       }
     }
   },
   logger: console,
 });
 const emitSessionCreatedEvent = (event) => {
-  for (const client of uiOpenChamberEventClients) {
+  for (const client of uiAlcodeEventClients) {
     try {
       writeSseEvent(client, {
-        type: 'openchamber:session-created',
+        type: 'alcode:session-created',
         properties: {
           sessionId: event.sessionID,
           directory: event.directory,
@@ -1597,7 +1597,7 @@ const emitSessionCreatedEvent = (event) => {
         },
       });
     } catch {
-      uiOpenChamberEventClients.delete(client);
+      uiAlcodeEventClients.delete(client);
     }
   }
 };
@@ -1611,7 +1611,7 @@ const resolveMemoryProjectId = createMemoryProjectResolver({
     return sanitizeProjects(settings?.projects || []).map((project) => project.path);
   },
   resolvePrimaryWorktreeRoot,
-  managedProjectRoots: [...new Set([path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'chats'), OPENCHAMBER_CHATS_DIR])],
+  managedProjectRoots: [...new Set([path.join(ALCODE_USER_CONFIG_ROOT, 'chats'), ALCODE_CHATS_DIR])],
 });
 
 /**
@@ -1619,17 +1619,17 @@ const resolveMemoryProjectId = createMemoryProjectResolver({
  * stored is visible without reopening anything.
  */
 const emitAgentMemoryChangedEvent = (event) => {
-  for (const client of uiOpenChamberEventClients) {
+  for (const client of uiAlcodeEventClients) {
     try {
       writeSseEvent(client, {
-        type: 'openchamber:service-memory-changed',
+        type: 'alcode:service-memory-changed',
         properties: {
           scope: event.scope,
           ...(event.projectId ? { projectId: event.projectId } : {}),
         },
       });
     } catch {
-      uiOpenChamberEventClients.delete(client);
+      uiAlcodeEventClients.delete(client);
     }
   }
 };
@@ -1640,7 +1640,7 @@ const scheduledTaskService = createScheduledTaskService({
   scheduledTasksRuntime,
   chatsScope: scheduledChatsScope,
 });
-const openChamberSessionService = createOpenChamberSessionService({
+const alcodeSessionService = createAlcodeSessionService({
   readSettingsFromDiskMigrated,
   sanitizeProjects,
   validateDirectoryPath,
@@ -1651,16 +1651,16 @@ const openChamberSessionService = createOpenChamberSessionService({
   sessionKnowledgeRuntime,
   worktreeBootstrapStore,
   hydrateWorktreeCheckout: featureRoutesRuntime.hydrateBoundCheckout,
-  // OpenCode 2.x has no archive route, so the state is OpenChamber's own and
+  // OpenCode 2.x has no archive route, so the state is Alcode's own and
   // lives beside the instance it describes.
-  dataDir: OPENCHAMBER_DATA_DIR,
+  dataDir: ALCODE_DATA_DIR,
   sessionMetadataStore,
   persistSessionMetadata: persistSessionMetadataPatch,
-  broadcastGlobalUiEvent: broadcastOpenChamberUiEvent,
+  broadcastGlobalUiEvent: broadcastAlcodeUiEvent,
   resolveAutoSelection: (input) => routingRuntime.resolveAutoSelection(input),
   isAutoReady: async () => (await routingRuntime.describe()).autoReady,
 });
-// Browser actions are published to whichever OpenChamber clients are connected;
+// Browser actions are published to whichever Alcode clients are connected;
 // the one owning the browser panel answers. `emitRequest` returns the number of
 // clients reached so the broker can fail fast when nobody is listening.
 const browserControlBroker = createBrowserControlBroker({
@@ -1671,11 +1671,11 @@ const browserControlBroker = createBrowserControlBroker({
     // lets the broker say "not here" instead of timing out.
     const needsBrowserView = request.action !== 'browser.open';
     let delivered = 0;
-    for (const client of uiOpenChamberEventClients) {
-      if (needsBrowserView && client.openchamberBrowserCapable !== true) continue;
+    for (const client of uiAlcodeEventClients) {
+      if (needsBrowserView && client.alcodeBrowserCapable !== true) continue;
       try {
         writeSseEvent(client, {
-          type: 'openchamber:browser-control-request',
+          type: 'alcode:browser-control-request',
           properties: {
             requestId: request.requestId,
             action: request.action,
@@ -1684,7 +1684,7 @@ const browserControlBroker = createBrowserControlBroker({
         });
         delivered += 1;
       } catch {
-        uiOpenChamberEventClients.delete(client);
+        uiAlcodeEventClients.delete(client);
       }
     }
     return delivered;
@@ -1696,25 +1696,25 @@ const browserControlBroker = createBrowserControlBroker({
  * in-app browser, so Settings shows the change and the user hears why.
  */
 const emitBrowserProviderResetEvent = ({ guestId, guestName }) => {
-  for (const client of uiOpenChamberEventClients) {
+  for (const client of uiAlcodeEventClients) {
     try {
       writeSseEvent(client, {
-        type: 'openchamber:browser-provider-reset',
+        type: 'alcode:browser-provider-reset',
         properties: { guestId, guestName },
       });
     } catch {
-      uiOpenChamberEventClients.delete(client);
+      uiAlcodeEventClients.delete(client);
     }
   }
 };
 // Every browser action passes through here: the in-app view by default, or an
-// extension service chosen in Settings → OpenChamber Tools.
+// extension service chosen in Settings → Alcode Tools.
 const browserControlRouter = createBrowserControlRouter({
   broker: browserControlBroker,
   readSettings: () => readSettingsFromDiskMigrated(),
   persistSettings: (changes) => persistSettings(changes),
-  findGuest: (id) => findInstalledGuest(id, extensionsPersistPath(OPENCHAMBER_DATA_DIR)),
-  persistPath: extensionsPersistPath(OPENCHAMBER_DATA_DIR),
+  findGuest: (id) => findInstalledGuest(id, extensionsPersistPath(ALCODE_DATA_DIR)),
+  persistPath: extensionsPersistPath(ALCODE_DATA_DIR),
   emitProviderReset: emitBrowserProviderResetEvent,
   createId: () => `browser-${crypto.randomUUID()}`,
   surfaceControl: {
@@ -1729,12 +1729,12 @@ const browserControlRouter = createBrowserControlRouter({
 const fileOpenRequester = createFileOpenRequester({
   emit: (request) => {
     let delivered = 0;
-    for (const client of uiOpenChamberEventClients) {
+    for (const client of uiAlcodeEventClients) {
       try {
-        writeSseEvent(client, { type: 'openchamber:file-open-request', properties: request });
+        writeSseEvent(client, { type: 'alcode:file-open-request', properties: request });
         delivered += 1;
       } catch {
-        uiOpenChamberEventClients.delete(client);
+        uiAlcodeEventClients.delete(client);
       }
     }
     return delivered;
@@ -1747,13 +1747,13 @@ const pluginNotificationEmitter = createPluginNotificationEmitter({
   broadcastUiNotification,
 });
 
-const openChamberControlService = createOpenChamberControlService({
+const alcodeControlService = createAlcodeControlService({
   readSettingsFromDiskMigrated,
   sanitizeProjects,
   buildOpenCodeUrl,
   getOpenCodeAuthHeaders,
   waitForOpenCodeReady,
-  sessionService: openChamberSessionService,
+  sessionService: alcodeSessionService,
   scheduledTaskService,
   browserControl: browserControlRouter,
   fileOpen: fileOpenRequester,
@@ -1762,23 +1762,23 @@ const openChamberControlService = createOpenChamberControlService({
   notifyUser: async (input) => {
     const settings = await readSettingsFromDiskMigrated().catch(() => null);
     if (settings?.agentNotifyToolEnabled !== true) {
-      return { status: 403, body: { error: 'The notify tool is turned off in OpenChamber settings' } };
+      return { status: 403, body: { error: 'The notify tool is turned off in Alcode settings' } };
     }
     return pluginNotificationEmitter.emit(input);
   },
   agentMemoryActions: createAgentMemoryActions({
     agentMemoryRuntime,
-    createError: (message, status) => new OpenChamberControlError(message, status),
+    createError: (message, status) => new AlcodeControlError(message, status),
     onMemoryChanged: emitAgentMemoryChangedEvent,
     isAgentMemoryEnabled,
     resolveProjectId: resolveMemoryProjectId,
   }),
   sessionLinks: createSessionLinker({
     updateMetadata: updateSessionMetadataWith,
-    createError: (message, status) => new OpenChamberControlError(message, status),
+    createError: (message, status) => new AlcodeControlError(message, status),
   }),
   dispatchResults: dispatchResultsRuntime,
-  archiveStore: openChamberSessionService.archiveStore,
+  archiveStore: alcodeSessionService.archiveStore,
 });
 
 const ensureGlobalWatcherStarted = async () => {
@@ -1809,7 +1809,7 @@ const bootstrapOpenCodeAtStartup = async (...args) => {
   // the session's next write or the next start.
   void waitForOpenCodeReady()
     .then(() => sessionMetadataStore.migrateLegacy())
-    .catch((error) => console.warn('[openchamber-sessions] session metadata migration failed:', error?.message ?? error));
+    .catch((error) => console.warn('[alcode-sessions] session metadata migration failed:', error?.message ?? error));
 };
 const killProcessOnPort = (...args) => openCodeLifecycleRuntime.killProcessOnPort(...args);
 const waitForPortRelease = (...args) => openCodeLifecycleRuntime.waitForPortRelease(...args);
@@ -1882,18 +1882,18 @@ async function main(options = {}) {
   const port = Number.isFinite(options.port) && options.port >= 0 ? Math.trunc(options.port) : DEFAULT_PORT;
   const host = typeof options.host === 'string' && options.host.length > 0 ? options.host : undefined;
   const effectiveBindHost = host
-    || (typeof process.env.OPENCHAMBER_HOST === 'string' && process.env.OPENCHAMBER_HOST.trim().length > 0
-      ? process.env.OPENCHAMBER_HOST.trim()
+    || (typeof process.env.ALCODE_HOST === 'string' && process.env.ALCODE_HOST.trim().length > 0
+      ? process.env.ALCODE_HOST.trim()
       : '127.0.0.1');
   agentToolRuntime = createAgentToolRuntime({
     crypto,
     fsPromises,
     path,
-    dataDir: OPENCHAMBER_DATA_DIR,
+    dataDir: ALCODE_DATA_DIR,
     env: process.env,
-    executeAction: (...args) => openChamberControlService.execute(...args),
+    executeAction: (...args) => alcodeControlService.execute(...args),
     // A v2 tool call carries no directory, only the session it runs in.
-    resolveSessionDirectory: (sessionID) => openChamberControlService.resolveSessionDirectory(sessionID),
+    resolveSessionDirectory: (sessionID) => alcodeControlService.resolveSessionDirectory(sessionID),
     getActivePort: () => {
       const address = server?.address?.();
       return typeof address === 'object' && address ? address.port : null;
@@ -1904,13 +1904,13 @@ async function main(options = {}) {
   managedConfigRuntime = createManagedConfigRuntime({
     fsPromises,
     path,
-    dataDir: OPENCHAMBER_DATA_DIR,
+    dataDir: ALCODE_DATA_DIR,
     env: process.env,
     agentToolRuntime,
     readSettings: () => readSettingsFromDiskMigrated(),
     isAgentMemoryAvailable: isAgentMemoryFeatureAvailable,
   });
-  await ensureChatsDir({ fsPromises, chatsDir: OPENCHAMBER_CHATS_DIR, warn: (message) => console.warn(`[data-dir] ${message}`) });
+  await ensureChatsDir({ fsPromises, chatsDir: ALCODE_CHATS_DIR, warn: (message) => console.warn(`[data-dir] ${message}`) });
 
   // Pairing transports advertised to the create-device dialog. LAN reachability is
   // derived from the SERVER's actual bind (a wildcard bind → the machine's LAN IP;
@@ -2012,7 +2012,7 @@ async function main(options = {}) {
     throw new Error(NETWORK_ACCESS_BLOCKED_ERROR);
   }
   const tryCfTunnel = options.tryCfTunnel === true;
-  const apiOnly = options.apiOnly === true || isEnvFlagEnabled(process.env.OPENCHAMBER_API_ONLY);
+  const apiOnly = options.apiOnly === true || isEnvFlagEnabled(process.env.ALCODE_API_ONLY);
   const shouldUseCanonicalTunnelConfig = typeof options.tunnelMode === 'string'
     || typeof options.tunnelProvider === 'string'
     || options.tunnelConfigPath === null
@@ -2057,7 +2057,7 @@ async function main(options = {}) {
     ? options.desktopUpdater
     : null;
 
-  console.log(`Starting OpenChamber on port ${port === 0 ? 'auto' : port}`);
+  console.log(`Starting Alcode on port ${port === 0 ? 'auto' : port}`);
 
   // Voice enumeration is independent from route registration. Start it now,
   // but do not hold server listen or managed OpenCode startup on `say -v "?"`.
@@ -2071,7 +2071,7 @@ async function main(options = {}) {
     headers: getOpenCodeAuthHeaders(),
   });
   const spaceArchive = createSpaceArchive({
-    dataDir: OPENCHAMBER_DATA_DIR,
+    dataDir: ALCODE_DATA_DIR,
     hostOpenCode: {
       importChat: (chat) => hostOpenCodeClient().session.import(chat),
       removeChat: (sessionID) => hostOpenCodeClient().session.remove({ sessionID }),
@@ -2081,7 +2081,7 @@ async function main(options = {}) {
   // The isolated-spaces switch, read here at start and changed live through its route below.
   // While it is off the feature has no place, no manager, no route and runs no `docker`.
   const buildSpacesHost = () => createSpacesHost({
-    dataDir: OPENCHAMBER_DATA_DIR,
+    dataDir: ALCODE_DATA_DIR,
     dockerPath: searchPathFor('docker', buildAugmentedPath()) ?? 'docker',
     // Only for a clean-up of the spaces' disk on Colima, to give the freed space back; null without it.
     colimaPath: searchPathFor('colima', buildAugmentedPath()),
@@ -2111,7 +2111,7 @@ async function main(options = {}) {
   const app = express();
   const serverStartedAt = new Date().toISOString();
   const packagedClientOrigins = new Set([
-    'openchamber-ui://app',
+    'alcode-ui://app',
     'capacitor://localhost',
     'http://localhost',
     'https://localhost',
@@ -2122,7 +2122,7 @@ async function main(options = {}) {
   // replaces this one.
   const frameAncestorsPolicy = buildFrameAncestorsPolicy({
     allowLocalDevOrigins,
-    extra: process.env.OPENCHAMBER_FRAME_ANCESTORS,
+    extra: process.env.ALCODE_FRAME_ANCESTORS,
   });
   // Forwarded headers are believed only from a proxy on this machine or a
   // private network (cloudflared, Docker, a LAN reverse proxy). From anyone
@@ -2155,10 +2155,10 @@ async function main(options = {}) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-      // The packaged desktop UI (openchamber-ui://) and the dev UI sit on a
+      // The packaged desktop UI (alcode-ui://) and the dev UI sit on a
       // different origin, so every custom request header must be listed here or
       // the browser refuses the request at preflight, before it reaches a route.
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,X-Requested-With,Cache-Control,X-OpenCode-Directory,X-OpenCode-Directory-Encoding,Ngrok-Skip-Browser-Warning,X-OpenChamber-Surface,X-OpenChamber-Provider,X-OpenChamber-Model');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,X-Requested-With,Cache-Control,X-OpenCode-Directory,X-OpenCode-Directory-Encoding,Ngrok-Skip-Browser-Warning,X-Alcode-Surface,X-Alcode-Provider,X-Alcode-Model');
       res.setHeader('Access-Control-Expose-Headers', 'x-next-cursor');
       res.setHeader('Vary', 'Origin');
       if (req.method === 'OPTIONS') {
@@ -2191,8 +2191,8 @@ async function main(options = {}) {
 
   const bootstrapResult = bootstrapRuntime.setupBaseRoutes(app, {
     process,
-    openchamberVersion: OPENCHAMBER_VERSION,
-    runtimeName: process.env.OPENCHAMBER_RUNTIME || 'web',
+    alcodeVersion: ALCODE_VERSION,
+    runtimeName: process.env.ALCODE_RUNTIME || 'web',
     serverStartedAt,
     gracefulShutdown,
     getHealthSnapshot: () => {
@@ -2237,7 +2237,7 @@ async function main(options = {}) {
       return Number.isFinite(port) && port > 0 ? port : null;
     },
     getTunnelUrl: () => tunnelRuntimeContextHolder?.tunnelService?.getPublicUrl?.() ?? null,
-    verboseRequestLogs: OPENCHAMBER_VERBOSE_REQUEST_LOGS,
+    verboseRequestLogs: ALCODE_VERBOSE_REQUEST_LOGS,
     alcoreSecret,
     alcoreIssuer,
     tunnelAuthController,
@@ -2265,9 +2265,9 @@ async function main(options = {}) {
     getServerLabel: () => {
       try {
         const name = os.hostname();
-        return typeof name === 'string' && name.trim().length > 0 ? name.trim() : 'OpenChamber';
+        return typeof name === 'string' && name.trim().length > 0 ? name.trim() : 'Alcode';
       } catch {
-        return 'OpenChamber';
+        return 'Alcode';
       }
     },
     readSettingsFromDiskMigrated,
@@ -2295,7 +2295,7 @@ async function main(options = {}) {
     path,
     server,
     __dirname,
-    openchamberDataDir: OPENCHAMBER_DATA_DIR,
+    alcodeDataDir: ALCODE_DATA_DIR,
     modelsDevApiUrl: MODELS_DEV_API_URL,
     modelsMetadataCacheTtl: MODELS_METADATA_CACHE_TTL,
     fetchFreeZenModels,
@@ -2372,18 +2372,18 @@ async function main(options = {}) {
     // the relay identity (serverId), so concurrent hosts evict each other at
     // the relay worker and devices land on a random local instance.
     hostLock: createRelayHostLock({
-      lockFilePath: path.join(OPENCHAMBER_DATA_DIR, 'relay-host.lock'),
+      lockFilePath: path.join(ALCODE_DATA_DIR, 'relay-host.lock'),
       fs,
       process,
     }),
     // Dev/debug instances share the data dir (and thus the relay identity) with
     // the production instance, so they must not host the relay on their own —
-    // paired devices would land on them. OPENCHAMBER_RELAY_HOST=off disables
+    // paired devices would land on them. ALCODE_RELAY_HOST=off disables
     // passive hosting explicitly (dev scripts set it); the Electron dev shell is
-    // covered via OPENCHAMBER_ELECTRON_DEV. OPENCHAMBER_RELAY_HOST=on overrides
+    // covered via ALCODE_ELECTRON_DEV. ALCODE_RELAY_HOST=on overrides
     // both. Explicit enable/pairing on the instance still hosts regardless.
-    allowPassiveHost: process.env.OPENCHAMBER_RELAY_HOST === 'on'
-      || (process.env.OPENCHAMBER_RELAY_HOST !== 'off' && process.env.OPENCHAMBER_ELECTRON_DEV !== '1'),
+    allowPassiveHost: process.env.ALCODE_RELAY_HOST === 'on'
+      || (process.env.ALCODE_RELAY_HOST !== 'off' && process.env.ALCODE_ELECTRON_DEV !== '1'),
     // Relay demand = any paired device or pending pairing session that uses the
     // relay transport. Drives the auto on/off lifecycle.
     hasRelayDemand: async () => {
@@ -2437,16 +2437,16 @@ async function main(options = {}) {
     spawn,
     resolveGitBinaryForSpawn,
     createFsSearchRuntime: createFsSearchRuntimeFactory,
-    openchamberDataDir: OPENCHAMBER_DATA_DIR,
-    openchamberVersion: OPENCHAMBER_VERSION,
+    alcodeDataDir: ALCODE_DATA_DIR,
+    alcodeVersion: ALCODE_VERSION,
     onGuestDeactivated: async (event) => {
       guestSurfaceRuntime?.endForGuest(event.guestId);
       return browserControlRouter.handleGuestDeactivated(event);
     },
     surfaceViewerHeaders: (guestId, viewerId) => guestSurfaceRuntime?.viewerHeaders(guestId, viewerId) ?? null,
     builtInExtensionsDir: options.builtInExtensionsDir,
-    openchamberUserConfigRoot: OPENCHAMBER_USER_CONFIG_ROOT,
-    managedChatsRoot: OPENCHAMBER_CHATS_DIR,
+    alcodeUserConfigRoot: ALCODE_USER_CONFIG_ROOT,
+    managedChatsRoot: ALCODE_CHATS_DIR,
     normalizeDirectoryPath,
     resolveProjectDirectory,
     resolveOptionalProjectDirectory,
@@ -2480,7 +2480,7 @@ async function main(options = {}) {
     buildOpenCodeUrl,
     getOpenCodeAuthHeaders,
     getOpenCodePort: () => openCodePort,
-    // Dev-server discovery must not offer OpenChamber's own listeners back to
+    // Dev-server discovery must not offer Alcode's own listeners back to
     // the user as something to preview (including the fixed-port callback).
     getOwnPorts: () => [port, openCodePort, DESKTOP_CALLBACK_PORT].filter((value) => Number.isInteger(value) && value > 0),
     getActivePort: () => {
@@ -2498,11 +2498,11 @@ async function main(options = {}) {
     sessionKnowledgeRuntime,
     scheduledTasksRuntime,
     scheduledTaskService,
-    openChamberSessionService,
-    openChamberControlService,
+    alcodeSessionService,
+    alcodeControlService,
     waitForOpenCodeReady,
     emitSessionCreatedEvent,
-    getOpenChamberEventClients: () => uiOpenChamberEventClients,
+    getAlcodeEventClients: () => uiAlcodeEventClients,
     writeSseEvent,
     globalEventHub: globalMessageStreamHub,
     permissionAutoAcceptRuntime,
@@ -2517,8 +2517,8 @@ async function main(options = {}) {
     uiAuthController,
     isRequestOriginAllowed,
     rejectWebSocketUpgrade,
-    persistPath: extensionsPersistPath(OPENCHAMBER_DATA_DIR),
-    findGuest: (id) => findInstalledGuest(id, extensionsPersistPath(OPENCHAMBER_DATA_DIR)),
+    persistPath: extensionsPersistPath(ALCODE_DATA_DIR),
+    findGuest: (id) => findInstalledGuest(id, extensionsPersistPath(ALCODE_DATA_DIR)),
     idleStopMs: BROWSER_PROVIDER_IDLE_MS,
   });
 
@@ -2578,7 +2578,7 @@ async function main(options = {}) {
     tunnelRuntimeContext,
     attachSignals,
     apiOnly,
-    dictationModelsDir: path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'speech-models'),
+    dictationModelsDir: path.join(ALCODE_USER_CONFIG_ROOT, 'speech-models'),
     // Shares the desktop-auth runtime's pending-request map with the login
     // start, so the fixed-port callback completes dev-layout logins.
     registerDesktopGoogleCallbackRoute: bootstrapResult.desktopAuthRuntime?.registerCallbackRoute ?? null,
@@ -2598,7 +2598,7 @@ async function main(options = {}) {
   // device/session exists, stop it (and clear a stale enabled flag) otherwise.
   void relayService.reconcile();
 
-  // Relay demand can change outside our routes: `openchamber connect-url
+  // Relay demand can change outside our routes: `alcode connect-url
   // --relay` writes a pending relay session straight to the on-disk store, and
   // pending sessions expire without any request hitting us. Poll reconcile so a
   // headless instance picks the relay up (or drops it) within a minute.
@@ -2610,7 +2610,7 @@ async function main(options = {}) {
   // The server inside an isolated space stops itself after the user's idle hours, and the space's
   // container with it (DESIGN.md, decision 11). Only a space's environment names the setting's
   // file, so this never runs anywhere else. The exit code tells the host why it stopped.
-  const spaceIdleStopFile = process.env.OPENCHAMBER_SPACE_IDLE_STOP_FILE;
+  const spaceIdleStopFile = process.env.ALCODE_SPACE_IDLE_STOP_FILE;
   if (spaceIdleStopFile) {
     startIdleStop({
       settingsPath: spaceIdleStopFile,

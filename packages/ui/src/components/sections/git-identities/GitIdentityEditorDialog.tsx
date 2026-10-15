@@ -15,7 +15,7 @@ import {
 import { Icon } from "@/components/icon/Icon";
 import type { IconName } from "@/components/icon/icons";
 import { useGitIdentitiesStore, type GitIdentityProfile } from '@/stores/useGitIdentitiesStore';
-import { ManagedSshCredentials } from '@/components/sections/openchamber/ManagedSshCredentials';
+import { ManagedSshCredentials } from '@/components/sections/alcode/ManagedSshCredentials';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getSourceControlAuthKey, useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';

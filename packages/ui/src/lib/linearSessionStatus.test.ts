@@ -26,9 +26,9 @@ describe('resolveLinearSessionOrigin', () => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {
-        location: { origin: 'openchamber-ui://app' },
-        __OPENCHAMBER_ELECTRON__: { runtime: 'electron' },
-        __OPENCHAMBER_LOCAL_ORIGIN__: 'http://127.0.0.1:3001',
+        location: { origin: 'alcode-ui://app' },
+        __ALCODE_ELECTRON__: { runtime: 'electron' },
+        __ALCODE_LOCAL_ORIGIN__: 'http://127.0.0.1:3001',
       },
     });
     expect(resolveLinearSessionOrigin()).toBe('http://127.0.0.1:3001');
@@ -38,9 +38,9 @@ describe('resolveLinearSessionOrigin', () => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {
-        location: { origin: 'openchamber-ui://app' },
-        __OPENCHAMBER_ELECTRON__: { runtime: 'electron' },
-        __OPENCHAMBER_LOCAL_ORIGIN__: 'openchamber-ui://app',
+        location: { origin: 'alcode-ui://app' },
+        __ALCODE_ELECTRON__: { runtime: 'electron' },
+        __ALCODE_LOCAL_ORIGIN__: 'alcode-ui://app',
       },
     });
     // A deep link is unopenable for everyone but this machine, so the server

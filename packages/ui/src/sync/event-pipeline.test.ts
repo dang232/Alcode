@@ -33,7 +33,7 @@ function statusEvent(type: "busy" | "retry"): OpenCodeEvent {
   }
 }
 
-/** A raw stream payload: wire events, or OpenChamber's own bridge events. */
+/** A raw stream payload: wire events, or Alcode's own bridge events. */
 type StreamPayload = OpenCodeEvent | { type: string; properties: Record<string, string> }
 
 /** `keepalives` counts SSE comments sent before the events. They are activity without an event. */
@@ -138,41 +138,41 @@ describe("createEventPipeline", () => {
     expect(events[0]).toMatchObject({ type: "session.patched", properties: { patch: { title: "New", cost: 1, time: { updated: 1000 } } } })
   })
 
-  test("bridges openchamber session status events into session.status", async () => {
+  test("bridges alcode session status events into session.status", async () => {
     const { directory, events } = await collect(
-      [{ type: "openchamber:session-status", properties: { sessionID: "ses_1", status: "idle" } }],
+      [{ type: "alcode:session-status", properties: { sessionID: "ses_1", status: "idle" } }],
       1,
     )
     expect(directory).toBe("global")
     expect(events[0]).toEqual({ type: "session.status", properties: { sessionID: "ses_1", status: { type: "idle" } } })
   })
 
-  test("bridges openchamber archive announcements into session patches", async () => {
+  test("bridges alcode archive announcements into session patches", async () => {
     const { events } = await collect(
-      [{ type: "openchamber:session-archived", properties: { sessionID: "ses_1", archivedAt: 42 } as never }],
+      [{ type: "alcode:session-archived", properties: { sessionID: "ses_1", archivedAt: 42 } as never }],
       1,
     )
     expect(events[0]).toEqual({ type: "session.patched", properties: { sessionID: "ses_1", patch: { time: { archived: 42 } } } })
   })
 
-  test("bridges openchamber metadata announcements into session patches", async () => {
+  test("bridges alcode metadata announcements into session patches", async () => {
     const { events } = await collect(
-      [{ type: "openchamber:session-metadata", properties: { sessionID: "ses_1", metadata: { pinned: true } } as never }],
+      [{ type: "alcode:session-metadata", properties: { sessionID: "ses_1", metadata: { pinned: true } } as never }],
       1,
     )
     expect(events[0]).toEqual({ type: "session.patched", properties: { sessionID: "ses_1", patch: { metadata: { pinned: true } } } })
   })
 
-  test("passes OpenChamber notification and auto-accept frames through typed", async () => {
+  test("passes Alcode notification and auto-accept frames through typed", async () => {
     const { events } = await collect(
       [
-        { type: "openchamber:notification", properties: { kind: "agent-complete", sessionId: "ses_1", title: "Done" } },
-        { type: "openchamber:permission-auto-accept.updated", properties: { sessions: { ses_1: true }, modes: { ses_1: "safety" }, revision: 3 } as never },
+        { type: "alcode:notification", properties: { kind: "agent-complete", sessionId: "ses_1", title: "Done" } },
+        { type: "alcode:permission-auto-accept.updated", properties: { sessions: { ses_1: true }, modes: { ses_1: "safety" }, revision: 3 } as never },
       ],
       2,
     )
-    expect(events[0]).toEqual({ type: "openchamber.notification", properties: { kind: "agent-complete", sessionId: "ses_1", title: "Done" } })
-    expect(events[1]).toEqual({ type: "openchamber.permission-auto-accept", properties: { sessions: { ses_1: true }, modes: { ses_1: "safety" }, revision: 3 } })
+    expect(events[0]).toEqual({ type: "alcode.notification", properties: { kind: "agent-complete", sessionId: "ses_1", title: "Done" } })
+    expect(events[1]).toEqual({ type: "alcode.permission-auto-accept", properties: { sessions: { ses_1: true }, modes: { ses_1: "safety" }, revision: 3 } })
   })
 
   test("ignores payloads that are neither wire events nor bridge events", async () => {
@@ -187,8 +187,8 @@ describe("createEventPipeline", () => {
     const announced: Array<{ spaceId: string; status: string; wasReady: boolean }> = []
     const pipeline = createEventPipeline({
       sdk: createSdk([
-        { type: "openchamber:space-stream", properties: { spaceId: "a1b2c3d4e5f6", status: "connected", wasReady: false, timestamp: 1 } as never },
-        { type: "openchamber:space-stream", properties: { spaceId: "not-an-id", status: "connected", wasReady: false } as never },
+        { type: "alcode:space-stream", properties: { spaceId: "a1b2c3d4e5f6", status: "connected", wasReady: false, timestamp: 1 } as never },
+        { type: "alcode:space-stream", properties: { spaceId: "not-an-id", status: "connected", wasReady: false } as never },
         textEnded("a"),
       ], resolveStreamFinished),
       onEvents: (_directory, batch) => { delivered.push(...batch) },
@@ -213,9 +213,9 @@ describe("createEventPipeline", () => {
     const steps: Array<{ spaceId: string; step: string; failure: { code: string; message: string } | null }> = []
     const pipeline = createEventPipeline({
       sdk: createSdk([
-        { type: "openchamber:space-progress", properties: { spaceId: "a1b2c3d4e5f6", step: "creating", failure: null, timestamp: 1 } as never },
-        { type: "openchamber:space-progress", properties: { spaceId: "a1b2c3d4e5f6", step: "failed", failure: { code: "docker_daemon_unreachable", message: "down", details: null }, timestamp: 2 } as never },
-        { type: "openchamber:space-progress", properties: { spaceId: "a1b2c3d4e5f6", step: "dancing", failure: null } as never },
+        { type: "alcode:space-progress", properties: { spaceId: "a1b2c3d4e5f6", step: "creating", failure: null, timestamp: 1 } as never },
+        { type: "alcode:space-progress", properties: { spaceId: "a1b2c3d4e5f6", step: "failed", failure: { code: "docker_daemon_unreachable", message: "down", details: null }, timestamp: 2 } as never },
+        { type: "alcode:space-progress", properties: { spaceId: "a1b2c3d4e5f6", step: "dancing", failure: null } as never },
         textEnded("a"),
       ], resolveStreamFinished),
       onEvents: (_directory, batch) => { delivered.push(...batch) },
@@ -243,8 +243,8 @@ describe("createEventPipeline", () => {
     const moved: string[] = []
     const pipeline = createEventPipeline({
       sdk: createSdk([
-        { type: "openchamber:space-setup", properties: { spaceId: "a1b2c3d4e5f6", timestamp: 1 } as never },
-        { type: "openchamber:space-setup", properties: { spaceId: "../etc" } as never },
+        { type: "alcode:space-setup", properties: { spaceId: "a1b2c3d4e5f6", timestamp: 1 } as never },
+        { type: "alcode:space-setup", properties: { spaceId: "../etc" } as never },
         textEnded("a"),
       ], resolveStreamFinished),
       onEvents: (_directory, batch) => { delivered.push(...batch) },
@@ -305,7 +305,7 @@ describe("createEventPipeline", () => {
     expect(activity).toBe(0)
   })
 
-  describe("while the OpenChamber session is expired", () => {
+  describe("while the Alcode session is expired", () => {
     afterEach(() => {
       useAuthSessionStore.getState().markAuthenticated()
     })
@@ -434,7 +434,7 @@ describe("createEventPipeline over the WebSocket transport", () => {
       const socket = sockets[0]
       socket.onmessage?.({ data: JSON.stringify({ type: "ready" }) })
       socket.onmessage?.({
-        data: JSON.stringify({ type: "event", payload: { type: "openchamber:heartbeat", timestamp: 1 }, directory: "global" }),
+        data: JSON.stringify({ type: "event", payload: { type: "alcode:heartbeat", timestamp: 1 }, directory: "global" }),
       })
       await new Promise((resolve) => setTimeout(resolve, 50))
     } finally {

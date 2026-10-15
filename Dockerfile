@@ -17,14 +17,14 @@ RUN bun install --frozen-lockfile --ignore-scripts
 FROM deps AS builder
 WORKDIR /app
 COPY . .
-# The server imports @openchamber/sdk at runtime, and deps installed with
+# The server imports @alcode/sdk at runtime, and deps installed with
 # --ignore-scripts, so the root postinstall never built it. Build it here
 # so the runtime stage can copy the output.
 RUN bun run --cwd packages/sdk build
 RUN bun run build:web
 
 FROM oven/bun:1.4.2 AS runtime
-WORKDIR /home/openchamber
+WORKDIR /home/alcode
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   bash \
@@ -38,21 +38,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3 \
   && rm -rf /var/lib/apt/lists/*
 
-# Replace the base image's 'bun' user (UID 1000) with 'openchamber'
+# Replace the base image's 'bun' user (UID 1000) with 'alcode'
 # so mounted volumes with 1000:1000 ownership work correctly.
 RUN userdel bun \
-  && groupadd -g 1000 openchamber \
-  && useradd -u 1000 -g 1000 -m -s /bin/bash openchamber \
-  && chown -R openchamber:openchamber /home/openchamber
+  && groupadd -g 1000 alcode \
+  && useradd -u 1000 -g 1000 -m -s /bin/bash alcode \
+  && chown -R alcode:alcode /home/alcode
 
-# Switch to openchamber user
-USER openchamber
+# Switch to alcode user
+USER alcode
 
-ENV NPM_CONFIG_PREFIX=/home/openchamber/.npm-global
+ENV NPM_CONFIG_PREFIX=/home/alcode/.npm-global
 ENV PATH=${NPM_CONFIG_PREFIX}/bin:${PATH}
 
-RUN npm config set prefix /home/openchamber/.npm-global && mkdir -p /home/openchamber/.npm-global && \
-  mkdir -p /home/openchamber/.local /home/openchamber/.config /home/openchamber/.ssh && \
+RUN npm config set prefix /home/alcode/.npm-global && mkdir -p /home/alcode/.npm-global && \
+  mkdir -p /home/alcode/.local /home/alcode/.config /home/alcode/.ssh && \
   npm install -g @opencode/cli@2.0.23
 
 # cloudflared 2026.3.0 - update digest explicitly when upgrading
@@ -63,7 +63,7 @@ ENV NODE_ENV=production
 # every byte of a multibyte character separately in the built-in terminal.
 ENV LANG=C.UTF-8
 
-COPY scripts/docker-entrypoint.sh /home/openchamber/openchamber-entrypoint.sh
+COPY scripts/docker-entrypoint.sh /home/dang232/Alcode-entrypoint.sh
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/web/node_modules ./packages/web/node_modules
@@ -77,4 +77,4 @@ COPY --from=builder /app/packages/web/dist ./packages/web/dist
 
 EXPOSE 3000
 
-ENTRYPOINT ["sh", "/home/openchamber/openchamber-entrypoint.sh"]
+ENTRYPOINT ["sh", "/home/dang232/Alcode-entrypoint.sh"]

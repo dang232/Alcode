@@ -1,8 +1,8 @@
 # Small Model
 
-Background LLM calls for OpenChamber's own features — session titles, goal
+Background LLM calls for Alcode's own features — session titles, goal
 distillation, session assist, the changes walkthrough. Every call goes to the
-running OpenCode through `POST /api/experimental/generate`; OpenChamber never talks to a
+running OpenCode through `POST /api/experimental/generate`; Alcode never talks to a
 provider directly and never handles a provider credential.
 
 ## Security boundary
@@ -56,7 +56,7 @@ login `generateSmallModelText` throws `404`. What happens next is per feature:
 Five things are decided here, in order:
 
 1. An explicit `model` on the request (`provider/model`) — `source: 'request'`.
-2. OpenChamber's settings override (Settings → Sessions → Small Model): when
+2. Alcode's settings override (Settings → Sessions → Small Model): when
    `smallModelUseDefault` is `false`, `smallModelOverride` wins —
    `source: 'settings'`.
 3. The small model configured for OpenCode itself — `source: 'config'`. OpenCode

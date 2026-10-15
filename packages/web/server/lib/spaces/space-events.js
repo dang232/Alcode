@@ -7,7 +7,7 @@
 // Every event is untrusted and passes the session index first: a directory outside the
 // space's root or a session id of the host's drops it. When a connection is made the host
 // asks the space for its live status and enters it the same way. A gap is reported to the
-// clients as `openchamber:space-stream`, so a client re-reads that one space.
+// clients as `alcode:space-stream`, so a client re-reads that one space.
 
 import { Readable } from 'node:stream';
 
@@ -57,7 +57,7 @@ export function createSpaceEventSources({ requestInside, index, hub, logger = co
   const inject = (spaceId, payload, directory) => hub.injectEvent({ payload, directory, spaceId });
 
   const announce = (spaceId, status, wasReady) => {
-    inject(spaceId, { type: 'openchamber:space-stream', properties: { spaceId, status, wasReady, timestamp: now() } }, 'global');
+    inject(spaceId, { type: 'alcode:space-stream', properties: { spaceId, status, wasReady, timestamp: now() } }, 'global');
   };
 
   /** The live status inside, entered as status events, so a busy session shows busy from the first moment. */

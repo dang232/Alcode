@@ -54,7 +54,7 @@ const engineRoot = engineRootIndex === -1 ? null : args[engineRootIndex + 1]?.tr
 const selfTest = args.includes(SELF_TEST_FLAG);
 
 // Optional direct barrel override for vendored trees that do not keep
-// the engine packages/ layout (e.g. Alwork packages/omo-engine).
+// the engine packages/ layout (e.g. Alcode packages/omo-engine).
 const barrelIndex = args.indexOf("--barrel-path");
 const barrelOverride = barrelIndex === -1 ? null : args[barrelIndex + 1]?.trim() || null;
 if (barrelIndex !== -1 && !barrelOverride) fail("missing --barrel-path <file>");

@@ -12,8 +12,8 @@ const TEMP_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'walkthrough-dispatc
 // Assigned at import (not in beforeAll): walkthrough/store.js pins DATA_DIR
 // at module load, so the dir must be set before the `await import` below.
 // Saved and restored in afterAll so sibling suites keep their own dir.
-const PREV_DATA_DIR = process.env.OPENCHAMBER_DATA_DIR;
-process.env.OPENCHAMBER_DATA_DIR = TEMP_DATA_DIR;
+const PREV_DATA_DIR = process.env.ALCODE_DATA_DIR;
+process.env.ALCODE_DATA_DIR = TEMP_DATA_DIR;
 
 const PATCH = `diff --git a/src/a.ts b/src/a.ts
 --- a/src/a.ts
@@ -105,8 +105,8 @@ beforeEach(() => {
 afterAll(() => {
   fs.rmSync(TEMP_DATA_DIR, { recursive: true, force: true });
   mock.restore();
-  if (PREV_DATA_DIR === undefined) delete process.env.OPENCHAMBER_DATA_DIR;
-  else process.env.OPENCHAMBER_DATA_DIR = PREV_DATA_DIR;
+  if (PREV_DATA_DIR === undefined) delete process.env.ALCODE_DATA_DIR;
+  else process.env.ALCODE_DATA_DIR = PREV_DATA_DIR;
 });
 
 // `mock.module` only substitutes modules under Bun. Under any other runner

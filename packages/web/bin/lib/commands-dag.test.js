@@ -1,4 +1,4 @@
-// Tests for `openchamber dag status|stream` (project-ide todo 13: CLI
+// Tests for `alcode dag status|stream` (project-ide todo 13: CLI
 // text parity for the DAG side pane). Vitest per the colocated CLI
 // precedent; stdout is captured, no servers or engines are started — the
 // bridge is stubbed, the snapshot round-trips through a real temp dir.

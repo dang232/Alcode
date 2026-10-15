@@ -571,7 +571,7 @@ async function runGeneration({ directory, source, repoRoot, key, force, explicit
       prompt: options.prompt,
       system: options.system,
       directory,
-      sessionID: `openchamber-walkthrough-${cacheKey}`,
+      sessionID: `alcode-walkthrough-${cacheKey}`,
       model: modelRefString(candidate),
       responseSchema: options.responseSchema,
       onOverflow: 'error',

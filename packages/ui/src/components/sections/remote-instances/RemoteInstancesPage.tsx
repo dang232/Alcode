@@ -122,9 +122,9 @@ const phaseLabelKey = (phase?: string): I18nKey => {
     case 'remote_probe':
       return 'settings.remoteInstances.page.phase.probingRemote';
     case 'installing':
-      return 'settings.remoteInstances.page.phase.installingOpenChamber';
+      return 'settings.remoteInstances.page.phase.installingAlcode';
     case 'updating':
-      return 'settings.remoteInstances.page.phase.updatingOpenChamber';
+      return 'settings.remoteInstances.page.phase.updatingAlcode';
     case 'server_detecting':
       return 'settings.remoteInstances.page.phase.detectingServer';
     case 'server_starting':
@@ -194,7 +194,7 @@ const errorRemedy = (detail?: string): ErrorRemedy => {
   if (text.includes('neither bun nor npm')) return 'noRuntime';
   if (text.includes('opencode cli is not installed')) return 'noOpencode';
   if (text.includes('requires a ui password')) return 'alcoreSecret';
-  if (text.includes('preferred remote openchamber port')) return 'externalPort';
+  if (text.includes('preferred remote alcode port')) return 'externalPort';
   return null;
 };
 
@@ -415,11 +415,11 @@ const normalizeForSave = (instance: DesktopSshInstance): DesktopSshInstance => {
           ? Math.max(1, Math.min(65535, Math.round(instance.localForward.preferredLocalPort)))
           : undefined,
     },
-    remoteOpenchamber: {
-      ...instance.remoteOpenchamber,
+    remoteAlcode: {
+      ...instance.remoteAlcode,
       preferredPort:
-        typeof instance.remoteOpenchamber.preferredPort === 'number'
-          ? Math.max(1, Math.min(65535, Math.round(instance.remoteOpenchamber.preferredPort)))
+        typeof instance.remoteAlcode.preferredPort === 'number'
+          ? Math.max(1, Math.min(65535, Math.round(instance.remoteAlcode.preferredPort)))
           : undefined,
     },
     portForwards: forwards,
@@ -527,7 +527,7 @@ export const RemoteInstancesPage: React.FC = () => {
       return t('settings.remoteInstances.clientAuth.addDevice.transport.lanHint');
     }
     if (lanBlockedByEnterprise) {
-      return t('settings.openchamber.desktopNetwork.field.enterpriseBlocked');
+      return t('settings.alcode.desktopNetwork.field.enterpriseBlocked');
     }
     return t('settings.remoteInstances.clientAuth.addDevice.transport.lanUnavailableDesktopHint');
   })();
@@ -621,9 +621,9 @@ export const RemoteInstancesPage: React.FC = () => {
     const redeemBody = JSON.stringify({
       pairingId: payload.pairingId,
       secret: payload.secret,
-      clientLabel: payload.label || 'OpenChamber Desktop',
+      clientLabel: payload.label || 'Alcode Desktop',
       clientKind: 'desktop',
-      deviceName: 'OpenChamber Desktop',
+      deviceName: 'Alcode Desktop',
       devicePlatform: desktopPlatformName(),
       ...(installId ? { dedupeKey: `desktop:${installId}` } : {}),
     });
@@ -1188,15 +1188,15 @@ export const RemoteInstancesPage: React.FC = () => {
 
     // "Already running" cannot pick a port on its own; catching it here keeps
     // the failure in the form instead of surfacing it mid-connect.
-    if (normalized.remoteOpenchamber.mode === 'external' && !normalized.remoteOpenchamber.preferredPort) {
+    if (normalized.remoteAlcode.mode === 'external' && !normalized.remoteAlcode.preferredPort) {
       toast.error(t('settings.remoteInstances.page.validation.externalPortRequired'));
       setAdvancedOpen(true);
       return;
     }
 
     if (
-      normalized.remoteOpenchamber.mode === 'managed' &&
-      normalized.remoteOpenchamber.bindHost === '0.0.0.0' &&
+      normalized.remoteAlcode.mode === 'managed' &&
+      normalized.remoteAlcode.bindHost === '0.0.0.0' &&
       !normalized.auth.alcoreSecret?.value?.trim()
     ) {
       toast.error(t('settings.remoteInstances.page.validation.remoteLanNeedsAlcoreSecret'));
@@ -1497,7 +1497,7 @@ export const RemoteInstancesPage: React.FC = () => {
       return;
     }
 
-    if (!canDisconnect && draft.remoteOpenchamber.mode === 'external' && !draft.remoteOpenchamber.preferredPort) {
+    if (!canDisconnect && draft.remoteAlcode.mode === 'external' && !draft.remoteAlcode.preferredPort) {
       toast.error(t('settings.remoteInstances.page.validation.externalPortRequired'));
       setAdvancedOpen(true);
       return;
@@ -1505,8 +1505,8 @@ export const RemoteInstancesPage: React.FC = () => {
 
     if (
       !canDisconnect &&
-      draft.remoteOpenchamber.mode === 'managed' &&
-      draft.remoteOpenchamber.bindHost === '0.0.0.0' &&
+      draft.remoteAlcode.mode === 'managed' &&
+      draft.remoteAlcode.bindHost === '0.0.0.0' &&
       !draft.auth.alcoreSecret?.value?.trim()
     ) {
       toast.error(t('settings.remoteInstances.page.validation.remoteLanNeedsAlcoreSecret'));
@@ -2171,10 +2171,10 @@ export const RemoteInstancesPage: React.FC = () => {
     );
   }
 
-  const isManagedMode = draft.remoteOpenchamber.mode === 'managed';
+  const isManagedMode = draft.remoteAlcode.mode === 'managed';
   // Publishing the remote server to its network turns the Alcore secret from
   // an option into the only thing standing in front of it.
-  const remoteLanExposed = isManagedMode && draft.remoteOpenchamber.bindHost === '0.0.0.0';
+  const remoteLanExposed = isManagedMode && draft.remoteAlcode.bindHost === '0.0.0.0';
   const alcoreSecretMissing = remoteLanExposed && !draft.auth.alcoreSecret?.value?.trim();
   const instanceTitle = draft.nickname?.trim() || draft.sshParsed?.destination || draft.id;
 
@@ -2329,12 +2329,12 @@ export const RemoteInstancesPage: React.FC = () => {
                 />
             </div>
             <Select
-              value={draft.remoteOpenchamber.mode}
+              value={draft.remoteAlcode.mode}
               onValueChange={(value) =>
                 updateDraft((current) => ({
                   ...current,
-                  remoteOpenchamber: {
-                    ...current.remoteOpenchamber,
+                  remoteAlcode: {
+                    ...current.remoteAlcode,
                     mode: value === 'external' ? 'external' : 'managed',
                   },
                 }))
@@ -2395,12 +2395,12 @@ export const RemoteInstancesPage: React.FC = () => {
               max={65535}
               step={1}
               className={cn(SETTINGS_NUMBER_INPUT_CLASS, 'tabular-nums')}
-              value={draft.remoteOpenchamber.preferredPort}
+              value={draft.remoteAlcode.preferredPort}
               onValueChange={(next) => {
                 updateDraft((current) => ({
                   ...current,
-                  remoteOpenchamber: {
-                    ...current.remoteOpenchamber,
+                  remoteAlcode: {
+                    ...current.remoteAlcode,
                     preferredPort: Number.isFinite(next) && next > 0 ? next : undefined,
                   },
                 }));
@@ -2408,8 +2408,8 @@ export const RemoteInstancesPage: React.FC = () => {
               onClear={() => {
                 updateDraft((current) => ({
                   ...current,
-                  remoteOpenchamber: {
-                    ...current.remoteOpenchamber,
+                  remoteAlcode: {
+                    ...current.remoteAlcode,
                     preferredPort: undefined,
                   },
                 }));
@@ -2427,12 +2427,12 @@ export const RemoteInstancesPage: React.FC = () => {
                 />
               </div>
               <Select
-                value={draft.remoteOpenchamber.installMethod}
+                value={draft.remoteAlcode.installMethod}
                 onValueChange={(value) =>
                   updateDraft((current) => ({
                     ...current,
-                    remoteOpenchamber: {
-                      ...current.remoteOpenchamber,
+                    remoteAlcode: {
+                      ...current.remoteAlcode,
                       installMethod: value === 'npm' || value === 'bun' ? value : 'auto',
                     },
                   }))
@@ -2464,8 +2464,8 @@ export const RemoteInstancesPage: React.FC = () => {
                   onCheckedChange={(checked) =>
                     updateDraft((current) => ({
                       ...current,
-                      remoteOpenchamber: {
-                        ...current.remoteOpenchamber,
+                      remoteAlcode: {
+                        ...current.remoteAlcode,
                         bindHost: checked ? '0.0.0.0' : '127.0.0.1',
                       },
                     }))
@@ -2491,12 +2491,12 @@ export const RemoteInstancesPage: React.FC = () => {
               </div>
               <div className="flex w-full items-center gap-2 md:max-w-xs">
                 <Switch
-                  checked={draft.remoteOpenchamber.keepRunning}
+                  checked={draft.remoteAlcode.keepRunning}
                   onCheckedChange={(checked) =>
                     updateDraft((current) => ({
                       ...current,
-                      remoteOpenchamber: {
-                        ...current.remoteOpenchamber,
+                      remoteAlcode: {
+                        ...current.remoteAlcode,
                         keepRunning: checked,
                       },
                     }))
@@ -2607,7 +2607,7 @@ export const RemoteInstancesPage: React.FC = () => {
           <div className="space-y-1 pt-1">
             <p className="typography-micro text-muted-foreground">{t('settings.remoteInstances.page.tunnelPreview.caption')}</p>
             <p className="typography-micro font-mono text-foreground/80 break-all">
-              {`${draft.localForward.bindHost}:${draft.localForward.preferredLocalPort || 'auto'} → ${draft.sshParsed?.destination || draft.nickname || 'remote'}:${draft.remoteOpenchamber.preferredPort || 'auto'}`}
+              {`${draft.localForward.bindHost}:${draft.localForward.preferredLocalPort || 'auto'} → ${draft.sshParsed?.destination || draft.nickname || 'remote'}:${draft.remoteAlcode.preferredPort || 'auto'}`}
             </p>
           </div>
       </SettingsSection>

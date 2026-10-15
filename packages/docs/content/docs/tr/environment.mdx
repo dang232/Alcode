@@ -1,80 +1,80 @@
 ---
 title: Environment Değişkenleri
-description: Environment değişkenleriyle OpenChamber ve OpenCode entegrasyonunu yapılandırın.
+description: Environment değişkenleriyle Alcode ve OpenCode entegrasyonunu yapılandırın.
 ---
 
 # Environment Değişkenleri
 
-OpenChamber bu environment değişkenlerini başlangıçta okur. Başlangıç servisleri için `openchamber startup enable` varsayılan olarak mevcut environment'ı anlık görüntü olarak kaydeder. Servisin kullanmasını istediğiniz değişkenleri değiştirdikten sonra bunu yeniden çalıştırın.
+Alcode bu environment değişkenlerini başlangıçta okur. Başlangıç servisleri için `alcode startup enable` varsayılan olarak mevcut environment'ı anlık görüntü olarak kaydeder. Servisin kullanmasını istediğiniz değişkenleri değiştirdikten sonra bunu yeniden çalıştırın.
 
 ## OpenCode, Git ve terminal için değişkenler
 
-OpenCode'a, Git'e, terminale ve [proje eylemlerine](/tr/project-actions/) API token'ı ya da veritabanı adresi gibi kendi değişkenlerinizi vermek için, bunları OpenChamber başlamadan önce export etmek yerine **Ayarlar → Genel → Ortam değişkenleri** bölümüne ekleyin. Değerler OpenChamber'ı çalıştıran makinede, veri dizinindeki `environment.json` dosyasında kalır ve onları yalnızca sizin kullanıcınız okuyabilir. Ayarlar bir değeri bir daha asla göstermez: değeri değiştirebilir ya da silebilirsiniz ama geri okuyamazsınız.
+OpenCode'a, Git'e, terminale ve [proje eylemlerine](/tr/project-actions/) API token'ı ya da veritabanı adresi gibi kendi değişkenlerinizi vermek için, bunları Alcode başlamadan önce export etmek yerine **Ayarlar → Genel → Ortam değişkenleri** bölümüne ekleyin. Değerler Alcode'ı çalıştıran makinede, veri dizinindeki `environment.json` dosyasında kalır ve onları yalnızca sizin kullanıcınız okuyabilir. Ayarlar bir değeri bir daha asla göstermez: değeri değiştirebilir ya da silebilirsiniz ama geri okuyamazsınız.
 
 - OpenCode bunları başlarken alır, bu yüzden bir değişiklikten sonra onu yeniden başlatın. Ayarlar bunun için bir düğme sunar.
 - `opencode service set env` ile ayarladığınız değişkenler de OpenCode'a ulaşır. Ayarlar'dakiler önceliklidir.
 - Git, terminal ve proje eylemleri bunları bir sonraki çalıştırmada alır.
-- OpenChamber'ın OpenCode'un kendisi için ayarladığı değişkenler, örneğin parolası ve yapılandırması, sizinkilerden önceliklidir.
+- Alcode'ın OpenCode'un kendisi için ayarladığı değişkenler, örneğin parolası ve yapılandırması, sizinkilerden önceliklidir.
 
 Bir proje kendi değişkenlerini ya da bunları yazdıran `direnv export json` gibi bir komutu **Ayarlar → Projeler** bölümünde ekleyebilir. [Projeler](/tr/projects/#proje-ortamı) sayfasına bakın.
 
-Bu değişkenler kendi başlattığınız bir OpenCode sunucusuna ulaşmaz ve VS Code eklentisinde böyle bir ayar yoktur. Aşağıdaki her şeyi OpenChamber başlangıçta kendisi okur.
+Bu değişkenler kendi başlattığınız bir OpenCode sunucusuna ulaşmaz ve VS Code eklentisinde böyle bir ayar yoktur. Aşağıdaki her şeyi Alcode başlangıçta kendisi okur.
 
-## OpenChamber sunucusu
+## Alcode sunucusu
 
-### `OPENCHAMBER_HOST`
+### `ALCODE_HOST`
 
-OpenChamber web sunucusu için bind adresi. Diğer makinelerden erişime izin vermek için `0.0.0.0` kullanın.
+Alcode web sunucusu için bind adresi. Diğer makinelerden erişime izin vermek için `0.0.0.0` kullanın.
 
-### `OPENCHAMBER_LAN_URL`
+### `ALCODE_LAN_URL`
 
-Ağınızdaki diğer cihazların OpenChamber'a ulaştığı adres, örneğin `http://192.168.1.20:3000`. Eşleştirme bağlantıları ve QR kodları, OpenChamber'ın kendi algıladığı adres yerine bunu sunar. Bu algılama yanlış olduğunda ayarlayın; örneğin Docker'da OpenChamber yalnızca konteynerin iç adresini görür.
+Ağınızdaki diğer cihazların Alcode'a ulaştığı adres, örneğin `http://192.168.1.20:3000`. Eşleştirme bağlantıları ve QR kodları, Alcode'ın kendi algıladığı adres yerine bunu sunar. Bu algılama yanlış olduğunda ayarlayın; örneğin Docker'da Alcode yalnızca konteynerin iç adresini görür.
 
-### `OPENCHAMBER_UI_PASSWORD`
+### `ALCODE_UI_PASSWORD`
 
 Tarayıcı arayüzü için parola. Bunu localhost dışına bind ederken, tünel kullanırken ya da reverse proxy arkasında çalıştırırken kullanın.
 
-### `OPENCHAMBER_UI_SESSION_TTL_HOURS`
+### `ALCODE_UI_SESSION_TTL_HOURS`
 
 "Bu cihaza güven" kapalıyken tarayıcıdaki oturumun kaç saat geçerli kalacağı. Varsayılan `12`.
 
-### `OPENCHAMBER_UI_TRUSTED_SESSION_TTL_DAYS`
+### `ALCODE_UI_TRUSTED_SESSION_TTL_DAYS`
 
 Güvendiğiniz bir cihazda oturumun kaç gün geçerli kalacağı. Varsayılan `7`.
 
-### `OPENCHAMBER_API_ONLY`
+### `ALCODE_API_ONLY`
 
-`true` ya da `1` olarak ayarlandığında OpenChamber'ı headless modda başlatır. API rotaları masaüstü ve mobil istemciler için açık kalır, ama tarayıcı arayüzü sunulmaz.
+`true` ya da `1` olarak ayarlandığında Alcode'ı headless modda başlatır. API rotaları masaüstü ve mobil istemciler için açık kalır, ama tarayıcı arayüzü sunulmaz.
 
-### `OPENCHAMBER_FRAME_ANCESTORS`
+### `ALCODE_FRAME_ANCESTORS`
 
-OpenChamber'ı kendi sayfalarındaki bir çerçevede gösterebilecek origin'ler, boşlukla ayrılmış, örneğin `https://dash.example.com`. `*` her siteye izin verir. Varsayılan olarak yalnızca OpenChamber'ın kendisi ve masaüstü ile mobil uygulamaları onu gömebilir; böylece başka siteler düğmelerinin üstüne bir şey yerleştiremez.
+Alcode'ı kendi sayfalarındaki bir çerçevede gösterebilecek origin'ler, boşlukla ayrılmış, örneğin `https://dash.example.com`. `*` her siteye izin verir. Varsayılan olarak yalnızca Alcode'ın kendisi ve masaüstü ile mobil uygulamaları onu gömebilir; böylece başka siteler düğmelerinin üstüne bir şey yerleştiremez.
 
-### `OPENCHAMBER_DATA_DIR`
+### `ALCODE_DATA_DIR`
 
-OpenChamber veri dizinini geçersiz kılar. Varsayılan `~/.config/openchamber`.
+Alcode veri dizinini geçersiz kılar. Varsayılan `~/.config/alcode`.
 
-### `OPENCHAMBER_CHATS_DIR`
+### `ALCODE_CHATS_DIR`
 
-OpenChamber'ın projesiz sohbetler için oluşturduğu yönetilen sohbet dizinlerinin yerini değiştirir. Varsayılan `~/.config/openchamber/chats`. OpenChamber ve OpenCode farklı kullanıcılarla çalışıyorsa OpenCode sunucusunun okuyabileceği bir dizin belirtin. Mevcut sohbetler taşınmaz.
+Alcode'ın projesiz sohbetler için oluşturduğu yönetilen sohbet dizinlerinin yerini değiştirir. Varsayılan `~/.config/alcode/chats`. Alcode ve OpenCode farklı kullanıcılarla çalışıyorsa OpenCode sunucusunun okuyabileceği bir dizin belirtin. Mevcut sohbetler taşınmaz.
 
-### `OPENCHAMBER_COMPRESS_API`
+### `ALCODE_COMPRESS_API`
 
 API yanıt sıkıştırmasını kontrol eder. `true` ya da `1` ile zorla açın, `false` ya da `0` ile zorla kapatın.
 
-### `OPENCHAMBER_SKIP_API_COMPRESSION`
+### `ALCODE_SKIP_API_COMPRESSION`
 
-`true` ya da `1` olarak ayarlandığında API yanıt sıkıştırmasını kapatır. Bu ayar `OPENCHAMBER_COMPRESS_API`'ye göre önceliklidir.
+`true` ya da `1` olarak ayarlandığında API yanıt sıkıştırmasını kapatır. Bu ayar `ALCODE_COMPRESS_API`'ye göre önceliklidir.
 
-### `OPENCHAMBER_VERBOSE_REQUEST_LOGS`
+### `ALCODE_VERBOSE_REQUEST_LOGS`
 
 `true` ya da `1` olarak ayarlandığında ayrıntılı HTTP istek günlüklerini açar.
 
-### `OPENCHAMBER_UPDATE_API_URL`
+### `ALCODE_UPDATE_API_URL`
 
 Güncelleme kontrolü API uç noktasını geçersiz kılar. Çoğu kullanıcı bunu boş bırakmalıdır.
 
-### `OPENCHAMBER_PACKAGE_MANAGER`
+### `ALCODE_PACKAGE_MANAGER`
 
 Otomatik algılama yanlışsa, güncelleme işlemlerinin kullandığı package manager'ı zorlar.
 
@@ -82,13 +82,13 @@ Otomatik algılama yanlışsa, güncelleme işlemlerinin kullandığı package m
 
 ### `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`
 
-OpenChamber’ın kendi giden isteklerini, örneğin kullanım limitlerini ve skill kataloglarını, bir proxy üzerinden gönderir. Küçük harfli adlar da çalışır. `NO_PROXY` içindeki sunucular doğrudan bağlanır; `localhost`, `127.0.0.1` ve `::1` her zaman doğrudan bağlanır, böylece oturum açma geri çağrıları ve yerel OpenCode sunucusu çalışmaya devam eder.
+Alcode’ın kendi giden isteklerini, örneğin kullanım limitlerini ve skill kataloglarını, bir proxy üzerinden gönderir. Küçük harfli adlar da çalışır. `NO_PROXY` içindeki sunucular doğrudan bağlanır; `localhost`, `127.0.0.1` ve `::1` her zaman doğrudan bağlanır, böylece oturum açma geri çağrıları ve yerel OpenCode sunucusu çalışmaya devam eder.
 
 ## OpenCode sunucusu
 
 ### `OPENCODE_HOST`
 
-OpenChamber'ı mevcut bir OpenCode sunucusuna bağlar. Değer, açık bir port içeren ve path, query ya da hash içermeyen bir `http` ya da `https` origin'i olmalıdır. `OPENCODE_HOST`, `OPENCODE_PORT`'a göre önceliklidir.
+Alcode'ı mevcut bir OpenCode sunucusuna bağlar. Değer, açık bir port içeren ve path, query ya da hash içermeyen bir `http` ya da `https` origin'i olmalıdır. `OPENCODE_HOST`, `OPENCODE_PORT`'a göre önceliklidir.
 
 ### `OPENCODE_PORT`
 
@@ -96,15 +96,15 @@ OpenCode sunucu portunu ayarlar. Yönetilen OpenCode ile bu, yönetilen portu is
 
 ### `OPENCODE_SKIP_START`
 
-`true` olarak ayarlandığında OpenChamber'ın kendi OpenCode sunucusunu başlatmasını engeller.
+`true` olarak ayarlandığında Alcode'ın kendi OpenCode sunucusunu başlatmasını engeller.
 
-### `OPENCHAMBER_OPENCODE_HOSTNAME`
+### `ALCODE_OPENCODE_HOSTNAME`
 
-OpenChamber'ın yönettiği OpenCode sunucusu için bind hostname'i. Varsayılan `127.0.0.1`.
+Alcode'ın yönettiği OpenCode sunucusu için bind hostname'i. Varsayılan `127.0.0.1`.
 
 ### `OPENCODE_BINARY`
 
-OpenChamber'ın çalıştırması gereken `opencode` yürütülebilir dosyasının yolu.
+Alcode'ın çalıştırması gereken `opencode` yürütülebilir dosyasının yolu.
 
 ### `OPENCODE_CONFIG`
 
@@ -122,9 +122,9 @@ Yönetilen OpenCode sunucusu için özel veri dizini.
 
 Windows'ta OpenCode entegrasyonu için kullanılan WSL dağıtımını seçer.
 
-### `OPENCHAMBER_OPENCODE_WSL_DISTRO`
+### `ALCODE_OPENCODE_WSL_DISTRO`
 
-WSL dağıtımını seçmek için OpenChamber'a özel takma ad. İkisi de ayarlıysa `OPENCODE_WSL_DISTRO` önceliklidir.
+WSL dağıtımını seçmek için Alcode'a özel takma ad. İkisi de ayarlıysa `OPENCODE_WSL_DISTRO` önceliklidir.
 
 ### `OPENCODE_JWT_SECRET`
 
@@ -132,19 +132,19 @@ UI kimlik doğrulama token'larını imzalamak için kullanılan gizli değer. Ka
 
 ## Terminal ve Git
 
-### `OPENCHAMBER_TERMINAL_SHELL`
+### `ALCODE_TERMINAL_SHELL`
 
-OpenChamber terminal oturumları için kullanılan shell yürütülebilir dosyası.
+Alcode terminal oturumları için kullanılan shell yürütülebilir dosyası.
 
-### `OPENCHAMBER_GIT_BINARY`
+### `ALCODE_GIT_BINARY`
 
-OpenChamber Git özelliklerinin kullandığı Git yürütülebilir dosyası.
+Alcode Git özelliklerinin kullandığı Git yürütülebilir dosyası.
 
 ### `GIT_BINARY`
 
-Alternatif Git yürütülebilir dosyası geçersiz kılma değeri. OpenChamber'a özel yapılandırma için `OPENCHAMBER_GIT_BINARY` tercih edin.
+Alternatif Git yürütülebilir dosyası geçersiz kılma değeri. Alcode'a özel yapılandırma için `ALCODE_GIT_BINARY` tercih edin.
 
-### `OPENCHAMBER_GIT_READ_CACHE_TTL_MS`
+### `ALCODE_GIT_READ_CACHE_TTL_MS`
 
 Git destekli dosya okumaları için önbelleğin milisaniye cinsinden yaşam süresi. Hata ayıklarken bu önbelleği kapatmak için `0` verin.
 
@@ -152,25 +152,25 @@ Git destekli dosya okumaları için önbelleğin milisaniye cinsinden yaşam sü
 
 ### `OPENAI_API_KEY`
 
-OpenChamber ses özelliklerinin doğrudan OpenAI'yi çağırırken kullandığı API anahtarı. Özel bir OpenAI uyumlu sunucuya asla gönderilmez: o sunucuya Ayarlar'da kendi anahtarını verin.
+Alcode ses özelliklerinin doğrudan OpenAI'yi çağırırken kullandığı API anahtarı. Özel bir OpenAI uyumlu sunucuya asla gönderilmez: o sunucuya Ayarlar'da kendi anahtarını verin.
 
-### `OPENCHAMBER_ALLOW_REMOTE_OPENAI_COMPAT_URLS`
+### `ALCODE_ALLOW_REMOTE_OPENAI_COMPAT_URLS`
 
 `true` ya da `1` olarak ayarlandığında voice özellikleri için uzak OpenAI uyumlu base URL'lere izin verir.
 
 ### `NGROK_AUTHTOKEN`
 
-OpenChamber tunnel komutlarının kullandığı ngrok auth token. `ngrok config add-authtoken <token>` ile de yapılandırabilirsiniz.
+Alcode tunnel komutlarının kullandığı ngrok auth token. `ngrok config add-authtoken <token>` ile de yapılandırabilirsiniz.
 
 ## Runtime yardımcıları
 
 ### `BUN_BINARY`
 
-Daemon süreçleri başlatılırken OpenChamber'ın kullanması gereken Bun yürütülebilir dosyası.
+Daemon süreçleri başlatılırken Alcode'ın kullanması gereken Bun yürütülebilir dosyası.
 
 ### `BUN_INSTALL`
 
-Bun kurulum kökü. OpenChamber bunu daemon başlangıcı ve güncellemeleri için `bin/bun` bulmakta kullanır.
+Bun kurulum kökü. Alcode bunu daemon başlangıcı ve güncellemeleri için `bin/bun` bulmakta kullanır.
 
 ### `VITE_OPENCODE_URL`
 

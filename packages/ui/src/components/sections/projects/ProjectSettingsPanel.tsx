@@ -1,5 +1,5 @@
 import React from 'react';
-import { WorktreeSectionContent } from '@/components/sections/openchamber/WorktreeSectionContent';
+import { WorktreeSectionContent } from '@/components/sections/alcode/WorktreeSectionContent';
 import { ProjectActionsSection } from '@/components/sections/projects/ProjectActionsSection';
 import { ProjectEnvironmentSection } from '@/components/sections/projects/ProjectEnvironmentSection';
 import { ProjectIdentityFields } from '@/components/sections/projects/ProjectIdentityFields';
@@ -51,7 +51,7 @@ export const ProjectSettingsPanel: React.FC<ProjectSettingsPanelProps> = ({
     <div className="space-y-0">
       <ProjectIdentityFields form={form} />
       <ProjectActionsSection projectRef={projectRef} />
-      {/* VS Code runs no OpenChamber server that could apply these. */}
+      {/* VS Code runs no Alcode server that could apply these. */}
       {!isVSCodeRuntime() ? <ProjectEnvironmentSection projectRef={projectRef} /> : null}
       {showWorktrees ? <WorktreeSectionContent projectRef={projectRef} /> : null}
       <SharedProjectConfigSection projectRef={projectRef} />

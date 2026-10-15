@@ -12,7 +12,7 @@
  * on every surface.
  */
 
-import { getProjectSetup, updateProjectSetup, type ProjectRef, type ProjectSetup } from './openchamberConfig';
+import { getProjectSetup, updateProjectSetup, type ProjectRef, type ProjectSetup } from './alcodeConfig';
 
 export type SharedTrustChoice = 'trust' | 'skip';
 

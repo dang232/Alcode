@@ -1,10 +1,10 @@
 # Alcore IDE Integration Map (fork working copy)
 
-> Mass-ulw deep map, 2026-10-07. Source of truth for planning: I:/migration research (Alwork fork base + Alcore account gate + dynamic plugin slot). Upstream base: openchamber/openchamber @ 733fa61. No product code touched by this commit.
+> Mass-ulw deep map, 2026-10-07. Source of truth for planning: I:/migration research (Alcode fork base + Alcore account gate + dynamic plugin slot). Upstream base: dang232/Alcode @ 733fa61. No product code touched by this commit.
 
 ---
 
-# Alwork DeepMap 01 — Integration Map
+# Alcode DeepMap 01 — Integration Map
 
 Merged from six verified lane digests (PKG, PLAT, AUTH, OMO, GATE, FORK). Independent verifier re-checked all six load-bearing facts: PASS.
 
@@ -17,11 +17,11 @@ Merged from six verified lane digests (PKG, PLAT, AUTH, OMO, GATE, FORK). Indepe
 - Platform build matrix (see §1.5 / §3 Wave 3 for workflow detail).
 
 ### 1.2 Auth seam
-- UI password gate via env `OPENCHAMBER_UI_PASSWORD` plus device-remember cookie.
+- UI password gate via env `ALCODE_UI_PASSWORD` plus device-remember cookie.
 - Localhost-first default bind `127.0.0.1`.
 - Single-use QR pairing + per-device tokens + Private Relay E2E channel.
 - Enterprise managed mode via per-OS `policy.json` paths: `allowedExtensions` repo-URL allowlist, `opencodeBinary` pin, network lockdown flags.
-- Evidence refs: `OPENCHAMBER_UI_PASSWORD`, `127.0.0.1` default bind, QR pairing flow, per-device tokens, Private Relay E2E, `policy.json` (per-OS paths), `allowedExtensions`, `opencodeBinary`.
+- Evidence refs: `ALCODE_UI_PASSWORD`, `127.0.0.1` default bind, QR pairing flow, per-device tokens, Private Relay E2E, `policy.json` (per-OS paths), `allowedExtensions`, `opencodeBinary`.
 
 ### 1.3 OmO runtime + license boundary
 - Adapter package `packages/omo-senpi`: npm name `@code-yeongyu/omo-senpi`, `pi-package` adapter shape (`pi.system`), extension entry `extensions/omo.js`, `omo-*-runtime` import hooks, shipped files under `extensions/skills/runtime`.
@@ -35,9 +35,9 @@ Merged from six verified lane digests (PKG, PLAT, AUTH, OMO, GATE, FORK). Indepe
 - Evidence refs: `users`, `provider_identities`, `sessions`, `oidc_codes`, `product_exchange_codes`, `google_states`, `passwordHash` nullable, Google JWKS, `customer.authUserId`, `customer-provision:{authUserId}`.
 
 ### 1.5 Fork delivery
-- Fork `dang232/Alwork` identical to upstream at `733fa61` (ahead 0, behind 0), branch `main`.
+- Fork `dang232/Alcode` identical to upstream at `733fa61` (ahead 0, behind 0), branch `main`.
 - Releases only on `v`-tags or `workflow_dispatch` (no automatic release on push to main).
-- Evidence refs: `dang232/Alwork`, `733fa61`, `main`, `v-*` tags, `workflow_dispatch`.
+- Evidence refs: `dang232/Alcode`, `733fa61`, `main`, `v-*` tags, `workflow_dispatch`.
 
 ## 2. Key discovery
 
@@ -50,7 +50,7 @@ Merged from six verified lane digests (PKG, PLAT, AUTH, OMO, GATE, FORK). Indepe
 ## 3. Dependency-ordered implementation waves
 
 ### Wave 1 — Auth seam + plugin slot (first)
-- Inputs: `OPENCHAMBER_UI_PASSWORD` + device-remember design, `127.0.0.1` default, QR pairing + per-device tokens + Private Relay E2E spec, `policy.json` schema (`allowedExtensions`, `opencodeBinary`, network lockdown), `packages/extensions` + `registry.json`, `packages/omo-senpi` adapter (`@code-yeongyu/omo-senpi`, `extensions/omo.js`, `omo-*-runtime` hooks).
+- Inputs: `ALCODE_UI_PASSWORD` + device-remember design, `127.0.0.1` default, QR pairing + per-device tokens + Private Relay E2E spec, `policy.json` schema (`allowedExtensions`, `opencodeBinary`, network lockdown), `packages/extensions` + `registry.json`, `packages/omo-senpi` adapter (`@code-yeongyu/omo-senpi`, `extensions/omo.js`, `omo-*-runtime` hooks).
 - Work: harden localhost default + password gate; wire dynamic plugin slot to enforce `allowedExtensions` allowlist and `opencodeBinary` pin at load/invoke time.
 - Done-condition: unauthenticated local access denied without password/pairing; non-allowlisted extension URL refused even if present in `registry.json`; non-pinned binary refused.
 
@@ -65,7 +65,7 @@ Merged from six verified lane digests (PKG, PLAT, AUTH, OMO, GATE, FORK). Indepe
 - Done-condition: each workflow produces its artifact (win/mac/linux installers, mac arm64 dmg, android+iOS builds, vsix) with auth seam + account gate intact.
 
 ### Wave 4 — Fork delivery (last)
-- Inputs: Waves 1–3 green, fork state `dang232/Alwork` @ `733fa61` on `main`, release rule (`v`-tags or `workflow_dispatch` only).
+- Inputs: Waves 1–3 green, fork state `dang232/Alcode` @ `733fa61` on `main`, release rule (`v`-tags or `workflow_dispatch` only).
 - Work: land integration via fork branch, tag `v*` or dispatch workflow for release.
 - Done-condition: fork branch diff reviews clean against `733fa61`; release cut only by tag/dispatch and contains all wave artifacts.
 

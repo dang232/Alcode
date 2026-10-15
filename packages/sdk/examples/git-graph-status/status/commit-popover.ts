@@ -1,6 +1,6 @@
-import type { HostClient, HostReadyContext } from '@openchamber/sdk';
-import { HostRequestError } from '@openchamber/sdk';
-import { mountButton } from '@openchamber/sdk/ui';
+import type { HostClient, HostReadyContext } from '@alcode/sdk';
+import { HostRequestError } from '@alcode/sdk';
+import { mountButton } from '@alcode/sdk/ui';
 import { z } from 'zod';
 
 import { element, refBadge } from './view.ts';

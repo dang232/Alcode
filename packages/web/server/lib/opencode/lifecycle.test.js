@@ -947,7 +947,7 @@ describe('OpenCode lifecycle', () => {
   it('strips AppImage ARGV0 from managed OpenCode launch env', async () => {
     delete process.env.OPENCODE_BINARY;
     const previousArgv0 = process.env.ARGV0;
-    process.env.ARGV0 = '/path/to/OpenChamber/OpenChamber-1.17.2-linux-x86_64.AppImage';
+    process.env.ARGV0 = '/path/to/Alcode/Alcode-1.17.2-linux-x86_64.AppImage';
     const child = createMockChild();
     spawnMock.mockImplementationOnce(() => {
       queueMicrotask(() => {
@@ -978,7 +978,7 @@ describe('OpenCode lifecycle', () => {
     }
   });
 
-  it('passes the user variables to OpenCode under the variables OpenChamber owns', async () => {
+  it('passes the user variables to OpenCode under the variables Alcode owns', async () => {
     const child = createMockChild();
     spawnMock.mockImplementationOnce(() => {
       queueMicrotask(() => {
@@ -990,9 +990,9 @@ describe('OpenCode lifecycle', () => {
       DATABASE_URL: 'postgres://db',
       PATH: '/opt/tools/bin',
       OPENCODE_PASSWORD: 'user-password',
-      OPENCHAMBER_AGENT_TOOL_TOKEN: 'user-token',
+      ALCODE_AGENT_TOOL_TOKEN: 'user-token',
     }));
-    const getManagedOpenCodeEnv = vi.fn(async () => ({ OPENCHAMBER_AGENT_TOOL_TOKEN: 'ephemeral' }));
+    const getManagedOpenCodeEnv = vi.fn(async () => ({ ALCODE_AGENT_TOOL_TOKEN: 'ephemeral' }));
 
     const runtime = createRuntime({ getUserEnvironment, getManagedOpenCodeEnv });
     const server = await runtime.startOpenCode();
@@ -1001,13 +1001,13 @@ describe('OpenCode lifecycle', () => {
     expect(options.env.DATABASE_URL).toBe('postgres://db');
     expect(options.env.PATH).toBe('/opt/tools/bin:/home/user/.bun/bin:/usr/local/bin:/usr/bin');
     expect(options.env.OPENCODE_PASSWORD).toBe('password');
-    expect(options.env.OPENCHAMBER_AGENT_TOOL_TOKEN).toBe('ephemeral');
+    expect(options.env.ALCODE_AGENT_TOOL_TOKEN).toBe('ephemeral');
     expect(runtime.getManagedOpenCodeProcessEnv().DATABASE_URL).toBe('postgres://db');
 
     await server.close();
   });
 
-  it('adds managed OpenChamber tool environment without allowing it to replace launch invariants', async () => {
+  it('adds managed Alcode tool environment without allowing it to replace launch invariants', async () => {
     const child = createMockChild();
     spawnMock.mockImplementationOnce(() => {
       queueMicrotask(() => {
@@ -1017,7 +1017,7 @@ describe('OpenCode lifecycle', () => {
     });
     const getManagedOpenCodeEnv = vi.fn(async () => ({
       OPENCODE_CONFIG_CONTENT: '{"plugin":["file:///tool.js"]}',
-      OPENCHAMBER_AGENT_TOOL_TOKEN: 'ephemeral',
+      ALCODE_AGENT_TOOL_TOKEN: 'ephemeral',
       PATH: '/untrusted/path',
       OPENCODE_PASSWORD: 'untrusted-password',
       OPENCODE_SERVER_PASSWORD: 'untrusted-password',
@@ -1029,7 +1029,7 @@ describe('OpenCode lifecycle', () => {
 
     expect(getManagedOpenCodeEnv).toHaveBeenCalledOnce();
     expect(options.env.OPENCODE_CONFIG_CONTENT).toBe('{"plugin":["file:///tool.js"]}');
-    expect(options.env.OPENCHAMBER_AGENT_TOOL_TOKEN).toBe('ephemeral');
+    expect(options.env.ALCODE_AGENT_TOOL_TOKEN).toBe('ephemeral');
     expect(options.env.PATH).toBe('/home/user/.bun/bin:/usr/local/bin:/usr/bin');
     expect(options.env.OPENCODE_PASSWORD).toBe('password');
     expect(options.env.OPENCODE_SERVER_PASSWORD).toBe('password');

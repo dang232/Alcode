@@ -5,8 +5,8 @@
 // `ulw.md` — the normal case — leaves a bare `ulw` or typed `/ulw` send
 // with no template. The Codex world covers that gap with its
 // `UserPromptSubmit` hook, which appends the workflow directive whenever
-// the prompt matches word-bound `ultrawork|ulw`; OpenChamber sends never
-// pass that pipeline. This module is the OpenChamber side of that hook:
+// the prompt matches word-bound `ultrawork|ulw`; Alcode sends never
+// pass that pipeline. This module is the Alcode side of that hook:
 // `routeMessage` attaches the instruction below as prompt context when
 // the send names `ulw` and nothing resolved, so the model runs the loop
 // instead of truthfully reporting that no workflow is loaded.

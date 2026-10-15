@@ -28,10 +28,10 @@ import { useI18n } from '@/lib/i18n';
 import {
   getProjectActionsState,
   getProjectSetup,
-  type OpenChamberProjectAction,
+  type AlcodeProjectAction,
   type ProjectSetup,
   type ProjectRef,
-} from '@/lib/openchamberConfig';
+} from '@/lib/alcodeConfig';
 import { ensureSharedSetupTrusted } from '@/lib/sharedTrustConfirmation';
 import {
   normalizeProjectActionDirectory,
@@ -77,7 +77,7 @@ interface ProjectActionsButtonProps {
   allowMobile?: boolean;
 }
 
-const AUTO_DISCOVER_ACTION_ID = '__openchamber_auto_discover_preview__';
+const AUTO_DISCOVER_ACTION_ID = '__alcode_auto_discover_preview__';
 const AUTO_DISCOVER_PREVIEW_WAIT_TIMEOUT_MS = 15_000;
 /**
  * How long to keep listening after the first server announces itself. A project
@@ -86,7 +86,7 @@ const AUTO_DISCOVER_PREVIEW_WAIT_TIMEOUT_MS = 15_000;
  */
 const AUTO_DISCOVER_SETTLE_MS = 3_000;
 
-const resolveProjectActionIconName = (action: Pick<OpenChamberProjectAction, 'id' | 'icon'>): IconName => {
+const resolveProjectActionIconName = (action: Pick<AlcodeProjectAction, 'id' | 'icon'>): IconName => {
   if (action.id === AUTO_DISCOVER_ACTION_ID) {
     return 'scan-2';
   }
@@ -150,7 +150,7 @@ export const ProjectActionsButton = ({
   const matchesActionExecution = useTerminalStore((state) => state.matchesActionExecution);
   const captureStartedActionMutationRevisions = useTerminalStore((state) => state.captureStartedActionMutationRevisions);
 
-  const [actions, setActions] = React.useState<OpenChamberProjectAction[]>([]);
+  const [actions, setActions] = React.useState<AlcodeProjectAction[]>([]);
   // The last merged setup, for the trust check before a shared action runs.
   const setupRef = React.useRef<ProjectSetup | null>(null);
   const [selectedActionId, setSelectedActionId] = React.useState<string | null>(null);
@@ -268,7 +268,7 @@ export const ProjectActionsButton = ({
     return directories;
   }, [normalizedDirectory, normalizedProjectDirectory]);
 
-  const executionDirectoryFor = React.useCallback((action: OpenChamberProjectAction): string => {
+  const executionDirectoryFor = React.useCallback((action: AlcodeProjectAction): string => {
     if (action.id !== AUTO_DISCOVER_ACTION_ID && action.runIn === 'parent') {
       return normalizedProjectDirectory || normalizedDirectory;
     }
@@ -390,7 +390,7 @@ export const ProjectActionsButton = ({
     return actions.find((entry) => entry.id === selectedActionId) ?? null;
   }, [actions, selectedActionId]);
 
-  const autoDiscoverAction = React.useMemo<OpenChamberProjectAction>(() => ({
+  const autoDiscoverAction = React.useMemo<AlcodeProjectAction>(() => ({
     id: AUTO_DISCOVER_ACTION_ID,
     name: t('projectActions.actions.autoDiscover'),
     command: '',
@@ -689,7 +689,7 @@ export const ProjectActionsButton = ({
     }
   }, [clearExecutionUi, executionKey, matchesActionExecution, terminal, watchedTerminalStates]);
 
-  const getOrCreateActionTab = React.useCallback(async (action: OpenChamberProjectAction) => {
+  const getOrCreateActionTab = React.useCallback(async (action: AlcodeProjectAction) => {
     const executionDirectory = executionDirectoryFor(action);
     if (!executionDirectory) {
       throw new Error(t('projectActions.error.noActiveDirectory'));
@@ -729,7 +729,7 @@ export const ProjectActionsButton = ({
     t,
   ]);
 
-  const runAction = React.useCallback(async (action: OpenChamberProjectAction) => {
+  const runAction = React.useCallback(async (action: AlcodeProjectAction) => {
     if (runtime.isVSCode || (!allowMobile && isMobile)) {
       return;
     }
@@ -750,7 +750,7 @@ export const ProjectActionsButton = ({
 
     try {
       const discovered = action.id === AUTO_DISCOVER_ACTION_ID
-        ? await (async (): Promise<OpenChamberProjectAction> => {
+        ? await (async (): Promise<AlcodeProjectAction> => {
           const [actionsState, scripts] = await Promise.all([
             getProjectActionsState({ id: stableProjectRef?.id ?? '', path: normalizedDirectory }),
             readPackageJsonScripts(normalizedDirectory),
@@ -1020,7 +1020,7 @@ export const ProjectActionsButton = ({
     terminal,
   ]);
 
-  const stopAction = React.useCallback(async (action: OpenChamberProjectAction) => {
+  const stopAction = React.useCallback(async (action: AlcodeProjectAction) => {
     const runKey = toProjectActionRunKey(executionDirectoryFor(action), action.id);
     const activeRun = projectActionRuns[runKey];
     if (!activeRun) {
@@ -1067,7 +1067,7 @@ export const ProjectActionsButton = ({
 
   // A shared action comes from the repo: the first time one would run, the
   // trust prompt shows the team's commands; "not this time" runs nothing.
-  const runActionWithTrust = React.useCallback(async (action: OpenChamberProjectAction) => {
+  const runActionWithTrust = React.useCallback(async (action: AlcodeProjectAction) => {
     if (action.source === 'shared' && stableProjectRef) {
       const setup = setupRef.current?.trust.trusted ? setupRef.current : await getProjectSetup(stableProjectRef);
       setupRef.current = setup;
@@ -1079,7 +1079,7 @@ export const ProjectActionsButton = ({
     await runAction(action);
   }, [runAction, stableProjectRef]);
 
-  const handleSelectAction = React.useCallback((action: OpenChamberProjectAction, toggleStopIfRunning = false) => {
+  const handleSelectAction = React.useCallback((action: AlcodeProjectAction, toggleStopIfRunning = false) => {
     setSelectedActionId(action.id);
 
     if (!toggleStopIfRunning) {

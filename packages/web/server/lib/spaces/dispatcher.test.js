@@ -22,8 +22,8 @@ import {
 } from './dispatcher.js';
 
 // The UI auth keeps its signing secret in the data directory, and reads that path when it loads.
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-dispatcher-test-'));
-process.env.OPENCHAMBER_DATA_DIR = dataDir;
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-dispatcher-test-'));
+process.env.ALCODE_DATA_DIR = dataDir;
 
 const ID = 'a1b2c3d4e5f6';
 const OTHER = '0f0f0f0f0f0f';

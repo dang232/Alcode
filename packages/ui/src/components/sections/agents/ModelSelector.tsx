@@ -178,7 +178,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                                 <span className="typography-meta text-muted-foreground">{isUnavailable ? t('common.unavailable') : t('common.loading')}</span>
                             </>
                         ) : isAutoSelected ? (
-                            <Icon name="openchamber" className="h-3.5 w-3.5 flex-shrink-0" />
+                            <Icon name="alcode" className="h-3.5 w-3.5 flex-shrink-0" />
                         ) : providerId ? (
                             <ProviderLogo providerId={providerId} className="h-3.5 w-3.5 flex-shrink-0" />
                         ) : (
@@ -225,7 +225,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     ) : (
                         <>
                             {isAutoSelected
-                                ? <Icon name="openchamber" className="h-3.5 w-3.5 flex-shrink-0" />
+                                ? <Icon name="alcode" className="h-3.5 w-3.5 flex-shrink-0" />
                                 : providerId
                                     ? <ProviderLogo providerId={providerId} className="h-3.5 w-3.5 flex-shrink-0" />
                                     : <Icon name="pencil-ai" className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />}

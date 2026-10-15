@@ -1,5 +1,5 @@
-// The host's own routes of the isolated-spaces journey, under `/api/openchamber/spaces`: a
-// namespace of the host's, never forwarded, beside `/api/openchamber/tunnel`. A request to the
+// The host's own routes of the isolated-spaces journey, under `/api/alcode/spaces`: a
+// namespace of the host's, never forwarded, beside `/api/alcode/tunnel`. A request to the
 // server inside a space is `/api/spaces/<id>/...` and belongs to the dispatcher; nothing here
 // touches that shape.
 //
@@ -9,14 +9,14 @@
 // is off, because turning it on is what makes the feature exist (decision 19), and so is the list
 // of chat archives: those chats stay on the Archive page with the switch on or off, and reading
 // that list is a file of the host's, which runs nothing of the feature.
-// `/api/openchamber/spaces` is on the JSON-body allowlist of `core-routes.js`.
+// `/api/alcode/spaces` is on the JSON-body allowlist of `core-routes.js`.
 
 import { z } from 'zod';
 
 import { SpaceError } from './errors.js';
 import { isSpaceId } from './labels.js';
 
-export const SPACES_ROUTE = '/api/openchamber/spaces';
+export const SPACES_ROUTE = '/api/alcode/spaces';
 
 // Which HTTP status a refusal of the journey gets. Everything not named here is 502 when it comes
 // from the place or the space, and 500 when it is not a `SpaceError` at all.
@@ -198,7 +198,7 @@ export function registerSpaceRoutes(app, { getJourney, getPlaces = () => [], rea
     res.json({ places });
   }));
 
-  // The disk a place's spaces take, and the clean-up of what OpenChamber can make again.
+  // The disk a place's spaces take, and the clean-up of what Alcode can make again.
   app.get(`${SPACES_ROUTE}/places/:placeId/disk`, withJourney(async (journey, req, res) => {
     res.json(await journey.readDisk(String(req.params.placeId ?? '')));
   }));
@@ -210,7 +210,7 @@ export function registerSpaceRoutes(app, { getJourney, getPlaces = () => [], rea
     res.json({ spaces: await journey.listSpaces({ access: true }) });
   }));
 
-  // Answers as soon as the space has an id; the steps follow as `openchamber:space-progress` events.
+  // Answers as soon as the space has an id; the steps follow as `alcode:space-progress` events.
   app.post(SPACES_ROUTE, withJourney(async (journey, req, res) => {
     res.status(202).json(await journey.createSpace(requireBody(req)));
   }));

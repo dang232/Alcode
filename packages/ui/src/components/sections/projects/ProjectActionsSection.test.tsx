@@ -10,7 +10,7 @@ const desktopSshState = { instances: [], load: async () => undefined };
 mock.module('@/stores/useDesktopSshStore', () => ({
   useDesktopSshStore: <T,>(selector: (state: typeof desktopSshState) => T): T => selector(desktopSshState),
 }));
-mock.module('@/lib/openchamberConfig', () => ({
+mock.module('@/lib/alcodeConfig', () => ({
   getProjectSetup: async () => ({
     trust: { hash: 'sha256:abc', trusted: true },
     setupWorktree: [],

@@ -51,12 +51,12 @@ export const registerServerStatusRoutes = (app, dependencies) => {
   const {
     express,
     process,
-    openchamberVersion,
+    alcodeVersion,
     runtimeName,
     serverStartedAt,
     gracefulShutdown,
     getHealthSnapshot,
-    // Port this OpenChamber instance serves on and the tunnel public URL (if
+    // Port this Alcode instance serves on and the tunnel public URL (if
     // a tunnel is active). Exposed on /api/system/info so the UI can surface
     // the active instance's service URLs. Optional: older wiring omits them
     // and the endpoint reports null.
@@ -125,7 +125,7 @@ export const registerServerStatusRoutes = (app, dependencies) => {
   const isDevShutdownAllowed = () => {
     // Dev-only escape hatch: allow terminating the whole dev process group.
     // This should never be enabled in production runtimes.
-    return process.env.OPENCHAMBER_DEV_SHUTDOWN === 'true';
+    return process.env.ALCODE_DEV_SHUTDOWN === 'true';
   };
 
   const isSameOriginRequest = (req) => {
@@ -233,7 +233,7 @@ export const registerServerStatusRoutes = (app, dependencies) => {
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      openchamberVersion,
+      alcodeVersion,
       runtime: runtimeName,
       compatibility,
       ...(serverId ? { serverId } : {}),
@@ -245,7 +245,7 @@ export const registerServerStatusRoutes = (app, dependencies) => {
     const serverId = await resolveServerId();
     res.json({
       status: 'ok',
-      openchamberVersion,
+      alcodeVersion,
       runtime: runtimeName,
       startedAt: serverStartedAt,
       compatibility,
@@ -351,7 +351,7 @@ export const registerServerStatusRoutes = (app, dependencies) => {
     // its own server from whatever else holds the port. Where this server is
     // reachable (port, tunnel address) is for signed-in callers only.
     const info = {
-      openchamberVersion,
+      alcodeVersion,
       runtime: runtimeName,
       pid: process.pid,
       startedAt: serverStartedAt,
@@ -406,7 +406,7 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
     getServerId = async () => null,
     // Display name a paired device shows for THIS server (issuing machine's
     // hostname), distinct from the per-device pairing label typed by the operator.
-    getServerLabel = () => 'OpenChamber',
+    getServerLabel = () => 'Alcode',
     // Alcore provider sync (login registration, sign-out removal). Null in
     // tests and in runtimes without the provider wiring: both hooks skip.
     alcoreProvider = null,
@@ -1268,7 +1268,7 @@ export const registerCommonRequestMiddleware = (app, dependencies) => {
       req.path.startsWith('/api/prompts') ||
       req.path.startsWith('/api/terminal') ||
       req.path.startsWith('/api/opencode') ||
-      req.path === '/api/openchamber/directory' ||
+      req.path === '/api/alcode/directory' ||
       req.path.startsWith('/api/push') ||
       req.path.startsWith('/api/notifications') ||
       req.path.startsWith('/api/permission-auto-accept') ||
@@ -1282,8 +1282,8 @@ export const registerCommonRequestMiddleware = (app, dependencies) => {
       req.path.startsWith('/api/voice') ||
       req.path.startsWith('/api/environment') ||
       req.path.startsWith('/api/tts') ||
-      req.path.startsWith('/api/openchamber/tunnel') ||
-      req.path.startsWith('/api/openchamber/spaces')
+      req.path.startsWith('/api/alcode/tunnel') ||
+      req.path.startsWith('/api/alcode/spaces')
     ) {
       express.json({ limit: '50mb' })(req, res, next);
     } else if (req.path.startsWith('/api')) {

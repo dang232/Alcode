@@ -124,7 +124,7 @@ describe('the actions of a space', () => {
       const run = runSpaceAction(ID, 'restart');
       expect(useSpacesStore.getState().actions.get(ID)).toEqual({ kind: 'running', action: 'restart' });
       await run;
-      expect(requests).toEqual([`POST /api/openchamber/spaces/${ID}/restart`, 'GET /api/openchamber/spaces']);
+      expect(requests).toEqual([`POST /api/alcode/spaces/${ID}/restart`, 'GET /api/alcode/spaces']);
       expect(useSpacesStore.getState().actions.has(ID)).toBe(false);
       expect(useSpacesStore.getState().spaces.get(ID)?.state).toBe('complete');
     });
@@ -157,7 +157,7 @@ describe('the actions of a space', () => {
       await runSpaceAction(ID, 'restart');
       release();
       await first;
-      expect(requests.filter((request) => request.startsWith('POST'))).toEqual([`POST /api/openchamber/spaces/${ID}/stop`]);
+      expect(requests.filter((request) => request.startsWith('POST'))).toEqual([`POST /api/alcode/spaces/${ID}/stop`]);
     });
 
     test('a removal that left something behind is a failure; one that went through closes what was open on the space and reads the session list', async () => {
@@ -202,7 +202,7 @@ describe('the actions of a space', () => {
       }, originalFetch);
       useSpacesStore.getState().closeDeleteDialog();
       await runSpaceAction(ID, 'remove', { deleteUnsavedChats: true });
-      expect(asked[0]).toBe(`DELETE /api/openchamber/spaces/${ID}?unsavedChats=delete`);
+      expect(asked[0]).toBe(`DELETE /api/alcode/spaces/${ID}?unsavedChats=delete`);
       expect(useSpacesStore.getState().archivedNotice).toBe('Fix login');
     });
 
@@ -227,7 +227,7 @@ describe('the actions of a space', () => {
         return originalFetchWithBodies(input, init);
       }, originalFetch);
       await runSpaceAction(ID, 'setup');
-      expect(requests.filter((request) => request.startsWith('POST'))).toEqual([`POST /api/openchamber/spaces/${ID}/setup`]);
+      expect(requests.filter((request) => request.startsWith('POST'))).toEqual([`POST /api/alcode/spaces/${ID}/setup`]);
       expect(bodies).toEqual([{ commands: ['npm ci'] }]);
       expect(useSpacesStore.getState().actions.has(ID)).toBe(false);
     });

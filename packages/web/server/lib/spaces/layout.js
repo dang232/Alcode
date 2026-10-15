@@ -43,10 +43,10 @@ export function requireSpaceProjectPath(spaceId, value) {
 
 // The side repository that the history travels through. It starts with a dot, which no project
 // folder name can, and it exists only while the history is on its way.
-export const spaceHistoryPath = (spaceId) => `${spaceWorkPath(spaceId)}/.openchamber-history.git`;
+export const spaceHistoryPath = (spaceId) => `${spaceWorkPath(spaceId)}/.alcode-history.git`;
 
 // The tools volume: a plain npm project, mounted read-only.
-export const TOOLS_MOUNT_PATH = '/opt/openchamber-tools';
+export const TOOLS_MOUNT_PATH = '/opt/alcode-tools';
 export const TOOLS_BIN_PATH = `${TOOLS_MOUNT_PATH}/node_modules/.bin`;
 export const TOOLS_PLUGIN_PATH = `${TOOLS_MOUNT_PATH}/node_modules/@opencode/plugin`;
 // The filler writes this file last. A volume without it was never filled to the end.
@@ -57,7 +57,7 @@ export const TOOLS_MARKER_PATH = `${TOOLS_MOUNT_PATH}/.filled`;
 export const SPACE_SERVER_HOST = '127.0.0.1';
 export const SPACE_SERVER_PORT = 27600;
 
-export const SPACE_TOKEN_DIRECTORY = `${SPACE_HOME}/.openchamber-space`;
+export const SPACE_TOKEN_DIRECTORY = `${SPACE_HOME}/.alcode-space`;
 export const SPACE_TOKEN_PATH = `${SPACE_TOKEN_DIRECTORY}/token`;
 // The idle stop's setting, which the host writes at every start and whenever the user changes it,
 // and the exit code of a server inside that stopped itself for it. The code is how the host tells
@@ -89,7 +89,7 @@ export const spaceWindowUrl = (grantId) => `http://${GATEKEEPER_ALIAS}:${GATEKEE
 
 // The gatekeeper's program arrives over `exec` on stdin, into the container's tmpfs. It is far
 // larger than the tools filler, and a `node -e` argument of that size was never tried on Windows.
-export const GATEKEEPER_PROGRAM_DIRECTORY = '/tmp/openchamber-gatekeeper';
+export const GATEKEEPER_PROGRAM_DIRECTORY = '/tmp/alcode-gatekeeper';
 export const GATEKEEPER_PROGRAM_PATH = `${GATEKEEPER_PROGRAM_DIRECTORY}/gatekeeper.cjs`;
 export const GATEKEEPER_BIND_PATH = `${GATEKEEPER_PROGRAM_DIRECTORY}/bind`;
 
@@ -127,7 +127,7 @@ export const IMAGE_ONLY_PATH = `PATH=${IMAGE_PATH};`;
  */
 export const SPACE_ENVIRONMENT = Object.freeze({
   HOME: SPACE_HOME,
-  // The tools come last. The image has no `openchamber` and no `opencode`, so both are still found,
+  // The tools come last. The image has no `alcode` and no `opencode`, so both are still found,
   // and a transitive npm package that ships a bin named `node` or `sh` never shadows the image's.
   PATH: `${IMAGE_PATH}:${TOOLS_BIN_PATH}`,
   // The corridor, in both spellings. curl 7.88.1 in this image ignores an uppercase HTTP_PROXY on
@@ -149,10 +149,10 @@ export const SPACE_ENVIRONMENT = Object.freeze({
   OPENCODE_DISABLE_AUTOUPDATE: '1',
   // The server inside a space never hosts the relay passively. It has a way out now, and a
   // space must not become the machine that paired devices land on.
-  OPENCHAMBER_RELAY_HOST: 'off',
+  ALCODE_RELAY_HOST: 'off',
   // Where the server inside reads the idle stop's setting. Only a space has this variable, so the
   // timer never runs on the host.
-  OPENCHAMBER_SPACE_IDLE_STOP_FILE: SPACE_IDLE_STOP_PATH,
+  ALCODE_SPACE_IDLE_STOP_FILE: SPACE_IDLE_STOP_PATH,
 });
 
 // Waits for the token file, takes it as the space's Alcore secret, and becomes the server.
@@ -161,7 +161,7 @@ const SERVER_SCRIPT = [
   `while [ ! -s ${SPACE_TOKEN_PATH} ]; do ${IMAGE_SLEEP} 0.2; done;`,
   `ALCORE_JWT_SECRET="$(${IMAGE_CAT} ${SPACE_TOKEN_PATH})";`,
   'export ALCORE_JWT_SECRET;',
-  `exec openchamber serve --foreground --api-only --host ${SPACE_SERVER_HOST} --port ${SPACE_SERVER_PORT}`,
+  `exec alcode serve --foreground --api-only --host ${SPACE_SERVER_HOST} --port ${SPACE_SERVER_PORT}`,
 ].join(' ');
 
 /** The command of a space container. A fixed script, nothing in it varies per space. */

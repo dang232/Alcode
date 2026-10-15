@@ -43,9 +43,9 @@ import { IntegrationsPage } from '@/components/sections/integrations/Integration
 import { RoutingPage } from '@/components/sections/routing/RoutingPage';
 import { ExtensionsPage } from '@/components/sections/extensions/ExtensionsPage';
 import { EnginePage } from '@/components/sections/engine/EnginePage';
-import type { OpenChamberSection } from '@/components/sections/openchamber/types';
-import { OpenChamberPage } from '@/components/sections/openchamber/OpenChamberPage';
-import { AboutSettings } from '@/components/sections/openchamber/AboutSettings';
+import type { AlcodeSection } from '@/components/sections/alcode/types';
+import { AlcodePage } from '@/components/sections/alcode/AlcodePage';
+import { AboutSettings } from '@/components/sections/alcode/AboutSettings';
 import { SettingsPageLayout } from '@/components/sections/shared/SettingsPageLayout';
 import {
   SETTINGS_SECTION_TITLE_CLASS,
@@ -68,7 +68,7 @@ import { buildSettingsSearchResults, type SettingsSearchResult } from '@/lib/set
 
 // UI Kit: fixed split-page sidebar width
 const SETTINGS_SPLIT_SIDEBAR_WIDTH = 280;
-const SETTINGS_DETAIL_HISTORY_KEY = '__openchamberSettingsDetail';
+const SETTINGS_DETAIL_HISTORY_KEY = '__alcodeSettingsDetail';
 /** How long (in frames, ~0.5 s) a search result or a link waits for its item to render. */
 const PENDING_ITEM_MAX_FRAMES = 30;
 
@@ -102,7 +102,7 @@ interface SettingsViewProps {
 }
 
 const pageOrder: SettingsPageSlug[] = [
-  // 'general' group — OpenChamber
+  // 'general' group — Alcode
   'general',
   'appearance',
   'chat',
@@ -221,13 +221,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
     return isDesktopShell() && isDesktopLocalOriginActive();
   }, []);
   const isMac = React.useMemo(() => {
-    return isDesktopShell() && window.__OPENCHAMBER_PLATFORM__ === 'darwin';
+    return isDesktopShell() && window.__ALCODE_PLATFORM__ === 'darwin';
   }, []);
   const isWindows = React.useMemo(() => {
-    return isDesktopShell() && window.__OPENCHAMBER_PLATFORM__ === 'win32';
+    return isDesktopShell() && window.__ALCODE_PLATFORM__ === 'win32';
   }, []);
   const isLinux = React.useMemo(() => {
-    return isDesktopShell() && window.__OPENCHAMBER_PLATFORM__ === 'linux';
+    return isDesktopShell() && window.__ALCODE_PLATFORM__ === 'linux';
   }, []);
 
   // keep platform check available for future window chrome tweaks
@@ -313,7 +313,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
 
   // Nav is always open (collapsed state removed)
 
-  const openChamberSectionBySlug: Partial<Record<SettingsPageSlug, OpenChamberSection>> = React.useMemo(() => ({
+  const alcodeSectionBySlug: Partial<Record<SettingsPageSlug, AlcodeSection>> = React.useMemo(() => ({
     general: 'general',
     appearance: 'visual',
     chat: 'chat',
@@ -382,7 +382,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       case 'tunnel':
         return t('settings.page.tunnel.title');
       case 'isolated-spaces':
-        return t('settings.openchamber.spaces.title');
+        return t('settings.alcode.spaces.title');
       case 'about':
         return t('settings.page.about.title');
       case 'home':
@@ -523,7 +523,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
     }
     if (result.id === 'plugins.create') {
       window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('openchamber:settings-open-plugin-add'));
+        window.dispatchEvent(new CustomEvent('alcode:settings-open-plugin-add'));
       }, 50);
     }
   }, [isMobile, openPage, prepareSettingsSearchTarget]);
@@ -713,14 +713,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       case 'voice':
       case 'tunnel':
       case 'isolated-spaces': {
-        const section = openChamberSectionBySlug[slug] ?? 'visual';
-        return <OpenChamberPage section={section} />;
+        const section = alcodeSectionBySlug[slug] ?? 'visual';
+        return <AlcodePage section={section} />;
       }
       case 'home':
       default:
         return null;
     }
-  }, [openChamberSectionBySlug, renderUnavailable, runtimeCtx, t]);
+  }, [alcodeSectionBySlug, renderUnavailable, runtimeCtx, t]);
 
   // Mobile: if opened via deep-link / palette to a non-home page, jump into it once.
   React.useEffect(() => {

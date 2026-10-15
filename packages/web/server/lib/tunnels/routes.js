@@ -220,7 +220,7 @@ export const createTunnelRoutesRuntime = (dependencies) => {
   };
 
   const registerRoutes = (app) => {
-    app.get('/api/openchamber/tunnel/check', async (req, res) => {
+    app.get('/api/alcode/tunnel/check', async (req, res) => {
       try {
         const requestedProvider = typeof req?.query?.provider === 'string' && req.query.provider.trim().length > 0
           ? normalizeTunnelProvider(req.query.provider)
@@ -328,15 +328,15 @@ export const createTunnelRoutesRuntime = (dependencies) => {
         return res.status(500).json({ ok: false, error: 'Failed to run tunnel doctor' });
       }
     };
-    app.post('/api/openchamber/tunnel/doctor', handleTunnelDoctor);
-    app.get('/api/openchamber/tunnel/doctor', handleTunnelDoctor);
+    app.post('/api/alcode/tunnel/doctor', handleTunnelDoctor);
+    app.get('/api/alcode/tunnel/doctor', handleTunnelDoctor);
 
-    app.get('/api/openchamber/tunnel/providers', (_req, res) => {
+    app.get('/api/alcode/tunnel/providers', (_req, res) => {
       const providers = tunnelProviderRegistry.listCapabilities();
       return res.json({ providers });
     });
 
-    app.get('/api/openchamber/tunnel/status', async (_req, res) => {
+    app.get('/api/alcode/tunnel/status', async (_req, res) => {
       try {
         const settings = await readSettingsFromDiskMigrated();
         const normalizedMode = normalizeTunnelMode(settings?.tunnelMode);
@@ -430,7 +430,7 @@ export const createTunnelRoutesRuntime = (dependencies) => {
       }
     });
 
-    app.put('/api/openchamber/tunnel/managed-remote-token', async (req, res) => {
+    app.put('/api/alcode/tunnel/managed-remote-token', async (req, res) => {
       try {
         const presetId = typeof req?.body?.presetId === 'string' ? req.body.presetId.trim() : '';
         const presetName = typeof req?.body?.presetName === 'string' ? req.body.presetName.trim() : '';
@@ -455,7 +455,7 @@ export const createTunnelRoutesRuntime = (dependencies) => {
       }
     });
 
-    app.post('/api/openchamber/tunnel/start', async (_req, res) => {
+    app.post('/api/alcode/tunnel/start', async (_req, res) => {
       if (isEnterpriseMode()) {
         return res.status(403).json({ ok: false, code: 'enterprise_mode', error: TUNNEL_BLOCKED_ERROR });
       }
@@ -596,7 +596,7 @@ export const createTunnelRoutesRuntime = (dependencies) => {
       }
     });
 
-    app.post('/api/openchamber/tunnel/stop', (_req, res) => {
+    app.post('/api/alcode/tunnel/stop', (_req, res) => {
       let revokedBootstrapCount = 0;
       let invalidatedSessionCount = 0;
       const activeTunnelId = tunnelAuthController.getActiveTunnelId();

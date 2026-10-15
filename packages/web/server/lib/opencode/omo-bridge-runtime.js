@@ -415,7 +415,7 @@ export const resolveWorkerEntry = ({
   const packaged = resourcesPath ?? process?.resourcesPath ?? null;
   if (packaged) {
     candidates.push(nodeJoinPath(
-      packaged, 'app.asar.unpacked', 'node_modules', '@openchamber', 'web',
+      packaged, 'app.asar.unpacked', 'node_modules', '@alcode', 'web',
       'server', 'lib', 'opencode', 'omo-invoker-worker.ts',
     ));
   }

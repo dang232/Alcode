@@ -78,8 +78,8 @@ export const getToolIcon = (toolName: string, presentation?: GuestToolRule | nul
     if (tool === 'subagent') {
         return <Icon name="ai-agent" className={iconClass} />;
     }
-    if (tool === 'openchamber') {
-        return <Icon name="openchamber" className={iconClass} />;
+    if (tool === 'alcode') {
+        return <Icon name="alcode" className={iconClass} />;
     }
     if (tool === 'linear' || tool.startsWith('linear_')) {
         return <Icon name="linear" className={iconClass} />;
@@ -87,13 +87,13 @@ export const getToolIcon = (toolName: string, presentation?: GuestToolRule | nul
     if (tool === 'cloudflare' || tool.startsWith('cloudflare_') || tool === 'claudflare' || tool.startsWith('claudflare_')) {
         return <Icon name="cloudflare" className={iconClass} />;
     }
-    if (tool === 'openchamber_web') {
+    if (tool === 'alcode_web') {
         return <Icon name="global" className={iconClass} />;
     }
-    if (tool === 'openchamber_notify') {
+    if (tool === 'alcode_notify') {
         return <Icon name="notification-3" className={iconClass} />;
     }
-    if (tool === 'openchamber_memory') {
+    if (tool === 'alcode_memory') {
         return <Icon name="brain-4" className={iconClass} />;
     }
     if (tool === 'question') {

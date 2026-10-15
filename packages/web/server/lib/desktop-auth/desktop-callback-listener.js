@@ -20,7 +20,7 @@ export const DESKTOP_CALLBACK_PORT = DESKTOP_PORT;
 export const DESKTOP_CALLBACK_HOST = '127.0.0.1';
 
 export const desktopCallbackPortOccupiedMessage = (port, host) =>
-  `Desktop Google callback port ${port} is occupied (${host}). Close the other app using it, then start OpenChamber again.`;
+  `Desktop Google callback port ${port} is occupied (${host}). Close the other app using it, then start Alcode again.`;
 
 // Starts the fixed-port callback listener, unless the main server already
 // serves on that port. `registerCallbackRoute` must be the desktop-auth

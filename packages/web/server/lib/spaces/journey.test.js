@@ -42,7 +42,7 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
   let releaseCodeOut = () => {};
   const codeOutHeld = new Promise((resolve) => { releaseCodeOut = resolve; });
   if (dataDir === null) {
-    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-journey-'));
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-journey-'));
     folders.push(dataDir);
   }
   const calls = [];
@@ -210,7 +210,7 @@ describe('the journey: disk and clean-up', () => {
       count: 0,
       outcome: {
         freedBytes: 440_000_000,
-        kept: [{ kind: 'image', name: 'node@sha256:0', reason: 'in_use', message: 'image is being used' }, { kind: 'tools', name: 'openchamber-tools-x', reason: 'failed', message: 'disk on fire' }],
+        kept: [{ kind: 'image', name: 'node@sha256:0', reason: 'in_use', message: 'image is being used' }, { kind: 'tools', name: 'alcode-tools-x', reason: 'failed', message: 'disk on fire' }],
         machine: { state: 'failed', message: 'sudo: a password is required' },
       },
     };
@@ -218,7 +218,7 @@ describe('the journey: disk and clean-up', () => {
     expect(await journey.readDisk('memory')).toEqual(DISK);
     expect(await journey.cleanUpDisk('memory')).toEqual({ freedBytes: 440_000_000, kept: [{ kind: 'image', reason: 'in_use' }, { kind: 'tools', reason: 'failed' }], disk: DISK });
     expect(warnings).toEqual([
-      '[spaces] clean-up could not remove tools openchamber-tools-x: disk on fire',
+      '[spaces] clean-up could not remove tools alcode-tools-x: disk on fire',
       '[spaces] the Colima machine did not trim its disk: sudo: a password is required',
     ]);
   });
@@ -833,7 +833,7 @@ describe('the journey: the project folder of a space', () => {
   });
 
   it('says the folder is there by looking at the host', async () => {
-    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-journey-project-'));
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-journey-project-'));
     folders.push(folder);
     const file = path.join(folder, 'a-file');
     fs.writeFileSync(file, '');

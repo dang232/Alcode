@@ -1,4 +1,4 @@
-// The disk that spaces take on the Docker place, and the clean-up of what OpenChamber can make
+// The disk that spaces take on the Docker place, and the clean-up of what Alcode can make
 // again by itself (DESIGN.md, journey step 9 and decision 12): this owner's tools volumes but the
 // current one, this owner's leftover one-shot containers, and the space image.
 //
@@ -117,7 +117,7 @@ export function createDockerDisk({ engine, runCommand, colimaPath, owner, image,
   };
 
   /**
-   * Removes what OpenChamber can make again, each without force, and says what Docker kept.
+   * Removes what Alcode can make again, each without force, and says what Docker kept.
    * `freedBytes` counts the sizes measured just before, of what is gone afterwards.
    */
   const cleanUp = async () => {

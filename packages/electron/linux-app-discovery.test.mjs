@@ -13,7 +13,7 @@ Name=抖音
 Exec=/usr/bin/example --app-url=https://www.douyin.com/
 Icon=example`;
 
-const TEST_ENV = { PATH: '/nonexistent-openchamber-test-bin' };
+const TEST_ENV = { PATH: '/nonexistent-alcode-test-bin' };
 
 const parseEntryAt = (content, id) => parseDesktopEntry(content, `/usr/share/applications/${id}.desktop`);
 

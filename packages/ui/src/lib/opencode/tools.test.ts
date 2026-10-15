@@ -74,20 +74,20 @@ describe("tool input and metadata", () => {
 })
 
 describe("tool row description", () => {
-  test("OpenChamber tools show their action and the detail that tells calls apart", () => {
-    expect(toolDescription("openchamber", {
+  test("Alcode tools show their action and the detail that tells calls apart", () => {
+    expect(toolDescription("alcode", {
       action: "session.link",
       parameters: { sessionId: "ses_1", link: { identifier: "#3998", title: "Keep PR badges after rebases", url: "https://x", kind: "change" } },
     }, undefined)).toEqual({ kind: "text", value: "session.link · #3998 Keep PR badges after rebases" })
-    expect(toolDescription("openchamber", {
+    expect(toolDescription("alcode", {
       action: "session.send",
       parameters: { sessionId: "ses_1", prompt: "Addition from the maintainer\nmore" },
     }, undefined)).toEqual({ kind: "text", value: "session.send · Addition from the maintainer" })
-    expect(toolDescription("openchamber_memory", { action: "memory.save", parameters: { title: "Drafts rule" } }, undefined))
+    expect(toolDescription("alcode_memory", { action: "memory.save", parameters: { title: "Drafts rule" } }, undefined))
       .toEqual({ kind: "text", value: "memory.save · Drafts rule" })
-    expect(toolDescription("openchamber_web", { action: "browser.snapshot", parameters: {} }, undefined))
+    expect(toolDescription("alcode_web", { action: "browser.snapshot", parameters: {} }, undefined))
       .toEqual({ kind: "text", value: "browser.snapshot" })
-    expect(toolDescription("openchamber_notify", { title: "Review ready" }, undefined))
+    expect(toolDescription("alcode_notify", { title: "Review ready" }, undefined))
       .toEqual({ kind: "text", value: "Review ready" })
   })
 
@@ -216,12 +216,12 @@ describe("execute call details", () => {
       toolCalls: [
         { tool: "search", status: "completed", input: { query: "a\nb" } },
         { status: "error", input: {} },
-        { tool: "openchamber_memory", status: "error" },
+        { tool: "alcode_memory", status: "error" },
         { tool: "noop", status: "completed", input: {} },
       ],
     })).toEqual([
       { tool: "search", status: "completed", input: '{"query":"a\\nb"}' },
-      { tool: "openchamber_memory", status: "error" },
+      { tool: "alcode_memory", status: "error" },
       { tool: "noop", status: "completed" },
     ])
     expect(executeToolCalls({})).toEqual([])

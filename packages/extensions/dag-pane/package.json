@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "description": "Built-in SDK guest: DAG side pane for OmO runs (project-ide todo 13). Desktop-only surface; shipped through the built-in extension registry, no folder install.",
-  "openchamber": {
+  "alcode": {
     "apiVersion": 1,
     "engines": {
-      "openchamber": ">=1.22.0"
+      "alcode": ">=1.22.0"
     },
     "contributes": {
       "panel": {
-        "id": "openchamber-builtin-dag-pane",
+        "id": "alcode-builtin-dag-pane",
         "name": "DAG runs",
         "icon": "icon.svg",
         "entry": "panel/index.html"

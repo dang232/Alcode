@@ -21,12 +21,12 @@ const textDecoder = new TextDecoder();
 
 // The vendored artifact is fetched at runtime; `new URL` keeps this a plain
 // static asset for Vite in every surface (web, VS Code webview, Electron's
-// openchamber-ui:// protocol) and a readable file URL under bun's test runner.
+// alcode-ui:// protocol) and a readable file URL under bun's test runner.
 const ghosttyWasmUrl = new URL('./vendor/ghostty-vt.wasm', import.meta.url);
 
 /**
  * Compiled from scripts/ghostty-write-pty.zig: one exported function that
- * forwards libghostty-vt's write-PTY callback to the `openchamber_write_pty`
+ * forwards libghostty-vt's write-PTY callback to the `alcode_write_pty`
  * import. Embedding the 121 bytes avoids a second network fetch and any CSP
  * question about data: URLs.
  */
@@ -218,7 +218,7 @@ export class GhosttyRuntime {
   private async installWritePtyTrampoline(): Promise<void> {
     const result = await WebAssembly.instantiate(WRITE_PTY_TRAMPOLINE, {
       env: {
-        openchamber_write_pty: (_terminal: number, userdata: number, pointer: number, length: number) => {
+        alcode_write_pty: (_terminal: number, userdata: number, pointer: number, length: number) => {
           const writer = this.ptyWriters.get(userdata);
           if (!writer || length === 0) return;
           writer(textDecoder.decode(new Uint8Array(this.memory.buffer, pointer, length)));

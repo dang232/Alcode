@@ -1,12 +1,12 @@
 import { OpenCodeCompatibilityGate } from '@/components/update/OpenCodeCompatibilityGate';
 import React from 'react';
 
-import { AboutSettings } from '@/components/sections/openchamber/AboutSettings';
+import { AboutSettings } from '@/components/sections/alcode/AboutSettings';
 import { OpenCodeUpdateToast } from '@/components/update/OpenCodeUpdateToast';
 import { MobileAppUpdateToast } from '@/components/update/MobileAppUpdateToast';
 import { ConfigUpdateOverlay } from '@/components/ui/ConfigUpdateOverlay';
 import { Button } from '@/components/ui/button';
-import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
+import { AlcodeLogo } from '@/components/ui/AlcodeLogo';
 import { AppStartupOverlay } from '@/components/ui/AppStartupOverlay';
 import { ChatView } from '@/components/views/ChatView';
 import { PlanView } from '@/components/views/PlanView';
@@ -37,7 +37,7 @@ import type { ProjectRef } from '@/lib/projectContextApi';
 import { readTabletLayout, useOrientation, useTabletLayout } from '@/lib/device';
 import { useHardwareKeyboard } from '@/lib/hardwareKeyboard';
 import { useI18n } from '@/lib/i18n';
-import { subscribeOpenchamberEvents } from '@/lib/openchamberEvents';
+import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 import { getRuntimeApiBaseUrl, subscribeRuntimeEndpointChanged, switchRuntimeEndpoint, MOBILE_DISCONNECTED_RUNTIME_KEY } from '@/lib/runtime-switch';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
@@ -219,7 +219,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
 
   // The agent asked for a file to be shown: open the files drawer and stage
   // the path the way a chat file link does, so the surface routes to it.
-  React.useEffect(() => subscribeOpenchamberEvents((event) => {
+  React.useEffect(() => subscribeAlcodeEvents((event) => {
     if (event.type !== 'file-open-request') return;
     const directory = event.directory ?? useDirectoryStore.getState().currentDirectory;
     if (!directory) return;
@@ -233,10 +233,10 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
     setWorkspaceOpen(true);
   }, []);
 
-  const leftResize = useIpadSidebarResize('left', 'openchamber.ipad.leftSidebarWidth', IPAD_LEFT_SIDEBAR_WIDTH);
+  const leftResize = useIpadSidebarResize('left', 'alcode.ipad.leftSidebarWidth', IPAD_LEFT_SIDEBAR_WIDTH);
   const rightResize = useIpadSidebarResize(
     'right',
-    'openchamber.ipad.rightSidebarWidth',
+    'alcode.ipad.rightSidebarWidth',
     IPAD_RIGHT_SIDEBAR_WIDTH,
     IPAD_WORKSPACE_SIDEBAR_MAX_WIDTH,
   );
@@ -298,7 +298,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
     [openChangesSurface, openFilesSurface, openSettingsSurface],
   );
 
-  // Expose the shell's panel-opening actions to the deep-link layer so openchamber:// URLs
+  // Expose the shell's panel-opening actions to the deep-link layer so alcode:// URLs
   // (and notification taps / widgets) can navigate to these surfaces. Session and
   // new-session intents resolve directly against the store, so they aren't wired here.
   const deepLinkHandlers = React.useMemo(
@@ -905,7 +905,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
     const now = Date.now();
     if (now - lastNativeResumeSyncEventAtRef.current >= NATIVE_RESUME_SYNC_EVENT_THROTTLE_MS) {
       lastNativeResumeSyncEventAtRef.current = now;
-      window.dispatchEvent(new Event('openchamber:system-resume'));
+      window.dispatchEvent(new Event('alcode:system-resume'));
     }
   }, [agentsCount, apis.sourceControl, apis.linear, initializeApp, loadAgents, loadProviders, providersCount, refreshSourceControlAuth, refreshLinearAuthStatus]);
 
@@ -1225,7 +1225,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
   React.useEffect(() => {
     if (!isConnected) return;
     let cancelled = false;
-    const unsubscribe = subscribeOpenchamberEvents((event) => {
+    const unsubscribe = subscribeAlcodeEvents((event) => {
       if (event.type !== 'worktree-changed') return;
       void refreshWorktreeTopologyForChange(projects, event.directories, () => cancelled);
     });
@@ -1291,7 +1291,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
   // (document.hasFocus() is unreliable) and leaked while the app was open; the in-app SSE
   // notification dispatch is no-op'd for native in renderMobileApp.
   useNativePushRegistration({ enabled: isNativeMobileApp && isConnected });
-  // Single native deep-link entry point: notification taps AND the openchamber:// URL
+  // Single native deep-link entry point: notification taps AND the alcode:// URL
   // scheme (widgets, Live Activities, external links). Registered unconditionally so a
   // cold-launch tap/open isn't lost on the connect/splash screen; intents stash until
   // the app is ready (connected + initialized) and shell handlers are registered.
@@ -1310,7 +1310,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
   if (!fontsReady) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-[var(--splash-background,var(--surface-background))] text-foreground">
-        <OpenChamberLogo width={120} height={120} isAnimated variant="splash" />
+        <AlcodeLogo width={120} height={120} isAnimated variant="splash" />
       </main>
     );
   }
@@ -1328,7 +1328,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
       return (
         <main className="flex min-h-dvh items-center justify-center bg-[var(--splash-background,var(--surface-background))] px-6 text-center text-foreground">
           <div className="flex max-w-sm flex-col items-center gap-4">
-            <OpenChamberLogo width={120} height={120} isAnimated={!showConnectionRecovery} variant="splash" />
+            <AlcodeLogo width={120} height={120} isAnimated={!showConnectionRecovery} variant="splash" />
             {showConnectionRecovery ? (
               <>
                 <div className="space-y-2">
@@ -1359,7 +1359,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
     if (autoConnectPhase !== 'done') {
       return (
         <main className="relative flex min-h-dvh items-center justify-center bg-[var(--splash-background,var(--surface-background))] text-foreground">
-          <OpenChamberLogo width={120} height={120} isAnimated variant="splash" />
+          <AlcodeLogo width={120} height={120} isAnimated variant="splash" />
           {/* Absolutely positioned below the (still perfectly centered) logo so
               the text never pushes it up. 50% + half the 120px logo + a gap. */}
           {autoConnectLabel ? (
@@ -1391,7 +1391,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
     if (!showConnectionRecovery) {
       return (
         <main className="flex min-h-dvh items-center justify-center bg-[var(--splash-background,var(--surface-background))] text-foreground">
-          <OpenChamberLogo width={120} height={120} isAnimated variant="splash" />
+          <AlcodeLogo width={120} height={120} isAnimated variant="splash" />
         </main>
       );
     }

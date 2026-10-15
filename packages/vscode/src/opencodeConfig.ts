@@ -439,7 +439,7 @@ const loadSnippetRegistry = (workingDirectory?: string): Map<string, Snippet> =>
         const snippet = loadSnippetFile(dir, filename, source);
         if (snippet) registerSnippet(registry, snippet);
       } catch (error) {
-        console.warn(`[OpenChamber][VSCode] Failed to load snippet ${path.join(dir, filename)}:`, error);
+        console.warn(`[Alcode][VSCode] Failed to load snippet ${path.join(dir, filename)}:`, error);
       }
     }
   }
@@ -1422,7 +1422,7 @@ const lookupNpmPackage = async (name: string): Promise<NpmLookupResult> => {
   try {
     const request = resolveNpmRegistryRequest(name);
     const response = await fetch(request.url, {
-      headers: { Accept: 'application/json', 'User-Agent': 'openchamber-vscode/dev', ...request.headers },
+      headers: { Accept: 'application/json', 'User-Agent': 'alcode-vscode/dev', ...request.headers },
       signal: AbortSignal.timeout(5000),
     });
     if (response.ok) {
@@ -1861,7 +1861,7 @@ const parseMdFile = (filePath: string): { frontmatter: Record<string, unknown>; 
   try {
     frontmatter = (yaml.parse(match[1]) || {}) as Record<string, unknown>;
   } catch (error) {
-    console.warn(`[OpenChamber][VSCode] Failed to parse frontmatter for ${filePath}, treating as empty:`, error);
+    console.warn(`[Alcode][VSCode] Failed to parse frontmatter for ${filePath}, treating as empty:`, error);
     frontmatter = {};
   }
   return { frontmatter, body: (match[2] || '').trim() };

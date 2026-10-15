@@ -29,9 +29,9 @@ import {
   saveProjectActionsState,
   updateProjectSetup,
   updateSharedProjectSetup,
-  type OpenChamberProjectAction,
+  type AlcodeProjectAction,
   type ProjectRef,
-} from '@/lib/openchamberConfig';
+} from '@/lib/alcodeConfig';
 import {
   buildProjectActionDesktopForwardOptions,
   PROJECT_ACTION_ICON_MAP,
@@ -50,7 +50,7 @@ import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint'
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
-type EditableProjectAction = OpenChamberProjectAction;
+type EditableProjectAction = AlcodeProjectAction;
 
 const AUTO_SAVE_DELAY_MS = 450;
 const PROJECT_RUN_IN_PARENT_VALUE = '__project__';
@@ -82,7 +82,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
   const [actions, setActions] = React.useState<EditableProjectAction[]>([]);
   // Read-only here: the team's actions from the repo file, and whether that
   // file could be read at all (a broken file is shown, never treated as empty).
-  const [sharedActions, setSharedActions] = React.useState<OpenChamberProjectAction[]>([]);
+  const [sharedActions, setSharedActions] = React.useState<AlcodeProjectAction[]>([]);
   const [sharedState, setSharedState] = React.useState<{ path: string; status: 'missing' | 'ok' | 'invalid'; reason?: string } | null>(null);
   const [hiddenSharedIds, setHiddenSharedIds] = React.useState<string[]>([]);
   const [isSharing, setIsSharing] = React.useState(false);
@@ -176,7 +176,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
     }
   }, [actions, isSharing, notifyActionsUpdated, projectRef, reload, sharedActions, t]);
 
-  const makeActionPersonal = React.useCallback(async (action: OpenChamberProjectAction) => {
+  const makeActionPersonal = React.useCallback(async (action: AlcodeProjectAction) => {
     if (isSharing) return;
     setIsSharing(true);
     try {

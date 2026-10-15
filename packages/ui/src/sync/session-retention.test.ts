@@ -64,8 +64,8 @@ describe('retention eligibility', () => {
 
   test('keeps pinned and In work sessions however old they are', () => {
     useSessionPinnedStore.getState().toggle({ directory: '/retention-project', sessionId: 'pinned' });
-    const inWork = session('in-work', { metadata: { openchamber: { work: { state: 'open', openedAt: 1, openedBy: 'user' } } } });
-    const doneWork = session('done-work', { metadata: { openchamber: { work: { state: 'done', openedAt: 1, openedBy: 'user', doneAt: 2 } } } });
+    const inWork = session('in-work', { metadata: { alcode: { work: { state: 'open', openedAt: 1, openedBy: 'user' } } } });
+    const doneWork = session('done-work', { metadata: { alcode: { work: { state: 'done', openedAt: 1, openedBy: 'user', doneAt: 2 } } } });
     try {
       expect(buildSessionRetentionCandidates({
         sessions: [...recent, session('old'), session('pinned'), inWork, doneWork], cutoffDays: 30, currentSessionId: null,
@@ -90,7 +90,7 @@ describe('retention eligibility', () => {
   });
 
   test('retains parents with an attached side conversation for either action', () => {
-    const parent = session('parent', { metadata: { openchamber: { btwSessionID: 'side' } } });
+    const parent = session('parent', { metadata: { alcode: { btwSessionID: 'side' } } });
     expect(candidates([parent])).toEqual([]);
     expect(candidates([parent], 'archive')).toEqual([]);
   });
