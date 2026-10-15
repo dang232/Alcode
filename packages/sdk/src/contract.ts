@@ -591,6 +591,14 @@ type Envelope = {
 export type HostReadyMessage = Envelope & { type: 'ready'; payload: HostReadyContext };
 export type HostDirectoryMessage = Envelope & { type: 'directory'; payload: { directory: string | null } };
 export type HostSessionMessage = Envelope & { type: 'session'; payload: { session: SessionSnapshot | null } };
+/**
+ * The active conversation's DAG run, shaped as the bridge snapshot document
+ * the DAG panel parses (`schemaVersion`/`dag`/`tasks`). `snapshot: null`
+ * clears the live view (the conversation has no run). `conversationId` is
+ * the engine session the model was built for, so a stale post can never
+ * paint a foreign conversation's graph.
+ */
+export type HostRunModelMessage = Envelope & { type: 'run-model'; payload: { conversationId: string; snapshot: JsonValue | null } };
 export type HostConnectionMessage = Envelope & { type: 'connection'; payload: { connection: GuestConnection } };
 export type HostSettingsMessage = Envelope & { type: 'settings'; payload: { settings: GuestSettings } };
 export type HostSessionLifecycleMessage = Envelope & { type: 'session-lifecycle'; payload: SessionLifecycleEvent };
@@ -619,6 +627,7 @@ export type HostMessage =
   | HostReadyMessage
   | HostDirectoryMessage
   | HostSessionMessage
+  | HostRunModelMessage
   | HostConnectionMessage
   | HostSettingsMessage
   | HostSessionLifecycleMessage
@@ -764,7 +773,7 @@ export const isGenerateResult = (
 const HOST_PUSH_TYPES: ReadonlySet<string> = new Set([
   'workspace',
   'shells',
-  'ready', 'directory', 'session', 'connection', 'settings', 'session-lifecycle', 'item', 'resolve', 'action',
+  'ready', 'directory', 'session', 'run-model', 'connection', 'settings', 'session-lifecycle', 'item', 'resolve', 'action',
   'status-control-event', 'popover-closed',
   'file-open', 'file-snapshot', 'file-saved',
 ]);

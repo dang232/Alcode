@@ -10,6 +10,8 @@ resources/web-dist/
 resources/sidecar/
 resources/opencode-cli/*
 !resources/opencode-cli/.gitkeep
+resources/ulw-loop-cli/*
+!resources/ulw-loop-cli/.gitkeep
 .cache/
 
 # OS-specific

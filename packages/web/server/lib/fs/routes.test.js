@@ -2047,6 +2047,89 @@ describe('canonical managed roots with real filesystem aliases', () => {
   });
 });
 
+describe('fs delete with locked paths', () => {
+  const lockedError = (code) => Object.assign(
+    new Error(`${code}: resource busy or locked, rm '/workspace/session-x'`),
+    { code },
+  );
+
+  const registerDelete = ({ rm }) => {
+    const { app, getRoute } = createRouteRegistry();
+    registerFsRoutes(app, {
+      os: { homedir: () => '/home/user' },
+      path: path.posix,
+      fsPromises: {
+        realpath: async (targetPath) => targetPath,
+        rm,
+      },
+      spawn: vi.fn(),
+      crypto: { randomUUID: () => 'uuid-0' },
+      normalizeDirectoryPath: (value) => value,
+      resolveProjectDirectory: async () => ({ directory: '/workspace' }),
+      openchamberUserConfigRoot: '/home/user/.config',
+    });
+    return getRoute('POST', '/api/fs/delete');
+  };
+
+  it('retries a transient EBUSY lock and deletes successfully', async () => {
+    const rm = vi.fn()
+      .mockRejectedValueOnce(lockedError('EBUSY'))
+      .mockRejectedValueOnce(lockedError('EBUSY'))
+      .mockResolvedValueOnce(undefined);
+    const handler = registerDelete({ rm });
+
+    const res = createMockResponse();
+    await handler({ body: { path: '/workspace/session-x' } }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ success: true, path: '/workspace/session-x' });
+    expect(rm).toHaveBeenCalledTimes(3);
+  });
+
+  it('answers a persistent EBUSY lock with 409 naming the locked path', async () => {
+    const rm = vi.fn(async () => { throw lockedError('EBUSY'); });
+    const handler = registerDelete({ rm });
+
+    const res = createMockResponse();
+    await handler({ body: { path: '/workspace/session-x' } }, res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: 'Path is locked by another process and could not be deleted',
+      reason: 'locked',
+      path: '/workspace/session-x',
+    });
+    expect(rm).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps a persistent EPERM mapped to the os-permission contract', async () => {
+    const rm = vi.fn(async () => { throw lockedError('EPERM'); });
+    const handler = registerDelete({ rm });
+
+    const res = createMockResponse();
+    await handler({ body: { path: '/workspace/session-x' } }, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'Access denied', reason: 'os-permission' });
+  });
+
+  it('still rejects a missing path with 400', async () => {
+    const rm = vi.fn(async () => undefined);
+    const handler = registerDelete({ rm });
+
+    const missing = createMockResponse();
+    await handler({ body: {} }, missing);
+    expect(missing.statusCode).toBe(400);
+    expect(missing.body).toEqual({ error: 'Path is required' });
+
+    const nonString = createMockResponse();
+    await handler({ body: { path: 42 } }, nonString);
+    expect(nonString.statusCode).toBe(400);
+    expect(nonString.body).toEqual({ error: 'Path is required' });
+    expect(rm).not.toHaveBeenCalled();
+  });
+});
+
 describe('fs html preview grants', () => {
   const files = new Map([
     ['/workspace/site/index.html', '<img src="logo.png">'],

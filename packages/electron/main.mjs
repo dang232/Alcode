@@ -89,6 +89,7 @@ import { mintOutsideFileGrant } from '@openchamber/web/server/lib/fs/routes.js';
 import { fetchUpdateNotes } from '@openchamber/web/server/lib/changelog/update-notes.js';
 import { applyConnectAttemptTimeout } from '@openchamber/web/server/lib/network-defaults.js';
 import { isNetworkAccessBlocked } from '@openchamber/web/server/lib/enterprise-mode.js';
+import { isUnsafeUnauthenticatedLanAllowed } from '@openchamber/web/server/lib/security/bind-host.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -218,7 +219,10 @@ const readAppMetadata = () => {
 const APP_METADATA = readAppMetadata();
 const APP_VERSION = APP_METADATA.version;
 
-const DEFAULT_DESKTOP_PORT = 57123;
+// Fixed loopback port for the desktop server: the registered Google callback URL
+// (http://127.0.0.1:57123/auth/desktop-google/callback) depends on it, so there is
+// no fallback. Occupied → loud startup failure in spawnLocalServer.
+const DESKTOP_PORT = 57123;
 const LOOPBACK_BIND_HOST = '127.0.0.1';
 const LAN_BIND_HOST = '0.0.0.0';
 const MINI_CHAT_WINDOW_WIDTH = 520;
@@ -910,19 +914,6 @@ const waitForHealth = async (url, timeoutMs = 20_000, initialPollMs = 250, maxPo
   return false;
 };
 
-const pickUnusedPort = async (host = '127.0.0.1') => {
-  const net = await import('node:net');
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.listen(0, host, () => {
-      const address = server.address();
-      const port = typeof address === 'object' && address ? address.port : 0;
-      server.close(() => resolve(port));
-    });
-    server.on('error', reject);
-  });
-};
-
 const isPortFree = async (port, host = '127.0.0.1') => {
   if (!Number.isFinite(port) || port <= 0) return false;
   const net = await import('node:net');
@@ -1308,39 +1299,42 @@ const spawnLocalServer = async () => {
   await inheritUserShellEnv();
 
   const settings = readSettingsRoot();
-  const storedPort = Number.isFinite(settings.desktopLocalPort) ? settings.desktopLocalPort : null;
+  // The desktop Google callback URL is registered once (console) against this port,
+  // against this port, so the local server always binds exactly here: no
+  // stored-port or random-port fallback. A second instance fails loudly below.
   // When the user enables "Desktop Network Access" we bind on all interfaces
   // so phones/tablets on the same Wi-Fi can reach the app. UI shows a clear
   // warning and persists the flag via /api/config/settings.
   const lanAccessEnabled = settings.desktopLanAccessEnabled === true;
   setDesktopKeepAwakeActive(settings.desktopKeepAwakeEnabled === true);
-  const desktopUiPassword = typeof settings.desktopUiPassword === 'string' ? settings.desktopUiPassword.trim() : '';
   // Enterprise mode keeps the app on this machine unless the administrator
   // allowed network access (the server refuses a network bind as well).
   const lanAccessBlockedByEnterprise = lanAccessEnabled && isNetworkAccessBlocked();
-  const lanAccessBlockedByMissingPassword = lanAccessEnabled && !lanAccessBlockedByEnterprise && !desktopUiPassword;
-  const effectiveLanAccessEnabled = lanAccessEnabled && !lanAccessBlockedByEnterprise && !lanAccessBlockedByMissingPassword;
+  // The server refuses a network bind without its Alcore secret, so LAN
+  // access without one would fail startup: stay on loopback instead.
+  const lanAccessSecret = [process.env.ALCORE_JWT_SECRET, process.env.JWT_SECRET]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find((value) => value) || '';
+  const lanAccessBlockedByMissingSecret = lanAccessEnabled && !lanAccessBlockedByEnterprise
+    && !lanAccessSecret && !isUnsafeUnauthenticatedLanAllowed(process.env);
+  const effectiveLanAccessEnabled = lanAccessEnabled && !lanAccessBlockedByEnterprise && !lanAccessBlockedByMissingSecret;
   const bindHost = effectiveLanAccessEnabled ? LAN_BIND_HOST : LOOPBACK_BIND_HOST;
   if (lanAccessBlockedByEnterprise) {
     log.warn('[desktop] LAN access is turned off by enterprise mode; starting on loopback only.');
-  } else if (lanAccessBlockedByMissingPassword) {
-    log.warn('[desktop] LAN access was requested without a desktop UI password; starting on loopback only.');
+  } else if (lanAccessBlockedByMissingSecret) {
+    log.warn('[desktop] LAN access was requested without an Alcore secret; starting on loopback only.');
   }
 
   // Probe before starting the server — main() in the server module sets up a
   // lot of global state before binding, and calling it twice after a listen
-  // failure would double-wire runtimes. Pick a known-free port in one shot.
-  const candidates = [storedPort, DEFAULT_DESKTOP_PORT].filter((v) => Number.isFinite(v) && v > 0);
-  let chosenPort = 0;
-  for (const candidate of candidates) {
-    if (await isPortFree(candidate, bindHost)) {
-      chosenPort = candidate;
-      break;
-    }
+  // failure would double-wire runtimes. The port is fixed (see above), so an
+  // occupied port is a loud startup failure, not a silent re-pick.
+  if (!(await isPortFree(DESKTOP_PORT, bindHost))) {
+    throw new Error(
+      `Desktop server port ${DESKTOP_PORT} is occupied (${bindHost}). Close the other app using it, then start OpenChamber again.`,
+    );
   }
-  if (chosenPort === 0) {
-    chosenPort = await pickUnusedPort(bindHost);
-  }
+  const chosenPort = DESKTOP_PORT;
 
   // The server module reads ENV_DESKTOP_NOTIFY / OPENCHAMBER_DIST_DIR /
   // OPENCHAMBER_RUNTIME at import time (top-level const), so these must be
@@ -1350,13 +1344,23 @@ const spawnLocalServer = async () => {
   process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE = effectiveLanAccessEnabled ? 'true' : 'false';
   if (lanAccessBlockedByEnterprise) {
     process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'enterprise-mode';
-  } else if (lanAccessBlockedByMissingPassword) {
-    process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'missing-password';
+  } else if (lanAccessBlockedByMissingSecret) {
+    process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'missing-alcore-secret';
   } else {
     delete process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
   }
   process.env.OPENCHAMBER_DIST_DIR = resolveWebDistDir();
   process.env.OPENCHAMBER_RUNTIME = 'desktop';
+  // Staged internal ulw-loop CLI (prepare:ulw-loop-cli): loop agents spawned
+  // under the app inherit this and resolve internal-first via the skill doc's
+  // OMO_ULW_LOOP_CLI override — no download, no PATH, no drive search.
+  // Guarded: without staging, the managed lifecycle defaults to the checkout
+  // dist (dev parity) and the repo-local candidate in the skill doc covers
+  // the rest.
+  const stagedUlwLoopCli = path.join(resourceRoot(), 'ulw-loop-cli', 'dist', 'cli.js');
+  if (fs.existsSync(stagedUlwLoopCli)) {
+    process.env.OMO_ULW_LOOP_CLI = stagedUlwLoopCli;
+  }
   // OpenCode uses process cwd as a fallback directory; app userData would make
   // packaged desktop look like a separate empty workspace.
   process.env.OPENCHAMBER_OPENCODE_CWD = resolveManagedOpenCodeCwd({
@@ -1364,11 +1368,6 @@ const spawnLocalServer = async () => {
     homedir: () => os.homedir(),
   });
   process.env.OPENCHAMBER_DESKTOP_NOTIFY = 'true';
-  if (desktopUiPassword) {
-    process.env.OPENCHAMBER_UI_PASSWORD = desktopUiPassword;
-  } else {
-    delete process.env.OPENCHAMBER_UI_PASSWORD;
-  }
   process.env.OPENCHAMBER_SKIP_API_COMPRESSION = process.env.OPENCHAMBER_SKIP_API_COMPRESSION || 'true';
   process.env.NO_PROXY = process.env.NO_PROXY || 'localhost,127.0.0.1';
   process.env.no_proxy = process.env.no_proxy || 'localhost,127.0.0.1';
@@ -1378,7 +1377,6 @@ const spawnLocalServer = async () => {
   const handle = await startWebUiServer({
     port: chosenPort,
     host: bindHost,
-    uiPassword: desktopUiPassword || null,
     attachSignals: false,
     exitOnShutdown: false,
     apiOnly: false,
@@ -1619,90 +1617,6 @@ const navigateWindow = async (browserWindow, url, { allowAbort = false } = {}) =
     }
     throw error;
   }
-};
-
-const extractCookieHeader = (response) => {
-  const getSetCookie = typeof response.headers?.getSetCookie === 'function'
-    ? response.headers.getSetCookie.bind(response.headers)
-    : null;
-  const cookies = getSetCookie ? getSetCookie() : [];
-  const rawCookies = cookies.length > 0
-    ? cookies
-    : String(response.headers?.get?.('set-cookie') || '').split(/,(?=\s*[^;,=]+=[^;,]+)/);
-  return rawCookies
-    .map((cookie) => String(cookie || '').split(';')[0].trim())
-    .filter(Boolean)
-    .join('; ');
-};
-
-const loginRemoteAndIssueClientToken = async ({ url, password, trustDevice, requestHeaders }) => {
-  const baseUrl = normalizeHostUrl(String(url || ''));
-  const candidatePassword = typeof password === 'string' ? password : '';
-  const safeRequestHeaders = sanitizeRuntimeRequestHeaders(requestHeaders || {});
-  if (!baseUrl) throw new Error('Invalid URL');
-  if (!candidatePassword) throw new Error('Password is required');
-
-  // Stable client identity so re-login reuses the same device record. Local
-  // uses the fixed desktop-local identity; remote uses this install's id with a
-  // regular 'desktop' kind.
-  const clientIdentity = isLocalRuntimeUrl(baseUrl)
-    ? { clientKind: LOCAL_DESKTOP_CLIENT_KIND, dedupeKey: LOCAL_DESKTOP_CLIENT_DEDUPE_KEY, ...desktopDeviceMetadata() }
-    : { clientKind: REMOTE_DESKTOP_CLIENT_KIND, dedupeKey: `desktop:${await getOrCreateDesktopInstallId()}`, ...desktopDeviceMetadata() };
-
-  // Keep a sub-path prefix (https://host/openchamber); new URL('/auth/session', base) would drop it.
-  const loginUrl = new URL(baseUrl);
-  loginUrl.pathname = `${loginUrl.pathname.replace(/\/+$/, '')}/auth/session`;
-  loginUrl.search = '';
-  const loginResponse = await fetch(loginUrl.toString(), {
-    method: 'POST',
-    signal: AbortSignal.timeout(10_000),
-    headers: {
-      ...safeRequestHeaders,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      password: candidatePassword,
-      trustDevice: trustDevice === true,
-      issueClientToken: true,
-      clientLabel: 'OpenChamber Desktop',
-      ...clientIdentity,
-    }),
-  });
-  if (!loginResponse.ok) {
-    return { ok: false, status: loginResponse.status };
-  }
-
-  const loginPayload = await loginResponse.json().catch(() => null);
-  if (typeof loginPayload?.clientToken === 'string' && loginPayload.clientToken.trim()) {
-    return { ok: true, token: loginPayload.clientToken.trim() };
-  }
-
-  const cookie = extractCookieHeader(loginResponse);
-  if (!cookie) {
-    return { ok: false, status: 401 };
-  }
-
-  const tokenResponse = await fetch(new URL('/api/client-auth/clients', `${baseUrl}/`).toString(), {
-    method: 'POST',
-    signal: AbortSignal.timeout(10_000),
-    headers: {
-      ...safeRequestHeaders,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Cookie: cookie,
-    },
-    body: JSON.stringify({
-      label: 'OpenChamber Desktop',
-      ...clientIdentity,
-    }),
-  });
-  if (!tokenResponse.ok) {
-    return { ok: false, status: tokenResponse.status };
-  }
-  const tokenPayload = await tokenResponse.json().catch(() => null);
-  const token = typeof tokenPayload?.token === 'string' ? tokenPayload.token.trim() : '';
-  return token ? { ok: true, token } : { ok: false, status: 500 };
 };
 
 const emitToWindow = (browserWindow, event, detail) => {
@@ -4584,13 +4498,38 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         String(args.expectedServerId || ''),
       ));
 
-    case 'desktop_remote_password_login':
-      return loginRemoteAndIssueClientToken({
-        url: args.url,
-        password: args.password,
-        trustDevice: args.trustDevice === true,
-        requestHeaders: args.requestHeaders || {},
+    case 'desktop_start_google_login': {
+      // Narrow by construction: the only URL this channel ever opens is the
+      // Google OAuth authorize URL our own local server just built (loopback
+      // redirect back to this machine, PKCE + state minted server-side) —
+      // never renderer input and never a JavaScript-origin page. The system
+      // browser (not an app window) opens it so the user's Google session
+      // and its consent UI behave exactly like the web flow.
+      const localBase = typeof state.sidecarUrl === 'string' ? state.sidecarUrl.trim().replace(/\/$/, '') : '';
+      if (!localBase) throw new Error('Local server is not running');
+      const startResponse = await fetch(`${localBase}/api/auth/desktop/google/start`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(10_000),
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: '{}',
       });
+      if (!startResponse.ok) throw new Error(`Google login could not start (status ${startResponse.status})`);
+      const payload = await startResponse.json().catch(() => null);
+      const requestId = typeof payload?.requestId === 'string' ? payload.requestId : '';
+      const googleUrl = typeof payload?.googleUrl === 'string' ? payload.googleUrl : '';
+      if (!requestId || !googleUrl) throw new Error('Google login could not start');
+      let parsedGoogleUrl = null;
+      try {
+        parsedGoogleUrl = new URL(googleUrl);
+      } catch {
+        throw new Error('Google login could not start');
+      }
+      if (parsedGoogleUrl.protocol !== 'https:' || parsedGoogleUrl.hostname !== 'accounts.google.com') {
+        throw new Error('Google login could not start');
+      }
+      await shell.openExternal(parsedGoogleUrl.toString());
+      return { requestId };
+    }
 
     case 'desktop_set_window_theme': {
       const mode = typeof args.themeMode === 'string' ? args.themeMode : '';

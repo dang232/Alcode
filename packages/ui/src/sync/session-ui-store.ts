@@ -32,6 +32,9 @@ import { selectCommandsForDirectory, useCommandsStore } from "@/stores/useComman
 import { selectSkillsForDirectory, useSkillsStore } from "@/stores/useSkillsStore"
 import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
+import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
+import { ULW_COMMAND_NAME, ulwWorkflowInstruction } from "@/lib/ulwWorkflow"
+import { dagRouteSample, recordDagRouteDecision, type DagRouteDecision, type DagRouteReport } from "@/lib/dagRouteLog"
 import { normalizePath } from "@/lib/pathNormalization"
 import { CHAT_DRAFT_PROJECT_ID, createChatDirectory, deleteChatDirectory, getChatsRootFromDirectory, isChatDirectoryPath, warmChatsRootDirectory } from "@/lib/chatDirectories"
 import { isVSCodeRuntime } from "@/lib/desktop"
@@ -213,14 +216,45 @@ export async function routeMessage(params: {
       directory: requestDirectory,
       command: params.content,
     })
+    void recordDagRouteDecision({ decision: 'shell', sample: dagRouteSample(params.content), sessionId: params.sessionId })
     return 'shell'
   }
 
   let skills = params.skills
+  // Unresolved /ulw keeps the send alive as a prompt: the workflow appendix
+  // below carries the definition nothing resolved, so the model runs the
+  // loop instead of reporting it missing. Set only on that path.
+  let ulwFallbackArgs: string | null = null
+  // A leading word-bound `ulw` takes the /ulw command route, so the bare
+  // trigger runs the same template, context, and skill plumbing as the slash
+  // form. Mid-sentence mentions stay plain chat; shell input diverted above.
+  const bareUlwArguments = params.content.match(/^\s*ulw\b([\s\S]*)$/i)?.[1]
+  const content = bareUlwArguments === undefined ? params.content : `/ulw${bareUlwArguments}`
+  // The evaluated trigger for the flow trace: the bare capture, an explicit
+  // slash command, or a plain prompt. Reported at each return below with the
+  // resolved command once one matched.
+  const routeTrigger: DagRouteDecision = bareUlwArguments !== undefined
+    ? 'captured-to-/ulw'
+    : params.content.startsWith("/") ? 'slash-command' : 'plain-prompt'
+  const reportRoute = (command?: string | null, args?: string | null): void => {
+    const report: DagRouteReport = {
+      decision: routeTrigger,
+      sample: dagRouteSample(params.content),
+      sessionId: params.sessionId,
+    }
+    if (command != null) report.command = command
+    if (args != null) report.arguments = args
+    void recordDagRouteDecision(report)
+  }
   // Slash commands use the command route; skills attach to a normal prompt.
-  if (params.content.startsWith("/")) {
-    const [head, ...tail] = params.content.split(" ")
-    const cmdName = head.slice(1)
+  if (content.startsWith("/")) {
+    const [head, ...tail] = content.split(" ")
+    // A bare `ulw: ...` send rewrites to `/ulw: ...`, so the head carries
+    // the separator: strip trailing command punctuation before matching,
+    // or the name never equals a command/skill and the send degrades to a
+    // plain prompt with no workflow instruction (live: model picked the
+    // external orca CLI instead of the managed loop).
+    const cmdName = head.slice(1).replace(/[:;,.!?]+$/, '')
 
     // Commands and skills are resolved for the session's own directory. A
     // project root and one of its worktrees can define different commands
@@ -256,6 +290,15 @@ export async function routeMessage(params: {
       }
     }
 
+    if (!matchedCommand && !matchedSkill && cmdName === ULW_COMMAND_NAME) {
+      // The session directory defines no /ulw template (the normal case
+      // outside this checkout), and OpenChamber sends never pass the Codex
+      // hook pipeline that would append the workflow. Fall through to the
+      // normal prompt with the bundled definition attached as context —
+      // the same channel the command route uses for skill instructions.
+      ulwFallbackArgs = tail.join(" ")
+    }
+
     if (matchedCommand) {
       // The command route takes files only, so attached context (a quoted
       // selection, pinned knowledge, prepared conflict instructions) is
@@ -280,6 +323,7 @@ export async function routeMessage(params: {
         delivery: params.delivery,
         directory: requestDirectory,
       })
+      reportRoute(cmdName, tail.join(" "))
       return 'command'
     }
 
@@ -300,7 +344,9 @@ export async function routeMessage(params: {
     content: params.content,
     directory: requestDirectory,
     files: sendFiles,
-    context: contextItems,
+    context: ulwFallbackArgs === null
+      ? contextItems
+      : [...contextItems, { text: ulwWorkflowInstruction(params.sessionId) }],
     appendSubmissions: params.appendSubmissions,
     send: (messageID, context) => opencodeClient.sendMessage({
       runtimeKey: params.runtimeKey,
@@ -318,6 +364,11 @@ export async function routeMessage(params: {
       skills,
     }).then(() => {}),
   })
+  if (ulwFallbackArgs === null) {
+    reportRoute()
+  } else {
+    reportRoute(ULW_COMMAND_NAME, ulwFallbackArgs)
+  }
   return 'prompt'
 }
 
@@ -1882,6 +1933,9 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
           })),
         })),
       })
+      // A ulw run starts with this send: reveal the DAG pane once so the
+      // flow is visible with zero configuration (a no-op for other sends).
+      revealDagPaneForUlvStart(content, createdDraftSession.directory, { inputMode })
       // Recorded only after the send resolves: a failed send must carry the
       // pinned context again rather than assume the agent already saw it.
       if (draftKnowledge.text && messageRoute !== 'shell') {
@@ -2003,6 +2057,8 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         })),
       })),
     })
+    // Same reveal as the draft path: this send starts the run.
+    revealDagPaneForUlvStart(content, currentSessionDirectory, { inputMode })
     if (knowledge.text && messageRoute !== 'shell') {
       void reportSessionKnowledgeDelivered(currentSessionDirectory, targetSessionId || "", knowledge.signature)
     }

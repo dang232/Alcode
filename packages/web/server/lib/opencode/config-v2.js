@@ -12,6 +12,22 @@
  * `packages/core/src/v1/config/migrate.ts`, and `services/www` migrate-v1 docs.
  */
 
+// omo.json keys are owned by the engine core (`@oh-my-opencode/omo-config-core`:
+// schema + loader + atomic writer). This module keeps the OpenCode opencode.json
+// entity helpers and delegates every omo.json read/validate/write to the
+// committed bundle (`omo-config.bundle.js`, regen with
+// `bun ./omo-config.regen.js`), so the two config surfaces cannot drift into
+// parallel schemas and the packaged server never imports engine `.ts`.
+import {
+  OmoConfigLayerSchema,
+  OmoConfigSchema,
+  OmoConfigWriteError,
+  readOmoConfig,
+  validateOmoConfig,
+  validateOmoConfigLayer,
+  writeOmoConfig,
+} from './omo-config.bundle.js';
+
 // ============== SECTIONS ==============
 
 /**
@@ -840,4 +856,11 @@ export {
   writeWebSearchSelection,
   findWebSearchProjectOverride,
   writeWarmingEnabled,
+  OmoConfigLayerSchema,
+  OmoConfigSchema,
+  OmoConfigWriteError,
+  readOmoConfig,
+  validateOmoConfig,
+  validateOmoConfigLayer,
+  writeOmoConfig,
 };

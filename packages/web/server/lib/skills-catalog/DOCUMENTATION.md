@@ -10,7 +10,7 @@ This module provides skill discovery, scanning, and installation capabilities fo
   - `github-meta.js`: Best-effort GitHub repository metadata (stars, last push) with in-memory TTL cache.
   - `git.js`: Git operations helpers for cloning and auth error detection.
   - `install.js`: Skills installation from git repositories.
-  - `scan.js`: Skills scanning from git repositories.
+  - `engine-skills.js`: Engine (OmO skills-loader) builtin skill catalog listing and SKILL.md installation into managed roots.
   - `source.js`: Source string parsing for git repositories.
 
 ## Public API
@@ -42,6 +42,27 @@ The following functions are exported and used by the web server:
 
 ### Git Repository Installation (`install.js`)
 - `installSkillsFromRepository({ source, subpath, defaultSubpath, identity, scope, targetSource, workingDirectory, userSkillDir, selections, conflictPolicy, conflictDecisions })`: Install skills from git repository. Supports user/project scopes, opencode/agents targets, conflict resolution (prompt/skipAll/overwriteAll), and sparse checkout for efficiency.
+
+### Engine Skills (`engine-skills.js`)
+- `ENGINE_CATALOG_SOURCE_ID` (`'engine'`): catalog source id for loader-backed skills.
+- `ENGINE_SKILL_REGISTRY`: the builtin skills `createBuiltinSkills()` registers in `skills-loader-core` (verified against its source), each with catalog `variant`, loader `skillName`, module path, and kind (`standard` | `browser` | `conditional`). The two `playwright` variants (MCP vs CLI) share one loader name; the catalog lists both and refuses to guess between them.
+- `resolveEngineRoot({ env, moduleDir })`: vendored `packages/omo-engine` location (`OMO_ENGINE_ROOT` override first). Returns null when the loader marker is absent so callers degrade to `engine_unavailable`.
+- `listEngineSkills({ engineRoot, importSkillModule, teamModeEnabled, browserProvider, disabledSkills })`: lists every registry skill. Each engine import is isolated: an unloadable module is listed with `installable: false` and its reason, never dropped. Items carry `invokeAtRuntime` + `invokeReason` (see table).
+- `resolveEngineSkillForInstall(items, requestedName, { engineRoot, importSkillModule, matchSkillByName, findPartialMatches, variant })`: resolves through the loader's own `matchSkillByName` (exact wins, unique short name resolves, ambiguous refuses). Typed refusals: `invalid_skill_name` (includes traversal shapes; nothing is touched), `missing_skill` (+ substring suggestions), `ambiguous_skill` (+ candidates), `engine_skill_unavailable`, `engine_unavailable`.
+- `installEngineSkill({ skillName, variant, scope, workingDirectory, userSkillDir, ... })`: resolves, then writes `<root>/<name>/SKILL.md` (user: `userSkillDir`; project: `<workingDirectory>/.opencode/skills`) with loader name/description/license/compatibility/metadata frontmatter and the template body verbatim (data, never executed). Refuses overwrites (`already_installed`); asserts containment in the managed root.
+- `createEngineSkillCatalog({ userSkillDir, writeSkillFile })`: route-wiring seam (`{ source, listItems, install }`).
+
+#### Invoke-at-run-time (`invokeAtRuntime`)
+
+Per the loader contract (`createBuiltinSkills` / `resolveActiveBuiltinSkills`):
+
+| Status | Meaning |
+|---|---|
+| `in` | The loader includes the skill at run time under these options. |
+| `out` + `conditional: team_mode disabled` | `team-mode` without `team_mode.enabled`. |
+| `out` + `browser-variant-not-selected (active: X)` | Non-selected browser skill variant. |
+| `out` + `disabled-by-config` | Name in the caller's `disabledSkills`. |
+| `out` + `engine-source-missing: ...` | Module unloadable here (e.g. non-vendored `shared-skills` root, bun-only text import under vitest, no TS runtime under plain node). |
 
 ## Internal Helpers
 

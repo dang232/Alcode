@@ -114,6 +114,13 @@ export type HostClient = {
   onReady: (listener: (context: HostReadyContext) => void) => () => void;
   onDirectory: (listener: (directory: string | null) => void) => () => void;
   onSession: (listener: (session: SessionSnapshot | null) => void) => () => void;
+  /**
+   * The active conversation's DAG run model (bridge snapshot shape), posted
+   * by the host whenever it changes. `snapshot: null` clears the live view.
+   * `conversationId` names the conversation it was built for: posts for any
+   * other conversation must be ignored.
+   */
+  onRunModel: (listener: (model: { conversationId: string; snapshot: JsonValue | null }) => void) => () => void;
   onSessionLifecycle: (listener: (event: SessionLifecycleEvent) => void) => () => void;
   onConnection: (listener: (connection: GuestConnection) => void) => () => void;
   onSettings: (listener: (settings: GuestSettings) => void) => () => void;
@@ -286,6 +293,7 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
   const readyListeners = new Set<(context: HostReadyContext) => void>();
   const directoryListeners = new Set<(directory: string | null) => void>();
   const sessionListeners = new Set<(session: SessionSnapshot | null) => void>();
+  const runModelListeners = new Set<(model: { conversationId: string; snapshot: JsonValue | null }) => void>();
   const lifecycleListeners = new Set<(event: SessionLifecycleEvent) => void>();
   const connectionListeners = new Set<(connection: GuestConnection) => void>();
   const settingsListeners = new Set<(settings: GuestSettings) => void>();
@@ -384,6 +392,18 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
         lastLifecycle = lifecycleFromSession(message.payload.session);
       }
       emit(sessionListeners, message.payload.session);
+      return;
+    }
+
+    if (message.type === 'run-model') {
+      const conversationId = String(message.payload.conversationId) === message.payload.conversationId
+        ? message.payload.conversationId
+        : '';
+      const snapshot = message.payload.snapshot;
+      if (conversationId.length > 0
+        && (snapshot === null || (Object(snapshot) === snapshot && !Array.isArray(snapshot)))) {
+        emit(runModelListeners, { conversationId, snapshot });
+      }
       return;
     }
 
@@ -777,6 +797,12 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       if (lastReady) listener(lastReady.directory);
       return () => {
         directoryListeners.delete(listener);
+      };
+    },
+    onRunModel: (listener) => {
+      runModelListeners.add(listener);
+      return () => {
+        runModelListeners.delete(listener);
       };
     },
     onSession: (listener) => {

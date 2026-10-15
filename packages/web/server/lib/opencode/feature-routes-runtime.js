@@ -1,6 +1,8 @@
 import { registerFsRoutes } from '../fs/routes.js';
 import { registerEnvironmentRoutes } from '../environment/routes.js';
 import { registerQuotaRoutes } from '../quota/routes.js';
+import { createTokenpanelQuotaRuntime } from '../tokenpanel/tokenpanel-quota.js';
+import { sharedUserTokenStore } from '../user-tokens/user-token-store.js';
 import { registerSmallModelRoutes } from '../small-model/routes.js';
 import { registerWalkthroughRoutes } from '../walkthrough/routes.js';
 import { registerSessionGoalRoutes } from '../session-goal/routes.js';
@@ -56,9 +58,10 @@ import {
   encodePluginId,
   decodePluginId,
 } from './plugins.js';
-import { SKILL_DIR, SKILL_SCOPE, readSkillSupportingFile, writeSkillSupportingFile, deleteSkillSupportingFile } from './shared.js';
+import { SKILL_DIR, SKILL_SCOPE, readSkillSupportingFile, writeSkillSupportingFile, deleteSkillSupportingFile, writeMdFile } from './shared.js';
 import { getSkillSources, discoverSkills, mergeDiscoveredSkills, createSkill, updateSkill, deleteSkill, renameSkill, isManagedSkillPath } from './skills.js';
 import { getCuratedSkillsSources } from '../skills-catalog/curated-sources.js';
+import { createEngineSkillCatalog } from '../skills-catalog/engine-skills.js';
 import { getCacheKey, scanWithCache } from '../skills-catalog/cache.js';
 import { parseSkillRepoSource } from '../skills-catalog/source.js';
 import { scanSkillsRepository } from '../skills-catalog/scan.js';
@@ -174,6 +177,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
 
   const registerRoutes = async (app, routeDependencies) => {
     const {
+      uiAuthController,
       messageSearchRuntime,
       crypto,
       fs,
@@ -408,9 +412,21 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       fetchGitHubRepoMetas,
       getProfiles,
       getProfile,
+      // Engine skills catalog (T7): loader-backed list + SKILL.md
+      // install into managed roots. Additive: OpenCode-config discovery
+      // and bridge/pane resolution are untouched.
+      engineSkillCatalog: createEngineSkillCatalog({ userSkillDir: SKILL_DIR, writeSkillFile: writeMdFile }),
     });
 
     registerQuotaRoutes(app, { getQuotaProviders });
+    // Behind the /api session gate (registered in bootstrap) and before the
+    // generic OpenCode proxy: the account panel's live TokenPanel quota read.
+    // The store is the desktop-login singleton (capture and presentation
+    // share one keychain); the subject resolver binds reads to the caller.
+    createTokenpanelQuotaRuntime({
+      userTokenStore: sharedUserTokenStore(),
+      resolveSubject: (req) => uiAuthController?.resolveRequestAlcoreSub?.(req) ?? '',
+    }).registerRoutes(app);
     registerSmallModelRoutes(app, { getSmallModelService });
     registerSessionGoalRoutes(app);
     const gitBinary = resolveGitBinaryForSpawn();

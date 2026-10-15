@@ -183,3 +183,102 @@ export function findWebSearchProjectOverride(
   layers: WebSearchConfigLayers,
   projectFiles: ReadonlyArray<{ path: string; config: object | null }>,
 ): string | null;
+
+// omo.json surface, delegated to `@oh-my-opencode/omo-config-core` through
+// `./omo-config.bundle.js`. The schemas are the engine's Zod objects, re-exported
+// so web/server has one import surface and no parallel omo.json schema.
+export const OmoConfigSchema: { safeParse(value: unknown): unknown };
+export const OmoConfigLayerSchema: { safeParse(value: unknown): unknown };
+
+export interface OmoConfigValidationSuccess {
+  ok: true;
+  config: Record<string, unknown>;
+}
+
+export interface OmoConfigValidationFailure {
+  ok: false;
+  issues: Array<{ path: Array<string | number>; message: string }>;
+}
+
+export type OmoConfigValidation = OmoConfigValidationSuccess | OmoConfigValidationFailure;
+
+export function validateOmoConfig(value: unknown): OmoConfigValidation;
+export function validateOmoConfigLayer(value: unknown): OmoConfigValidation;
+
+export interface OmoConfigDiagnostic {
+  kind: string;
+  path: string;
+  message: string;
+  issuePaths?: readonly string[];
+}
+
+export interface OmoConfigSource {
+  exists: boolean;
+  loaded: boolean;
+  path: string;
+  scope: 'project' | 'user';
+}
+
+export interface OmoConfigReadFileSystem {
+  existsSync(path: string): boolean;
+  readFileSync(path: string, encoding: 'utf-8'): string;
+  lstatSync?(path: string): { isSymbolicLink(): boolean };
+  realpathSync?(path: string): string;
+}
+
+export interface OmoConfigReadOptions {
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+  fileSystem?: OmoConfigReadFileSystem;
+  harness?: string;
+  profile?: string;
+  platform?: string;
+}
+
+export interface OmoConfigReadResult {
+  config: Record<string, unknown>;
+  diagnostics: readonly OmoConfigDiagnostic[];
+  layers: readonly unknown[];
+  profile?: string;
+  sources: readonly OmoConfigSource[];
+}
+
+export function readOmoConfig(options?: OmoConfigReadOptions): OmoConfigReadResult;
+
+export interface OmoConfigEdit {
+  path: readonly Array<string | number>;
+  value: unknown;
+}
+
+export interface OmoConfigWriteFileSystem extends OmoConfigReadFileSystem {
+  mkdirSync(path: string, options: { readonly recursive: true }): string | undefined;
+  readdirSync(path: string): string[];
+  renameSync(oldPath: string, newPath: string): void;
+  unlinkSync(path: string): void;
+  writeFileExclusiveSync(path: string, content: string): void;
+  writeFileSync(path: string, content: string, encoding: 'utf-8'): void;
+  copyFileSync(source: string, destination: string): void;
+  lstatSync(path: string): { isSymbolicLink(): boolean };
+}
+
+export interface OmoConfigWriteOptions {
+  edits: readonly OmoConfigEdit[];
+  scope: 'project' | 'user';
+  targetPath?: string;
+  projectDir?: string;
+  env?: Record<string, string | undefined>;
+  fileSystem?: OmoConfigWriteFileSystem;
+  platform?: string;
+}
+
+export interface OmoConfigWriteResult {
+  path: string;
+  backupPath?: string;
+}
+
+export function writeOmoConfig(options: OmoConfigWriteOptions): OmoConfigWriteResult;
+
+export class OmoConfigWriteError extends Error {
+  path: string;
+  operation: 'backup' | 'parse' | 'read' | 'write';
+}

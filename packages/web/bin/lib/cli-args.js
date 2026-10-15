@@ -62,13 +62,16 @@ const SESSION = ['session'];
 const SESSION_OR_SCHEDULE = ['session', 'schedule'];
 const TUNNEL = ['tunnel'];
 const LOGS = ['logs'];
+const DAG = ['dag'];
+// `dag status|stream` reuses the session/message vocabulary for run targets.
+const SESSION_OR_SCHEDULE_OR_DAG = ['session', 'schedule', 'dag'];
 const COMMAND_OWNED_FLAGS = new Map([
   ['daily', SCHEDULE], ['weekly', SCHEDULE], ['once', SCHEDULE], ['time', SCHEDULE], ['cron', SCHEDULE],
   ['timezone', SCHEDULE], ['disabled', SCHEDULE], ['task', SCHEDULE],
   ['role', SESSION], ['last', SESSION], ['last-assistant', SESSION], ['wait', SESSION], ['timeout', SESSION],
   ['with-status', SESSION], ['worktree', SESSION], ['branch', SESSION], ['start-ref', SESSION], ['base', SESSION],
   ['upstream', SESSION], ['no-upstream', SESSION], ['title', SESSION],
-  ['session', SESSION_OR_SCHEDULE], ['message', SESSION_OR_SCHEDULE], ['prompt', SESSION_OR_SCHEDULE],
+  ['session', SESSION_OR_SCHEDULE_OR_DAG], ['message', SESSION_OR_SCHEDULE_OR_DAG], ['prompt', SESSION_OR_SCHEDULE],
   ['model', SESSION_OR_SCHEDULE], ['agent', SESSION_OR_SCHEDULE], ['variant', SESSION_OR_SCHEDULE],
   ['goal', SESSION_OR_SCHEDULE], ['goal-token-budget', SESSION_OR_SCHEDULE], ['project', SESSION_OR_SCHEDULE],
   ['dir', SESSION_OR_SCHEDULE], ['directory', SESSION_OR_SCHEDULE],
@@ -76,6 +79,7 @@ const COMMAND_OWNED_FLAGS = new Map([
   ['token-file', TUNNEL], ['token-stdin', TUNNEL], ['connect-ttl', TUNNEL], ['session-ttl', TUNNEL],
   ['show-secrets', TUNNEL], ['dry-run', TUNNEL], ['force', TUNNEL],
   ['lines', LOGS], ['no-follow', LOGS],
+  ['snapshot-dir', DAG], ['attach', DAG],
 ]);
 
 function parseArgs(argv = process.argv.slice(2)) {
@@ -83,7 +87,6 @@ function parseArgs(argv = process.argv.slice(2)) {
   const options = {
     port: DEFAULT_PORT,
     host: undefined,
-    uiPassword: process.env.OPENCHAMBER_UI_PASSWORD || undefined,
     json: false,
     all: false,
     follow: true,
@@ -110,7 +113,6 @@ function parseArgs(argv = process.argv.slice(2)) {
     plain: false,
     quiet: false,
     explicitPort: false,
-    explicitUiPassword: false,
     envSnapshot: true,
     foreground: false,
     lan: false,
@@ -139,6 +141,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     timeout: undefined,
     lastAssistant: false,
     withStatus: false,
+    snapshotDir: undefined,
+    attach: undefined,
   };
 
   const removedFlagErrors = [];
@@ -216,13 +220,9 @@ function parseArgs(argv = process.argv.slice(2)) {
       case 'lan':
         options.lan = true;
         break;
-      case 'ui-password': {
-        const { value, nextIndex } = consumeValue(i, inlineValue);
-        i = nextIndex;
-        options.uiPassword = typeof value === 'string' ? value : '';
-        options.explicitUiPassword = true;
+      case 'ui-password':
+        removedFlagErrors.push('`--ui-password` was removed. Browser auth now uses Alcore login.');
         break;
-      }
       case 'provider': {
         const { value, nextIndex } = consumeValue(i, inlineValue);
         i = nextIndex;
@@ -463,6 +463,18 @@ function parseArgs(argv = process.argv.slice(2)) {
       case 'no-follow':
         options.follow = false;
         break;
+      case 'snapshot-dir': {
+        const { value, nextIndex } = consumeValue(i, inlineValue);
+        i = nextIndex;
+        if (value !== undefined) options.snapshotDir = value;
+        break;
+      }
+      case 'attach': {
+        const { value, nextIndex } = consumeValue(i, inlineValue);
+        i = nextIndex;
+        if (value !== undefined) options.attach = value;
+        break;
+      }
       case 'no-env-snapshot':
         options.envSnapshot = false;
         break;
@@ -539,7 +551,7 @@ function parseArgs(argv = process.argv.slice(2)) {
         removedFlagErrors.push('`--tunnel-qr` was removed. Use: openchamber tunnel start ... --qr');
         break;
       case 'tunnel-password-url':
-        removedFlagErrors.push('`--tunnel-password-url` was removed. Use UI password auth directly after tunnel start.');
+        removedFlagErrors.push('`--tunnel-password-url` was removed. Use Alcore login directly after tunnel start.');
         break;
       case 'tunnel-provider':
       case 'tunnel-mode':
@@ -571,6 +583,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const startupAction = command === 'startup' ? (positional[1] || 'status') : null;
   const scheduleAction = command === 'schedule' ? (positional[1] || 'help') : null;
   const sessionAction = command === 'session' ? (positional[1] || 'help') : null;
+  const dagAction = command === 'dag' ? (positional[1] || 'help') : null;
   const controlAction = command === 'control' ? (positional[1] || 'help') : null;
 
   if (options.lan && typeof options.host !== 'string') {
@@ -588,6 +601,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     startupAction,
     scheduleAction,
     sessionAction,
+    dagAction,
     controlAction,
     options,
     removedFlagErrors,
@@ -610,6 +624,7 @@ COMMANDS:
   status         Show server status
   schedule       Manage scheduled tasks
   session        Create, inspect, and read OpenChamber sessions
+  dag            Show DAG run snapshots and stream engine runs (text-only)
   models         Show default and favorite models
   projects       Show configured projects and IDs
   control        Show OpenChamber control-plane commands
@@ -626,7 +641,6 @@ OPTIONS:
   --lan                   Bind to 0.0.0.0 for LAN access
   --server <url>          Public/server URL for connect-url links
   --relay                 connect-url: also include the end-to-end-encrypted relay transport
-  --ui-password [password] Protect browser UI with a password (generates one when omitted)
   --api-only              Start API routes only, without serving browser UI assets
   --foreground            Run server in foreground (use with systemd/process managers)
   --no-daemon             Alias for --foreground
@@ -636,7 +650,6 @@ OPTIONS:
 ENVIRONMENT:
   OPENCHAMBER_HOST             Bind address (e.g. 0.0.0.0 for all interfaces)
   OPENCHAMBER_LAN_URL          LAN address pairing links offer (e.g. http://192.168.1.20:3000 in Docker)
-  OPENCHAMBER_UI_PASSWORD      Alternative to --ui-password flag
   OPENCHAMBER_UI_SESSION_TTL_HOURS        Browser sign-in lifetime in hours (default: 12)
   OPENCHAMBER_UI_TRUSTED_SESSION_TTL_DAYS Sign-in lifetime on a trusted device in days (default: 7)
   OPENCHAMBER_API_ONLY         Set to true/1 to start API routes only
@@ -688,7 +701,6 @@ COMMON OPTIONS:
   --json                         Output machine-readable JSON
   -q, --quiet                    Print minimal output
   -p, --port <port>              Target a specific OpenChamber runtime
-  --ui-password <password>       Authenticate to a password-protected runtime
 
 EXAMPLES:
   openchamber status
@@ -714,7 +726,6 @@ SUBCOMMANDS:
 OPTIONS:
   -p, --port              Web server port used by startup service
   --host                  Bind address used by startup service
-  --ui-password           Protect browser UI with single password
   --api-only              Start API routes only, without serving browser UI assets
   --no-env-snapshot       Do not save current environment for startup service
   --json                  Output machine-readable JSON
@@ -752,7 +763,6 @@ OPTIONS:
                           the instance brings the relay up on its own. Set
                           OPENCHAMBER_RELAY_URL to use a self-hosted relay.
   --name <label>          Label saved with the remote client token
-  --ui-password <value>   Protect browser access when UI routes are enabled
   --api-only              Start in headless/API-only mode when starting
   --qr                    Print a QR code for the connection link
   --json                  Output machine-readable JSON
@@ -788,7 +798,6 @@ COMMON OPTIONS:
   -p, --port              Target OpenChamber instance port
   --host                  Bind address when auto-starting an instance
   --lan                   Bind to 0.0.0.0 when auto-starting an instance
-  --ui-password [password] Protect browser UI when auto-starting an instance (generates one when omitted)
   --api-only              Start API routes only when auto-starting an instance
   --json                  Output machine-readable JSON
   --all                   Apply to all running instances (doctor default, stop)

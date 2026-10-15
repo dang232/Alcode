@@ -25,6 +25,7 @@ import {
   type GenerateRequest,
   type GuestConnection,
   type GuestMessage,
+  type JsonValue,
   type GuestRequest,
   type GuestSettings,
   type HostMessage,
@@ -155,6 +156,13 @@ export const buildSessionLifecycleMessage = (event: SessionLifecycleEvent): Host
   v: OPENCHAMBER_SDK_API_VERSION,
   type: 'session-lifecycle',
   payload: event,
+});
+
+export const buildRunModelMessage = (conversationId: string, snapshot: JsonValue | null): HostMessage => ({
+  channel: OPENCHAMBER_SDK_CHANNEL,
+  v: OPENCHAMBER_SDK_API_VERSION,
+  type: 'run-model',
+  payload: { conversationId, snapshot },
 });
 
 export const guestSessionLifecyclePhase = (

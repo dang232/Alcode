@@ -13,6 +13,7 @@ import os from 'os';
 import crypto from 'crypto';
 import http2 from 'node:http2';
 import { createUiAuth } from './lib/ui-auth/ui-auth.js';
+import { z } from 'zod';
 import { createTunnelAuth } from './lib/opencode/tunnel-auth.js';
 import { createManagedTunnelConfigRuntime } from './lib/tunnels/managed-config.js';
 import { createTunnelProviderRegistry } from './lib/tunnels/registry.js';
@@ -111,6 +112,7 @@ import { createRoutingRuntime } from './lib/routing/runtime.js';
 import { createJevClient } from './lib/routing/jev.js';
 import { createSessionWorkRuntime } from './lib/session-work/runtime.js';
 import { createSessionLineage } from './lib/session-lineage.js';
+import { DESKTOP_CALLBACK_PORT } from './lib/desktop-auth/desktop-callback-listener.js';
 import { createGracefulShutdownRuntime } from './lib/opencode/shutdown-runtime.js';
 import { beginGuestServiceHost, beginGuestServiceShutdown, stopAllGuestServices } from './lib/guests/service.js';
 import { findInstalledGuest } from './lib/guests/catalog.js';
@@ -1373,6 +1375,9 @@ const startupPipelineRuntime = createStartupPipelineRuntime({
   createDictationRuntime,
   createMessageStreamWsRuntime,
   createServerStartupRuntime,
+  // Lets an isolated QA instance boot next to a running app (Google login
+  // stays bound to the fixed-port listener and will not complete there).
+  skipDesktopCallbackListener: process.env.OPENCHAMBER_SKIP_DESKTOP_CALLBACK === '1',
 });
 
 const openCodeLifecycleState = {};
@@ -1988,12 +1993,14 @@ async function main(options = {}) {
     }
     return urls;
   };
-  const uiPassword = typeof options.uiPassword === 'string'
-    ? options.uiPassword
-    : (typeof process.env.OPENCHAMBER_UI_PASSWORD === 'string' ? process.env.OPENCHAMBER_UI_PASSWORD : null);
+  const alcoreSecret = z.string().min(1).optional().safeParse(options.alcoreSecret).data
+    ?? z.string().min(1).optional().safeParse(process.env.ALCORE_JWT_SECRET).data
+    ?? z.string().min(1).optional().safeParse(process.env.JWT_SECRET).data
+    ?? null;
+  const alcoreIssuer = z.string().min(1).optional().safeParse(options.alcoreIssuer).data?.trim() || undefined;
   if (
     isNetworkExposedBindHost(effectiveBindHost)
-    && !(typeof uiPassword === 'string' && uiPassword.trim().length > 0)
+    && alcoreSecret === null
     && !isUnsafeUnauthenticatedLanAllowed(process.env)
   ) {
     throw new Error(getUnauthenticatedLanErrorMessage(effectiveBindHost));
@@ -2231,7 +2238,8 @@ async function main(options = {}) {
     },
     getTunnelUrl: () => tunnelRuntimeContextHolder?.tunnelService?.getPublicUrl?.() ?? null,
     verboseRequestLogs: OPENCHAMBER_VERBOSE_REQUEST_LOGS,
-    uiPassword,
+    alcoreSecret,
+    alcoreIssuer,
     tunnelAuthController,
     remoteClientAuthRuntime,
     clientPairingRuntime,
@@ -2296,6 +2304,16 @@ async function main(options = {}) {
     agentToolRuntime,
     desktopUpdater,
     skipBodyParsing: (req) => spacesHost?.skipsBodyParsing(req) === true,
+    // Alcore badge flip (task 48): the provider runtime stores the caller's
+    // own keychained Bearer as the OpenCode `alcore` credential on login
+    // and removes it on sign-out. Read per call — port/password move.
+    // Task 55 passes the managed/external flag the same way: an external
+    // server never sees this process's config write, so the readiness gate
+    // reports `needs_restart` instead of polling a surface that cannot
+    // change. Read per call — the flag flips when the OpenCode target does.
+    buildOpenCodeUrl,
+    getOpenCodeAuthHeaders,
+    isExternalOpenCode: () => isExternalOpenCode,
   });
   uiAuthController = bootstrapResult.uiAuthController;
   // After the API auth gate, before every route that reads a directory, before the OpenCode proxy.
@@ -2335,7 +2353,7 @@ async function main(options = {}) {
     isRequestOriginAllowed,
   });
 
-  const tunnelRuntimeContext = tunnelWiringRuntime.initialize(app, port, Boolean(uiPassword?.trim()));
+  const tunnelRuntimeContext = tunnelWiringRuntime.initialize(app, port);
   const { tunnelService, startTunnelWithNormalizedRequest } = tunnelRuntimeContext;
   tunnelRuntimeContextHolder = tunnelRuntimeContext;
 
@@ -2406,6 +2424,7 @@ async function main(options = {}) {
   });
 
   await featureRoutesRuntime.registerRoutes(app, {
+    uiAuthController,
     environmentStore,
     environmentRuntime,
     listConfiguredProjects,
@@ -2462,8 +2481,8 @@ async function main(options = {}) {
     getOpenCodeAuthHeaders,
     getOpenCodePort: () => openCodePort,
     // Dev-server discovery must not offer OpenChamber's own listeners back to
-    // the user as something to preview.
-    getOwnPorts: () => [port, openCodePort].filter((value) => Number.isInteger(value) && value > 0),
+    // the user as something to preview (including the fixed-port callback).
+    getOwnPorts: () => [port, openCodePort, DESKTOP_CALLBACK_PORT].filter((value) => Number.isInteger(value) && value > 0),
     getActivePort: () => {
       const address = server?.address?.();
       return address && Number.isInteger(address.port) ? address.port : null;
@@ -2560,6 +2579,9 @@ async function main(options = {}) {
     attachSignals,
     apiOnly,
     dictationModelsDir: path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'speech-models'),
+    // Shares the desktop-auth runtime's pending-request map with the login
+    // start, so the fixed-port callback completes dev-layout logins.
+    registerDesktopGoogleCallbackRoute: bootstrapResult.desktopAuthRuntime?.registerCallbackRoute ?? null,
   });
   terminalRuntime = startupPipelineResult.terminalRuntime;
   dictationRuntime = startupPipelineResult.dictationRuntime;

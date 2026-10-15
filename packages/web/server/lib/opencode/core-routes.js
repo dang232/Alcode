@@ -1,6 +1,14 @@
 import { buildExternalManualRestartResponse } from './config-mutation-response.js';
+import {
+  OMO_BRIDGE_DEFAULT_ALCORE_MODELS,
+  OMO_BRIDGE_DEFAULT_MODEL_ROLE,
+  createOmoBridgeRuntime,
+  resolveVendoredRoot,
+} from './omo-bridge-runtime.js';
 import { ThemeImportStorageError } from './theme-runtime.js';
 import { registerThemeCatalogRoutes } from './theme-catalog.js';
+import { createDesktopAuthRuntime } from '../desktop-auth/desktop-auth.js';
+import { sharedUserTokenStore } from '../user-tokens/user-token-store.js';
 
 const parseLoopbackUrl = (rawUrl) => {
   if (typeof rawUrl !== 'string') {
@@ -399,6 +407,12 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
     // Display name a paired device shows for THIS server (issuing machine's
     // hostname), distinct from the per-device pairing label typed by the operator.
     getServerLabel = () => 'OpenChamber',
+    // Alcore provider sync (login registration, sign-out removal). Null in
+    // tests and in runtimes without the provider wiring: both hooks skip.
+    alcoreProvider = null,
+    alcoreSecret,
+    alcorePreviousSecret,
+    alcoreIssuer,
   } = dependencies;
   const PAIRING_REDEEM_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
   const PAIRING_REDEEM_RATE_LIMIT_MAX_ATTEMPTS = 10;
@@ -670,9 +684,88 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
   app.post('/auth/session', (req, res) => {
     const requestScope = tunnelAuthController.classifyRequestScope(req);
     if (requestScope === 'tunnel' || requestScope === 'unknown-public') {
-      return res.status(403).json({ error: 'Password login is disabled for tunnel scope', tunnelLocked: true });
+      return res.status(403).json({ error: 'Alcore login is disabled for tunnel scope', tunnelLocked: true });
     }
     return uiAuthController.handleSessionCreate(req, res);
+  });
+
+  const desktopAuthRuntime = createDesktopAuthRuntime({
+    uiAuthController,
+    alcoreSecret,
+    alcorePreviousSecret,
+    alcoreIssuer,
+    // The quota proxy shares this instance: a pair captured at loopback
+    // completion is the pair the proxy presents.
+    userTokenStore: sharedUserTokenStore(),
+    // Fire-and-forget on purpose: the provider sync fetches the live
+    // catalog over the network and must never delay the login response.
+    // The sync itself never rejects; the desktop seam swallows hook errors.
+    onLoginTokens: alcoreProvider === null || alcoreProvider === undefined
+      ? null
+      // A missing sync method throws inside the call: the desktop seam
+      // swallows hook errors, so no capability probe is needed here.
+      : (sub) => { void alcoreProvider.syncOnLogin(sub); },
+  });
+  desktopAuthRuntime.registerRoutes({
+    get: (path, ...handlers) => app.get(path, ...handlers),
+    post: (path, ...handlers) => app.post(path, ...handlers),
+  }, { express, tunnelAuthController });
+
+  // Alcore readiness gate (task 55): the composer hold reads this before
+  // the first alcore send. A snapshot of the login sync's model-surface
+  // poll — never a probe, never a secret, so no auth gate beyond the
+  // surrounding app applies. Unwired (tests, runtimes without the provider
+  // wiring) answers idle so a send never blocks on a gate that does not
+  // exist here. Registered here (not in the status routes) because the
+  // provider runtime arrives with these dependencies.
+  app.get('/api/alcore/readiness', async (_req, res) => {
+    // A snapshot, never a probe: the only secret-adjacent value here is
+    // none — state enum plus restart hint, safe to serve as-is.
+    const unreadable = { state: 'idle', needsRestart: false };
+    try {
+      const snapshot = await alcoreProvider?.getReadiness?.();
+      const state = snapshot?.state;
+      if (
+        state === 'idle'
+        || state === 'syncing'
+        || state === 'ready'
+        || state === 'syncing_retry'
+        || state === 'needs_restart'
+      ) {
+        res.json({ state, needsRestart: snapshot?.needsRestart === true });
+        return;
+      }
+      res.json(unreadable);
+      return;
+    } catch {
+      res.json(unreadable);
+    }
+  });
+
+  // Engine status for the Settings → Engine page: probe the user-installed
+  // OmO wrapper plus the Slice-E binding defaults. Gated behind UI auth:
+  // the probe spawns a subprocess and the answer names a server-local
+  // path. Never a secret. The probe is bounded well under the bridge
+  // default so a wedged engine cannot hold the settings page hostage.
+  app.get('/api/engine/status', async (req, res, next) => {
+    await runWithUiAuth(req, res, next, async () => {
+      const bridge = createOmoBridgeRuntime();
+      const probe = await bridge.probe({ timeoutMs: 5000, includeToolkit: true });
+      res.json({
+        entry: probe.entry ?? null,
+        builtin: resolveVendoredRoot() !== null,
+        available: probe.available === true,
+        compatible: probe.compatible === true,
+        version: probe.version ?? null,
+        runFlags: probe.runFlags ?? [],
+        missingRunFlags: probe.missingRunFlags ?? [],
+        message: probe.message ?? null,
+        binding: {
+          alcoreModels: [...OMO_BRIDGE_DEFAULT_ALCORE_MODELS],
+          defaultRole: OMO_BRIDGE_DEFAULT_MODEL_ROLE,
+        },
+      });
+    });
   });
 
   app.post('/auth/url-token', async (req, res, next) => {
@@ -770,7 +863,29 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
     }
     try {
       await uiAuthController.requireSessionAuth(req, res, async () => {
+        // Resolve the caller before the reset rotates secrets and clears
+        // the session: the Alcore teardown below is keyed by this subject.
+        let alcoreSub = '';
+        try {
+          alcoreSub = await uiAuthController.resolveRequestAlcoreSub?.(req) ?? '';
+        } catch {
+          alcoreSub = '';
+        }
         await uiAuthController.handleResetAuth(req, res);
+        // Best-effort Alcore teardown (keychain pair, provider entry,
+        // ambient credential). The reset response above is unchanged and
+        // cleanup never fails it — an unknown subject still drops the
+        // ambient credential inside clearOnSignOut.
+        try {
+          if (alcoreProvider !== null && alcoreProvider !== undefined) {
+            // The resolver answers a string; anything foreign coerces to
+            // one here and clearOnSignOut validates it again — an unknown
+            // subject still drops the ambient credential in there.
+            await alcoreProvider.clearOnSignOut(`${alcoreSub ?? ''}`);
+          }
+        } catch {
+          // Best-effort: sign-out already rotated the session secret.
+        }
       });
     } catch (error) {
       next(error);
@@ -1042,6 +1157,8 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
       next(err);
     }
   });
+
+  return { desktopAuthRuntime };
 };
 
 export const registerSettingsUtilityRoutes = (app, dependencies) => {

@@ -644,14 +644,6 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => ctx.isDesktopLocalOrigin,
   },
   {
-    id: 'sessions.desktop-ui-password',
-    page: 'general',
-    titleKey: 'settings.openchamber.desktopPassword.field.password',
-    descriptionKey: 'settings.openchamber.desktopPassword.field.passwordDescription',
-    keywords: ['desktop', 'password', 'auth', 'login'],
-    isAvailable: (ctx) => ctx.isDesktopLocalOrigin,
-  },
-  {
     id: 'sessions.desktop-lan-access',
     page: 'general',
     titleKey: 'settings.openchamber.desktopNetwork.field.allowLanAccess',
@@ -778,6 +770,22 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.openchamber.tools.field.agentToolsCodeMode',
     descriptionKey: 'settings.openchamber.tools.field.agentToolsCodeModeInfo',
     keywords: ['agent', 'tool', 'code mode', 'codemode', 'execute', 'openchamber'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'engine.status',
+    page: 'engine',
+    titleKey: 'settings.engine.section.status',
+    descriptionKey: 'settings.page.engine.description',
+    keywords: ['engine', 'omo', 'wrapper', 'installed', 'version', 'background runs'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'engine.routing',
+    page: 'engine',
+    titleKey: 'settings.engine.section.routing',
+    descriptionKey: 'settings.engine.routing.description',
+    keywords: ['model routing', 'alcore models', 'provider', 'login'],
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {

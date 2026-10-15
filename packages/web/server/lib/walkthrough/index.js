@@ -1,5 +1,12 @@
 import { getRepositoryRoot } from '../git/service.js';
-import { describeSmallModel, generateSmallModelText } from '../small-model/index.js';
+import { generateSmallModelText } from '../small-model/index.js';
+import {
+  advanceThroughWalkthroughCandidates,
+  isExplicitlyChosenModel,
+  modelRefString,
+  resolveWalkthroughModel,
+  walkthroughDowngradeRefs,
+} from './model-pipeline.bundle.js';
 import { buildDigest } from './digest.js';
 import { indexHunks } from './hunks.js';
 import { normalizeLanguage } from './languages.js';
@@ -14,7 +21,6 @@ import {
   writeCachedWalkthrough,
   writePointer,
 } from './store.js';
-import { readWalkthroughModelOverride } from './model-settings.js';
 import { loadSourceSections, parseSource, sourceKey, WalkthroughSourceError } from './sources.js';
 
 // Walkthrough generation is always user-initiated and never automatic: it costs
@@ -189,26 +195,14 @@ export async function cancelWalkthroughGeneration({ directory, source: rawSource
 
 const modelLabel = (model) => `${model.providerID}/${model.modelID}`;
 
-/**
- * Resolve the model for this feature: the walkthrough override when set,
- * otherwise whatever the small-model chain resolves to.
- */
-/**
- * Resolve the model for this feature. An explicit per-review choice outranks the
- * saved setting, which in turn outranks the small-model chain — the user picking
- * a roomier model for a risky change is the most specific intent there is.
- */
+// Model resolution lives in `./model-pipeline.bundle.js` (built from
+// `./model-pipeline.js`): the engine model-core
+// pipeline (override, category, fallback, chain, default) serving the
+// small-model bridge dispatch, with a forced-downgrade path down the chain.
 // `providerID` / `modelID` are the user's composer: without a model of its
 // own choosing, the walkthrough stays on that provider rather than on
 // whichever provider happens to be connected, and on that model when the
 // provider has no small one.
-const resolveModel = (directory, explicitModel, providerID, modelID) => describeSmallModel({
-  directory,
-  outputReserveTokens: walkthroughOutputTokens,
-  overrideModel: explicitModel || readWalkthroughModelOverride(),
-  preferredProviderID: providerID || undefined,
-  preferredModelID: modelID || undefined,
-});
 
 export const __testing = { generationTimeoutMs, walkthroughOutputTokens };
 
@@ -285,7 +279,13 @@ export async function getWalkthrough({ directory, source: rawSource, model: expl
   // the whole git pipeline twice.
   const [built, model] = await Promise.all([
     loadCurrentDiff(directory, source, deps, readContext),
-    resolveModel(directory, explicitModel, providerID, modelID).catch(() => null),
+    resolveWalkthroughModel({
+      directory,
+      explicitModel,
+      providerID,
+      modelID,
+      outputReserveTokens: walkthroughOutputTokens,
+    }).catch(() => null),
   ]);
   const { files } = built;
   const hunkIndex = indexHunks(files);
@@ -436,16 +436,15 @@ export async function generateWalkthrough({ directory, source: rawSource, force 
 
 async function runGeneration({ directory, source, repoRoot, key, force, explicitModel, providerID, modelID, language, readContext, signal }, deps) {
 
-  const model = await resolveModel(directory, explicitModel, providerID, modelID);
-  if (!model) {
+  const primary = await resolveWalkthroughModel({
+    directory,
+    explicitModel,
+    providerID,
+    modelID,
+    outputReserveTokens: walkthroughOutputTokens,
+  });
+  if (!primary) {
     throw fail('No model is available — sign in to a provider first', 404, { code: 'no-model' });
-  }
-  if (model.hasLogin === false) {
-    throw fail(
-      `No OpenCode login found for provider "${model.providerID}" — sign in or choose a different model`,
-      401,
-      { code: 'no-provider-login', model },
-    );
   }
 
   const { digest, files, idByAlias, fileCount, hunkCount, generatedFileCount } = await loadCurrentDiff(directory, source, deps, readContext);
@@ -457,40 +456,17 @@ async function runGeneration({ directory, source, repoRoot, key, force, explicit
     throw fail('There are no changes to review', 400, { code: 'empty-diff' });
   }
 
-  const cacheKey = buildCacheKey({
+  const hunkIndex = indexHunks(files);
+
+  const primaryCacheKey = buildCacheKey({
     repoRoot,
     sourceKey: key,
-    providerID: model.providerID,
-    modelID: model.modelID,
+    providerID: primary.providerID,
+    modelID: primary.modelID,
     language,
     files,
     readContext,
   });
-
-  const hunkIndex = indexHunks(files);
-
-  if (!force) {
-    const cached = readCachedWalkthrough(cacheKey);
-    if (cached) {
-      writePointer(repoRoot, key, {
-        repoRoot,
-        sourceKey: key,
-        cacheKey,
-        generatedAt: cached.generatedAt,
-      }, readContext);
-      return addReadContext({
-        source,
-        walkthrough: cached.walkthrough,
-        model: cached.model,
-        language: cached.language ?? null,
-        generatedAt: cached.generatedAt,
-        fromCache: true,
-        hunks: serializeHunks(files),
-        hunkCount,
-        ...resolveAgainstCurrent(cached.walkthrough, hunkIndex),
-      }, readContext);
-    }
-  }
 
   // A forced regeneration hands the model its own previous narrative so it can
   // keep what is still true instead of starting from a blank page. The old
@@ -499,97 +475,181 @@ async function runGeneration({ directory, source, repoRoot, key, force, explicit
   const pointer = readPointer(repoRoot, key, readContext);
   if (pointer) {
     const previousEntry = readCachedWalkthrough(pointer.cacheKey);
-    if (previousEntry && previousEntry.cacheKey !== cacheKey) {
+    if (previousEntry && previousEntry.cacheKey !== primaryCacheKey) {
       previousWalkthrough = previousEntry.walkthrough;
     }
   }
 
   const { prompt, system } = buildPrompt({ digest, fileCount, hunkCount, source, previousWalkthrough, language });
 
-  if (model.structuredOutput === false) {
-    throw fail(
-      `${modelLabel(model)} cannot produce structured output — choose a different small model`,
-      409,
-      { code: 'structured-output-unsupported', model },
-    );
-  }
+  // Forced-downgrade order: the pipeline-resolved model first, then the
+  // engine chain. A model that cannot serve this request yields to the next
+  // entry instead of failing the review.
+  const primaryRef = modelRefString(primary);
+  const refs = [
+    primaryRef,
+    ...walkthroughDowngradeRefs({ resolvedRef: primaryRef, attempted: primary.pipeline?.attempted }),
+  ];
+  const describedByRef = new Map([[primaryRef, primary]]);
 
-  const run = (options) => generateSmallModelText({
-    prompt: options.prompt,
-    system: options.system,
-    directory,
-    sessionID: `openchamber-walkthrough-${cacheKey}`,
-    model: `${model.providerID}/${model.modelID}`,
-    responseSchema: options.responseSchema,
-    onOverflow: 'error',
-    timeoutMs: generationTimeoutMs(hunkCount),
-    // The number the input budget was already reduced by, not a fresh guess.
-    maxOutputTokens: model.outputTokens ?? MIN_OUTPUT_TOKENS,
-    signal,
-  });
-
-  // Roughly half the catalog does not declare `structured_output`, and some of
-  // those providers reject the schema outright. A rejected request shape is not
-  // a dead end: the shape can travel in the prompt instead, and the response
-  // parser is already tolerant of imperfect JSON.
-  const withSchema = () => run({ prompt, system, responseSchema });
-  const withoutSchema = () => run({
-    prompt,
-    system: `${system}\n${JSON_SHAPE_INSTRUCTION}`,
-    responseSchema: undefined,
-  });
-
-  const asRequestFailure = (error) => {
-    if (error?.code === 'context-too-small') {
-      return fail(error.message, 409, {
-        code: 'context-too-small',
-        model,
-        requiredChars: error.requiredChars,
-        availableChars: error.availableChars,
-      });
-    }
-    if (error?.code === 'output-exhausted') {
-      return fail(error.message, 409, { code: 'output-exhausted', model });
-    }
-    if (error?.code === 'no-provider-login') {
-      return fail(error.message, 401, { code: 'no-provider-login', model });
-    }
-    return null;
+  const readCachedResponse = (cacheKey) => {
+    const hit = readCachedWalkthrough(cacheKey);
+    if (!hit) return null;
+    writePointer(repoRoot, key, {
+      repoRoot,
+      sourceKey: key,
+      cacheKey,
+      generatedAt: hit.generatedAt,
+    }, readContext);
+    return addReadContext({
+      source,
+      walkthrough: hit.walkthrough,
+      model: hit.model,
+      language: hit.language ?? null,
+      generatedAt: hit.generatedAt,
+      fromCache: true,
+      hunks: serializeHunks(files),
+      hunkCount,
+      ...resolveAgainstCurrent(hit.walkthrough, hunkIndex),
+    }, readContext);
   };
 
-  const refusesSchema = (error) => error?.code === 'structured-output-unsupported'
-    || (Number(error?.status) >= 400 && Number(error?.status) < 500);
-
-  let raw;
-  let usedSchema = false;
-
-  if (schemaRefusedBy.has(modelKey(model))) {
-    // Already known to refuse: skip straight to the fallback rather than pay
-    // for a call whose failure is a foregone conclusion.
-    setStage(repoRoot, key, 'retrying', readContext);
-    try {
-      raw = await withoutSchema();
-    } catch (error) {
-      throw asRequestFailure(error) ?? error;
+  const attemptCandidate = async (ref) => {
+    let candidate = describedByRef.get(ref);
+    if (!candidate) {
+      candidate = await resolveWalkthroughModel({
+        directory,
+        explicitModel: ref,
+        providerID,
+        modelID,
+        outputReserveTokens: walkthroughOutputTokens,
+      }).catch(() => null);
+      if (!candidate) {
+        throw fail(`Model ${ref} is not available`, 503, { code: 'small-model-unavailable', model: ref });
+      }
+      describedByRef.set(ref, candidate);
     }
-  } else {
-    try {
-      raw = await withSchema();
-      usedSchema = true;
-    } catch (error) {
-      const failure = asRequestFailure(error);
-      if (failure) throw failure;
-      if (!refusesSchema(error)) throw error;
+    // An explicitly chosen model with no login fails fast: downgrading it
+    // onto another provider would spend someone else's subscription without
+    // asking. Anything else may downgrade.
+    if (candidate.hasLogin === false) {
+      const noLoginFields = {
+        code: 'no-provider-login',
+        model: candidate,
+      };
+      if (ref === primaryRef && isExplicitlyChosenModel(primary)) noLoginFields.downgrade = false;
+      throw fail(
+        `No OpenCode login found for provider "${candidate.providerID}" — sign in or choose a different model`,
+        401,
+        noLoginFields,
+      );
+    }
+    const cacheKey = ref === primaryRef
+      ? primaryCacheKey
+      : buildCacheKey({
+        repoRoot,
+        sourceKey: key,
+        providerID: candidate.providerID,
+        modelID: candidate.modelID,
+        language,
+        files,
+        readContext,
+      });
+    if (!force) {
+      const cached = readCachedResponse(cacheKey);
+      if (cached) return { cached };
+    }
+    if (candidate.structuredOutput === false) {
+      throw fail(
+        `${modelLabel(candidate)} cannot produce structured output — choose a different small model`,
+        409,
+        { code: 'structured-output-unsupported', model: candidate },
+      );
+    }
 
-      schemaRefusedBy.add(modelKey(model));
+    const run = (options) => generateSmallModelText({
+      prompt: options.prompt,
+      system: options.system,
+      directory,
+      sessionID: `openchamber-walkthrough-${cacheKey}`,
+      model: modelRefString(candidate),
+      responseSchema: options.responseSchema,
+      onOverflow: 'error',
+      timeoutMs: generationTimeoutMs(hunkCount),
+      // The number the input budget was already reduced by, not a fresh guess.
+      maxOutputTokens: candidate.outputTokens ?? MIN_OUTPUT_TOKENS,
+      signal,
+    });
+
+    // Roughly half the catalog does not declare `structured_output`, and some of
+    // those providers reject the schema outright. A rejected request shape is not
+    // a dead end: the shape can travel in the prompt instead, and the response
+    // parser is already tolerant of imperfect JSON.
+    const withSchema = () => run({ prompt, system, responseSchema });
+    const withoutSchema = () => run({
+      prompt,
+      system: `${system}\n${JSON_SHAPE_INSTRUCTION}`,
+      responseSchema: undefined,
+    });
+
+    const asRequestFailure = (error) => {
+      if (error?.code === 'context-too-small') {
+        return fail(error.message, 409, {
+          code: 'context-too-small',
+          model: candidate,
+          requiredChars: error.requiredChars,
+          availableChars: error.availableChars,
+        });
+      }
+      if (error?.code === 'output-exhausted') {
+        return fail(error.message, 409, { code: 'output-exhausted', model: candidate });
+      }
+      if (error?.code === 'no-provider-login') {
+        return fail(error.message, 401, { code: 'no-provider-login', model: candidate });
+      }
+      return null;
+    };
+
+    const refusesSchema = (error) => error?.code === 'structured-output-unsupported'
+      || (Number(error?.status) >= 400 && Number(error?.status) < 500);
+
+    let raw;
+    let usedSchema = false;
+
+    if (schemaRefusedBy.has(modelKey(candidate))) {
+      // Already known to refuse: skip straight to the fallback rather than pay
+      // for a call whose failure is a foregone conclusion.
       setStage(repoRoot, key, 'retrying', readContext);
       try {
         raw = await withoutSchema();
-      } catch (fallbackError) {
-        throw asRequestFailure(fallbackError) ?? fallbackError;
+      } catch (error) {
+        throw asRequestFailure(error) ?? error;
+      }
+    } else {
+      try {
+        raw = await withSchema();
+        usedSchema = true;
+      } catch (error) {
+        const failure = asRequestFailure(error);
+        if (failure) throw failure;
+        if (!refusesSchema(error)) throw error;
+
+        schemaRefusedBy.add(modelKey(candidate));
+        setStage(repoRoot, key, 'retrying', readContext);
+        try {
+          raw = await withoutSchema();
+        } catch (fallbackError) {
+          throw asRequestFailure(fallbackError) ?? fallbackError;
+        }
       }
     }
-  }
+
+    return { generated: { raw, usedSchema, model: candidate, cacheKey } };
+  };
+
+  const { result: outcome } = await advanceThroughWalkthroughCandidates({ refs, attempt: attemptCandidate });
+  if (outcome.cached) return outcome.cached;
+  const { raw, usedSchema, model, cacheKey } = outcome.generated;
 
   setStage(repoRoot, key, 'assembling', readContext);
 

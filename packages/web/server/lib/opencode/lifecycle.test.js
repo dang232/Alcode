@@ -20,6 +20,25 @@ vi.mock('node:child_process', () => ({
 vi.mock('./startup-performance.js', () => ({
   recordStartupPerformance: recordStartupPerformanceMock,
 }));
+// Passthrough node:fs mock so one test can hide the checkout ulw-loop
+// dist: accessSync throws ENOENT for ulw-loop paths only while
+// OMO_ULW_LOOP_TEST_HIDE_DIST=1, every other call (and every other test)
+// uses the real filesystem.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    accessSync: (target, mode) => {
+      if (process.env.OMO_ULW_LOOP_TEST_HIDE_DIST === '1'
+        && String(target).includes('ulw-loop')) {
+        const error = new Error(`ENOENT: no such file or directory, access '${target}'`);
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return actual.accessSync(target, mode);
+    },
+  };
+});
 
 const { createOpenCodeLifecycleRuntime } = await import('./lifecycle.js');
 
@@ -1016,6 +1035,78 @@ describe('OpenCode lifecycle', () => {
     expect(options.env.OPENCODE_SERVER_PASSWORD).toBe('password');
 
     await server.close();
+  });
+
+  it('defaults OMO_ULW_LOOP_CLI to the checkout internal CLI unless explicitly set', async () => {
+    const previousOverride = process.env.OMO_ULW_LOOP_CLI;
+    delete process.env.OMO_ULW_LOOP_CLI;
+    try {
+      const child = createMockChild();
+      spawnMock.mockImplementationOnce(() => {
+        queueMicrotask(() => {
+          child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+        });
+        return child;
+      });
+      const getManagedOpenCodeEnv = vi.fn(async () => ({}));
+      const runtime = createRuntime({ getManagedOpenCodeEnv });
+      const server = await runtime.startOpenCode();
+      const [, , options] = spawnMock.mock.calls[0];
+      expect(options.env.OMO_ULW_LOOP_CLI).toMatch(/dist[/\\]cli\.js$/);
+      // The default must be absolute: loop agents work in user repos, so a
+      // checkout-relative pointer would resolve against the wrong cwd.
+      expect(path.isAbsolute(options.env.OMO_ULW_LOOP_CLI)).toBe(true);
+      await server.close();
+    } finally {
+      if (previousOverride !== undefined) process.env.OMO_ULW_LOOP_CLI = previousOverride;
+    }
+  });
+
+  it('keeps an explicit OMO_ULW_LOOP_CLI over the checkout default', async () => {
+    const child = createMockChild();
+    spawnMock.mockImplementationOnce(() => {
+      queueMicrotask(() => {
+        child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+      });
+      return child;
+    });
+    const getManagedOpenCodeEnv = vi.fn(async () => ({ OMO_ULW_LOOP_CLI: '/staged/ulw-loop-cli/dist/cli.js' }));
+    const runtime = createRuntime({ getManagedOpenCodeEnv });
+    const server = await runtime.startOpenCode();
+    const [, , options] = spawnMock.mock.calls[0];
+    expect(options.env.OMO_ULW_LOOP_CLI).toBe('/staged/ulw-loop-cli/dist/cli.js');
+    await server.close();
+  });
+
+  it('warns actionably and sets no pointer when the checkout dist is missing', async () => {
+    const previousOverride = process.env.OMO_ULW_LOOP_CLI;
+    const previousHide = process.env.OMO_ULW_LOOP_TEST_HIDE_DIST;
+    delete process.env.OMO_ULW_LOOP_CLI;
+    process.env.OMO_ULW_LOOP_TEST_HIDE_DIST = '1';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const child = createMockChild();
+      spawnMock.mockImplementationOnce(() => {
+        queueMicrotask(() => {
+          child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+        });
+        return child;
+      });
+      const getManagedOpenCodeEnv = vi.fn(async () => ({}));
+      const runtime = createRuntime({ getManagedOpenCodeEnv });
+      const server = await runtime.startOpenCode();
+      const [, , options] = spawnMock.mock.calls[0];
+      expect(options.env.OMO_ULW_LOOP_CLI).toBeUndefined();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0][0]).toContain('ulw-loop CLI unavailable');
+      expect(warn.mock.calls[0][0]).toContain('prepare:ulw-loop-cli');
+      await server.close();
+    } finally {
+      if (previousOverride !== undefined) process.env.OMO_ULW_LOOP_CLI = previousOverride;
+      if (previousHide !== undefined) process.env.OMO_ULW_LOOP_TEST_HIDE_DIST = previousHide;
+      else delete process.env.OMO_ULW_LOOP_TEST_HIDE_DIST;
+      warn.mockRestore();
+    }
   });
 
   it('mirrors Google credential env aliases into the managed OpenCode environment', async () => {

@@ -72,6 +72,31 @@ const sendOsPermissionDenied = (res, message) => (
   res.status(403).json({ error: message, reason: 'os-permission' })
 );
 
+// Windows keeps directory locks briefly after files close (indexer, antivirus,
+// or the app's own watcher), so a recursive rm can fail with EBUSY/EPERM even
+// though a retry milliseconds later succeeds. Retry those transient failures a
+// few times with backoff before reporting the path as locked. The whole loop
+// is awaited by the caller inside its try/catch, so a persistent lock still
+// answers the request and never escapes as an unhandled rejection.
+const removePathResiliently = async (fsPromises, targetPath) => {
+  const attempts = 4;
+  const baseDelayMs = 25;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      await fsPromises.rm(targetPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      const retryable = error && typeof error === 'object'
+        && (error.code === 'EBUSY' || error.code === 'EPERM');
+      if (!retryable || attempt === attempts - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (attempt + 1)));
+    }
+  }
+  throw lastError;
+};
+
 export const mintOutsideFileGrant = async (targetPath, {
   scopes = ['stat', 'read', 'raw'],
   fsPromises = nodeFsPromises,
@@ -1479,6 +1504,7 @@ export const registerFsRoutes = (app, dependencies) => {
       return res.status(400).json({ error: 'Path is required' });
     }
 
+    let resolvedPath = null;
     try {
       const resolved = await resolveWorkspacePathFromContext({
         fsPromises,
@@ -1493,13 +1519,21 @@ export const registerFsRoutes = (app, dependencies) => {
       if (!resolved.ok) {
         return res.status(400).json({ error: resolved.error });
       }
+      resolvedPath = resolved.resolved;
 
-      await fsPromises.rm(resolved.resolved, { recursive: true, force: true });
+      await removePathResiliently(fsPromises, resolved.resolved);
       return res.json({ success: true, path: resolved.resolved });
     } catch (error) {
       const err = error;
       if (err && typeof err === 'object' && err.code === 'ENOENT') {
         return res.status(404).json({ error: 'File or directory not found' });
+      }
+      if (err && typeof err === 'object' && err.code === 'EBUSY') {
+        return res.status(409).json({
+          error: 'Path is locked by another process and could not be deleted',
+          reason: 'locked',
+          path: resolvedPath ?? targetPath,
+        });
       }
       if (isOsPermissionError(err)) {
         return sendOsPermissionDenied(res, 'Access denied');
