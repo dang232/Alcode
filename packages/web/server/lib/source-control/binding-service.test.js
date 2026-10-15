@@ -881,7 +881,7 @@ describe('source-control binding service', () => {
     expect(result).toEqual({
       directory: '/repository', repositoryId: 'repo_one', provider: 'github', instance: 'github.com',
       accountId: 'github.com#1', bindingRevision: 3, primaryRemote: 'origin', idempotencyKey: 'request-one',
-      target: { project: { owner: 'dang232', name: 'alcode' }, number: 12, head: 'feature', base: 'main', headSha: 'abc' },
+      target: { project: { owner: 'alcode', name: 'alcode' }, number: 12, head: 'feature', base: 'main', headSha: 'abc' },
     });
     expect(result.target).not.toBe(target);
     expect(result.target.project).not.toBe(target.project);

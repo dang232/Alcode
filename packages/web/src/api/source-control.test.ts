@@ -481,7 +481,7 @@ describe('createWebSourceControlAPI', () => {
           instance: 'github.com',
           id: 'dang232/Alcode',
           owner: 'dang232',
-          name: 'alcode',
+          name: 'Alcode',
           url: 'https://github.com/dang232/Alcode',
         },
         title: 'Migrate source control',
@@ -498,7 +498,7 @@ describe('createWebSourceControlAPI', () => {
       }],
       page: 2,
       hasMore: true,
-      incompleteProjectIds: ['upstream/alcode'],
+      incompleteProjectIds: ['upstream/Alcode'],
     });
   });
 
@@ -510,12 +510,12 @@ describe('createWebSourceControlAPI', () => {
       .mockResolvedValueOnce(Response.json({ branches: ['main'] }));
     const api = createWebSourceControlAPI({ fetch: runtimeFetchMock });
 
-    await expect(api.issueGet(readContext, 17, { owner: 'dang232', name: 'alcode' })).resolves.toBeNull();
-    await expect(api.issueComments(readContext, 17, { owner: 'dang232', name: 'alcode' })).resolves.toEqual([]);
+    await expect(api.issueGet(readContext, 17, { owner: 'dang232', name: 'Alcode' })).resolves.toBeNull();
+    await expect(api.issueComments(readContext, 17, { owner: 'dang232', name: 'Alcode' })).resolves.toEqual([]);
     await expect(api.projectUpstream(readContext)).resolves.toEqual({
       identity: { provider: 'github', instance: 'github.com' }, isFork: false, upstream: null,
     });
-    await expect(api.projectBranches(readContext, 'alcode', 'alcode')).resolves.toEqual(['main']);
+    await expect(api.projectBranches(readContext, 'dang232', 'Alcode')).resolves.toEqual(['main']);
 
     const base = {
       instance: 'github.com', directory: '/workspace/a b', repositoryId: 'repo_one', accountId: 'github.com#7',
@@ -707,7 +707,7 @@ describe('createWebSourceControlAPI', () => {
     };
 
     await expect(createWebSourceControlAPI({ fetch: runtimeFetchMock }).changeRequestsList(context, { page: 2, query: 'fix' }))
-      .resolves.toMatchObject({ incompleteProjectIds: ['upstream/alcode'] });
+      .resolves.toMatchObject({ incompleteProjectIds: ['upstream/Alcode'] });
 
     expect(runtimeFetchMock).toHaveBeenCalledWith('/api/source-control/github/pulls/list', {
       query: new URLSearchParams({
@@ -753,7 +753,7 @@ describe('createWebSourceControlAPI', () => {
     const result = await createWebSourceControlAPI({ fetch: runtimeFetchMock }).changeRequestContext(
       { ...identity, directory: '/workspace', repositoryId: 'repo_one', accountId: 'github.com#7', bindingRevision: 4, primaryRemote: 'upstream' },
       4,
-      { includeDiff: true, includeCIDetails: true, project: { owner: 'dang232', name: 'alcode' } },
+      { includeDiff: true, includeCIDetails: true, project: { owner: 'dang232', name: 'Alcode' } },
     );
 
     expect(runtimeFetchMock).toHaveBeenCalledWith('/api/source-control/github/pulls/context', {
@@ -791,7 +791,7 @@ describe('createWebSourceControlAPI', () => {
     await expect(createWebSourceControlAPI({ fetch: runtimeFetchMock }).changeRequestContext(
       { ...identity, directory: '/workspace', repositoryId: 'repo_one', accountId: 'github.com#7', bindingRevision: 4, primaryRemote: 'origin' },
       4,
-      { includeCIDetails: true, project: { owner: 'dang232', name: 'alcode' } },
+      { includeCIDetails: true, project: { owner: 'dang232', name: 'Alcode' } },
     )).rejects.toThrow('invalid GitHub check-run output');
   });
 

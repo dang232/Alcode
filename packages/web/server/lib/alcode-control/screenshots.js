@@ -14,8 +14,12 @@
 import path from 'node:path';
 import fsPromises from 'node:fs/promises';
 
-/** Project-relative home for agent screenshots. */
-export const SCREENSHOT_DIRECTORY = path.join('.alcode', 'screenshots');
+/** Project-relative home for agent screenshots.
+ *
+ * Stays under the pre-rename `.openchamber` directory on purpose: screenshots
+ * are committed into the project they evidence, so old and new captures must
+ * keep resolving from one place instead of splitting across two roots. */
+export const SCREENSHOT_DIRECTORY = path.join('.openchamber', 'screenshots');
 
 const MAX_LABEL_LENGTH = 48;
 
