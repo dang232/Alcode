@@ -1375,6 +1375,9 @@ const startupPipelineRuntime = createStartupPipelineRuntime({
   createDictationRuntime,
   createMessageStreamWsRuntime,
   createServerStartupRuntime,
+  // Lets an isolated QA instance boot next to a running app (Google login
+  // stays bound to the fixed-port listener and will not complete there).
+  skipDesktopCallbackListener: process.env.OPENCHAMBER_SKIP_DESKTOP_CALLBACK === '1',
 });
 
 const openCodeLifecycleState = {};

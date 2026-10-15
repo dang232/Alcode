@@ -1,4 +1,4 @@
-import { startDesktopCallbackListener as defaultStartDesktopCallbackListener } from '../desktop-auth/desktop-callback-listener.js';
+import { DESKTOP_CALLBACK_PORT, startDesktopCallbackListener as defaultStartDesktopCallbackListener } from '../desktop-auth/desktop-callback-listener.js';
 import { recordStartupPerformance } from './startup-performance.js';
 
 export const createStartupPipelineRuntime = (dependencies) => {
@@ -8,6 +8,10 @@ export const createStartupPipelineRuntime = (dependencies) => {
     createMessageStreamWsRuntime,
     createServerStartupRuntime,
     startDesktopCallbackListener = defaultStartDesktopCallbackListener,
+    // QA/isolated-instance escape hatch (default off): skip the dedicated
+    // fixed-port callback listener so a second loopback server can boot next
+    // to a running app. Default stays fail-fast to protect real Google logins.
+    skipDesktopCallbackListener = false,
   } = dependencies;
 
   const run = async (options) => {
@@ -149,9 +153,13 @@ export const createStartupPipelineRuntime = (dependencies) => {
     tunnelRuntimeContext.setActivePort(startupResult.activePort);
     // Dev layouts serve on dynamic ports, but the registered Google redirect
     // is fixed: bind the loopback callback listener (skips when the main
-    // server already serves on the fixed port). It closes with the main
-    // server, so embedded restarts never leak it.
-    const desktopCallbackListener = await startDesktopCallbackListener({
+    // server already serves on the fixed port, or when the QA escape hatch
+    // opts out). It closes with the main server, so embedded restarts never
+    // leak it. Without the listener, Google login cannot complete in this
+    // instance; startup otherwise proceeds normally.
+    const desktopCallbackListener = skipDesktopCallbackListener
+      ? { skipped: true, server: null, port: DESKTOP_CALLBACK_PORT, stop: async () => {} }
+      : await startDesktopCallbackListener({
       express,
       registerCallbackRoute: registerDesktopGoogleCallbackRoute,
       activePort: startupResult.activePort,

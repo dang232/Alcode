@@ -2,6 +2,8 @@ import { readOpenCodeInfo, readExternalOpenCodeVersion, isSupportedOpenCodeVersi
 import { spawn, spawnSync } from 'node:child_process';
 import { accessSync, constants as fsConstants, statSync } from 'node:fs';
 import net from 'node:net';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { stripAppImageArgv0Leak, stripAppImageLauncherEnv } from '../inherited-env.js';
 import { registerManagedProcess, unregisterManagedProcess, reapOrphanedProcesses } from './managed-process-registry.js';
 import { applyProviderEnvAliases } from './provider-env-aliases.js';
@@ -773,9 +775,42 @@ export const createOpenCodeLifecycleRuntime = (deps) => {
     // in front of the managed PATH) and under everything OpenChamber itself
     // sets for OpenCode.
     const inheritedEnv = overlayEnvironment({ ...shellEnv, ...process.env, PATH: envPath }, getUserEnvironment());
+    // Internal ulw-loop CLI for loop agents (dev parity with packaged
+    // electron/main.mjs, which exports the staged copy): absolute checkout
+    // dist when present; an explicit OMO_ULW_LOOP_CLI (staged or override)
+    // in either layer always wins. Without it, agents working in user repos
+    // have no internal pointer and fall back to PATH fishing.
+    let internalUlwLoopCli = null;
+    try {
+      const checkoutUlwLoopCli = path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '..', '..', '..', '..',
+        'omo-engine', 'omo-codex', 'plugin', 'components', 'ulw-loop', 'dist', 'cli.js',
+      );
+      accessSync(checkoutUlwLoopCli, fsConstants.R_OK);
+      internalUlwLoopCli = checkoutUlwLoopCli;
+    } catch {
+      internalUlwLoopCli = null;
+      // Actionable, not silent: without an explicit OMO_ULW_LOOP_CLI
+      // (staged or override) and no readable checkout dist, loop agents
+      // have no internal pointer. Name the missing resource and where the
+      // checkout build should have put it. Silent when an explicit pointer
+      // already wins (packaged mode has no checkout dist by design).
+      if (!inheritedEnv.OMO_ULW_LOOP_CLI && !(managedOpenCodeEnv || {}).OMO_ULW_LOOP_CLI) {
+        console.warn(
+          '[OpenCode] internal ulw-loop CLI unavailable: no OMO_ULW_LOOP_CLI is set and the checkout dist is not readable ' +
+          '(expected at packages/omo-engine/omo-codex/plugin/components/ulw-loop/dist/cli.js). ' +
+          'Build the checkout component (dev) or re-run prepare:ulw-loop-cli (packaged). ' +
+          'Loop agents will fall back to PATH fishing.',
+        );
+      }
+    }
     const processEnv = stripAppImageLauncherEnv(stripAppImageArgv0Leak(applyProviderEnvAliases({
       ...inheritedEnv,
       ...managedOpenCodeEnv,
+      ...(!inheritedEnv.OMO_ULW_LOOP_CLI && !(managedOpenCodeEnv || {}).OMO_ULW_LOOP_CLI && internalUlwLoopCli
+        ? { OMO_ULW_LOOP_CLI: internalUlwLoopCli }
+        : {}),
       PATH: inheritedEnv.PATH,
       // OpenCode 2 reads OPENCODE_PASSWORD before the legacy name, so a
       // user's own OPENCODE_PASSWORD would otherwise win and every request

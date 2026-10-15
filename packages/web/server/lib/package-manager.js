@@ -6,6 +6,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { fetchUpdateNotes } from './changelog/update-notes.js';
 import { isEnterpriseMode } from './enterprise-mode.js';
+// Shared telemetry opt-out gate (engine `telemetry-core`): the same check
+// the engine PostHog path uses, so `DO_NOT_TRACK` and the
+// `OMO_*_DISABLE_POSTHOG` / `OMO_*_SEND_ANONYMOUS_TELEMETRY` matrix also
+// stop the update-check usage ping. Imported from the committed
+// `telemetry-opt-out.bundle.js` (regen with `bun ./telemetry-opt-out.regen.js`
+// when the engine gate changes), never engine `.ts` directly: the packaged
+// server runs under plain Node with no transpile step.
+import { isTelemetryOptedOut } from './telemetry-opt-out.bundle.js';
 
 import { resolveNpmRegistryRequest } from './opencode/npm-registry-config.js';
 
@@ -131,8 +139,14 @@ async function checkForUpdatesFromApi(currentVersion, options = {}) {
     const platform = shouldTrustClientPlatform ? normalizePlatform(options.platform) : hostPlatform;
     const arch = shouldTrustClientPlatform ? normalizeArch(options.arch) : hostArch;
     // Enterprise mode keeps the update check (security fixes must reach the
-    // company) but never reports usage, whatever the client asked for.
-    const reportUsage = options.reportUsage !== false && !isEnterpriseMode();
+    // company) but never reports usage, whatever the client asked for. The
+    // shared gate adds the env opt-out matrix on top of the client flag.
+    const reportUsage = !isTelemetryOptedOut({
+      env: process.env,
+      productEnvPrefix: 'OMO',
+      reportUsage: options.reportUsage,
+      enterpriseMode: isEnterpriseMode(),
+    });
     const payload = {
       appType,
       deviceClass: normalizeDeviceClass(options.deviceClass),

@@ -32,6 +32,9 @@ describe("help() is self-describing", () => {
 			"add-goal": "addGoal",
 			criteria: "criteria",
 			"record-evidence": "recordEvidence",
+			dispatch: "dispatchGoals",
+			"record-child-result": "recordChildResult",
+			"record-child-failure": "recordChildFailure",
 			"record-review-blockers": "recordReviewBlockers",
 		};
 		for (const operation of ULW_LOOP_MANIFEST.operations) {

@@ -86,27 +86,61 @@ if [ -z "$ULW_LOOP_NODE" ]; then
 fi
 
 ULW_LOOP_CLI=
-if command -v omo-agent-toolkit >/dev/null 2>&1 && omo-agent-toolkit ulw-loop help >/dev/null 2>&1; then
-  ULW_LOOP_CLI=omo-agent-toolkit
-elif [ -n "$ULW_LOOP_NODE" ]; then
-  for candidate in "$HOME/.local/bin/omo-agent-toolkit" "$CODEX_HOME/bin/omo-agent-toolkit" "$CODEX_HOME"/plugins/cache/sisyphuslabs/omo/*/components/ulw-loop/dist/cli.js; do
-    [ -f "$candidate" ] || [ -x "$candidate" ] || continue
+# Resolution order is fixed and short: explicit env first, then fixed paths.
+# OMO_ULW_LOOP_CLI wins when set (the host exports the internal build, so
+# installs resolve internal-first); otherwise try the component dist (run
+# `npm run build` in the ulw-loop component once to create it).
+if [ -n "$ULW_LOOP_NODE" ]; then
+  for candidate in "${OMO_ULW_LOOP_CLI:-}" "packages/omo-engine/omo-codex/plugin/components/ulw-loop/dist/cli.js"; do
+    [ -n "$candidate" ] && [ -f "$candidate" ] || continue
     if "$ULW_LOOP_NODE" "$candidate" ulw-loop help >/dev/null 2>&1; then
       ULW_LOOP_CLI="$candidate"
       break
     fi
   done
-
+fi
+if [ -z "${ULW_LOOP_CLI:-}" ] && command -v omo-agent-toolkit >/dev/null 2>&1 && omo-agent-toolkit ulw-loop help >/dev/null 2>&1; then
+  ULW_LOOP_CLI=omo-agent-toolkit
+elif [ -z "${ULW_LOOP_CLI:-}" ] && [ -n "$ULW_LOOP_NODE" ]; then
+  for candidate in "$HOME/.local/bin/omo-agent-toolkit" "$CODEX_HOME/bin/omo-agent-toolkit"; do
+    [ -x "$candidate" ] || continue
+    if "$candidate" ulw-loop help >/dev/null 2>&1; then
+      ULW_LOOP_CLI="$candidate"
+      break
+    fi
+  done
 fi
 
 if [ -z "${ULW_LOOP_CLI:-}" ]; then
   /bin/mkdir -p .omo/ulw-loop 2>/dev/null || mkdir -p .omo/ulw-loop 2>/dev/null || true
   NOTE="${NOTE:-.omo/ulw-loop/bootstrap-notepad.md}"
-  printf '%s\n' "No ulw-loop-capable omo-agent-toolkit executable found; PATH omo-agent-toolkit may lack the Codex ulw-loop subcommand, and cached ulw-loop CLI was not found under ${CODEX_HOME:-$HOME/.codex}." >> "$NOTE" 2>/dev/null || true
+  printf '%s\n' "No ulw-loop-capable CLI found; PATH omo-agent-toolkit may lack the Codex ulw-loop subcommand, and no fixed local bin exists under $HOME/.local/bin or ${CODEX_HOME:-$HOME/.codex}/bin." >> "$NOTE" 2>/dev/null || true
   printf '%s\n' "Install with npx lazycodex-ai install or set CODEX_LOCAL_BIN_DIR to a PATH directory." >&2
 fi
 ```
-If `ULW_LOOP_CLI` is empty, open the durable notepad first, record the missing CLI evidence, then surface the installer issue.
+If `ULW_LOOP_CLI` is empty, open the durable notepad first, record the missing CLI evidence, then surface the installer issue. NEVER hunt the filesystem for the CLI beyond the candidates above: no recursive search (`Get-ChildItem -Recurse`, `find /`, `fd /`), no drive-wide walks, no plugin-cache or package-manager directory rummaging. An absent CLI is a setup fact, never a search task.
+
+Windows PowerShell agents: run this native equivalent instead of translating the script above (same fixed order, same fail-closed rule — do not improvise extra discovery):
+```powershell
+$UlwLoopCli = $null
+$UlwLoopNode = (Get-Command node -ErrorAction SilentlyContinue).Source
+if ($env:OMO_ULW_LOOP_CLI -and (Test-Path $env:OMO_ULW_LOOP_CLI)) {
+  if ($UlwLoopNode) { & $UlwLoopNode $env:OMO_ULW_LOOP_CLI ulw-loop help *> $null; if ($LASTEXITCODE -eq 0) { $UlwLoopCli = $env:OMO_ULW_LOOP_CLI } }
+}
+if (-not $UlwLoopCli) {
+  $repoLocal = 'packages/omo-engine/omo-codex/plugin/components/ulw-loop/dist/cli.js'
+  if ((Test-Path $repoLocal) -and $UlwLoopNode) { & $UlwLoopNode $repoLocal ulw-loop help *> $null; if ($LASTEXITCODE -eq 0) { $UlwLoopCli = $repoLocal } }
+}
+if ((-not $UlwLoopCli) -and (Get-Command omo-agent-toolkit -ErrorAction SilentlyContinue)) {
+  omo-agent-toolkit ulw-loop help *> $null; if ($LASTEXITCODE -eq 0) { $UlwLoopCli = 'omo-agent-toolkit' }
+}
+if ((-not $UlwLoopCli) -and $UlwLoopNode) {
+  foreach ($candidate in @("$HOME/.local/bin/omo-agent-toolkit", "$env:CODEX_HOME/bin/omo-agent-toolkit")) {
+    if ([string]::IsNullOrEmpty($candidate)) { continue }
+    if (Test-Path $candidate) { & $candidate ulw-loop help *> $null; if ($LASTEXITCODE -eq 0) { $UlwLoopCli = $candidate; break } }
+  }
+}
+```
 
 Run one form:
 ```sh

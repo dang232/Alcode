@@ -1,5 +1,10 @@
 import type { CheckpointUlwLoopArgs, CheckpointUlwLoopResult } from "../checkpoint.js";
 import type { CheckpointTemplate } from "../checkpoint-template.js";
+import type {
+	dispatchPendingGoals as dispatchGoalsRecord,
+	recordChildCompleted,
+	recordChildFailed,
+} from "../dispatch.js";
 import type { recordEvidence } from "../evidence.js";
 import type { addUlwLoopGoal, createUlwLoopPlan, startNextUlwLoop, summarizeUlwLoopPlan } from "../plan-crud.js";
 import type { recordFinalReviewBlockers } from "../review-blockers.js";
@@ -22,6 +27,14 @@ export type CompleteGoalsArgs = NonNullable<Parameters<typeof startNextUlwLoop>[
 export type SteerArgs = UlwLoopSteeringProposal;
 export type AddGoalArgs = Parameters<typeof addUlwLoopGoal>[1];
 export type RecordEvidenceArgs = Parameters<typeof recordEvidence>[1];
+export type DispatchGoalsArgs = { readonly goalIds?: readonly string[]; readonly childRole?: string };
+export type RecordChildResultArgs = { readonly goalId: string; readonly childId: string; readonly resultRef: string };
+export type RecordChildFailureArgs = {
+	readonly goalId: string;
+	readonly childId: string;
+	readonly reason: string;
+	readonly retryable?: boolean;
+};
 export type CriteriaArgs = { readonly goalId: string };
 export type CheckpointMutationArgs = CheckpointUlwLoopArgs & { readonly printTemplate?: false };
 export type CheckpointTemplateArgs = { readonly printTemplate: true; readonly goalId?: string };
@@ -38,6 +51,9 @@ export type ToolkitDispatchRequest =
 	| { readonly operation: "add-goal"; readonly args: AddGoalArgs }
 	| { readonly operation: "criteria"; readonly args: CriteriaArgs }
 	| { readonly operation: "record-evidence"; readonly args: RecordEvidenceArgs }
+	| { readonly operation: "dispatch"; readonly args: DispatchGoalsArgs }
+	| { readonly operation: "record-child-result"; readonly args: RecordChildResultArgs }
+	| { readonly operation: "record-child-failure"; readonly args: RecordChildFailureArgs }
 	| { readonly operation: "record-review-blockers"; readonly args: RecordReviewBlockersArgs };
 
 export interface ToolkitUnknownRequest {
@@ -96,9 +112,15 @@ type ResultFor<Operation extends UlwLoopOperation> = Operation extends "help"
 									}
 								: Operation extends "record-evidence"
 									? Awaited<ReturnType<typeof recordEvidence>>
-									: Operation extends "record-review-blockers"
-										? Awaited<ReturnType<typeof recordFinalReviewBlockers>>
-										: never;
+									: Operation extends "dispatch"
+										? Awaited<ReturnType<typeof dispatchGoalsRecord>>
+										: Operation extends "record-child-result"
+											? Awaited<ReturnType<typeof recordChildCompleted>>
+											: Operation extends "record-child-failure"
+												? Awaited<ReturnType<typeof recordChildFailed>>
+												: Operation extends "record-review-blockers"
+													? Awaited<ReturnType<typeof recordFinalReviewBlockers>>
+													: never;
 
 export type ToolkitResultFor<Operation extends UlwLoopOperation> = ResultFor<Operation>;
 export type ToolkitResponseFor<Operation extends UlwLoopOperation> =
@@ -137,6 +159,9 @@ export interface AgentToolkit {
 	readonly addGoal: (args: AddGoalArgs) => Promise<ToolkitResponseFor<"add-goal">>;
 	readonly criteria: (args: CriteriaArgs) => Promise<ToolkitResponseFor<"criteria">>;
 	readonly recordEvidence: (args: RecordEvidenceArgs) => Promise<ToolkitResponseFor<"record-evidence">>;
+	readonly dispatchGoals: (args: DispatchGoalsArgs) => Promise<ToolkitResponseFor<"dispatch">>;
+	readonly recordChildResult: (args: RecordChildResultArgs) => Promise<ToolkitResponseFor<"record-child-result">>;
+	readonly recordChildFailure: (args: RecordChildFailureArgs) => Promise<ToolkitResponseFor<"record-child-failure">>;
 	readonly recordReviewBlockers: (
 		args: RecordReviewBlockersArgs,
 	) => Promise<ToolkitResponseFor<"record-review-blockers">>;

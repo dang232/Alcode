@@ -251,6 +251,38 @@ describe('checkForUpdates', () => {
     }
   });
 
+  it('blocks usage reporting when the shared opt-out gate is on, allows it when off', async () => {
+    fetchMock.when('api.openchamber.dev', {
+      ok: true,
+      json: async () => ({ latestVersion: '1.10.0', updateAvailable: true, releaseNotes: '' }),
+    });
+    const baseOptions = {
+      appType: 'desktop-electron',
+      currentVersion: '1.9.10',
+      installId: '4f4dfead-9688-4c4f-97d7-4607fbbfc3ab',
+      platform: 'windows',
+      arch: 'arm64',
+    };
+    // Opt-out on: the env matrix blocks emission even though the client reports usage.
+    process.env.DO_NOT_TRACK = '1';
+    try {
+      const blocked = await checkForUpdates(baseOptions);
+      expect(blocked.available).toBe(true);
+      const sentBlocked = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(sentBlocked.reportUsage).toBe(false);
+      expect(sentBlocked.installId).toBeUndefined();
+    } finally {
+      delete process.env.DO_NOT_TRACK;
+    }
+    // Opt-out off: the same call reports usage with its install id.
+    fetchMock.mock.calls.length = 0;
+    const allowed = await checkForUpdates(baseOptions);
+    expect(allowed.available).toBe(true);
+    const sentAllowed = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(sentAllowed.reportUsage).toBe(true);
+    expect(sentAllowed.installId).toBe('4f4dfead-9688-4c4f-97d7-4607fbbfc3ab');
+  });
+
   it('resolves an Android APK asset when the update API returns an AAB', async () => {
     fetchMock
       .when('api.openchamber.dev', {
@@ -505,5 +537,31 @@ describe('CLI update exports', () => {
   it('exports package-manager helpers used by the update command', () => {
     expect(typeof detectPackageManager).toBe('function');
     expect(typeof executeUpdate).toBe('function');
+  });
+});
+
+describe('telemetry gate packaging', () => {
+  it('keeps the runtime chain on the bundle, never engine `.ts`', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const thisDir = path.dirname(fileURLToPath(import.meta.url));
+    const entry = fs.readFileSync(path.join(thisDir, 'package-manager.js'), 'utf8');
+    // The packaged server runs under plain Node with no transpile step, so
+    // the gate must come from the committed bundle (regen with
+    // `bun ./telemetry-opt-out.regen.js`), never engine `.ts` directly.
+    expect(entry.includes("from './telemetry-opt-out.bundle.js'")).toBe(true);
+    for (const file of ['package-manager.js', 'telemetry-opt-out.bundle.js', 'package-manager.test.js']) {
+      const text = fs.readFileSync(path.join(thisDir, file), 'utf8');
+      const tsImports = [...text.matchAll(/from\s*["']([^"']+\.ts)["']/g)].map((match) => match[1]);
+      expect(tsImports).toEqual([]);
+    }
+    const bundleText = fs.readFileSync(path.join(thisDir, 'telemetry-opt-out.bundle.js'), 'utf8');
+    expect(bundleText).toContain('isTelemetryOptedOut');
+    const specifiers = [
+      ...bundleText.matchAll(/from\s*["']([^"']+)["']/g),
+      ...bundleText.matchAll(/import\s*\(\s*["']([^"']+)["']\s*\)/g),
+    ].map((match) => match[1]);
+    for (const spec of specifiers) expect(spec.startsWith('node:')).toBe(true);
   });
 });

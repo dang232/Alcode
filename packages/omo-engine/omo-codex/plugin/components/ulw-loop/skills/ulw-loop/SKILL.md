@@ -20,6 +20,7 @@ This skill is intentionally compact. The full workflow lives in `references/full
 
 ## Non-Negotiables
 
+- Resolve the loop CLI internal-first before the first command: `$OMO_ULW_LOOP_CLI` when set (the host exports the internal build), else the checkout `packages/omo-engine/omo-codex/plugin/components/ulw-loop/dist/cli.js` via Node, else `omo-agent-toolkit` on PATH. Never go fishing on PATH (`which`/`where`/`Get-Command` sweeps, `~/.local/bin` guesses, env dumps): an absent CLI is a setup fact — record it and surface the installer issue per `references/full-workflow.md` Bootstrap.
 - Use the ulw-loop CLI state under `.omo/ulw-loop`; do not hand-edit goal state.
 - Register goals up front, shaped by `references/define-goal.md` (`omo-agent-toolkit ulw-loop create-goals`, then `create_goal` from the printed handoff), and mirror every atomic step into the live `update_plan` checklist: one ultra-granular step per action, exactly one in_progress, transitions marked the instant they happen.
 - After any compaction or context loss, re-read brief + goals + ledger FIRST plus `omo-agent-toolkit ulw-loop status --json`, then resume; never re-plan from scratch.
@@ -35,6 +36,15 @@ This skill is intentionally compact. The full workflow lives in `references/full
 - While children run, surface the active subagent count, agent names, and latest `WORKING:` phase.
 - Fallback only when the child is completed without the deliverable, ack-only after `followup_task`, explicitly `BLOCKED:`, or no longer running. Then record inconclusive and respawn a smaller `fork_turns: "none"` task with the missing deliverable.
 - Use `git-master` for git-tracked edits: inspect recent and touched-path commit history, then commit each verified work unit atomically in the repository's observed language, scope, and message style with only that unit's files staged. Never carry verified units into a later omnibus commit.
+
+## Dispatched goal fan-out (managed loop)
+
+For multi-goal runs, dispatch one engine worker per goal instead of working every goal inline:
+1. Run `omo-agent-toolkit ulw-loop dispatch --json` — one handoff per pending goal (bounded by the spawn fan-out limit); already-open goals are skipped, never re-dispatched.
+2. Spawn one worker per handoff concurrently (engine `task` tool with background, prompt = handoff instruction text; `spawn_agent` on Codex surfaces) and wait for each real result.
+3. Record criterion evidence with `record-evidence`, then close each child outcome with `record-child-result --goal-id <id> --child-id <id> --result-ref <artifact>` (or `record-child-failure --reason <...>`).
+4. `checkpoint` refuses completion while a dispatched child has no recorded result; the aggregate never completes on partial results.
+5. Synthesize in the final goal from the collected child evidence; the parent completes only via `complete-goals` done. Never route delegated work through an external orchestrator CLI.
 
 ## Team mode: decide it, do not default to it
 

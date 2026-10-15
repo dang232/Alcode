@@ -17,6 +17,7 @@ import {
   type GuestMessage,
   type HostMessage,
   type HostReadyContext,
+  type JsonValue,
   type ResolveResultPayload,
 } from '@openchamber/sdk';
 import { guestMessageSchema } from '@openchamber/sdk/schemas';
@@ -33,6 +34,7 @@ import {
   buildItemMessage,
   buildReadyMessage,
   buildResolveMessage,
+  buildRunModelMessage,
   buildSessionLifecycleMessage,
   buildSessionMessage,
   buildSettingsMessage,
@@ -40,6 +42,8 @@ import {
   guestSessionModelId,
   toGuestSessionSnapshot,
 } from '@/lib/guests/host-bridge';
+import { useDagRunSnapshotDoc } from '@/lib/useDagRunModel';
+import { dagRunSnapshotStatus } from '@/lib/dagRunModel';
 import { useGuestBadgeStore } from '@/lib/guests/badge-store';
 import { guestMay, isGuestActive } from '@/lib/guests/capabilities';
 import { guestFileOperation } from '@/lib/guests/files';
@@ -370,6 +374,45 @@ export const PluginPane: React.FC<PluginPaneProps> = ({
     iframeRef.current?.contentWindow?.postMessage(message, OPAQUE_FRAME_TARGET_ORIGIN);
   }, []);
 
+  // Placed after postToGuest: the effect below lists it as a dependency,
+  // and dependency arrays evaluate during render (TDZ before this point).
+  const dagRunDoc = useDagRunSnapshotDoc(currentSessionId, session?.title, directory || undefined);
+  const dagRunDocRef = React.useRef(dagRunDoc);
+  dagRunDocRef.current = dagRunDoc;
+  const currentSessionIdRef = React.useRef(currentSessionId);
+  currentSessionIdRef.current = currentSessionId;
+  React.useEffect(() => {
+    if (!currentSessionId) return;
+    postToGuest(buildRunModelMessage(
+      currentSessionId,
+      dagRunDoc && dagRunDoc.conversationId === currentSessionId ? dagRunDoc.snapshot : null,
+    ));
+  }, [currentSessionId, dagRunDoc, postToGuest]);
+
+  // Durable chat-run record: the service persists the run model this host
+  // builds from engine session data, so the conversation's DAG survives
+  // restarts. Null docs are never posted (no evidence must never overwrite a
+  // valid persisted run); terminal states always flush, running states at
+  // most every 30s. Fire-and-forget: persistence never breaks the UI.
+  const dagPersistRef = React.useRef<{ json: string; at: number }>({ json: '', at: 0 });
+  React.useEffect(() => {
+    if (!currentSessionId || !directory) return;
+    if (!dagRunDoc || dagRunDoc.conversationId !== currentSessionId || !dagRunDoc.snapshot) return;
+    const payload = JSON.stringify({ directory, conversationId: currentSessionId, snapshot: dagRunDoc.snapshot });
+    const previous = dagPersistRef.current;
+    if (payload === previous.json) return;
+    const status = dagRunSnapshotStatus(dagRunDoc.snapshot);
+    const terminal = status === 'completed' || status === 'failed';
+    if (!terminal && Date.now() - previous.at < 30_000) return;
+    dagPersistRef.current = { json: payload, at: Date.now() };
+    const guestId = guestIdRef.current;
+    void proxyGuestServiceRequest(guestId, {
+      method: 'POST',
+      path: '/snapshot',
+      body: payload,
+    }, getSurfaceViewerId(guestId)).catch(() => undefined);
+  }, [currentSessionId, dagRunDoc, directory]);
+
   const sendBackgroundAction = React.useCallback(() => {
     const message = backgroundAction?.takeMessage();
     if (message) postToGuest(message);
@@ -428,6 +471,12 @@ export const PluginPane: React.FC<PluginPaneProps> = ({
     resolveWaitersRef.current.clear();
   }, [frameKey, src, srcDoc]);
 
+  const postDagRunModel = React.useCallback(() => {
+    const doc = dagRunDocRef.current;
+    const id = currentSessionIdRef.current;
+    if (!id) return;
+    postToGuest(buildRunModelMessage(id, doc && doc.conversationId === id ? doc.snapshot : null));
+  }, [postToGuest]);
   const pushHostState = React.useCallback(() => {
     postToGuest(buildReadyMessage(readyRef.current));
     postToGuest(buildDirectoryMessage(directoryRef.current || null));
@@ -435,7 +484,8 @@ export const PluginPane: React.FC<PluginPaneProps> = ({
     postToGuest(buildConnectionMessage(readyRef.current.connection));
     postToGuest(buildSettingsMessage(readyRef.current.settings));
     postToGuest(buildItemMessage(readyRef.current.item));
-  }, [postToGuest]);
+    postDagRunModel();
+  }, [postDagRunModel, postToGuest]);
 
   const clearPopoverCloseTimer = React.useCallback(() => {
     if (popoverCloseTimerRef.current != null) {

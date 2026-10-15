@@ -3,6 +3,7 @@ import {
   createTelemetryClient,
   getDefaultTelemetryOsProvider,
   getTelemetryDistinctId,
+  isTelemetryOptedOut,
 } from "../../../telemetry-core/src/index.ts"
 import type {
   PostHogActivityCaptureState,
@@ -90,24 +91,17 @@ const NO_OP_POSTHOG: PostHogClient = {
   shutdown: async () => undefined,
 }
 
-function isFalsy(value: string | undefined): boolean {
-  return value === "0" || value === "false" || value === "no"
-}
-
-function isTruthy(value: string | undefined): boolean {
-  return value === "1" || value === "true" || value === "yes"
-}
-
+// Converged onto the shared gate: the env matrix (`DO_NOT_TRACK`,
+// `${PREFIX}_DISABLE_POSTHOG`, `${PREFIX}_SEND_ANONYMOUS_TELEMETRY`) plus
+// the product-config kill switch, in one place
+// (`telemetry-core/src/telemetry-opt-out.ts`). Kept as the exported name
+// so existing callers do not change.
 export function shouldDisablePostHog(env: TelemetryEnv, configEnabled: boolean | undefined): boolean {
-  if (configEnabled === false) {
-    return true
-  }
-
-  if (isTruthy(env.OMO_DISABLE_POSTHOG?.trim().toLowerCase())) {
-    return true
-  }
-
-  return isFalsy(env.OMO_SEND_ANONYMOUS_TELEMETRY?.trim().toLowerCase())
+  return isTelemetryOptedOut({
+    env,
+    productEnvPrefix: createOpencodeTelemetryProductConfig().productEnvPrefix,
+    configEnabled,
+  })
 }
 
 function createCoreCompatibleTelemetryEnv(env: NodeJS.ProcessEnv): TelemetryEnv {

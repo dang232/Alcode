@@ -8,9 +8,10 @@
 // { ok: false, code, message } and never throw, and a refused call writes
 // nothing.
 //
-// Deliberately file-based and dependency-free (node:fs/path/os only): the
-// driver never imports engine internals, never spawns, never phones the
-// network, and spends nothing. Production wires the same ownership and
+// Deliberately file-based: the driver never imports engine internals,
+// never spawns, never phones the network, and spends nothing. Shared
+// dependency-free helpers (record guard, atomic file writes) come from
+// @oh-my-opencode/utils; node:fs/path/os cover the rest. Production wires the same ownership and
 // iteration contract around `omo-agent-toolkit ulw-loop ... --session-id`
 // spawns; the state files are the shared contract, so the driver and the
 // CLI cannot disagree about what happened (the ledger is the audit trail).
@@ -24,6 +25,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isPlainRecord as isRecord, writeFileAtomically } from "../../../../omo-engine/utils/src/index.ts";
 
 export const DRIVER_FILENAME = "driver.json";
 export const DRIVER_PLAN_FILENAME = "plan.json";
@@ -123,10 +125,6 @@ export interface LoopDriverStatusOk {
 export type LoopDriverResult = LoopDriverStartOk | LoopDriverStepOk | LoopDriverStopOk | LoopDriverStatusOk | LoopDriverFailure;
 
 const fail = (code: LoopDriverFailureCode, message: string): LoopDriverFailure => ({ ok: false, code, message });
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function validSessionId(value: unknown): value is string {
   return typeof value === "string" && SESSION_ID_PATTERN.test(value);
@@ -341,10 +339,10 @@ export function startLoopGoal(args: LoopDriverStart): LoopDriverStartOk | LoopDr
     completedSteps: 0,
   };
   try {
-    fs.writeFileSync(planPath(loopSrc), `${JSON.stringify(plan, null, 2)}\n`);
-    fs.writeFileSync(ledgerPath(loopSrc), "");
+    writeFileAtomically(planPath(loopSrc), `${JSON.stringify(plan, null, 2)}\n`);
+    writeFileAtomically(ledgerPath(loopSrc), "");
     appendLedger(loopSrc, "started", { sessionId: args.sessionId, totalSteps: args.totalSteps });
-    fs.writeFileSync(
+    writeFileAtomically(
       driverPath(loopSrc),
       `${JSON.stringify({ sessionId: args.sessionId, parentSessionId: args.parentSessionId, hostPid: args.hostPid, startedAt: new Date().toISOString() }, null, 2)}\n`,
     );
@@ -381,7 +379,7 @@ export function advanceLoop(args: LoopDriverCall): LoopDriverStepOk | LoopDriver
   const done = completedSteps >= plan.totalSteps;
   const next: LoopDriverPlan = { ...plan, status: done ? "complete" : "running", completedSteps };
   try {
-    fs.writeFileSync(planPath(args.loopSrc), `${JSON.stringify(next, null, 2)}\n`);
+    writeFileAtomically(planPath(args.loopSrc), `${JSON.stringify(next, null, 2)}\n`);
     appendLedger(args.loopSrc, done ? "completed" : "advanced", {
       sessionId: args.sessionId,
       completedSteps,
@@ -406,7 +404,7 @@ export function requestLoopStop(args: LoopDriverCall, reason = "stop requested")
     return fail("OMO_LOOP_DRIVER_REASON_INVALID", "A non-empty stop reason (max 1024 chars) is required.");
   }
   try {
-    fs.writeFileSync(stopPath(args.loopSrc), `${JSON.stringify({ reason: text, at: new Date().toISOString() })}\n`);
+    writeFileAtomically(stopPath(args.loopSrc), `${JSON.stringify({ reason: text, at: new Date().toISOString() })}\n`);
   } catch {
     return fail("OMO_LOOP_DRIVER_LOOP_SRC_INVALID", "The state directory is not writable.");
   }

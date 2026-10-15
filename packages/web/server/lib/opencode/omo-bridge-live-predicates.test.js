@@ -52,13 +52,21 @@ class FakeChild extends EventEmitter {
   }
 }
 
-// Counting stand-in for spawn: records argv, exits cleanly, never runs an
-// engine. calls.length is the spawn counter every fail-closed case asserts.
+// Counting stand-in for the single worker spawn: records entry/argv, captures
+// the stdin job, exits cleanly, never runs an engine. calls.length is the
+// spawn counter every fail-closed case asserts.
 const countingSpawn = () => {
   const calls = [];
+  let last = null;
   const spawn = (entry, argv, options) => {
     calls.push({ entry, argv, options });
     const child = new FakeChild();
+    child.stdinText = '';
+    child.stdin = {
+      write: (text) => { child.stdinText += String(text); },
+      end: () => {},
+    };
+    last = child;
     setImmediate(() => {
       child.exitCode = 0;
       child.emit('exit', 0, null);
@@ -66,16 +74,17 @@ const countingSpawn = () => {
     });
     return child;
   };
-  return { spawn, calls };
+  return { spawn, calls, stdinJob: () => JSON.parse(last.stdinText) };
 };
 
 const engine = (extra = {}) => ({
   resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
   existsSync: () => true,
-  // Pin the wrapper path: this file asserts Slice-E argv on the wrapper
+  // Pin the wrapper kind: this file asserts Slice-E argv on the wrapper
   // contract, and the T9 native default would otherwise take the native
-  // path (existsSync stubs everything resolvable).
-  env: { OMO_NATIVE_RUN: '0' },
+  // kind (existsSync stubs everything resolvable). OMO_BUN_PATH keeps the
+  // worker resolution hermetic (no real PATH scan).
+  env: { OMO_NATIVE_RUN: '0', OMO_BUN_PATH: '/x/bun' },
   ...extra,
 });
 
@@ -107,7 +116,7 @@ const invokeThrows = (bridge, args) => {
 
 describe('live Slice-E predicates (fixture catalog + card snapshot, zero spend)', () => {
   it('signed model passes the gate against the fixture catalog file', async () => {
-    const { spawn, calls } = countingSpawn();
+    const { spawn, calls, stdinJob } = countingSpawn();
     const catalog = readModelCatalogFileSync(writeCatalogFile(fixtureCatalogDoc()));
     const bridge = createOmoBridgeRuntime(engine({
       spawn,
@@ -117,7 +126,10 @@ describe('live Slice-E predicates (fixture catalog + card snapshot, zero spend)'
     }));
     const handle = bridge.invoke({ message: 'hi' });
     expect(calls).toHaveLength(1);
-    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2', '--json']);
+    expect(calls[0].entry).toBe('/x/bun');
+    expect(handle.native).toBe(false);
+    expect(handle.argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2', '--json']);
+    expect(stdinJob()).toMatchObject({ kind: 'wrapper', message: 'hi', model: 'alcore/al-1-2' });
     await handle.wait();
   });
 
@@ -217,23 +229,25 @@ describe('live Slice-E predicates (fixture catalog + card snapshot, zero spend)'
   it('null snapshot leaves the gate unwired (legacy argv, no model)', () => {
     expect(isProviderReadyFromCardSnapshot(null)).toBeNull();
     expect(isProviderReadyFromCardSnapshot(undefined)).toBeNull();
-    const { spawn, calls } = countingSpawn();
+    const { spawn, calls, stdinJob } = countingSpawn();
     const bridge = createOmoBridgeRuntime(engine({ spawn, isProviderReady: null }));
-    bridge.invoke({ message: 'hi', model: 'al-1-2' });
+    const handle = bridge.invoke({ message: 'hi', model: 'al-1-2' });
     expect(calls).toHaveLength(1);
-    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2', '--json']);
+    expect(handle.argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2', '--json']);
+    expect(stdinJob()).toMatchObject({ kind: 'wrapper', model: 'alcore/al-1-2' });
   });
 
   it('unknown provider (no integration) proceeds — custom keyed providers have no card', () => {
-    const { spawn, calls } = countingSpawn();
+    const { spawn, calls, stdinJob } = countingSpawn();
     const bridge = createOmoBridgeRuntime(engine({
       spawn,
       modelProviders: { 'custom/acme-1': 'acme' },
       isProviderReady: isProviderReadyFromCardSnapshot(fixtureCardSnapshot()),
     }));
-    bridge.invoke({ message: 'hi', model: 'custom/acme-1' });
+    const handle = bridge.invoke({ message: 'hi', model: 'custom/acme-1' });
     expect(calls).toHaveLength(1);
-    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'custom/acme-1', '--json']);
+    expect(handle.argv).toEqual(['run', 'hi', '--model', 'custom/acme-1', '--json']);
+    expect(stdinJob()).toMatchObject({ kind: 'wrapper', model: 'custom/acme-1' });
   });
 
   it('env connections and inline options keys read ready', () => {

@@ -15,6 +15,7 @@ import {
   resumeLoop,
   startLoopGoal,
 } from "./omo-loop-driver.ts";
+import { isPlainRecord, writeFileAtomically } from "../../../../omo-engine/utils/src/index.ts";
 
 const OWNER = { sessionId: "sess-driver-1", parentSessionId: "parent-7", hostPid: 4242 };
 const FOREIGN = { sessionId: "sess-intruder", parentSessionId: "parent-7", hostPid: 4242 };
@@ -222,6 +223,32 @@ describe("status reads", () => {
     const loopSrc = stateDir();
     expect(startLoopGoal({ ...OWNER, loopSrc, goal: "corrupt me", totalSteps: 1 }).ok).toBe(true);
     fs.appendFileSync(path.join(loopSrc, "ledger.jsonl"), "CORRUPT{{{\n");
+    const status = getLoopDriverStatus({ ...OWNER, loopSrc });
+    if (!status.ok) throw new Error("expected degraded status");
+    expect(status.snapshot.plan).toBeNull();
+    expect(status.snapshot.ledgerTail).toEqual([]);
+  });
+});
+
+describe("shared utils import shape", () => {
+  test("isPlainRecord keeps the driver's record semantics (arrays rejected)", () => {
+    expect(isPlainRecord({})).toBe(true);
+    expect(isPlainRecord([])).toBe(false);
+    expect(isPlainRecord(null)).toBe(false);
+  });
+
+  test("writeFileAtomically preserves the exact bytes the driver relies on", () => {
+    const dir = stateDir();
+    const target = path.join(dir, "shape.json");
+    const content = `${JSON.stringify({ title: "shape" }, null, 2)}\n`;
+    writeFileAtomically(target, content);
+    expect(fs.readFileSync(target, "utf8")).toBe(content);
+  });
+
+  test("an array ledger line degrades like any malformed line", () => {
+    const loopSrc = stateDir();
+    expect(startLoopGoal({ ...OWNER, loopSrc, goal: "array line", totalSteps: 1 }).ok).toBe(true);
+    fs.appendFileSync(path.join(loopSrc, "ledger.jsonl"), "[]\n");
     const status = getLoopDriverStatus({ ...OWNER, loopSrc });
     if (!status.ok) throw new Error("expected degraded status");
     expect(status.snapshot.plan).toBeNull();

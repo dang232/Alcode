@@ -5,12 +5,14 @@ import {
 	parseCodexGoalJson,
 	parseRecordEvidenceArgs,
 	positionalText,
+	readRepeated,
 	readStdin,
 	readValue,
 } from "./cli-arg-parser.js";
 import { blockedDecisionHandoff, normalizeCodexGoalMode, printJson, printStatus } from "./cli-output.js";
 import { parseSteeringProposals, printSteerBatchResult, printSteerResult } from "./cli-steering.js";
 import { buildCodexGoalInstruction } from "./codex-goal-instruction.js";
+import { dispatchPendingGoals, recordChildCompleted, recordChildFailed } from "./dispatch.js";
 import { isEssentialCriterion } from "./goal-status.js";
 import type { UlwLoopScope } from "./paths.js";
 import { summarizeUlwLoopPlan } from "./plan-crud.js";
@@ -89,6 +91,87 @@ export async function completeGoals(
 	const instruction = buildCodexGoalInstruction({ plan: result.plan, goal: result.goal });
 	if (json) printJson({ ok: true, resumed: result.resumed, goal: result.goal, instruction, plan: result.plan });
 	else process.stdout.write(`${instruction.text}\n`);
+	return 0;
+}
+
+export async function dispatchGoals(
+	repoRoot: string,
+	argv: readonly string[],
+	json: boolean,
+	scope?: UlwLoopScope,
+): Promise<number> {
+	const childRole = readValue(argv, "--child-role")?.trim() || undefined;
+	const { handoffs, skipped, plan } = await dispatchPendingGoals(
+		repoRoot,
+		{
+			goalIds: readRepeated(argv, "--goal-id"),
+			...(childRole === undefined ? {} : { childRole }),
+		},
+		scope,
+		(next, goal) => buildCodexGoalInstruction({ plan: next, goal }),
+	);
+	if (json) printJson({ ok: true, handoffs, skipped, summary: summarizeUlwLoopPlan(plan) });
+	else {
+		for (const handoff of handoffs) process.stdout.write(`${handoff.instruction.text}\n`);
+		for (const skip of skipped) process.stdout.write(`skipped ${skip.goalId}: ${skip.reason}\n`);
+		if (handoffs.length === 0 && skipped.length === 0) process.stdout.write("ulw-loop: no dispatchable goals\n");
+	}
+	return 0;
+}
+
+export async function reportChildResult(
+	repoRoot: string,
+	argv: readonly string[],
+	json: boolean,
+	scope?: UlwLoopScope,
+): Promise<number> {
+	const result = await recordChildCompleted(
+		repoRoot,
+		{
+			goalId: required(argv, "--goal-id"),
+			childId: required(argv, "--child-id"),
+			resultRef: required(argv, "--result-ref"),
+		},
+		scope,
+	);
+	if (json)
+		printJson({
+			ok: true,
+			goal: result.goal,
+			ledgerEntry: result.ledgerEntry,
+			summary: summarizeUlwLoopPlan(result.plan),
+		});
+	else
+		process.stdout.write(
+			`ulw-loop child result recorded: ${result.goal.id} complete via ${required(argv, "--child-id")}\n`,
+		);
+	return 0;
+}
+
+export async function reportChildFailure(
+	repoRoot: string,
+	argv: readonly string[],
+	json: boolean,
+	scope?: UlwLoopScope,
+): Promise<number> {
+	const result = await recordChildFailed(
+		repoRoot,
+		{
+			goalId: required(argv, "--goal-id"),
+			childId: required(argv, "--child-id"),
+			reason: required(argv, "--reason"),
+			...(hasFlag(argv, "--no-retry") ? { retryable: false } : {}),
+		},
+		scope,
+	);
+	if (json)
+		printJson({
+			ok: true,
+			goal: result.goal,
+			ledgerEntry: result.ledgerEntry,
+			summary: summarizeUlwLoopPlan(result.plan),
+		});
+	else process.stdout.write(`ulw-loop child failure recorded: ${result.goal.id} failed\n`);
 	return 0;
 }
 

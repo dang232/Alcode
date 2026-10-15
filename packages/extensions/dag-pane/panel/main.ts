@@ -16,11 +16,11 @@ import { mountBadge } from '@openchamber/sdk/ui';
 import { mountBanner } from '@openchamber/sdk/ui';
 import { mountButton } from '@openchamber/sdk/ui';
 import { mountEmpty } from '@openchamber/sdk/ui';
-import { mountSelect } from '@openchamber/sdk/ui';
+
 import { mountSpinner } from '@openchamber/sdk/ui';
 import { mountTextField } from '@openchamber/sdk/ui';
 
-import { isWireRecord, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave } from './dag-view.ts';
+import { isWireRecord, keepStoredRunModel, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave } from './dag-view.ts';
 import { stringsFor, type DagPaneStrings } from './strings.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -108,8 +108,21 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     return;
   }
   let strings: DagPaneStrings = stringsFor('en');
-  let sessionId: string | null = null;
-  let sessions: string[] = [];
+  // The panel follows the active conversation: the host chat session owns
+  // the view (one session, one DAG). There is no manual session picker;
+  // switching conversations rebinds immediately and clears the old graph.
+  // Set from host.onSession only.
+  let hostSessionId: string | null = null;
+  let hostTitle: string | null = null;
+  // Latest host run-model for the active conversation (bridge snapshot
+  // shape, or null when the conversation holds no delegation evidence).
+  // Authoritative for the live view; the service snapshot/loop projections
+  // below cover only steer- and loop-initiated runs the store never sees.
+  let runModelDoc: JsonValue | null = null;
+  let runModelConversation: string | null = null;
+  // Race guard: every conversation switch and every refresh takes a new
+  // generation; async answers from an older generation never paint.
+  let refreshGen = 0;
   let connected = true;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let selectedNodeId: string | null = null;
@@ -143,10 +156,14 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   const steerButtons = el('div', 'dag-steer-buttons');
   steerBar.append(steerFieldSlot, steerButtons);
   const diagRoot = el('section', 'dag-diagnostics');
+  const historyRoot = el('section', 'dag-history');
+  // Past runs, display-only: rows never bind the live view, so inspecting
+  // history can neither pin nor disturb the followed conversation.
+  let historyEntries: { sessionId: string; label: string; status: string; updatedAt: string | null }[] = [];
+  let historyError: string | null = null;
 
-  root.append(header, noticeSlot, content, steerBar, diagRoot);
+  root.append(header, noticeSlot, content, historyRoot, steerBar, diagRoot);
 
-  let selectHandle: ReturnType<typeof mountSelect> | null = null;
   let sectionHandles: { dispose(): void }[] = [];
   let noticeHandle: { dispose(): void } | null = null;
 
@@ -191,23 +208,25 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     return { status: answer.status, body: parsed };
   };
 
-  const paintSessions = (): void => {
-    selectHandle?.dispose();
-    selectHandle = null;
+  const statusQuery = (): Record<string, string> | undefined => (
+    paneDirectory ? { directory: paneDirectory } : undefined
+  );
+
+  // Header for the followed conversation: its human title plus a live dot
+  // while any run is active. No session picker: the panel never pins an
+  // old conversation.
+  let headerLive = false;
+  const paintFollowHeader = (): void => {
     sessionSlot.replaceChildren();
-    if (sessions.length === 0) {
+    if (hostSessionId === null) {
       return;
     }
-    selectHandle = mountSelect(sessionSlot, {
-      label: strings.session,
-      value: sessionId,
-      options: sessions.map((id) => ({ id, label: id })),
-      onChange: (id) => {
-        sessionId = id;
-        selectedNodeId = null;
-        void refresh();
-      },
-    });
+    const wrap = el('div', 'dag-follow-head');
+    const dot = el('span', `dag-live-dot${headerLive ? ' dag-live-on' : ''}`);
+    dot.setAttribute('aria-hidden', 'true');
+    wrap.append(dot);
+    wrap.append(text('span', 'dag-follow-title', hostTitle ?? hostSessionId));
+    sessionSlot.append(wrap);
   };
 
   const paintGraph = (run: DagRunView): void => {
@@ -302,6 +321,10 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   };
 
   let currentRuns: DagRunView[] = [];
+  // Render-on-change: the 4s poll calls paintContent every tick, so identical
+  // frames must skip the teardown/rebuild (layout thrash reads as stutter).
+  // The key covers both inputs of the painted output: run data and selection.
+  let lastSectionKey: string | null = null;
 
   const paintDetails = (run: DagRunView): void => {
     const node: DagNodeView | undefined = run.nodes.find((entry) => entry.id === (selectedNodeId ?? run.nodes.find((entry_) => entry_.state === 'running')?.id ?? run.nodes[0]?.id));
@@ -332,6 +355,11 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   };
 
   const paintContent = (runs: DagRunView[]): void => {
+    const sectionKey = `runs:${JSON.stringify(runs)}|selected:${selectedNodeId ?? ''}`;
+    if (sectionKey === lastSectionKey) {
+      return;
+    }
+    lastSectionKey = sectionKey;
     clearSection();
     currentRuns = runs;
     if (runs.length === 0) {
@@ -357,73 +385,72 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     }
   };
 
-  const refreshRuns = async (): Promise<void> => {
-    clearSection();
-    if (!sessionId) {
-      sectionHandles.push(mountSpinner(content, {}));
-      let statusAnswer: ServiceAnswer;
+  // Paint one run list with the live indicator derived from its states.
+  const paintRunList = (runs: DagRunView[]): void => {
+    headerLive = runs.some((run) => run.status === 'running' || run.status === 'pending');
+    paintFollowHeader();
+    paintContent(runs);
+  };
+
+  const refreshRuns = async (gen: number): Promise<void> => {
+    // Generation guard: a conversation switch or a newer refresh invalidates
+    // every answer still in flight. Nothing below paints for a stale run.
+    // refresh() owns the counter; this takes its generation as a parameter.
+    const activeId = hostSessionId;
+    const current = (): boolean => gen === refreshGen && hostSessionId === activeId;
+    if (activeId === null) {
+      headerLive = false;
+      paintFollowHeader();
+      clearSection();
+      sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
+      return;
+    }
+    // Engine health from our own service (offline banner + diagnostics).
+    try {
       const statusStart = Date.now();
-      try {
-        statusAnswer = await serviceCall('GET', '/status');
-        statusReachable = true;
-        statusLatencyMs = Date.now() - statusStart;
-        statusError = null;
-      } catch (error) {
-        // The service itself is unreachable: fail closed on the banner and
-        // keep the empty state below it.
-        statusReachable = false;
-        statusLatencyMs = Date.now() - statusStart;
-        statusError = error instanceof Error ? error.message : String(error);
-        showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
-        sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
-        return;
-      }
+      const statusAnswer = await serviceCall('GET', '/status', statusQuery());
+      if (!current()) return;
+      statusReachable = true;
+      statusLatencyMs = Date.now() - statusStart;
+      statusError = null;
       const body = isWireRecord(statusAnswer.body) ? statusAnswer.body : {};
       probeSummary = summarizeProbe(body);
       statusSnapshotDir = wireString(body.snapshotDir) ?? '';
-      // The offline banner reflects engine health from our own service — a
-      // missing or unavailable probe reads as engine down (fail closed).
+      // A missing or unavailable probe reads as engine down (fail closed).
       const probeRecord = isWireRecord(body.probe) ? body.probe : null;
       if (probeRecord === null || probeRecord.available !== true) {
         showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
       } else {
         showNotice('none');
       }
-      const listed = Array.isArray(body.sessions)
-        ? body.sessions.map((entry) => wireString(entry)).filter((entry): entry is string => entry !== null)
-        : [];
-      sessions = listed;
-      sessionId = listed[0] ?? null;
-      paintSessions();
-    }
-    if (!sessionId) {
-      clearSection();
-      sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
-      return;
-    }
-    let answer: ServiceAnswer;
-    try {
-      answer = await serviceCall('GET', '/snapshot', { sessionId });
     } catch (error) {
-      // Reachable at /status but not now: fail closed on the banner too.
+      // The service itself is unreachable: fail closed on the banner and
+      // keep the empty state below it. Never keep a previous run on screen.
+      if (!current()) return;
+      statusReachable = false;
       statusError = error instanceof Error ? error.message : String(error);
       showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
-      clearSection();
-      sectionHandles.push(mountBanner(content, {
-        tone: 'error',
-        title: strings.errorTitle,
-        body: undefined,
-        action: { label: strings.retry, onClick: () => void refresh() },
-      }));
-      return;
-    }
-    if (answer.status === 404) {
+      headerLive = false;
+      paintFollowHeader();
       clearSection();
       sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
       return;
     }
-    const outcome = parseSnapshotDoc(answer.body);
-    if (!outcome.ok) {
+    // Source priority for the active conversation: the host run-model first
+    // (chat-path delegation, which the service never sees), then the service
+    // snapshot (steer completions), then the /loop projection (loop state
+    // and live runs).
+    if (runModelConversation === activeId && runModelDoc !== null) {
+      const outcome = parseSnapshotDoc(runModelDoc);
+      if (!current()) return;
+      if (outcome.ok) {
+        paintRunList(outcome.view.runs);
+        return;
+      }
+      // A malformed host doc is a loud error card, never a silent fallback
+      // to older data.
+      headerLive = false;
+      paintFollowHeader();
       clearSection();
       sectionHandles.push(mountBanner(content, {
         tone: 'error',
@@ -433,7 +460,75 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       }));
       return;
     }
-    paintContent(outcome.view.runs);
+    let answer: ServiceAnswer;
+    try {
+      answer = await serviceCall('GET', '/snapshot', paneDirectory ? { sessionId: activeId, directory: paneDirectory } : { sessionId: activeId });
+    } catch (error) {
+      // Reachable at /status but not now: fail closed on the banner too.
+      if (!current()) return;
+      statusError = error instanceof Error ? error.message : String(error);
+      showNotice('banner', { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody });
+      headerLive = false;
+      paintFollowHeader();
+      clearSection();
+      sectionHandles.push(mountBanner(content, {
+        tone: 'error',
+        title: strings.errorTitle,
+        body: undefined,
+        action: { label: strings.retry, onClick: () => void refresh() },
+      }));
+      return;
+    }
+    if (!current()) return;
+    if (answer.status === 404) {
+      const loopQuery = paneDirectory ? { sessionId: activeId, directory: paneDirectory } : { sessionId: activeId };
+      let loopAnswer: ServiceAnswer;
+      try {
+        loopAnswer = await serviceCall('GET', '/loop', loopQuery);
+      } catch {
+        loopAnswer = { status: 0, body: undefined };
+      }
+      if (!current()) return;
+      if (loopAnswer.status === 200) {
+        const loopOutcome = parseSnapshotDoc(loopAnswer.body);
+        if (loopOutcome.ok) {
+          paintRunList(loopOutcome.view.runs);
+          return;
+        }
+      }
+      if (loopAnswer.status !== 404) {
+        headerLive = false;
+        paintFollowHeader();
+        clearSection();
+        sectionHandles.push(mountBanner(content, {
+          tone: 'error',
+          title: strings.errorTitle,
+          body: undefined,
+          action: { label: strings.retry, onClick: () => void refresh() },
+        }));
+        return;
+      }
+      headerLive = false;
+      paintFollowHeader();
+      clearSection();
+      sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
+      return;
+    }
+    const outcome = parseSnapshotDoc(answer.body);
+    if (!current()) return;
+    if (!outcome.ok) {
+      headerLive = false;
+      paintFollowHeader();
+      clearSection();
+      sectionHandles.push(mountBanner(content, {
+        tone: 'error',
+        title: strings.errorTitle,
+        body: outcome.error.field,
+        action: { label: strings.retry, onClick: () => void refresh() },
+      }));
+      return;
+    }
+    paintRunList(outcome.view.runs);
   };
 
   // Probe body summary for Diagnostics: code, flags, entry, and the
@@ -458,13 +553,13 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   };
 
   const refreshFlow = async (): Promise<void> => {
-    if (!sessionId) {
+    if (!hostSessionId) {
       flowBody = null;
       flowError = null;
       flowLatencyMs = 0;
       return;
     }
-    const query: Record<string, string> = { sessionId };
+    const query: Record<string, string> = { sessionId: hostSessionId };
     if (paneDirectory) {
       query.directory = paneDirectory;
     }
@@ -487,10 +582,67 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     }
   };
 
+  const refreshHistory = async (gen: number): Promise<void> => {
+    const query = paneDirectory ? { directory: paneDirectory } : undefined;
+    try {
+      const answer = await serviceCall('GET', '/history', query);
+      if (gen !== refreshGen || !isWireRecord(answer.body)) return;
+      const entries = Array.isArray(answer.body.entries) ? answer.body.entries : [];
+      const parsed: { sessionId: string; label: string; status: string; updatedAt: string | null }[] = [];
+      for (const entry of entries) {
+        if (!isWireRecord(entry)) continue;
+        const sessionId = wireString(entry.sessionId);
+        const label = wireString(entry.label);
+        const status = wireString(entry.status);
+        if (sessionId === null || label === null || status === null) continue;
+        // History covers the followed conversation only: rows stay
+        // display-only and never bind the live view.
+        if (sessionId !== hostSessionId) continue;
+        parsed.push({ sessionId, label, status, updatedAt: wireString(entry.updatedAt) });
+      }
+      historyEntries = parsed;
+      historyError = null;
+    } catch (error) {
+      if (gen !== refreshGen) return;
+      historyError = error instanceof Error ? error.message : String(error);
+    }
+    paintHistory();
+  };
+
+  const paintHistory = (): void => {
+    historyRoot.replaceChildren();
+    const box = doc.createElement('details');
+    box.className = 'dag-history-box';
+    const summary = doc.createElement('summary');
+    summary.textContent = `${strings.history} (${historyEntries.length})`;
+    box.append(summary);
+    if (historyError !== null) {
+      box.append(text('p', 'dag-history-error', historyError));
+    } else if (historyEntries.length === 0) {
+      box.append(text('p', 'dag-history-empty', strings.historyEmpty));
+    } else {
+      const list = el('div', 'dag-history-list');
+      for (const entry of historyEntries) {
+        const row = el('div', 'dag-history-row');
+        row.append(text('span', 'dag-history-label', entry.label));
+        const badgeSlot = el('span', 'dag-history-badge');
+        row.append(badgeSlot);
+        const badge = mountBadge(badgeSlot, { label: entry.status, tone: stateTone(entry.status) });
+        sectionHandles.push(badge);
+        row.append(text('span', 'dag-history-time', entry.updatedAt ?? '—'));
+        list.append(row);
+      }
+      box.append(list);
+    }
+    historyRoot.append(box);
+  };
+
   const refresh = async (): Promise<void> => {
-    await refreshRuns();
+    const gen = ++refreshGen;
+    await refreshRuns(gen);
     refreshedAt = new Date().toISOString();
     await refreshFlow();
+    await refreshHistory(gen);
     paintDiag();
   };
 
@@ -602,7 +754,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
           ['latencyMs', diagValue(statusReachable ? statusLatencyMs : null)],
           ['code', diagValue(probeSummary?.code ?? null)],
           ['available', diagValue(probeSummary?.available ?? null)],
-          ['sessions', diagValue(sessions.length)],
+          ['session', diagValue(hostSessionId)],
         ],
       },
     ];
@@ -629,7 +781,8 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       ['entry', diagValue(probeSummary?.entry ?? null)],
       ['message', diagValue(probeSummary?.message ?? null)],
       ['snapshotDir', diagValue(statusSnapshotDir.length > 0 ? statusSnapshotDir : null)],
-      ['sessions', diagValue(sessions.length)],
+      ['session', diagValue(hostSessionId)],
+      ['runModel', diagValue(runModelConversation)],
       ['refreshedAt', diagValue(refreshedAt)],
       ['lastError', diagValue(statusError)],
     ];
@@ -689,7 +842,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
 
   const paintChrome = (): void => {
     titleNode.textContent = strings.title;
-    paintSessions();
+    paintFollowHeader();
     refreshSlot.replaceChildren();
     mountButton(refreshSlot, { label: strings.refresh, variant: 'outline', size: 'sm', onClick: () => void refresh() });
     steerFieldSlot.replaceChildren();
@@ -715,9 +868,10 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
 
   const steer = async (): Promise<void> => {
     const message = (steerFieldValue()).trim();
-    if (!message || !sessionId) {
+    if (!message || !hostSessionId) {
       return;
     }
+    const sessionId = hostSessionId;
     try {
       const trimmedEntry = wrapperEntry.trim();
       const steerBody = trimmedEntry
@@ -742,9 +896,10 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   };
 
   const cancel = async (): Promise<void> => {
-    if (!sessionId) {
+    if (!hostSessionId) {
       return;
     }
+    const sessionId = hostSessionId;
     try {
       const answer = await serviceCall('POST', '/cancel', undefined, { sessionId, reason: 'pane cancel' });
       if (answer.status >= 400) {
@@ -793,8 +948,41 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     }
   });
 
-  void host.onSession(() => {
-    selectedNodeId = null;
+  void host.onSession((session) => {
+    const id = session?.id ?? null;
+    const title = session?.title ?? null;
+    if (id !== hostSessionId || title !== hostTitle) {
+      // A chat switch rebinds immediately: invalidate in-flight answers,
+      // drop the previous graph, and show a spinner until fresh data lands.
+      // A stale answer for the old conversation never paints over this.
+      hostSessionId = id;
+      hostTitle = title;
+      refreshGen += 1;
+      if (!keepStoredRunModel(runModelConversation, id)) {
+        runModelDoc = null;
+        runModelConversation = null;
+      }
+      selectedNodeId = null;
+      lastSectionKey = null;
+      headerLive = false;
+      paintFollowHeader();
+      clearSection();
+      if (id !== null) {
+        sectionHandles.push(mountSpinner(content, {}));
+      } else {
+        sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
+      }
+    }
+    void refresh();
+  });
+
+  // Host run-model posts carry the conversation they were built for. A post can
+  // arrive before onSession binds that conversation (the host sends it from its
+  // own effect), so it is kept; refreshRuns paints it only when its
+  // conversation is the active one.
+  void host.onRunModel((model) => {
+    runModelDoc = model.snapshot;
+    runModelConversation = model.conversationId;
     void refresh();
   });
 };

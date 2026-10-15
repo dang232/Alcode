@@ -112,6 +112,28 @@ describe("src/cli.ts", () => {
 	});
 });
 
+describe("dist/cli.js", () => {
+	it("#given a working directory outside the engine checkout #when the loop entry is launched #then it starts without resolving anything relative to cwd", async () => {
+		// given: a foreign cwd (e.g. a user home dir), no OMO_ULW_LOOP_CLI
+		const root = await mkdtemp(join(tmpdir(), "omo-ulw-loop-foreign-cwd-"));
+		try {
+			// when: the absolute dist entry is launched from that cwd
+			const child = spawn(process.execPath, [join(repoRoot, "dist", "cli.js"), "ulw-loop", "help"], { cwd: root });
+			const stdout: Buffer[] = [];
+			const stderr: Buffer[] = [];
+			child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+			child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+			const code: number | null = await new Promise((resolvePromise) => child.on("close", resolvePromise));
+			// then: clean start, help text, no stderr
+			expect(code).toBe(0);
+			expect(Buffer.concat(stdout).toString("utf8")).toContain("ulw-loop");
+			expect(Buffer.concat(stderr).toString("utf8")).toBe("");
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("skills/ulw-loop/SKILL.md", () => {
 	it("exists", async () => {
 		const info = await stat(join(repoRoot, "skills/ulw-loop/SKILL.md"));
@@ -139,7 +161,7 @@ describe("skills/ulw-loop/SKILL.md", () => {
 	});
 
 	it.skipIf(process.platform === "win32")(
-		"#given PATH omo-agent-toolkit lacks ulw-loop #when bootstrap runs #then falls back to cached ulw-loop CLI",
+		"#given PATH omo-agent-toolkit lacks ulw-loop #when bootstrap runs #then falls back to fixed local bin",
 		async () => {
 		const text = await readText("skills/ulw-loop/references/full-workflow.md");
 		const bootstrap = bootstrapScriptFrom(text);
@@ -148,27 +170,13 @@ describe("skills/ulw-loop/SKILL.md", () => {
 			const badBin = join(root, "bad-bin");
 			const home = join(root, "home");
 			const codexHome = join(home, ".codex");
-			const cachedCli = join(codexHome, "plugins", "cache", "sisyphuslabs", "omo", "0.1.0", "components", "ulw-loop", "dist", "cli.js");
+			const fixedBin = join(codexHome, "bin", "omo-agent-toolkit");
 			await mkdir(badBin, { recursive: true });
-			await mkdir(dirname(cachedCli), { recursive: true });
-			await writeFile(join(badBin, "omo-agent-toolkit"), "#!/bin/sh\nprintf '%s\\n' \"error: unknown command 'ulw-loop'\" >&2\nexit 1\n");
+			await mkdir(dirname(fixedBin), { recursive: true });
+			await writeFile(join(badBin, "omo-agent-toolkit"), ["#!/bin/sh", "exit 1", ""].join("\n"));
 			await chmod(join(badBin, "omo-agent-toolkit"), 0o755);
-			await writeFile(
-				cachedCli,
-				[
-					"#!/usr/bin/env node",
-					"const args = process.argv.slice(2);",
-					"if (args[0] === 'ulw-loop' && args[1] === 'help') process.exit(0);",
-					"if (args[0] === 'ulw-loop' && args[1] === 'status' && args.includes('--json')) {",
-					"  console.log(JSON.stringify({ ok: true, source: 'cached-ulw-loop' }));",
-					"  process.exit(0);",
-					"}",
-					"console.error('unexpected args: ' + args.join(' '));",
-					"process.exit(1);",
-					"",
-				].join("\n"),
-			);
-
+			await writeFile(fixedBin, ["#!/bin/sh", "if [ \"$1\" = 'ulw-loop' ] && [ \"$2\" = 'help' ]; then exit 0; fi", "if [ \"$1\" = 'ulw-loop' ] && [ \"$2\" = 'status' ]; then echo marker-fixed-local-bin; exit 0; fi", "exit 1", ""].join("\n"));
+			await chmod(fixedBin, 0o755);
 			const result = await runShell(`${bootstrap}\n"$ULW_LOOP_NODE" "$ULW_LOOP_CLI" ulw-loop status --json`, {
 				...process.env,
 				CODEX_HOME: codexHome,
@@ -177,7 +185,40 @@ describe("skills/ulw-loop/SKILL.md", () => {
 			});
 
 			expect(result.code).toBe(0);
-			expect(result.stdout).toContain('"source":"cached-ulw-loop"');
+			expect(result.stdout).toContain('marker-fixed-local-bin');
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"#given explicit env CLI plus fixed fallback #when bootstrap runs #then env CLI wins and is not overwritten",
+		async () => {
+		const text = await readText("skills/ulw-loop/references/full-workflow.md");
+		const bootstrap = bootstrapScriptFrom(text);
+		const root = await mkdtemp(join(tmpdir(), "omo-ulw-loop-bootstrap-env-"));
+		try {
+			const badBin = join(root, "bad-bin");
+			const home = join(root, "home");
+			const codexHome = join(home, ".codex");
+			const fixedBin = join(codexHome, "bin", "omo-agent-toolkit");
+			const envCli = join(root, "env-cli.js");
+			await mkdir(badBin, { recursive: true });
+			await mkdir(dirname(fixedBin), { recursive: true });
+			await writeFile(join(badBin, "omo-agent-toolkit"), ["#!/bin/sh", "exit 1", ""].join("\n"));
+			await chmod(join(badBin, "omo-agent-toolkit"), 0o755);
+			await writeFile(fixedBin, ["#!/bin/sh", "if [ \"$1\" = 'ulw-loop' ] && [ \"$2\" = 'help' ]; then exit 0; fi", "if [ \"$1\" = 'ulw-loop' ] && [ \"$2\" = 'status' ]; then echo marker-fixed-local-bin; exit 0; fi", "exit 1", ""].join("\n"));
+			await chmod(fixedBin, 0o755);
+			await writeFile(envCli, ["#!/usr/bin/env node", "if (process.argv[2] === 'ulw-loop' && process.argv[3] === 'help') process.exit(0);", "if (process.argv[2] === 'ulw-loop' && process.argv[3] === 'status') { console.log('marker-env-cli'); process.exit(0); }", "process.exit(1);", ""].join("\n"));
+			const result = await runShell(`${bootstrap}\n"$ULW_LOOP_NODE" "$ULW_LOOP_CLI" ulw-loop status --json`, {
+				...process.env,
+				OMO_ULW_LOOP_CLI: envCli,
+				CODEX_HOME: codexHome,
+				HOME: home,
+				PATH: `${badBin}:${process.env["PATH"] ?? ""}`,
+			});
+			expect(result.code).toBe(0);
+			expect(result.stdout).toContain('marker-env-cli');
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

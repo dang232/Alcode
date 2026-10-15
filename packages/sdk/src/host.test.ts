@@ -390,6 +390,67 @@ describe('connectHost', () => {
     host.dispose();
   });
 
+  test('delivers a run-model push with its conversation id', () => {
+    const parent = createFrame();
+    const guest = createFrame();
+    guest.parent = parent.parent;
+
+    const host = connectHost({ target: guest, acceptSource: () => true });
+    const seen: Array<{ conversationId: string; snapshot: unknown }> = [];
+    host.onRunModel((model) => {
+      seen.push(model);
+    });
+    const snapshot = { schemaVersion: 1, sessionId: 'ses-1' };
+    guest.dispatch(new MessageEvent('message', {
+      data: {
+        channel: OPENCHAMBER_SDK_CHANNEL,
+        v: 1,
+        type: 'run-model',
+        payload: { conversationId: 'ses-1', snapshot },
+      },
+    }));
+    expect(seen).toEqual([{ conversationId: 'ses-1', snapshot }]);
+    host.dispose();
+  });
+
+  test('drops run-model pushes without a conversation id or with a scalar snapshot', () => {
+    const parent = createFrame();
+    const guest = createFrame();
+    guest.parent = parent.parent;
+
+    const host = connectHost({ target: guest, acceptSource: () => true });
+    const seen: unknown[] = [];
+    host.onRunModel((model) => {
+      seen.push(model);
+    });
+    guest.dispatch(new MessageEvent('message', {
+      data: {
+        channel: OPENCHAMBER_SDK_CHANNEL,
+        v: 1,
+        type: 'run-model',
+        payload: { conversationId: '', snapshot: { schemaVersion: 1 } },
+      },
+    }));
+    guest.dispatch(new MessageEvent('message', {
+      data: {
+        channel: OPENCHAMBER_SDK_CHANNEL,
+        v: 1,
+        type: 'run-model',
+        payload: { conversationId: 'ses-1', snapshot: 42 },
+      },
+    }));
+    guest.dispatch(new MessageEvent('message', {
+      data: {
+        channel: OPENCHAMBER_SDK_CHANNEL,
+        v: 1,
+        type: 'run-model',
+        payload: { conversationId: 'ses-1', snapshot: null },
+      },
+    }));
+    expect(seen).toEqual([{ conversationId: 'ses-1', snapshot: null }]);
+    host.dispose();
+  });
+
   test('delivers the ready item and replays it to a late listener', () => {
     const parent = createFrame();
     const guest = createFrame();

@@ -1,7 +1,9 @@
 // Fixture-driven tests for the OmO adapter-A runtime bridge. No engine is
 // installed: the fixture snapshot JSON drives render/snapshot cases, scripted
-// stub spawn/spawnSync stand in for the wrapper, and three tests use the real
-// node binary / real child processes to prove the spawn, wait, and kill paths.
+// stub spawn/spawnSync stand in for the single worker spawn (the stub
+// captures the stdin job, so kind selection is asserted without a runtime),
+// and two tests use the real node binary / real child processes to prove
+// the probe and kill paths.
 import { describe, expect, it, afterEach } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { spawn as realSpawn } from 'node:child_process';
@@ -13,6 +15,7 @@ import {
   OMO_NATIVE_OK,
   OmoBridgeError,
   buildRunArgv,
+  bunUnavailableMessage,
   cancelRun,
   checkNativeParity,
   createOmoBridgeRuntime,
@@ -26,6 +29,7 @@ import {
   resolveEngineRoot,
   resolveNativeRunner,
   resolveRunModel,
+  resolveWorkerRunner,
   splitModelRef,
 } from './omo-bridge-runtime.js';
 
@@ -94,14 +98,20 @@ class FakeChild extends EventEmitter {
   }
 }
 
-// Scripted stand-in for spawn: asserts nothing itself, records argv, and lets
-// each test script stdout lines plus the exit.
+// Scripted stand-in for the single worker spawn: records entry/argv, captures
+// the stdin job (kind selection is asserted off this, never off a real
+// runtime), and lets each test script stdout lines plus the exit.
 const stubSpawn = ({ lines = [], exitCode = 0 } = {}) => {
   const calls = [];
   let child;
   const spawn = (entry, argv, options) => {
     calls.push({ entry, argv, options });
     child = new FakeChild();
+    child.stdinText = '';
+    child.stdin = {
+      write: (text) => { child.stdinText += String(text); },
+      end: () => {},
+    };
     setImmediate(() => {
       for (const line of lines) {
         child.stdout.emit('data', `${line}\n`);
@@ -114,6 +124,10 @@ const stubSpawn = ({ lines = [], exitCode = 0 } = {}) => {
   };
   return { spawn, calls, getChild: () => child };
 };
+
+// The stdin job one worker spawn carried (the bridge writes exactly one
+// JSON line per run).
+const stdinJob = (stub) => JSON.parse(stub.getChild().stdinText);
 
 describe('probe (version/capability handshake)', () => {
   it('engine-absent yields the documented degraded message and never hangs', async () => {
@@ -228,30 +242,67 @@ describe('probe (version/capability handshake)', () => {
     expect(result.compatible).toBe(false);
     expect(result.missingRunFlags).toEqual(expect.arrayContaining(['--attach', '--session-id', '--json']));
   });
+
+  it('includeToolkit carries the toolkit record only when opted in', async () => {
+    const { spawnSync } = stubSpawnSync();
+    const bridge = createOmoBridgeRuntime({
+      resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
+      existsSync: () => true,
+      spawnSync,
+    });
+    const withToolkit = await bridge.probe({ includeToolkit: true });
+    expect(withToolkit.available).toBe(true);
+    expect(withToolkit.code).toBe('OMO_PROBE_OK');
+    expect('toolkit' in withToolkit).toBe(true);
+    const plain = await bridge.probe();
+    expect('toolkit' in plain).toBe(false);
+  });
 });
 
-describe('invoke (wrapper contract argv)', () => {
-  it('port variant builds run <message> --port N --json', () => {
-    const { spawn } = stubSpawn();
+describe('invoke (wrapper-kind jobs through the worker)', () => {
+  it('port variant sends a wrapper-kind job and keeps the wrapper argv on the handle', () => {
+    const stub = stubSpawn();
     const bridge = createOmoBridgeRuntime({
       resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
       existsSync: () => true,
-      spawn,
+      env: { OMO_NATIVE_RUN: '0', OMO_BUN_PATH: '/x/bun' },
+      spawn: stub.spawn,
     });
-    const handle = bridge.invoke({ message: 'Fix the bug', port: 4321, native: false });
+    const handle = bridge.invoke({ message: 'Fix the bug', port: 4321 });
     expect(handle.entry).toBe('/user/engine/bin/oh-my-opencode.js');
+    expect(handle.native).toBe(false);
     expect(handle.argv).toEqual(['run', 'Fix the bug', '--port', '4321', '--json']);
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0].entry).toBe('/x/bun');
+    expect(stub.calls[0].argv[0].endsWith('omo-invoker-worker.ts')).toBe(true);
+    expect(stub.calls[0].argv).not.toContain('--engine-root');
+    expect(stdinJob(stub)).toEqual({
+      kind: 'wrapper',
+      message: 'Fix the bug',
+      port: 4321,
+      wrapperEntry: '/user/engine/bin/oh-my-opencode.js',
+      wrapperArgv: ['run', 'Fix the bug', '--port', '4321', '--json'],
+    });
   });
 
-  it('attach plus session-id variant builds the documented order', () => {
-    const { spawn, calls } = stubSpawn();
+  it('attach plus session-id variant keeps the documented order in the job', () => {
+    const stub = stubSpawn();
     const bridge = createOmoBridgeRuntime({
       resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
       existsSync: () => true,
-      spawn,
+      env: { OMO_NATIVE_RUN: '0', OMO_BUN_PATH: '/x/bun' },
+      spawn: stub.spawn,
     });
-    bridge.invoke({ message: 'Continue', attachUrl: 'http://127.0.0.1:4321', sessionId: 'ses_abc123', native: false });
-    expect(calls[0].argv).toEqual(['run', 'Continue', '--attach', 'http://127.0.0.1:4321', '--session-id', 'ses_abc123', '--json']);
+    const handle = bridge.invoke({ message: 'Continue', attachUrl: 'http://127.0.0.1:4321', sessionId: 'ses_abc123' });
+    expect(handle.argv).toEqual(['run', 'Continue', '--attach', 'http://127.0.0.1:4321', '--session-id', 'ses_abc123', '--json']);
+    expect(stdinJob(stub)).toMatchObject({
+      kind: 'wrapper',
+      message: 'Continue',
+      attach: 'http://127.0.0.1:4321',
+      sessionId: 'ses_abc123',
+      wrapperEntry: '/user/engine/bin/oh-my-opencode.js',
+      wrapperArgv: ['run', 'Continue', '--attach', 'http://127.0.0.1:4321', '--session-id', 'ses_abc123', '--json'],
+    });
   });
 
   it('port plus attach together is rejected (Gap 2 mutual exclusivity)', () => {
@@ -310,41 +361,51 @@ describe('invoke (wrapper contract argv)', () => {
     expect(calls[0].argv).toContain('--engine-root');
   });
 
-  it('wait resolves the --json final result from stub stdout', async () => {
-    const { spawn } = stubSpawn({ lines: [JSON.stringify(fixture.runResult)], exitCode: 0 });
+  it('wait resolves the --json final result relayed through the worker', async () => {
+    const stub = stubSpawn({ lines: [JSON.stringify(fixture.runResult)], exitCode: 0 });
     const bridge = createOmoBridgeRuntime({
       resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
       existsSync: () => true,
-      spawn,
+      env: { OMO_BUN_PATH: '/x/bun' },
+      spawn: stub.spawn,
     });
-    const settled = await bridge.invoke({ message: 'hi', native: false }).wait();
+    const handle = bridge.invoke({ message: 'hi', native: false });
+    expect(handle.native).toBe(false);
+    expect(stdinJob(stub)).toMatchObject({ kind: 'wrapper', message: 'hi' });
+    const settled = await handle.wait();
     expect(settled.exitCode).toBe(0);
     expect(settled.result).toMatchObject({ sessionId: 'ses_fixture01', success: true });
     expect(settled.sessionId).toBe('ses_fixture01');
   });
 
-  it('real spawn of the node binary exits and wait captures it', async () => {
-    const bridge = createOmoBridgeRuntime({ resolveEngineEntry: () => process.execPath });
-    // Per-call opt-out: the wrapper path is asserted here, the T9 default is
-    // covered by the native-default describe below.
-    const handle = bridge.invoke({ message: 'hi', native: false });
-    liveChildren.push(handle.child);
-    const settled = await handle.wait();
-    // node tries to run a script literally named `run` and exits non-zero.
-    expect(settled.exitCode).not.toBe(0);
-    expect(settled.result).toBeNull();
-  }, 15000);
+  it('worker spawn failure throws the exact degraded message', () => {
+    const bridge = createOmoBridgeRuntime({
+      resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
+      existsSync: () => true,
+      env: { OMO_BUN_PATH: '/x/bun' },
+      spawn: () => { throw new Error('spawn ENOENT'); },
+    });
+    let thrown = null;
+    try {
+      bridge.invoke({ message: 'hi', native: false });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(thrown.message).toContain('Omo run worker could not start via "/x/bun"');
+  });
 });
 
 describe('model binding (Slice E: catalog role to provider gate)', () => {
   const engine = (extra = {}) => ({
     resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
     existsSync: () => true,
-    // Pin the wrapper path: these tests assert Slice-E argv on the wrapper
-    // contract, and the T9 default would otherwise take the native path
+    // Pin the wrapper kind: these tests assert Slice-E argv on the wrapper
+    // contract, and the T9 default would otherwise take the native kind
     // (existsSync stubs everything resolvable). The rollback itself is
-    // covered by the native-default describe below.
-    env: { OMO_NATIVE_RUN: '0' },
+    // covered by the kind-selection describe below.
+    env: { OMO_NATIVE_RUN: '0', OMO_BUN_PATH: '/x/bun' },
     ...extra,
   });
 
@@ -406,11 +467,12 @@ describe('model binding (Slice E: catalog role to provider gate)', () => {
     expect(() => buildRunArgv({ message: 'x', agent: 'my agent' })).toThrow(/agent must be/);
   });
 
-  it('invoke passes an explicit agent straight to argv', () => {
-    const { spawn, calls } = stubSpawn();
-    const bridge = createOmoBridgeRuntime(engine({ spawn }));
-    bridge.invoke({ message: 'hi', agent: 'atlas' });
-    expect(calls[0].argv).toEqual(['run', 'hi', '--agent', 'atlas', '--json']);
+  it('invoke passes an explicit agent into the wrapper-kind job', () => {
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({ spawn: stub.spawn }));
+    const handle = bridge.invoke({ message: 'hi', agent: 'atlas' });
+    expect(handle.argv).toEqual(['run', 'hi', '--agent', 'atlas', '--json']);
+    expect(stdinJob(stub)).toMatchObject({ kind: 'wrapper', message: 'hi', agent: 'atlas' });
   });
 
   it('unsigned provider fails fast naming model and provider before any spawn', () => {
@@ -434,69 +496,81 @@ describe('model binding (Slice E: catalog role to provider gate)', () => {
     expect(calls).toEqual([]);
   });
 
-  it('alcore-bound run pins --model alcore/<id>', () => {
-    const { spawn, calls } = stubSpawn();
+  it('alcore-bound run pins --model alcore/<id> in the job', () => {
+    const stub = stubSpawn();
     const bridge = createOmoBridgeRuntime(engine({
-      spawn,
+      spawn: stub.spawn,
       isProviderReady: (provider) => provider === 'alcore',
     }));
-    bridge.invoke({ message: 'hi', model: 'al-1-3-max' });
-    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-3-max', '--json']);
+    const handle = bridge.invoke({ message: 'hi', model: 'al-1-3-max' });
+    expect(handle.argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-3-max', '--json']);
+    expect(stdinJob(stub)).toMatchObject({ kind: 'wrapper', model: 'alcore/al-1-3-max' });
   });
 
   it('catalog role resolving to alcore pins --model from the role', () => {
-    const { spawn, calls } = stubSpawn();
+    const stub = stubSpawn();
     const bridge = createOmoBridgeRuntime(engine({
-      spawn,
+      spawn: stub.spawn,
       isProviderReady: () => true,
       modelCatalog: { current: { model: 'gpt-6-astra' }, roles: { default: { model: 'al-1-2-flash' } } },
     }));
-    bridge.invoke({ message: 'hi' });
-    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2-flash', '--json']);
+    const handle = bridge.invoke({ message: 'hi' });
+    expect(handle.argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2-flash', '--json']);
+    expect(stdinJob(stub)).toMatchObject({ kind: 'wrapper', model: 'alcore/al-1-2-flash' });
   });
 
   it('explicit non-alcore model with a ready provider travels as-given', () => {
-    const { spawn, calls } = stubSpawn();
+    const stub = stubSpawn();
     const bridge = createOmoBridgeRuntime(engine({
-      spawn,
+      spawn: stub.spawn,
       modelProviders: { 'openai/gpt-5': 'openai' },
       isProviderReady: () => true,
     }));
-    bridge.invoke({ message: 'hi', model: 'openai/gpt-5' });
-    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'openai/gpt-5', '--json']);
+    const handle = bridge.invoke({ message: 'hi', model: 'openai/gpt-5' });
+    expect(handle.argv).toEqual(['run', 'hi', '--model', 'openai/gpt-5', '--json']);
+    expect(stdinJob(stub)).toMatchObject({ kind: 'wrapper', model: 'openai/gpt-5' });
   });
 
   it('unknown provider proceeds ungated without --model', () => {
-    const { spawn, calls } = stubSpawn();
-    const bridge = createOmoBridgeRuntime(engine({ spawn, isProviderReady: () => false }));
-    bridge.invoke({
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({ spawn: stub.spawn, isProviderReady: () => false }));
+    const handle = bridge.invoke({
       message: 'hi',
       catalog: { current: { model: 'gpt-9' } },
     });
-    expect(calls).toHaveLength(1);
-    expect(calls[0].argv).toEqual(['run', 'hi', '--json']);
+    expect(stub.calls).toHaveLength(1);
+    expect(handle.argv).toEqual(['run', 'hi', '--json']);
+    expect(stdinJob(stub)).toMatchObject({ kind: 'wrapper', message: 'hi' });
+    expect(stdinJob(stub).model).toBeUndefined();
   });
 
   it('a broken checker never wedges runs (gate skipped)', () => {
-    const { spawn, calls } = stubSpawn();
+    const stub = stubSpawn();
     const bridge = createOmoBridgeRuntime(engine({
-      spawn,
+      spawn: stub.spawn,
       isProviderReady: () => { throw new Error('checker down'); },
     }));
-    bridge.invoke({ message: 'hi', model: 'al-1-2' });
-    expect(calls).toHaveLength(1);
-    expect(calls[0].argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2', '--json']);
+    const handle = bridge.invoke({ message: 'hi', model: 'al-1-2' });
+    expect(stub.calls).toHaveLength(1);
+    expect(handle.argv).toEqual(['run', 'hi', '--model', 'alcore/al-1-2', '--json']);
+    expect(stdinJob(stub)).toMatchObject({ kind: 'wrapper', model: 'alcore/al-1-2' });
   });
 
-  it('unwired gate keeps the exact legacy argv (no model anywhere)', () => {
-    const { spawn, calls } = stubSpawn();
-    const bridge = createOmoBridgeRuntime(engine({ spawn }));
-    bridge.invoke({ message: 'hi', port: 4321 });
-    expect(calls[0].argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+  it('unwired gate keeps the exact legacy argv on the handle and in the job', () => {
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(engine({ spawn: stub.spawn }));
+    const handle = bridge.invoke({ message: 'hi', port: 4321 });
+    expect(handle.argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+    expect(stdinJob(stub)).toMatchObject({
+      kind: 'wrapper',
+      message: 'hi',
+      port: 4321,
+      wrapperArgv: ['run', 'hi', '--port', '4321', '--json'],
+    });
   });
 });
 
-describe('native invoker (bun worker, opt-in)', () => {
+describe('one run path (worker serves both kinds)', () => {
   const nativeEngine = (extra = {}) => ({
     resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
     existsSync: () => true,
@@ -560,7 +634,7 @@ describe('native invoker (bun worker, opt-in)', () => {
     expect(defaultWorkerEntry().endsWith('omo-invoker-worker.ts')).toBe(true);
   });
 
-  it('native invoke spawns bun with the job on stdin and the same handle shape', async () => {
+  it('native-kind invoke spawns bun with the job on stdin and the same handle shape', async () => {
     const calls = [];
     let stdinText = '';
     let stdinEnded = false;
@@ -593,7 +667,7 @@ describe('native invoker (bun worker, opt-in)', () => {
     expect(calls[0].entry).toBe('bun');
     expect(calls[0].argv).toEqual(['/user/worker/omo-invoker-worker.ts', '--engine-root', '/user/engine']);
     expect(calls[0].options.stdio).toEqual(['pipe', 'pipe', 'pipe']);
-    expect(JSON.parse(stdinText)).toMatchObject({ message: 'hi' });
+    expect(JSON.parse(stdinText)).toMatchObject({ kind: 'native', message: 'hi' });
     expect(stdinEnded).toBe(true);
     const settled = await handle.wait();
     expect(settled.exitCode).toBe(0);
@@ -650,12 +724,59 @@ describe('native invoker (bun worker, opt-in)', () => {
     await handle.wait();
   });
 
-  it('env rollback keeps the wrapper path with native:false', () => {
-    const { spawn, calls } = stubSpawn();
-    const bridge = createOmoBridgeRuntime(nativeEngine({ spawn, env: { OMO_NATIVE_RUN: '0' } }));
+  it('env rollback runs the wrapper kind through the worker, not a direct spawn', () => {
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(nativeEngine({
+      spawn: stub.spawn,
+      env: { OMO_NATIVE_RUN: '0', OMO_BUN_PATH: '/x/bun' },
+    }));
     const handle = bridge.invoke({ message: 'hi', port: 4321 });
     expect(handle.native).toBe(false);
-    expect(calls[0].argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+    expect(handle.argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0].entry).toBe('/x/bun');
+    expect(stdinJob(stub)).toEqual({
+      kind: 'wrapper',
+      message: 'hi',
+      port: 4321,
+      wrapperEntry: '/user/engine/bin/oh-my-opencode.js',
+      wrapperArgv: ['run', 'hi', '--port', '4321', '--json'],
+    });
+  });
+
+  it('resolveWorkerRunner answers bun plus worker with no engine checkout', () => {
+    expect(resolveWorkerRunner({
+      env: { OMO_BUN_PATH: '/x/bun' },
+      existsSync: (p) => p === '/x/bun' || String(p).endsWith('omo-invoker-worker.ts'),
+      workerEntry: '/user/worker/omo-invoker-worker.ts',
+    })).toEqual({ workerEntry: '/user/worker/omo-invoker-worker.ts', bunPath: '/x/bun' });
+  });
+
+  it('resolveWorkerRunner refuses with the exact gate messages before any spawn', () => {
+    let missing = null;
+    try {
+      resolveWorkerRunner({ env: {}, existsSync: () => false, workerEntry: '/user/worker/omo-invoker-worker.ts' });
+    } catch (error) {
+      missing = error;
+    }
+    expect(missing).toBeInstanceOf(OmoBridgeError);
+    expect(missing.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(missing.message).toBe(
+      'Native runner unavailable: native worker missing at "/user/worker/omo-invoker-worker.ts". The wrapper path is kept.',
+    );
+    let bunless = null;
+    try {
+      resolveWorkerRunner({
+        env: {},
+        existsSync: (p) => String(p).endsWith('omo-invoker-worker.ts'),
+        workerEntry: '/user/worker/omo-invoker-worker.ts',
+      });
+    } catch (error) {
+      bunless = error;
+    }
+    expect(bunless).toBeInstanceOf(OmoBridgeError);
+    expect(bunless.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(bunless.message).toBe(bunUnavailableMessage({ source: 'path', path: 'bun' }));
   });
 });
 
@@ -840,7 +961,7 @@ describe('native parity gate (structured, carried forward from T1)', () => {
   });
 });
 
-describe('native default (T9 flip: gate decides, rollback kept)', () => {
+describe('one run path (kind selection on the default)', () => {
   const BUN_ABSENT_MESSAGE = 'Native runner unavailable: bun was not found on PATH and OMO_BUN_PATH is unset. The wrapper path is kept; install bun or set OMO_BUN_PATH to run natively.';
   const capable = (extra = {}) => ({
     resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
@@ -874,7 +995,7 @@ describe('native default (T9 flip: gate decides, rollback kept)', () => {
     expect(calls[0].entry).toBe('/x/bun');
     expect(calls[0].argv[0].endsWith('omo-invoker-worker.ts')).toBe(true);
     expect(calls[0].argv).toContain('--engine-root');
-    expect(JSON.parse(stdinText)).toMatchObject({ message: 'hi', sessionId: 'ses_n1' });
+    expect(JSON.parse(stdinText)).toMatchObject({ kind: 'native', message: 'hi', sessionId: 'ses_n1' });
     const settled = await handle.wait();
     expect(settled.exitCode).toBe(0);
     expect(settled.result).toMatchObject({ sessionId: 'ses_fixture01', success: true });
@@ -929,13 +1050,42 @@ describe('native default (T9 flip: gate decides, rollback kept)', () => {
     expect(calls).toEqual([]);
   });
 
-  it('per-call native:false restores the wrapper even when the gate passes', () => {
-    const { spawn, calls } = stubSpawn();
-    const bridge = createOmoBridgeRuntime(capable({ spawn }));
+  it('per-call native:false runs the wrapper kind even when the gate passes', () => {
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn: stub.spawn }));
     const handle = bridge.invoke({ message: 'hi', port: 4321, native: false });
     expect(handle.native).toBe(false);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+    expect(handle.argv).toEqual(['run', 'hi', '--port', '4321', '--json']);
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0].entry).toBe('/x/bun');
+    expect(stdinJob(stub)).toEqual({
+      kind: 'wrapper',
+      message: 'hi',
+      port: 4321,
+      wrapperEntry: '/user/engine/bin/oh-my-opencode.js',
+      wrapperArgv: ['run', 'hi', '--port', '4321', '--json'],
+    });
+  });
+
+  it('wrapper kind with bun absent throws the exact degraded message and spawns nothing', () => {
+    const stub = stubSpawn();
+    const entry = '/user/engine/bin/oh-my-opencode.js';
+    const bridge = createOmoBridgeRuntime({
+      resolveEngineEntry: () => entry,
+      existsSync: (p) => p === entry || String(p).endsWith('.ts'),
+      env: { OMO_NATIVE_RUN: '0' },
+      spawn: stub.spawn,
+    });
+    let thrown = null;
+    try {
+      bridge.invoke({ message: 'hi', port: 4321 });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OmoBridgeError);
+    expect(thrown.code).toBe('OMO_NATIVE_UNAVAILABLE');
+    expect(thrown.message).toBe(bunUnavailableMessage({ source: 'path', path: 'bun' }));
+    expect(stub.calls).toEqual([]);
   });
 
   it('per-call native:true with an unresolvable setup throws and spawns nothing', () => {
@@ -955,15 +1105,18 @@ describe('native default (T9 flip: gate decides, rollback kept)', () => {
     expect(calls).toEqual([]);
   });
 
-  it('nativeFromEnv:false keeps the legacy wrapper default', () => {
-    const { spawn, calls } = stubSpawn();
-    const bridge = createOmoBridgeRuntime(capable({ spawn, nativeFromEnv: false }));
+  it('nativeFromEnv:false keeps the legacy wrapper-kind default', () => {
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn: stub.spawn, nativeFromEnv: false }));
     const handle = bridge.invoke({ message: 'hi' });
     expect(handle.native).toBe(false);
-    expect(calls[0].argv).toEqual(['run', 'hi', '--json']);
+    expect(handle.argv).toEqual(['run', 'hi', '--json']);
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0].entry).toBe('/x/bun');
+    expect(stdinJob(stub)).toMatchObject({ kind: 'wrapper', message: 'hi' });
   });
 
-  it('cancel on the wrapper path still settles a receipt after the flip', async () => {
+  it('cancel on the wrapper kind still settles a receipt after the convergence', async () => {
     const { spawn } = stubSpawn();
     const bridge = createOmoBridgeRuntime(capable({ spawn }));
     const handle = bridge.invoke({ message: 'long run', native: false });
@@ -1055,6 +1208,7 @@ describe('stream (session-filtered snapshot writer)', () => {
     const bridge = createOmoBridgeRuntime({
       resolveEngineEntry: () => '/user/engine/bin/oh-my-opencode.js',
       existsSync: () => true,
+      env: { OMO_BUN_PATH: '/x/bun' },
       spawn,
       fs,
       snapshotDir: '/snap',
@@ -1137,6 +1291,94 @@ describe('cancel (PROVISIONAL kill-with-reason)', () => {
     expect(thrown).toBeInstanceOf(OmoBridgeError);
     expect(thrown.code).toBe('OMO_CANCEL_NO_CHILD');
   });
+
+  it('cancel on Windows fells the worker tree best-effort', async () => {
+    const child = new FakeChild();
+    child.pid = 4242;
+    const calls = [];
+    const receipt = await cancelRun({ child }, 'stop', {
+      platform: 'win32',
+      spawnSync: (cmd, args) => { calls.push({ cmd, args }); return { status: 0 }; },
+      cancelGraceMs: 50,
+    });
+    expect(calls).toEqual([{ cmd: 'taskkill', args: ['/PID', '4242', '/T', '/F'] }]);
+    expect(receipt).toMatchObject({
+      provisional: true,
+      alreadyExited: false,
+      escalated: false,
+      reason: 'stop',
+    });
+  });
+
+  it('cancel off Windows leaves the tree alone', async () => {
+    const child = new FakeChild();
+    child.pid = 4242;
+    let called = 0;
+    const receipt = await cancelRun({ child }, 'stop', {
+      platform: 'linux',
+      spawnSync: () => { called += 1; return { status: 0 }; },
+      cancelGraceMs: 50,
+    });
+    expect(called).toBe(0);
+    expect(receipt.reason).toBe('stop');
+  });
+
+  it('cancel reaps the wrapper grandchild on every platform', async () => {
+    // Full converged path with real processes but fixture-only (no engine,
+    // no spend): bridge -> bun worker -> bun-run fixture wrapper. The
+    // fixture path travels as the run message so `bun run <file>` executes
+    // it; the script announces readiness on stderr (relayed through the
+    // worker) and records its pid beside itself for the reap check.
+    const dir = mkdtempSync(join(tmpdir(), 'omo-cancel-tree-'));
+    const script = join(dir, 'wrapper.mjs');
+    writeFileSync(script, [
+      'import fs from "node:fs";',
+      'import path from "node:path";',
+      'import { fileURLToPath } from "node:url";',
+      'const dir = path.dirname(fileURLToPath(import.meta.url));',
+      'fs.writeFileSync(path.join(dir, "wrapper.pid"), String(process.pid));',
+      'console.error("wrapper-ready");',
+      'setInterval(() => {}, 1000);',
+      '',
+    ].join('\n'));
+    const bridge = createOmoBridgeRuntime({
+      resolveEngineEntry: () => process.execPath,
+      env: { OMO_NATIVE_RUN: '0', OMO_BUN_PATH: process.execPath },
+    });
+    const handle = bridge.invoke({ message: script, native: false });
+    liveChildren.push(handle.child);
+    expect(handle.native).toBe(false);
+    try {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('wrapper never announced readiness')), 15000);
+        timer.unref?.();
+        handle.child.stderr?.on('data', (chunk) => {
+          if (String(chunk).includes('wrapper-ready')) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+        handle.child.on('error', (error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+      });
+      const pid = Number(readFileSync(join(dir, 'wrapper.pid'), 'utf8'));
+      expect(Number.isInteger(pid)).toBe(true);
+      const receipt = await handle.cancel('tree test');
+      expect(receipt).toMatchObject({ provisional: true, alreadyExited: false, reason: 'tree test' });
+      expect(() => process.kill(pid, 0)).toThrow();
+    } catch (error) {
+      try {
+        await handle.cancel('cleanup');
+      } catch {
+        // Cleanup best-effort; the original failure reports below.
+      }
+      throw error;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
 });
 
 describe('degraded message contract', () => {

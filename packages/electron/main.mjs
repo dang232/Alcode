@@ -1351,6 +1351,16 @@ const spawnLocalServer = async () => {
   }
   process.env.OPENCHAMBER_DIST_DIR = resolveWebDistDir();
   process.env.OPENCHAMBER_RUNTIME = 'desktop';
+  // Staged internal ulw-loop CLI (prepare:ulw-loop-cli): loop agents spawned
+  // under the app inherit this and resolve internal-first via the skill doc's
+  // OMO_ULW_LOOP_CLI override — no download, no PATH, no drive search.
+  // Guarded: without staging, the managed lifecycle defaults to the checkout
+  // dist (dev parity) and the repo-local candidate in the skill doc covers
+  // the rest.
+  const stagedUlwLoopCli = path.join(resourceRoot(), 'ulw-loop-cli', 'dist', 'cli.js');
+  if (fs.existsSync(stagedUlwLoopCli)) {
+    process.env.OMO_ULW_LOOP_CLI = stagedUlwLoopCli;
+  }
   // OpenCode uses process cwd as a fallback directory; app userData would make
   // packaged desktop look like a separate empty workspace.
   process.env.OPENCHAMBER_OPENCODE_CWD = resolveManagedOpenCodeCwd({

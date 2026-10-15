@@ -4,7 +4,7 @@
 // proves the pane renders what the adapter actually writes.
 import { describe, expect, test } from 'bun:test';
 
-import { parseSnapshotDoc } from './dag-view.ts';
+import { keepStoredRunModel, parseSnapshotDoc, resolveSelectedSession } from './dag-view.ts';
 import { DAG_PANE_LOCALES, stringsFor } from './strings.ts';
 import fixture from '../../../web/server/lib/opencode/omo-bridge-fixture.json';
 
@@ -118,5 +118,41 @@ describe('stringsFor', () => {
     expect(stringsFor('pt').title).toBe('Execuções DAG');
     expect(stringsFor('pt-BR').cancel).toBe('Cancelar');
     expect(stringsFor('zh_TW').title).toBe('DAG 執行');
+  });
+});
+
+describe('resolveSelectedSession', () => {
+  const sessions = ['ses_a', 'ses_b'];
+  test('host session wins over list order (never sessions[0] by default)', () => {
+    expect(resolveSelectedSession({ hostSessionId: 'ses_b', current: null, sessions })).toBe('ses_b');
+  });
+  test('manual pick survives while listed and host is absent', () => {
+    expect(resolveSelectedSession({ hostSessionId: null, current: 'ses_b', sessions })).toBe('ses_b');
+  });
+  test('gone selection falls back to host, never the list head', () => {
+    expect(resolveSelectedSession({ hostSessionId: 'ses_b', current: 'ses_gone', sessions })).toBe('ses_b');
+    expect(resolveSelectedSession({ hostSessionId: null, current: 'ses_gone', sessions })).toBeNull();
+  });
+  test('runless host session selects itself (empty view, not a foreign DAG)', () => {
+    expect(resolveSelectedSession({ hostSessionId: 'ses_new', current: 'ses_a', sessions })).toBe('ses_new');
+    expect(resolveSelectedSession({ hostSessionId: 'ses_new', current: null, sessions: [] })).toBe('ses_new');
+  });
+  test('empty list selects the host session, else nothing', () => {
+    expect(resolveSelectedSession({ hostSessionId: 'ses_b', current: 'ses_a', sessions: [] })).toBe('ses_b');
+    expect(resolveSelectedSession({ hostSessionId: null, current: null, sessions: [] })).toBeNull();
+  });
+});
+
+describe('keepStoredRunModel', () => {
+  test('early post for the bound conversation survives the bind', () => {
+    expect(keepStoredRunModel('ses_b', 'ses_b')).toBe(true);
+  });
+  test('switch to another conversation clears the stale post', () => {
+    expect(keepStoredRunModel('ses_a', 'ses_b')).toBe(false);
+  });
+  test('no stored post and no session keep nothing', () => {
+    expect(keepStoredRunModel(null, 'ses_b')).toBe(false);
+    expect(keepStoredRunModel('ses_a', null)).toBe(false);
+    expect(keepStoredRunModel(null, null)).toBe(false);
   });
 });

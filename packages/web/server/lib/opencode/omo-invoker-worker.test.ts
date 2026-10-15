@@ -1,8 +1,8 @@
-// Worker-level tests for the OmO native invoker worker. Every case drives the
-// real worker binary (`bun omo-invoker-worker.ts`) over real process stdio
-// against fixture dirs only: stub run barrels and stub loop-state readers are
-// materialized per test under the OS temp dir, so no engine checkout, no
-// session, and no keyed spend is ever touched.
+// Worker-level tests for the OmO run worker. Every case drives the real
+// worker binary (`bun omo-invoker-worker.ts`) over real process stdio
+// against fixture dirs only: stub run barrels, stub loop-state readers, and
+// fixture wrapper CLIs are materialized per test under the OS temp dir, so
+// no engine checkout, no session, and no keyed spend is ever touched.
 import { describe, expect, it, afterEach } from 'bun:test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -231,8 +231,19 @@ describe('worker job mode (stdin parse)', () => {
     expect(badPort.stderr).toContain('[omo-invoker-worker]');
   }, 30000);
 
-  it('missing --engine-root exits 2 before reading stdin', async () => {
+  it('native-kind job without --engine-root exits 2 naming the flag', async () => {
+    // No kind and no wrapper entry infers native, which still needs the
+    // engine root; only wrapper-kind jobs run without one.
     const result = await runWorker([], `${JSON.stringify({ message: 'hi' })}\n`);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('missing --engine-root');
+  }, 30000);
+
+  it('explicit native-kind job without --engine-root exits 2 the same way', async () => {
+    const result = await runWorker(
+      [],
+      `${JSON.stringify({ kind: 'native', message: 'hi' })}\n`,
+    );
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('missing --engine-root');
   }, 30000);
@@ -433,7 +444,7 @@ describe('worker malformed input', () => {
     expect(result.stderr).toContain('[omo-invoker-worker]');
   }, 30000);
 
-  it('job mode with a missing barrel exits 2 before parsing stdin', async () => {
+  it('native-kind job with a missing barrel exits 2 naming the cause', async () => {
     const root = trackDir('omo-worker-nobarrel-');
     const result = await runWorker(
       ['--engine-root', root, '--barrel-path', join(root, 'absent.ts')],
@@ -451,5 +462,192 @@ describe('worker malformed input', () => {
     );
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('exports no run() function');
+  }, 30000);
+});
+
+// Fixture wrapper entry: a tiny CLI that records the argv it was spawned
+// with, relays scripted stdout lines, echoes one stderr line, and exits
+// with a scripted code — the observable half of the wrapper contract the
+// worker relay must preserve byte-verbatim.
+const WRAPPER_SCRIPT = `import fs from "node:fs";
+const out = process.env.OMO_WORKER_CALL_FILE;
+if (out) fs.writeFileSync(out, JSON.stringify(process.argv.slice(1)));
+if (process.env.OMO_WORKER_STDERR_LINE) console.error(process.env.OMO_WORKER_STDERR_LINE);
+for (const line of String(process.env.OMO_WORKER_LINES ?? "").split("\\n")) {
+  if (line) console.log(line);
+}
+process.exit(Number(process.env.OMO_WORKER_EXIT_CODE ?? "0"));
+`;
+
+// Sleeper wrapper: announces readiness on stderr (an event the test
+// subscribes to — no polling), then traps SIGTERM into a receipt file so
+// the test can prove the worker forwarded the signal instead of orphaning
+// the child. POSIX-only proof: Windows terminates on SIGTERM without
+// running traps, so the suite skips the live forwarding there (the win32
+// path is the bridge-side tree-kill, covered by the cancel unit test).
+const WRAPPER_SLEEPER = `import fs from "node:fs";
+console.error("wrapper-ready");
+process.on("SIGTERM", () => {
+  const out = process.env.OMO_WORKER_RECEIPT_FILE;
+  if (out) fs.writeFileSync(out, "got-sigterm");
+  process.exit(0);
+});
+setInterval(() => {}, 1000);
+`;
+
+const makeWrapperEntry = (script = WRAPPER_SCRIPT) => {
+  const dir = trackDir('omo-worker-wrapper-');
+  const scriptPath = join(dir, 'wrapper.mjs');
+  writeFileSync(scriptPath, script);
+  return { dir, scriptPath };
+};
+
+describe('worker wrapper-kind jobs (spawn and relay)', () => {
+  it('relays wrapper stdout byte-exact with exit 0 and records argv', async () => {
+    const { dir, scriptPath } = makeWrapperEntry();
+    const callFile = join(dir, 'call.json');
+    const eventLine = JSON.stringify({ type: 'omo.dag.updated', data: { parent_session_id: 'ses_w1' } });
+    const resultLine = JSON.stringify({ sessionId: 'ses_w1', success: true });
+    // No --engine-root on purpose: wrapper-kind jobs never touch the
+    // engine tree, so none is required.
+    const result = await runWorker(
+      [],
+      `${JSON.stringify({
+        kind: 'wrapper',
+        message: 'Steer on',
+        sessionId: 'ses_w1',
+        wrapperEntry: process.execPath,
+        wrapperArgv: [scriptPath, 'run', 'Steer on', '--session-id', 'ses_w1', '--json'],
+      })}\n`,
+      {
+        OMO_WORKER_CALL_FILE: callFile,
+        OMO_WORKER_LINES: `${eventLine}\n${resultLine}`,
+        OMO_WORKER_STDERR_LINE: 'wrapper warn line',
+      },
+    );
+    expect(result.timedOut).toBe(false);
+    expect(result.code).toBe(0);
+    // Byte-exact: the relay adds no banners — stdout carries the wrapper's
+    // bytes only, so the bridge line protocol reads them back unchanged.
+    expect(result.stdout).toBe(`${eventLine}\n${resultLine}\n`);
+    expect(result.stderr).toContain('wrapper warn line');
+    expect(JSON.parse(readFileSync(callFile, 'utf8'))).toEqual(
+      [scriptPath, 'run', 'Steer on', '--session-id', 'ses_w1', '--json'],
+    );
+  }, 30000);
+
+  it('wrapper exit code passes through the worker', async () => {
+    const { scriptPath } = makeWrapperEntry();
+    const result = await runWorker(
+      [],
+      `${JSON.stringify({ kind: 'wrapper', message: 'hi', wrapperEntry: process.execPath, wrapperArgv: [scriptPath] })}\n`,
+      { OMO_WORKER_EXIT_CODE: '3' },
+    );
+    expect(result.timedOut).toBe(false);
+    expect(result.code).toBe(3);
+    expect(result.stdout).toBe('');
+  }, 30000);
+
+  it('job without kind but with a wrapper entry infers wrapper', async () => {
+    const { scriptPath } = makeWrapperEntry();
+    const eventLine = JSON.stringify({ type: 'omo.task.updated', data: { parent_session_id: 'ses_w2' } });
+    const result = await runWorker(
+      [],
+      `${JSON.stringify({ message: 'hi', wrapperEntry: process.execPath, wrapperArgv: [scriptPath] })}\n`,
+      { OMO_WORKER_LINES: eventLine },
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(`${eventLine}\n`);
+  }, 30000);
+
+  it('wrapper-kind without entry or argv exits 2 with a stderr reason', async () => {
+    const { root, barrelPath } = makeEngineRoot();
+    const missing = await runWorker(
+      ['--engine-root', root, '--barrel-path', barrelPath],
+      `${JSON.stringify({ kind: 'wrapper', message: 'hi' })}\n`,
+    );
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('wrapper jobs need a wrapper entry plus argv');
+  }, 30000);
+
+  it('unknown kind exits 2 with a stderr reason', async () => {
+    const { root, barrelPath } = makeEngineRoot();
+    const result = await runWorker(
+      ['--engine-root', root, '--barrel-path', barrelPath],
+      `${JSON.stringify({ kind: 'teapot', message: 'hi' })}\n`,
+    );
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('[omo-invoker-worker]');
+    expect(result.stderr).toContain('non-empty message');
+  }, 30000);
+
+  it('unstartable wrapper entry exits 2 naming the cause', async () => {
+    const dir = trackDir('omo-worker-wrapmissing-');
+    const result = await runWorker(
+      [],
+      `${JSON.stringify({
+        kind: 'wrapper', message: 'hi',
+        wrapperEntry: join(dir, 'absent-wrapper'),
+        wrapperArgv: ['run', 'hi', '--json'],
+      })}\n`,
+    );
+    expect(result.timedOut).toBe(false);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('[omo-invoker-worker]');
+    expect(result.stderr).toContain('cannot start wrapper entry');
+  }, 30000);
+
+  it('SIGTERM to the worker reaches the wrapper child (no orphan)', async () => {
+    if (process.platform === 'win32') {
+      // Windows delivers SIGTERM as TerminateProcess: traps never run, so
+      // a receipt-based proof is impossible here. The win32 reap path is
+      // the bridge-side tree-kill, proved by the cancel unit test plus the
+      // bridge integration test; skip the live proof instead of leaking a
+      // sleeper the suite could never reap.
+      return;
+    }
+    const { dir, scriptPath } = makeWrapperEntry(WRAPPER_SLEEPER);
+    const receiptFile = join(dir, 'receipt.txt');
+    const child = spawn(process.execPath, [WORKER_ENTRY], {
+      env: { ...process.env, OMO_WORKER_RECEIPT_FILE: receiptFile },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    liveChildren.push(child);
+    let stderrText = '';
+    let ready = false;
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+    }, WORKER_TIMEOUT_MS);
+    timer.unref?.();
+    const settled = await new Promise<WorkerResult>((resolve) => {
+      child.stderr?.on('data', (chunk) => {
+        stderrText += String(chunk);
+        if (!ready && stderrText.includes('wrapper-ready')) {
+          ready = true;
+          // The wrapper child is provably up (it announced itself), so the
+          // signal must travel worker -> child for the receipt to land.
+          child.kill('SIGTERM');
+        }
+      });
+      child.stdout?.on('data', () => {});
+      child.on('error', () => {
+        clearTimeout(timer);
+        resolve({ code: 1, stdout: '', stderr: stderrText, timedOut: false });
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        resolve({ code, stdout: '', stderr: stderrText, timedOut: false });
+      });
+      child.stdin?.write(`${JSON.stringify({
+        kind: 'wrapper', message: 'hi',
+        wrapperEntry: process.execPath, wrapperArgv: [scriptPath],
+      })}\n`);
+      child.stdin?.end();
+    });
+    expect(settled.code).toBe(0);
+    expect(stderrText).toContain('wrapper-ready');
+    // The trap receipt is the proof: only a forwarded SIGTERM writes it,
+    // and the wrapper exited 0 through the trap, which the worker adopted.
+    expect(readFileSync(receiptFile, 'utf8')).toBe('got-sigterm');
   }, 30000);
 });

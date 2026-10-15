@@ -1,5 +1,6 @@
 import { checkpointUlwLoop } from "../checkpoint.js";
 import { checkpointTemplate } from "../checkpoint-template.js";
+import { dispatchPendingGoals, recordChildCompleted, recordChildFailed } from "../dispatch.js";
 import { recordEvidence } from "../evidence.js";
 import {
 	normalizeUlwLoopSessionId,
@@ -170,6 +171,12 @@ export function createAgentToolkit(context: ToolkitContext, deps: AgentToolkitDe
 					return toolkit.criteria(request.args);
 				case "record-evidence":
 					return toolkit.recordEvidence(request.args);
+				case "dispatch":
+					return toolkit.dispatchGoals(request.args);
+				case "record-child-result":
+					return toolkit.recordChildResult(request.args);
+				case "record-child-failure":
+					return toolkit.recordChildFailure(request.args);
 				case "record-review-blockers":
 					return toolkit.recordReviewBlockers(request.args);
 				default:
@@ -211,6 +218,9 @@ export function createAgentToolkit(context: ToolkitContext, deps: AgentToolkitDe
 				return { goalId: goal.id, criteria: goal.successCriteria };
 			}),
 		recordEvidence: (args) => invoke("record-evidence", () => recordEvidence(context.cwd, args, scope)),
+		dispatchGoals: (args) => invoke("dispatch", () => dispatchPendingGoals(context.cwd, args, scope)),
+		recordChildResult: (args) => invoke("record-child-result", () => recordChildCompleted(context.cwd, args, scope)),
+		recordChildFailure: (args) => invoke("record-child-failure", () => recordChildFailed(context.cwd, args, scope)),
 		recordReviewBlockers: (args) =>
 			invoke("record-review-blockers", () => recordFinalReviewBlockers(context.cwd, args, scope)),
 	};

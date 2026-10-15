@@ -1,0 +1,6 @@
+{
+  "name": "oh-my-openagent",
+  "version": "5.1.23",
+  "private": true,
+  "description": "Vendored oh-my-openagent engine closure root (upstream repo-root manifest; the run barrel reads packageJson.version for telemetry identity)."
+}

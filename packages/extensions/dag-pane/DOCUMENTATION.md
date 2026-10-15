@@ -46,14 +46,43 @@ exists for this guest.
   the repository root and copy
   `packages/web/server/built-in-extensions/dag-pane/panel/main.js` back
   here. `panel/*.test.ts` runs under `bun test`.
+- The panel follows the active conversation: the host posts the run model
+  (`run-model` channel, bridge snapshot shape, `null` when the
+  conversation holds no delegation evidence) and the panel binds to
+  `hostSessionId` only — no session picker, no manual pin. The host model
+  wins for the active conversation; the service snapshot, then the /loop
+  projection, cover steer- and loop-initiated runs the store never sees.
+  Stale answers never paint: every conversation switch and refresh takes a
+  generation. A run-model post is held even when it arrives before its
+  conversation binds (the host sends it from its own effect); on a switch
+  the stored post survives only when it names the newly bound
+  conversation, and painting still requires the stored conversation to
+  equal the active one.
 - `service/handlers.js` — `createDagServiceHandlers({ fs, snapshotDir,
   createBridge })`. Wraps the adapter-A bridge (`packages/web/server/lib/
   opencode/omo-bridge-runtime.js`, imported relatively and inlined into
   the shipped bundle by the node build entry): `GET /status` (probe +
-  snapshot sessions), `GET /snapshot?sessionId=`, `POST /steer` (invoke
-  attached to the live session, handle kept for cancel), `POST /cancel`
-  (provisional kill receipt). Engine-absent steers answer 503 with the
-  bridge's degraded message.
+  snapshot sessions + read-only `loopRuns` + read-only `liveRuns` for
+  steers this service still tracks), `GET /snapshot?sessionId=`,
+  `GET /loop?sessionId=&directory=` (loop-state projection in the snapshot
+  document shape, live-run pending fallback keyed on liveness with the
+  route report refining the label when present), `POST /steer` (invoke
+  attached to the live session, handle kept for cancel; on settle the
+  service records a completion snapshot — pending shape flipped to
+  completed/failed with the observed outcome — unless richer snapshot
+  data already landed, never on cancel), `POST /cancel`
+  (provisional kill receipt). `GET /history?directory=` lists past runs:
+  completed snapshots plus terminal loop rows, newest first, capped;
+  malformed snapshots counted as skipped; live runs never listed.
+  `/steer` accepts an optional `directory` so the completion snapshot
+  records its project scope for the History filter. Engine-absent steers answer 503 with the
+  bridge's degraded message. Loop rows never write: the loop engine owns
+  `.omo/ulw-loop/*`, the bridge owns the snapshots, and the service only
+  reads both plus its in-memory per-session route registry (50 entries,
+  restart-cleared). `POST /debug/route` upserts the registry; `GET /status`
+  accepts the panel directory and merges snapshot ids first, loop-only ids
+  after; the panel paints `/loop` while `/snapshot` 404s, and snapshot
+  data wins once it lands.
 - `service/main.js` — loopback entry and node build entry. Requires
   `OPENCHAMBER_SERVICE_PORT` + `OPENCHAMBER_SERVICE_TOKEN`, enforces the
   bearer on every request including `/health`, binds 127.0.0.1 only. The
@@ -62,11 +91,22 @@ exists for this guest.
 
 ## Data path
 
-Snapshots live in the OS temp dir under `omo-dag-snapshots/
+Steer/loop snapshots live in the OS temp dir under `omo-dag-snapshots/
 <sessionId>.snapshot.json` (override with `OMO_SNAPSHOT_DIR` where the
 process inherits user env — the CLI; the service sandbox does not, so the
-service always uses the default and the CLI defaults to the same). The
-panel never touches the filesystem: it calls `serviceRequest`, and the
+service always uses the default and the CLI defaults to the same).
+Chat-path runs (native engine delegation) never emit bridge snapshot events,
+so the host posts the run model it builds from engine session data to
+`POST /snapshot`, and the service persists it project-scoped under
+`<project>/.omo/dag-runs/<sessionId>.snapshot.json` (live file) plus capped
+immutable terminal records in `<project>/.omo/dag-runs/history/<sessionId>/`
+(newest 20). `GET /snapshot` reads the temp file first, then the live file
+when the caller names its directory; `GET /history` with a directory filter
+merges temp snapshots, loop rows, and project-scoped records, deduped by
+(session, updatedAt, status). Project-scoped entries appear only under their
+own directory filter. The panel's History covers the followed conversation
+only and stays display-only: rows never bind the live view.
+The panel never touches the filesystem: it calls `serviceRequest`, and the
 service reads the file. The wrapper entry for steering is per-guest
 storage (`wrapperEntry`, kept silently — no visible input); with no entry anywhere the
 bridge resolves the native/vendored engine before answering engine-absent,

@@ -7,6 +7,9 @@ import {
 	completeGoals,
 	createGoals,
 	criteria,
+	dispatchGoals,
+	reportChildFailure,
+	reportChildResult,
 	reviewBlockers,
 	status,
 	steer,
@@ -21,6 +24,9 @@ export const ULW_LOOP_SUBCOMMANDS = [
 	"create-goals",
 	"status",
 	"complete-goals",
+	"dispatch",
+	"record-child-result",
+	"record-child-failure",
 	"checkpoint",
 	"steer",
 	"add-goal",
@@ -70,6 +76,12 @@ export async function ulwLoopCommand(argv: readonly string[]): Promise<number> {
 				return await status(repoRoot, json, scope);
 			case "complete-goals":
 				return await completeGoals(repoRoot, rest, json, scope);
+			case "dispatch":
+				return await dispatchGoals(repoRoot, rest, json, scope);
+			case "record-child-result":
+				return await reportChildResult(repoRoot, rest, json, scope);
+			case "record-child-failure":
+				return await reportChildFailure(repoRoot, rest, json, scope);
 			case "checkpoint":
 				return await checkpoint(repoRoot, rest, json, scope);
 			case "steer":

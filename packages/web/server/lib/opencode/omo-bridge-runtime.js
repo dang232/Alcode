@@ -1,10 +1,11 @@
 // OmO adapter-A runtime bridge (project-ide todo 6).
 //
-// Spawns the USER-INSTALLED engine wrapper (`bin/oh-my-opencode.js`) and
-// funnels its run-graph events into a local JSON snapshot the DAG pane
-// (todo 13) renders. Nothing here bundles, fetches, or auto-installs engine
-// code: when no wrapper entry AND no native/vendored engine resolve, every
-// path answers the documented degraded message and never hangs.
+// Spawns the run worker (`bun omo-invoker-worker.ts`, same directory as
+// this module) with one stdin job per run and funnels the run-graph events
+// it relays into a local JSON snapshot the DAG pane (todo 13) renders.
+// Nothing here bundles, fetches, or auto-installs engine code: when no
+// wrapper entry AND no native/vendored engine resolve, the single run path
+// answers the documented degraded message and never hangs.
 //
 // Wrapper contract (pinned, see .omo/evidence/task-7-project-ide.md):
 //   probe  -> `<entry> --version` + `<entry> run --help` (bounded)
@@ -19,18 +20,28 @@
 //            (the omo-herdr-dag pattern: subscribe, filter session, snapshot
 //            to local JSON, watcher renders the file).
 //   cancel -> PROVISIONAL kill-with-reason (see cancelRun below).
-//   native -> DEFAULT behind the parity gate (omo-full-integration T9,
-//             breaking): `checkNativeParity` answers capable-or-not as data;
-//             a passing gate takes this path, a failing gate throws the exact
-//             `OMO_NATIVE_UNAVAILABLE` degraded message — never a silent
-//             downgrade to the wrapper. Rollback without a code change:
-//             per-call `native: false` or `OMO_NATIVE_RUN=0` restores the
-//             wrapper path (kept until deletion); `OMO_NATIVE_RUN=1` keeps
-//             the legacy opt-in throw. Spawns `bun omo-invoker-worker.ts`
-//             (same directory as this module; bun-only, never imported by
-//             plain-Node consumers) which imports the engine run barrel
-//             in-process. Contains run()'s stdio/env/telemetry globals in
-//             the worker. Same handle shape (wait/cancel/writer).
+//   run path (one, converged): every invoke spawns `bun
+//             omo-invoker-worker.ts` (same directory as this module;
+//             bun-only, never imported by plain-Node consumers) with one
+//             stdin job and reads the wrapper line protocol back
+//             (`omo.dag.updated` + `omo.task.updated` event lines, one
+//             `--json` result line). The worker serves both job kinds: a
+//             wrapper-kind job makes the worker spawn `<entry>` with the
+//             wrapper argv and relay its stdio byte-verbatim; a native-kind
+//             job makes the worker import the engine run barrel in-process,
+//             containing run()'s stdio/env/telemetry globals there. Same
+//             handle shape (wait/cancel/writer) for both kinds.
+//   kind gate -> `checkNativeParity` is PINNED as the job-kind selector
+//             (omo-full-integration T9 default kept, never retired):
+//             bun/worker/engine/wrapper resolvability still varies by
+//             machine, so per-call `native`, `OMO_NATIVE_RUN`, and the
+//             parity-gated default still select the kind — `false`/`0` the
+//             wrapper kind (ship-gate IS-4: the wrapper fallback stays, the
+//             rollback stays live), `true`/`1` the native kind or the exact
+//             `OMO_NATIVE_UNAVAILABLE` throw, a failing default gate the
+//             exact degraded message, never a silent downgrade. Cost of the
+//             single spawn: both kinds need the bun runtime, so a bun-less
+//             machine answers the exact degraded message with zero spawns.
 //
 // Transport note: the `senpi:extension-rpc-event` bus string from the proto
 // doc has zero hits in the checked-out engine sources (only
@@ -42,6 +53,7 @@ import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from 'node:child_proce
 import { existsSync as nodeExistsSync, readFileSync as nodeReadFileSync } from 'node:fs';
 import { dirname as nodeDirname, join as nodeJoinPath } from 'node:path';
 import { fileURLToPath as nodeFileURLToPath } from 'node:url';
+import { probeToolkit, OMO_TOOLKIT_PROBE_TIMEOUT_MS } from './omo-toolkit-probe.js';
 
 export const OMO_BRIDGE_EVENT_DAG_UPDATED = 'omo.dag.updated';
 export const OMO_BRIDGE_EVENT_TASK_UPDATED = 'omo.task.updated';
@@ -445,6 +457,39 @@ export const resolveNativeRunner = ({
   };
 };
 
+// Shared degraded text for an unresolvable bun runtime. Byte-identical to
+// the parity gate's answers by construction: both call sites use this, so
+// the "exact degraded message" contract cannot drift between the gate and
+// the pre-spawn check.
+export const bunUnavailableMessage = (bun) => (bun.source === 'env'
+  ? `Native runner unavailable: ${OMO_BUN_PATH_ENV} points at "${bun.path}" which does not resolve. The wrapper path is kept; fix ${OMO_BUN_PATH_ENV} or install bun on PATH to run natively.`
+  : `Native runner unavailable: bun was not found on PATH and ${OMO_BUN_PATH_ENV} is unset. The wrapper path is kept; install bun or set ${OMO_BUN_PATH_ENV} to run natively.`);
+
+// Resolve the worker-spawn half of a run: bun path plus worker file. The
+// engine barrel is NOT resolved here — wrapper-kind jobs carry their own
+// wrapper entry and never touch the engine tree, so a wrapper-only machine
+// (no engine checkout) still resolves. Throws OMO_NATIVE_UNAVAILABLE with
+// the exact gate message before any spawn.
+export const resolveWorkerRunner = ({
+  env = process.env,
+  existsSync = nodeExistsSync,
+  workerEntry,
+  packageCwd,
+  resourcesPath,
+} = {}) => {
+  const worker = resolveWorkerEntry({
+    workerEntry, existsSync, packageCwd, resourcesPath,
+  });
+  if (!worker.found) {
+    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native runner unavailable: native worker missing at "${worker.path}". The wrapper path is kept.`);
+  }
+  const bun = resolveBunCommand({ env, existsSync });
+  if (!bun.found) {
+    throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', bunUnavailableMessage(bun));
+  }
+  return { workerEntry: worker.path, bunPath: bun.path };
+};
+
 // Native parity gate (omo-full-integration T1, GAP-1 data half).
 //
 // `checkNativeParity` answers whether this machine can take the native path
@@ -557,10 +602,9 @@ export const checkNativeParity = ({
     barrelFound,
   };
   if (!bun.found) {
-    const message = bun.source === 'env'
-      ? `Native runner unavailable: ${OMO_BUN_PATH_ENV} points at "${bun.path}" which does not resolve. The wrapper path is kept; fix ${OMO_BUN_PATH_ENV} or install bun on PATH to run natively.`
-      : `Native runner unavailable: bun was not found on PATH and ${OMO_BUN_PATH_ENV} is unset. The wrapper path is kept; install bun or set ${OMO_BUN_PATH_ENV} to run natively.`;
-    return { ok: false, code: 'OMO_NATIVE_UNAVAILABLE', path: 'wrapper', message, details };
+    return {
+      ok: false, code: 'OMO_NATIVE_UNAVAILABLE', path: 'wrapper', message: bunUnavailableMessage(bun), details,
+    };
   }
   if (!workerFound) {
     return {
@@ -787,15 +831,18 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     isProviderReady = null,
     modelCatalog = null,
     modelRole = OMO_BRIDGE_DEFAULT_MODEL_ROLE,
-    // Native-runner seam: explicit `{ workerEntry, bunPath,
-    // engineRoot }` wins; otherwise selection is per-call `native`, then
-    // env/default. `native: false` (or `OMO_NATIVE_RUN=0`) restores the
-    // wrapper path; `native: true` (or `OMO_NATIVE_RUN=1`) resolves via
-    // resolveNativeRunner (throws OMO_NATIVE_UNAVAILABLE instead of
-    // silently downgrading). Unset/blank reads the parity gate: native on
-    // a capable machine, the exact degraded message on a failing gate.
+    // Worker-runner seam: explicit `{ workerEntry, bunPath,
+    // engineRoot }` wins; otherwise the job kind is per-call `native`,
+    // then env/default. `native: false` (or `OMO_NATIVE_RUN=0`) selects
+    // the wrapper-kind job (the worker spawns the wrapper entry and
+    // relays it); `native: true` (or `OMO_NATIVE_RUN=1`) selects the
+    // native-kind job via resolveNativeRunner (throws
+    // OMO_NATIVE_UNAVAILABLE instead of silently downgrading).
+    // Unset/blank reads the parity gate: native kind on a capable
+    // machine, the exact degraded message on a failing gate.
     // Unrecognized non-blank values fail closed. `nativeFromEnv: false`
-    // keeps the legacy wrapper default (per-call `native` still applies).
+    // keeps the legacy wrapper-kind default (per-call `native` still
+    // applies). Every kind spawns through the one worker path below.
     nativeRunner = null,
     nativeFromEnv = true,
     env = process.env,
@@ -811,12 +858,23 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
   // degraded object, never a hang. A missing entry resolves the
   // native/vendored engine first (install means use — no wrapper, no
   // download, no env): only when both fail does probe degrade.
-  const probe = async ({ timeoutMs = probeTimeoutMs, ...gateOverrides } = {}) => {
+  const probe = async ({ timeoutMs = probeTimeoutMs, includeToolkit = false, ...gateOverrides } = {}) => {
+    // Bounded outer-toolkit probe (spawn-site NO-SITE wiring point): runs
+    // only when loop-status callers opt in, never on the hot wrapper path.
+    // Short timeout, short candidate list, fails closed, never walks a drive.
+    const toolkit = includeToolkit
+      ? probeToolkit({
+        timeoutMs: Math.min(timeoutMs, OMO_TOOLKIT_PROBE_TIMEOUT_MS),
+        existsSync,
+        spawnSync,
+        env,
+      })
+      : null;
     const entry = resolveEntry();
     if (!entry || !existsSync(entry)) {
       const gate = checkGate(gateOverrides);
       if (gate.ok) {
-        return {
+        const okResult = {
           available: true,
           compatible: true,
           code: 'OMO_PROBE_OK',
@@ -824,14 +882,18 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
           native: true,
           message: null,
         };
+        if (includeToolkit) okResult.toolkit = toolkit;
+        return okResult;
       }
-      return {
+      const absentResult = {
         available: false,
         compatible: false,
         code: 'OMO_ENGINE_ABSENT',
         entry,
         message: engineAbsentMessage(entry),
       };
+      if (includeToolkit) absentResult.toolkit = toolkit;
+      return absentResult;
     }
     const runBounded = (args) => {
       try {
@@ -851,26 +913,30 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     };
     const version = runBounded(['--version']);
     if (version.spawnError) {
-      return {
+      const spawnFailedResult = {
         available: false,
         compatible: false,
         code: 'OMO_SPAWN_FAILED',
         entry,
         message: `OmO engine at "${entry}" could not be started: ${version.spawnError.message ?? version.spawnError}.`,
       };
+      if (includeToolkit) spawnFailedResult.toolkit = toolkit;
+      return spawnFailedResult;
     }
     if (version.timedOut) {
-      return {
+      const timeoutResult = {
         available: false,
         compatible: false,
         code: 'OMO_PROBE_TIMEOUT',
         entry,
         message: `OmO engine at "${entry}" did not answer --version within ${timeoutMs}ms.`,
       };
+      if (includeToolkit) timeoutResult.toolkit = toolkit;
+      return timeoutResult;
     }
     const help = runBounded(['run', '--help']);
     if (help.spawnError || help.timedOut) {
-      return {
+      const helpFailedResult = {
         available: false,
         compatible: false,
         code: help.timedOut ? 'OMO_PROBE_TIMEOUT' : 'OMO_SPAWN_FAILED',
@@ -878,10 +944,12 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
         version: firstVersionToken(version.stdout),
         message: `OmO engine at "${entry}" answered --version but not run --help within ${timeoutMs}ms.`,
       };
+      if (includeToolkit) helpFailedResult.toolkit = toolkit;
+      return helpFailedResult;
     }
     const runFlags = OMO_BRIDGE_REQUIRED_RUN_FLAGS.filter((flag) => help.stdout.includes(flag));
     const missingRunFlags = OMO_BRIDGE_REQUIRED_RUN_FLAGS.filter((flag) => !help.stdout.includes(flag));
-    return {
+    const finalResult = {
       available: true,
       compatible: missingRunFlags.length === 0,
       code: missingRunFlags.length === 0 ? 'OMO_PROBE_OK' : 'OMO_PROBE_INCOMPATIBLE',
@@ -893,21 +961,25 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
         ? null
         : `OmO engine at "${entry}" lacks run flags: ${missingRunFlags.join(', ')}.`,
     };
+    if (includeToolkit) finalResult.toolkit = toolkit;
+    return finalResult;
   };
 
-  // Spawn `run <message> --port/--attach/--session-id/--model/--json`
-  // through the selected path. A missing entry resolves the native/vendored
-  // engine BEFORE any OMO_ENGINE_ABSENT throw, so zero-config runs take
-  // the native path; the absent error throws only when both the entry and
-  // native resolution fail, and never after a spawn. Slice E gate: when the effective model maps to a known
+  // Run `run <message> --port/--attach/--session-id/--model/--json`
+  // through the one worker path. A missing entry resolves the
+  // native/vendored engine BEFORE any OMO_ENGINE_ABSENT throw, so
+  // zero-config runs take the native kind; the absent error throws only
+  // when both the entry and native resolution fail, and never after a
+  // spawn. Slice E gate: when the effective model maps to a known
   // provider and a readiness predicate is wired, an unsigned provider
   // throws OMO_PROVIDER_NOT_SIGNED_IN naming model + provider BEFORE any
   // spawn — nothing is spent. Alcore-bound runs pin `--model
   // alcore/<id>` so the spend cannot land on the engine catalog default.
-  // Path selection (T9 native default, breaking): per-call `native` wins
-  // (`true` forces native-or-throw, `false` forces the wrapper); otherwise
-  // `OMO_NATIVE_RUN=0` restores the wrapper and `OMO_NATIVE_RUN=1` forces
-  // native-or-throw; unset/blank runs the parity gate — native on a
+  // Kind selection (T9 native default, breaking; gate PINNED, not
+  // retired): per-call `native` wins (`true` forces the native kind or
+  // throws, `false` forces the wrapper kind); otherwise `OMO_NATIVE_RUN=0`
+  // selects the wrapper kind and `OMO_NATIVE_RUN=1` forces the native
+  // kind or throws; unset/blank runs the parity gate — native kind on a
   // capable machine, the exact OMO_NATIVE_UNAVAILABLE message on a
   // failing gate, never a silent downgrade. Any other non-blank value
   // fails closed before any spawn.
@@ -925,8 +997,9 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     alcoreModels: callAlcoreModels,
     isProviderReady: callIsProviderReady,
     agent,
-    // Path selection: true forces native-or-throw, false forces the
-    // wrapper, undefined defers to env/default (see the seam note above).
+    // Kind selection: true forces the native kind or throws, false forces
+    // the wrapper kind, undefined defers to env/default (see the seam
+    // note above).
     native,
   } = {}) => {
     const entry = resolveEntry();
@@ -971,17 +1044,24 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
       model: argvModel,
       agent: isNonEmptyString(agent) ? agent.trim() : undefined,
     });
-    let runner = nativeRunner ?? null;
+    // One run path: the kind below selects the WORKER JOB, never the spawn
+    // mechanism. Both kinds spawn `bun <worker>` with one stdin job; the
+    // worker executes the wrapper entry (wrapper kind) or the engine run
+    // barrel (native kind) and the shared launch tail reads both back
+    // through the same line protocol.
+    let kind;
     if (native === false) {
-      runner = null; // Per-call opt-out wins over everything: wrapper path.
-    } else if (native === true && runner === null) {
-      runner = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
-    } else if (runner === null && nativeFromEnv) {
+      kind = 'wrapper'; // Per-call opt-out wins over everything.
+    } else if (native === true) {
+      kind = 'native';
+    } else if (nativeRunner !== null) {
+      kind = 'native'; // Explicit runner wins: native kind.
+    } else if (nativeFromEnv) {
       const flag = env?.[OMO_NATIVE_RUN_ENV]?.trim?.() ?? '';
       if (flag === '0') {
-        runner = null; // Env rollback: wrapper path, kept until deletion.
+        kind = 'wrapper'; // Env rollback: wrapper kind, kept live.
       } else if (flag === '1') {
-        runner = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
+        kind = 'native';
       } else if (flag !== '') {
         throw new OmoBridgeError(
           'OMO_NATIVE_UNAVAILABLE',
@@ -997,37 +1077,66 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
           }
           throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', gate.message, { entry });
         }
-        runner = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
+        kind = 'native';
       }
+    } else {
+      kind = 'wrapper'; // Legacy default without env steering.
     }
-    if (runner === null && entryMissing) {
+    if (kind === 'wrapper' && entryMissing) {
       throw new OmoBridgeError('OMO_ENGINE_ABSENT', engineAbsentMessage(entry), { entry });
     }
-    if (runner !== null) {
-      return invokeNative({
-        runner, entry, argv, message, port, attachUrl, sessionId,
-        agent: isNonEmptyString(agent) ? agent.trim() : undefined,
-        model: argvModel,
-        onEvent, explicitSnapshotPath,
-      });
-    }
-    let child;
-    try {
-      child = spawn(entry, argv, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
-    } catch (error) {
-      throw new OmoBridgeError('OMO_SPAWN_FAILED', `OmO engine at "${entry}" could not be started: ${error.message ?? error}.`, { entry });
-    }
-    return launchHandle({
-      child, entry, argv, sessionId, onEvent, explicitSnapshotPath, native: false,
+    return invokeViaWorker({
+      kind,
+      runner: resolveKindRunner({ kind, entry }),
+      entry,
+      argv,
+      message,
+      port,
+      attachUrl,
+      sessionId,
+      agent: isNonEmptyString(agent) ? agent.trim() : undefined,
+      model: argvModel,
+      onEvent,
+      explicitSnapshotPath,
     });
   };
 
+  // Resolve the spawn config for one job kind, or throw the exact
+  // degraded message before any spawn. The native kind needs the full
+  // runner (bun, worker, engine root, barrel); the wrapper kind needs bun
+  // plus the worker only — the wrapper entry travels inside the job, so
+  // no engine checkout is required. An explicit `nativeRunner` is trusted
+  // as given for either kind (its bun/worker carry both).
+  const resolveKindRunner = ({ kind, entry }) => {
+    if (nativeRunner !== null) {
+      return {
+        workerEntry: nativeRunner.workerEntry,
+        bunPath: nativeRunner.bunPath,
+        engineRoot: nativeRunner.engineRoot,
+        barrelPath: nativeRunner.barrelPath,
+      };
+    }
+    if (kind === 'wrapper') {
+      return resolveWorkerRunner({ env, existsSync });
+    }
+    const full = resolveNativeRunner({ wrapperEntry: entry, env, existsSync });
+    // resolveNativeRunner trusts the bun default blindly; fail closed here
+    // with the exact gate message when no bun runtime resolves.
+    const bun = resolveBunCommand({ env, existsSync });
+    if (!bun.found) {
+      throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', bunUnavailableMessage(bun), { entry });
+    }
+    return {
+      workerEntry: full.workerEntry,
+      bunPath: full.bunPath,
+      engineRoot: full.engineRoot,
+      barrelPath: full.barrelPath,
+    };
+  };
+
   // Shared launch tail: snapshot writer + stdout pump + wait + cancel.
-  // Both spawn paths (wrapper CLI, native bun worker) funnel through here
-  // so the handle shape and event semantics stay identical.
+  // The single worker spawn funnels through here for both job kinds, so
+  // the handle shape and event semantics stay identical.
   const launchHandle = ({
     child, entry, argv, sessionId, onEvent, explicitSnapshotPath, native,
   }) => {
@@ -1099,14 +1208,21 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     };
   };
 
-  // Native path: spawn the bun worker (engine run() isolated in its own
-  // process), hand it the job on stdin, and funnel stdio through the
-  // shared launch tail. Same handle shape as the wrapper path.
-  const invokeNative = ({
-    runner, entry, argv, message, port, attachUrl, sessionId, agent, model, onEvent, explicitSnapshotPath,
+  // The one run path: spawn the bun worker (engine work isolated in its
+  // own process), hand it one stdin job, and funnel stdio through the
+  // shared launch tail. A wrapper-kind job carries the wrapper entry plus
+  // argv for the worker to spawn and relay; a native-kind job carries the
+  // engine root so the worker imports the run barrel in-process. Cancel
+  // kills the worker, which forwards the signal to the wrapper child it
+  // owns, so no engine process outlives the handle on either kind.
+  const invokeViaWorker = ({
+    kind, runner, entry, argv, message, port, attachUrl, sessionId, agent, model, onEvent, explicitSnapshotPath,
   }) => {
-    const workerArgv = [runner.workerEntry, '--engine-root', runner.engineRoot];
-    if (runner.barrelPath !== undefined) workerArgv.push('--barrel-path', runner.barrelPath);
+    const workerArgv = [runner.workerEntry];
+    if (kind === 'native') {
+      workerArgv.push('--engine-root', runner.engineRoot);
+      if (runner.barrelPath !== undefined) workerArgv.push('--barrel-path', runner.barrelPath);
+    }
     let child;
     try {
       child = spawn(runner.bunPath, workerArgv, {
@@ -1114,14 +1230,18 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
         windowsHide: true,
       });
     } catch (error) {
-      throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native bun worker could not start via "${runner.bunPath}": ${error.message ?? error}. Install bun or set ${OMO_BUN_PATH_ENV}.`, { entry });
+      throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Omo run worker could not start via "${runner.bunPath}": ${error.message ?? error}. Install bun or set ${OMO_BUN_PATH_ENV}.`, { entry });
     }
-    const job = { message };
+    const job = { kind, message };
     if (agent !== undefined) job.agent = agent;
     if (model !== undefined) job.model = model;
     if (port !== undefined) job.port = port;
     if (attachUrl !== undefined) job.attach = attachUrl;
     if (sessionId !== undefined) job.sessionId = sessionId;
+    if (kind === 'wrapper') {
+      job.wrapperEntry = entry;
+      job.wrapperArgv = argv;
+    }
     try {
       child.stdin?.write(`${JSON.stringify(job)}\n`);
       child.stdin?.end();
@@ -1131,17 +1251,19 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
       } catch {
         // Already dead; the error below still reports the cause.
       }
-      throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native bun worker rejected the job: ${error.message ?? error}.`, { entry });
+      throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Omo run worker rejected the job: ${error.message ?? error}.`, { entry });
     }
     return launchHandle({
-      child, entry, argv, sessionId, onEvent, explicitSnapshotPath, native: true,
+      child, entry, argv, sessionId, onEvent, explicitSnapshotPath, native: kind === 'native',
     });
   };
 
   // Parity gate bound to this runtime's deps (wrapper entry, env,
   // existsSync). Data only — calling it never spawns; per-call overrides
-  // win for fixtures. `invoke` consults it on the default path (no
-  // per-call `native`, no recognized `OMO_NATIVE_RUN` value).
+  // win for fixtures. PINNED, not retired: `invoke` consults it on the
+  // default path (no per-call `native`, no recognized `OMO_NATIVE_RUN`
+  // value) to select the job kind — native on a capable machine, the
+  // exact degraded message on a failing gate, never a silent downgrade.
   const checkGate = (overrides = {}) => checkNativeParity({
     wrapperEntry: resolveEntry(),
     env,
@@ -1165,11 +1287,20 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
 // connection's cleanup; SIGINT maps to exit 130), but whether closing the
 // server handle terminates the spawned engine OS process or only releases
 // the client is NOT decidable from the vendored SDK, so this bridge kills
-// the wrapper child it owns directly: SIGTERM with the caller's reason
+// the worker child it owns directly: SIGTERM with the caller's reason
 // recorded, SIGKILL after a bounded grace, and a receipt describing what
-// happened. Revisit when the engine confirms process-kill semantics.
+// happened. The worker forwards the signal to the wrapper child it owns;
+// on Windows signals never reach traps (TerminateProcess), so the worker
+// tree is felled best-effort (taskkill /T /F, like lifecycle.js) and no
+// wrapper grandchild orphans. Revisit when the engine confirms
+// process-kill semantics.
 export const cancelRun = (handle, reason, dependencies = {}) => {
-  const { timers = createDefaultTimers(), cancelGraceMs = OMO_BRIDGE_CANCEL_GRACE_MS } = dependencies;
+  const {
+    timers = createDefaultTimers(),
+    cancelGraceMs = OMO_BRIDGE_CANCEL_GRACE_MS,
+    spawnSync = nodeSpawnSync,
+    platform = process.platform,
+  } = dependencies;
   const child = handle?.child;
   if (!child || !child.kill) {
     throw new OmoBridgeError('OMO_CANCEL_NO_CHILD', 'Nothing to cancel: the run handle carries no live child.');
@@ -1179,6 +1310,22 @@ export const cancelRun = (handle, reason, dependencies = {}) => {
   const isDead = () => (child.exitCode !== null && child.exitCode !== undefined)
     || (child.signalCode !== null && child.signalCode !== undefined);
   const cause = isNonEmptyString(reason) ? reason : 'cancel requested';
+  // Windows delivers SIGTERM as TerminateProcess: worker traps never run,
+  // so the signal-forwarding worker cannot reap its wrapper child there.
+  // Fell the whole worker tree best-effort; the SIGTERM close below still
+  // settles the receipt, and a dead pid answers an ignored error here.
+  const killWorkerTree = () => {
+    if (platform !== 'win32' || !Number.isInteger(child.pid)) return;
+    try {
+      spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+        timeout: 5000,
+      });
+    } catch {
+      // Best-effort only: already dead, or taskkill itself missing.
+    }
+  };
   if (isDead()) {
     return Promise.resolve({
       provisional: true,
@@ -1216,6 +1363,7 @@ export const cancelRun = (handle, reason, dependencies = {}) => {
     });
     try {
       child.kill('SIGTERM');
+      killWorkerTree();
     } catch {
       timers.clear(grace);
       resolve({

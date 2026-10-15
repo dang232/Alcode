@@ -20,6 +20,9 @@ Every subcommand below is implemented. Pass `--json` where supported for machine
 | `omo-agent-toolkit ulw-loop criteria` | Inspect one goal's success criteria. |
 | `omo-agent-toolkit ulw-loop record-evidence` | Record observable evidence for one criterion. |
 | `omo-agent-toolkit ulw-loop record-review-blockers` | Mark a goal as review-blocked and add follow-up work from final-review findings. |
+| `omo-agent-toolkit ulw-loop dispatch` | Open one dispatch attempt per pending goal and print a per-goal worker handoff; already-open goals are skipped. |
+| `omo-agent-toolkit ulw-loop record-child-result` | Record a dispatched goal’s child result by artifact reference; completes the goal. |
+| `omo-agent-toolkit ulw-loop record-child-failure` | Record a dispatched goal’s child failure with reason; the goal fails (retryable unless told otherwise). |
 
 The final quality gate parsed by `checkpoint` requires `manualQa`, `gateReview`, `iteration`, and `criteriaCoverage`; lazycodex accepts optional `codeReview`. Lazycodex defaults to `main-session` self-review, with `category:*` and reviewer acceptors available when needed. `criteriaCoverage` records the original intent, desired outcome, user-facing outcome review, pass counts, and covered adversarial classes. The companion `codex-goal-json` must contain `goal.objective` equal to the plan's `codexObjective` verbatim.
 

@@ -8,6 +8,9 @@
 // English placeholder inside another locale's dictionary.
 
 export type DagPaneStrings = {
+  live: string;
+  history: string;
+  historyEmpty: string;
   title: string;
   refresh: string;
   steer: string;
@@ -27,6 +30,9 @@ export type DagPaneStrings = {
 
 const en: DagPaneStrings = {
   title: 'DAG runs',
+  live: 'Live',
+  history: 'History',
+  historyEmpty: 'No past runs',
   refresh: 'Refresh',
   steer: 'Steer',
   cancel: 'Cancel',
@@ -45,6 +51,9 @@ const en: DagPaneStrings = {
 
 const de: DagPaneStrings = {
   title: 'DAG-Läufe',
+  live: 'Live',
+  history: 'Verlauf',
+  historyEmpty: 'Keine früheren Läufe',
   refresh: 'Aktualisieren',
   steer: 'Steuern',
   cancel: 'Abbrechen',
@@ -63,6 +72,9 @@ const de: DagPaneStrings = {
 
 const es: DagPaneStrings = {
   title: 'Ejecuciones DAG',
+  live: 'En vivo',
+  history: 'Historial',
+  historyEmpty: 'Sin ejecuciones anteriores',
   refresh: 'Actualizar',
   steer: 'Dirigir',
   cancel: 'Cancelar',
@@ -81,6 +93,9 @@ const es: DagPaneStrings = {
 
 const fr: DagPaneStrings = {
   title: 'Exécutions DAG',
+  live: 'En direct',
+  history: 'Historique',
+  historyEmpty: 'Aucune exécution passée',
   refresh: 'Actualiser',
   steer: 'Piloter',
   cancel: 'Annuler',
@@ -99,6 +114,9 @@ const fr: DagPaneStrings = {
 
 const ja: DagPaneStrings = {
   title: 'DAG実行',
+  live: '実行中',
+  history: '履歴',
+  historyEmpty: '過去の実行はありません',
   refresh: '更新',
   steer: '誘導',
   cancel: 'キャンセル',
@@ -117,6 +135,9 @@ const ja: DagPaneStrings = {
 
 const ko: DagPaneStrings = {
   title: 'DAG 실행',
+  live: '실행 중',
+  history: '기록',
+  historyEmpty: '이전 실행 없음',
   refresh: '새로 고침',
   steer: '조정',
   cancel: '취소',
@@ -135,6 +156,9 @@ const ko: DagPaneStrings = {
 
 const nl: DagPaneStrings = {
   title: 'DAG-uitvoeringen',
+  live: 'Live',
+  history: 'Geschiedenis',
+  historyEmpty: 'Geen eerdere runs',
   refresh: 'Vernieuwen',
   steer: 'Bijsturen',
   cancel: 'Annuleren',
@@ -153,6 +177,9 @@ const nl: DagPaneStrings = {
 
 const pl: DagPaneStrings = {
   title: 'Uruchomienia DAG',
+  live: 'Na żywo',
+  history: 'Historia',
+  historyEmpty: 'Brak wcześniejszych uruchomień',
   refresh: 'Odśwież',
   steer: 'Steruj',
   cancel: 'Anuluj',
@@ -171,6 +198,9 @@ const pl: DagPaneStrings = {
 
 const ptBr: DagPaneStrings = {
   title: 'Execuções DAG',
+  live: 'Ao vivo',
+  history: 'Histórico',
+  historyEmpty: 'Nenhuma execução anterior',
   refresh: 'Atualizar',
   steer: 'Direcionar',
   cancel: 'Cancelar',
@@ -189,6 +219,9 @@ const ptBr: DagPaneStrings = {
 
 const tr: DagPaneStrings = {
   title: 'DAG çalıştırmaları',
+  live: 'Canlı',
+  history: 'Geçmiş',
+  historyEmpty: 'Önceki çalıştırma yok',
   refresh: 'Yenile',
   steer: 'Yönlendir',
   cancel: 'İptal',
@@ -207,6 +240,9 @@ const tr: DagPaneStrings = {
 
 const uk: DagPaneStrings = {
   title: 'Запуски DAG',
+  live: 'Наживо',
+  history: 'Історія',
+  historyEmpty: 'Немає минулих запусків',
   refresh: 'Оновити',
   steer: 'Скерувати',
   cancel: 'Скасувати',
@@ -225,6 +261,9 @@ const uk: DagPaneStrings = {
 
 const zhCn: DagPaneStrings = {
   title: 'DAG 运行',
+  live: '运行中',
+  history: '历史',
+  historyEmpty: '暂无历史运行',
   refresh: '刷新',
   steer: '引导',
   cancel: '取消',
@@ -243,6 +282,9 @@ const zhCn: DagPaneStrings = {
 
 const zhTw: DagPaneStrings = {
   title: 'DAG 執行',
+  live: '執行中',
+  history: '歷史',
+  historyEmpty: '尚無歷史執行',
   refresh: '重新整理',
   steer: '引導',
   cancel: '取消',

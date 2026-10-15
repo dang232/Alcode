@@ -350,6 +350,16 @@ export const hostMessageSchema = z.union([
   }),
   z.object({
     ...envelope,
+    type: z.literal('run-model'),
+    payload: z.object({
+      conversationId: z.string().min(1),
+      // The snapshot document itself is validated by the panel's parser,
+      // not the transport: anything JSON-clonable crosses here.
+      snapshot: z.unknown().nullable(),
+    }),
+  }),
+  z.object({
+    ...envelope,
     type: z.literal('connection'),
     payload: z.object({
       connection: guestConnectionSchema,

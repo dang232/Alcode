@@ -9,6 +9,7 @@ import {
 import { acknowledgeDriverObjective } from "./driver-objective-ack.js";
 import { requireAllCriteriaPass, requireAllPlanCriteriaPass, requireEssentialCriteriaPass } from "./evidence.js";
 import { codexGoalMode, isFinalRunCompletionCandidate } from "./goal-status.js";
+import { readLedger } from "./ledger.js";
 import type { UlwLoopScope } from "./paths.js";
 import { ulwLoopAttemptEvidenceDir } from "./paths.js";
 import { commit } from "./plan-commit.js";
@@ -50,6 +51,32 @@ export interface CheckpointUlwLoopResult {
 }
 
 const QUALITY_GATE_FS = { existsSync, statSync } as const;
+
+function openDispatchedGoalIds(entries: readonly UlwLoopLedgerEntry[]): string[] {
+	const open = new Set<string>();
+	for (const entry of entries) {
+		if (entry.goalId === undefined) continue;
+		if (entry.kind === "goal_dispatched") open.add(entry.goalId);
+		else if (entry.kind === "child_completed" || entry.kind === "child_failed") open.delete(entry.goalId);
+	}
+	return [...open];
+}
+
+function requireSettledDispatch(
+	repoRoot: string,
+	scope: UlwLoopScope | undefined,
+	goalIds: readonly string[],
+): void {
+	if (goalIds.length === 0) return;
+	const open = openDispatchedGoalIds(readLedger(repoRoot, scope)).filter((goalId) => goalIds.includes(goalId));
+	if (open.length > 0) {
+		throw new UlwLoopError(
+			`Cannot complete while dispatched children have no recorded result: ${open.join(", ")}. Record each child result first.`,
+			"ULW_LOOP_DISPATCHED_CHILDREN_PENDING",
+			{ details: { goalIds: open } },
+		);
+	}
+}
 
 function ulwLoopFail(message: string, code: string): never {
 	throw new UlwLoopError(message, code);
@@ -161,6 +188,7 @@ export async function checkpointUlwLoop(
 	return withUlwLoopMutationLock(repoRoot, scope, async () => {
 		const plan = await readUlwLoopPlan(repoRoot, scope);
 		const goal = findGoal(plan, args.goalId);
+		requireSettledDispatch(repoRoot, scope, [goal.id]);
 		const evidence = nonEmptyEvidence(args.evidence);
 		const now = iso();
 		let aggregateCompletion: UlwLoopAggregateCompletion | undefined;

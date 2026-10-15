@@ -3,7 +3,10 @@ import {
   DEFAULT_POSTHOG_HOST,
   type TelemetryProductConfig,
 } from "../../../telemetry-core/src/index.ts"
-import packageJson from "../../../../package.json" with { type: "json" }
+// Vendor relocation: upstream resolves the monorepo-root manifest with four
+// levels; the vendored closure root (packages/omo-engine/package.json) is
+// three levels up. Re-apply on re-vendor.
+import packageJson from "../../../package.json" with { type: "json" }
 import { CACHE_DIR_NAME, PLUGIN_NAME, PUBLISHED_PACKAGE_NAME } from "./plugin-identity"
 
 export function createOpencodeTelemetryProductConfig(): TelemetryProductConfig {

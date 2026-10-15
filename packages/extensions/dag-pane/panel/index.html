@@ -36,6 +36,17 @@
   .dag-steer-buttons { display: flex; gap: 8px; }
   .dag-wrapper-row { display: block; }
   .dag-wrapper-field { max-width: 480px; }
+  .dag-history-box { border-top: 1px solid var(--oc-border); padding-top: 12px; }
+  .dag-history-box summary { cursor: pointer; font-weight: 600; }
+  .dag-history-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .dag-history-row { display: flex; align-items: center; gap: 8px; }
+  .dag-history-label { flex: 1 1 auto; overflow-wrap: anywhere; }
+  .dag-history-time { color: var(--oc-muted); font-size: 12px; white-space: nowrap; }
+  .dag-history-empty, .dag-history-error { color: var(--oc-muted); }
+  .dag-follow-head { display: flex; align-items: center; gap: 8px; }
+  .dag-follow-title { font-weight: 600; overflow-wrap: anywhere; }
+  .dag-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--oc-border); flex: none; }
+  .dag-live-on { background: var(--oc-success); }
 </style>
 </head>
 <body>

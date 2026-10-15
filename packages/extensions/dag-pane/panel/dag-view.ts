@@ -272,3 +272,32 @@ export const parseSnapshotDoc = (raw: JsonValue | undefined): DagSnapshotOutcome
   }
   return { ok: true, view: { sessionId, updatedAt, runs: [], tasks } };
 };
+
+// Per-session selection: the host chat session owns the view (one session,
+// one DAG). The host id wins even when it has no runs yet (unlisted): that
+// session's view is correctly empty. With no host session there is no view
+// to own, so selection stays empty instead of borrowing a foreign DAG.
+// The dropdown stays a manual override; polls must not disturb it.
+export const resolveSelectedSession = ({ hostSessionId, current, sessions }: {
+  hostSessionId: string | null;
+  current: string | null;
+  sessions: readonly string[];
+}): string | null => {
+  if (hostSessionId !== null) {
+    return hostSessionId;
+  }
+  if (current !== null && sessions.includes(current)) {
+    return current;
+  }
+  return null;
+};
+
+// Run-model retention across conversation switches: the host posts the run
+// model from its own effect, so a post can arrive before onSession binds its
+// conversation. The panel holds the stored post and paints it only when its
+// conversation is the active one, so an early post survives the bind; a
+// switch to a different conversation still clears a stale post.
+export const keepStoredRunModel = (
+  storedConversationId: string | null,
+  sessionId: string | null,
+): boolean => storedConversationId !== null && storedConversationId === sessionId;

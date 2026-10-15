@@ -395,6 +395,15 @@ describe('routeMessage bare ulw capture', () => {
     expect(sendMessageCalls).toHaveLength(0);
   });
 
+  test('routes ulw with a colon separator to the ulw command', async () => {
+    const decision = await send('ulw: test hello');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'test hello' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
   test('routes bare ulw without arguments to the ulw command', async () => {
     const decision = await send('ulw');
 
@@ -462,6 +471,141 @@ describe('routeMessage bare ulw capture', () => {
     expect(decision).toBe('shell');
     expect(shellCalls).toHaveLength(1);
     expect(shellCalls[0].command).toBe('ulw x');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+});
+
+describe('routeMessage unresolved ulw fallback', () => {
+  // The session directory defines no /ulw template (the normal case outside
+  // this checkout): the send stays a prompt, but the bundled workflow
+  // definition rides along as context so the model runs the loop instead
+  // of reporting it missing.
+  const sendCommandCalls = [];
+  const sendMessageCalls = [];
+  let originalSendCommand;
+  let originalSendMessage;
+  let originalListCommands;
+  let originalLoadSkills;
+
+  beforeEach(() => {
+    sendCommandCalls.length = 0;
+    sendMessageCalls.length = 0;
+
+    const childStore = {
+      getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
+      setState: () => {},
+    };
+    const childStores = {
+      children: new Map(),
+      ensureChild: () => childStore,
+      getChild: () => childStore,
+    };
+    setActionRefs(childStores, () => '/ elsewhere/project');
+    setOptimisticRefs(() => {}, () => {});
+    useConfigStore.setState({ isConnected: true });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {} });
+
+    originalSendCommand = opencodeClient.sendCommand;
+    originalSendMessage = opencodeClient.sendMessage;
+    originalListCommands = opencodeClient.listCommands;
+    originalLoadSkills = useSkillsStore.getState().loadSkills;
+    useSkillsStore.setState({ loadSkills: async () => true });
+    opencodeClient.listCommands = async () => [];
+    opencodeClient.sendCommand = async (params) => {
+      sendCommandCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.sendMessage = async (params) => {
+      sendMessageCalls.push(params);
+      return 'msg';
+    };
+  });
+
+  afterEach(() => {
+    opencodeClient.sendCommand = originalSendCommand;
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.listCommands = originalListCommands;
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+  });
+
+  const send = (content) => routeMessage({
+    sessionId: 'session-elsewhere',
+    directory: '/elsewhere/project',
+    content,
+    providerID: 'provider-a',
+    modelID: 'model-a',
+  });
+
+  // Machine-consumed contract tokens the engine CLI reads — not prose.
+  const appendixOf = () => {
+    expect(sendMessageCalls).toHaveLength(1);
+    const context = sendMessageCalls[0].context ?? [];
+    return context.map((item) => item.text).join('\n');
+  };
+
+  test('unresolved /ulw sends a prompt driving the engine CLI', async () => {
+    const decision = await send('/ulw analyze this repo');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls[0].text).toBe('/ulw analyze this repo');
+    const appendix = appendixOf();
+    expect(appendix).toContain('omo-agent-toolkit');
+    expect(appendix).toContain('create-goals');
+    expect(appendix).toContain('--session-id "session-elsewhere"');
+    expect(appendix).toContain('status --json');
+    expect(appendix).toContain('complete-goals');
+    expect(appendix).toContain('hand-write');
+  });
+
+  test('bare ulw without a template gets the same appendix', async () => {
+    const decision = await send('ulw analyze this repo');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    const appendix = appendixOf();
+    expect(appendix).toContain('omo-agent-toolkit');
+    expect(appendix).toContain('--session-id "session-elsewhere"');
+    expect(appendix).toContain('checkpoint');
+  });
+
+  test('bare ulw with a colon separator gets the same appendix', async () => {
+    const decision = await send('ulw: analyze this repo');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    const appendix = appendixOf();
+    expect(appendix).toContain('omo-agent-toolkit');
+    expect(appendix).toContain('--session-id "session-elsewhere"');
+    expect(appendix).toContain('checkpoint');
+  });
+
+  test('plain prompts carry no appendix', async () => {
+    const decision = await send('hello there');
+
+    expect(decision).toBe('prompt');
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('hello there');
+    const context = sendMessageCalls[0].context ?? [];
+    expect(context.map((item) => item.text).join('\n')).not.toContain('omo-agent-toolkit');
+  });
+
+  test('an unresolved non-ulw command still sends raw without appendix', async () => {
+    const decision = await send('/nope test');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls[0].text).toBe('/nope test');
+    const context = sendMessageCalls[0].context ?? [];
+    expect(context.map((item) => item.text).join('\n')).not.toContain('omo-agent-toolkit');
+  });
+
+  test('a failed skills load still fails the ulw send instead of guessing', async () => {
+    useSkillsStore.setState({ loadSkills: async () => false });
+    await expect(send('/ulw go')).rejects.toThrow();
     expect(sendCommandCalls).toHaveLength(0);
     expect(sendMessageCalls).toHaveLength(0);
   });

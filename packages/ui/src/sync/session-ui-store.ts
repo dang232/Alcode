@@ -33,6 +33,7 @@ import { selectSkillsForDirectory, useSkillsStore } from "@/stores/useSkillsStor
 import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
 import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
+import { ULW_COMMAND_NAME, ulwWorkflowInstruction } from "@/lib/ulwWorkflow"
 import { dagRouteSample, recordDagRouteDecision, type DagRouteDecision, type DagRouteReport } from "@/lib/dagRouteLog"
 import { normalizePath } from "@/lib/pathNormalization"
 import { CHAT_DRAFT_PROJECT_ID, createChatDirectory, deleteChatDirectory, getChatsRootFromDirectory, isChatDirectoryPath, warmChatsRootDirectory } from "@/lib/chatDirectories"
@@ -220,6 +221,10 @@ export async function routeMessage(params: {
   }
 
   let skills = params.skills
+  // Unresolved /ulw keeps the send alive as a prompt: the workflow appendix
+  // below carries the definition nothing resolved, so the model runs the
+  // loop instead of reporting it missing. Set only on that path.
+  let ulwFallbackArgs: string | null = null
   // A leading word-bound `ulw` takes the /ulw command route, so the bare
   // trigger runs the same template, context, and skill plumbing as the slash
   // form. Mid-sentence mentions stay plain chat; shell input diverted above.
@@ -244,7 +249,12 @@ export async function routeMessage(params: {
   // Slash commands use the command route; skills attach to a normal prompt.
   if (content.startsWith("/")) {
     const [head, ...tail] = content.split(" ")
-    const cmdName = head.slice(1)
+    // A bare `ulw: ...` send rewrites to `/ulw: ...`, so the head carries
+    // the separator: strip trailing command punctuation before matching,
+    // or the name never equals a command/skill and the send degrades to a
+    // plain prompt with no workflow instruction (live: model picked the
+    // external orca CLI instead of the managed loop).
+    const cmdName = head.slice(1).replace(/[:;,.!?]+$/, '')
 
     // Commands and skills are resolved for the session's own directory. A
     // project root and one of its worktrees can define different commands
@@ -278,6 +288,15 @@ export async function routeMessage(params: {
         matchedSkill = selectSkillsForDirectory(useSkillsStore.getState(), requestDirectory)
           .find((s) => s.name === cmdName)
       }
+    }
+
+    if (!matchedCommand && !matchedSkill && cmdName === ULW_COMMAND_NAME) {
+      // The session directory defines no /ulw template (the normal case
+      // outside this checkout), and OpenChamber sends never pass the Codex
+      // hook pipeline that would append the workflow. Fall through to the
+      // normal prompt with the bundled definition attached as context —
+      // the same channel the command route uses for skill instructions.
+      ulwFallbackArgs = tail.join(" ")
     }
 
     if (matchedCommand) {
@@ -325,7 +344,9 @@ export async function routeMessage(params: {
     content: params.content,
     directory: requestDirectory,
     files: sendFiles,
-    context: contextItems,
+    context: ulwFallbackArgs === null
+      ? contextItems
+      : [...contextItems, { text: ulwWorkflowInstruction(params.sessionId) }],
     appendSubmissions: params.appendSubmissions,
     send: (messageID, context) => opencodeClient.sendMessage({
       runtimeKey: params.runtimeKey,
@@ -343,7 +364,11 @@ export async function routeMessage(params: {
       skills,
     }).then(() => {}),
   })
-  reportRoute()
+  if (ulwFallbackArgs === null) {
+    reportRoute()
+  } else {
+    reportRoute(ULW_COMMAND_NAME, ulwFallbackArgs)
+  }
   return 'prompt'
 }
 

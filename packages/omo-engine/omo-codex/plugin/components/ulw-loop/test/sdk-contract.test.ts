@@ -13,7 +13,7 @@ import {
 } from "../src/sdk.js";
 
 describe("agent toolkit SDK contract", () => {
-	it("exposes exactly the ten existing operations in its manifest", () => {
+	it("exposes exactly the thirteen existing operations in its manifest", () => {
 		expect(ULW_LOOP_OPERATIONS).toEqual([
 			"help",
 			"create-goals",
@@ -24,6 +24,9 @@ describe("agent toolkit SDK contract", () => {
 			"add-goal",
 			"criteria",
 			"record-evidence",
+			"dispatch",
+			"record-child-result",
+			"record-child-failure",
 			"record-review-blockers",
 		]);
 		expect(ULW_LOOP_MANIFEST.operations.map((operation) => operation.name)).toEqual(ULW_LOOP_OPERATIONS);
@@ -127,8 +130,29 @@ describe("agent toolkit SDK contract", () => {
 				operation: "add-goal",
 				args: { title: "Extra fixture goal", objective: "Exercise add-goal" },
 			});
+			const fanout = await request({ operation: "dispatch", args: {} });
+			if (!fanout.ok || fanout.operation !== "dispatch") throw new Error("fixture did not dispatch");
+			const extra = fanout.result.handoffs.find((handoff) => handoff.goalId !== goalId);
+			if (extra === undefined) throw new Error("fixture has no dispatched extra goal");
+			await request({
+				operation: "record-child-result",
+				args: { goalId: extra.goalId, childId: "ses_fixture_child", resultRef: "a0/fixture.md" },
+			});
+			await request({
+				operation: "add-goal",
+				args: { title: "Failing fixture goal", objective: "Exercise child failure" },
+			});
+			const retry = await request({ operation: "dispatch", args: {} });
+			if (!retry.ok || retry.operation !== "dispatch") throw new Error("fixture did not dispatch again");
+			expect(retry.result.handoffs).toHaveLength(1);
+			const failing = retry.result.handoffs[0];
+			if (failing === undefined) throw new Error("fixture has no failing goal");
+			await request({
+				operation: "record-child-failure",
+				args: { goalId: failing.goalId, childId: "ses_fixture_fail", reason: "fixture probe" },
+			});
 			const operationCount = hookOperations.length;
-			expect(operationCount).toBe(10);
+			expect(operationCount).toBe(15);
 			expect(new Set(hookOperations)).toEqual(new Set(ULW_LOOP_OPERATIONS));
 		} finally {
 			await rm(cwd, { recursive: true, force: true });

@@ -8,6 +8,9 @@ export const ULW_LOOP_OPERATIONS = [
 	"add-goal",
 	"criteria",
 	"record-evidence",
+	"dispatch",
+	"record-child-result",
+	"record-child-failure",
 	"record-review-blockers",
 ] as const;
 
@@ -144,6 +147,30 @@ export const ULW_LOOP_MANIFEST = {
 				notes: "string?",
 				artifacts: "string[]?",
 			},
+		},
+		{
+			name: "dispatch",
+			method: "dispatchGoals",
+			mutating: true,
+			description:
+				"Open one dispatch attempt per pending goal (bounded by the spawn fan-out limit) and return a per-goal handoff; already-open goals are skipped, never re-dispatched.",
+			args: { goalIds: "string[]?", childRole: "string?" },
+		},
+		{
+			name: "record-child-result",
+			method: "recordChildResult",
+			mutating: true,
+			description:
+				"Record a dispatched goal's child result by artifact reference; completes the goal. The reference must be non-empty.",
+			args: { goalId: "string", childId: "string", resultRef: "string" },
+		},
+		{
+			name: "record-child-failure",
+			method: "recordChildFailure",
+			mutating: true,
+			description:
+				"Record a dispatched goal's child failure with reason; the goal fails (retryable unless --no-retry maps to retryable false).",
+			args: { goalId: "string", childId: "string", reason: "string", retryable: "boolean?" },
 		},
 		{
 			name: "record-review-blockers",

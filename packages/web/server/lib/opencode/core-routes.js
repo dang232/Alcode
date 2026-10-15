@@ -750,7 +750,7 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
   app.get('/api/engine/status', async (req, res, next) => {
     await runWithUiAuth(req, res, next, async () => {
       const bridge = createOmoBridgeRuntime();
-      const probe = await bridge.probe({ timeoutMs: 5000 });
+      const probe = await bridge.probe({ timeoutMs: 5000, includeToolkit: true });
       res.json({
         entry: probe.entry ?? null,
         builtin: resolveVendoredRoot() !== null,
