@@ -12,6 +12,7 @@ import { useUIStore } from '@/stores/useUIStore';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useMobileAutocompleteMaxHeight } from './useMobileAutocompleteMaxHeight';
 import { commandMatchesSearch, mergeCommandAutocompleteItems } from './commandAutocompleteItems';
+import { normalizeCommandSearchQuery } from './commandNamespaces';
 import { useGuestCommands } from '@/hooks/useGuestSurfaces';
 import { AutocompleteRowTooltip } from './composer/ui/AutocompleteRowTooltip';
 
@@ -40,25 +41,6 @@ const LOCAL_COMMAND_NAMES = [
   'plan-feature', 'craft-goal', 'schedule-task', 'catch-up', 'debug', 'weigh', 'explore',
 ];
 
-/**
- * Namespace prefixes accepted before a command name (`/alcode:btw`,
- * `/openchamber:btw`). The `openchamber:` twin is the pre-rename form and stays
- * resolvable; both map to the same command. Matching strips the prefix (see
- * `normalizeCommandSearchQuery`), so either spelling surfaces the command.
- */
-export const COMMAND_NAMESPACE_ALIASES = {
-  'alcode:': 'alcode:',
-  'openchamber:': 'alcode:',
-} as const;
-
-/** Strip a leading `alcode:`/`openchamber:` namespace from a typed query. */
-export const normalizeCommandSearchQuery = (query: string): string => {
-  const lower = query.toLowerCase();
-  for (const prefix of Object.keys(COMMAND_NAMESPACE_ALIASES)) {
-    if (lower.startsWith(prefix)) return query.slice(prefix.length);
-  }
-  return query;
-};
 
 export interface CommandAutocompleteHandle {
   handleKeyDown: (key: string) => void;

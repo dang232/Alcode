@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { commandMatchesSearch, mergeCommandAutocompleteItems } from '../commandAutocompleteItems';
-import { COMMAND_NAMESPACE_ALIASES, normalizeCommandSearchQuery } from '../CommandAutocomplete';
+import { COMMAND_NAMESPACE_ALIASES, normalizeCommandSearchQuery } from '../commandNamespaces';
 
 interface Item {
   name: string;

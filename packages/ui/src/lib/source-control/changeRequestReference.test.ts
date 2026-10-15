@@ -8,7 +8,7 @@ describe('change-request references', () => {
     expect(parseChangeRequestReference('https://github.com/openchamber/openchamber/pull/14')).toEqual({
       number: 14,
       identity: { provider: 'github', instance: 'github.com' },
-      project: { owner: 'dang232', name: 'alcode' },
+      project: { owner: 'openchamber', name: 'openchamber' },
     });
     expect(parseChangeRequestReference('https://gitlab.example.com/platform/tools/project/-/merge_requests/15')).toEqual({
       number: 15,

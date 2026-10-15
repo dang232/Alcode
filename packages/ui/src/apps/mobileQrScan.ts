@@ -65,7 +65,7 @@ export const parseConnectionPayload = (raw: string): MobileConnectionPayload | M
     // base64url payload in the query is case-sensitive and stays untouched.
     const normalized = trimmed
       .replace(/^openchamber:\/\//i, 'alcode://')
-      .replace(/^([a-z][a-z0-9+.\-]*:\/\/[^/?#]*)/i, (head) => head.toLowerCase());
+      .replace(/^([a-z][a-z0-9+.-]*:\/\/[^/?#]*)/i, (head) => head.toLowerCase());
     const pairing = parsePairingConnectionPayload(normalized);
     return pairing ? { pairing } : null;
   }
