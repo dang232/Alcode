@@ -235,7 +235,7 @@ describe('shared project config', () => {
       { type: 'command', name: 'both', source: 'shared' },
       { type: 'command', name: 'mine', source: 'personal' },
     ]);
-    expect(merged.shared).toEqual({ status: 'ok', path: '.openchamber/project.json', ...shared.config });
+    expect(merged.shared).toEqual({ status: 'ok', path: '.alcode/project.json', ...shared.config });
     expect(merged.personal).toBe(personal);
     expect(merged.trust).toEqual({ hash: sharedTrustHashOf(shared.config), trusted: false });
   });
@@ -464,6 +464,25 @@ describe('project setup runtime', () => {
       expect((await runtime.readProjectSetup(projectId)).trust.trusted).toBe(false);
       const reset = await runtime.updateProjectSetup(projectId, { sharedTrustHash: null });
       expect(reset.personal.sharedTrust).toBeNull();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('reads the pre-rename shared file as a fallback when the new one is absent', async () => {
+    const { runtime, tempRoot, cleanup } = await createRuntime();
+    try {
+      const repo = path.join(tempRoot, 'repo');
+      await mkdir(path.join(repo, '.openchamber'), { recursive: true });
+      await writeFile(path.join(repo, '.openchamber', 'project.json'), JSON.stringify({
+        version: 1,
+        setupWorktree: ['bun install'],
+      }));
+      const projectId = createProjectIdFromPath(repo);
+
+      const fresh = await runtime.readProjectSetup(projectId);
+      expect(fresh.shared.status).toBe('ok');
+      expect(fresh.setupWorktree).toEqual(['bun install']);
     } finally {
       await cleanup();
     }

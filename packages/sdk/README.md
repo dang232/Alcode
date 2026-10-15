@@ -42,6 +42,8 @@ Alcode never compiles your code. Build `panel/main.js` yourself. The package inc
 bunx alcode-guest-bundle panel/main.ts panel/main.js
 ```
 
+The same command is also installed as `openchamber-guest-bundle` for packages that still reference the old name.
+
 Then install the folder from Settings → Extensions → Add. Folder installs run from your folder, so edit, rebuild, and reload. A `.zip` or an https git or zip link is copied into Alcode's data folder instead; ship the built files only. Git installs can update from Settings → Extensions when the repository's `version` is newer than the installed one, so bump `version` to ship an update; `https://…/panel.git#v1` pins a tag or branch.
 
 A complete three-file example is on the [Build an extension](https://alcode.dev/docs/sdk/) page. Six examples are at [github.com/dang232/Alcode/tree/main/packages/sdk/examples](https://github.com/dang232/Alcode/tree/main/packages/sdk/examples).
@@ -90,6 +92,7 @@ Git installs also accept SSH addresses such as `git@github.com:owner/extension.g
 - `version` is required semver. Settings → Extensions shows it on the card.
 - `apiVersion` is `1`. Anything else is refused.
 - `engines.alcode` is optional (`1.24.0` or `>=1.24.0`). Older Alcode builds refuse the install.
+- Packages written before the rename may use an `openchamber` block and `engines.openchamber` instead. Both still install, and a built-in id starting with `openchamber-builtin-` loads as `alcode-builtin-`.
 - `panel.id` is kebab-case and unique. `icon` is a Remixicon name (`RiWindowLine` becomes `window`) or an SVG inside the folder. `entry` is the visible panel's HTML file. Leave `entry` out to have no rail icon or panel. Add `background.entry` for executable actions and commands; with neither entry, the extension can only declare `tools`, as in `examples/tools-only`.
 - `background: { "entry": "background/index.html" }` supplies separate sandboxed HTML for background actions and slash commands. Its scripts must be built. It runs on demand, not continuously or at installation. A panel can coexist with it.
 - `attach` is optional. `"dialog"` opens the page in a window from the + menu next to the chat box; `true` or `"panel"` opens the rail panel instead. `ctx.surface` tells the page which one it is in. The object form `{ "mode": "dialog", "entry": "panel/attach.html" }` gives the window its own page. When the user clicks the attached chip, the page opens again with that item in `ctx.item` (`null` from the + menu), so it can show the item instead of the list.

@@ -22,7 +22,7 @@ test('writes a forward-slash file: override for a Windows path into an empty man
     write(directory, {});
     pointSdkAtArchive(directory, 'C:\\Users\\dev\\alcode\\alcode-sdk-1.24.2.tgz');
     assert.deepEqual(read(directory), {
-      overrides: { '@alcode/sdk': 'file:C:/Users/dev/dang232/Alcode-sdk-1.24.2.tgz' },
+      overrides: { '@alcode/sdk': 'file:C:/Users/dev/alcode/alcode-sdk-1.24.2.tgz' },
     });
   });
 });

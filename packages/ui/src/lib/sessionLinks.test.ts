@@ -24,6 +24,12 @@ describe('parseSessionLink', () => {
         expect(parseSessionLink('alcode://session/ses_a', [])).toEqual({ sessionId: 'ses_a', messageId: null });
     });
 
+    test('reads pre-rename session links, minted new-only', () => {
+        expect(parseSessionLink('openchamber://session/ses_a?message=msg_1', [])).toEqual({ sessionId: 'ses_a', messageId: 'msg_1' });
+        expect(parseSessionLink('openchamber://session/ses_a', [])).toEqual({ sessionId: 'ses_a', messageId: null });
+        expect(parseSessionLink('openchamber://connect?v=2&p=x', [])).toBeNull();
+    });
+
     test('reads web links only on an address of this instance', () => {
         const href = 'https://chamber.example/?session=ses_a&message=msg_1';
         expect(parseSessionLink(href, ['https://chamber.example'])).toEqual({ sessionId: 'ses_a', messageId: 'msg_1' });
@@ -50,6 +56,7 @@ describe('parseSessionLink', () => {
 
     test('recognises only session deep links as keepable chat links', () => {
         expect(isSessionDeepLink('alcode://session/ses_a?message=msg_1')).toBe(true);
+        expect(isSessionDeepLink('openchamber://session/ses_a?message=msg_1')).toBe(true);
         expect(isSessionDeepLink('alcode://connect?v=2')).toBe(false);
         expect(isSessionDeepLink('https://chamber.example/?session=ses_a')).toBe(false);
     });

@@ -29,13 +29,40 @@ describe('parseConnectionPayload', () => {
     expect(payload.pairing.candidates.map((c) => c.type)).toEqual(['lan', 'relay']);
   });
 
+  test('accepts a pre-rename openchamber:// pairing link', () => {
+    const url = encodePairingConnectionPayload(buildPairingConnectionPayload({
+      pairingId: 'pair_legacy',
+      secret: 'one-time',
+      candidates: [{ type: 'lan', url: 'http://192.168.1.20:4096', priority: 10 }],
+    }));
+    const legacy = url.replace('alcode://connect', 'openchamber://connect');
+    const payload = parseConnectionPayload(legacy);
+    if (!payload || !('pairing' in payload)) throw new Error('expected a pairing payload');
+    expect(payload.pairing.pairingId).toBe('pair_legacy');
+    expect(payload.pairing.candidates).toEqual([{ type: 'lan', url: 'http://192.168.1.20:4096', priority: 10 }]);
+  });
+
+  test('accepts a case-variant legacy scheme the way old scanners emit it', () => {
+    const url = encodePairingConnectionPayload(buildPairingConnectionPayload({
+      pairingId: 'pair_legacy_case',
+      secret: 'one-time',
+      candidates: [{ type: 'lan', url: 'http://192.168.1.20:4096', priority: 10 }],
+    }));
+    const payload = parseConnectionPayload(url.replace('alcode://connect', 'OpenChamber://CONNECT'));
+    if (!payload || !('pairing' in payload)) throw new Error('expected a pairing payload');
+    expect(payload.pairing.pairingId).toBe('pair_legacy_case');
+  });
+
   test('rejects non-connection and legacy/relay-offer payloads', () => {
     expect(parseConnectionPayload('')).toBeNull();
     expect(parseConnectionPayload('hello world')).toBeNull();
     expect(parseConnectionPayload('alcode://connect')).toBeNull();
+    expect(parseConnectionPayload('openchamber://connect')).toBeNull();
     expect(parseConnectionPayload('alcode://session/abc')).toBeNull();
-    // Legacy v1 direct links are no longer accepted.
+    expect(parseConnectionPayload('openchamber://session/abc')).toBeNull();
+    // Legacy v1 direct links are no longer accepted, under either scheme.
     expect(parseConnectionPayload('alcode://connect?v=1&server=http%3A%2F%2F192.168.1.10%3A2606&token=tok')).toBeNull();
+    expect(parseConnectionPayload('openchamber://connect?v=1&server=http%3A%2F%2F192.168.1.10%3A2606&token=tok')).toBeNull();
     // Legacy relay-offer format (mode=relay + fragment) is no longer accepted.
     expect(parseConnectionPayload('alcode://connect?v=1&mode=relay#offer=eyJ2IjoxfQ')).toBeNull();
   });

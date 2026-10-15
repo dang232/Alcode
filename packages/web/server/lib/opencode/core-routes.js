@@ -234,6 +234,7 @@ export const registerServerStatusRoutes = (app, dependencies) => {
       status: 'ok',
       timestamp: new Date().toISOString(),
       alcodeVersion,
+      openchamberVersion: alcodeVersion,
       runtime: runtimeName,
       compatibility,
       ...(serverId ? { serverId } : {}),
@@ -246,6 +247,7 @@ export const registerServerStatusRoutes = (app, dependencies) => {
     res.json({
       status: 'ok',
       alcodeVersion,
+      openchamberVersion: alcodeVersion,
       runtime: runtimeName,
       startedAt: serverStartedAt,
       compatibility,
@@ -352,6 +354,7 @@ export const registerServerStatusRoutes = (app, dependencies) => {
     // reachable (port, tunnel address) is for signed-in callers only.
     const info = {
       alcodeVersion,
+      openchamberVersion: alcodeVersion,
       runtime: runtimeName,
       pid: process.pid,
       startedAt: serverStartedAt,

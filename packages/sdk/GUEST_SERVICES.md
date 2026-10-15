@@ -25,7 +25,7 @@ panel (iframe) --serviceRequest--> host --HTTP 127.0.0.1:port--> service process
 1. Package still ships `panel/index.html` and a classic IIFE `panel/main.js`.
 2. Optional `contributes.service` names a built entry the host can spawn.
 3. After the user allows the service in Settings → Extensions, the first `serviceRequest` starts that entry with the app runtime (`process.execPath` + `ELECTRON_RUN_AS_NODE` on desktop). A system `node` on PATH is not required.
-4. The host binds `127.0.0.1` on an ephemeral port and passes `ALCODE_SERVICE_PORT` and `ALCODE_SERVICE_TOKEN` in the service env. The service does not inherit the host environment: only PATH, HOME, temp, locale, and the Windows system variables are copied. API keys, the UI password, and other host secrets never reach it.
+4. The host binds `127.0.0.1` on an ephemeral port and passes `ALCODE_SERVICE_PORT` and `ALCODE_SERVICE_TOKEN` in the service env. Services also accept the legacy `OPENCHAMBER_SERVICE_PORT` and `OPENCHAMBER_SERVICE_TOKEN`; `readServiceEnv(process.env)` from `@alcode/sdk` reads both spellings. The service does not inherit the host environment: only PATH, HOME, temp, locale, and the Windows system variables are copied. API keys, the UI password, and other host secrets never reach it.
 5. The panel calls `serviceRequest({ method, path, query?, body? })`. The host proxies only to that guest's loopback listener. Same stay-on-origin rule as `request`, but the origin is the service the host started.
 6. The service talks to Docker, kubectl, or anything else. That logic stays in the package.
 
@@ -128,8 +128,8 @@ VS Code and mobile stay `unsupported` for the guest catalog. They do not spawn s
 
 Env the host sets:
 
-- `ALCODE_SERVICE_PORT` — port to bind on `127.0.0.1`
-- `ALCODE_SERVICE_TOKEN` — shared secret
+- `ALCODE_SERVICE_PORT` — port to bind on `127.0.0.1` (falls back to `OPENCHAMBER_SERVICE_PORT`)
+- `ALCODE_SERVICE_TOKEN` — shared secret (falls back to `OPENCHAMBER_SERVICE_TOKEN`)
 - `ALCODE_SERVICE_SOCKETS` — JSON map `{ [socketId]: absolutePath }` for every binding that resolved (override or first existing candidate)
 
 Inbound auth: every request, including ready, must send:

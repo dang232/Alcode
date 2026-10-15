@@ -12,7 +12,7 @@
 
 A desktop update cannot be judged from code review. The failures live in the handoff between the app and the platform installer, and they are intermittent, platform-shaped, and silent when they go wrong. This reference runs a real update against a loopback feed, so the installer path executes for real while the feed does not.
 
-It belongs to `openchamber-change-discipline`, which owns validation risk. `desktop-shell` owns the Electron privilege boundary and the native lifecycle and points here for anything that changes the update or quit/install sequence.
+It belongs to `alcode-change-discipline`, which owns validation risk. `desktop-shell` owns the Electron privilege boundary and the native lifecycle and points here for anything that changes the update or quit/install sequence.
 
 This is a narrow bridge, not an open field. A single missing gate, or a window closed the wrong way, produces a run that completes the update and reports success while having tested nothing. Follow the steps in order and do not improvise around a step that fails.
 

@@ -953,6 +953,7 @@ describe('client auth routes', () => {
     const response = await request(app).get('/api/system/info');
     expect(response.status).toBe(200);
     expect(response.body.alcodeVersion).toBe('1.0.0');
+    expect(response.body.openchamberVersion).toBe('1.0.0');
     expect(response.body.runtime).toBe('test');
     expect(response.body.pid).toBeTypeOf('number');
     expect(response.body.startedAt).toBeTypeOf('string');

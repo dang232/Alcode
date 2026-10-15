@@ -1,4 +1,4 @@
-# <picture><source media="(prefers-color-scheme: dark)" srcset="docs/references/badges/openchamber-logo-dark.svg"><img src="docs/references/badges/openchamber-logo-light.svg" width="32" height="32" align="absmiddle" /></picture> Alcode
+# <picture><source media="(prefers-color-scheme: dark)" srcset="docs/references/badges/alcode-logo-dark.svg"><img src="docs/references/badges/alcode-logo-light.svg" width="32" height="32" align="absmiddle" /></picture> Alcode
 
 [![GitHub stars](https://img.shields.io/github/stars/dang232/Alcode?style=flat&labelColor=100F0F&color=66800B)](https://github.com/dang232/Alcode/stargazers)
 [![GitHub release](https://img.shields.io/github/v/release/dang232/Alcode?style=flat&labelColor=100F0F&color=205EA6)](https://github.com/dang232/Alcode/releases/latest)

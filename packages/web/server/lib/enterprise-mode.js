@@ -89,14 +89,23 @@ const WINDOWS_PROGRAM_DATA = 'C:\\ProgramData';
  * redirecting it cannot hide a policy the administrator placed there.
  */
 export const policyFilePaths = ({ platform = process.platform, env = process.env } = {}) => {
-  if (platform === 'darwin') return ['/Library/Application Support/Alcode/policy.json'];
+  // New paths first, then the pre-rename ones: an install that already has a
+  // policy keeps enforcing it until the administrator moves it.
+  if (platform === 'darwin') return [
+    '/Library/Application Support/Alcode/policy.json',
+    '/Library/Application Support/OpenChamber/policy.json',
+  ];
   if (platform === 'win32') {
     const fixed = path.win32.join(WINDOWS_PROGRAM_DATA, 'Alcode', 'policy.json');
+    const legacyFixed = path.win32.join(WINDOWS_PROGRAM_DATA, 'OpenChamber', 'policy.json');
     const programData = (env.ProgramData ?? '').trim();
     const fromEnv = programData ? path.win32.join(programData, 'Alcode', 'policy.json') : null;
-    return fromEnv && fromEnv.toLowerCase() !== fixed.toLowerCase() ? [fixed, fromEnv] : [fixed];
+    const legacyFromEnv = programData ? path.win32.join(programData, 'OpenChamber', 'policy.json') : null;
+    return [fixed, fromEnv, legacyFixed, legacyFromEnv]
+      .filter((candidate) => typeof candidate === 'string' && candidate.length > 0)
+      .filter((candidate, index, all) => all.findIndex((other) => other.toLowerCase() === candidate.toLowerCase()) === index);
   }
-  return ['/etc/alcode/policy.json'];
+  return ['/etc/alcode/policy.json', '/etc/openchamber/policy.json'];
 };
 
 // A blank string counts as unset, so a template with empty fields pins nothing.

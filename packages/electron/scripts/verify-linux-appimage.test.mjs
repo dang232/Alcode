@@ -16,7 +16,7 @@ const writeElf = (filePath, architecture) => {
 
 const createPayload = () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-payload-test-'));
-  fs.writeFileSync(path.join(root, 'openchamber.desktop'), [
+  fs.writeFileSync(path.join(root, 'alcode.desktop'), [
     '[Desktop Entry]', 'Name=Alcode', 'Exec=AppRun --no-sandbox %U', 'Icon=alcode', 'StartupWMClass=alcode', '',
   ].join('\n'));
   writeElf(path.join(root, 'alcode'), 'x64');

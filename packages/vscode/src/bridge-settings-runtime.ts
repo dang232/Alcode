@@ -21,6 +21,8 @@ import {
 } from './settings-files';
 
 const SETTINGS_KEY = 'alcode.settings';
+/** Pre-rename globalState key. Reads fall back to it; writes always use the new key. */
+const LEGACY_SETTINGS_KEY = 'openchamber.settings';
 const ALCODE_SHARED_SETTINGS_PATH = path.join(os.homedir(), '.config', 'alcode', 'settings.json');
 const ALCODE_PREFERENCES_PATH = preferencesFilePathFor(ALCODE_SHARED_SETTINGS_PATH);
 const ALCODE_MAGIC_PROMPTS_PATH = path.join(os.homedir(), '.config', 'alcode', 'magic-prompts.json');
@@ -368,6 +370,18 @@ const stripDerived = (source: Record<string, unknown>): Record<string, unknown> 
   return next;
 };
 
+/**
+ * Backward compat for the pre-rename `openchamber.settings` globalState key:
+ * the new key wins, the legacy key fills gaps. Exported for tests.
+ */
+export const readGlobalStateSettings = (globalState?: {
+  get<T>(key: string): T | undefined;
+}): Record<string, unknown> => {
+  const legacy = stripDerived(globalState?.get<Record<string, unknown>>(LEGACY_SETTINGS_KEY) || {});
+  const current = stripDerived(globalState?.get<Record<string, unknown>>(SETTINGS_KEY) || {});
+  return { ...legacy, ...current };
+};
+
 let eagerMigrationAttempted = false;
 
 // Read the merged persisted settings: shared file is canonical (synced with
@@ -378,9 +392,7 @@ let eagerMigrationAttempted = false;
 // disk, copy them to disk so other clients see them immediately — without
 // waiting for the user to save again.
 const readPersistedSettings = (ctx?: BridgeContext): Record<string, unknown> => {
-  const fromGlobalState = stripDerived(
-    ctx?.context?.globalState.get<Record<string, unknown>>(SETTINGS_KEY) || {},
-  );
+  const fromGlobalState = readGlobalStateSettings(ctx?.context?.globalState);
   const fromDisk = stripDerived(readSharedSettingsFromDisk());
 
   if (!eagerMigrationAttempted) {

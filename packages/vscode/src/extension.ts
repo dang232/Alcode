@@ -34,7 +34,40 @@ let activeSessionTitle: string | null = null;
 const t = vscode.l10n.t;
 
 const SETTINGS_KEY = 'alcode.settings';
+/** Pre-rename globalState key. Reads fall back to it; writes always use the new key. */
+const LEGACY_SETTINGS_KEY = 'openchamber.settings';
 const CHAT_VIEW_BOOTSTRAP_DELAY_MS = 80;
+
+/** A command handler as VS Code invokes it: any argument list, any result. */
+type CompatCommandHandler = (...args: any[]) => unknown;
+
+/**
+ * One command under both its new (`alcode.*`) and pre-rename
+ * (`openchamber.*`) id with the same handler, so keybindings, macros, and
+ * scripts written against the old id keep working. Spread into
+ * `context.subscriptions.push(...)` at each call site.
+ *
+ * View and container ids (the `alcode` activity bar, `alcode.chatView`, the
+ * `alcode.submenu`, the `alcode.inlineComments` comment controller, and
+ * `alcode.internal.*`) intentionally keep ONE id: a view id is layout state,
+ * so renaming it orphans the user's pinned views and breaks every
+ * `when`-clause that names it, while registering the same view twice would
+ * split one chat into two competing surfaces.
+ */
+const registerCompatCommands = (name: string, handler: CompatCommandHandler): vscode.Disposable[] => [
+  vscode.commands.registerCommand(`alcode.${name}`, handler),
+  vscode.commands.registerCommand(`openchamber.${name}`, handler),
+];
+
+/**
+ * Reads a VS Code setting new-first: `alcode.*`, falling back to the
+ * pre-rename `openchamber.*` section for users who configured the old id.
+ */
+const readCompatSetting = (key: 'apiUrl' | 'opencodeBinary'): string => {
+  const current = vscode.workspace.getConfiguration('alcode').get<string>(key) || '';
+  if (current.trim().length > 0) return current;
+  return vscode.workspace.getConfiguration('openchamber').get<string>(key) || '';
+};
 
 const waitForChatViewBootstrap = () => new Promise<void>((resolve) => setTimeout(resolve, CHAT_VIEW_BOOTSTRAP_DELAY_MS));
 
@@ -111,7 +144,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const maybeMoveChatToRightSidebarOnStartup = async () => {
     if (isCursorLikeHost()) return;
 
-    const attempted = context.globalState.get<boolean>('alcode.sidebarAutoMoveAttempted') || false;
+    const attempted = context.globalState.get<boolean>('alcode.sidebarAutoMoveAttempted')
+      ?? context.globalState.get<boolean>('openchamber.sidebarAutoMoveAttempted')
+      ?? false;
     if (attempted) return;
     await context.globalState.update('alcode.sidebarAutoMoveAttempted', true);
 
@@ -131,11 +166,14 @@ export async function activate(context: vscode.ExtensionContext) {
   };
 
 
-  // Migration: clear legacy auto-set API URLs (ports 47680-47689 were auto-assigned by older extension versions)
-  const config = vscode.workspace.getConfiguration('alcode');
-  const legacyApiUrl = config.get<string>('apiUrl') || '';
-  if (/^https?:\/\/localhost:4768\d\/?$/.test(legacyApiUrl.trim())) {
-    await config.update('apiUrl', '', vscode.ConfigurationTarget.Global);
+  // Migration: clear legacy auto-set API URLs (ports 47680-47689 were auto-assigned by older extension versions).
+  // Both setting sections are swept: the value may live under the pre-rename section.
+  for (const section of ['alcode', 'openchamber'] as const) {
+    const sectionConfig = vscode.workspace.getConfiguration(section);
+    const legacyApiUrl = sectionConfig.get<string>('apiUrl') || '';
+    if (/^https?:\/\/localhost:4768\d\/?$/.test(legacyApiUrl.trim())) {
+      await sectionConfig.update('apiUrl', '', vscode.ConfigurationTarget.Global);
+    }
   }
 
   // Create OpenCode manager first
@@ -157,7 +195,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register sidebar/focus commands AFTER the webview view provider is registered
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.openSidebar', async () => {
+    ...registerCompatCommands('openSidebar', async () => {
       // Best-effort: open the container (if available), then focus the chat view.
       try {
         await vscode.commands.executeCommand('workbench.view.extension.alcode');
@@ -242,7 +280,7 @@ export async function activate(context: vscode.ExtensionContext) {
   };
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.focusChat', async () => {
+    ...registerCompatCommands('focusChat', async () => {
       if (!(await revealChatViewForPayload())) {
         return;
       }
@@ -255,14 +293,14 @@ export async function activate(context: vscode.ExtensionContext) {
   sessionEditorProvider = new SessionEditorPanelProvider(context, context.extensionUri, openCodeManager);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.internal.settingsSynced', (settings: unknown) => {
+    ...registerCompatCommands('internal.settingsSynced', (settings: unknown) => {
       chatViewProvider?.notifySettingsSynced(settings);
       sessionEditorProvider?.notifySettingsSynced(settings);
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.internal.permissionAutoAcceptSynced', (snapshot: unknown) => {
+    ...registerCompatCommands('internal.permissionAutoAcceptSynced', (snapshot: unknown) => {
       chatViewProvider?.notifyPermissionAutoAcceptSynced(snapshot);
       sessionEditorProvider?.notifyPermissionAutoAcceptSynced(snapshot);
     })
@@ -278,7 +316,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     // The command id predates multi-run (it opened the removed Agent Manager
     // panel); it stays so existing keybindings keep working.
-    vscode.commands.registerCommand('alcode.openAgentManager', async () => {
+    ...registerCompatCommands('openAgentManager', async () => {
       const workspace = await selectNewSessionWorkspace();
       if (!workspace) {
         return;
@@ -288,7 +326,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.setActiveSession', (sessionId: unknown, title?: unknown) => {
+    ...registerCompatCommands('setActiveSession', (sessionId: unknown, title?: unknown) => {
       if (typeof sessionId === 'string' && sessionId.trim().length > 0) {
         activeSessionId = sessionId.trim();
         activeSessionTitle = typeof title === 'string' && title.trim().length > 0 ? title.trim() : null;
@@ -301,7 +339,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.openActiveSessionInEditor', () => {
+    ...registerCompatCommands('openActiveSessionInEditor', () => {
       if (!activeSessionId) {
         vscode.window.showInformationMessage(t('Alcode: No active session'));
         return;
@@ -311,7 +349,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.openSessionInEditor', (sessionId: string, title?: string) => {
+    ...registerCompatCommands('openSessionInEditor', (sessionId: string, title?: string) => {
       if (typeof sessionId !== 'string' || sessionId.trim().length === 0) {
         return;
       }
@@ -320,7 +358,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.openNewSessionInEditor', async () => {
+    ...registerCompatCommands('openNewSessionInEditor', async () => {
       const workspace = await selectNewSessionWorkspace();
       if (!workspace) {
         return;
@@ -330,7 +368,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.openCurrentOrNewSessionInEditor', async () => {
+    ...registerCompatCommands('openCurrentOrNewSessionInEditor', async () => {
       if (activeSessionId) {
         sessionEditorProvider?.createOrShow(activeSessionId, activeSessionTitle ?? undefined);
         return;
@@ -344,7 +382,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.restartApi', async () => {
+    ...registerCompatCommands('restartApi', async () => {
       try {
         // Prefer the full in-app reload flow (overlay + managed restart via the
         // bridge + config/data refresh) driven by the webview — same as after an
@@ -362,7 +400,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.addToContext', async () => {
+    ...registerCompatCommands('addToContext', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
         vscode.window.showWarningMessage(t('Alcode [Add to Context]: No active editor'));
@@ -402,7 +440,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.attachExplorerToChat', async (resource?: vscode.Uri, resources?: vscode.Uri[]) => {
+    ...registerCompatCommands('attachExplorerToChat', async (resource?: vscode.Uri, resources?: vscode.Uri[]) => {
       const uriCandidates: vscode.Uri[] = [];
       if (Array.isArray(resources)) {
         uriCandidates.push(...resources.filter((entry): entry is vscode.Uri => entry instanceof vscode.Uri));
@@ -473,7 +511,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.explain', async () => {
+    ...registerCompatCommands('explain', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
         vscode.window.showWarningMessage(t('Alcode [Explain]: No active editor'));
@@ -508,7 +546,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.improveCode', async () => {
+    ...registerCompatCommands('improveCode', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
         vscode.window.showWarningMessage(t('Alcode [Improve Code]: No active editor'));
@@ -585,7 +623,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(inlineCommentThreads);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.addLineComment', () => {
+    ...registerCompatCommands('addLineComment', () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
         vscode.window.showWarningMessage(t('Alcode [Add Comment]: No active editor'));
@@ -604,13 +642,13 @@ export async function activate(context: vscode.ExtensionContext) {
   // Invoked by the thread's own Comment button, and by the gutter `+` flow,
   // which both arrive as a CommentReply carrying the typed text.
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.submitLineComment', async (reply: vscode.CommentReply) => {
+    ...registerCompatCommands('submitLineComment', async (reply: vscode.CommentReply) => {
       await inlineCommentThreads.submitReply(reply);
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.removeLineComment', (thread: vscode.CommentThread) => {
+    ...registerCompatCommands('removeLineComment', (thread: vscode.CommentThread) => {
       inlineCommentThreads.removeThread(thread);
     })
   );
@@ -619,7 +657,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // follow it. Not contributed in package.json: internal wiring, not a command
   // a user should find in the palette.
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.internal.inlineCommentsSync', (message: { snapshot: unknown; surfaceId: string }) => {
+    ...registerCompatCommands('internal.inlineCommentsSync', (message: { snapshot: unknown; surfaceId: string }) => {
       // The snapshot crossed the webview boundary as JSON; the surface id was
       // stamped by the provider that received it, so an untagged snapshot
       // cannot be attributed and is ignored rather than applied to threads it
@@ -631,7 +669,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.newSession', async (directory?: unknown) => {
+    ...registerCompatCommands('newSession', async (directory?: unknown) => {
       const workspace = await selectNewSessionWorkspace(typeof directory === 'string' ? directory : undefined);
       if (!workspace) {
         return;
@@ -647,15 +685,14 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.showSettings', () => {
+    ...registerCompatCommands('showSettings', () => {
       chatViewProvider?.showSettings();
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('alcode.showOpenCodeStatus', async () => {
-      const config = vscode.workspace.getConfiguration('alcode');
-      const configuredApiUrl = (config.get<string>('apiUrl') || '').trim();
+    ...registerCompatCommands('showOpenCodeStatus', async () => {
+      const configuredApiUrl = readCompatSetting('apiUrl').trim();
 
       const extensionVersion = String(context.extension?.packageJSON?.version || '');
       const workspaceFolders = (vscode.workspace.workspaceFolders || []).map((folder) => folder.uri.fsPath);
@@ -763,7 +800,10 @@ export async function activate(context: vscode.ExtensionContext) {
           )
         : [];
 
-      const storedSettings = context.globalState.get<Record<string, unknown>>(SETTINGS_KEY) || {};
+      const storedSettings = {
+        ...(context.globalState.get<Record<string, unknown>>(LEGACY_SETTINGS_KEY) || {}),
+        ...(context.globalState.get<Record<string, unknown>>(SETTINGS_KEY) || {}),
+      };
       const settingsKeys = Object.keys(storedSettings).filter((key) => key !== 'lastDirectory');
 
       const lines = [
@@ -777,7 +817,7 @@ export async function activate(context: vscode.ExtensionContext) {
         `Working directory: ${workingDirectory}`,
         `Working dir matches workspace: ${workingDirectoryMatchesWorkspace ? 'yes' : 'no'}`,
         `API URL (configured): ${configuredApiUrl || '(none)'}`,
-        `OpenCode binary (configured): ${(vscode.workspace.getConfiguration('alcode').get<string>('opencodeBinary') || '').trim() || '(none)'}`,
+        `OpenCode binary (configured): ${readCompatSetting('opencodeBinary').trim() || '(none)'}`,
         `API URL (resolved): ${openCodeManager?.getApiUrl() ?? '(none)'}`,
         `API URL path: ${resolvedApiPath || '(none)'}`,
         debug

@@ -19,13 +19,16 @@ import {
   getRuntimeSettingsMirrorStorageKey,
   getSettingsSaveState,
   invalidateSettingsCache,
+  legacyStorageKeyFor,
   loadDesktopSettings,
+  migrateLegacyStorageKeys,
+  readNewOrLegacy,
   subscribeToSettingsSaveState,
   syncDesktopSettings,
   updateDesktopSettings,
   type SettingsSyncedDetail,
 } from './persistence';
-import { switchRuntimeEndpoint } from './runtime-switch';
+import { getRuntimeKey, switchRuntimeEndpoint } from './runtime-switch';
 
 type TestWindow = {
   __ALCODE_HOME__?: string;
@@ -1570,5 +1573,117 @@ describe('unload lifecycle flush (#2197)', () => {
     await delay(50);
 
     expect(saveCalls).toEqual([]);
+  });
+});
+
+describe('legacy storage migration (openchamber.* -> alcode.*)', () => {
+  beforeEach(() => {
+    getWindow();
+    isolateRuntime();
+    registerRuntimeAPIs(null);
+    invalidateSettingsCache();
+    localStorage.clear();
+  });
+
+  const createFakeStorage = (entries: Record<string, string> = {}) => {
+    const store = new Map(Object.entries(entries));
+    return {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value); },
+      has: (key: string) => store.has(key),
+    };
+  };
+
+  test('legacyStorageKeyFor maps new keys to their pre-rename twins', () => {
+    expect(legacyStorageKeyFor('alcode.pwaName')).toBe('openchamber.pwaName');
+    expect(legacyStorageKeyFor('alcode.settingsMirror.v2:index')).toBe('openchamber.settingsMirror.v2:index');
+    expect(legacyStorageKeyFor('themeMode')).toBeNull();
+  });
+
+  test('readNewOrLegacy prefers the new value and leaves legacy untouched', () => {
+    const storage = createFakeStorage({ 'alcode.pwaName': 'New', 'openchamber.pwaName': 'Old' });
+
+    expect(readNewOrLegacy(storage, 'alcode.pwaName')).toBe('New');
+    expect(storage.has('openchamber.pwaName')).toBe(true);
+  });
+
+  test('readNewOrLegacy copies a legacy value forward without deleting it', () => {
+    const storage = createFakeStorage({ 'openchamber.pwaName': 'Old' });
+
+    expect(readNewOrLegacy(storage, 'alcode.pwaName')).toBe('Old');
+    expect(storage.getItem('alcode.pwaName')).toBe('Old');
+    expect(storage.getItem('openchamber.pwaName')).toBe('Old');
+  });
+
+  test('readNewOrLegacy returns null when neither key exists', () => {
+    expect(readNewOrLegacy(createFakeStorage(), 'alcode.pwaName')).toBeNull();
+  });
+
+  test('migrateLegacyStorageKeys copies flat keys and never deletes legacy', () => {
+    localStorage.setItem('openchamber.pwaName', 'Old Name');
+    localStorage.setItem('openchamber.chatDrafts.v2', '{"version":2,"drafts":{}}');
+    localStorage.setItem('alcode.pwaName', 'New Name');
+
+    migrateLegacyStorageKeys();
+
+    // New values win; absent new keys are copied forward; legacy is preserved.
+    expect(localStorage.getItem('alcode.pwaName')).toBe('New Name');
+    expect(localStorage.getItem('alcode.chatDrafts.v2')).toBe('{"version":2,"drafts":{}}');
+    expect(localStorage.getItem('openchamber.pwaName')).toBe('Old Name');
+    expect(localStorage.getItem('openchamber.chatDrafts.v2')).toBe('{"version":2,"drafts":{}}');
+  });
+
+  test('migrateLegacyStorageKeys migrates the mirror index, entries, and seeds', () => {
+    const runtime = 'legacy-runtime';
+    localStorage.setItem('openchamber.settingsMirror.v2.index', JSON.stringify([runtime]));
+    localStorage.setItem(`openchamber.settingsMirror.v2:${encodeURIComponent(runtime)}`, '{"themeId":"old"}');
+    localStorage.setItem(`openchamber.deviceSeeded.v1:${encodeURIComponent(runtime)}`, '1720000000000');
+
+    migrateLegacyStorageKeys();
+
+    expect(localStorage.getItem('alcode.settingsMirror.v2.index')).toBe(JSON.stringify([runtime]));
+    expect(localStorage.getItem(getRuntimeSettingsMirrorStorageKey(runtime))).toBe('{"themeId":"old"}');
+    expect(localStorage.getItem(`alcode.deviceSeeded.v1:${encodeURIComponent(runtime)}`)).toBe('1720000000000');
+    // Legacy originals stay for downgraded clients.
+    expect(localStorage.getItem('openchamber.settingsMirror.v2.index')).toBe(JSON.stringify([runtime]));
+  });
+
+  test('a pre-rename device seed suppresses re-seeding device fields on boot', async () => {
+    const runtimeKey = getRuntimeKey();
+    const legacySeedKey = `openchamber.deviceSeeded.v1:${encodeURIComponent(runtimeKey)}`;
+    const newSeedKey = `alcode.deviceSeeded.v1:${encodeURIComponent(runtimeKey)}`;
+    localStorage.setItem(legacySeedKey, '1720000000000');
+    useUIStore.setState({ mobileKeyboardMode: 'resize-content' });
+    registerSettingsApi(async () => ({}), async () => ({
+      settings: {
+        mobileKeyboardMode: 'native',
+        draftStartersCraftGoalAdded: true,
+        draftStartersScheduleTaskAdded: true,
+      },
+      source: 'web',
+    }));
+
+    await syncDesktopSettings();
+
+    // The install already seeded from the server document before the rename,
+    // so the (possibly stale) server device field must not be re-adopted.
+    expect(useUIStore.getState().mobileKeyboardMode).toBe('resize-content');
+    // The seed itself is copied forward; the legacy original is preserved.
+    expect(localStorage.getItem(newSeedKey)).toBe('1720000000000');
+    expect(localStorage.getItem(legacySeedKey)).toBe('1720000000000');
+  });
+
+  test('applyPersistedHomeDirectoryToWindow keeps a legacy injected home', () => {
+    const testWindow = getWindow() as unknown as Record<string, string | undefined>;
+    delete testWindow.__ALCODE_HOME__;
+    testWindow.__OPENCHAMBER_HOME__ = '/Users/legacy';
+
+    try {
+      applyPersistedHomeDirectoryToWindow('/Users/legacy/projects/app');
+
+      expect(testWindow.__ALCODE_HOME__).toBeUndefined();
+    } finally {
+      delete testWindow.__OPENCHAMBER_HOME__;
+    }
   });
 });

@@ -48,7 +48,11 @@ const LOCAL_DESKTOP_CLIENT_DEDUPE_KEY = 'desktop-local';
 
 const readLocalOrigin = (): string => {
   if (typeof window === 'undefined') return '';
-  const injected = (window as typeof window & { __ALCODE_LOCAL_ORIGIN__?: string }).__ALCODE_LOCAL_ORIGIN__;
+  const win = window as typeof window & { __ALCODE_LOCAL_ORIGIN__?: string; __OPENCHAMBER_LOCAL_ORIGIN__?: string };
+  // SAFETY: shells inject a plain string (or nothing) under these keys; the
+  // typeof check below re-validates before use.
+  // New hook first; pre-rename shells inject the legacy twin.
+  const injected = win.__ALCODE_LOCAL_ORIGIN__ ?? win.__OPENCHAMBER_LOCAL_ORIGIN__;
   return typeof injected === 'string' ? injected.trim() : '';
 };
 

@@ -9,24 +9,44 @@
 // does not exist yet and the old one does. It copies rather than moves
 // because a second instance on the same machine (a custom directory next to
 // the default one) must not strip the default instance of its projects.
+//
+// The same copy covers the pre-rename `~/.config/openchamber` root: entries
+// missing from every newer root are copied from the legacy one, which is
+// likewise never deleted.
 
-const USER_DIR_ENTRIES = Object.freeze(['projects', 'themes', 'speech-models']);
+const USER_DIR_ENTRIES = Object.freeze(['chats', 'projects', 'themes', 'speech-models', 'logs', 'run']);
 
 const exists = async (fsPromises, target) => fsPromises.access(target).then(() => true, () => false);
 
 /**
- * Copy the user folders from `legacyRoot` into `dataDir`. Returns the entries
- * copied. A no-op when the two roots are the same directory. A folder whose
- * copy fails is reported through `warn` and its partial copy removed; the
- * server keeps starting, reading the (empty) new location.
+ * Copy the user folders from the legacy roots into `dataDir`. Returns the
+ * entries copied. `legacyRoots` lists every older root, oldest migration
+ * first: the default `~/.config/alcode` root, then the pre-rename
+ * `~/.config/openchamber` root. `legacyRoot` stays as the single-root
+ * shorthand. A root equal to `dataDir` is skipped, so this is a no-op when
+ * every root is the data directory itself. Each entry is copied from the
+ * first root that has it, only when the new location does not exist yet. A
+ * folder whose copy fails is reported through `warn` and its partial copy
+ * removed; the server keeps starting, reading the (empty) new location.
  */
-export const migrateLegacyUserDirs = async ({ fsPromises, path, dataDir, legacyRoot, warn = () => {}, entries = USER_DIR_ENTRIES }) => {
-  if (path.resolve(dataDir) === path.resolve(legacyRoot)) return [];
+export const migrateLegacyUserDirs = async ({ fsPromises, path, dataDir, legacyRoot, legacyRoots, warn = () => {}, entries = USER_DIR_ENTRIES }) => {
+  const roots = (Array.isArray(legacyRoots) && legacyRoots.length > 0 ? legacyRoots : [legacyRoot])
+    .filter((root) => typeof root === 'string' && root.length > 0)
+    .filter((root) => path.resolve(root) !== path.resolve(dataDir));
+  if (roots.length === 0) return [];
   const moved = [];
   for (const entry of entries) {
-    const from = path.join(legacyRoot, entry);
     const to = path.join(dataDir, entry);
-    if (await exists(fsPromises, to) || !(await exists(fsPromises, from))) continue;
+    if (await exists(fsPromises, to)) continue;
+    let from = null;
+    for (const root of roots) {
+      const candidate = path.join(root, entry);
+      if (await exists(fsPromises, candidate)) {
+        from = candidate;
+        break;
+      }
+    }
+    if (from === null) continue;
     try {
       await fsPromises.mkdir(dataDir, { recursive: true });
       await fsPromises.cp(from, to, { recursive: true, errorOnExist: true, force: false });

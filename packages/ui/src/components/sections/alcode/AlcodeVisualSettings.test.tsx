@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -11,6 +11,15 @@ import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { useUIStore } from '@/stores/useUIStore';
 
 import { AlcodeVisualSettings } from './AlcodeVisualSettings';
+
+// The PWA install-name field reads its initial value through the settings
+// document; resolve to no document so the field shows the built-in default
+// without touching the network.
+const persistenceModule = await import('@/lib/persistence');
+mock.module('@/lib/persistence', () => ({
+  ...persistenceModule,
+  loadDesktopSettings: async () => null,
+}));
 
 // SAFETY: This render path only reads the optional terminal methods, so no other runtime API can be called.
 const runtimeAPIs = { terminal: {} } as RuntimeAPIs;
@@ -93,5 +102,21 @@ describe('AlcodeVisualSettings', () => {
     await act(async () => fourth.click());
     expect(useUIStore.getState().largeTextPasteBehavior).toBe('inline-double-paste');
     expect(fourth.getAttribute('aria-checked')).toBe('true');
+  });
+
+  test('the PWA install-name field defaults to Alcode', async () => {
+    await act(async () => root.render(
+      <RuntimeAPIContext.Provider value={runtimeAPIs}>
+        <ThemeSystemProvider>
+          <I18nProvider>
+            <AlcodeVisualSettings visibleSettings={['pwaInstallName']} />
+          </I18nProvider>
+        </ThemeSystemProvider>
+      </RuntimeAPIContext.Provider>,
+    ));
+
+    const field = host.querySelector('[data-settings-item="appearance.pwa-install-name"] input');
+    expect(field).not.toBeNull();
+    expect((field as HTMLInputElement).value).toBe('Alcode');
   });
 });

@@ -4,7 +4,7 @@ import { guestStatusControlEventSchema, guestStatusControlsSchema } from './stat
 import { guestPopoverClosedEventSchema, guestPopoverDataSchema, guestPopoverRequestSchema } from './popover-schemas.ts';
 import { GUEST_SHELL_END_STATUSES, GUEST_SHELL_ID_MAX, GUEST_SHELLS_MAX, GUEST_SHELL_OUTPUT_TAIL_MAX } from './shells.ts';
 
-import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
 import {
   SERVICE_STATUS_VALUES,
   ATTACH_PROVIDER_ID,
@@ -57,7 +57,8 @@ const fileBytesSchema = z.instanceof(Uint8Array).refine((bytes) => bytes.byteLen
 const fileTextSchema = z.string().max(GUEST_FILE_EDITOR_CONTENT_MAX);
 
 const envelope = {
-  channel: z.literal(ALCODE_SDK_CHANNEL),
+  // Both channel spellings cross the wire; guests written before the rename still send `openchamber.sdk`.
+  channel: z.enum([ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_CHANNEL]),
   v: z.literal(ALCODE_SDK_API_VERSION),
 };
 

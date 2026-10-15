@@ -27,6 +27,16 @@ describe('parent link', () => {
     expect(getBtwSessionID(null)).toBeNull();
   });
 
+  test('readers fall back to pre-rename metadata, new wins', () => {
+    expect(getBtwSessionID(sessionWith({ openchamber: { btwSessionID: 'fork-legacy' } }))).toBe('fork-legacy');
+    expect(getBtwSessionID(sessionWith({
+      alcode: { btwSessionID: 'fork-new' },
+      openchamber: { btwSessionID: 'fork-legacy' },
+    }))).toBe('fork-new');
+    expect(isBtwSession(sessionWith({ openchamber: { kind: 'btw', originalSessionID: 'p-1' } }))).toBe(true);
+    expect(wasPromotedBtwSession(sessionWith({ openchamber: { btwPromoted: true } }))).toBe(true);
+  });
+
   test('withoutBtwSessionLink removes only a matching link', () => {
     const linked = { alcode: { btwSessionID: 'fork-1', reviewSessionID: 'r-1' } };
     expect(withoutBtwSessionLink(linked, 'fork-2')).toBe(linked);

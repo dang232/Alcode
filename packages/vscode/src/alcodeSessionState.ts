@@ -64,6 +64,12 @@ export type SessionMetadataOnOpenCode = {
 
 type SessionStateStoreOptions = {
   dataDir: string;
+  /**
+   * Pre-rename directory consulted when a state file is absent from
+   * `dataDir`. Reads only; writes always land in `dataDir`. Defaults to the
+   * pre-rename shared config directory.
+   */
+  legacyDataDir?: string;
   fsPromises?: SessionStateFs;
   now?: () => number;
 };
@@ -143,12 +149,26 @@ export const getAlcodeDataDir = (): string => {
   return path.join(os.homedir(), '.config', 'alcode');
 };
 
+/**
+ * The pre-rename shared config directory. State files are read from here
+ * only when absent from the new directory, so an upgrade keeps archive flags
+ * and unmigrated metadata; nothing is ever written here.
+ */
+export const getLegacyAlcodeDataDir = (): string => {
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    if (appData) return path.join(appData, 'openchamber');
+  }
+  return path.join(os.homedir(), '.config', 'openchamber');
+};
+
 const isMissingFileError = (error: Error): boolean => 'code' in error && error.code === 'ENOENT';
 
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 export const createSessionStateStore = ({
   dataDir,
+  legacyDataDir = getLegacyAlcodeDataDir(),
   fsPromises = fs.promises,
   now = Date.now,
 }: SessionStateStoreOptions) => {
@@ -161,21 +181,39 @@ export const createSessionStateStore = ({
    * as empty; unreadable bytes are moved aside so the next write cannot
    * overwrite what the user had, and read as empty too. An I/O failure other
    * than "missing" is reported as `null`: unknown, not empty.
+   *
+   * When the file is absent from `dataDir`, the same file name is tried in
+   * the pre-rename directory, so an upgrade keeps state written by the older
+   * build. A present-but-unreadable primary file is authoritative: the legacy
+   * copy is not consulted, because newer state must not be overlaid with
+   * older state.
    */
   const readJsonObjectFile = async (filePath: string): Promise<JsonObject | null> => {
+    const legacyPath = legacyDataDir ? path.join(legacyDataDir, path.basename(filePath)) : null;
     let raw: string;
+    let sourcePath = filePath;
     try {
       raw = await fsPromises.readFile(filePath, 'utf8');
     } catch (error) {
-      if (error instanceof Error && isMissingFileError(error)) return {};
-      console.warn(`[alcode-sessions] could not read ${path.basename(filePath)}:`, describeError(error));
-      return null;
+      if (!(error instanceof Error) || !isMissingFileError(error)) {
+        console.warn(`[alcode-sessions] could not read ${path.basename(filePath)}:`, describeError(error));
+        return null;
+      }
+      if (!legacyPath || legacyPath === filePath) return {};
+      try {
+        raw = await fsPromises.readFile(legacyPath, 'utf8');
+        sourcePath = legacyPath;
+      } catch (legacyError) {
+        if (legacyError instanceof Error && isMissingFileError(legacyError)) return {};
+        console.warn(`[alcode-sessions] could not read ${path.basename(legacyPath)}:`, describeError(legacyError));
+        return null;
+      }
     }
     const parsed = parseJson(raw);
     if (isJsonObject(parsed)) return parsed;
-    const backup = `${filePath}.corrupt-${now()}`;
-    await fsPromises.rename(filePath, backup).catch(() => undefined);
-    console.warn(`[alcode-sessions] ${path.basename(filePath)} was not a JSON object and was moved to ${backup}`);
+    const backup = `${sourcePath}.corrupt-${now()}`;
+    await fsPromises.rename(sourcePath, backup).catch(() => undefined);
+    console.warn(`[alcode-sessions] ${path.basename(sourcePath)} was not a JSON object and was moved to ${backup}`);
     return {};
   };
 

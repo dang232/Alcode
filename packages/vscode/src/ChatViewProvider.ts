@@ -32,6 +32,10 @@ const isSameActiveEditorFilePayload = (a: ActiveEditorFilePayload | null, b: Act
 };
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
+  // Single stable view id on purpose, not dual-registered like commands: a
+  // view id is layout state (pinned views, `when`-clauses such as
+  // `view == alcode.chatView`, and `alcode.chatView.focus`). A second id
+  // would split one chat into two competing surfaces.
   public static readonly viewType = 'alcode.chatView';
 
   private _view?: vscode.WebviewView;

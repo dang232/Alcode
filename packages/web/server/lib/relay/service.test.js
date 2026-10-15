@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import crypto from 'node:crypto';
+import express from 'express';
+import request from 'supertest';
 
 import { createRelayService } from './service.js';
 
@@ -94,6 +96,28 @@ describe('relay service passive hosting', () => {
       expect(hostLock.forceClaim).toHaveBeenCalled();
     } finally {
       service.stop();
+    }
+  });
+
+  it('answers relay status on both the current and pre-rename prefixes', async () => {
+    const previousEnterprise = process.env.ALCODE_ENTERPRISE_MODE;
+    const previousRelayUrl = process.env.ALCODE_RELAY_URL;
+    delete process.env.ALCODE_ENTERPRISE_MODE;
+    delete process.env.ALCODE_RELAY_URL;
+    const { service } = makeService();
+    try {
+      const app = express();
+      service.registerRoutes(app);
+      const current = await request(app).get('/api/alcode/relay/status').expect(200);
+      const legacy = await request(app).get('/api/openchamber/relay/status').expect(200);
+      expect(legacy.body).toEqual(current.body);
+      expect(legacy.body).toMatchObject({ enabled: true, relayUrl: 'wss://relay.example.test/ws' });
+    } finally {
+      service.stop();
+      if (previousEnterprise === undefined) delete process.env.ALCODE_ENTERPRISE_MODE;
+      else process.env.ALCODE_ENTERPRISE_MODE = previousEnterprise;
+      if (previousRelayUrl === undefined) delete process.env.ALCODE_RELAY_URL;
+      else process.env.ALCODE_RELAY_URL = previousRelayUrl;
     }
   });
 });

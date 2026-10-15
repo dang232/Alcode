@@ -18,7 +18,7 @@ const emptyPersonal = {
 
 const emptyShared = {
   status: 'missing',
-  path: '.openchamber/project.json',
+  path: '.alcode/project.json',
   setupWorktree: [],
   setupWorktreeWait: null,
   projectActions: [],

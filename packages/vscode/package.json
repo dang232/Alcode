@@ -167,6 +167,114 @@
           "light": "assets/icon.svg",
           "dark": "assets/icon-scm-titlebar.svg"
         }
+      },
+      {
+        "command": "openchamber.openSidebar",
+        "category": "Alcode",
+        "title": "%command.openSidebar.title%",
+        "icon": {
+          "light": "assets/icon.svg",
+          "dark": "assets/icon-titlebar.svg"
+        }
+      },
+      {
+        "command": "openchamber.focusChat",
+        "category": "Alcode",
+        "title": "%command.focusChat.title%"
+      },
+      {
+        "command": "openchamber.restartApi",
+        "category": "Alcode",
+        "title": "%command.restartApi.title%"
+      },
+      {
+        "command": "openchamber.showOpenCodeStatus",
+        "category": "Alcode",
+        "title": "%command.showOpenCodeStatus.title%"
+      },
+      {
+        "command": "openchamber.openAgentManager",
+        "category": "Alcode",
+        "title": "%command.openAgentManager.title%",
+        "icon": "$(repo-forked)"
+      },
+      {
+        "command": "openchamber.openActiveSessionInEditor",
+        "category": "Alcode",
+        "title": "%command.openActiveSessionInEditor.title%",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "openchamber.openNewSessionInEditor",
+        "category": "Alcode",
+        "title": "%command.openNewSessionInEditor.title%",
+        "icon": {
+          "light": "assets/icon.svg",
+          "dark": "assets/icon-titlebar.svg"
+        }
+      },
+      {
+        "command": "openchamber.openCurrentOrNewSessionInEditor",
+        "category": "Alcode",
+        "title": "%command.openCurrentOrNewSessionInEditor.title%",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "openchamber.addToContext",
+        "category": "Alcode",
+        "title": "%command.addToContext.title%"
+      },
+      {
+        "command": "openchamber.addLineComment",
+        "category": "Alcode",
+        "title": "%command.addLineComment.title%"
+      },
+      {
+        "command": "openchamber.submitLineComment",
+        "category": "Alcode",
+        "title": "%command.submitLineComment.title%"
+      },
+      {
+        "command": "openchamber.removeLineComment",
+        "category": "Alcode",
+        "title": "%command.removeLineComment.title%",
+        "icon": "$(close)"
+      },
+      {
+        "command": "openchamber.explain",
+        "category": "Alcode",
+        "title": "%command.explain.title%"
+      },
+      {
+        "command": "openchamber.improveCode",
+        "category": "Alcode",
+        "title": "%command.improveCode.title%"
+      },
+      {
+        "command": "openchamber.newSession",
+        "category": "Alcode",
+        "title": "%command.newSession.title%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "openchamber.showSettings",
+        "category": "Alcode",
+        "title": "%command.showSettings.title%",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "openchamber.attachExplorerToChat",
+        "category": "Alcode",
+        "title": "%command.attachExplorerToChat.title%"
+      },
+      {
+        "command": "openchamber.generateCommitMessage",
+        "category": "Alcode",
+        "title": "%command.generateCommitMessage.title%",
+        "icon": {
+          "light": "assets/icon.svg",
+          "dark": "assets/icon-scm-titlebar.svg"
+        }
       }
     ],
     "submenus": [
@@ -275,6 +383,18 @@
           "type": "string",
           "default": "",
           "description": "%configuration.opencodeBinary.description%"
+        },
+        "openchamber.apiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.apiUrl.description%",
+          "deprecationMessage": "Use alcode.apiUrl instead. This legacy key is still read as a fallback."
+        },
+        "openchamber.opencodeBinary": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.opencodeBinary.description%",
+          "deprecationMessage": "Use alcode.opencodeBinary instead. This legacy key is still read as a fallback."
         }
       }
     }

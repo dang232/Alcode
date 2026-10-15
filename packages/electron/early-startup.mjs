@@ -33,6 +33,11 @@ export const isDev = process.env.ALCODE_ELECTRON_DEV === '1' || !app.isPackaged;
 
 export const DEEP_LINK_PROTOCOL = 'alcode';
 export const UI_PROTOCOL = 'alcode-ui';
+// Pre-rename schemes, kept as backward-compat aliases: links and installs
+// created before the rename still target these, so both schemes stay
+// registered (entry.mjs privileged origins, main.mjs protocol clients).
+export const LEGACY_DEEP_LINK_PROTOCOL = 'openchamber';
+export const LEGACY_UI_PROTOCOL = 'openchamber-ui';
 const PACKAGED_APP_USER_MODEL_ID = 'dev.openchamber.desktop';
 const DEV_APP_USER_MODEL_ID = 'dev.openchamber.desktop.dev';
 export const APP_USER_MODEL_ID = app.isPackaged ? PACKAGED_APP_USER_MODEL_ID : DEV_APP_USER_MODEL_ID;
@@ -394,6 +399,18 @@ export const buildRendererAdditionalArguments = ({
   `--alcode-boot-outcome=${JSON.stringify(bootOutcome)}`,
   `--alcode-relay-host-id=${relayHostId}`,
   `--alcode-native-frame=${nativeFrame ? '1' : '0'}`,
+  // Legacy mirrors for pre-rename preloads, which read --openchamber-*.
+  // The current preload prefers --alcode-* and falls back to these.
+  `--openchamber-local-origin=${localOrigin}`,
+  `--openchamber-api-base-url=${apiBaseUrl}`,
+  `--openchamber-client-token=${clientToken}`,
+  `--openchamber-runtime-headers=${JSON.stringify(requestHeaders)}`,
+  `--openchamber-home=${os.homedir() || ''}`,
+  `--openchamber-macos-major=${String(macosMajorVersion())}`,
+  `--openchamber-tray-enabled=${trayEnabled ? '1' : '0'}`,
+  `--openchamber-boot-outcome=${JSON.stringify(bootOutcome)}`,
+  `--openchamber-relay-host-id=${relayHostId}`,
+  `--openchamber-native-frame=${nativeFrame ? '1' : '0'}`,
 ];
 
 // Linux can opt into the desktop environment's own title bar (Settings ->
@@ -470,7 +487,9 @@ let packagedUiSchemeRegistered = false;
 const registerPackagedUiScheme = () => {
   if (packagedUiSchemeRegistered) return;
   packagedUiSchemeRegistered = true;
-  protocol.handle(UI_PROTOCOL, (request) => {
+  // The legacy UI scheme serves the same handler: stored openchamber-ui://
+  // URLs from pre-rename installs keep resolving to the packaged app.
+  const dispatch = (request) => {
     if (new URL(request.url).pathname === SPLASH_PATHNAME) {
       return new Response(buildStartupSplashHtml(), {
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
@@ -478,7 +497,9 @@ const registerPackagedUiScheme = () => {
     }
     if (!packagedUiRequestHandler) return new Response('', { status: 503 });
     return packagedUiRequestHandler(request);
-  });
+  };
+  protocol.handle(UI_PROTOCOL, dispatch);
+  protocol.handle(LEGACY_UI_PROTOCOL, dispatch);
 };
 
 export const installPackagedUiRequestHandler = (handler) => {

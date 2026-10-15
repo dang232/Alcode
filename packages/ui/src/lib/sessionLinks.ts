@@ -19,6 +19,8 @@ export type MessageLinkForm =
     | { readonly kind: 'web'; readonly origin: string; readonly pathname: string };
 
 const DEEP_LINK_PREFIX = 'alcode://session/';
+/** Pre-rename twin: still read from chat content, never minted. */
+const LEGACY_DEEP_LINK_PREFIX = 'openchamber://session/';
 
 export const buildMessageLink = (sessionId: string, messageId: string, form: MessageLinkForm): string | null => {
     if (!isLinkIdentifier(sessionId) || !isLinkIdentifier(messageId)) return null;
@@ -65,7 +67,8 @@ export const parseSessionLink = (href: string, ownOrigins: readonly string[]): S
         return null;
     }
 
-    if (url.protocol === 'alcode:') {
+    if (url.protocol === 'alcode:' || url.protocol === 'openchamber:') {
+        // The pre-rename scheme parses identically; links are always minted new.
         // Old Android WebViews put the route in the path instead of the host.
         const segments = [url.host, ...url.pathname.split('/')].filter(Boolean);
         if (segments[0]?.toLowerCase() !== 'session' || segments.length !== 2) return null;
@@ -79,7 +82,9 @@ export const parseSessionLink = (href: string, ownOrigins: readonly string[]): S
     return null;
 };
 
-/** True for `alcode://session/...` links, the only native deep links chat content may carry. */
-export const isSessionDeepLink = (href: string): boolean => (
-    href.toLowerCase().startsWith(DEEP_LINK_PREFIX) && parseSessionLink(href, []) !== null
-);
+/** True for `alcode://session/...` links (and their pre-rename `openchamber://` twins). */
+export const isSessionDeepLink = (href: string): boolean => {
+    const lower = href.toLowerCase();
+    return (lower.startsWith(DEEP_LINK_PREFIX) || lower.startsWith(LEGACY_DEEP_LINK_PREFIX))
+        && parseSessionLink(href, []) !== null;
+};

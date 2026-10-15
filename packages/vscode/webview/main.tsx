@@ -49,8 +49,22 @@ declare global {
     __ALCODE_CONNECTION__?: { status: ConnectionStatus; error?: string; cliAvailable?: boolean };
     __ALCODE_HOME__?: string;
     __ALCODE_VSCODE_WINDOW_FOCUSED__?: boolean;
+    // Pre-rename twins of the globals above. Only ever read as a fallback;
+    // the host writes the new names.
+    __OPENCHAMBER_VSCODE_THEME__?: VSCodeThemePayload['theme'];
+    __OPENCHAMBER_VSCODE_SHIKI_THEMES__?: { light?: Record<string, unknown>; dark?: Record<string, unknown> } | null;
+    __OPENCHAMBER_HOME__?: string;
+    __OPENCHAMBER_VSCODE_WINDOW_FOCUSED__?: boolean;
   }
 }
+
+// Backward compat: pre-rename hosts exposed the same values as
+// `__OPENCHAMBER_*` globals. New names win; legacy fills gaps, so a webview
+// paired with an older host (or probing globals one set) still boots.
+window.__ALCODE_VSCODE_THEME__ ??= window.__OPENCHAMBER_VSCODE_THEME__;
+window.__ALCODE_VSCODE_SHIKI_THEMES__ ??= window.__OPENCHAMBER_VSCODE_SHIKI_THEMES__;
+window.__ALCODE_HOME__ ??= window.__OPENCHAMBER_HOME__;
+window.__ALCODE_VSCODE_WINDOW_FOCUSED__ ??= window.__OPENCHAMBER_VSCODE_WINDOW_FOCUSED__;
 
 console.log('[Alcode] VS Code webview starting...');
 console.log('[Alcode] VS Code webview build:', __ALCODE_WEBVIEW_BUILD_TIME__);

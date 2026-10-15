@@ -25,7 +25,8 @@ type BtwMetadata = {
 };
 
 const getAlcodeMetadata = (metadata: SessionMetadataRecord): BtwMetadata => {
-  const value = metadata.alcode;
+  // New wins; the pre-rename `openchamber` block is a read fallback only.
+  const value = metadata.alcode ?? metadata.openchamber;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   // SAFETY: session metadata is persisted, externally writable data; this is
   // its parsing boundary. `BtwMetadata` only declares optional fields and

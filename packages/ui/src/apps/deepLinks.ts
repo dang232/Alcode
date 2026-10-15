@@ -6,6 +6,9 @@
  * {@link parseDeepLink} into a typed {@link DeepLinkIntent}; the navigation layer
  * (deepLinkNavigation) is the only place that knows how to *apply* an intent.
  *
+ * Backward compatibility: links minted before the rename use `openchamber://`.
+ * Decoding accepts both schemes; encoding always emits the new `alcode://` form.
+ *
  * Keep this file pure (no React, no stores, no Capacitor) so it can be imported from any
  * context — including, eventually, a tiny encoder shared with the native widget/extension.
  */
@@ -13,6 +16,8 @@
 import { isLinkIdentifier } from '@/lib/router/messageFocus';
 
 const DEEP_LINK_SCHEME = 'alcode';
+// Pre-rename scheme. Accepted on decode, never emitted on encode.
+const LEGACY_DEEP_LINK_SCHEME = 'openchamber';
 
 export type SessionsFilter = 'all' | 'attention' | 'recent';
 export type ViewTarget = 'files' | 'mcp' | 'instances' | 'update';
@@ -45,9 +50,10 @@ const segmentsOf = (url: URL): string[] => {
 };
 
 /**
- * Parse a raw `alcode://…` string into a typed intent, or `null` if it isn't a
- * recognised Alcode deep link. Tolerant by design: unknown routes return `null`
- * rather than throwing, so callers can fall back without a try/catch.
+ * Parse a raw `alcode://…` (or legacy `openchamber://…`) string into a typed
+ * intent, or `null` if it isn't a recognised deep link. Tolerant by design:
+ * unknown routes return `null` rather than throwing, so callers can fall back
+ * without a try/catch.
  */
 export function parseDeepLink(raw: string | null | undefined): DeepLinkIntent | null {
   if (typeof raw !== 'string' || raw.length === 0) {
@@ -61,7 +67,8 @@ export function parseDeepLink(raw: string | null | undefined): DeepLinkIntent | 
     return null;
   }
 
-  if (url.protocol !== `${DEEP_LINK_SCHEME}:`) {
+  const scheme = url.protocol.slice(0, -1).toLowerCase();
+  if (scheme !== DEEP_LINK_SCHEME && scheme !== LEGACY_DEEP_LINK_SCHEME) {
     return null;
   }
 

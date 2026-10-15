@@ -1,3 +1,4 @@
+import '../../server/lib/alcode-env-compat.js';
 import fs from 'fs';
 import { pathToFileURL } from 'url';
 import { spawn } from 'child_process';

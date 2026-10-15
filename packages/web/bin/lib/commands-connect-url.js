@@ -1,3 +1,4 @@
+import '../../server/lib/alcode-env-compat.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -14,9 +15,9 @@ import { discoverRunningInstances } from './cli-lifecycle.js';
 import { getInstanceFilePath, readInstanceOptions } from './cli-process.js';
 import { createRemoteClientAuthRuntime } from '../../server/lib/client-auth/remote-clients.js';
 import { createClientPairingRuntime } from '../../server/lib/client-auth/pairing.js';
+import { encodePairingConnectUrl } from '../../server/lib/client-auth/pairing-url.js';
 import { createRelayIdentityRuntime } from '../../server/lib/relay/identity.js';
 import { DEFAULT_RELAY_URL, pinnedRelayUrl } from '../../server/lib/relay/service.js';
-import { bytesToBase64Url } from '../../server/lib/relay/e2ee.js';
 import { createSettingsAccessors as createSettingsAccessorsModule } from './cli-settings-accessors.js';
 import {
   intro as clackIntro,
@@ -116,13 +117,8 @@ function createCliPairingRuntime() {
   });
 }
 
-// Mirror of encodePairingConnectionPayload in @alcode/ui (the bin cannot
-// import the UI package). Keep in sync: v2 payload → base64url(JSON) in the URL
-// query, so the one-time secret rides the link, never the network.
-function encodePairingConnectUrl(payload) {
-  const encoded = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
-  return `alcode://connect?v=2&p=${encoded}`;
-}
+// Pairing link codec lives in server/lib/client-auth/pairing-url.js (shared
+// with the server); the @alcode/ui package mirrors the same wire form.
 
 function buildPairingPayload({ pairing, label, candidates }) {
   return {

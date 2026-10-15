@@ -251,6 +251,29 @@ describe('project setup bridge', () => {
     });
   });
 
+  test('falls back to the pre-rename shared file, new wins', async () => {
+    await withStore(async (store, dir) => {
+      const repo = path.join(dir, 'repo');
+      await fs.promises.mkdir(path.join(repo, '.openchamber'), { recursive: true });
+      await fs.promises.writeFile(path.join(repo, '.openchamber', 'project.json'), JSON.stringify({
+        version: 1,
+        setupWorktree: ['bun install'],
+      }));
+      const projectId = projectIdFor(repo);
+      const legacy = await store.read(projectId);
+      assert.equal(legacy.shared.status, 'ok');
+      assert.deepEqual(legacy.setupWorktree, ['bun install']);
+      await fs.promises.mkdir(path.join(repo, '.alcode'), { recursive: true });
+      await fs.promises.writeFile(path.join(repo, '.alcode', 'project.json'), JSON.stringify({
+        version: 1,
+        setupWorktree: ['bun run dev'],
+      }));
+      const current = await store.read(projectId);
+      assert.equal(current.shared.status, 'ok');
+      assert.deepEqual(current.setupWorktree, ['bun run dev']);
+    });
+  });
+
   test('writes and removes the shared file through the bridge, trusting the writer', async () => {
     await withStore(async (store, dir) => {
       const repo = path.join(dir, 'repo');

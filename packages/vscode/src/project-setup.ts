@@ -76,7 +76,9 @@ export type ProjectSetupView = {
   personal: PersonalProjectSetup;
 };
 
-export const SHARED_CONFIG_RELATIVE_PATH = '.openchamber/project.json';
+export const SHARED_CONFIG_RELATIVE_PATH = '.alcode/project.json';
+/** Pre-rename location of the shared file: read as a fallback, never written. */
+export const LEGACY_SHARED_CONFIG_RELATIVE_PATH = '.openchamber/project.json';
 const SHARED_CONFIG_VERSION = 1;
 
 /**

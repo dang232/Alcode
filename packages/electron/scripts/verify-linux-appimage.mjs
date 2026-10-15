@@ -81,7 +81,7 @@ export const verifyExtractedPayload = ({
   expectedOpenCodeVersion,
   runCliVersion = defaultCliVersion,
 }) => {
-  const desktopPath = path.join(root, 'openchamber.desktop');
+  const desktopPath = path.join(root, 'alcode.desktop');
   if (!fs.existsSync(desktopPath)) throw new Error(`Missing desktop entry: ${desktopPath}`);
   const desktop = fs.readFileSync(desktopPath, 'utf8');
   for (const entry of ['Name=Alcode', 'Icon=alcode', 'StartupWMClass=alcode']) {

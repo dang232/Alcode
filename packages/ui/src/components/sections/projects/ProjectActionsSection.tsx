@@ -410,7 +410,7 @@ export const ProjectActionsSection: React.FC<ProjectActionsSectionProps> = ({ pr
                       size="xs"
                       className="!font-normal shrink-0"
                       disabled={isSharing || hasChanges}
-                      title={hasChanges ? t('settings.projects.shared.actions.shareAfterSave') : t('settings.projects.shared.actions.shareTitle', { path: sharedState?.path ?? '.openchamber/project.json' })}
+                      title={hasChanges ? t('settings.projects.shared.actions.shareAfterSave') : t('settings.projects.shared.actions.shareTitle', { path: sharedState?.path ?? '.alcode/project.json' })}
                       onClick={() => void shareAction(action)}
                     >
                       {t('settings.projects.shared.actions.share')}

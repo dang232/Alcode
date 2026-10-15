@@ -212,13 +212,15 @@ export function getWebviewHtml(options: WebviewHtmlOptions): string {
     // in English.
     function resolveBootstrapLanguage() {
       try {
-        var rawLocale = window.localStorage.getItem('alcode.i18n.v1');
+        // New key first; pre-rename installs saved theirs under the legacy key.
+        var rawLocale = window.localStorage.getItem('alcode.i18n.v1') || window.localStorage.getItem('openchamber.i18n.v1');
         if (rawLocale) {
           var parsedLocale = JSON.parse(rawLocale);
           if (parsedLocale && typeof parsedLocale.locale === 'string') return parsedLocale.locale.toLowerCase();
         }
       } catch {}
-      return String(window.__ALCODE_HOST_LANGUAGE__ || '').toLowerCase();
+      // New global first, legacy fallback.
+      return String(window.__ALCODE_HOST_LANGUAGE__ || window.__OPENCHAMBER_HOST_LANGUAGE__ || '').toLowerCase();
     }
 
     function getBootstrapMessages() {

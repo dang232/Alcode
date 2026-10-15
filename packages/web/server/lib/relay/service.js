@@ -19,6 +19,10 @@ import { isEnterpriseMode, readEnterprisePolicy } from '../enterprise-mode.js';
 
 export const DEFAULT_RELAY_URL = 'wss://relay.openchamber.dev/ws';
 
+// Every relay management route answers on both the current `/api/alcode/*`
+// prefix and the pre-rename `/api/openchamber/*` prefix.
+const relayRoutePaths = (name) => [`/api/alcode/relay/${name}`, `/api/openchamber/relay/${name}`];
+
 const isValidRelayUrl = (value) => {
   if (typeof value !== 'string') return false;
   try {
@@ -335,7 +339,7 @@ export const createRelayService = ({
   };
 
   const registerRoutes = (app) => {
-    app.get('/api/alcode/relay/status', async (_req, res) => {
+    app.get(relayRoutePaths('status'), async (_req, res) => {
       try {
         res.json(await getStatus());
       } catch (error) {
@@ -343,7 +347,7 @@ export const createRelayService = ({
       }
     });
 
-    app.post('/api/alcode/relay/enable', express.json({ limit: '16kb' }), async (req, res) => {
+    app.post(relayRoutePaths('enable'), express.json({ limit: '16kb' }), async (req, res) => {
       if (relayBlockedByEnterprise()) {
         return res.status(403).json({ error: RELAY_BLOCKED_ERROR, code: 'enterprise_mode' });
       }
@@ -360,7 +364,7 @@ export const createRelayService = ({
       }
     });
 
-    app.post('/api/alcode/relay/disable', async (_req, res) => {
+    app.post(relayRoutePaths('disable'), async (_req, res) => {
       try {
         const current = await readConfig();
         await writeConfig({ enabled: false, relayUrl: current.relayUrl });

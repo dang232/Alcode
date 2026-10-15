@@ -188,3 +188,46 @@ describe('overlaySessionResponseBody', () => {
     assert.equal(isSessionRecordPath('/api/session/ses_a/message'), false);
   });
 });
+
+describe('legacy data directory fallback', () => {
+  const legacyFile = (name: string): string => path.join('/legacy', name);
+  const legacyStore = (initial: Record<string, string>) => createSessionStateStore({
+    dataDir: '/data',
+    legacyDataDir: '/legacy',
+    fsPromises: createMemoryFs(initial).fsPromises,
+    now: () => 1000,
+  });
+
+  it('reads archive flags from the legacy dir when absent from the new one', async () => {
+    const store = legacyStore({ [legacyFile('sessions-archive.json')]: JSON.stringify({ ses_old: 4242 }) });
+    assert.deepEqual(await store.readArchived(), { ses_old: 4242 });
+  });
+
+  it('writes land in the new dir and leave the legacy copy untouched', async () => {
+    const memory = createMemoryFs({ [legacyFile('sessions-archive.json')]: JSON.stringify({ ses_old: 4242 }) });
+    const store = createSessionStateStore({
+      dataDir: '/data',
+      legacyDataDir: '/legacy',
+      fsPromises: memory.fsPromises,
+      now: () => 1000,
+    });
+    await store.archive(['ses_new'], null);
+    assert.deepEqual(await store.readArchived(), { ses_old: 4242, ses_new: 1000 });
+    assert.deepEqual(JSON.parse(memory.files.get(dataFile('sessions-archive.json'))!), { ses_old: 4242, ses_new: 1000 });
+    assert.deepEqual(JSON.parse(memory.files.get(legacyFile('sessions-archive.json'))!), { ses_old: 4242 });
+  });
+
+  it('ignores the legacy copy once the new file exists', async () => {
+    const store = legacyStore({
+      [dataFile('sessions-archive.json')]: JSON.stringify({ ses_new: 1111 }),
+      [legacyFile('sessions-archive.json')]: JSON.stringify({ ses_old: 4242 }),
+    });
+    assert.deepEqual(await store.readArchived(), { ses_new: 1111 });
+  });
+
+  it('lays legacy metadata over the OpenCode record', async () => {
+    const store = legacyStore({ [legacyFile('sessions-metadata.json')]: JSON.stringify({ ses_a: { alcode: { pinned: true } } }) });
+    const { openCode } = createFakeOpenCode({ ses_a: { kind: 'review' } });
+    assert.deepEqual(await store.getMetadata('ses_a', openCode), { kind: 'review', alcode: { pinned: true } });
+  });
+});

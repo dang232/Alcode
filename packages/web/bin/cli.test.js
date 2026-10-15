@@ -913,6 +913,11 @@ describe('isAlcodeCmdline', () => {
     expect(isAlcodeCmdline('bun /home/u/projects/alcode/packages/web/server/index.js --port 3001')).toBe(true);
   });
 
+  it('accepts pre-rename openchamber cmdlines', () => {
+    expect(isAlcodeCmdline('node /x/@openchamber/web/bin/cli.js serve')).toBe(true);
+    expect(isAlcodeCmdline('bun /home/u/projects/openchamber/packages/web/server/index.js --port 3001')).toBe(true);
+  });
+
   it('rejects recycled and unrelated processes (issue #1721)', () => {
     expect(isAlcodeCmdline('node /home/herjarsa/npm-global/bin/agentmemory')).toBe(false);
     expect(isAlcodeCmdline('node /usr/lib/node_modules/npm/bin/npm-cli.js install')).toBe(false);

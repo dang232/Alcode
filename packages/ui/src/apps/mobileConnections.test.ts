@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
 
-import { createMobilePasswordOperationTracker, loadMobileConnections, migrateLegacyInlineTokenRecords, upsertMobileConnection, validateMobileConnectionSession, type MobileRelayConfig } from './mobileConnections';
+import { createMobilePasswordOperationTracker, getMobileDeviceId, loadMobileConnections, migrateLegacyInlineTokenRecords, upsertMobileConnection, validateMobileConnectionSession, type MobileRelayConfig } from './mobileConnections';
 
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
@@ -298,6 +298,58 @@ describe('mobile connection storage', () => {
       const relayEntries = connections.filter((c) => c.candidates.some((x) => x.kind === 'relay'));
       expect(relayEntries).toHaveLength(1);
       expect(relayEntries[0]?.label).toBe('Relay renamed');
+    } finally {
+      restoreGlobals();
+    }
+  });
+
+  test('loads connections stored under the pre-rename key without deleting it', async () => {
+    const legacyKey = 'openchamber.mobile.connections.v1';
+    try {
+      installTestWindow();
+      const legacy = JSON.stringify([
+        {
+          id: 'legacy-a', label: 'Server A', lastUsedAt: 10, clientToken: 'token-a',
+          candidates: [{ kind: 'direct', url: 'http://192.168.1.10:2606' }],
+        },
+      ]);
+      window.localStorage.setItem(legacyKey, legacy);
+
+      const reloaded = await loadMobileConnections();
+      expect(reloaded).toHaveLength(1);
+      expect(reloaded[0]).toMatchObject({ id: 'legacy-a', label: 'Server A', clientToken: 'token-a' });
+      // Copied forward under the new key; the legacy original is preserved.
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe(legacy);
+      expect(window.localStorage.getItem(legacyKey)).toBe(legacy);
+    } finally {
+      restoreGlobals();
+    }
+  });
+
+  test('an explicit empty list does not resurrect pre-rename connections', async () => {
+    try {
+      installTestWindow();
+      window.localStorage.setItem(STORAGE_KEY, '[]');
+      window.localStorage.setItem('openchamber.mobile.connections.v1', JSON.stringify([
+        { id: 'legacy-a', label: 'Server A', url: 'http://192.168.1.10:2606', lastUsedAt: 10 },
+      ]));
+
+      expect(await loadMobileConnections()).toEqual([]);
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe('[]');
+    } finally {
+      restoreGlobals();
+    }
+  });
+
+  test('adopts a pre-rename device id instead of minting a new identity', async () => {
+    try {
+      installTestWindow();
+      window.localStorage.setItem('openchamber.mobile.deviceId', 'device-legacy');
+
+      expect(getMobileDeviceId()).toBe('device-legacy');
+      // Copied forward; the legacy original is preserved.
+      expect(window.localStorage.getItem('alcode.mobile.deviceId')).toBe('device-legacy');
+      expect(window.localStorage.getItem('openchamber.mobile.deviceId')).toBe('device-legacy');
     } finally {
       restoreGlobals();
     }

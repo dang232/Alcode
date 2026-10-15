@@ -6,7 +6,8 @@
   "main": "./server/index.js",
   "types": "./server/index.d.ts",
   "bin": {
-    "alcode": "./bin/cli.js"
+    "alcode": "./bin/cli.js",
+    "openchamber": "./bin/cli.js"
   },
   "publishConfig": {
     "access": "public"

@@ -1,5 +1,5 @@
 
-import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_CHANNEL, type SdkChannel } from './api-version.ts';
 import type { FileEditorChange, FileEditorDocument, FileSnapshotRequest, FileSnapshotResultPayload } from './file-editor.ts';
 import type { GuestRunningShellsSnapshot, GuestShellOutputRequest, GuestShellOutputResult, GuestShellStopResult, GuestShellsSubscription } from './shells.ts';
 import type { GuestSessionWorktree, GuestStorageRequest, GuestStorageResult, GuestWorkspaceQuery, GuestWorkspaceSnapshot, GuestWorkspaceSubscription, GuestWorkspaceUpdate, GuestWorktree } from './workspace.ts';
@@ -579,14 +579,39 @@ export const isGuestRequestPath = (value: string): boolean => {
   return !segments.some((segment) => segment === '.' || segment === '..');
 };
 
+/** What a guest service reads from its process env to join the host loopback. */
+export type ServiceEnv = {
+  port: number;
+  token: string;
+};
+
+/**
+ * Read the host loopback coordinates from the service env. `ALCODE_*` wins
+ * and the legacy `OPENCHAMBER_*` names still work. `null` when the port or
+ * the token is missing or unusable. Pass `process.env` from a service entry.
+ */
+export const readServiceEnv = (
+  env: Record<string, string | undefined>,
+): ServiceEnv | null => {
+  const port = Number(env.ALCODE_SERVICE_PORT ?? env.OPENCHAMBER_SERVICE_PORT ?? '');
+  const token = env.ALCODE_SERVICE_TOKEN ?? env.OPENCHAMBER_SERVICE_TOKEN ?? '';
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535 || token.length === 0) return null;
+  return { port, token };
+};
+
 // Wire messages. The zod schemas in `protocol.ts` are the host's parse of an
 // untrusted guest; these types are the shared contract and protocol.ts asserts
 // the two agree at compile time.
 
 type Envelope = {
-  channel: typeof ALCODE_SDK_CHANNEL;
+  channel: SdkChannel;
   v: typeof ALCODE_SDK_API_VERSION;
 };
+
+/** Wire channels the guest accepts from its host frame, old spelling included. */
+export const isSdkChannel = (value: unknown): value is SdkChannel => (
+  value === ALCODE_SDK_CHANNEL || value === OPENCHAMBER_SDK_CHANNEL
+);
 
 export type HostReadyMessage = Envelope & { type: 'ready'; payload: HostReadyContext };
 export type HostDirectoryMessage = Envelope & { type: 'directory'; payload: { directory: string | null } };
@@ -839,7 +864,7 @@ const readResultMessage = (wire: WireRecord): HostResultMessage | null => {
  */
 export const readHostMessage = (data: MessageEvent['data']): HostMessage | null => {
   const wire = asWireRecord(data);
-  if (!wire || wire.channel !== ALCODE_SDK_CHANNEL || wire.v !== ALCODE_SDK_API_VERSION) return null;
+  if (!wire || !isSdkChannel(wire.channel) || wire.v !== ALCODE_SDK_API_VERSION) return null;
   if (wire.type === 'result') return readResultMessage(wire);
   if (!HOST_PUSH_TYPES.has(String(wire.type)) || Object(wire.payload) !== wire.payload) return null;
   // SAFETY: envelope and discriminant verified above and the sender is the

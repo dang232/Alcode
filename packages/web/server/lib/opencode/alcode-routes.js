@@ -2,15 +2,19 @@ import { publicEnterprisePolicy } from '../enterprise-mode.js';
 
 const SYSTEMD_SERVICE_UNIT_PATTERN = /^[A-Za-z0-9:_.@-]+\.service$/;
 
+const SYSTEMD_SERVICE_UNIT = 'alcode.service';
+const LEGACY_SYSTEMD_SERVICE_UNIT = 'openchamber.service';
+
 function resolveSystemdServiceUnit(environment) {
   if (!environment.INVOCATION_ID) {
     return null;
   }
 
-  const configuredUnit = typeof environment.ALCODE_SYSTEMD_UNIT === 'string'
-    ? environment.ALCODE_SYSTEMD_UNIT.trim()
-    : '';
-  const unit = configuredUnit || 'openchamber.service';
+  // The unit override accepts both spellings; the new name wins.
+  const configuredUnit = [environment.ALCODE_SYSTEMD_UNIT, environment.OPENCHAMBER_SYSTEMD_UNIT]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find((value) => value.length > 0) || '';
+  const unit = configuredUnit || SYSTEMD_SERVICE_UNIT;
   return SYSTEMD_SERVICE_UNIT_PATTERN.test(unit) ? unit : null;
 }
 
@@ -18,10 +22,15 @@ function quotePosixShell(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
-const LAUNCHD_SERVICE_ID = 'dev.openchamber.web';
+const LAUNCHD_SERVICE_ID = 'dev.alcode.web';
+const LEGACY_LAUNCHD_SERVICE_ID = 'dev.openchamber.web';
 
-const resolveLaunchdPlistPath = (pathModule, osModule) =>
-  pathModule.join(osModule.homedir(), 'Library', 'LaunchAgents', `${LAUNCHD_SERVICE_ID}.plist`);
+const resolveLaunchdPlistPath = (pathModule, osModule, serviceId = LAUNCHD_SERVICE_ID) =>
+  pathModule.join(osModule.homedir(), 'Library', 'LaunchAgents', `${serviceId}.plist`);
+
+// Every Alcode route answers on both the current `/api/alcode/*` prefix and
+// the pre-rename `/api/openchamber/*` prefix.
+const alcodeRoutePaths = (name) => [`/api/alcode/${name}`, `/api/openchamber/${name}`];
 
 /**
  * `echo` in batch treats `& | < > ( ) ^` as syntax and `%var%` as expansion,
@@ -98,26 +107,39 @@ export const registerAlcodeRoutes = (app, dependencies) => {
     const systemdServiceUnit = isForegroundService && !isDarwin ? resolveSystemdServiceUnit(process.env) : null;
     const osModule = os || (await import('os'));
     const launchdPlistPath = isDarwin ? resolveLaunchdPlistPath(path, osModule) : null;
+    const legacyLaunchdPlistPath = isDarwin ? resolveLaunchdPlistPath(path, osModule, LEGACY_LAUNCHD_SERVICE_ID) : null;
     // launchd sets XPC_SERVICE_NAME to the job label, so a manual
     // `serve --foreground` on a Mac that also has startup enabled is not
-    // mistaken for the LaunchAgent.
-    const isLaunchdService = Boolean(
-      isDarwin
-      && isForegroundService
+    // mistaken for the LaunchAgent. A pre-rename agent (legacy label and
+    // plist) counts as a service too, so its updates still restart it.
+    const launchdServiceId = isDarwin && isForegroundService
+      && launchdPlistPath && fs.existsSync(launchdPlistPath)
       && process.env?.XPC_SERVICE_NAME === LAUNCHD_SERVICE_ID
-      && launchdPlistPath
-      && fs.existsSync(launchdPlistPath),
-    );
-    return { storedOptions, launchMode, isForegroundService, systemdServiceUnit, isLaunchdService, launchdPlistPath };
+      ? LAUNCHD_SERVICE_ID
+      : isDarwin && isForegroundService
+        && legacyLaunchdPlistPath && fs.existsSync(legacyLaunchdPlistPath)
+        && process.env?.XPC_SERVICE_NAME === LEGACY_LAUNCHD_SERVICE_ID
+        ? LEGACY_LAUNCHD_SERVICE_ID
+        : null;
+    const isLaunchdService = launchdServiceId !== null;
+    return {
+      storedOptions,
+      launchMode,
+      isForegroundService,
+      systemdServiceUnit,
+      isLaunchdService,
+      launchdServiceId,
+      launchdPlistPath: launchdServiceId === LEGACY_LAUNCHD_SERVICE_ID ? legacyLaunchdPlistPath : launchdPlistPath,
+    };
   };
 
   // Whether an administrator turned on enterprise mode, and by which source.
   // Pinned endpoints and keys never leave the server.
-  app.get('/api/alcode/enterprise-policy', (_req, res) => {
+  app.get(alcodeRoutePaths('enterprise-policy'), (_req, res) => {
     res.json(publicEnterprisePolicy());
   });
 
-  app.get('/api/alcode/update-check', async (req, res) => {
+  app.get(alcodeRoutePaths('update-check'), async (req, res) => {
     try {
       const parseString = (value) => (typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined);
       const parseReportUsage = (value) => {
@@ -186,7 +208,7 @@ export const registerAlcodeRoutes = (app, dependencies) => {
     }
   });
 
-  app.post('/api/alcode/update-install', async (_req, res) => {
+  app.post(alcodeRoutePaths('update-install'), async (_req, res) => {
     try {
       if (process.env.ALCODE_RUNTIME === 'desktop') {
         if (typeof desktopUpdater?.install !== 'function' || typeof desktopUpdater?.restart !== 'function') {
@@ -269,7 +291,7 @@ export const registerAlcodeRoutes = (app, dependencies) => {
         return;
       }
 
-      const { storedOptions, launchMode, isForegroundService, systemdServiceUnit, isLaunchdService, launchdPlistPath } = await readLaunchState();
+      const { storedOptions, launchMode, isForegroundService, systemdServiceUnit, isLaunchdService, launchdServiceId, launchdPlistPath } = await readLaunchState();
 
       if (isForegroundService) {
         if (!systemdServiceUnit && !isLaunchdService) {
@@ -331,7 +353,7 @@ export const registerAlcodeRoutes = (app, dependencies) => {
       let restartCmd = '';
       if (isLaunchdService) {
         const quotedPlistPath = quotePosixShell(launchdPlistPath);
-        restartCmd = `launchctl kickstart -k gui/$(id -u)/${LAUNCHD_SERVICE_ID} || launchctl bootstrap gui/$(id -u) ${quotedPlistPath}`;
+        restartCmd = `launchctl kickstart -k gui/$(id -u)/${launchdServiceId} || launchctl bootstrap gui/$(id -u) ${quotedPlistPath}`;
       } else {
         const cliPath = path.resolve(__dirname, '..', 'bin', 'cli.js');
         const restartParts = [

@@ -92,7 +92,7 @@ process violation.
 
 | Trigger | Required skill |
 |---|---|
-| Source/dependency changes, exports or package contracts, build/generated assets, or module ownership | `openchamber-change-discipline` |
+| Source/dependency changes, exports or package contracts, build/generated assets, or module ownership | `alcode-change-discipline` |
 | CLI commands, prompts, terminal output, non-TTY, `--quiet`, or `--json` behavior | `clack-cli-patterns` |
 | Shared UI data access, OpenCode SDK or server routes, `RuntimeAPIs`, runtime auth/URLs, bridges, or runtime switching | `ui-api-decoupling` |
 | Electron main/preload, IPC, native UI, updater, deep links, SSH/tunnels, packaging, or child processes | `desktop-shell` |
@@ -121,7 +121,7 @@ Keep each cross-cutting rule with one canonical owner; companion skills add only
 
 | Concern | Canonical skill |
 |---|---|
-| Change scope, abstraction discipline, and validation risk | `openchamber-change-discipline` |
+| Change scope, abstraction discipline, and validation risk | `alcode-change-discipline` |
 | State authority, reconciliation, optimistic state, and lifecycle correctness | `sync-state-invariants` |
 | Isolated-space trust boundaries and the evidence that each one holds | `isolated-space-boundary` |
 | Enterprise mode: what counts as egress or exposure, how it is gated, and administrator knobs | `enterprise-boundary` |

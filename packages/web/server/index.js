@@ -1,3 +1,4 @@
+import './lib/alcode-env-compat.js';
 import { installOpenCodeV2, supportsOpenCodeV2Install } from './lib/opencode/v2-install.js';
 import { describeOpenCodeCompatibility, readOpenCodeCliVersion, readExternalOpenCodeVersion } from './lib/opencode/compatibility.js';
 import 'reflect-metadata';
@@ -314,10 +315,13 @@ const sanitizeProjects = (...args) => settingsNormalizationRuntime.sanitizeProje
 
 // Every Alcode-owned file and folder hangs off one root: the default
 // `~/.config/alcode`, or `ALCODE_DATA_DIR` when set. The user
-// folders (`projects/`, `themes/`, `speech-models/`) are copied into a custom
-// root once at startup (`migrateLegacyUserDirs`), because they used to ignore
-// the variable.
+// folders (`chats/`, `projects/`, `themes/`, `speech-models/`, `logs/`,
+// `run/`) are copied into a custom root once at startup
+// (`migrateLegacyUserDirs`), because they used to ignore the variable. The
+// pre-rename `~/.config/openchamber` root is a final fallback source: its
+// entries are copied, never moved or deleted.
 const ALCODE_DEFAULT_CONFIG_ROOT = path.join(os.homedir(), '.config', 'alcode');
+const ALCODE_LEGACY_CONFIG_ROOT = path.join(os.homedir(), '.config', 'openchamber');
 const ALCODE_USER_CONFIG_ROOT = process.env.ALCODE_DATA_DIR
   ? path.resolve(process.env.ALCODE_DATA_DIR)
   : ALCODE_DEFAULT_CONFIG_ROOT;
@@ -610,6 +614,7 @@ const movedUserDirs = await migrateLegacyUserDirs({
   path,
   dataDir: ALCODE_USER_CONFIG_ROOT,
   legacyRoot: ALCODE_DEFAULT_CONFIG_ROOT,
+  legacyRoots: [ALCODE_DEFAULT_CONFIG_ROOT, ALCODE_LEGACY_CONFIG_ROOT],
   warn: (message) => console.warn(`[data-dir] ${message}`),
 });
 if (movedUserDirs.length > 0) {
@@ -2109,6 +2114,16 @@ async function main(options = {}) {
   }
 
   const app = express();
+  // Pre-rename API prefix: every `/api/openchamber/*` handler also answers at
+  // `/api/alcode/*`. Individual route modules dual-register their own paths;
+  // this rewrite covers the rest, so older clients keep working no matter
+  // which module owns the route. New code registers `/api/alcode/*` only.
+  app.use((req, _res, next) => {
+    if (req.path === '/api/openchamber' || req.path.startsWith('/api/openchamber/')) {
+      req.url = `/api/alcode${req.url.slice('/api/openchamber'.length)}`;
+    }
+    next();
+  });
   const serverStartedAt = new Date().toISOString();
   const packagedClientOrigins = new Set([
     'alcode-ui://app',

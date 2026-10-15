@@ -13,6 +13,7 @@ import path from 'node:path';
 import { shouldIgnoreLoopbackConnectionLimit } from './startup-url-selection.mjs';
 import {
   APP_USER_MODEL_ID,
+  LEGACY_UI_PROTOCOL,
   UI_PROTOCOL,
   createEarlyWindow,
   deferAppEventsUntilMainLoads,
@@ -38,7 +39,9 @@ if (isDev) {
 // share the single-instance lock or the Chromium profile with the installed
 // app. macOS resolves the home directory from the user record, not $HOME, so
 // an environment-only isolation cannot move these.
-const userDataOverride = String(process.env.ALCODE_DESKTOP_USER_DATA_DIR || '').trim();
+// New override first, pre-rename name as a fallback so existing profile
+// isolation setups keep working. The default location is unchanged.
+const userDataOverride = String(process.env.ALCODE_DESKTOP_USER_DATA_DIR || process.env.OPENCHAMBER_DESKTOP_USER_DATA_DIR || '').trim();
 if (userDataOverride) {
   app.setPath('userData', userDataOverride);
 }
@@ -57,9 +60,11 @@ if (shouldIgnoreLoopbackConnectionLimit({
 })) {
   app.commandLine.appendSwitch('ignore-connections-limit', '127.0.0.1');
 }
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: UI_PROTOCOL,
+// Both UI origins stay privileged so packaged pages served from the
+// pre-rename scheme keep the same fetch/CORS/code-cache behavior.
+protocol.registerSchemesAsPrivileged(
+  [UI_PROTOCOL, LEGACY_UI_PROTOCOL].map((scheme) => ({
+    scheme,
     privileges: {
       standard: true,
       secure: true,
@@ -68,8 +73,8 @@ protocol.registerSchemesAsPrivileged([
       // Keep V8 bytecode for the packaged renderer bundle between launches.
       codeCache: true,
     },
-  },
-]);
+  })),
+);
 
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);

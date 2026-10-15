@@ -30,8 +30,12 @@ const createApp = ({
   const dependencies = {
     fs: {
       existsSync: vi.fn((targetPath) => {
-        if (typeof targetPath === 'string' && targetPath.endsWith('dev.openchamber.web.plist')) {
-          return plistExists;
+        // `plistExists` is either a boolean (both plists) or the label of the
+        // single plist that exists, so tests can prove which one is consulted.
+        if (typeof targetPath === 'string' && (targetPath.endsWith('dev.alcode.web.plist') || targetPath.endsWith('dev.openchamber.web.plist'))) {
+          if (plistExists === true) return true;
+          if (typeof plistExists === 'string') return targetPath.endsWith(`${plistExists}.plist`);
+          return false;
         }
         return false;
       }),
@@ -239,12 +243,30 @@ describe('Alcode foreground update route', () => {
   it('leaves the update installable for a macOS launchd foreground server', async () => {
     const launchd = createApp({
       platform: 'darwin',
-      environment: { XPC_SERVICE_NAME: 'dev.openchamber.web' },
+      environment: { XPC_SERVICE_NAME: 'dev.alcode.web' },
       storedOptions: { launchMode: 'foreground' },
       plistExists: true,
     });
     const response = await request(launchd.app).get('/api/alcode/update-check?appType=web').expect(200);
     expect(response.body.installBlocked).toBeUndefined();
+  });
+
+  it('recognizes a pre-rename launchd agent by its legacy label and plist', async () => {
+    const launchd = createApp({
+      platform: 'darwin',
+      environment: { XPC_SERVICE_NAME: 'dev.openchamber.web' },
+      storedOptions: { launchMode: 'foreground' },
+      plistExists: 'dev.openchamber.web',
+    });
+    const response = await request(launchd.app).get('/api/alcode/update-check?appType=web').expect(200);
+    expect(response.body.installBlocked).toBeUndefined();
+  });
+
+  it('answers the pre-rename /api/openchamber/* prefix for every route', async () => {
+    const { app } = createApp();
+    const current = await request(app).get('/api/alcode/enterprise-policy').expect(200);
+    const legacy = await request(app).get('/api/openchamber/enterprise-policy').expect(200);
+    expect(legacy.body).toEqual(current.body);
   });
 
   it('rejects a foreground update when the server is not owned by systemd', async () => {
@@ -350,7 +372,7 @@ describe('Alcode foreground update route', () => {
   it('allows foreground update on macOS when launchd plist exists and invokes launchd restart command', async () => {
     const { app } = createApp({
       platform: 'darwin',
-      environment: { XPC_SERVICE_NAME: 'dev.openchamber.web' },
+      environment: { XPC_SERVICE_NAME: 'dev.alcode.web' },
       storedOptions: { launchMode: 'foreground' },
       plistExists: true,
     });
@@ -374,7 +396,7 @@ describe('Alcode foreground update route', () => {
       [
         '-c',
         expect.stringContaining(
-          "launchctl kickstart -k gui/$(id -u)/dev.openchamber.web || launchctl bootstrap gui/$(id -u) '/home/test/Library/LaunchAgents/dev.openchamber.web.plist'"
+          "launchctl kickstart -k gui/$(id -u)/dev.alcode.web || launchctl bootstrap gui/$(id -u) '/home/test/Library/LaunchAgents/dev.alcode.web.plist'"
         ),
       ],
       expect.objectContaining({

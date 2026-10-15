@@ -4,14 +4,16 @@
 // ALCODE_SERVICE_PORT, checks `Authorization: Bearer
 // ALCODE_SERVICE_TOKEN` on every request including /health, and proxies
 // the guest's serviceRequest calls onto `createDagServiceHandlers` (which
-// owns the adapter-A bridge). Listens on loopback only, never 0.0.0.0.
+// owns the adapter-A bridge). The legacy OPENCHAMBER_SERVICE_PORT/TOKEN
+// names still work; ALCODE_* wins when both are set. Listens on loopback
+// only, never 0.0.0.0.
 // Shipped built (plain Node JS); the host never compiles TypeScript.
 import http from 'node:http';
 
 import { createDagServiceHandlers, DAG_SERVICE_MAX_BODY_BYTES } from './handlers.js';
 
-const port = Number.parseInt(process.env.ALCODE_SERVICE_PORT ?? '', 10);
-const token = process.env.ALCODE_SERVICE_TOKEN ?? '';
+const port = Number.parseInt(process.env.ALCODE_SERVICE_PORT ?? process.env.OPENCHAMBER_SERVICE_PORT ?? '', 10);
+const token = process.env.ALCODE_SERVICE_TOKEN ?? process.env.OPENCHAMBER_SERVICE_TOKEN ?? '';
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   console.error('alcode-builtin-dag-pane service: ALCODE_SERVICE_PORT is missing or invalid.');

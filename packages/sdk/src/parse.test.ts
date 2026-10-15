@@ -145,6 +145,72 @@ describe('parseManifest', () => {
     if (!missing.ok) expect(missing.code).toBe('missing-alcode');
   });
 
+  test('reads a legacy package.json openchamber block, preferring alcode when both are present', () => {
+    const legacy = parseManifest({ openchamber: validBlock });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok) {
+      expect(legacy.manifest.contributes.panel.id).toBe('acme-hello');
+    }
+    const both = parseManifest({
+      alcode: { ...validBlock, contributes: { panel: { ...validBlock.contributes.panel, id: 'new-id' } } },
+      openchamber: validBlock,
+    });
+    expect(both.ok).toBe(true);
+    if (both.ok) {
+      expect(both.manifest.contributes.panel.id).toBe('new-id');
+    }
+    expect(parseManifestJson(JSON.stringify({ name: '@acme/hello', openchamber: validBlock })))
+      .toMatchObject({ ok: true });
+  });
+
+  test('missing-manifest errors name both spellings', () => {
+    for (const json of [
+      '{"name":"@acme/hello-panel","alcode":null}',
+      '{"name":"@acme/hello-panel","openchamber":null}',
+      '{"name":"@acme/hello-panel","alcode":42}',
+      '{"name":"@acme/hello-panel","openchamber":"nope"}',
+    ]) {
+      const result = parseManifestJson(json);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe('missing-alcode');
+        expect(result.message).toContain('"alcode"');
+        expect(result.message).toContain('"openchamber"');
+      }
+    }
+  });
+
+  test('reads legacy engines.openchamber and writes it back as engines.alcode', () => {
+    const result = parseManifest({ ...validBlock, engines: { openchamber: '>=1.22.0' } });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.manifest.engines).toEqual({ alcode: '>=1.22.0' });
+    }
+    expect(parseManifest({ ...validBlock, engines: { openchamber: '^1.22.0' } }))
+      .toMatchObject({ ok: false, code: 'invalid-engines' });
+    expect(parseManifest({ ...validBlock, engines: {} }))
+      .toMatchObject({ ok: false, code: 'invalid-engines' });
+  });
+
+  test('rewrites a legacy openchamber-builtin panel id to the new prefix', () => {
+    const result = parseManifest({
+      ...validBlock,
+      contributes: { panel: { ...validBlock.contributes.panel, id: 'openchamber-builtin-dag-pane' } },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.manifest.contributes.panel.id).toBe('alcode-builtin-dag-pane');
+    }
+    const kept = parseManifest({
+      ...validBlock,
+      contributes: { panel: { ...validBlock.contributes.panel, id: 'alcode-builtin-dag-pane' } },
+    });
+    expect(kept.ok).toBe(true);
+    if (kept.ok) {
+      expect(kept.manifest.contributes.panel.id).toBe('alcode-builtin-dag-pane');
+    }
+  });
+
   test('rejects an unknown apiVersion', () => {
     const result = parseManifestJson(JSON.stringify({ ...validBlock, apiVersion: 99 }));
     expect(result).toMatchObject({ ok: false, code: 'unsupported-api-version' });

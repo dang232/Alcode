@@ -51,7 +51,17 @@ function ensureLogsDir() {
 }
 
 function getLogFilePath(port) {
-  return path.join(getLogsDir(), `alcode-${port}.log`);
+  const current = path.join(getLogsDir(), `alcode-${port}.log`);
+  // A server started by the pre-rename CLI wrote `openchamber-<port>.log`;
+  // keep tailing it instead of an empty new file. New servers always write
+  // the `alcode-` name.
+  try {
+    if (!fs.existsSync(current) && fs.existsSync(path.join(getLogsDir(), `openchamber-${port}.log`))) {
+      return path.join(getLogsDir(), `openchamber-${port}.log`);
+    }
+  } catch {
+  }
+  return current;
 }
 
 function getTunnelProfilesFilePath() {

@@ -11,6 +11,8 @@ type RecentSessionShortcut = {
 
 type ManifestSyncWindow = Window & {
   __ALCODE_UPDATE_PWA_MANIFEST__?: () => void;
+  // Pre-rename twin, injected by older shells.
+  __OPENCHAMBER_UPDATE_PWA_MANIFEST__?: () => void;
 };
 
 const MAX_RECENT_SHORTCUTS = 3;
@@ -92,7 +94,8 @@ export const usePwaManifestSync = () => {
     // that changed them has settled instead of adding a request to it.
     const timer = window.setTimeout(() => {
       const win = window as ManifestSyncWindow;
-      win.__ALCODE_UPDATE_PWA_MANIFEST__?.();
+      // New hook first; pre-rename shells expose the legacy twin.
+      (win.__ALCODE_UPDATE_PWA_MANIFEST__ ?? win.__OPENCHAMBER_UPDATE_PWA_MANIFEST__)?.();
     }, MANIFEST_UPDATE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [hasRecentShortcuts, signature]);

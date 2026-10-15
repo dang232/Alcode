@@ -161,7 +161,7 @@ mock.module('@/lib/alcodeConfig', () => ({
     projectActions: mockedActionsState.actions.map((action) => ({ ...action, source: 'personal' })),
     projectActionsPrimaryId: null,
     draftStarters: [],
-    shared: { status: 'missing', path: '.openchamber/project.json', setupWorktree: [], setupWorktreeWait: null, projectActions: [], draftStarters: [], plansDir: null },
+    shared: { status: 'missing', path: '.alcode/project.json', setupWorktree: [], setupWorktreeWait: null, projectActions: [], draftStarters: [], plansDir: null },
     personal: { setupWorktree: [], setupWorktreeWait: null, setupWorktreeMode: 'append', projectActions: mockedActionsState.actions, projectActionsPrimaryId: null, draftStarters: [], hiddenSharedActionIds: [], sharedTrust: null },
   }),
   updateProjectSetup: async () => true,

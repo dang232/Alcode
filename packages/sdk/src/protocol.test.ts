@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
 import {
   clampAttachRequest,
   clampPromptRequest,
@@ -8,7 +8,9 @@ import {
   GUEST_ATTACH_DATA_MAX,
   GUEST_ATTACH_TITLE_MAX,
   GUEST_COMPOSE_TEXT_MAX,
+  isSdkChannel,
   readHostMessage,
+  readServiceEnv,
 } from './contract.ts';
 import { GUEST_POPOVER_DATA_MAX, isGuestPopoverRequest } from './popover.ts';
 import {
@@ -160,6 +162,75 @@ describe('parseHostMessage', () => {
       type: 'ready',
       payload: readyPayload,
     }).success).toBe(false);
+  });
+
+  test('accepts the legacy openchamber.sdk channel on host and guest messages', () => {
+    expect(isSdkChannel(ALCODE_SDK_CHANNEL)).toBe(true);
+    expect(isSdkChannel(OPENCHAMBER_SDK_CHANNEL)).toBe(true);
+    expect(isSdkChannel('other')).toBe(false);
+    expect(hostMessageSchema.safeParse({
+      channel: OPENCHAMBER_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
+      type: 'ready',
+      payload: readyPayload,
+    }).success).toBe(true);
+    expect(parseHostMessage({
+      channel: OPENCHAMBER_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
+      type: 'directory',
+      payload: { directory: null },
+    })).toEqual({
+      channel: OPENCHAMBER_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
+      type: 'directory',
+      payload: { directory: null },
+    });
+    expect(readHostMessage({
+      channel: OPENCHAMBER_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
+      type: 'directory',
+      payload: { directory: null },
+    })).toEqual({
+      channel: OPENCHAMBER_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
+      type: 'directory',
+      payload: { directory: null },
+    });
+    expect(readHostMessage({
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
+      type: 'directory',
+      payload: { directory: null },
+    })).toEqual({
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
+      type: 'directory',
+      payload: { directory: null },
+    });
+    const legacyToast = {
+      channel: OPENCHAMBER_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
+      type: 'toast',
+      id: 'toast-1',
+      payload: { kind: 'info', message: 'Hello' },
+    };
+    expect(guestMessageSchema.safeParse(legacyToast).success).toBe(true);
+    expect(parseGuestMessage(legacyToast)).toEqual(legacyToast);
+  });
+
+  test('readServiceEnv prefers ALCODE_* with OPENCHAMBER_* fallback', () => {
+    expect(readServiceEnv({})).toBeNull();
+    expect(readServiceEnv({ ALCODE_SERVICE_PORT: 'abc', ALCODE_SERVICE_TOKEN: 't' })).toBeNull();
+    expect(readServiceEnv({ ALCODE_SERVICE_PORT: '0', ALCODE_SERVICE_TOKEN: 't' })).toBeNull();
+    expect(readServiceEnv({ ALCODE_SERVICE_PORT: '3001' })).toBeNull();
+    expect(readServiceEnv({ OPENCHAMBER_SERVICE_PORT: '3001', OPENCHAMBER_SERVICE_TOKEN: 'legacy' }))
+      .toEqual({ port: 3001, token: 'legacy' });
+    expect(readServiceEnv({
+      ALCODE_SERVICE_PORT: '3001',
+      ALCODE_SERVICE_TOKEN: 'next',
+      OPENCHAMBER_SERVICE_PORT: '3002',
+      OPENCHAMBER_SERVICE_TOKEN: 'legacy',
+    })).toEqual({ port: 3001, token: 'next' });
   });
 
   test('accepts a null session push', () => {

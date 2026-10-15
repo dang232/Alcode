@@ -49,10 +49,11 @@ export const MobileConnectionWelcome: React.FC<{
     void conn.connect({ url: serverUrl, clientToken, label: connectionName });
   }, [clientToken, conn, connectionName, serverUrl]);
 
-  // Accept a pasted pairing link (alcode://connect?...) in the URL field and
-  // split it back into the server URL + token.
+  // Accept a pasted pairing link (alcode://connect?... or its pre-rename
+  // openchamber:// twin) in the URL field and split it back into the
+  // server URL + token.
   const handleUrlChange = React.useCallback((value: string) => {
-    if (/^alcode:\/\//i.test(value.trim())) {
+    if (/^(?:alcode|openchamber):\/\//i.test(value.trim())) {
       const payload = parseConnectionPayload(value);
       if (payload) {
         if ('pairing' in payload) {

@@ -105,8 +105,15 @@ const attachObjectSchema = z.object({
 
 const attachSchema = z.union([z.boolean(), attachModeSchema, attachObjectSchema]);
 
+/** Legacy built-in panel ids parse and write back with the new prefix. */
+const OPENCHAMBER_BUILTIN_PREFIX = 'openchamber-builtin-';
+const ALCODE_BUILTIN_PREFIX = 'alcode-builtin-';
+const normalizeBuiltinPanelId = (id: string): string => (
+  id.startsWith(OPENCHAMBER_BUILTIN_PREFIX) ? `${ALCODE_BUILTIN_PREFIX}${id.slice(OPENCHAMBER_BUILTIN_PREFIX.length)}` : id
+);
+
 const panelSchema = z.object({
-  id: z.string().trim().regex(PANEL_ID),
+  id: z.string().trim().regex(PANEL_ID).transform(normalizeBuiltinPanelId),
   name: z.string().trim().min(1),
   icon: z.string().trim().refine(isPanelIcon),
   entry: z.string().trim().refine(isSafeAssetPath).optional(),
@@ -338,8 +345,18 @@ const runtimeContributions = (contributes: z.output<typeof contributesSchema>): 
 export const alcodeManifestSchema = z.object({
   apiVersion: z.literal(ALCODE_SDK_MANIFEST_API_VERSIONS[0]),
   engines: z.object({
-    alcode: z.string().trim().regex(ALCODE_ENGINE_PATTERN),
-  }).strict().optional(),
+    alcode: z.string().trim().regex(ALCODE_ENGINE_PATTERN).optional(),
+    openchamber: z.string().trim().regex(ALCODE_ENGINE_PATTERN).optional(),
+  }).strict().optional().transform((engines, ctx) => {
+    // Legacy `engines.openchamber` parses and writes back as `engines.alcode`.
+    if (!engines) return undefined;
+    const floor = engines.alcode ?? engines.openchamber;
+    if (floor === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'engines.alcode must be a version like 1.22.0 or >=1.22.0.' });
+      return z.NEVER;
+    }
+    return { alcode: floor };
+  }),
   contributes: contributesSchema.superRefine((contributes, ctx) => {
     // Docking only means something for a page beside a shared surface.
     const docked = contributes.panel.dock !== undefined || contributes.panel.size !== undefined;
@@ -401,13 +418,21 @@ const packageVersionSchema = z.string().trim().regex(PACKAGE_VERSION_PATTERN).ma
 
 export const packageManifestSchema = z.object({
   version: packageVersionSchema.optional(),
-  alcode: alcodeManifestSchema,
+  alcode: alcodeManifestSchema.optional(),
+  openchamber: alcodeManifestSchema.optional(),
 });
 
+// Any top-level manifest block marks a package envelope, even a junk value:
+// the package parse then fails closed with the block named in the error.
 const packageEnvelopeSchema = z.union([
-  z.object({ alcode: z.null() }),
-  z.object({ alcode: z.object({}).passthrough() }),
+  z.object({ alcode: z.unknown() }),
+  z.object({ openchamber: z.unknown() }),
 ]);
+
+/** The package block that carries the manifest. New spelling wins when both are present. */
+const packageBlock = (document: z.output<typeof packageManifestSchema>) => (
+  document.alcode ?? document.openchamber
+);
 
 export type ManifestDocument = z.input<typeof alcodeManifestSchema> | z.input<typeof packageManifestSchema>;
 
@@ -421,11 +446,12 @@ const failureFromIssue = (issue: { path: ReadonlyArray<PropertyKey>; code: strin
   // Paths are reported relative to the `alcode` block whether the
   // document was a bare manifest or a package.json envelope.
   const segments = issue.path.map(String);
-  const path = (segments[0] === 'alcode' ? segments.slice(1) : segments).join('.');
-  const isPackageEnvelope = segments[0] === 'alcode';
+  const root = segments[0];
+  const isPackageEnvelope = root === 'alcode' || root === 'openchamber';
+  const path = (isPackageEnvelope ? segments.slice(1) : segments).join('.');
   if (!path && issue.code === 'invalid_type') {
     return isPackageEnvelope
-      ? fail('missing-alcode', 'package.json alcode must be a plain object.')
+      ? fail('missing-alcode', 'package.json "alcode" must be a plain object (a legacy "openchamber" block still works).')
       : fail('not-object', 'Manifest must be a plain object.');
   }
   if (segments.length === 1 && segments[0] === 'version') {
@@ -546,12 +572,16 @@ const decodeManifest = (parsed: ReturnType<typeof alcodeManifestSchema.safeParse
 };
 
 export const parseManifest = (document: ManifestDocument): ParseManifestResult => {
-  if ('alcode' in document) {
+  if ('alcode' in document || 'openchamber' in document) {
     const parsed = packageManifestSchema.safeParse(document);
     if (parsed.success) {
+      const block = packageBlock(parsed.data);
+      if (!block) {
+        return fail('missing-alcode', 'package.json needs an "alcode" block (a legacy "openchamber" block still works).');
+      }
       const success: ParseManifestSuccess = {
         ok: true,
-        manifest: parsed.data.alcode,
+        manifest: block,
       };
       if (parsed.data.version) {
         success.version = parsed.data.version;
@@ -573,9 +603,13 @@ export const parseManifestJson = (json: string): ParseManifestResult => {
     if (packageEnvelopeSchema.safeParse(raw).success) {
       const parsed = packageManifestSchema.safeParse(raw);
       if (parsed.success) {
+        const block = packageBlock(parsed.data);
+        if (!block) {
+          return fail('missing-alcode', 'package.json needs an "alcode" block (a legacy "openchamber" block still works).');
+        }
         const success: ParseManifestSuccess = {
           ok: true,
-          manifest: parsed.data.alcode,
+          manifest: block,
         };
         if (parsed.data.version) {
           success.version = parsed.data.version;

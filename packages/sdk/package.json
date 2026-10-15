@@ -27,7 +27,8 @@
     }
   },
   "bin": {
-    "alcode-guest-bundle": "./scripts/bundle-guest.ts"
+    "alcode-guest-bundle": "./scripts/bundle-guest.ts",
+    "openchamber-guest-bundle": "./scripts/bundle-guest.ts"
   },
   "publishConfig": {
     "access": "public"

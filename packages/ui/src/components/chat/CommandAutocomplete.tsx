@@ -40,6 +40,26 @@ const LOCAL_COMMAND_NAMES = [
   'plan-feature', 'craft-goal', 'schedule-task', 'catch-up', 'debug', 'weigh', 'explore',
 ];
 
+/**
+ * Namespace prefixes accepted before a command name (`/alcode:btw`,
+ * `/openchamber:btw`). The `openchamber:` twin is the pre-rename form and stays
+ * resolvable; both map to the same command. Matching strips the prefix (see
+ * `normalizeCommandSearchQuery`), so either spelling surfaces the command.
+ */
+export const COMMAND_NAMESPACE_ALIASES = {
+  'alcode:': 'alcode:',
+  'openchamber:': 'alcode:',
+} as const;
+
+/** Strip a leading `alcode:`/`openchamber:` namespace from a typed query. */
+export const normalizeCommandSearchQuery = (query: string): string => {
+  const lower = query.toLowerCase();
+  for (const prefix of Object.keys(COMMAND_NAMESPACE_ALIASES)) {
+    if (lower.startsWith(prefix)) return query.slice(prefix.length);
+  }
+  return query;
+};
+
 export interface CommandAutocompleteHandle {
   handleKeyDown: (key: string) => void;
 }
@@ -237,13 +257,16 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
           ...extensionCommands,
         ];
 
-        const filtered = searchQuery
-          ? allCommands.filter(cmd => commandMatchesSearch(cmd, searchQuery))
+        // Either namespace spelling (`/alcode:btw`, `/openchamber:btw`) matches
+        // the same command; the prefix is not part of the command name.
+        const effectiveQuery = normalizeCommandSearchQuery(searchQuery);
+        const filtered = effectiveQuery
+          ? allCommands.filter(cmd => commandMatchesSearch(cmd, effectiveQuery))
           : allCommands;
 
         filtered.sort((a, b) => {
-          const aStartsWith = a.name.toLowerCase().startsWith(searchQuery.toLowerCase());
-          const bStartsWith = b.name.toLowerCase().startsWith(searchQuery.toLowerCase());
+          const aStartsWith = a.name.toLowerCase().startsWith(effectiveQuery.toLowerCase());
+          const bStartsWith = b.name.toLowerCase().startsWith(effectiveQuery.toLowerCase());
           if (aStartsWith && !bStartsWith) return -1;
           if (!aStartsWith && bStartsWith) return 1;
           return a.name.localeCompare(b.name);
@@ -316,10 +339,11 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
           ),
         ];
 
-        const filtered = searchQuery
+        const effectiveQuery = normalizeCommandSearchQuery(searchQuery);
+        const filtered = effectiveQuery
           ? builtInCommands.filter(cmd =>
-              fuzzyMatch(cmd.name, searchQuery) ||
-              (cmd.description && fuzzyMatch(cmd.description, searchQuery))
+              fuzzyMatch(cmd.name, effectiveQuery) ||
+              (cmd.description && fuzzyMatch(cmd.description, effectiveQuery))
             )
           : builtInCommands;
 

@@ -1,4 +1,5 @@
-export { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, ALCODE_SDK_MANIFEST_API_VERSIONS } from './api-version.ts';
+export { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, ALCODE_SDK_MANIFEST_API_VERSIONS, OPENCHAMBER_SDK_CHANNEL, SDK_CHANNELS } from './api-version.ts';
+export type { SdkChannel } from './api-version.ts';
 export { GUEST_SCROLLBAR_CSS, GUEST_SCROLLBAR_SCRIPT } from './scrollbar-style.ts';
 export { guestFramePolicy } from './frame-policy.ts';
 export type { GuestLoadState, GuestProject, GuestWorktree, GuestSessionActivity, GuestSessionRecord, GuestDirectoryCoverage, GuestProjectsSnapshot, GuestWorktreesSnapshot, GuestSessionsSnapshot, GuestWorkspaceSnapshot, GuestWorkspaceQuery, GuestWorkspaceSubscription, GuestWorkspaceUpdate, GuestStorageRequest, GuestStorageResult, GuestStorageOptions, GuestStorageScope, GuestSessionWorktree } from './workspace.ts';
@@ -187,12 +188,14 @@ export {
   isGuestMessageItem,
   isGuestSessionItem,
   isServiceStatusResult,
+  isSdkChannel,
   isGuestRequestPath,
   isGuestRequestResult,
   isHostRequestErrorCode,
   isPromptResult,
   isStartSessionResult,
   readHostMessage,
+  readServiceEnv,
   resolveHostRequestErrorCode,
 } from './contract.ts';
 export type {
@@ -245,6 +248,7 @@ export type {
   GuestFileStatMessage,
   GuestGenerateMessage,
   GuestFileWriteMessage,
+  ServiceEnv,
   ServiceStatus,
   ServiceStatusResult,
   HostRequestErrorCode,

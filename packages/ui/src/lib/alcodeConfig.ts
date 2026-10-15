@@ -4,7 +4,7 @@
  *
  * A project's setup is the merge of two files the server (or the VS Code
  * extension host) owns: the personal one in `~/.config/alcode/projects/`
- * and, when a team shares it, `<repo>/.openchamber/project.json`. The merged
+ * and, when a team shares it, `<repo>/.alcode/project.json`. The merged
  * view says what runs; its `shared` and `personal` blocks say where each
  * entry came from, so a Settings page edits the personal block and never
  * copies a teammate's entry into it. This module only speaks HTTP: it
@@ -133,7 +133,7 @@ const EMPTY_PROJECT_SETUP: ProjectSetup = {
   draftStarters: [],
   shared: {
     status: 'missing',
-    path: '.openchamber/project.json',
+    path: '.alcode/project.json',
     setupWorktree: [],
     setupWorktreeWait: null,
     projectActions: [],
@@ -223,7 +223,7 @@ export type SharedProjectSetupPatch = Partial<{
 }>;
 
 /**
- * Change the team's shared file in the checkout (`<repo>/.openchamber/project.json`).
+ * Change the team's shared file in the checkout (`<repo>/.alcode/project.json`).
  * The server removes the file when nothing is left in it, and records trust
  * for the commands this instance just shared. Resolves the merged view, or
  * `null` on failure so a caller can tell "saved nothing" from "saved and empty".

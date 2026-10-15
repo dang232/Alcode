@@ -129,8 +129,10 @@ function isAlcodeCmdline(cmdline) {
   // (@alcode/web) and the source checkout both do, for the foreground
   // (bin/cli.js) and daemon (server/index.js) entrypoints alike. Matching the
   // path segment (not a generic "cli.js") keeps a recycled stranger such as
-  // "npm-cli.js" or "agentmemory" from being mistaken for us.
-  return cmdline.toLowerCase().includes('alcode');
+  // "npm-cli.js" or "agentmemory" from being mistaken for us. Pre-rename
+  // installs match the "openchamber" segment instead.
+  const lowered = cmdline.toLowerCase();
+  return lowered.includes('alcode') || lowered.includes('openchamber');
 }
 
 // Liveness + identity — "is the Alcode instance recorded in a pid file

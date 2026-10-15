@@ -6,6 +6,8 @@ If you discover a security vulnerability in Alcode, please report it responsibly
 
 **Email:** [security@openchamber.dev](mailto:security@openchamber.dev)
 
+Follow-up: move this contact to security@alcode.dev once that domain exists.
+
 Please include:
 - Description of the vulnerability
 - Steps to reproduce

@@ -84,7 +84,8 @@ exists for this guest.
   after; the panel paints `/loop` while `/snapshot` 404s, and snapshot
   data wins once it lands.
 - `service/main.js` — loopback entry and node build entry. Requires
-  `ALCODE_SERVICE_PORT` + `ALCODE_SERVICE_TOKEN`, enforces the
+  `ALCODE_SERVICE_PORT` + `ALCODE_SERVICE_TOKEN` (the legacy
+  `OPENCHAMBER_SERVICE_*` names still work as a fallback), enforces the
   bearer on every request including `/health`, binds 127.0.0.1 only. The
   shipped bundle is the self-contained ESM the builtin build produces;
   the host never compiles TypeScript.

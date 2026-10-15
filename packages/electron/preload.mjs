@@ -2,25 +2,29 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 const eventListeners = new Map();
 
-const readArgValue = (name) => {
-  const prefix = `${name}=`;
-  const entry = process.argv.find((value) => typeof value === 'string' && value.startsWith(prefix));
-  if (!entry) {
-    return '';
+const readArgValue = (...names) => {
+  for (const name of names) {
+    const prefix = `${name}=`;
+    const entry = process.argv.find((value) => typeof value === 'string' && value.startsWith(prefix));
+    if (entry) {
+      return entry.slice(prefix.length);
+    }
   }
-  return entry.slice(prefix.length);
+  return '';
 };
 
-const localOrigin = readArgValue('--alcode-local-origin');
-const apiBaseUrl = readArgValue('--alcode-api-base-url');
-const clientToken = readArgValue('--alcode-client-token');
-const runtimeHeadersRaw = readArgValue('--alcode-runtime-headers');
-const homeDirectory = readArgValue('--alcode-home');
-const macosMajorRaw = readArgValue('--alcode-macos-major');
+// Each option accepts the current --alcode-* flag and its pre-rename
+// --openchamber-* twin; the new name wins when both are present.
+const localOrigin = readArgValue('--alcode-local-origin', '--openchamber-local-origin');
+const apiBaseUrl = readArgValue('--alcode-api-base-url', '--openchamber-api-base-url');
+const clientToken = readArgValue('--alcode-client-token', '--openchamber-client-token');
+const runtimeHeadersRaw = readArgValue('--alcode-runtime-headers', '--openchamber-runtime-headers');
+const homeDirectory = readArgValue('--alcode-home', '--openchamber-home');
+const macosMajorRaw = readArgValue('--alcode-macos-major', '--openchamber-macos-major');
 const macosMajor = Number.parseInt(macosMajorRaw, 10);
-const trayEnabled = process.platform !== 'darwin' || readArgValue('--alcode-tray-enabled') !== '0';
+const trayEnabled = process.platform !== 'darwin' || readArgValue('--alcode-tray-enabled', '--openchamber-tray-enabled') !== '0';
 // The window has the desktop environment's own title bar, so the page draws no window controls.
-const nativeFrame = readArgValue('--alcode-native-frame') === '1';
+const nativeFrame = readArgValue('--alcode-native-frame', '--openchamber-native-frame') === '1';
 
 // Preload re-executes on every cross-origin navigation (we run with
 // sandbox:false, per-document). Two separate concerns to balance:
@@ -42,6 +46,7 @@ const currentOrigin = (() => {
 })();
 const isLocalPage = currentOrigin !== 'null'
   && (currentOrigin === 'alcode-ui://app'
+  || currentOrigin === 'openchamber-ui://app'
   || (localOrigin && currentOrigin === localOrigin));
 
 // Remote pages need __ALCODE_LOCAL_ORIGIN__ so the HostSwitcher knows
@@ -49,31 +54,39 @@ const isLocalPage = currentOrigin !== 'null'
 // window.location.origin otherwise — wrong on remote). Low risk: the value
 // is just "http://127.0.0.1:<port>" which is not exploitable without the
 // IPC channel, and CORS on the local server prevents remote-origin fetches.
+// Native hosts inject every runtime global under both the current __ALCODE_*
+// name and its pre-rename __OPENCHAMBER_* twin, so UI bundles from either
+// side of the rename resolve the same values.
+const exposeMirroredGlobal = (alcodeName, openchamberName, value) => {
+  contextBridge.exposeInMainWorld(alcodeName, value);
+  contextBridge.exposeInMainWorld(openchamberName, value);
+};
+
 if (localOrigin) {
-  contextBridge.exposeInMainWorld('__ALCODE_LOCAL_ORIGIN__', localOrigin);
+  exposeMirroredGlobal('__ALCODE_LOCAL_ORIGIN__', '__OPENCHAMBER_LOCAL_ORIGIN__', localOrigin);
 }
 
 if (apiBaseUrl) {
-  contextBridge.exposeInMainWorld('__ALCODE_API_BASE_URL__', apiBaseUrl);
+  exposeMirroredGlobal('__ALCODE_API_BASE_URL__', '__OPENCHAMBER_API_BASE_URL__', apiBaseUrl);
 }
 
 if (clientToken && isLocalPage) {
-  contextBridge.exposeInMainWorld('__ALCODE_CLIENT_TOKEN__', clientToken);
+  exposeMirroredGlobal('__ALCODE_CLIENT_TOKEN__', '__OPENCHAMBER_CLIENT_TOKEN__', clientToken);
 }
 
 // Which saved host this window should connect to over the relay-capable path
 // (direct probe first, E2EE tunnel fallback). Local pages only — the id is
 // only useful together with the desktop IPC channel anyway.
-const relayHostId = readArgValue('--alcode-relay-host-id');
+const relayHostId = readArgValue('--alcode-relay-host-id', '--openchamber-relay-host-id');
 if (relayHostId && isLocalPage) {
-  contextBridge.exposeInMainWorld('__ALCODE_RELAY_HOST_ID__', relayHostId);
+  exposeMirroredGlobal('__ALCODE_RELAY_HOST_ID__', '__OPENCHAMBER_RELAY_HOST_ID__', relayHostId);
 }
 
 if (runtimeHeadersRaw && isLocalPage) {
   try {
     const runtimeHeaders = JSON.parse(runtimeHeadersRaw);
     if (runtimeHeaders && typeof runtimeHeaders === 'object') {
-      contextBridge.exposeInMainWorld('__ALCODE_RUNTIME_HEADERS__', runtimeHeaders);
+      exposeMirroredGlobal('__ALCODE_RUNTIME_HEADERS__', '__OPENCHAMBER_RUNTIME_HEADERS__', runtimeHeaders);
     }
   } catch {
   }
@@ -83,23 +96,23 @@ if (runtimeHeadersRaw && isLocalPage) {
 // operate on the REMOTE server's filesystem, local home is irrelevant
 // (and would be misleading if consumed as a workspace hint).
 if (isLocalPage && homeDirectory) {
-  contextBridge.exposeInMainWorld('__ALCODE_HOME__', homeDirectory);
+  exposeMirroredGlobal('__ALCODE_HOME__', '__OPENCHAMBER_HOME__', homeDirectory);
 }
 
 // macOS major version drives window chrome offsets (traffic lights) — UI
 // presentation only, safe to expose.
 if (Number.isFinite(macosMajor) && macosMajor > 0) {
-  contextBridge.exposeInMainWorld('__ALCODE_MACOS_MAJOR__', macosMajor);
+  exposeMirroredGlobal('__ALCODE_MACOS_MAJOR__', '__OPENCHAMBER_MACOS_MAJOR__', macosMajor);
 }
 
-contextBridge.exposeInMainWorld('__ALCODE_ELECTRON__', {
+exposeMirroredGlobal('__ALCODE_ELECTRON__', '__OPENCHAMBER_ELECTRON__', {
   runtime: 'electron',
   arch: process.arch,
   trayEnabled,
   nativeFrame,
 });
 
-contextBridge.exposeInMainWorld('__ALCODE_PLATFORM__', process.platform);
+exposeMirroredGlobal('__ALCODE_PLATFORM__', '__OPENCHAMBER_PLATFORM__', process.platform);
 
 // Note: bootOutcome must stay writable from the main world's initScript so
 // re-navigations (host switch via deep link) can refresh it. contextBridge-
@@ -163,7 +176,10 @@ ipcRenderer.on('alcode:emit', (_evt, payload) => {
 
 const relayDevTunnelPorts = new Map();
 let relayDevTunnelHandler = null;
-ipcRenderer.on('alcode:relay-dev-tunnel-connect', (event, payload) => {
+// The tunnel connect arrives on the current channel; the pre-rename channel
+// is accepted as an alias into the same handler (the main process emits
+// once, on the current channel).
+const handleRelayDevTunnelConnect = (event, payload) => {
   if (!isLocalPage || !payload || typeof payload.connectionId !== 'string' || !event.ports?.[0]) return;
   const port = event.ports[0];
   relayDevTunnelPorts.set(payload.connectionId, port);
@@ -174,7 +190,9 @@ ipcRenderer.on('alcode:relay-dev-tunnel-connect', (event, payload) => {
   });
   port.start();
   relayDevTunnelHandler?.({ connectionId: payload.connectionId, remotePort: payload.remotePort, message: { type: 'connect' } });
-});
+};
+ipcRenderer.on('alcode:relay-dev-tunnel-connect', handleRelayDevTunnelConnect);
+ipcRenderer.on('openchamber:relay-dev-tunnel-connect', handleRelayDevTunnelConnect);
 
 // The desktop bridge is exposed on all pages; the main-process gate in
 // ipcMain.handle('alcode:invoke') decides per-command what is safe
@@ -202,4 +220,4 @@ if (isLocalPage) {
   };
 }
 
-contextBridge.exposeInMainWorld('__ALCODE_DESKTOP__', desktopBridge);
+exposeMirroredGlobal('__ALCODE_DESKTOP__', '__OPENCHAMBER_DESKTOP__', desktopBridge);

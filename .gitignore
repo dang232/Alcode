@@ -74,6 +74,7 @@ workspaces/
 
 # Alcode app runtime state (sessions db, screenshots)
 .openchamber/screenshots/
+.alcode/screenshots/
 
 # Marks a disposable clone dedicated to unattended maintenance tasks.
 .maintenance-clone

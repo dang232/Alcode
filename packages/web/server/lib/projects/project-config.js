@@ -5,6 +5,7 @@ import { projectConfigFileStemOf, projectPathFromId } from './project-id.js';
 import {
   DEFAULT_PLANS_DIR,
   EMPTY_SHARED_PROJECT_CONFIG,
+  LEGACY_SHARED_CONFIG_RELATIVE_PATH,
   SHARED_CONFIG_RELATIVE_PATH,
   applySharedProjectSetupPatch,
   isSharedProjectConfigEmpty,
@@ -1003,6 +1004,7 @@ export const createProjectConfigRuntime = (deps) => {
     projectPathFromId(projectID) || (typeof personalRaw.projectPath === 'string' ? personalRaw.projectPath.trim() : '')
   );
   const sharedConfigPathOf = (projectPath) => path.join(projectPath, ...SHARED_CONFIG_RELATIVE_PATH.split('/'));
+  const legacySharedConfigPathOf = (projectPath) => path.join(projectPath, ...LEGACY_SHARED_CONFIG_RELATIVE_PATH.split('/'));
 
   const readSharedProjectConfig = async (projectID, personalRaw) => {
     const projectPath = projectPathOf(projectID, personalRaw);
@@ -1011,8 +1013,16 @@ export const createProjectConfigRuntime = (deps) => {
     try {
       raw = await fsPromises.readFile(sharedConfigPathOf(projectPath), 'utf8');
     } catch (error) {
-      if (error && typeof error === 'object' && error.code === 'ENOENT') return { status: 'missing' };
-      return { status: 'invalid', reason: error instanceof Error ? error.message : String(error) };
+      if (!(error && typeof error === 'object' && error.code === 'ENOENT')) {
+        return { status: 'invalid', reason: error instanceof Error ? error.message : String(error) };
+      }
+      // The pre-rename location is a read fallback only; writes go to the new path.
+      try {
+        raw = await fsPromises.readFile(legacySharedConfigPathOf(projectPath), 'utf8');
+      } catch (legacyError) {
+        if (legacyError && typeof legacyError === 'object' && legacyError.code === 'ENOENT') return { status: 'missing' };
+        return { status: 'invalid', reason: legacyError instanceof Error ? legacyError.message : String(legacyError) };
+      }
     }
     return parseSharedProjectConfig(raw);
   };

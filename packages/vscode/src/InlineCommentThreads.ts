@@ -19,7 +19,9 @@ import { DELIVERY_CONFIRMATION_TIMEOUT_MS, canCommentOnDocument, nextDraftId, re
 
 // Also written literally in package.json, which gates the thread menus with
 // `commentController == alcode.inlineComments`. JSON cannot import, so the
-// two have to be kept in step by hand.
+// two have to be kept in step by hand. The id stays singular (no
+// `openchamber.*` twin): it names the controller in menu `when`-clauses, and
+// a second controller would split threads across two owners.
 const INLINE_COMMENT_CONTROLLER_ID = 'alcode.inlineComments';
 
 export interface InlineCommentDraftPayload {

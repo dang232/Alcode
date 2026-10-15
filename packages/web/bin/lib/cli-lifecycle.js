@@ -169,19 +169,22 @@ async function discoverRunningInstances(options = {}) {
     : (pid) => getAlcodeProcessState(pid, options);
   try {
     const files = fs.readdirSync(runDir);
-    const pidFiles = files.filter((file) => file.startsWith('alcode-') && file.endsWith('.pid'));
+    const pidFiles = files.filter((file) => (file.startsWith('alcode-') || file.startsWith('openchamber-')) && file.endsWith('.pid'));
     for (const file of pidFiles) {
-      const port = parseInt(file.replace('alcode-', '').replace('.pid', ''), 10);
+      // A server started by the pre-rename CLI records `openchamber-<port>.pid`
+      // next to its instance file; read it under the same legacy prefix.
+      const prefix = file.startsWith('openchamber-') ? 'openchamber-' : 'alcode-';
+      const port = parseInt(file.replace(prefix, '').replace('.pid', ''), 10);
       if (!Number.isFinite(port) || port <= 0) continue;
       const pidFilePath = path.join(runDir, file);
       const pid = readPidFile(pidFilePath);
       if (!pid) {
         removePidFile(pidFilePath);
-        removeInstanceFile(path.join(runDir, `alcode-${port}.json`));
+        removeInstanceFile(path.join(runDir, `${prefix}${port}.json`));
         continue;
       }
 
-      const instanceFilePath = path.join(runDir, `alcode-${port}.json`);
+      const instanceFilePath = path.join(runDir, `${prefix}${port}.json`);
       const storedOptions = readInstanceOptions(instanceFilePath);
       const processState = getProcessState(pid);
       if (processState === 'dead') {

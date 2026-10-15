@@ -20,6 +20,8 @@ import { resolveStartupUrlProbePlan } from './startup-url-selection.mjs';
 import {
   BACKGROUND_START_ARG,
   DEEP_LINK_PROTOCOL,
+  LEGACY_DEEP_LINK_PROTOCOL,
+  LEGACY_UI_PROTOCOL,
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
   UI_PROTOCOL,
@@ -188,13 +190,17 @@ try {
 } catch {
 }
 
-try {
-  if (!app.isDefaultProtocolClient(DEEP_LINK_PROTOCOL)) {
-    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL);
+// Both deep-link schemes stay registered so links issued before the rename
+// (openchamber://) keep opening the app alongside the current alcode:// ones.
+for (const deepLinkProtocol of [DEEP_LINK_PROTOCOL, LEGACY_DEEP_LINK_PROTOCOL]) {
+  try {
+    if (!app.isDefaultProtocolClient(deepLinkProtocol)) {
+      app.setAsDefaultProtocolClient(deepLinkProtocol);
+    }
+  } catch (error) {
+    // log.* not yet initialized at this point; fall back to console.
+    console.warn('[electron] failed to register deep-link protocol:', error);
   }
-} catch (error) {
-  // log.* not yet initialized at this point; fall back to console.
-  console.warn('[electron] failed to register deep-link protocol:', error);
 }
 
 const readAppMetadata = () => {
@@ -977,7 +983,7 @@ const buildPackagedUiUrl = (pathname = '/index.html') => new URL(pathname, `${pa
 const injectRuntimeConfigIntoHtml = (html) => {
   const apiBaseUrl = state.apiBaseUrl || state.sidecarUrl || '';
   const localOrigin = state.localOrigin || state.sidecarUrl || '';
-  const initScript = `<script>if(window.__ALCODE_LOCAL_ORIGIN__===undefined){window.__ALCODE_LOCAL_ORIGIN__=${JSON.stringify(localOrigin)};}if(window.__ALCODE_API_BASE_URL__===undefined){window.__ALCODE_API_BASE_URL__=${JSON.stringify(apiBaseUrl)};}if(window.__ALCODE_CLIENT_TOKEN__===undefined&&${JSON.stringify(state.clientToken || '')}){window.__ALCODE_CLIENT_TOKEN__=${JSON.stringify(state.clientToken || '')};}</script>`;
+  const initScript = `<script>if(window.__ALCODE_LOCAL_ORIGIN__===undefined){window.__ALCODE_LOCAL_ORIGIN__=${JSON.stringify(localOrigin)};}if(window.__OPENCHAMBER_LOCAL_ORIGIN__===undefined){window.__OPENCHAMBER_LOCAL_ORIGIN__=${JSON.stringify(localOrigin)};}if(window.__ALCODE_API_BASE_URL__===undefined){window.__ALCODE_API_BASE_URL__=${JSON.stringify(apiBaseUrl)};}if(window.__OPENCHAMBER_API_BASE_URL__===undefined){window.__OPENCHAMBER_API_BASE_URL__=${JSON.stringify(apiBaseUrl)};}if(window.__ALCODE_CLIENT_TOKEN__===undefined&&${JSON.stringify(state.clientToken || '')}){window.__ALCODE_CLIENT_TOKEN__=${JSON.stringify(state.clientToken || '')};}if(window.__OPENCHAMBER_CLIENT_TOKEN__===undefined&&${JSON.stringify(state.clientToken || '')}){window.__OPENCHAMBER_CLIENT_TOKEN__=${JSON.stringify(state.clientToken || '')};}</script>`;
   if (html.includes('<head>')) return html.replace('<head>', `<head>${initScript}`);
   if (html.includes('</head>')) return html.replace('</head>', `${initScript}</head>`);
   return `${initScript}${html}`;
@@ -989,6 +995,9 @@ const injectRuntimeConfigIntoHtml = (html) => {
  * Every page the user opens in the panel shares this partition, which is what
  * lets a dev-server login persist between sessions without touching the app's
  * own storage.
+ *
+ * The pre-rename name is kept deliberately: renaming the partition would orphan
+ * the stored sessions/cookies of existing installs, wiping panel logins.
  */
 const BROWSER_PANEL_PARTITION = 'persist:openchamber-browser';
 
@@ -1517,11 +1526,12 @@ const buildInitScript = (localOrigin, bootOutcome, apiBaseUrl = '', clientToken 
   const token = JSON.stringify(clientToken || '');
   const headers = JSON.stringify(sanitizeRuntimeRequestHeaders(requestHeaders));
   const packagedOrigin = JSON.stringify(packagedUiOrigin());
+  const legacyPackagedOrigin = JSON.stringify(`${LEGACY_UI_PROTOCOL}://app`);
   const macVersion = macosMajorVersion();
   const outcome = JSON.stringify(bootOutcome ?? null);
   return [
     '(function(){',
-    `try{var __oc_local=${local};var __oc_api=${apiBase};var __oc_headers=${headers};var __oc_packaged=${packagedOrigin};var __oc_origin=window.location&&window.location.origin||'';var __oc_is_packaged=__oc_origin===__oc_packaged;var __oc_is_local=__oc_local&&__oc_origin===new URL(__oc_local).origin;window.__ALCODE_MACOS_MAJOR__=${macVersion};window.__ALCODE_LOCAL_ORIGIN__=__oc_local;window.__ALCODE_API_BASE_URL__=__oc_api;if(__oc_is_local||__oc_is_packaged){window.__ALCODE_HOME__=${home};window.__ALCODE_RUNTIME_HEADERS__=__oc_headers;}if((__oc_is_local||__oc_is_packaged)&&${token}){window.__ALCODE_CLIENT_TOKEN__=${token};}var __oc_bo=${outcome};if(__oc_bo){window.__ALCODE_DESKTOP_BOOT_OUTCOME__=__oc_bo;}}catch(_e){}`,
+    `try{var __oc_local=${local};var __oc_api=${apiBase};var __oc_headers=${headers};var __oc_packaged=${packagedOrigin};var __oc_legacy_packaged=${legacyPackagedOrigin};var __oc_origin=window.location&&window.location.origin||'';var __oc_is_packaged=__oc_origin===__oc_packaged||__oc_origin===__oc_legacy_packaged;var __oc_is_local=__oc_local&&__oc_origin===new URL(__oc_local).origin;window.__ALCODE_MACOS_MAJOR__=${macVersion};window.__OPENCHAMBER_MACOS_MAJOR__=${macVersion};window.__ALCODE_LOCAL_ORIGIN__=__oc_local;window.__OPENCHAMBER_LOCAL_ORIGIN__=__oc_local;window.__ALCODE_API_BASE_URL__=__oc_api;window.__OPENCHAMBER_API_BASE_URL__=__oc_api;if(__oc_is_local||__oc_is_packaged){window.__ALCODE_HOME__=${home};window.__OPENCHAMBER_HOME__=${home};window.__ALCODE_RUNTIME_HEADERS__=__oc_headers;window.__OPENCHAMBER_RUNTIME_HEADERS__=__oc_headers;}if((__oc_is_local||__oc_is_packaged)&&${token}){window.__ALCODE_CLIENT_TOKEN__=${token};window.__OPENCHAMBER_CLIENT_TOKEN__=${token};}var __oc_bo=${outcome};if(__oc_bo){window.__ALCODE_DESKTOP_BOOT_OUTCOME__=__oc_bo;window.__OPENCHAMBER_DESKTOP_BOOT_OUTCOME__=__oc_bo;}}catch(_e){}`,
     '}())',
   ].join('');
 };
@@ -1668,13 +1678,22 @@ const takePendingSessionDeepLinks = () => {
   return taken;
 };
 
+// Deep links are accepted on both the current and pre-rename schemes; the
+// parsed result is identical either way, so downstream dispatch is shared.
+const isDeepLinkProtocol = (protocol) =>
+  protocol === `${DEEP_LINK_PROTOCOL}:` || protocol === `${LEGACY_DEEP_LINK_PROTOCOL}:`;
+
+const isDeepLinkUrl = (raw) =>
+  typeof raw === 'string'
+  && (raw.startsWith(`${DEEP_LINK_PROTOCOL}://`) || raw.startsWith(`${LEGACY_DEEP_LINK_PROTOCOL}://`));
+
 const parseDeepLink = (raw) => {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
   try {
     const url = new URL(trimmed);
-    if (url.protocol !== `${DEEP_LINK_PROTOCOL}:`) return null;
+    if (!isDeepLinkProtocol(url.protocol)) return null;
     const type = url.hostname;
     if (!type) return null;
     const segments = url.pathname.split('/').filter(Boolean);
@@ -1711,7 +1730,7 @@ const parseConnectPairingDeepLinkPayload = (raw) => {
   if (typeof raw !== 'string') return null;
   try {
     const url = new URL(raw.trim());
-    if (url.protocol !== `${DEEP_LINK_PROTOCOL}:` || url.hostname !== 'connect') return null;
+    if (!isDeepLinkProtocol(url.protocol) || url.hostname !== 'connect') return null;
     if (url.searchParams.get('v') !== '2') return null;
     const payload = decodeBase64UrlJson(url.searchParams.get('p') || '');
     if (!payload || payload.v !== 2 || typeof payload !== 'object') return null;
@@ -1998,7 +2017,7 @@ const handleDeepLinks = (urls) => {
 };
 
 const extractInitialDeepLinks = () =>
-  process.argv.filter((arg) => typeof arg === 'string' && arg.startsWith(`${DEEP_LINK_PROTOCOL}://`));
+  process.argv.filter(isDeepLinkUrl);
 
 const dispatchDomEventToWindow = (browserWindow, event, detail) => {
   if (!browserWindow || browserWindow.isDestroyed()) return;
@@ -2319,7 +2338,7 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
     try {
       const url = new URL(raw);
       if (url.protocol === 'devtools:') return true;
-      if (url.protocol === `${UI_PROTOCOL}:`) return true;
+      if (url.protocol === `${UI_PROTOCOL}:` || url.protocol === `${LEGACY_UI_PROTOCOL}:`) return true;
       if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
       // In development the renderer is served by Vite while state.localOrigin
       // remains the separate local API server. Permit same-origin reloads from
@@ -5235,7 +5254,10 @@ const COMMANDS_SAFE_FOR_REMOTE = new Set([
   'desktop_tray_update',
 ]);
 
-ipcMain.handle('alcode:invoke', async (event, command, args) => {
+// Privileged IPC is served on both the current alcode:* channels and their
+// pre-rename openchamber:* twins. The aliases share one handler (and the
+// same local-origin gate), so renderers from either side of the rename work.
+const handleInvokeRequest = async (event, command, args) => {
   if (!isLocalSender(event.sender) && !COMMANDS_SAFE_FOR_REMOTE.has(command)) {
     log.warn(`[ipc] rejected ${command} from non-local origin: ${event.sender?.getURL?.() || '(unknown)'}`);
     throw new Error('IPC not available for this origin');
@@ -5244,9 +5266,12 @@ ipcMain.handle('alcode:invoke', async (event, command, args) => {
   const browserWindow = BrowserWindow.fromWebContents(event.sender);
   const result = await handleInvoke(browserWindow, command, args);
   return !local && command === 'desktop_hosts_get' ? redactHostsConfigForRemote(result) : result;
-});
+};
+for (const channel of ['alcode:invoke', 'openchamber:invoke']) {
+  ipcMain.handle(channel, handleInvokeRequest);
+}
 
-ipcMain.handle('alcode:dialog:open', async (event, options) => {
+const handleDialogOpenRequest = async (event, options) => {
   // Native file dialogs expose absolute local paths; never grant to remote.
   if (!isLocalSender(event.sender)) {
     log.warn(`[ipc] rejected dialog:open from non-local origin: ${event.sender?.getURL?.() || '(unknown)'}`);
@@ -5293,9 +5318,12 @@ ipcMain.handle('alcode:dialog:open', async (event, options) => {
   }
   if (options?.multiple) return result.filePaths;
   return result.filePaths[0] || null;
-});
+};
+for (const channel of ['alcode:dialog:open', 'openchamber:dialog:open']) {
+  ipcMain.handle(channel, handleDialogOpenRequest);
+}
 
-ipcMain.handle('alcode:file:grant-existing', async (event, filePath) => {
+const handleGrantExistingRequest = async (event, filePath) => {
   if (!isLocalSender(event.sender)) {
     log.warn(`[ipc] rejected file:grant-existing from non-local origin: ${event.sender?.getURL?.() || '(unknown)'}`);
     throw new Error('IPC not available for this origin');
@@ -5312,7 +5340,10 @@ ipcMain.handle('alcode:file:grant-existing', async (event, filePath) => {
     outsideFileGrant: grant.outsideFileGrant,
     expiresAt: grant.expiresAt,
   };
-});
+};
+for (const channel of ['alcode:file:grant-existing', 'openchamber:file:grant-existing']) {
+  ipcMain.handle(channel, handleGrantExistingRequest);
+}
 
 // --- Native tray / menu bar ---------------------------------------------------
 // Tray lives on macOS, Windows, and Linux. The renderer streams a compact state
@@ -5558,7 +5589,7 @@ app.on('before-quit', (event) => {
 
 const handleSecondInstance = (argv) => {
   const urls = Array.isArray(argv)
-    ? argv.filter((arg) => typeof arg === 'string' && arg.startsWith(`${DEEP_LINK_PROTOCOL}://`))
+    ? argv.filter(isDeepLinkUrl)
     : [];
   if (urls.length > 0) handleDeepLinks(urls);
   if (BrowserWindow.getAllWindows().length > 0) {

@@ -21,7 +21,7 @@ const setup: ProjectSetup = {
   draftStarters: [],
   shared: {
     status: 'ok',
-    path: '.openchamber/project.json',
+    path: '.alcode/project.json',
     setupWorktree: ['true'],
     setupWorktreeWait: null,
     projectActions: [],

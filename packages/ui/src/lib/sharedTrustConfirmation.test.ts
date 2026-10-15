@@ -33,7 +33,7 @@ const baseSetup = (): ProjectSetup => ({
   draftStarters: [],
   shared: {
     status: 'ok',
-    path: '.openchamber/project.json',
+    path: '.alcode/project.json',
     setupWorktree: ['bun install'],
     setupWorktreeWait: null,
     projectActions: [{ id: 'dev', name: 'Dev', command: 'bun run dev' }],
@@ -76,7 +76,7 @@ describe('shared trust confirmation', () => {
   test('asks with the exact commands and records a trust answer against the hash', async () => {
     const pending = ensureSharedSetupTrusted(project, setup);
     const request = getSharedTrustConfirmationSnapshot();
-    expect(request?.sharedPath).toBe('.openchamber/project.json');
+    expect(request?.sharedPath).toBe('.alcode/project.json');
     expect(request?.setupCommands).toEqual(['bun install']);
     expect(request?.actions).toEqual([{ id: 'dev', name: 'Dev', command: 'bun run dev' }]);
 

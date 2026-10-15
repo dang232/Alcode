@@ -92,9 +92,12 @@ export const registerGenerateCommitMessageCommand = (
   context: vscode.ExtensionContext,
   manager: OpenCodeManager,
 ): void => {
+  // Same handler under the pre-rename id, so keybindings and scripts written
+  // against `openchamber.generateCommitMessage` keep working.
+  for (const commandId of ['alcode.generateCommitMessage', 'openchamber.generateCommitMessage'] as const) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      'alcode.generateCommitMessage',
+      commandId,
       async (sourceControl?: vscode.SourceControl) => {
         if (inFlight) {
           vscode.window.setStatusBarMessage(localize('Alcode: Commit message generation already in progress'), 2000);
@@ -160,4 +163,5 @@ export const registerGenerateCommitMessageCommand = (
       },
     ),
   );
+  }
 };

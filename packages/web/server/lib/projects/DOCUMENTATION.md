@@ -23,7 +23,7 @@ that writes it:
 Notes, todos, and plans moved out of this file to `packages/web/server/lib/project-context`.
 A project's environment variables and environment command are not in this file either: values can be secrets, so they live in `environment.json` (mode 0600, `packages/web/server/lib/environment`).
 
-A second, optional source is the team's shared file, `<repo>/.openchamber/project.json`
+A second, optional source is the team's shared file, `<repo>/.alcode/project.json`
 (`version: 1`; `setupWorktree`, `setupWorktreeWait`, `projectActions`, `draftStarters`,
 `plansDir`). The server reads it from the checkout the project id names
 (`projectPathFromId`). `GET /api/projects/:projectId/config`

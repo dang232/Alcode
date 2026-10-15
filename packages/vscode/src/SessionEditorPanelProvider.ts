@@ -72,6 +72,9 @@ const isSameActiveEditorFilePayload = (a: ActiveEditorFilePayload | null, b: Act
 };
 
 export class SessionEditorPanelProvider {
+  // Single stable view id on purpose, not dual-registered like commands:
+  // panel types are matched by this id when tabs restore, and a second id
+  // would open a competing tab kind for the same sessions.
   public static readonly viewType = 'alcode.sessionEditor';
 
   private _cachedStatus: ConnectionStatus = 'connecting';

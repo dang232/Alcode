@@ -47,6 +47,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>alcode</string>
+				<string>openchamber</string>
 			</array>
 		</dict>
 	</array>

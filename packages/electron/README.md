@@ -183,7 +183,7 @@ macOS packaging needs Xcode/build tools for notarized builds and icon asset comp
 
 Windows packaging needs NSIS support through `electron-builder`. If no Windows signing env is set, `package.mjs` disables code signing and builds an unsigned installer. Windows updates use `latest.yml` for x64 and the `latest-arm64.yml` channel for ARM64 so each installation resolves an architecture-matching installer.
 
-Linux AppImages must be built natively. Set `ALCODE_TARGET_ARCH=x64` or `ALCODE_TARGET_ARCH=arm64` when packaging; the build rejects a target that does not match the Linux host. The same target selects the bundled OpenCode CLI, native Electron rebuild, and Electron Builder architecture. Linux identity is stable across architectures: executable `alcode`, desktop file `openchamber.desktop`, icon `alcode`, and `StartupWMClass=alcode`.
+Linux AppImages must be built natively. Set `ALCODE_TARGET_ARCH=x64` or `ALCODE_TARGET_ARCH=arm64` when packaging; the build rejects a target that does not match the Linux host. The same target selects the bundled OpenCode CLI, native Electron rebuild, and Electron Builder architecture. Linux identity is stable across architectures: executable `alcode`, desktop file `alcode.desktop`, icon `alcode`, and `StartupWMClass=alcode`. Pre-rename installs used `openchamber.desktop`; enabling launch-at-login writes the new entry and removes the legacy file so upgraded machines launch once, and disabling removes both. See Rename Compatibility below.
 
 After packaging, run `bun run --cwd packages/electron verify:linux-appimage`. The verifier extracts the final AppImage and checks its ELF architecture, desktop identity, Electron executable, pinned OpenCode CLI version and architecture, and all packaged native `.node` modules.
 
@@ -238,7 +238,7 @@ Use an explicit override when testing a different OpenCode CLI build or when a u
 | `ALCODE_DESKTOP_NOTIFY=true` | Enables desktop notification flow in the web server |
 | `ALCODE_SKIP_API_COMPRESSION=true` | Defaulted by Desktop to reduce local CPU overhead |
 | `ALCODE_STARTUP_PERF=1` | Enables privacy-safe startup phase timings in Desktop/server logs; disabled by default |
-| `ALCODE_DESKTOP_USER_DATA_DIR` | Test hook used by `profile:startup`: moves the Electron profile (single-instance lock, Chromium caches) so a measured launch does not share it with the installed app |
+| `ALCODE_DESKTOP_USER_DATA_DIR` | Test hook used by `profile:startup`: moves the Electron profile (single-instance lock, Chromium caches) so a measured launch does not share it with the installed app. `OPENCHAMBER_DESKTOP_USER_DATA_DIR` is still honored as a legacy fallback; the default profile location is unchanged so existing installs keep their state |
 | `OPENCODE_HOST` / `OPENCODE_PORT` / `OPENCODE_SKIP_START` | Connect Desktop to an external OpenCode server instead of starting one locally |
 
 ## Native Features Owned Here
@@ -266,7 +266,7 @@ Use an explicit override when testing a different OpenCode CLI build or when a u
 - Tunnel lifecycle integration through the web server runtime.
 - Remote dev-server previews use a direct WebSocket tunnel when the instance has an HTTP address. Relay-only instances keep the encrypted relay transport in the renderer and bridge its raw bytes to the browser panel through a local Electron listener.
 - Auto-update checks, downloads, and restart/apply flow.
-- The browser panel's own session (`persist:openchamber-browser`): its storage is
+- The browser panel's own session (`persist:openchamber-browser`, name kept from before the rename because renaming the partition would wipe stored panel logins): its storage is
   cleared only through the scoped clear-data command, and camera, microphone,
   location, and device-picker requests from pages shown there are denied. A focused
   page can write to the system clipboard, so its normal Copy controls and native
@@ -290,6 +290,27 @@ Add new native capabilities in this order:
 2. Add the real command handling in `main.mjs` under `alcode:invoke`.
 3. Gate privileged commands in main process logic so remote pages cannot access local filesystem or shell capabilities. A command added to `COMMANDS_SAFE_FOR_REMOTE` takes input from, and answers, another server's page: parse what it stores and strip credentials from what it returns (`remote-page-policy.mjs`). Splash colours, for example, end up in the trusted splash page, and `desktop_hosts_get` hands remote pages the host list without tokens or auth headers.
 4. Keep shared UI runtime contracts in `packages/ui` and server/runtime APIs in `packages/web` when the behavior is not inherently native.
+
+## Rename Compatibility
+
+The app was renamed OpenChamber → Alcode. The Electron shell keeps every
+pre-rename identifier below so upgraded installs, stored links, and older UI
+bundles keep working. New code uses the `alcode` names; the `openchamber`
+twins are aliases, never a second behavior.
+
+| Kept legacy identifier | Where | Reason |
+|---|---|---|
+| `openchamber://` deep-link scheme | `early-startup.mjs`, `entry.mjs`, `main.mjs` | Links issued before the rename (pairing invites, session links, OS-registered protocol handler) still open the app; both schemes parse into the same dispatch |
+| `openchamber-ui://` privileged origin | `early-startup.mjs`, `entry.mjs`, `main.mjs`, `preload.mjs` | Stored packaged-UI URLs keep resolving with identical fetch/CORS/code-cache privileges and local-page treatment |
+| `persist:openchamber-browser` session partition | `main.mjs` | Renaming the partition would orphan its storage and log users out of every dev-server session kept in the browser panel |
+| `openchamber:invoke`, `openchamber:dialog:open`, `openchamber:file:grant-existing` IPC channels | `main.mjs` | Same handlers and the same local-origin gate as the `alcode:*` channels, for renderers built before the rename |
+| `openchamber:relay-dev-tunnel-connect` | `preload.mjs` | Listener alias into the same tunnel handler; the main process emits once, on `alcode:relay-dev-tunnel-connect` |
+| `--openchamber-*` renderer args | `early-startup.mjs`, `preload.mjs` | The main process passes both arg sets; the preload prefers `--alcode-*` and falls back per option |
+| `__OPENCHAMBER_*` globals | `preload.mjs`, `main.mjs` init script | Every native-injected global (`__*_DESKTOP__`, `__*_LOCAL_ORIGIN__`, `__*_API_BASE_URL__`, `__*_CLIENT_TOKEN__`, `__*_RELAY_HOST_ID__`, `__*_RUNTIME_HEADERS__`, `__*_HOME__`, `__*_MACOS_MAJOR__`, `__*_ELECTRON__`, `__*_PLATFORM__`, `__*_DESKTOP_BOOT_OUTCOME__`) is mirrored so UI bundles from either side of the rename resolve the same values |
+| `openchamber.desktop` autostart entry | `linux-autostart.mjs` | Enabling launch-at-login removes the legacy file after writing `alcode.desktop`; disabling removes both; the enabled check accepts either until reconciliation |
+| `OPENCHAMBER_DESKTOP_USER_DATA_DIR` | `entry.mjs` | Legacy fallback for the profile override; the default profile location is unchanged |
+| `openchamber-preview.localhost` bypass/headline host | `entry.mjs`, `main.mjs` | Browser-panel preview hostnames issued before the rename keep resolving and bypassing the proxy |
+| `dev.openchamber.desktop` app ID / `openchamber.desktop` Linux desktop name | `early-startup.mjs`, `entry.mjs`, `package.json` | OS-level identity (protocol registration, single-instance, taskbar grouping) stays stable across the rename |
 
 ## Logs And Data
 

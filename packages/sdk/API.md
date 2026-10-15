@@ -14,6 +14,8 @@ Two entrypoints:
 | `@alcode/sdk`    | Manifest parse, iframe protocol, `connectHost`                 |
 | `@alcode/sdk/ui` | Optional DOM drawing kit (buttons, fields, lists, popups) |
 
+Guests written before the rename keep working: the wire accepts the `openchamber.sdk` channel, the manifest accepts an `openchamber` block and `engines.openchamber`, and built-in ids starting with `openchamber-builtin-` load as `alcode-builtin-`. New code uses the `alcode` spellings.
+
 
 ---
 
@@ -43,6 +45,8 @@ Bundle with the SDK helper from the guest folder (`--node` targets Node for the 
 bunx alcode-guest-bundle panel/main.ts panel/main.js
 bunx alcode-guest-bundle --node service/main.ts service/main.js
 ```
+
+The legacy `openchamber-guest-bundle` name runs the same command.
 
 Zip or folder for install should include at least: `package.json`, `panel/index.html`, `panel/main.js`, and any declared `icon.svg` / `service/main.js`. Skip `node_modules` and TypeScript sources. Zip and git installs land in `{dataDir}/extensions/{id}`. See also `[GUEST_SERVICES.md](https://github.com/dang232/Alcode/blob/main/packages/sdk/GUEST_SERVICES.md)`.
 
@@ -567,6 +571,8 @@ Bundle the service with the Node target:
 ```bash
 bunx alcode-guest-bundle --node service/main.ts service/main.js
 ```
+
+Read the loopback coordinates with `readServiceEnv(process.env)` from `@alcode/sdk`. It prefers `ALCODE_SERVICE_PORT` / `ALCODE_SERVICE_TOKEN` and falls back to the legacy `OPENCHAMBER_*` names, and returns `null` when either is missing or unusable.
 
 Full contract (env vars, `/health`, grants, socket overrides): `[GUEST_SERVICES.md](https://github.com/dang232/Alcode/blob/main/packages/sdk/GUEST_SERVICES.md)`.
 

@@ -20,7 +20,7 @@ mock.module('@/lib/alcodeConfig', () => ({
     draftStarters: [],
     shared: {
       status: 'ok',
-      path: '.openchamber/project.json',
+      path: '.alcode/project.json',
       setupWorktree: [],
       setupWorktreeWait: null,
       projectActions: [{ id: 'dev', name: 'Team dev', command: 'bun run dev', icon: null }],
@@ -114,7 +114,7 @@ describe('ProjectActionsSection', () => {
 
     const text = host.textContent ?? '';
     expect(text).toContain('Team dev');
-    expect(text).toContain('Stored in the repository (.openchamber/project.json)');
+    expect(text).toContain('Stored in the repository (.alcode/project.json)');
     // The shared row is not a collapsible editor: no button carries its name.
     const sharedTrigger = Array.from(host.querySelectorAll('button'))
       .find((button) => button.textContent?.includes('Team dev'));

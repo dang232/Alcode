@@ -1,3 +1,4 @@
+import '../../server/lib/alcode-env-compat.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -7,25 +8,30 @@ import { EXIT_CODE, TunnelCliError } from './cli-errors.js';
 import { getDataDir } from './cli-paths.js';
 import { searchPathFor } from './cli-executables.js';
 
-const STARTUP_SERVICE_ID = 'dev.openchamber.web';
+const STARTUP_SERVICE_ID = 'dev.alcode.web';
+const LEGACY_STARTUP_SERVICE_ID = 'dev.openchamber.web';
+const STARTUP_SYSTEMD_UNIT = 'alcode.service';
+const LEGACY_STARTUP_SYSTEMD_UNIT = 'openchamber.service';
 
 function getStartupServicePaths() {
   if (process.platform === 'darwin') {
     return {
       platform: 'macos',
       servicePath: path.join(os.homedir(), 'Library', 'LaunchAgents', `${STARTUP_SERVICE_ID}.plist`),
+      legacyServicePath: path.join(os.homedir(), 'Library', 'LaunchAgents', `${LEGACY_STARTUP_SERVICE_ID}.plist`),
     };
   }
   if (process.platform === 'linux') {
     return {
       platform: 'linux',
-      servicePath: path.join(os.homedir(), '.config', 'systemd', 'user', 'openchamber.service'),
+      servicePath: path.join(os.homedir(), '.config', 'systemd', 'user', STARTUP_SYSTEMD_UNIT),
+      legacyServicePath: path.join(os.homedir(), '.config', 'systemd', 'user', LEGACY_STARTUP_SYSTEMD_UNIT),
     };
   }
   if (process.platform === 'win32') {
-    return { platform: 'windows', servicePath: STARTUP_SERVICE_ID };
+    return { platform: 'windows', servicePath: STARTUP_SERVICE_ID, legacyServicePath: LEGACY_STARTUP_SERVICE_ID };
   }
-  return { platform: process.platform, servicePath: null };
+  return { platform: process.platform, servicePath: null, legacyServicePath: null };
 }
 
 function escapeXml(value) {
@@ -355,17 +361,20 @@ function getStartupStatus() {
   }
   if (paths.platform === 'windows') {
     const result = runStartupCommand('schtasks.exe', ['/Query', '/TN', STARTUP_SERVICE_ID], { allowFailure: true });
-    return { supported: true, platform: paths.platform, enabled: result.status === 0, active: null, servicePath: paths.servicePath };
+    const legacyResult = result.status === 0
+      ? result
+      : runStartupCommand('schtasks.exe', ['/Query', '/TN', LEGACY_STARTUP_SERVICE_ID], { allowFailure: true });
+    return { supported: true, platform: paths.platform, enabled: legacyResult.status === 0, active: null, servicePath: paths.servicePath };
   }
   if (paths.platform === 'linux') {
-    const enabledResult = runStartupCommand('systemctl', ['--user', 'is-enabled', 'openchamber.service'], { allowFailure: true });
-    const activeResult = runStartupCommand('systemctl', ['--user', 'is-active', 'openchamber.service'], { allowFailure: true });
+    const enabledResult = runStartupCommand('systemctl', ['--user', 'is-enabled', STARTUP_SYSTEMD_UNIT], { allowFailure: true });
+    const activeResult = runStartupCommand('systemctl', ['--user', 'is-active', STARTUP_SYSTEMD_UNIT], { allowFailure: true });
     const activeState = (activeResult.stdout || '').trim() || 'inactive';
     const lingerUser = getCurrentUsername();
     return {
       supported: true,
       platform: paths.platform,
-      enabled: enabledResult.status === 0 || fs.existsSync(paths.servicePath),
+      enabled: enabledResult.status === 0 || fs.existsSync(paths.servicePath) || (Boolean(paths.legacyServicePath) && fs.existsSync(paths.legacyServicePath)),
       active: activeState === 'active',
       activeState,
       servicePath: paths.servicePath,
@@ -376,7 +385,7 @@ function getStartupStatus() {
   return {
     supported: true,
     platform: paths.platform,
-    enabled: fs.existsSync(paths.servicePath),
+    enabled: fs.existsSync(paths.servicePath) || (Boolean(paths.legacyServicePath) && fs.existsSync(paths.legacyServicePath)),
     active: null,
     servicePath: paths.servicePath,
   };
@@ -389,6 +398,9 @@ function enableStartupService(options = {}) {
   }
 
   if (paths.platform === 'macos') {
+    // A pre-rename agent must not keep launching the old entrypoint next login.
+    runStartupCommand('/bin/launchctl', ['bootout', `gui/${process.getuid()}`, paths.legacyServicePath], { allowFailure: true });
+    try { fs.unlinkSync(paths.legacyServicePath); } catch {}
     removeStartupEnvFile();
     fs.mkdirSync(path.dirname(paths.servicePath), { recursive: true, mode: 0o700 });
     fs.mkdirSync(path.join(os.homedir(), 'Library', 'Logs', 'Alcode'), { recursive: true, mode: 0o700 });
@@ -400,13 +412,18 @@ function enableStartupService(options = {}) {
   }
 
   if (paths.platform === 'linux') {
+    // Stop and drop the pre-rename unit first so two services never race.
+    runStartupCommand('systemctl', ['--user', 'disable', '--now', LEGACY_STARTUP_SYSTEMD_UNIT], { allowFailure: true });
+    try { fs.unlinkSync(paths.legacyServicePath); } catch {}
     writeStartupEnvFile(options, { quoteValue: systemdEnvFileQuote });
     fs.mkdirSync(path.dirname(paths.servicePath), { recursive: true, mode: 0o700 });
     fs.writeFileSync(paths.servicePath, buildSystemdUserService(options), { mode: 0o600 });
     runStartupCommand('systemctl', ['--user', 'daemon-reload']);
-    runStartupCommand('systemctl', ['--user', 'enable', '--now', 'openchamber.service']);
+    runStartupCommand('systemctl', ['--user', 'enable', '--now', STARTUP_SYSTEMD_UNIT]);
     return getStartupStatus();
   }
+  // Windows: drop the pre-rename logon task before creating the new one.
+  runStartupCommand('schtasks.exe', ['/Delete', '/TN', LEGACY_STARTUP_SERVICE_ID, '/F'], { allowFailure: true });
 
   writeStartupEnvFile(options);
   const wrapperPath = writeWindowsStartupWrapper(options);
@@ -431,19 +448,25 @@ function disableStartupService() {
 
   if (paths.platform === 'macos') {
     runStartupCommand('/bin/launchctl', ['bootout', `gui/${process.getuid()}`, paths.servicePath], { allowFailure: true });
+    runStartupCommand('/bin/launchctl', ['bootout', `gui/${process.getuid()}`, paths.legacyServicePath], { allowFailure: true });
     try { fs.unlinkSync(paths.servicePath); } catch {}
+    try { fs.unlinkSync(paths.legacyServicePath); } catch {}
     return getStartupStatus();
   }
 
   if (paths.platform === 'linux') {
-    runStartupCommand('systemctl', ['--user', 'disable', '--now', 'openchamber.service'], { allowFailure: true });
+    runStartupCommand('systemctl', ['--user', 'disable', '--now', STARTUP_SYSTEMD_UNIT], { allowFailure: true });
+    runStartupCommand('systemctl', ['--user', 'disable', '--now', LEGACY_STARTUP_SYSTEMD_UNIT], { allowFailure: true });
     try { fs.unlinkSync(paths.servicePath); } catch {}
+    try { fs.unlinkSync(paths.legacyServicePath); } catch {}
     runStartupCommand('systemctl', ['--user', 'daemon-reload'], { allowFailure: true });
     return getStartupStatus();
   }
 
   runStartupCommand('schtasks.exe', ['/End', '/TN', STARTUP_SERVICE_ID], { allowFailure: true });
   runStartupCommand('schtasks.exe', ['/Delete', '/TN', STARTUP_SERVICE_ID, '/F'], { allowFailure: true });
+  runStartupCommand('schtasks.exe', ['/End', '/TN', LEGACY_STARTUP_SERVICE_ID], { allowFailure: true });
+  runStartupCommand('schtasks.exe', ['/Delete', '/TN', LEGACY_STARTUP_SERVICE_ID, '/F'], { allowFailure: true });
   try { fs.unlinkSync(getWindowsStartupWrapperPath()); } catch {}
   removeStartupEnvFile();
   return getStartupStatus();

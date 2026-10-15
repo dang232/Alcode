@@ -243,9 +243,28 @@ describe('enterprise policy', () => {
 
   describe('file location', () => {
     it('is fixed per platform', () => {
-      expect(policyFilePaths({ platform: 'darwin', env: {} })).toEqual(['/Library/Application Support/Alcode/policy.json']);
-      expect(policyFilePaths({ platform: 'linux', env: {} })).toEqual([LINUX_POLICY]);
-      expect(policyFilePaths({ platform: 'win32', env: {} })).toEqual(['C:\\ProgramData\\Alcode\\policy.json']);
+      expect(policyFilePaths({ platform: 'darwin', env: {} })).toEqual([
+        '/Library/Application Support/Alcode/policy.json',
+        '/Library/Application Support/OpenChamber/policy.json',
+      ]);
+      expect(policyFilePaths({ platform: 'linux', env: {} })).toEqual([LINUX_POLICY, '/etc/openchamber/policy.json']);
+      expect(policyFilePaths({ platform: 'win32', env: {} })).toEqual([
+        'C:\\ProgramData\\Alcode\\policy.json',
+        'C:\\ProgramData\\OpenChamber\\policy.json',
+      ]);
+    });
+
+    it('checks the new path before the pre-rename one', () => {
+      expect(policyFilePaths({ platform: 'linux', env: {} })[0]).toBe(LINUX_POLICY);
+      // A policy that only exists at the legacy path is still enforced.
+      expect(readEnterprisePolicy(machine({
+        '/etc/openchamber/policy.json': JSON.stringify({ enterpriseMode: true, organization: 'Legacy' }),
+      })).organization).toBe('Legacy');
+      // When both exist, the new path wins.
+      expect(readEnterprisePolicy(machine({
+        [LINUX_POLICY]: JSON.stringify({ enterpriseMode: false, organization: 'New' }),
+        '/etc/openchamber/policy.json': JSON.stringify({ enterpriseMode: true, organization: 'Legacy' }),
+      }))).toMatchObject({ enterpriseMode: false, organization: 'New' });
     });
 
     it('on Windows reads C:\\ProgramData first, so redirecting ProgramData cannot hide the policy', () => {
@@ -253,6 +272,8 @@ describe('enterprise policy', () => {
       expect(policyFilePaths({ platform: 'win32', env })).toEqual([
         'C:\\ProgramData\\Alcode\\policy.json',
         'D:\\Elsewhere\\Alcode\\policy.json',
+        'C:\\ProgramData\\OpenChamber\\policy.json',
+        'D:\\Elsewhere\\OpenChamber\\policy.json',
       ]);
       const options = machine({
         'C:\\ProgramData\\Alcode\\policy.json': '{"enterpriseMode": true}',

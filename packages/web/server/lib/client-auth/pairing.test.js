@@ -144,3 +144,30 @@ describe('client auth pairing runtime', () => {
     expect(ids).toHaveLength(1);
   });
 });
+
+describe('pairing connection link codec', () => {
+  const payload = {
+    v: 2,
+    pairingId: 'pair_abc123',
+    secret: 'one-time-secret',
+    candidates: [{ type: 'lan', url: 'http://192.168.1.20:3000', priority: 10 }],
+  };
+
+  it('round-trips a minted link and accepts the pre-rename scheme', async () => {
+    const { encodePairingConnectUrl, decodePairingConnectUrl } = await import('./pairing-url.js');
+    const link = encodePairingConnectUrl(payload);
+    expect(link.startsWith('alcode://connect?v=2&p=')).toBe(true);
+    expect(decodePairingConnectUrl(link)).toEqual(payload);
+    // A link minted before the rename decodes to the same payload.
+    expect(decodePairingConnectUrl(link.replace('alcode://', 'openchamber://'))).toEqual(payload);
+  });
+
+  it('rejects links that are not well-formed v2 pairing links', async () => {
+    const { decodePairingConnectUrl } = await import('./pairing-url.js');
+    expect(decodePairingConnectUrl('')).toBeNull();
+    expect(decodePairingConnectUrl('https://example.test/connect?v=2&p=e30')).toBeNull();
+    expect(decodePairingConnectUrl('alcode://connect?v=2&p=not-json')).toBeNull();
+    expect(decodePairingConnectUrl('alcode://connect?v=1&p=e30')).toBeNull();
+    expect(decodePairingConnectUrl('alcode://session/ses_a')).toBeNull();
+  });
+});
