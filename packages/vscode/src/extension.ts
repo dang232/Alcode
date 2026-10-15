@@ -38,8 +38,8 @@ const SETTINGS_KEY = 'alcode.settings';
 const LEGACY_SETTINGS_KEY = 'openchamber.settings';
 const CHAT_VIEW_BOOTSTRAP_DELAY_MS = 80;
 
-/** A command handler as VS Code invokes it: any argument list, any result. */
-type CompatCommandHandler = (...args: any[]) => unknown;
+/** A command handler as VS Code invokes it: the callback type of `registerCommand`. */
+type CompatCommandHandler = Parameters<typeof vscode.commands.registerCommand>[1];
 
 /**
  * One command under both its new (`alcode.*`) and pre-rename

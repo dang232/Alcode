@@ -94,6 +94,7 @@ var HOST_PUSH_TYPES = new Set([
   "ready",
   "directory",
   "session",
+  "run-model",
   "connection",
   "settings",
   "session-lifecycle",
