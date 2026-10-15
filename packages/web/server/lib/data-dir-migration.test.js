@@ -47,6 +47,27 @@ describe('migrateLegacyUserDirs', () => {
     }
   });
 
+  it('copies missing flat files once, never overwrites, rerun is a no-op', async () => {
+    const { legacyRoot, dataDir, cleanup } = await setup();
+    try {
+      await fsPromises.writeFile(path.join(legacyRoot, 'settings.json'), '{"theme":"dark"}');
+      await fsPromises.writeFile(path.join(legacyRoot, 'tunnel-profiles.json'), '{}');
+      await fsPromises.mkdir(dataDir, { recursive: true });
+      await fsPromises.writeFile(path.join(dataDir, 'settings.json'), '{"theme":"light"}');
+      const warnings = [];
+      const moved = await migrateLegacyUserDirs({ fsPromises, path, dataDir, legacyRoot, warn: (message) => warnings.push(message) });
+      expect(moved).toContain('tunnel-profiles.json');
+      expect(moved).not.toContain('settings.json');
+      expect(warnings).toEqual([]);
+      expect(await fsPromises.readFile(path.join(dataDir, 'tunnel-profiles.json'), 'utf8')).toBe('{}');
+      expect(await fsPromises.readFile(path.join(dataDir, 'settings.json'), 'utf8')).toBe('{"theme":"light"}');
+      expect(await fsPromises.readFile(path.join(legacyRoot, 'settings.json'), 'utf8')).toBe('{"theme":"dark"}');
+      expect(await migrateLegacyUserDirs({ fsPromises, path, dataDir, legacyRoot })).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('is a no-op when the data dir is the default root', async () => {
     const { legacyRoot, cleanup } = await setup();
     try {

@@ -1,4 +1,5 @@
-// One-time copy of the user-authored folders into a custom data directory.
+// One-time copy of the user-authored folders and flat files into a custom data
+// directory.
 //
 // `ALCODE_DATA_DIR` is documented as "the Alcode data directory",
 // but for a long time only the flat files (settings, auth, push tokens)
@@ -16,6 +17,24 @@
 
 const USER_DIR_ENTRIES = Object.freeze(['chats', 'projects', 'themes', 'speech-models', 'logs', 'run']);
 
+/** Flat files that live directly under the data root (settings, auth, push
+ * tokens, tunnel state, prompts). Copied with the same copy-if-missing rules
+ * as folders. Lock/pid/log files are deliberately absent: they are recreated
+ * every run and must never resurrect stale state. */
+const USER_DIR_FLAT_FILES = Object.freeze([
+  'settings.json',
+  'push-subscriptions.json',
+  'apns-tokens.json',
+  'remote-clients.json',
+  'client-pairing-sessions.json',
+  'cloudflare-managed-remote-tunnels.json',
+  'cloudflare-named-tunnels.json',
+  'git-worktree-bootstrap.json',
+  'tunnel-profiles.json',
+  'tunnel-cli-state.json',
+  'magic-prompts.json',
+]);
+
 const exists = async (fsPromises, target) => fsPromises.access(target).then(() => true, () => false);
 
 /**
@@ -29,12 +48,22 @@ const exists = async (fsPromises, target) => fsPromises.access(target).then(() =
  * folder whose copy fails is reported through `warn` and its partial copy
  * removed; the server keeps starting, reading the (empty) new location.
  */
-export const migrateLegacyUserDirs = async ({ fsPromises, path, dataDir, legacyRoot, legacyRoots, warn = () => {}, entries = USER_DIR_ENTRIES }) => {
+export const migrateLegacyUserDirs = async ({ fsPromises, path, dataDir, legacyRoot, legacyRoots, warn = () => {}, entries = USER_DIR_ENTRIES, flatFiles = USER_DIR_FLAT_FILES }) => {
   const roots = (Array.isArray(legacyRoots) && legacyRoots.length > 0 ? legacyRoots : [legacyRoot])
     .filter((root) => typeof root === 'string' && root.length > 0)
     .filter((root) => path.resolve(root) !== path.resolve(dataDir));
   if (roots.length === 0) return [];
   const moved = [];
+  const copyOnce = async (from, to) => {
+    try {
+      await fsPromises.mkdir(dataDir, { recursive: true });
+      await fsPromises.cp(from, to, { recursive: true, errorOnExist: true, force: false });
+      moved.push(path.basename(to));
+    } catch (error) {
+      await fsPromises.rm(to, { recursive: true, force: true }).catch(() => {});
+      warn(`Failed to copy ${from} to ${to}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
   for (const entry of entries) {
     const to = path.join(dataDir, entry);
     if (await exists(fsPromises, to)) continue;
@@ -47,14 +76,21 @@ export const migrateLegacyUserDirs = async ({ fsPromises, path, dataDir, legacyR
       }
     }
     if (from === null) continue;
-    try {
-      await fsPromises.mkdir(dataDir, { recursive: true });
-      await fsPromises.cp(from, to, { recursive: true, errorOnExist: true, force: false });
-      moved.push(entry);
-    } catch (error) {
-      await fsPromises.rm(to, { recursive: true, force: true }).catch(() => {});
-      warn(`Failed to copy ${from} to ${to}: ${error instanceof Error ? error.message : String(error)}`);
+    await copyOnce(from, to);
+  }
+  for (const file of flatFiles) {
+    const to = path.join(dataDir, file);
+    if (await exists(fsPromises, to)) continue;
+    let from = null;
+    for (const root of roots) {
+      const candidate = path.join(root, file);
+      if (await exists(fsPromises, candidate)) {
+        from = candidate;
+        break;
+      }
     }
+    if (from === null) continue;
+    await copyOnce(from, to);
   }
   return moved;
 };

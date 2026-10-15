@@ -2,6 +2,8 @@
 
 import '../server/lib/alcode-env-compat.js';
 import fs from 'fs';
+import fsPromises from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -28,7 +30,8 @@ import {
   generateCompletionScript,
   findClosestMatch,
 } from './lib/cli-args.js';
-import { readDesktopLocalPortFromSettings } from './lib/cli-paths.js';
+import { readDesktopLocalPortFromSettings, getDataDir } from './lib/cli-paths.js';
+import { migrateLegacyUserDirs } from '../server/lib/data-dir-migration.js';
 import { resolveExplicitBinary, searchPathFor } from './lib/cli-executables.js';
 import { startupCommand } from './lib/commands-startup.js';
 import { logsCommand } from './lib/commands-logs.js';
@@ -297,6 +300,22 @@ async function main() {
       showHelp();
     }
     return;
+  }
+
+  // Best-effort legacy profile migration for CLI-only commands (connect-url,
+  // pairing, tunnel): the server migrates on boot, but these commands read
+  // settings.json without ever starting it. Never fails the command.
+  try {
+    await migrateLegacyUserDirs({
+      fsPromises,
+      path,
+      dataDir: getDataDir(),
+      legacyRoots: [path.join(os.homedir(), '.config', 'alcode'), path.join(os.homedir(), '.config', 'openchamber')],
+      warn: () => {},
+    });
+  } catch {
+    // A locked or unreadable profile must not break CLI usage; the server
+    // run reports migration problems through its own warning channel.
   }
 
   if (command === 'tunnel') {
