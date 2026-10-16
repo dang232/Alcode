@@ -12,6 +12,7 @@ COPY packages/electron/package.json ./packages/electron/
 COPY packages/vscode/package.json ./packages/vscode/
 COPY packages/mobile/package.json ./packages/mobile/
 COPY packages/sdk/package.json ./packages/sdk/
+COPY packages/omo-engine/package.json ./packages/omo-engine/
 RUN bun install --frozen-lockfile --ignore-scripts
 
 FROM deps AS builder
