@@ -54,7 +54,7 @@ reviewed first; a PR that mixes unrelated fixes waits for the largest of them.
 
 ```bash
 git clone https://github.com/dang232/Alcode.git
-cd alcode
+cd Alcode
 bun install
 ```
 
