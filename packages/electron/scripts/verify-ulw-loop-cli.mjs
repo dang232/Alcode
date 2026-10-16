@@ -19,6 +19,10 @@ const assertCli = (cliPath) => {
   if (!fs.existsSync(cliPath)) {
     throw new Error(`Internal ulw-loop CLI not found: ${cliPath}`);
   }
+  const resolverPath = path.join(path.dirname(path.dirname(cliPath)), 'resolve-ulw-loop-cli.mjs');
+  if (!fs.existsSync(resolverPath)) {
+    throw new Error(`Staged ULW CLI resolver missing next to CLI: ${resolverPath}`);
+  }
   const directivePath = path.join(path.dirname(cliPath), '..', 'directive.md');
   if (!fs.existsSync(directivePath)) {
     throw new Error(`Internal ulw-loop directive missing next to CLI: ${directivePath}`);
@@ -41,6 +45,22 @@ const assertCli = (cliPath) => {
     throw new Error(`Internal ulw-loop CLI help output unexpected: ${cliPath}`);
   }
   console.log(`[electron] verified internal ulw-loop CLI: ${cliPath}`);
+  const resolverResult = spawnSync(process.execPath, [resolverPath, '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 30000,
+    windowsHide: true,
+  });
+  let resolved = null;
+  try {
+    resolved = JSON.parse(String(resolverResult.stdout));
+  } catch {
+    throw new Error(`Staged ULW CLI resolver gave non-JSON output: ${resolverPath}`);
+  }
+  if (!resolved || resolved.ok !== true || resolved.cli !== cliPath) {
+    throw new Error(`Staged ULW CLI resolver did not select the staged CLI: ${resolverPath}`);
+  }
+  console.log(`[electron] staged resolver selects the staged CLI (source=${resolved.source})`);
 };
 
 const findPackagedClis = () => {
