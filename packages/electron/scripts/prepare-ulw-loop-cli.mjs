@@ -4,10 +4,13 @@
  * Builds the workspace ulw-loop component from source (so the staged copy
  * always matches this checkout) and mirrors `dist/cli.js` plus the generated
  * `directive.md` into `resources/ulw-loop-cli/` (same relative layout: the
- * bundle reads directive.md module-relative, parent of the cli file). The
- * packaged app exports the staged path as `OMO_ULW_LOOP_CLI` (see
- * `main.mjs`), which loop agents inherit and resolve internal-first via the
- * skill doc's override branch — no download, no PATH, no drive search.
+ * bundle reads directive.md module-relative, parent of the cli file), along
+ * with the authoritative CLI resolver (`scripts/resolve-ulw-loop-cli.mjs`)
+ * so agents outside any checkout can locate this exact build without PATH
+ * fishing. The packaged app exports the staged paths as `OMO_ULW_LOOP_CLI`
+ * and `OMO_ULW_LOOP_RESOLVER` (see `main.mjs`), which loop agents inherit
+ * and resolve internal-first via the skill doc's override branch — no download,
+ * no PATH, no drive search.
  * Everything here is bounded: one component build, one file copy, one
  * `--help` smoke run. Fail-closed with a clear error, never a partial stage.
  */
@@ -18,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronRoot = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(electronRoot, '..', '..');
 const componentDir = path.join(
   electronRoot,
   '..',
@@ -29,6 +33,8 @@ const componentDir = path.join(
 );
 const outputDir = path.join(electronRoot, 'resources', 'ulw-loop-cli');
 const outputFile = path.join(outputDir, 'dist', 'cli.js');
+const resolverSource = path.join(repoRoot, 'scripts', 'resolve-ulw-loop-cli.mjs');
+const resolverOutput = path.join(outputDir, 'resolve-ulw-loop-cli.mjs');
 
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, {
@@ -60,10 +66,14 @@ const main = () => {
   if (!fs.existsSync(directiveFile)) {
     throw new Error(`ulw-loop directive.md missing (generated, never hand-edited): ${directiveFile}`);
   }
+  if (!fs.existsSync(resolverSource)) {
+    throw new Error(`ULW CLI resolver missing: ${resolverSource}`);
+  }
   fs.rmSync(outputDir, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(outputFile), { recursive: true });
   fs.copyFileSync(builtFile, outputFile);
   fs.copyFileSync(directiveFile, path.join(outputDir, 'directive.md'));
+  fs.copyFileSync(resolverSource, resolverOutput);
   const smoke = run(process.execPath, [outputFile, 'ulw-loop', 'help'], {});
   if (!/create-goals/.test(String(smoke.stdout))) {
     throw new Error(`Staged ulw-loop CLI failed its help smoke run: ${outputFile}`);

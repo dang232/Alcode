@@ -87,6 +87,29 @@ const withTemp = (fn) => {
   }
 };
 
+const makeForeignProject = (dir) => {
+  const foreign = path.join(dir, "tokenpanel");
+  fs.mkdirSync(foreign, { recursive: true });
+  fs.writeFileSync(path.join(foreign, "package.json"), JSON.stringify({ name: "tokenpanel" }));
+  return foreign;
+};
+
+const makeInstall = (dir) => {
+  const install = path.join(dir, "install", "ulw-loop-cli");
+  fs.mkdirSync(path.join(install, "dist"), { recursive: true });
+  fs.copyFileSync(resolver, path.join(install, "resolve-ulw-loop-cli.mjs"));
+  fs.writeFileSync(path.join(install, "directive.md"), "# fixture bundle marker\n");
+  return install;
+};
+
+const runInstalled = (install, foreign, env, args) => spawnSync(process.execPath, [path.join(install, "resolve-ulw-loop-cli.mjs"), ...args], {
+  encoding: "utf8",
+  timeout: 60_000,
+  windowsHide: true,
+  cwd: foreign,
+  env,
+});
+
 describe("resolve-ulw-loop-cli", () => {
   it("honors an explicit valid OMO_ULW_LOOP_CLI override", () => {
     withTemp((dir) => {
@@ -229,8 +252,53 @@ describe("resolve-ulw-loop-cli", () => {
   it("Electron keeps exporting the staged CLI path", () => {
     const main = fs.readFileSync(path.join(repoRoot, "packages", "electron", "main.mjs"), "utf8");
     assert.match(main, /process\.env\.OMO_ULW_LOOP_CLI\s*=\s*stagedUlwLoopCli/);
+    assert.match(main, /process\.env\.OMO_ULW_LOOP_RESOLVER\s*=\s*stagedUlwLoopResolver/);
     const prepare = fs.readFileSync(path.join(repoRoot, "packages", "electron", "scripts", "prepare-ulw-loop-cli.mjs"), "utf8");
     assert.match(prepare, /ulw-loop-cli/);
     assert.match(prepare, /dist.*cli\.js/);
+    assert.match(prepare, /resolve-ulw-loop-cli\.mjs/);
+  });
+
+  it("resolves an installed bundle next to the invoked script, not the cwd project", () => {
+    withTemp((dir) => {
+      const foreign = makeForeignProject(dir);
+      const install = makeInstall(dir);
+      const distCli = path.join(install, "dist", "cli.js");
+      fs.writeFileSync(distCli, FAKE_HELP_JS);
+      const binDir = path.join(dir, "bin");
+      makeGlobalToolkit(binDir);
+      const env = cleanEnv({
+        PATH: `${binDir}${path.delimiter}${systemPath()}`,
+        HOME: path.join(dir, "home"),
+      });
+      const resolved = runInstalled(install, foreign, env, ["--json"]);
+      assert.equal(resolved.status, 0, resolved.stderr);
+      assert.deepEqual(JSON.parse(resolved.stdout), { ok: true, cli: distCli, source: "staged" });
+    });
+  });
+
+  it("a broken staged bundle fails with restage guidance, never the global", () => {
+    withTemp((dir) => {
+      const foreign = makeForeignProject(dir);
+      const install = makeInstall(dir);
+      const binDir = path.join(dir, "bin");
+      makeGlobalToolkit(binDir);
+      const env = cleanEnv({
+        PATH: `${binDir}${path.delimiter}${systemPath()}`,
+        HOME: path.join(dir, "home"),
+      });
+      // dist/ present but unrunnable.
+      fs.writeFileSync(path.join(install, "dist", "cli.js"), "process.exit(3);\n");
+      const broken = runInstalled(install, foreign, env, []);
+      assert.equal(broken.status, 2);
+      assert.match(broken.stderr, /prepare-ulw-loop-cli|rebuild/);
+      assert.equal(broken.stdout, "");
+      // dist/ absent entirely.
+      fs.rmSync(path.join(install, "dist", "cli.js"));
+      const missing = runInstalled(install, foreign, env, []);
+      assert.equal(missing.status, 2);
+      assert.match(missing.stderr, /prepare-ulw-loop-cli|rebuild/);
+      assert.equal(missing.stdout, "");
+    });
   });
 });

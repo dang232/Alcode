@@ -1370,6 +1370,10 @@ const spawnLocalServer = async () => {
   if (fs.existsSync(stagedUlwLoopCli)) {
     process.env.OMO_ULW_LOOP_CLI = stagedUlwLoopCli;
   }
+  const stagedUlwLoopResolver = path.join(resourceRoot(), 'ulw-loop-cli', 'resolve-ulw-loop-cli.mjs');
+  if (fs.existsSync(stagedUlwLoopResolver)) {
+    process.env.OMO_ULW_LOOP_RESOLVER = stagedUlwLoopResolver;
+  }
   // OpenCode uses process cwd as a fallback directory; app userData would make
   // packaged desktop look like a separate empty workspace.
   process.env.ALCODE_OPENCODE_CWD = resolveManagedOpenCodeCwd({

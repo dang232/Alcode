@@ -73,24 +73,64 @@ Codex subagent reliability:
 Do all three steps before execution. No edits, goal tools, or checkpointing before bootstrap completes.
 
 ### 1. Create goals from the brief
-Resolve the CLI once, before the first command, through the authoritative
-resolver — never by probing `omo-agent-toolkit` on PATH by hand. From the
-checkout root:
+Locate the authoritative resolver first — it lives with the owning engine
+build, never in the project under analysis. In order:
+
+1. `$OMO_ULW_LOOP_RESOLVER` when set to an existing file (the Electron host
+exports the staged copy; shell setup may export a checkout copy).
+2. Otherwise walk upward from the working directory (at most 8 levels) for
+an Alcode checkout root: a directory holding both `package.json` naming
+`alcode-monorepo` and `scripts/resolve-ulw-loop-cli.mjs`.
+3. Otherwise stop: record the missing resolver and surface it. Never probe
+`omo-agent-toolkit` on PATH as a substitute and never guess install paths;
+a global toolkit is only ever used through the resolver's explicit opt-in.
+
 ```sh
-ULW_LOOP_CLI="$(node scripts/resolve-ulw-loop-cli.mjs)" || exit 2
+ULW_LOOP_RESOLVER=""
+if [ -n "${OMO_ULW_LOOP_RESOLVER:-}" ] && [ -f "$OMO_ULW_LOOP_RESOLVER" ]; then
+  ULW_LOOP_RESOLVER="$OMO_ULW_LOOP_RESOLVER"
+else
+  dir="$PWD"
+  for _ in 1 2 3 4 5 6 7 8; do
+    if [ -f "$dir/package.json" ] && [ -f "$dir/scripts/resolve-ulw-loop-cli.mjs" ] \
+      && grep -q '"name": *"alcode-monorepo"' "$dir/package.json"; then
+      ULW_LOOP_RESOLVER="$dir/scripts/resolve-ulw-loop-cli.mjs"
+      break
+    fi
+    [ "$dir" = "/" ] && break
+    dir="$(dirname "$dir")"
+  done
+fi
+if [ -z "$ULW_LOOP_RESOLVER" ]; then
+  echo "No ULW resolver found: set OMO_ULW_LOOP_RESOLVER to the staged/bundled copy, run from an Alcode checkout, or launch via the Alcode app (it exports both variables)." >&2
+  exit 2
+fi
+ULW_LOOP_CLI="$(node "$ULW_LOOP_RESOLVER")" || exit 2
 ```
 ```powershell
-$ULW_LOOP_CLI = node scripts/resolve-ulw-loop-cli.mjs
+$UlwLoopResolver = $null
+if ($env:OMO_ULW_LOOP_RESOLVER -and (Test-Path $env:OMO_ULW_LOOP_RESOLVER)) { $UlwLoopResolver = $env:OMO_ULW_LOOP_RESOLVER }
+else {
+  $dir = (Get-Location).Path
+  for ($i = 0; $i -lt 8 -and $dir; $i++) {
+    $pkg = Join-Path $dir "package.json"
+    $res = Join-Path $dir "scripts/resolve-ulw-loop-cli.mjs"
+    if ((Test-Path $pkg) -and (Test-Path $res) -and (Select-String -Path $pkg -Pattern '"name":\s*"alcode-monorepo"' -Quiet)) { $UlwLoopResolver = $res; break }
+    $dir = Split-Path $dir -Parent
+  }
+}
+if (-not $UlwLoopResolver) { Write-Error "No ULW resolver found: set OMO_ULW_LOOP_RESOLVER to the staged/bundled copy, run from an Alcode checkout, or launch via the Alcode app (it exports both variables)."; exit 2 }
+$ULW_LOOP_CLI = node $UlwLoopResolver
 if (-not $ULW_LOOP_CLI) { exit 2 }
 ```
 Reuse that exact value for every command in the run (`"$ULW_LOOP_CLI"` in sh,
 `& $ULW_LOOP_CLI` in PowerShell — quoted invocation keeps paths with spaces
-working). An explicit `OMO_ULW_LOOP_CLI` (exported by the Electron host) is
-honored by the resolver. A non-zero exit means misconfigured, not "try the
-global toolkit": stderr names a missing/stale checkout build with its exact
-rebuild command, or asks for `--allow-global` opt-in outside a checkout.
-Record the resolved path in the notepad; stages resolving different paths
-are not one workflow.
+working). The resolver itself honors an explicit `OMO_ULW_LOOP_CLI`
+(exported by the Electron host). A non-zero exit means misconfigured, not
+"try the global toolkit": stderr names a missing/stale checkout build with
+its exact rebuild command, or asks for `--allow-global` opt-in outside a
+checkout. Record the resolved path in the notepad; stages resolving
+different paths are not one workflow.
 
 Run one form:
 ```sh

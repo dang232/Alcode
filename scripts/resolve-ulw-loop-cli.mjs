@@ -154,6 +154,43 @@ export const resolveUlwLoopCli = (options = {}) => {
   }
   note("OMO_ULW_LOOP_CLI is unset");
 
+  // Staged-bundle mode: this script was copied next to its dist bundle
+  // (Electron resources/ulw-loop-cli/, or any install that ships the pair).
+  // The bundle is atomic, so there is no freshness check — only existence
+  // plus the runnable smoke run. A broken staged copy fails with restage
+  // guidance; it never falls back to an unrelated global CLI silently.
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const siblingDist = path.join(scriptDir, "dist", "cli.js");
+  let siblingPresent = false;
+  try {
+    siblingPresent = fs.statSync(siblingDist).isFile();
+  } catch {
+    siblingPresent = false;
+  }
+  if (siblingPresent) {
+    note(`staged bundle: ${siblingDist}`);
+    if (!isRunnableCli(siblingDist)) {
+      if (allowGlobal) {
+        note("staged CLI unusable; --allow-global set, falling through to global candidates");
+      } else {
+        return { ok: false, code: 2, message: `Staged ULW CLI is broken: ${siblingDist} fails its help smoke run. Re-stage it with the Electron prepare step (packages/electron/scripts/prepare-ulw-loop-cli.mjs) or rebuild the ulw-loop component (npm run build).`, trace };
+      }
+    } else {
+      return { ok: true, cli: siblingDist, source: "staged", trace };
+    }
+  } else {
+    note("no staged bundle next to this script");
+  }
+  // A staged install is recognizable even when its dist went missing: the
+  // bundle marker directive.md ships alongside the resolver. Reports name
+  // restaging, not a checkout the install never had.
+  let stagedInstall = siblingPresent;
+  try {
+    stagedInstall = stagedInstall || fs.statSync(path.join(scriptDir, "directive.md")).isFile();
+  } catch {
+    /* not a staged layout */
+  }
+
   if (isCheckoutRoot(root)) {
     note(`checkout root: ${root}`);
     const componentDir = path.join(root, COMPONENT_REL);
@@ -204,6 +241,9 @@ export const resolveUlwLoopCli = (options = {}) => {
   note(`no Alcode checkout at: ${root}`);
 
   if (!allowGlobal) {
+    if (stagedInstall) {
+      return { ok: false, code: 2, message: `Staged ULW installation is broken (CLI missing or failing). Re-stage it with the Electron prepare step (packages/electron/scripts/prepare-ulw-loop-cli.mjs) or rebuild the ulw-loop component (npm run build).`, trace };
+    }
     return { ok: false, code: 2, message: `No Alcode checkout found at ${root}, and global fallback is not opted in. Run inside a checkout, or re-run with --allow-global (or OMO_ULW_LOOP_ALLOW_GLOBAL=1) to intentionally use a global toolkit.`, trace };
   }
   const home = os.homedir();
