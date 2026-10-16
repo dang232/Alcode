@@ -10,13 +10,13 @@ mock.module('vscode', () => ({
   },
 }));
 
-// Keep any import-time config materialisation out of the real OpenChamber
+// Keep any import-time config materialisation out of the real Alcode
 // config, mirroring bridge-config-runtime.test.js.
-const scratchConfigRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-vscode-settings-'));
+const scratchConfigRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-vscode-settings-'));
 process.env.XDG_CONFIG_HOME = path.join(scratchConfigRoot, 'xdg');
 process.env.OPENCODE_CONFIG_DIR = '';
 
-const { fetchOpenCodeSkillsFromApi } = await import('./bridge-settings-runtime.ts');
+const { fetchOpenCodeSkillsFromApi, readGlobalStateSettings } = await import('./bridge-settings-runtime.ts');
 
 const originalFetch = globalThis.fetch;
 
@@ -115,5 +115,27 @@ describe('fetchOpenCodeSkillsFromApi payload mapping', () => {
 
   test('returns null when the context exposes no API url', async () => {
     expect(await fetchOpenCodeSkillsFromApi({ manager: { getApiUrl: () => null } }, 'dir')).toBeNull();
+  });
+});
+
+describe('globalState settings backward compat', () => {
+  const fakeState = (docs) => ({ get: (key) => docs[key] });
+
+  test('new key wins where present, legacy key fills gaps, derived fields are stripped', () => {
+    const state = fakeState({
+      'openchamber.settings': { theme: 'dark', fontSize: 14, lastDirectory: '/legacy' },
+      'alcode.settings': { fontSize: 16 },
+    });
+    expect(readGlobalStateSettings(state)).toEqual({ theme: 'dark', fontSize: 16 });
+  });
+
+  test('reads legacy-only state when the new key was never written', () => {
+    const state = fakeState({ 'openchamber.settings': { theme: 'dark' } });
+    expect(readGlobalStateSettings(state)).toEqual({ theme: 'dark' });
+  });
+
+  test('reads an empty document when neither key exists', () => {
+    expect(readGlobalStateSettings(fakeState({}))).toEqual({});
+    expect(readGlobalStateSettings(undefined)).toEqual({});
   });
 });

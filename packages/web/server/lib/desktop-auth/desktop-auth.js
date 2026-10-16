@@ -467,7 +467,7 @@ export const createDesktopAuthRuntime = ({
   const callbackPage = (title, heading, message, done) => `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} — OpenChamber</title>
+<title>${title} — Alcode</title>
 <style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#131110;color:#fafaf9}.card{text-align:center;max-width:24rem;padding:2rem}#done{color:#4ade80}p{color:#a8a29e}</style>
 </head>
 <body><div class="card">
@@ -478,7 +478,7 @@ export const createDesktopAuthRuntime = ({
   const callbackSuccessPage = () => callbackPage(
     'Signed in',
     'Sign in with Google',
-    'Signed in — return to the OpenChamber app.',
+    'Signed in — return to the Alcode app.',
     true,
   );
 
@@ -505,7 +505,7 @@ export const createDesktopAuthRuntime = ({
     return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${copy.title} — OpenChamber</title>
+<title>${copy.title} — Alcode</title>
 <style>body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#131110;color:#fafaf9}.card{text-align:center;max-width:24rem;padding:2rem}p{color:#a8a29e}code{color:#e7e5e4}</style>
 </head>
 <body data-auth-error="${escHtml(code)}"><div class="card">

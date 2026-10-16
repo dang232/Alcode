@@ -1,12 +1,12 @@
 {
-  "name": "@openchamber/sdk",
+  "name": "@alcode/sdk",
   "version": "2.1.1",
-  "description": "Contract for OpenChamber guests: manifest parse and iframe host bridge.",
+  "description": "Contract for Alcode guests: manifest parse and iframe host bridge.",
   "private": false,
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/openchamber/openchamber.git",
+    "url": "git+https://github.com/dang232/Alcode.git",
     "directory": "packages/sdk"
   },
   "type": "module",
@@ -27,6 +27,7 @@
     }
   },
   "bin": {
+    "alcode-guest-bundle": "./scripts/bundle-guest.ts",
     "openchamber-guest-bundle": "./scripts/bundle-guest.ts"
   },
   "publishConfig": {

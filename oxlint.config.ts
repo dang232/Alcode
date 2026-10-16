@@ -18,6 +18,7 @@ export default defineConfig({
     ".claude/**",
     ".conductor/**",
     ".opencode/**",
+    ".alcode/**",
     ".openchamber/**",
     ".tmp/**",
     "patches/**",

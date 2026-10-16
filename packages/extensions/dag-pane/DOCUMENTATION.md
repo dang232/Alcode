@@ -1,7 +1,7 @@
-# openchamber-builtin-dag-pane — DAG side pane guest
+# alcode-builtin-dag-pane — DAG side pane guest
 
 Built-in SDK guest (project-ide todo 13, graduated to app-owned). Panel id
-`openchamber-builtin-dag-pane` under `packages/extensions/dag-pane`
+`alcode-builtin-dag-pane` under `packages/extensions/dag-pane`
 (registry id carries the reserved prefix; the directory keeps the short
 `dag-pane` name, the same id-to-directory mapping the build tests use for
 fixtures). Never the Herdr dashboard. The guest renders OmO run graphs
@@ -13,7 +13,7 @@ exists for this guest.
 
 ## Layout
 
-- `package.json` — the builtin manifest (package envelope: `openchamber`
+- `package.json` — the builtin manifest (package envelope: `alcode`
   block; the build stamps `version` with the app version).
   `panel.entry` is `panel/index.html`; `service.entry` is
   `service/main.js` (`runtime: "host"`, no permissions declared).
@@ -84,7 +84,8 @@ exists for this guest.
   after; the panel paints `/loop` while `/snapshot` 404s, and snapshot
   data wins once it lands.
 - `service/main.js` — loopback entry and node build entry. Requires
-  `OPENCHAMBER_SERVICE_PORT` + `OPENCHAMBER_SERVICE_TOKEN`, enforces the
+  `ALCODE_SERVICE_PORT` + `ALCODE_SERVICE_TOKEN` (the legacy
+  `OPENCHAMBER_SERVICE_*` names still work as a fallback), enforces the
   bearer on every request including `/health`, binds 127.0.0.1 only. The
   shipped bundle is the self-contained ESM the builtin build produces;
   the host never compiles TypeScript.
@@ -114,7 +115,7 @@ so a saved path stays an optional override and empty means auto-resolve.
 
 ## Ship (desktop, no manual install)
 
-`packages/extensions/registry.json` maps `openchamber-builtin-dag-pane`
+`packages/extensions/registry.json` maps `alcode-builtin-dag-pane`
 to this directory with explicit files (`panel/index.html`, `icon.svg`)
 and build entries (`panel/main.ts` → browser IIFE, `service/main.js` →
 node ESM). `bun run extensions:build` stages the bundle under

@@ -1,4 +1,4 @@
-import { OPENCHAMBER_SDK_API_VERSION, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL } from './api-version.ts';
 import { GUEST_STORAGE_KEY_MAX, GUEST_STORAGE_VALUE_BYTES, type GuestProjectsSnapshot, type GuestWorktreesSnapshot, type GuestSessionsSnapshot, type GuestWorkspaceQuery, type GuestWorkspaceSnapshot, type GuestStorageOptions, type GuestStorageRequest, type GuestStorageResult } from './workspace.ts';
 import type { GuestStatusControl, GuestStatusControlEvent } from './status-controls.ts';
 import { isGuestStatusControls } from './status-controls.ts';
@@ -449,7 +449,7 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
 
     if (message.type === 'action') {
       const answer = (payload: ActionResultPayload): void => {
-        if (!disposed) post({ channel: OPENCHAMBER_SDK_CHANNEL, v: OPENCHAMBER_SDK_API_VERSION,
+        if (!disposed) post({ channel: ALCODE_SDK_CHANNEL, v: ALCODE_SDK_API_VERSION,
           type: 'action-result', id: message.id, payload });
       };
       const handler = actionHandler;
@@ -484,7 +484,7 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
 
     if (message.type === 'file-snapshot') {
       const answer = (payload: FileSnapshotResultPayload): void => {
-        if (!disposed) post({ channel: OPENCHAMBER_SDK_CHANNEL, v: OPENCHAMBER_SDK_API_VERSION,
+        if (!disposed) post({ channel: ALCODE_SDK_CHANNEL, v: ALCODE_SDK_API_VERSION,
           type: 'file-snapshot-result', id: message.id, payload });
       };
       const fail = (text: string): void => answer({ error: (text.trim() || 'Could not read the edited file.').slice(0, GUEST_RESOLVE_ERROR_MAX) });
@@ -515,8 +515,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
     if (message.type === 'resolve') {
       const answer = (payload: ResolveResultPayload): void => {
         post({
-          channel: OPENCHAMBER_SDK_CHANNEL,
-          v: OPENCHAMBER_SDK_API_VERSION,
+          channel: ALCODE_SDK_CHANNEL,
+          v: ALCODE_SDK_API_VERSION,
           type: 'resolve-result',
           id: message.id,
           payload,
@@ -552,8 +552,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
 
   target.addEventListener('message', onMessage);
   post({
-    channel: OPENCHAMBER_SDK_CHANNEL,
-    v: OPENCHAMBER_SDK_API_VERSION,
+    channel: ALCODE_SDK_CHANNEL,
+    v: ALCODE_SDK_API_VERSION,
     type: 'hello',
   });
 
@@ -580,7 +580,7 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
     send(message).then(() => undefined)
   );
 
-  const envelope: Pick<GuestMessage, 'channel' | 'v'> = { channel: OPENCHAMBER_SDK_CHANNEL, v: OPENCHAMBER_SDK_API_VERSION };
+  const envelope: Pick<GuestMessage, 'channel' | 'v'> = { channel: ALCODE_SDK_CHANNEL, v: ALCODE_SDK_API_VERSION };
   // Fire-and-forget notices: nothing to wait for, and nothing to post to
   // without a host frame.
   const notify = (message: Extract<GuestMessage, { type: 'file-change' | 'file-save' | 'file-unsupported' }>): void => {
@@ -885,51 +885,51 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
         return Promise.reject(new HostRequestError('HOST_REJECTED', `Toast copy text must contain 1 to ${GUEST_CLIPBOARD_TEXT_MAX} characters.`));
       }
       return request({
-        channel: OPENCHAMBER_SDK_CHANNEL,
-        v: OPENCHAMBER_SDK_API_VERSION,
+        channel: ALCODE_SDK_CHANNEL,
+        v: ALCODE_SDK_API_VERSION,
         type: 'toast',
         id: nextId(ids),
         payload: { ...payload, message },
       });
     },
     openUrl: (url) => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'open-url',
       id: nextId(ids),
       payload: { url },
     }),
     openCommit: (sha) => (isGuestCommitSha(sha) ? request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'open-commit',
       id: nextId(ids),
       payload: { sha },
     }) : Promise.reject(new HostRequestError('HOST_REJECTED', 'Commit id must be 7 to 64 hex characters.'))),
     openSurface: (surfaceId) => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'open-surface',
       id: nextId(ids),
       payload: { surfaceId },
     }),
     writeClipboard: (text) => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'clipboard-write',
       id: nextId(ids),
       payload: { text },
     }),
     compose: (payload) => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'compose',
       id: nextId(ids),
       payload,
     }),
     attach: (payload) => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'attach',
       id: nextId(ids),
       payload: clampAttachRequest(payload),
@@ -945,8 +945,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
         }
       }
       const result = await send({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'start-session',
       id: nextId(ids),
       payload: clampStartSessionRequest(payload),
@@ -957,8 +957,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       return result;
     },
     prompt: (payload) => send({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'prompt',
       id: nextId(ids),
       payload: clampPromptRequest(payload),
@@ -969,33 +969,33 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       return result;
     }),
     sessionLink: (payload) => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'session-link',
       id: nextId(ids),
       payload: clampAttachRequest(payload),
     }),
     close: () => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'close',
       id: nextId(ids),
     }),
     oauthStart: () => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'oauth-start',
       id: nextId(ids),
     }),
     oauthDisconnect: () => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'oauth-disconnect',
       id: nextId(ids),
     }),
     request: (payload) => (isGuestRequestPath(payload.path) ? send({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'request',
       id: nextId(ids),
       payload,
@@ -1006,8 +1006,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       return result;
     }),
     serviceRequest: (payload) => (isGuestRequestPath(payload.path) ? send({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'service-request',
       id: nextId(ids),
       payload,
@@ -1018,8 +1018,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       return result;
     }),
     serviceStatus: () => send({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'service-status',
       id: nextId(ids),
     }).then((result) => {
@@ -1029,8 +1029,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       return result;
     }),
     readFile: (path) => (isGuestFilePath(path) ? send({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'file-read',
       id: nextId(ids),
       payload: { path },
@@ -1048,8 +1048,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
         return Promise.reject(new HostRequestError('FILE_TOO_LARGE', `Content is over ${GUEST_FILE_CONTENT_MAX} characters.`));
       }
       return send({
-        channel: OPENCHAMBER_SDK_CHANNEL,
-        v: OPENCHAMBER_SDK_API_VERSION,
+        channel: ALCODE_SDK_CHANNEL,
+        v: ALCODE_SDK_API_VERSION,
         type: 'file-write',
         id: nextId(ids),
         payload: { path, content },
@@ -1061,8 +1061,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       });
     },
     listDir: (path) => (isGuestFilePath(path) ? send({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'file-list',
       id: nextId(ids),
       payload: { path },
@@ -1073,8 +1073,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       return result;
     }),
     stat: (path) => (isGuestFilePath(path) ? send({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'file-stat',
       id: nextId(ids),
       payload: { path },
@@ -1104,8 +1104,8 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       if (maxOutputTokens !== undefined) payload.maxOutputTokens = maxOutputTokens;
       // The model answers slower than any other host call, so this one waits longer.
       return send({
-        channel: OPENCHAMBER_SDK_CHANNEL,
-        v: OPENCHAMBER_SDK_API_VERSION,
+        channel: ALCODE_SDK_CHANNEL,
+        v: ALCODE_SDK_API_VERSION,
         type: 'generate',
         id: nextId(ids),
         payload,
@@ -1117,15 +1117,15 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       });
     },
     setBadge: (count) => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'badge',
       id: nextId(ids),
       payload: { count: clampBadgeCount(count) },
     }),
     setHeight: (height) => request({
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'resize',
       id: nextId(ids),
       payload: { height: clampFrameHeight(height) },

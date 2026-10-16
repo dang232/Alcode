@@ -1,5 +1,5 @@
-import { connectHost } from '@openchamber/sdk';
-import { applyHostReady, mountBadge, mountButton, mountEmpty, mountList, mountSearchField, mountSelect } from '@openchamber/sdk/ui';
+import { connectHost } from '@alcode/sdk';
+import { applyHostReady, mountBadge, mountButton, mountEmpty, mountList, mountSearchField, mountSelect } from '@alcode/sdk/ui';
 import { z } from 'zod';
 import { card, codeSample, createExample, element, feedback, metrics, paragraph, row } from '../../shared.ts';
 

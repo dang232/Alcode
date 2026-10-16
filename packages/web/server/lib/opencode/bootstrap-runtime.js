@@ -13,7 +13,7 @@ export const createBootstrapRuntime = (dependencies) => {
     registerAuthAndAccessRoutes,
     registerTtsRoutes,
     registerNotificationRoutes,
-    registerOpenChamberRoutes,
+    registerAlcodeRoutes,
     registerAgentToolRoutes = () => {},
     express,
   } = dependencies;
@@ -21,7 +21,7 @@ export const createBootstrapRuntime = (dependencies) => {
   const setupBaseRoutes = (app, options) => {
     const {
       process,
-      openchamberVersion,
+      alcodeVersion,
       runtimeName,
       serverStartedAt,
       gracefulShutdown,
@@ -65,7 +65,7 @@ export const createBootstrapRuntime = (dependencies) => {
       path,
       server,
       __dirname,
-      openchamberDataDir,
+      alcodeDataDir,
       modelsDevApiUrl,
       modelsMetadataCacheTtl,
       fetchFreeZenModels,
@@ -103,7 +103,7 @@ export const createBootstrapRuntime = (dependencies) => {
     registerServerStatusRoutes(app, {
       express,
       process,
-      openchamberVersion,
+      alcodeVersion,
       runtimeName,
       serverStartedAt,
       gracefulShutdown,
@@ -176,8 +176,8 @@ export const createBootstrapRuntime = (dependencies) => {
     const personalKeys = createPersonalKeyRuntime({
       userTokenStore: sharedUserTokenStore(),
       keyIdStore: createFileKeyIdStore({
-        filePath: openchamberDataDir && path
-          ? path.join(openchamberDataDir, 'alcore-personal-keys.json')
+        filePath: alcodeDataDir && path
+          ? path.join(alcodeDataDir, 'alcore-personal-keys.json')
           : undefined,
       }),
     });
@@ -262,14 +262,14 @@ export const createBootstrapRuntime = (dependencies) => {
       setAutoAcceptSession,
     });
 
-    registerOpenChamberRoutes(app, {
+    registerAlcodeRoutes(app, {
       fs,
       os,
       path,
       process,
       server,
       __dirname,
-      openchamberDataDir,
+      alcodeDataDir,
       modelsDevApiUrl,
       modelsMetadataCacheTtl,
       readSettingsFromDiskMigrated,

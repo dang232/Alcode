@@ -90,7 +90,7 @@ describe('user-token keychain store', () => {
   });
 
   test('ciphertext survives a restart through the file persist', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-user-tokens-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-user-tokens-'));
     try {
       const filePath = path.join(dir, 'user-tokens.json');
       const first = createUserTokenStore({ keychain: fakeKeychain(), dataFilePath: filePath });
@@ -114,7 +114,7 @@ describe('user-token keychain store', () => {
   });
 
   test('a foreign key cannot decrypt: entry drops to signed-out', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-user-tokens-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-user-tokens-'));
     try {
       const filePath = path.join(dir, 'user-tokens.json');
       await createUserTokenStore({ keychain: fakeKeychain('k1'), dataFilePath: filePath })
@@ -127,7 +127,7 @@ describe('user-token keychain store', () => {
   });
 
   test('a corrupt ciphertext file reads as empty and heals on save', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-user-tokens-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-user-tokens-'));
     try {
       const filePath = path.join(dir, 'user-tokens.json');
       fs.writeFileSync(filePath, '{not json');
@@ -141,7 +141,7 @@ describe('user-token keychain store', () => {
   });
 
   test('a locked keychain degrades to memory without touching disk', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-user-tokens-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-user-tokens-'));
     try {
       const filePath = path.join(dir, 'user-tokens.json');
       const store = createUserTokenStore({ keychain: lockedKeychain(), dataFilePath: filePath });

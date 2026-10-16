@@ -106,7 +106,7 @@ Issuance, cookies, validation, and rate limits are untouched.
   (dev API/HMR included) binds a dedicated loopback listener on 57123 for
   the callback alone (`desktop-callback-listener.js`), sharing this
   module's pending-request map so a login started on any port completes.
-  Isolated QA instances may set `OPENCHAMBER_SKIP_DESKTOP_CALLBACK=1` to skip
+  Isolated QA instances may set `ALCODE_SKIP_DESKTOP_CALLBACK=1` to skip
   the dedicated listener (Google login cannot complete there); the default
   stays fail-fast so real logins never silently bind to the wrong app.
 

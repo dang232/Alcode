@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Metadata, Session } from '@/lib/opencode/model';
 
 /**
- * "In work", stored under `session.metadata.openchamber.work`. The server's
+ * "In work", stored under `session.metadata.alcode.work`. The server's
  * session-work runtime opens a session when Jev sees real work start and
  * stamps `suggestDoneAt` when a turn looks like the end of it; the user alone
  * closes. The shape is owned by `packages/web/server/lib/session-work/state.js`.
@@ -17,13 +17,13 @@ const workSchema = z.object({
 
 export type SessionWork = z.infer<typeof workSchema>;
 
-const namespaceSchema = z.object({ openchamber: z.object({ work: workSchema }) });
+const namespaceSchema = z.object({ alcode: z.object({ work: workSchema }) });
 
 export function getSessionWork(session: Session | null | undefined): SessionWork | null {
-  return namespaceSchema.safeParse(session?.metadata).data?.openchamber.work ?? null;
+  return namespaceSchema.safeParse(session?.metadata).data?.alcode.work ?? null;
 }
 
-const inWorkSchema = z.object({ openchamber: z.object({ work: z.object({ state: z.literal('open') }) }) });
+const inWorkSchema = z.object({ alcode: z.object({ work: z.object({ state: z.literal('open') }) }) });
 
 /** Membership in the sidebar's "In work" block. */
 export function isSessionInWork(session: Session | null | undefined): boolean {
@@ -42,21 +42,21 @@ export function isDoneSuggested(session: Session | null | undefined): boolean {
   return work.suggestDoneAt >= (session.time?.idle ?? 0);
 }
 
-const openchamberSchema = z.object({ openchamber: z.record(z.string(), z.json()) });
+const alcodeSchema = z.object({ alcode: z.record(z.string(), z.json()) });
 
 /**
  * The metadata after the user tracked the session (`open`) or marked it done.
  * Done keeps when and by whom the work was opened and drops Jev's hint.
  */
 export function withSessionWorkState(metadata: Metadata, state: SessionWork['state'], now: number): Metadata {
-  const namespace = openchamberSchema.safeParse(metadata).data?.openchamber ?? {};
-  const current = namespaceSchema.safeParse(metadata).data?.openchamber.work ?? null;
+  const namespace = alcodeSchema.safeParse(metadata).data?.alcode ?? {};
+  const current = namespaceSchema.safeParse(metadata).data?.alcode.work ?? null;
   if (current?.state === state) return metadata;
   if (state === 'open') {
-    return { ...metadata, openchamber: { ...namespace, work: { state: 'open', openedAt: now, openedBy: 'user' } } };
+    return { ...metadata, alcode: { ...namespace, work: { state: 'open', openedAt: now, openedBy: 'user' } } };
   }
   const work: Metadata = { state: 'done', doneAt: now };
   if (current?.openedAt !== undefined) work.openedAt = current.openedAt;
   if (current?.openedBy !== undefined) work.openedBy = current.openedBy;
-  return { ...metadata, openchamber: { ...namespace, work } };
+  return { ...metadata, alcode: { ...namespace, work } };
 }

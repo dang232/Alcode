@@ -7,8 +7,8 @@ import express from 'express';
 import request from 'supertest';
 import { registerGitHubRoutes } from './routes.js';
 
-const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-github-pulls-'));
-const previousDataDir = process.env.OPENCHAMBER_DATA_DIR;
+const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-github-pulls-'));
+const previousDataDir = process.env.ALCODE_DATA_DIR;
 const repository = path.join(testDir, 'project');
 const issue = (number) => ({ number, repository_url: 'https://api.github.com/repos/example/project' });
 const pull = (number) => ({
@@ -42,7 +42,7 @@ describe('GET /api/source-control/github/pulls/list free-text search', () => {
   let app;
 
   beforeAll(async () => {
-    process.env.OPENCHAMBER_DATA_DIR = testDir;
+    process.env.ALCODE_DATA_DIR = testDir;
     fs.mkdirSync(repository);
     execFileSync('git', ['init', '-q', repository]);
     execFileSync('git', ['-C', repository, 'remote', 'add', 'origin', 'https://github.com/example/project.git']);
@@ -59,8 +59,8 @@ describe('GET /api/source-control/github/pulls/list free-text search', () => {
   });
 
   afterAll(() => {
-    if (previousDataDir === undefined) delete process.env.OPENCHAMBER_DATA_DIR;
-    else process.env.OPENCHAMBER_DATA_DIR = previousDataDir;
+    if (previousDataDir === undefined) delete process.env.ALCODE_DATA_DIR;
+    else process.env.ALCODE_DATA_DIR = previousDataDir;
     fs.rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -130,11 +130,11 @@ describe('GET /api/source-control/github/pulls/list free-text search', () => {
 
 describe('GET /api/source-control/github/references', () => {
   let app;
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-github-references-'));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-github-references-'));
   const project = path.join(dataDir, 'project');
 
   beforeAll(async () => {
-    process.env.OPENCHAMBER_DATA_DIR = dataDir;
+    process.env.ALCODE_DATA_DIR = dataDir;
     fs.mkdirSync(project);
     execFileSync('git', ['init', '-q', project]);
     execFileSync('git', ['-C', project, 'remote', 'add', 'origin', 'https://github.com/example/project.git']);
@@ -151,8 +151,8 @@ describe('GET /api/source-control/github/references', () => {
   });
 
   afterAll(() => {
-    if (previousDataDir === undefined) delete process.env.OPENCHAMBER_DATA_DIR;
-    else process.env.OPENCHAMBER_DATA_DIR = previousDataDir;
+    if (previousDataDir === undefined) delete process.env.ALCODE_DATA_DIR;
+    else process.env.ALCODE_DATA_DIR = previousDataDir;
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
 

@@ -1,13 +1,13 @@
 {
-  "name": "openchamber",
-  "displayName": "OpenChamber",
+  "name": "alcode",
+  "displayName": "Alcode",
   "description": "%extension.description%",
   "version": "2.1.1",
   "publisher": "fedaykindev",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/openchamber/openchamber.git"
+    "url": "https://github.com/dang232/Alcode.git"
   },
   "qna": "https://discord.gg/ZYRSdnwwKA",
   "license": "MIT",
@@ -29,40 +29,148 @@
     "groq",
     "assistant",
     "opencode",
-    "openchamber"
+    "alcode"
   ],
   "icon": "assets/app-icon.png",
   "main": "./dist/extension.js",
   "l10n": "./l10n",
   "activationEvents": [
-    "onCommand:openchamber.openSidebar",
-    "onCommand:openchamber.attachExplorerToChat",
-    "onCommand:openchamber.generateCommitMessage",
-    "onView:openchamber.chatView"
+    "onCommand:alcode.openSidebar",
+    "onCommand:alcode.attachExplorerToChat",
+    "onCommand:alcode.generateCommitMessage",
+    "onView:alcode.chatView"
   ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "openchamber",
-          "title": "OpenChamber",
+          "id": "alcode",
+          "title": "Alcode",
           "icon": "assets/icon.svg"
         }
       ]
     },
     "views": {
-      "openchamber": [
+      "alcode": [
         {
           "type": "webview",
-          "id": "openchamber.chatView",
+          "id": "alcode.chatView",
           "name": "%views.chat.name%"
         }
       ]
     },
     "commands": [
       {
+        "command": "alcode.openSidebar",
+        "category": "Alcode",
+        "title": "%command.openSidebar.title%",
+        "icon": {
+          "light": "assets/icon.svg",
+          "dark": "assets/icon-titlebar.svg"
+        }
+      },
+      {
+        "command": "alcode.focusChat",
+        "category": "Alcode",
+        "title": "%command.focusChat.title%"
+      },
+      {
+        "command": "alcode.restartApi",
+        "category": "Alcode",
+        "title": "%command.restartApi.title%"
+      },
+      {
+        "command": "alcode.showOpenCodeStatus",
+        "category": "Alcode",
+        "title": "%command.showOpenCodeStatus.title%"
+      },
+      {
+        "command": "alcode.openAgentManager",
+        "category": "Alcode",
+        "title": "%command.openAgentManager.title%",
+        "icon": "$(repo-forked)"
+      },
+      {
+        "command": "alcode.openActiveSessionInEditor",
+        "category": "Alcode",
+        "title": "%command.openActiveSessionInEditor.title%",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "alcode.openNewSessionInEditor",
+        "category": "Alcode",
+        "title": "%command.openNewSessionInEditor.title%",
+        "icon": {
+          "light": "assets/icon.svg",
+          "dark": "assets/icon-titlebar.svg"
+        }
+      },
+      {
+        "command": "alcode.openCurrentOrNewSessionInEditor",
+        "category": "Alcode",
+        "title": "%command.openCurrentOrNewSessionInEditor.title%",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "alcode.addToContext",
+        "category": "Alcode",
+        "title": "%command.addToContext.title%"
+      },
+      {
+        "command": "alcode.addLineComment",
+        "category": "Alcode",
+        "title": "%command.addLineComment.title%"
+      },
+      {
+        "command": "alcode.submitLineComment",
+        "category": "Alcode",
+        "title": "%command.submitLineComment.title%"
+      },
+      {
+        "command": "alcode.removeLineComment",
+        "category": "Alcode",
+        "title": "%command.removeLineComment.title%",
+        "icon": "$(close)"
+      },
+      {
+        "command": "alcode.explain",
+        "category": "Alcode",
+        "title": "%command.explain.title%"
+      },
+      {
+        "command": "alcode.improveCode",
+        "category": "Alcode",
+        "title": "%command.improveCode.title%"
+      },
+      {
+        "command": "alcode.newSession",
+        "category": "Alcode",
+        "title": "%command.newSession.title%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "alcode.showSettings",
+        "category": "Alcode",
+        "title": "%command.showSettings.title%",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "alcode.attachExplorerToChat",
+        "category": "Alcode",
+        "title": "%command.attachExplorerToChat.title%"
+      },
+      {
+        "command": "alcode.generateCommitMessage",
+        "category": "Alcode",
+        "title": "%command.generateCommitMessage.title%",
+        "icon": {
+          "light": "assets/icon.svg",
+          "dark": "assets/icon-scm-titlebar.svg"
+        }
+      },
+      {
         "command": "openchamber.openSidebar",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.openSidebar.title%",
         "icon": {
           "light": "assets/icon.svg",
@@ -71,34 +179,34 @@
       },
       {
         "command": "openchamber.focusChat",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.focusChat.title%"
       },
       {
         "command": "openchamber.restartApi",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.restartApi.title%"
       },
       {
         "command": "openchamber.showOpenCodeStatus",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.showOpenCodeStatus.title%"
       },
       {
         "command": "openchamber.openAgentManager",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.openAgentManager.title%",
         "icon": "$(repo-forked)"
       },
       {
         "command": "openchamber.openActiveSessionInEditor",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.openActiveSessionInEditor.title%",
         "icon": "$(link-external)"
       },
       {
         "command": "openchamber.openNewSessionInEditor",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.openNewSessionInEditor.title%",
         "icon": {
           "light": "assets/icon.svg",
@@ -107,61 +215,61 @@
       },
       {
         "command": "openchamber.openCurrentOrNewSessionInEditor",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.openCurrentOrNewSessionInEditor.title%",
         "icon": "$(link-external)"
       },
       {
         "command": "openchamber.addToContext",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.addToContext.title%"
       },
       {
         "command": "openchamber.addLineComment",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.addLineComment.title%"
       },
       {
         "command": "openchamber.submitLineComment",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.submitLineComment.title%"
       },
       {
         "command": "openchamber.removeLineComment",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.removeLineComment.title%",
         "icon": "$(close)"
       },
       {
         "command": "openchamber.explain",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.explain.title%"
       },
       {
         "command": "openchamber.improveCode",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.improveCode.title%"
       },
       {
         "command": "openchamber.newSession",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.newSession.title%",
         "icon": "$(add)"
       },
       {
         "command": "openchamber.showSettings",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.showSettings.title%",
         "icon": "$(settings-gear)"
       },
       {
         "command": "openchamber.attachExplorerToChat",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.attachExplorerToChat.title%"
       },
       {
         "command": "openchamber.generateCommitMessage",
-        "category": "OpenChamber",
+        "category": "Alcode",
         "title": "%command.generateCommitMessage.title%",
         "icon": {
           "light": "assets/icon.svg",
@@ -171,110 +279,122 @@
     ],
     "submenus": [
       {
-        "id": "openchamber.submenu",
-        "label": "OpenChamber"
+        "id": "alcode.submenu",
+        "label": "Alcode"
       }
     ],
     "menus": {
       "scm/title": [
         {
-          "command": "openchamber.generateCommitMessage",
+          "command": "alcode.generateCommitMessage",
           "when": "scmProvider == git",
           "group": "navigation@0"
         }
       ],
       "comments/commentThread/context": [
         {
-          "command": "openchamber.submitLineComment",
+          "command": "alcode.submitLineComment",
           "group": "inline",
-          "when": "commentController == openchamber.inlineComments"
+          "when": "commentController == alcode.inlineComments"
         }
       ],
       "comments/commentThread/title": [
         {
-          "command": "openchamber.removeLineComment",
+          "command": "alcode.removeLineComment",
           "group": "navigation",
-          "when": "commentController == openchamber.inlineComments && commentThread == openchamberAttached"
+          "when": "commentController == alcode.inlineComments && commentThread == alcodeAttached"
         }
       ],
       "commandPalette": [
         {
-          "command": "openchamber.submitLineComment",
+          "command": "alcode.submitLineComment",
           "when": "false"
         },
         {
-          "command": "openchamber.removeLineComment",
+          "command": "alcode.removeLineComment",
           "when": "false"
         }
       ],
       "editor/context": [
         {
-          "submenu": "openchamber.submenu",
+          "submenu": "alcode.submenu",
           "group": "navigation"
         }
       ],
       "explorer/context": [
         {
-          "command": "openchamber.attachExplorerToChat",
+          "command": "alcode.attachExplorerToChat",
           "when": "resourceScheme == file && explorerResourceIsFolder == false",
           "group": "navigation@50"
         }
       ],
       "editor/title": [
         {
-          "command": "openchamber.openNewSessionInEditor",
+          "command": "alcode.openNewSessionInEditor",
           "group": "navigation@1"
         }
       ],
       "view/title": [
         {
-          "command": "openchamber.newSession",
-          "when": "view == openchamber.chatView",
+          "command": "alcode.newSession",
+          "when": "view == alcode.chatView",
           "group": "navigation@1"
         },
         {
-          "command": "openchamber.openCurrentOrNewSessionInEditor",
-          "when": "view == openchamber.chatView",
+          "command": "alcode.openCurrentOrNewSessionInEditor",
+          "when": "view == alcode.chatView",
           "group": "navigation@2"
         },
         {
-          "command": "openchamber.openAgentManager",
-          "when": "view == openchamber.chatView",
+          "command": "alcode.openAgentManager",
+          "when": "view == alcode.chatView",
           "group": "navigation@3"
         },
         {
-          "command": "openchamber.showSettings",
-          "when": "view == openchamber.chatView",
+          "command": "alcode.showSettings",
+          "when": "view == alcode.chatView",
           "group": "navigation@4"
         }
       ],
-      "openchamber.submenu": [
+      "alcode.submenu": [
         {
-          "command": "openchamber.explain"
+          "command": "alcode.explain"
         },
         {
-          "command": "openchamber.improveCode"
+          "command": "alcode.improveCode"
         },
         {
-          "command": "openchamber.addToContext"
+          "command": "alcode.addToContext"
         },
         {
-          "command": "openchamber.addLineComment"
+          "command": "alcode.addLineComment"
         }
       ]
     },
     "configuration": {
-      "title": "OpenChamber",
+      "title": "Alcode",
       "properties": {
-        "openchamber.apiUrl": {
+        "alcode.apiUrl": {
           "type": "string",
           "default": "",
           "description": "%configuration.apiUrl.description%"
         },
-        "openchamber.opencodeBinary": {
+        "alcode.opencodeBinary": {
           "type": "string",
           "default": "",
           "description": "%configuration.opencodeBinary.description%"
+        },
+        "openchamber.apiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.apiUrl.description%",
+          "deprecationMessage": "Use alcode.apiUrl instead. This legacy key is still read as a fallback."
+        },
+        "openchamber.opencodeBinary": {
+          "type": "string",
+          "default": "",
+          "description": "%configuration.opencodeBinary.description%",
+          "deprecationMessage": "Use alcode.opencodeBinary instead. This legacy key is still read as a fallback."
         }
       }
     }
@@ -304,7 +424,7 @@
     "vite": "^7.1.2"
   },
   "dependencies": {
-    "@openchamber/ui": "workspace:*",
+    "@alcode/ui": "workspace:*",
     "@opencode/client": "2.0.23",
     "adm-zip": "^0.6.0",
     "jsonc-parser": "^3.3.1",

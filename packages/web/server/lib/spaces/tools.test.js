@@ -19,7 +19,7 @@ const tarball = (name, content) => {
 };
 
 beforeAll(() => {
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-tools-test-'));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-tools-test-'));
 });
 
 afterAll(() => {
@@ -50,9 +50,9 @@ describe('createRegistryToolsSource', () => {
     expect(source.description).toBe('web 1.24.2, opencode 1.18.31');
     expect(source.files).toEqual([]);
     expect(JSON.parse(source.packageJson)).toEqual({
-      name: 'openchamber-space-tools',
+      name: 'alcode-space-tools',
       private: true,
-      dependencies: { '@openchamber/web': '1.24.2', '@opencode/cli': '1.18.31', '@opencode/plugin': '1.18.31' },
+      dependencies: { '@alcode/web': '1.24.2', '@opencode/cli': '1.18.31', '@opencode/plugin': '1.18.31' },
     });
   });
 
@@ -72,19 +72,19 @@ describe('createPackedToolsSource', () => {
 
     expect(source.description).toBe('development build');
     expect(source.files).toEqual([
-      { name: 'openchamber-web.tgz', bytes: Buffer.from('web bytes') },
-      { name: 'openchamber-sdk.tgz', bytes: Buffer.from('sdk bytes') },
+      { name: 'alcode-web.tgz', bytes: Buffer.from('web bytes') },
+      { name: 'alcode-sdk.tgz', bytes: Buffer.from('sdk bytes') },
     ]);
     expect(JSON.parse(source.packageJson)).toEqual({
-      name: 'openchamber-space-tools',
+      name: 'alcode-space-tools',
       private: true,
       dependencies: {
-        '@openchamber/web': 'file:/tmp/openchamber-fill/openchamber-web.tgz',
-        '@openchamber/sdk': 'file:/tmp/openchamber-fill/openchamber-sdk.tgz',
+        '@alcode/web': 'file:/tmp/alcode-fill/alcode-web.tgz',
+        '@alcode/sdk': 'file:/tmp/alcode-fill/alcode-sdk.tgz',
         '@opencode/cli': '1.18.31',
         '@opencode/plugin': '1.18.31',
       },
-      overrides: { '@openchamber/sdk': '$@openchamber/sdk' },
+      overrides: { '@alcode/sdk': '$@alcode/sdk' },
     });
   });
 

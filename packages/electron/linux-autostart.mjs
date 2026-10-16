@@ -3,7 +3,10 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const AUTOSTART_FILE_NAME = 'openchamber.desktop';
+export const AUTOSTART_FILE_NAME = 'alcode.desktop';
+// Pre-rename autostart entry. Installing the new entry removes this legacy
+// file so upgraded machines do not launch twice; disabling removes both.
+export const LEGACY_AUTOSTART_FILE_NAME = 'openchamber.desktop';
 
 const resolveLinuxAutostartDirectory = ({
   env = process.env,
@@ -38,7 +41,7 @@ const quoteDesktopExecArg = (value) => {
 };
 
 export const buildLinuxAutostartDesktopEntry = ({
-  appName = 'OpenChamber',
+  appName = 'Alcode',
   executable,
   backgroundArg,
   env = process.env,
@@ -56,24 +59,28 @@ export const buildLinuxAutostartDesktopEntry = ({
     `Exec=${args.join(' ')}`,
     'Terminal=false',
     'X-GNOME-Autostart-enabled=true',
-    'StartupWMClass=openchamber',
+    'StartupWMClass=alcode',
     '',
   ].join('\n');
 };
 
 export const readLinuxAutostartEnabled = async (options = {}) => {
-  const filePath = resolveLinuxAutostartFilePath(options);
-  try {
-    await fsp.access(filePath, fs.constants.F_OK);
-    return true;
-  } catch {
-    return false;
+  // Either entry counts: a pre-rename install still has the legacy file until
+  // the new build reconciles it, and that install does launch at login.
+  for (const fileName of [AUTOSTART_FILE_NAME, LEGACY_AUTOSTART_FILE_NAME]) {
+    const filePath = path.join(resolveLinuxAutostartDirectory(options), fileName);
+    try {
+      await fsp.access(filePath, fs.constants.F_OK);
+      return true;
+    } catch {
+    }
   }
+  return false;
 };
 
 export const setLinuxAutostartEnabled = async ({
   enabled,
-  appName = 'OpenChamber',
+  appName = 'Alcode',
   backgroundArg,
   env = process.env,
   execPath = process.execPath,
@@ -81,9 +88,11 @@ export const setLinuxAutostartEnabled = async ({
 } = {}) => {
   const directory = resolveLinuxAutostartDirectory({ env, homeDir });
   const filePath = path.join(directory, AUTOSTART_FILE_NAME);
+  const legacyFilePath = path.join(directory, LEGACY_AUTOSTART_FILE_NAME);
 
   if (!enabled) {
     await fsp.rm(filePath, { force: true });
+    await fsp.rm(legacyFilePath, { force: true });
     return { supported: true, enabled: false, filePath };
   }
 
@@ -95,5 +104,14 @@ export const setLinuxAutostartEnabled = async ({
     execPath,
   });
   await fsp.writeFile(filePath, contents, 'utf8');
-  return { supported: true, enabled: true, filePath };
+  // Drop the pre-rename entry so an upgraded machine launches once, not twice.
+  let legacyRemoved = false;
+  try {
+    await fsp.access(legacyFilePath, fs.constants.F_OK);
+    await fsp.rm(legacyFilePath, { force: true });
+    legacyRemoved = true;
+  } catch {
+    legacyRemoved = false;
+  }
+  return { supported: true, enabled: true, filePath, legacyRemoved };
 };

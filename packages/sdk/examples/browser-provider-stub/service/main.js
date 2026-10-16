@@ -94,6 +94,7 @@ var HOST_PUSH_TYPES = new Set([
   "ready",
   "directory",
   "session",
+  "run-model",
   "connection",
   "settings",
   "session-lifecycle",
@@ -263,10 +264,10 @@ var readSurfaceResizeRequest = (body) => {
   return { width: Math.round(width), height: Math.round(height) };
 };
 // packages/sdk/examples/browser-provider-stub/service/main.ts
-var port = Number(process.env.OPENCHAMBER_SERVICE_PORT);
-var token = process.env.OPENCHAMBER_SERVICE_TOKEN ?? "";
+var port = Number(process.env.ALCODE_SERVICE_PORT);
+var token = process.env.ALCODE_SERVICE_TOKEN ?? "";
 if (!port || !token) {
-  console.error("OPENCHAMBER_SERVICE_PORT and OPENCHAMBER_SERVICE_TOKEN are required");
+  console.error("ALCODE_SERVICE_PORT and ALCODE_SERVICE_TOKEN are required");
   process.exit(1);
 }
 var VIEWPORTS = {

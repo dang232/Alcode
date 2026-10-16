@@ -68,9 +68,9 @@ export class UserTokenStoreError extends Error {
 }
 
 const defaultDataFilePath = () => {
-  const root = process.env.OPENCHAMBER_DATA_DIR
-    ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-    : path.join(os.homedir(), '.config', 'openchamber');
+  const root = process.env.ALCODE_DATA_DIR
+    ? path.resolve(process.env.ALCODE_DATA_DIR)
+    : path.join(os.homedir(), '.config', 'alcode');
   return path.join(root, USER_TOKEN_FILE_NAME);
 };
 

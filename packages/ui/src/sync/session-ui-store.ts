@@ -42,7 +42,7 @@ import { composeForkSessionMessage } from "@/lib/messages/executionMeta"
 import { findLatestUserModelChoice } from "@/lib/messages/userModelChoice"
 import { noteDraftSendWaiting, waitForPendingDraftWorktreeRequest } from "@/lib/worktrees/pendingDraftWorktree"
 import { waitForWorktreeBootstrap } from "@/lib/worktrees/worktreeBootstrap"
-import { getWorktreeSetupWaitEnabled } from "@/lib/openchamberConfig"
+import { getWorktreeSetupWaitEnabled } from "@/lib/alcodeConfig"
 import { resolveProjectForSessionDirectory } from "@/lib/projectResolution"
 import {
   getSyncSessions,
@@ -292,7 +292,7 @@ export async function routeMessage(params: {
 
     if (!matchedCommand && !matchedSkill && cmdName === ULW_COMMAND_NAME) {
       // The session directory defines no /ulw template (the normal case
-      // outside this checkout), and OpenChamber sends never pass the Codex
+      // outside this checkout), and Alcode sends never pass the Codex
       // hook pipeline that would append the workflow. Fall through to the
       // normal prompt with the bundled definition attached as context —
       // the same channel the command route uses for skill instructions.
@@ -498,10 +498,10 @@ export type SessionUIState = {
   /** Arms "press Esc again to stop" for `sessionId`, the selected session by default. */
   armAbortPrompt: (durationMs?: number, sessionId?: string) => number | null
   clearError: () => void
-  markSessionAsOpenChamberCreated: (sessionId: string) => void
-  isOpenChamberCreatedSession: (sessionId: string) => boolean
+  markSessionAsAlcodeCreated: (sessionId: string) => void
+  isAlcodeCreatedSession: (sessionId: string) => boolean
   getContextUsage: (contextLimit: number, outputLimit: number) => SessionContextUsage | null
-  initializeNewOpenChamberSession: (sessionId: string, agents: unknown[]) => void
+  initializeNewAlcodeSession: (sessionId: string, agents: unknown[]) => void
   setWorktreeMetadata: (sessionId: string, metadata: WorktreeMetadata | null) => void
   overrideNewSessionDraftTarget: (options: Record<string, unknown>) => void
   resolvePendingDraftWorktreeTarget: (requestId: string, directory: string | null, options?: Record<string, unknown>) => void
@@ -1086,7 +1086,7 @@ export async function materializeOpenDraftSession(selection: {
     draft.title,
     draftDirectoryOverride,
     draftPins.notes.length > 0 || draftPins.plans.length > 0
-      ? { openchamber: { project_context_pins: draftPins } }
+      ? { alcode: { project_context_pins: draftPins } }
       : undefined,
     "submitted-draft",
     {
@@ -1137,7 +1137,7 @@ export async function materializeOpenDraftSession(selection: {
     useSelectionStore.getState().saveAgentModelVariantForSession(created.id, effectiveDraftAgent, selection.providerID, selection.modelID, variantOverride)
   }
 
-  store.initializeNewOpenChamberSession(created.id, configState.agents ?? [])
+  store.initializeNewAlcodeSession(created.id, configState.agents ?? [])
 
   // Without a choice in the draft the server writes the default mode itself.
   if (draftPermissionMode) {
@@ -1699,14 +1699,14 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
 
   clearError: () => set({ error: null }),
 
-  markSessionAsOpenChamberCreated: (sessionId) =>
+  markSessionAsAlcodeCreated: (sessionId) =>
     set((s) => {
       const next = new Set(s.webUICreatedSessions)
       next.add(sessionId)
       return { webUICreatedSessions: next }
     }),
 
-  isOpenChamberCreatedSession: (sessionId) => get().webUICreatedSessions.has(sessionId),
+  isAlcodeCreatedSession: (sessionId) => get().webUICreatedSessions.has(sessionId),
 
   getContextUsage: (contextLimit: number, outputLimit: number) => {
     if (get().newSessionDraft?.open) return null
@@ -1716,7 +1716,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
     return buildSessionContextUsage(getSyncMessages(sessionId), contextLimit, outputLimit)
   },
 
-  initializeNewOpenChamberSession: () => {
+  initializeNewAlcodeSession: () => {
     // Stub — was a no-op in old store
   },
 
@@ -2244,12 +2244,12 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         sourceDirectory,
       )
       if (!project?.path) {
-        throw new Error("Project is not registered in OpenChamber")
+        throw new Error("Project is not registered in Alcode")
       }
 
       const [branchNameModule, configModule, trustModule, createModule] = await Promise.all([
         import("@/lib/git/branchNameGenerator"),
-        import("@/lib/openchamberConfig"),
+        import("@/lib/alcodeConfig"),
         import("@/lib/sharedTrustConfirmation"),
         import("@/lib/worktrees/worktreeCreate"),
       ])

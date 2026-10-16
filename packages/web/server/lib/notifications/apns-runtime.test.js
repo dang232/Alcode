@@ -68,9 +68,9 @@ const isSend = ([url]) => String(url) === 'https://relay.test/v1/push/send';
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  delete process.env.OPENCHAMBER_PUSH_RELAY_URL;
-  delete process.env.OPENCHAMBER_PUSH_RELAY_DISABLED;
-  delete process.env.OPENCHAMBER_APNS_ENVIRONMENT;
+  delete process.env.ALCODE_PUSH_RELAY_URL;
+  delete process.env.ALCODE_PUSH_RELAY_DISABLED;
+  delete process.env.ALCODE_APNS_ENVIRONMENT;
 });
 
 describe('apns runtime relay mode (default)', () => {
@@ -86,7 +86,7 @@ describe('apns runtime relay mode (default)', () => {
           }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    process.env.OPENCHAMBER_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
+    process.env.ALCODE_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
 
     const runtime = createApnsRuntime(makeDeps());
     await runtime.addOrUpdateApnsToken('s1', 'tokenA');
@@ -133,7 +133,7 @@ describe('apns runtime relay mode (default)', () => {
   it('reuses one persisted keypair (same serverId) across register + send', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true, results: [] }));
     vi.stubGlobal('fetch', fetchMock);
-    process.env.OPENCHAMBER_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
+    process.env.ALCODE_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
 
     const deps = makeDeps();
     const runtime = createApnsRuntime(deps);
@@ -150,8 +150,8 @@ describe('apns runtime relay mode (default)', () => {
   it('honors an explicit sandbox environment override for every token', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true, results: [] }));
     vi.stubGlobal('fetch', fetchMock);
-    process.env.OPENCHAMBER_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
-    process.env.OPENCHAMBER_APNS_ENVIRONMENT = 'sandbox';
+    process.env.ALCODE_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
+    process.env.ALCODE_APNS_ENVIRONMENT = 'sandbox';
 
     const runtime = createApnsRuntime(makeDeps());
     await runtime.addOrUpdateApnsToken('s1', 'tokenA', undefined, 'ios', 'production');
@@ -164,7 +164,7 @@ describe('apns runtime relay mode (default)', () => {
   it('routes each token to its registered environment (dev build sandbox, release production)', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true, results: [] }));
     vi.stubGlobal('fetch', fetchMock);
-    process.env.OPENCHAMBER_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
+    process.env.ALCODE_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
 
     const runtime = createApnsRuntime(makeDeps());
     await runtime.addOrUpdateApnsToken('s1', 'tokenXcode', undefined, 'ios', 'sandbox');
@@ -184,7 +184,7 @@ describe('apns runtime relay mode (default)', () => {
   it('seals the text for a device that gave a key, and only for that device', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true, results: [] }));
     vi.stubGlobal('fetch', fetchMock);
-    process.env.OPENCHAMBER_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
+    process.env.ALCODE_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
     const pushKey = crypto.randomBytes(32).toString('base64');
 
     const runtime = createApnsRuntime(makeDeps());
@@ -229,7 +229,7 @@ describe('apns runtime direct fallback (relay disabled)', () => {
   });
 
   it('sends each token to the APNs host of its registered environment', async () => {
-    process.env.OPENCHAMBER_PUSH_RELAY_DISABLED = 'true';
+    process.env.ALCODE_PUSH_RELAY_DISABLED = 'true';
     const { environment: _environment, ...configWithoutEnvironment } = APNS_CONFIG;
     const hosts = [];
     const http2 = {
@@ -270,7 +270,7 @@ describe('apns runtime direct fallback (relay disabled)', () => {
   });
 
   it('signs an ES256 JWT and sends over http2 when relay is disabled', async () => {
-    process.env.OPENCHAMBER_PUSH_RELAY_DISABLED = 'true';
+    process.env.ALCODE_PUSH_RELAY_DISABLED = 'true';
     const targeted = [];
     const http2 = {
       connect: () => ({

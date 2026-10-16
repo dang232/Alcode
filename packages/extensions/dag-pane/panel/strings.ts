@@ -1,4 +1,4 @@
-// Panel strings for the openchamber-builtin-dag-pane guest (project-ide todo 13).
+// Panel strings for the alcode-builtin-dag-pane guest (project-ide todo 13).
 //
 // The iframe cannot consume the host React i18n context across the sandbox
 // boundary, so the package ships its own dictionaries and picks one from

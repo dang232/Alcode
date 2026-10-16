@@ -21,22 +21,74 @@ export const applyPersistedHomeDirectoryToWindow = (homeDirectory: string): void
   if (typeof window === 'undefined') {
     return;
   }
-  if (typeof window.__OPENCHAMBER_HOME__ === 'string' && window.__OPENCHAMBER_HOME__.length > 0) {
+  const injected = (window as typeof window & { __OPENCHAMBER_HOME__?: unknown }).__OPENCHAMBER_HOME__;
+  // SAFETY: pre-rename shells inject a plain string (or nothing) under the
+  // legacy key; the typeof checks below re-validate before use.
+  if ((typeof window.__ALCODE_HOME__ === 'string' && window.__ALCODE_HOME__.length > 0)
+    || (typeof injected === 'string' && injected.length > 0)) {
     return;
   }
 
   try {
-    window.__OPENCHAMBER_HOME__ = homeDirectory;
+    window.__ALCODE_HOME__ = homeDirectory;
   } catch {
     /* read-only contextBridge property — leave preload-seeded value */
   }
 };
 
-const SETTINGS_MIRROR_INDEX_KEY = 'openchamber.settingsMirror.v2.index';
+const SETTINGS_MIRROR_INDEX_KEY = 'alcode.settingsMirror.v2.index';
+// Pre-rename twin of every `alcode.*` browser-storage key below. The rename
+// copied no data: installs that stored under `openchamber.*` keep reading
+// their old values through `readNewOrLegacy`/the boot migration, which copy
+// legacy→new and never delete the legacy original.
+const LEGACY_STORAGE_PREFIX = 'openchamber.';
+const NEW_STORAGE_PREFIX = 'alcode.';
+
+/** The pre-rename key for an `alcode.*` key, or null when it has no legacy twin. */
+export const legacyStorageKeyFor = (newKey: string): string | null =>
+  newKey.startsWith(NEW_STORAGE_PREFIX)
+    ? `${LEGACY_STORAGE_PREFIX}${newKey.slice(NEW_STORAGE_PREFIX.length)}`
+    : null;
+
+type CompatStorage = Pick<Storage, 'getItem' | 'setItem'>;
+
+/**
+ * Backward-compat read: the new `alcode.*` value wins; when it is absent the
+ * pre-rename `openchamber.*` twin is copied forward (legacy is never deleted)
+ * and returned. Null when neither exists.
+ */
+export const readNewOrLegacy = (storage: CompatStorage, newKey: string): string | null => {
+  const current = storage.getItem(newKey);
+  if (current !== null) return current;
+  const legacyKey = legacyStorageKeyFor(newKey);
+  if (!legacyKey) return null;
+  const legacy = storage.getItem(legacyKey);
+  if (legacy === null) return null;
+  try {
+    storage.setItem(newKey, legacy);
+  } catch {
+    // Restricted storage (private mode, locked WebView): the caller still gets
+    // the legacy value for this read; the copy is retried on the next one.
+  }
+  return legacy;
+};
+
+// Every flat `alcode.*` key the boot migration copies forward from its
+// `openchamber.*` twin when the new key is absent. Per-runtime mirror/seed
+// entries migrate through the mirror index, not this list.
+const LEGACY_MIGRATED_FLAT_KEYS = [
+  SETTINGS_MIRROR_INDEX_KEY,
+  'alcode.pwaName',
+  'alcode.chatDrafts.v2',
+  'alcode.mobile.connections.v1',
+  'alcode.mobile.deviceId',
+  'alcode.ipad.leftSidebarWidth',
+  'alcode.ipad.rightSidebarWidth',
+] as const;
 // Set once a runtime's device fields have been read from the server document
 // (installs that predate the settings split still carry them there). After
 // that the local store is the only owner and the server copy is ignored.
-const DEVICE_SEED_KEY_PREFIX = 'openchamber.deviceSeeded.v1:';
+const DEVICE_SEED_KEY_PREFIX = 'alcode.deviceSeeded.v1:';
 const getDeviceSeedStorageKey = (runtimeKey: string): string => `${DEVICE_SEED_KEY_PREFIX}${encodeURIComponent(runtimeKey)}`;
 
 /**
@@ -47,7 +99,10 @@ const withoutStaleDeviceFields = (settings: DesktopSettings, runtimeKey: string)
   const seedKey = getDeviceSeedStorageKey(runtimeKey);
   let seedDevice = false;
   try {
-    seedDevice = localStorage.getItem(seedKey) === null;
+    // A pre-rename seed counts as seeded: this install already adopted the
+    // server's device fields once, so the (possibly stale) server copy must
+    // not be re-adopted. readNewOrLegacy also copies the seed forward.
+    seedDevice = readNewOrLegacy(localStorage, seedKey) === null;
     if (seedDevice) localStorage.setItem(seedKey, String(Date.now()));
   } catch {
     seedDevice = false;
@@ -60,7 +115,7 @@ const withoutStaleDeviceFields = (settings: DesktopSettings, runtimeKey: string)
   }
   return next;
 };
-const SETTINGS_MIRROR_KEY_PREFIX = 'openchamber.settingsMirror.v2:';
+const SETTINGS_MIRROR_KEY_PREFIX = 'alcode.settingsMirror.v2:';
 const MAX_SETTINGS_MIRROR_RUNTIMES = 5;
 
 export const getRuntimeSettingsMirrorStorageKey = (runtimeKey: string): string =>
@@ -71,6 +126,44 @@ const setOrRemoveLocalStorage = (key: string, value: string | null): void => {
     localStorage.removeItem(key);
   } else {
     localStorage.setItem(key, value);
+  }
+};
+
+/**
+ * Boot migration for the rename: every flat `alcode.*` key plus the
+ * settings-mirror index, each per-runtime mirror entry, and each device-seed
+ * flag is copied forward from its `openchamber.*` twin when the new key is
+ * absent. Legacy keys are never deleted, so a downgraded client keeps working.
+ * Idempotent (copy-if-absent) and best-effort: restricted storage just skips.
+ */
+export const migrateLegacyStorageKeys = (): void => {
+  if (typeof window === 'undefined') return;
+  let storage: CompatStorage;
+  try {
+    storage = localStorage;
+  } catch {
+    return;
+  }
+  const copyForward = (newKey: string): void => {
+    try {
+      readNewOrLegacy(storage, newKey);
+    } catch {
+      // Best-effort per key: one unreadable entry must not block the rest.
+    }
+  };
+  for (const key of LEGACY_MIGRATED_FLAT_KEYS) copyForward(key);
+  // Per-runtime entries migrate through the (now migrated) mirror index: its
+  // runtime keys are URL-derived and identical across the rename.
+  try {
+    const parsed = JSON.parse(storage.getItem(SETTINGS_MIRROR_INDEX_KEY) ?? '[]') as unknown;
+    if (!Array.isArray(parsed)) return;
+    for (const entry of parsed) {
+      if (typeof entry !== 'string' || !entry) continue;
+      copyForward(getRuntimeSettingsMirrorStorageKey(entry));
+      copyForward(getDeviceSeedStorageKey(entry));
+    }
+  } catch {
+    // Corrupt index: flat keys are already migrated; mirror entries retry later.
   }
 };
 
@@ -159,12 +252,12 @@ const persistToLocalStorage = (settings: DesktopSettings) => {
   if (typeof settings.pwaAppName === 'string') {
     const normalized = settings.pwaAppName.trim().replace(/\s+/g, ' ').slice(0, 64);
     if (normalized.length > 0) {
-      localStorage.setItem('openchamber.pwaName', normalized);
+      localStorage.setItem('alcode.pwaName', normalized);
     } else {
-      localStorage.removeItem('openchamber.pwaName');
+      localStorage.removeItem('alcode.pwaName');
     }
   } else {
-    localStorage.removeItem('openchamber.pwaName');
+    localStorage.removeItem('alcode.pwaName');
   }
   setStoredMobileKeyboardMode(settings.mobileKeyboardMode);
   if (typeof settings.openCodeUpdateToastDismissedVersion === 'string') {
@@ -214,7 +307,7 @@ const dispatchSettingsSynced = (settings: DesktopSettings, bootstrap: boolean, a
   if (typeof window === 'undefined') {
     return;
   }
-  window.dispatchEvent(new CustomEvent<SettingsSyncedDetail>('openchamber:settings-synced', {
+  window.dispatchEvent(new CustomEvent<SettingsSyncedDetail>('alcode:settings-synced', {
     detail: { settings, bootstrap, adoptTheme },
   }));
 };
@@ -262,7 +355,7 @@ const dispatchSettingsSaveState = (state: 'saving' | 'saved' | 'error'): void =>
   if (typeof window === 'undefined') {
     return;
   }
-  window.dispatchEvent(new CustomEvent<'saving' | 'saved' | 'error'>('openchamber:settings-save-state', { detail: state }));
+  window.dispatchEvent(new CustomEvent<'saving' | 'saved' | 'error'>('alcode:settings-save-state', { detail: state }));
 };
 
 type PersistApi = {
@@ -625,6 +718,12 @@ export const syncDesktopSettings = async (options?: { bootstrap?: boolean; adopt
     return;
   }
   ensureSettingsRuntimeLifecycle();
+  // Adopt pre-rename browser storage before the first server sync reads it.
+  try {
+    migrateLegacyStorageKeys();
+  } catch {
+    // Best-effort: per-key read fallbacks still cover a missed boot copy.
+  }
   const context = captureSettingsRuntimeContext();
   const operation = _settingsMutationTracker.begin();
 
@@ -705,10 +804,10 @@ export const syncDesktopSettings = async (options?: { bootstrap?: boolean; adopt
     if (webSettings && isSettingsRuntimeContextCurrent(context)) {
       await applySettings(webSettings);
     } else if (isSettingsRuntimeContextCurrent(context)) {
-      window.dispatchEvent(new Event('openchamber:settings-sync-failed'));
+      window.dispatchEvent(new Event('alcode:settings-sync-failed'));
     }
   } catch (error) {
-    if (isSettingsRuntimeContextCurrent(context)) window.dispatchEvent(new Event('openchamber:settings-sync-failed'));
+    if (isSettingsRuntimeContextCurrent(context)) window.dispatchEvent(new Event('alcode:settings-sync-failed'));
     console.warn('Failed to synchronise settings:', error);
   } finally {
     _settingsMutationTracker.finish(operation);

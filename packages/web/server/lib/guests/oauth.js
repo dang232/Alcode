@@ -6,7 +6,7 @@ import {
   isGuestRequestPath,
   resolveIntegrationApi,
   resolveIntegrationAuth,
-} from '@openchamber/sdk';
+} from '@alcode/sdk';
 
 import { dropGuestTokens, getGuestAuth, patchGuestAuth } from './auth-store.js';
 

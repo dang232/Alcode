@@ -23,7 +23,7 @@
  * action that lands on it wakes it and waits for its view before running.
  */
 import { runtimeFetch } from '@/lib/runtime-fetch';
-import { subscribeOpenchamberEvents } from '@/lib/openchamberEvents';
+import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { canDriveBrowserPage } from './hostCapability';
 
 type BrowserControlRequest = {
@@ -338,7 +338,7 @@ const runAction = async (
 
 const ensureSubscribed = (): void => {
   if (unsubscribe) return;
-  unsubscribe = subscribeOpenchamberEvents((event) => {
+  unsubscribe = subscribeAlcodeEvents((event) => {
     if (event.type !== 'browser-control-request') return;
     void handleRequest({
       requestId: event.requestId,

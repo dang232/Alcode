@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { createDeferredSafeJSONStorage } from './utils/safeStorage';
 
-const SOURCE_BOARD_STORAGE_KEY = 'openchamber.source-board';
+const SOURCE_BOARD_STORAGE_KEY = 'alcode.source-board';
 
 /** The repository's own host (GitHub or GitLab), or Linear. */
 export type SourceBoardTab = 'repository' | 'linear';

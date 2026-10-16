@@ -24,7 +24,10 @@ type PersistedChatDraftEnvelope = {
   drafts: Record<string, PersistedChatDraft>;
 };
 
-const STORAGE_KEY = 'openchamber.chatDrafts.v2';
+const STORAGE_KEY = 'alcode.chatDrafts.v2';
+// Pre-rename twin: installs that drafted under `openchamber.chatDrafts.v2`
+// keep their drafts through the rename. Copied forward on read, never deleted.
+const LEGACY_STORAGE_KEY = 'openchamber.chatDrafts.v2';
 const MAX_DRAFTS = 50;
 const storage = getDeferredSafeStorage();
 const deletionListeners = new Set<(identity: ChatDraftIdentity) => void>();
@@ -44,8 +47,17 @@ export const createChatDraftIdentity = (
 export const getChatDraftIdentityKey = (identity: ChatDraftIdentity): string =>
   JSON.stringify([identity.runtimeKey, identity.directory, identity.sessionId]);
 
-const readEnvelope = (): PersistedChatDraftEnvelope => {
+const readRawEnvelope = (): string | null => {
   const raw = storage.getItem(STORAGE_KEY);
+  if (raw !== null) return raw;
+  const legacy = storage.getItem(LEGACY_STORAGE_KEY);
+  if (legacy === null) return null;
+  storage.setItem(STORAGE_KEY, legacy);
+  return legacy;
+};
+
+const readEnvelope = (): PersistedChatDraftEnvelope => {
+  const raw = readRawEnvelope();
   if (raw === cachedRawEnvelope && cachedEnvelope) return cachedEnvelope;
   try {
     const parsed = JSON.parse(raw ?? '') as Partial<PersistedChatDraftEnvelope>;

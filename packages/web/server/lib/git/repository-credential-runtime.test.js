@@ -24,7 +24,7 @@ const roots = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))); });
 
 const setup = async ({ binding = read([grant()]), resolve = async () => ({ transport: 'https', username: 'x-access-token', password: 'secret-value' }), port = 4399 } = {}) => {
-  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openchamber-repo-credential-'));
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'alcode-repo-credential-'));
   roots.push(dataDir);
   const resolved = [];
   const runtime = createGitRepositoryCredentialRuntime({
@@ -32,7 +32,7 @@ const setup = async ({ binding = read([grant()]), resolve = async () => ({ trans
     credentialResolver: { resolve: async (input) => { resolved.push(input); return resolve(input); } },
     dataDir, fsPromises: fs,
     getActivePort: () => port,
-    helperPath: '/opt/openchamber/repository-credential-helper.js',
+    helperPath: '/opt/alcode/repository-credential-helper.js',
   });
   return { runtime, dataDir, resolved };
 };
@@ -58,10 +58,10 @@ describe('createGitRepositoryCredentialRuntime', () => {
     const published = await readEndpoint(dataDir);
     expect(published).toEqual({ version: 1, url: 'http://127.0.0.1:4399/api/git/repository-credential', secret: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
     expect((await fs.stat(path.join(dataDir, 'git-credential-endpoint.json'))).mode & 0o777).toBe(0o600);
-    const launcher = await fs.readFile(path.join(dataDir, 'bin', 'git-credential-openchamber'), 'utf8');
-    expect(launcher).toContain(`'/opt/openchamber/repository-credential-helper.js' '${path.join(dataDir, 'git-credential-endpoint.json')}' "$@"`);
-    expect((await fs.stat(path.join(dataDir, 'bin', 'git-credential-openchamber'))).mode & 0o777).toBe(0o700);
-    expect(runtime.helperCommand()).toBe(`!'${path.join(dataDir, 'bin', 'git-credential-openchamber')}'`);
+    const launcher = await fs.readFile(path.join(dataDir, 'bin', 'git-credential-alcode'), 'utf8');
+    expect(launcher).toContain(`'/opt/alcode/repository-credential-helper.js' '${path.join(dataDir, 'git-credential-endpoint.json')}' "$@"`);
+    expect((await fs.stat(path.join(dataDir, 'bin', 'git-credential-alcode'))).mode & 0o777).toBe(0o700);
+    expect(runtime.helperCommand()).toBe(`!'${path.join(dataDir, 'bin', 'git-credential-alcode')}'`);
   });
 
   it('answers the bound account credential for the repository the helper runs in', async () => {

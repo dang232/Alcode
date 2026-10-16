@@ -20,11 +20,11 @@ import { installRuntimeEndpointReset } from './apps/runtimeEndpointReset'
 
 declare global {
   interface Window {
-    __OPENCHAMBER_RUNTIME_APIS__?: RuntimeAPIs;
+    __ALCODE_RUNTIME_APIS__?: RuntimeAPIs;
   }
 }
 
-const runtimeAPIs = (typeof window !== 'undefined' && window.__OPENCHAMBER_RUNTIME_APIS__) || (() => {
+const runtimeAPIs = (typeof window !== 'undefined' && window.__ALCODE_RUNTIME_APIS__) || (() => {
   throw new Error('Runtime APIs not provided for legacy UI entrypoint.');
 })();
 

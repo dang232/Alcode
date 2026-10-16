@@ -86,7 +86,7 @@ const ACTIVE_PROJECT_STORAGE_KEY = 'activeProjectId';
 
 const getLocalRuntimeOrigin = (): string => {
   if (typeof window === 'undefined') return '';
-  const value = (window as typeof window & { __OPENCHAMBER_LOCAL_ORIGIN__?: string }).__OPENCHAMBER_LOCAL_ORIGIN__;
+  const value = (window as typeof window & { __ALCODE_LOCAL_ORIGIN__?: string }).__ALCODE_LOCAL_ORIGIN__;
   return typeof value === 'string' ? value.trim().replace(/\/+$/, '') : '';
 };
 
@@ -507,7 +507,7 @@ const createVSCodeWorkspaceProjects = (
   const activeProjectId = activeProject?.id ?? projects[0]?.id ?? null;
 
   if (streamDebugEnabled()) {
-    console.log('[OpenChamber][VSCode][projects] Using workspace projects', projects);
+    console.log('[Alcode][VSCode][projects] Using workspace projects', projects);
   }
 
   return { projects, activeProjectId, activeProject: activeProject ?? projects[0] ?? null };
@@ -1124,10 +1124,10 @@ export const useProjectsStore = create<ProjectsStore>()(
 );
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('openchamber:settings-sync-failed', () => {
+  window.addEventListener('alcode:settings-sync-failed', () => {
     useProjectsStore.setState({ serverSnapshotFailed: true });
   });
-  window.addEventListener('openchamber:settings-synced', (event: Event) => {
+  window.addEventListener('alcode:settings-synced', (event: Event) => {
     const detail = (event as CustomEvent<SettingsSyncedDetail>).detail;
     if (detail && typeof detail === 'object' && detail.settings) {
       useProjectsStore.getState().synchronizeFromSettings(detail.settings, {

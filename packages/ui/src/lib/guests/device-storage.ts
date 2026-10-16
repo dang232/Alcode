@@ -2,8 +2,8 @@ import { z } from 'zod';
 import {
   type GuestStorageRequest,
   type GuestStorageResult,
-} from '@openchamber/sdk';
-import { guestStorageRequestSchema } from '@openchamber/sdk/schemas';
+} from '@alcode/sdk';
+import { guestStorageRequestSchema } from '@alcode/sdk/schemas';
 import {
   decodeDeviceStorageNamespace,
   deviceStorageNamespaceKey,
@@ -16,7 +16,7 @@ import {
 
 type DeviceGuestStorageIdentity = { runtimeKey: string; guestId: string; storageId: string };
 
-const DATABASE = 'openchamber-guest-device-storage';
+const DATABASE = 'alcode-guest-device-storage';
 const VERSION = 1;
 const NAMESPACES = 'namespaces';
 const META = 'meta';

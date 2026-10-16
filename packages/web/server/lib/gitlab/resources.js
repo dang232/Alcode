@@ -812,9 +812,9 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
         remote: options.remote,
       });
       const [notes, diffs, ci, headProject, commitPage] = await Promise.all([
-        readCollection((page) => client.MergeRequestNotes.all(target.project.id, number, page), 'GitLab merge request has more notes than OpenChamber reads'),
+        readCollection((page) => client.MergeRequestNotes.all(target.project.id, number, page), 'GitLab merge request has more notes than Alcode reads'),
         options.includeDiff
-          ? readCollection((page) => client.MergeRequests.allDiffs(target.project.id, number, page), 'GitLab merge request has more changed files than OpenChamber reads')
+          ? readCollection((page) => client.MergeRequests.allDiffs(target.project.id, number, page), 'GitLab merge request has more changed files than Alcode reads')
           : Promise.resolve([]),
         loadCI(target.project.id, raw, options.includeCIDetails),
         // A fork merge request's branch lives in the source project.
@@ -924,7 +924,7 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
       const { target } = await findByNumber(directory, number, options.project, {
         constrainToPrimary: true, remote: options.remote, requireNetwork: true,
       });
-      const diffs = await readCollection((page) => client.MergeRequests.allDiffs(target.project.id, number, page), 'GitLab merge request has more changed files than OpenChamber reads');
+      const diffs = await readCollection((page) => client.MergeRequests.allDiffs(target.project.id, number, page), 'GitLab merge request has more changed files than Alcode reads');
       if (!Array.isArray(diffs)) throw new Error('GitLab returned an invalid merge request diff list');
       const files = diffs.filter((diff) => isPlainObject(diff) && (text(diff.new_path) || text(diff.old_path)));
       if (files.length !== diffs.length) throw new Error('GitLab returned an invalid merge request diff');
@@ -993,7 +993,7 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
       const mappedIssue = canonicalReads
         ? requireIssue(issue, target.project)
         : requireMapped(mapGitLabIssue(issue, identity, target.project), 'GitLab returned an invalid issue');
-      const notes = await readCollection((page) => client.IssueNotes.all(target.project.id, number, page), 'GitLab issue has more comments than OpenChamber reads');
+      const notes = await readCollection((page) => client.IssueNotes.all(target.project.id, number, page), 'GitLab issue has more comments than Alcode reads');
       if (canonicalReads && !Array.isArray(notes)) throw new Error('GitLab returned an invalid issue note list');
       return asArray(notes).flatMap((note) => {
         if (note?.system === true) return [];
@@ -1013,7 +1013,7 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
 
     async projectBranches(directory, selector, remote) {
       const target = await constrainedProject(directory, selector, remote, { requireComplete: true });
-      const payload = await readCollection((page) => client.Branches.all(target.project.id, page), 'GitLab project has more branches than OpenChamber reads');
+      const payload = await readCollection((page) => client.Branches.all(target.project.id, page), 'GitLab project has more branches than Alcode reads');
       if (canonicalReads && !Array.isArray(payload)) throw new Error('GitLab returned an invalid branch list');
       return asArray(payload).flatMap((branch) => {
         if (isString(branch?.name) && branch.name.trim()) return [branch.name];

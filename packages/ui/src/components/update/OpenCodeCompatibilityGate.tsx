@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
+import { AlcodeLogo } from '@/components/ui/AlcodeLogo';
 import { AppStartupOverlay } from '@/components/ui/AppStartupOverlay';
 import { Icon } from '@/components/icon/Icon';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ export const OpenCodeCompatibilityGate: React.FC<React.PropsWithChildren> = ({ c
         const result = await fetchOpenCodeCompatibility();
         if (mounted && revision === generation.current) setCompatibility(result);
       } catch {
-        // An unavailable host or an older OpenChamber host keeps its existing
+        // An unavailable host or an older Alcode host keeps its existing
         // connection UI. Failed reads never dismiss a known incompatible CLI.
       } finally {
         if (mounted && revision === generation.current) setChecked(true);
@@ -88,7 +88,7 @@ export const OpenCodeCompatibilityGate: React.FC<React.PropsWithChildren> = ({ c
   return (
     <section className="app-region-drag flex h-full min-h-0 items-center justify-center overflow-y-auto bg-background px-6 py-10 text-foreground select-none" aria-labelledby={titleId}>
       <div className="flex w-full max-w-sm flex-col items-center text-center">
-        <OpenChamberLogo width={48} height={48} />
+        <AlcodeLogo width={48} height={48} />
         <h1 id={titleId} className="mt-6 text-xl font-semibold tracking-tight">{t(outdated ? 'opencodeCompatibility.outdatedTitle' : 'opencodeCompatibility.title')}</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground text-balance">
           {t(descriptionKey, { version: compatibility.version ?? '', minimum: minimum ?? '' })}
@@ -101,7 +101,7 @@ export const OpenCodeCompatibilityGate: React.FC<React.PropsWithChildren> = ({ c
             <span className="text-foreground">{outdated ? `${minimum}+` : '2.x'}</span>
           </div>
         )}
-        {/* With several installs, the path tells which one OpenChamber runs. */}
+        {/* With several installs, the path tells which one Alcode runs. */}
         {compatibility.binary && (
           <p className="mt-2 max-w-full break-all font-mono text-xs text-muted-foreground select-text">{compatibility.binary}</p>
         )}
@@ -120,7 +120,7 @@ export const OpenCodeCompatibilityGate: React.FC<React.PropsWithChildren> = ({ c
         </div>
         <a
           className="app-region-no-drag mt-6 inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          href={bundled ? 'https://github.com/openchamber/openchamber/releases/latest' : 'https://opencode.ai/download'}
+          href={bundled ? 'https://github.com/dang232/Alcode/releases/latest' : 'https://opencode.ai/download'}
           target="_blank"
           rel="noopener noreferrer"
         >

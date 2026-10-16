@@ -35,7 +35,7 @@ import { ContextPanelContent } from './ContextSidebarTab';
 import { BrowserPane } from '@/components/browser/BrowserPane';
 import { browserUrlLabel } from '@/lib/browser/url';
 import { registerBrowserOpener, registerSleepingBrowserTab, setShownBrowserTab } from '@/lib/browser/controlClient';
-import { subscribeOpenchamberEvents } from '@/lib/openchamberEvents';
+import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { Icon } from "@/components/icon/Icon";
 import { GuestIcon } from './GuestRailIcon';
 import { ChatView } from '@/components/views/ChatView';
@@ -79,7 +79,7 @@ const GuestSurfacePane = React.lazy(() => import('./GuestSurfacePane').then((mod
 import { useGuestsStore } from '@/lib/guests/store';
 import { guestHasSharedSurface, guestSurfaceDocking, type GuestSurfaceDocking } from '@/lib/guests/surfaces';
 import { FALLBACK_GUEST_ICON } from '@/lib/guests/icon';
-import { GUEST_SURFACE_DOCK_SIZE_MIN } from '@openchamber/sdk';
+import { GUEST_SURFACE_DOCK_SIZE_MIN } from '@alcode/sdk';
 import { isPluginContextPanelMode, pluginIdFromMode, type PluginContextPanelMode } from '@/lib/surfaces/modes';
 import { getContextSurfaceWidthFraction } from '@/lib/surfaces/registry';
 import { isEditorEventTarget } from '@/lib/editorFocus';
@@ -546,7 +546,7 @@ export const ContextPanel: React.FC = () => {
   // the user had, on purpose: the agent is pointing at a result, and the prior
   // tab is one click away.
   const openContextFile = useUIStore((state) => state.openContextFile);
-  React.useEffect(() => subscribeOpenchamberEvents((event) => {
+  React.useEffect(() => subscribeAlcodeEvents((event) => {
     if (event.type !== 'file-open-request') return;
     const directory = event.directory ?? effectiveDirectory;
     if (!directory) return;
@@ -948,7 +948,7 @@ export const ContextPanel: React.FC = () => {
   React.useEffect(() => {
     // Only a Chromium host mounts views that agents can drive, so only it may
     // offer to wake a tab; anywhere else a claimed action could never run.
-    if (!window.__OPENCHAMBER_ELECTRON__) return;
+    if (!window.__ALCODE_ELECTRON__) return;
     const unregister = browserTabs
       .filter((tab) => !loadedBrowserTabs.includes(tab))
       .map((tab) => registerSleepingBrowserTab({

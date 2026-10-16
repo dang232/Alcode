@@ -7,7 +7,7 @@
  * import). The packaged web server runs under plain Node with no transpile
  * step, where a static `.ts` import fails.
  */
-// Alwork-wt/engine-merge-train/packages/omo-engine/model-core/src/category-model-requirements.ts
+// Alcode-wt/engine-merge-train/packages/omo-engine/model-core/src/category-model-requirements.ts
 var CATEGORY_MODEL_REQUIREMENTS = {
   "visual-engineering": {
     fallbackChain: [
@@ -158,12 +158,12 @@ var CATEGORY_MODEL_REQUIREMENTS = {
     ]
   }
 };
-// Alwork-wt/engine-merge-train/packages/omo-engine/model-core/src/model-normalization.ts
+// Alcode-wt/engine-merge-train/packages/omo-engine/model-core/src/model-normalization.ts
 function normalizeModel(model) {
   const trimmed = model?.trim();
   return trimmed || undefined;
 }
-// Alwork-wt/engine-merge-train/packages/omo-engine/model-core/src/model-availability.ts
+// Alcode-wt/engine-merge-train/packages/omo-engine/model-core/src/model-availability.ts
 function normalizeModelName(name) {
   return name.toLowerCase().replace(/claude-(opus|sonnet|haiku)-(\d+)[.-](\d+)/g, "claude-$1-$2.$3").replace(/kimi-k2[.-](\d+)/g, "kimi-k2.$1").replace(/\b(glm|gpt)-(\d+)[.-](\d+)/g, "$1-$2.$3");
 }
@@ -210,7 +210,7 @@ function fuzzyMatchModel(target, available, providers) {
   return closestMatch(matches, providers);
 }
 
-// Alwork-wt/engine-merge-train/packages/omo-engine/model-core/src/provider-model-id-transform.ts
+// Alcode-wt/engine-merge-train/packages/omo-engine/model-core/src/provider-model-id-transform.ts
 function inferSubProvider(model) {
   if (model.startsWith("claude-"))
     return "anthropic";
@@ -274,7 +274,7 @@ function transformModelForProvider(provider, model) {
   return transformModelForProviderUsingAnthropicBehavior(provider, model);
 }
 
-// Alwork-wt/engine-merge-train/packages/omo-engine/model-core/src/model-resolution-pipeline.ts
+// Alcode-wt/engine-merge-train/packages/omo-engine/model-core/src/model-resolution-pipeline.ts
 var logImplementationForTesting;
 function log(message, data) {
   const logImplementation = logImplementationForTesting;
@@ -465,7 +465,7 @@ function resolveModelPipeline(request, providerCache = {
   log("Model resolved via system default", { model: systemDefaultModel });
   return { model: systemDefaultModel, provenance: "system-default", attempted };
 }
-// Alwork-wt/engine-merge-train/packages/web/server/lib/walkthrough/model-pipeline.js
+// Alcode-wt/engine-merge-train/packages/web/server/lib/walkthrough/model-pipeline.js
 import { describeSmallModel } from "../small-model/index.js";
 import {
   getDefaultModelInfo,

@@ -232,8 +232,8 @@ describe('project setup bridge', () => {
   test('reads the shared file from the checkout the id names', async () => {
     await withStore(async (store, dir) => {
       const repo = path.join(dir, 'repo');
-      await fs.promises.mkdir(path.join(repo, '.openchamber'), { recursive: true });
-      await fs.promises.writeFile(path.join(repo, '.openchamber', 'project.json'), JSON.stringify({
+      await fs.promises.mkdir(path.join(repo, '.alcode'), { recursive: true });
+      await fs.promises.writeFile(path.join(repo, '.alcode', 'project.json'), JSON.stringify({
         version: 1,
         setupWorktree: ['bun install'],
         projectActions: [{ id: 'dev', name: 'Dev', command: 'bun run dev' }],
@@ -244,10 +244,33 @@ describe('project setup bridge', () => {
       assert.equal(view.shared.status, 'ok');
       assert.deepEqual(view.setupWorktree, ['bun install', 'mine']);
       assert.deepEqual(view.projectActions, []);
-      await fs.promises.writeFile(path.join(repo, '.openchamber', 'project.json'), '{ broken');
+      await fs.promises.writeFile(path.join(repo, '.alcode', 'project.json'), '{ broken');
       const broken = await store.read(projectId);
       assert.equal(broken.shared.status, 'invalid');
       assert.deepEqual(broken.setupWorktree, ['mine']);
+    });
+  });
+
+  test('falls back to the pre-rename shared file, new wins', async () => {
+    await withStore(async (store, dir) => {
+      const repo = path.join(dir, 'repo');
+      await fs.promises.mkdir(path.join(repo, '.openchamber'), { recursive: true });
+      await fs.promises.writeFile(path.join(repo, '.openchamber', 'project.json'), JSON.stringify({
+        version: 1,
+        setupWorktree: ['bun install'],
+      }));
+      const projectId = projectIdFor(repo);
+      const legacy = await store.read(projectId);
+      assert.equal(legacy.shared.status, 'ok');
+      assert.deepEqual(legacy.setupWorktree, ['bun install']);
+      await fs.promises.mkdir(path.join(repo, '.alcode'), { recursive: true });
+      await fs.promises.writeFile(path.join(repo, '.alcode', 'project.json'), JSON.stringify({
+        version: 1,
+        setupWorktree: ['bun run dev'],
+      }));
+      const current = await store.read(projectId);
+      assert.equal(current.shared.status, 'ok');
+      assert.deepEqual(current.setupWorktree, ['bun run dev']);
     });
   });
 
@@ -265,12 +288,12 @@ describe('project setup bridge', () => {
       assert.equal(view.shared.status, 'ok');
       assert.equal(view.shared.plansDir, 'docs/plans');
       assert.equal(view.trust.trusted, true);
-      const raw = JSON.parse(await fs.promises.readFile(path.join(repo, '.openchamber', 'project.json'), 'utf8'));
+      const raw = JSON.parse(await fs.promises.readFile(path.join(repo, '.alcode', 'project.json'), 'utf8'));
       assert.deepEqual(raw, { version: 1, setupWorktree: ['bun install'], plansDir: 'docs/plans' });
 
       const emptied = await store.updateShared(projectId, { setupWorktree: [], plansDir: null });
       assert.equal(emptied.shared.status, 'missing');
-      assert.equal(fs.existsSync(path.join(repo, '.openchamber')), false);
+      assert.equal(fs.existsSync(path.join(repo, '.alcode')), false);
 
       const missing = await handleProjectSetupBridgeMessage(
         { id: '2', type: 'api:project-setup:update-shared', payload: { projectId: projectIdFor(path.join(dir, 'nope')), patch: {} } },

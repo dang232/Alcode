@@ -33,16 +33,16 @@ export const setUnavailableRetryDelaysForTest = (delays = UNAVAILABLE_RETRY_DELA
 };
 
 // Resolved per call, not at module load: freezing it at import would pin
-// whichever OPENCHAMBER_DATA_DIR the first importing test file set, and
+// whichever ALCODE_DATA_DIR the first importing test file set, and
 // sibling suites could never isolate their settings.
 
-// OpenChamber's own settings: when the user unchecks "use default small model"
+// Alcode's own settings: when the user unchecks "use default small model"
 // their explicit override outranks the model OpenCode would pick.
 const readSmallModelSettingsOverride = () => {
   const settingsFilePath = path.join(
-    process.env.OPENCHAMBER_DATA_DIR
-      ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-      : path.join(os.homedir(), '.config', 'openchamber'),
+    process.env.ALCODE_DATA_DIR
+      ? path.resolve(process.env.ALCODE_DATA_DIR)
+      : path.join(os.homedir(), '.config', 'alcode'),
     'settings.json',
   );
   const settings = readMergedSettingsSync({ fs, path, settingsFilePath });
@@ -168,7 +168,7 @@ const pickSmallModel = (models, accept) => {
  * Which model this call runs on, in order:
  *
  * 1. An explicit request model.
- * 2. OpenChamber's settings override (Settings → Sessions → Small Model).
+ * 2. Alcode's settings override (Settings → Sessions → Small Model).
  * 3. The small model configured for OpenCode itself: the `title` agent's
  *    model (`agents.title.model`, or v1 `small_model`) — `config`.
  * 4. The small model of the caller's provider — the session's, or the one

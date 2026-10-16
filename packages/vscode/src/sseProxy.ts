@@ -49,7 +49,7 @@ const getAbortReason = (signal: AbortSignal) => signal.reason ?? new DOMExceptio
 const OPENCODE_EVENT_PATH = '/api/event';
 
 const normalizeSseSearchParams = (path: string): URLSearchParams => {
-  const parsed = new URL(path, 'https://openchamber.invalid');
+  const parsed = new URL(path, 'https://alcode.invalid');
   return new URLSearchParams(parsed.searchParams);
 };
 

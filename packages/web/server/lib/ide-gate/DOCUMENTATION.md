@@ -19,7 +19,7 @@ features from the same capability.
   `tokenPanel.getGate(tier)` answering the task-9 `GET /gate` body shape, so
   this module never imports TokenPanel code.
 - `packages/web/server/lib/ide-gate/ide-tier-matrix.fixture.json`: vendored
-  copy of `I:/migration/Alwork/config/ide-tier-matrix.json` (free-tier
+  copy of `I:/migration/Alcode/config/ide-tier-matrix.json` (free-tier
   allow/basic-ide, pending-payment deny/empty, paid allow/full-access, all
   TTL 15). The test asserts byte-level tier equality with the source.
 - `packages/web/server/lib/ide-gate/ide-gate.test.js`: fixture-stub tests

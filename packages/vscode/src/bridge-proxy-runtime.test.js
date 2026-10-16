@@ -59,8 +59,8 @@ describe('bridge proxy runtime', () => {
       undefined,
       createDeps(),
     );
-    const previous = process.env.OPENCHAMBER_ENTERPRISE_MODE;
-    process.env.OPENCHAMBER_ENTERPRISE_MODE = '1';
+    const previous = process.env.ALCODE_ENTERPRISE_MODE;
+    process.env.ALCODE_ENTERPRISE_MODE = '1';
     try {
       for (const path of ['/api/integration/openai/connect/key', '/API//integration/openai/%63onnect/key', '/api/credential', '/http:api/integration/openai/connect/key', '/http:api/credential']) {
         const response = await proxy(path);
@@ -71,8 +71,8 @@ describe('bridge proxy runtime', () => {
       const signIn = await proxy('/api/integration/mcp_0123456789abcdef/connect/oauth');
       expect(signIn?.data).toMatchObject({ status: 503 });
     } finally {
-      if (previous === undefined) delete process.env.OPENCHAMBER_ENTERPRISE_MODE;
-      else process.env.OPENCHAMBER_ENTERPRISE_MODE = previous;
+      if (previous === undefined) delete process.env.ALCODE_ENTERPRISE_MODE;
+      else process.env.ALCODE_ENTERPRISE_MODE = previous;
     }
   });
 });

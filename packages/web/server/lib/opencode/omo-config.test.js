@@ -24,7 +24,7 @@ import {
 import * as configV2 from './config-v2.js';
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
-const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-omo-config-'));
+const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-omo-config-'));
 
 afterAll(() => {
   fs.rmSync(scratchRoot, { recursive: true, force: true });

@@ -3,7 +3,7 @@
 Server-owned storage for the Project Notes surface: free-form notes, todos, and
 plan markdown files.
 
-The managed Chats root (`~/.config/openchamber/chats`) is also one context owner. Every dated per-session directory beneath it resolves to that root, so Notes, Todo, Plans, pinned knowledge, and project memory are shared across ordinary chats without registering Chats as a user project.
+The managed Chats root (`~/.config/alcode/chats`) is also one context owner. Every dated per-session directory beneath it resolves to that root, so Notes, Todo, Plans, pinned knowledge, and project memory are shared across ordinary chats without registering Chats as a user project.
 
 ## Ownership
 
@@ -71,8 +71,8 @@ the two ever disagree.
 
 ## Shared plans
 
-Every `.md` file in the repository plans folder is a plan too: `.openchamber/plans`
-by default, or the `plansDir` the team config (`<repo>/.openchamber/project.json`,
+Every `.md` file in the repository plans folder is a plan too: `.alcode/plans`
+by default, or the `plansDir` the team config (`<repo>/.alcode/project.json`,
 see `packages/web/server/lib/projects`) names instead of it (the custom folder
 replaces the default outright; moving files between the two is the user's job). `readContext` appends them after the personal ones,
 each marked `source: "shared"` (personal ones get `source: "personal"`), and

@@ -12,7 +12,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { refreshGlobalSessions } from '@/stores/useGlobalSessionsStore';
-import { subscribeOpenchamberEvents } from '@/lib/openchamberEvents';
+import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { PROJECT_COLOR_MAP, PROJECT_ICON_MAP, ProjectIconImage } from '@/lib/projectMeta';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { cn, formatDirectoryName } from '@/lib/utils';
@@ -327,7 +327,7 @@ export function ScheduledTasksView({ layout, onLeave }: {
 
   React.useEffect(() => {
     let timeoutID: ReturnType<typeof setTimeout> | null = null;
-    const unsubscribe = subscribeOpenchamberEvents((event) => {
+    const unsubscribe = subscribeAlcodeEvents((event) => {
       if (event.type !== 'scheduled-task-ran') {
         return;
       }

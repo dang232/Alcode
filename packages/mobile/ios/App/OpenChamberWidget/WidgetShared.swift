@@ -45,15 +45,15 @@ enum WidgetStore {
 
 enum WidgetDeepLink {
     static func newSession() -> URL { URL(string: "openchamber://new")! }
-    static func attention() -> URL { URL(string: "openchamber://sessions?filter=attention")! }
-    static func status() -> URL { URL(string: "openchamber://status")! }
-    static func settings() -> URL { URL(string: "openchamber://settings")! }
-    static func changes() -> URL { URL(string: "openchamber://changes")! }
-    static func files() -> URL { URL(string: "openchamber://view/files")! }
-    static func instances() -> URL { URL(string: "openchamber://view/instances")! }
+    static func attention() -> URL { URL(string: "alcode://sessions?filter=attention")! }
+    static func status() -> URL { URL(string: "alcode://status")! }
+    static func settings() -> URL { URL(string: "alcode://settings")! }
+    static func changes() -> URL { URL(string: "alcode://changes")! }
+    static func files() -> URL { URL(string: "alcode://view/files")! }
+    static func instances() -> URL { URL(string: "alcode://view/instances")! }
     static func session(_ id: String) -> URL {
         let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
-        return URL(string: "openchamber://session/\(encoded)") ?? newSession()
+        return URL(string: "alcode://session/\(encoded)") ?? newSession()
     }
 }
 
@@ -84,9 +84,9 @@ struct OverviewProvider: TimelineProvider {
     }
 }
 
-// MARK: - Logo (full OpenChamber mark drawn from the SVG)
+// MARK: - Logo (full Alcode mark drawn from the SVG)
 
-/// The OpenChamber logo, drawn to match packages/web/public/logo-dark-512x512.svg: an
+/// The Alcode logo, drawn to match packages/web/public/logo-dark-512x512.svg: an
 /// isometric cube with translucent face fills, stroked edges, and the OpenCode mark on the
 /// top face. Faces use low-opacity `.primary` so the system tint on the Lock Screen / Control
 /// Center reads as a translucent fill (no colour) rather than a flat wireframe. Coordinates are

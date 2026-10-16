@@ -11,14 +11,14 @@ session assist whether the Small Model is worth waking.
 
 - `questions.js` — the Jev questions (measured wording, see "Measurement"),
   the thresholds, and the decisions taken from the answers.
-- `state.js` — `metadata.openchamber.work` and the merge patches that change
+- `state.js` — `metadata.alcode.work` and the merge patches that change
   it. Every patch is decided against the record at write time.
 - `runtime.js` — `createSessionWorkRuntime`: `processPayload` (a sent message,
   a turn start), `evaluateTurnEnd` (called by session assist), `stop`.
 
 ## State
 
-`metadata.openchamber.work`:
+`metadata.alcode.work`:
 
 - `state`: `open` | `done`
 - `openedAt`, `openedBy` (`jev` | `user`)
@@ -47,7 +47,7 @@ also exists in VS Code.
   assist's freshness rule). This runtime also deletes a hint it wrote when the
   next turn starts; the rule covers hints written by another process.
 - Only top-level, unarchived project sessions that are not review sessions
-  (`openchamber.kind === 'review'`) are asked about. Managed Chats (under the
+  (`alcode.kind === 'review'`) are asked about. Managed Chats (under the
   `chatRoots` the server passes in) are plain conversations and never in work.
 - A known subsession costs nothing: `../session-lineage.js` remembers which
   sessions have a parent (from `session.created` events and from any record
@@ -94,7 +94,7 @@ and inert without a classification provider). Both are read at every use.
 ## Runtime parity
 
 - Web, desktop, hosted mobile, Capacitor: all of it; the server owns Jev.
-- VS Code: no OpenChamber server, so no Jev and no done hint. The block and
+- VS Code: no Alcode server, so no Jev and no done hint. The block and
   Track / Done work through the extension's metadata bridge.
 
 ## Tests
@@ -105,4 +105,4 @@ call, a late answer after the next turn started, never closing, failure as
 unknown), plus the gate cases in
 `../session-assist/runtime.test.js`, `loadSettledTurns` in
 `../session-assist/context.test.js`, and `updateSessionMetadata` in
-`../openchamber-sessions/session-metadata-store.test.js`.
+`../alcode-sessions/session-metadata-store.test.js`.

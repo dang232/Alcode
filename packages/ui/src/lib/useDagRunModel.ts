@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { JsonValue } from '@openchamber/sdk';
+import type { JsonValue } from '@alcode/sdk';
 import { buildDagRunModel, dagRunModelToSnapshotDoc, type DagRunModel } from '@/lib/dagRunModel';
 import { useDirectorySync } from '@/sync/sync-context';
 import type { State } from '@/sync/types';

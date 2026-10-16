@@ -1,32 +1,32 @@
 import {
-  OPENCHAMBER_AGENT_TOOL_ACTION_DEFINITIONS,
-  OPENCHAMBER_AGENT_TOOL_ACTIONS,
-  OPENCHAMBER_MEMORY_ACTION_DEFINITIONS,
-  OPENCHAMBER_MEMORY_ACTIONS,
-  OPENCHAMBER_NOTIFY_ACTION_DEFINITIONS,
-  OPENCHAMBER_NOTIFY_ACTIONS,
+  ALCODE_AGENT_TOOL_ACTION_DEFINITIONS,
+  ALCODE_AGENT_TOOL_ACTIONS,
+  ALCODE_MEMORY_ACTION_DEFINITIONS,
+  ALCODE_MEMORY_ACTIONS,
+  ALCODE_NOTIFY_ACTION_DEFINITIONS,
+  ALCODE_NOTIFY_ACTIONS,
   resolveAgentToolAction,
-  OPENCHAMBER_WEB_ACTION_DEFINITIONS,
-  OPENCHAMBER_WEB_ACTIONS,
-} from '../openchamber-control/actions.js';
+  ALCODE_WEB_ACTION_DEFINITIONS,
+  ALCODE_WEB_ACTIONS,
+} from '../alcode-control/actions.js';
 import { createCallbackAddress } from './callback-address.js';
 
 const TOOL_SCHEMA_VERSION = 1;
-const PLUGIN_ID = 'openchamber-agent-tool';
+const PLUGIN_ID = 'alcode-agent-tool';
 // Everything either managed tool may ask for; the agent allowlist stays
 // narrower than the full control surface.
 const ACTIONS = new Set([
-  ...OPENCHAMBER_AGENT_TOOL_ACTIONS,
-  ...OPENCHAMBER_WEB_ACTIONS,
-  ...OPENCHAMBER_MEMORY_ACTIONS,
-  ...OPENCHAMBER_NOTIFY_ACTIONS,
+  ...ALCODE_AGENT_TOOL_ACTIONS,
+  ...ALCODE_WEB_ACTIONS,
+  ...ALCODE_MEMORY_ACTIONS,
+  ...ALCODE_NOTIFY_ACTIONS,
 ]);
 const AGENT_TOOL_ACTION_TITLES = Object.fromEntries(
   [
-    ...OPENCHAMBER_AGENT_TOOL_ACTION_DEFINITIONS,
-    ...OPENCHAMBER_WEB_ACTION_DEFINITIONS,
-    ...OPENCHAMBER_MEMORY_ACTION_DEFINITIONS,
-    ...OPENCHAMBER_NOTIFY_ACTION_DEFINITIONS,
+    ...ALCODE_AGENT_TOOL_ACTION_DEFINITIONS,
+    ...ALCODE_WEB_ACTION_DEFINITIONS,
+    ...ALCODE_MEMORY_ACTION_DEFINITIONS,
+    ...ALCODE_NOTIFY_ACTION_DEFINITIONS,
   ].map(({ action, title }) => [action, title]),
 );
 
@@ -134,20 +134,20 @@ const MEMORY_PARAMETER_PROPERTIES = {
 const NOTIFY_PARAMETER_PROPERTIES = {
   title: { type: 'string', description: 'Short headline the user reads first, up to 120 characters' },
   body: { type: 'string', description: 'One or two sentences of detail, up to 500 characters' },
-  showWhenFocused: { type: 'boolean', description: 'Show it even while the user is looking at OpenChamber. Only for something that cannot wait' },
+  showWhenFocused: { type: 'boolean', description: 'Show it even while the user is looking at Alcode. Only for something that cannot wait' },
 };
 
 // The linking rule leads: stated only inside the session.link action, an
 // agent handed an issue to investigate never opened this tool and never
 // linked it. SESSION_LINK_GUIDANCE in ../session-knowledge/runtime.js states
 // the same rule in every session's context; change both together.
-const CONTROL_TOOL_DESCRIPTION = "When the user gives you an issue or a change under review (a pull or merge request) to work on, fix, investigate or review, when you open one for this work, and when the work resolves one, link it to this session with session.link as soon as you know it, so the user sees it with the session. Not one merely mentioned in passing. The tool also runs OpenChamber projects, sessions and scheduled tasks for the user. A session you create, send to or fork belongs to the user: they follow it in OpenChamber and talk to it themselves. Dispatch one when the user asks for it, even when the work relates to your current task; any agent, optionally in a new worktree. To delegate part of your own task and get the answer yourself, use the subagent tool instead. A dispatch returns at once. Set returnResult when the user wants the outcome back or your next step needs it: the session's final answer then arrives in this session as a message when it finishes, and you continue from there. Without it, the session is the user's to follow and you move on. To see how a session went, read it with session.messages (lastAssistant for the final answer); session.send always starts a new prompt. One action per call; scope with projectId or directory, or leave both out for this session's directory. Deleting sessions and worktrees is not available.";
+const CONTROL_TOOL_DESCRIPTION = "When the user gives you an issue or a change under review (a pull or merge request) to work on, fix, investigate or review, when you open one for this work, and when the work resolves one, link it to this session with session.link as soon as you know it, so the user sees it with the session. Not one merely mentioned in passing. The tool also runs Alcode projects, sessions and scheduled tasks for the user. A session you create, send to or fork belongs to the user: they follow it in Alcode and talk to it themselves. Dispatch one when the user asks for it, even when the work relates to your current task; any agent, optionally in a new worktree. To delegate part of your own task and get the answer yourself, use the subagent tool instead. A dispatch returns at once. Set returnResult when the user wants the outcome back or your next step needs it: the session's final answer then arrives in this session as a message when it finishes, and you continue from there. Without it, the session is the user's to follow and you move on. To see how a session went, read it with session.messages (lastAssistant for the final answer); session.send always starts a new prompt. One action per call; scope with projectId or directory, or leave both out for this session's directory. Deleting sessions and worktrees is not available.";
 
-const WEB_TOOL_DESCRIPTION = "Look at and interact with a web page in OpenChamber's browser panel, so you can check your own work rather than describing what you expect. Use one action per call. Open a page, snapshot it to read its text and its interactive elements, then click, type or scroll using the selectors the snapshot returned; snapshots also report any errors the page logged. Pass a selector to browser.snapshot to read one part of a long page. browser.inspect returns computed styles when the question is how something renders. Set viewport to check a layout at mobile, tablet or desktop size. The page runs with the user's real logins, so treat what you see as their live session.";
+const WEB_TOOL_DESCRIPTION = "Look at and interact with a web page in Alcode's browser panel, so you can check your own work rather than describing what you expect. Use one action per call. Open a page, snapshot it to read its text and its interactive elements, then click, type or scroll using the selectors the snapshot returned; snapshots also report any errors the page logged. Pass a selector to browser.snapshot to read one part of a long page. browser.inspect returns computed styles when the question is how something renders. Set viewport to check a layout at mobile, tablet or desktop size. The page runs with the user's real logins, so treat what you see as their live session.";
 
 const MEMORY_TOOL_DESCRIPTION = "Keep what you learn across sessions, so the user does not have to explain the same thing twice. Use one action per call. The session already lists the titles of what is stored. A title is an abbreviation, not the memory: read the entry with memory.read once before acting on it (it then stays in your context; do not re-read it on later turns), because titles leave out the conditions and exceptions that decide how the memory applies, and the ones that look self-explanatory hide them most often. Save something only when it will still be true in a later session — a stable preference, a project convention, a decision and its reason, or a hard-won pointer. Do not save one-off task state, anything you can read from the code, secrets or credentials, or anything the user asked you not to keep; when the user explicitly asks you to remember something, save it, unless it is a secret or credential. Choose the scope deliberately: global is about the user and reaches every project, so put a project's conventions in project scope. Save in the moment, without asking first, when the user corrects how you work or states a preference, confirms that a non-obvious approach worked, or when you learn a project fact that took real effort to find. One fact per entry. The user can review and remove what you save, so save when it fits and mention it briefly.";
 
-const NOTIFY_TOOL_DESCRIPTION = "Send the user a notification through OpenChamber, so they learn about something without watching the session. Use it when you finish work that took long enough for the user to step away, when you are blocked on something only the user can resolve, or when the user asked to be told about something. Do not use it for routine progress, for every finished step, or to repeat what your reply already says to a user who is present. Keep the title short and put detail in the body.";
+const NOTIFY_TOOL_DESCRIPTION = "Send the user a notification through Alcode, so they learn about something without watching the session. Use it when you finish work that took long enough for the user to step away, when you are blocked on something only the user can resolve, or when the user asked to be told about something. Do not use it for routine progress, for every finished step, or to repeat what your reply already says to a user who is present. Keep the title short and put detail in the body.";
 
 const DISPATCH_ACTIONS = new Set(['session.create', 'session.send', 'session.fork']);
 
@@ -214,7 +214,7 @@ const createToolEntry = ({ name, description, definitions, parameters, codeMode 
       input: {
         type: "object",
         properties: {
-          action: { type: "string", oneOf: ${JSON.stringify(definitions.map((entry) => ({ const: entry.action, description: entry.description })))}, description: "OpenChamber action to perform" },
+          action: { type: "string", oneOf: ${JSON.stringify(definitions.map((entry) => ({ const: entry.action, description: entry.description })))}, description: "Alcode action to perform" },
           parameters: { type: "object", properties: ${JSON.stringify(parameters)}, additionalProperties: false, description: "Inputs for the action; use an empty object when none are needed" },
         },
         required: ["action"],
@@ -240,17 +240,17 @@ const createToolEntry = ({ name, description, definitions, parameters, codeMode 
           },
         })
         await progress()
-        const endpoint = process.env.OPENCHAMBER_AGENT_TOOL_URL
-        const token = process.env.OPENCHAMBER_AGENT_TOOL_TOKEN
+        const endpoint = process.env.ALCODE_AGENT_TOOL_URL
+        const token = process.env.ALCODE_AGENT_TOOL_TOKEN
         // No output schema is declared, so a result must never carry an output
         // field: OpenCode rejects that with "Tool result declared output
         // without an output schema". The envelope travels as text content.
         const failure = (payload) => ({
           content: JSON.stringify(payload),
-          metadata: { openchamber: { schemaVersion: ${TOOL_SCHEMA_VERSION}, action: args.action, description: title, ok: false } },
+          metadata: { alcode: { schemaVersion: ${TOOL_SCHEMA_VERSION}, action: args.action, description: title, ok: false } },
         })
         if (!endpoint || !token) {
-          return failure({ schemaVersion: ${TOOL_SCHEMA_VERSION}, ok: false, action: args.action, error: { message: "OpenChamber managed tool connection is unavailable" } })
+          return failure({ schemaVersion: ${TOOL_SCHEMA_VERSION}, ok: false, action: args.action, error: { message: "Alcode managed tool connection is unavailable" } })
         }
 
         try {
@@ -261,9 +261,9 @@ const createToolEntry = ({ name, description, definitions, parameters, codeMode 
               "content-type": "application/json",
             },
             // OpenCode 2 no longer hands a tool its session directory, so the
-            // session id goes over instead and OpenChamber resolves the
+            // session id goes over instead and Alcode resolves the
             // directory on its own side. The signal fires when the session is
-            // aborted, so the OpenChamber side stops the action too.
+            // aborted, so the Alcode side stops the action too.
             body: JSON.stringify({ input: args, sessionID: context.sessionID, tool: ${JSON.stringify(name)} }),
             signal: context.signal,
           })
@@ -272,8 +272,8 @@ const createToolEntry = ({ name, description, definitions, parameters, codeMode 
           try { result = JSON.parse(content) } catch {}
           const valid = result?.schemaVersion === ${TOOL_SCHEMA_VERSION} && typeof result?.ok === "boolean" && typeof result?.action === "string"
           await progress({ ok: valid && result.ok === true })
-          if (valid) return { content, metadata: { openchamber: { schemaVersion: ${TOOL_SCHEMA_VERSION}, action: args.action, description: title, ok: result.ok === true } } }
-          return failure({ schemaVersion: ${TOOL_SCHEMA_VERSION}, ok: false, action: args.action, error: { message: "OpenChamber returned an invalid response", kind: "runtime", status: response.status } })
+          if (valid) return { content, metadata: { alcode: { schemaVersion: ${TOOL_SCHEMA_VERSION}, action: args.action, description: title, ok: result.ok === true } } }
+          return failure({ schemaVersion: ${TOOL_SCHEMA_VERSION}, ok: false, action: args.action, error: { message: "Alcode returned an invalid response", kind: "runtime", status: response.status } })
         } catch (error) {
           return failure({ schemaVersion: ${TOOL_SCHEMA_VERSION}, ok: false, action: args.action, error: { message: error instanceof Error ? error.message : String(error), kind: "runtime" } })
         }
@@ -285,36 +285,36 @@ const createPluginSource = ({ includeControl, includeWeb, includeMemory, include
   const entries = [];
   if (includeControl) {
     entries.push(createToolEntry({
-      name: 'openchamber',
+      name: 'alcode',
       description: CONTROL_TOOL_DESCRIPTION,
-      definitions: OPENCHAMBER_AGENT_TOOL_ACTION_DEFINITIONS,
+      definitions: ALCODE_AGENT_TOOL_ACTION_DEFINITIONS,
       parameters: CONTROL_PARAMETER_PROPERTIES,
       codeMode,
     }));
   }
   if (includeWeb) {
     entries.push(createToolEntry({
-      name: 'openchamber_web',
+      name: 'alcode_web',
       description: WEB_TOOL_DESCRIPTION,
-      definitions: OPENCHAMBER_WEB_ACTION_DEFINITIONS,
+      definitions: ALCODE_WEB_ACTION_DEFINITIONS,
       parameters: WEB_PARAMETER_PROPERTIES,
       codeMode,
     }));
   }
   if (includeMemory) {
     entries.push(createToolEntry({
-      name: 'openchamber_memory',
+      name: 'alcode_memory',
       description: MEMORY_TOOL_DESCRIPTION,
-      definitions: OPENCHAMBER_MEMORY_ACTION_DEFINITIONS,
+      definitions: ALCODE_MEMORY_ACTION_DEFINITIONS,
       parameters: MEMORY_PARAMETER_PROPERTIES,
       codeMode,
     }));
   }
   if (includeNotify) {
     entries.push(createToolEntry({
-      name: 'openchamber_notify',
+      name: 'alcode_notify',
       description: NOTIFY_TOOL_DESCRIPTION,
-      definitions: OPENCHAMBER_NOTIFY_ACTION_DEFINITIONS,
+      definitions: ALCODE_NOTIFY_ACTION_DEFINITIONS,
       parameters: NOTIFY_PARAMETER_PROPERTIES,
       codeMode,
     }));
@@ -326,7 +326,7 @@ const createPluginSource = ({ includeControl, includeWeb, includeMemory, include
   // exemption is added inside the child because only there is the final
   // NO_PROXY, merged from the shell and server environments, visible.
   return `const exemptCallbackFromProxy = () => {
-  const endpoint = process.env.OPENCHAMBER_AGENT_TOOL_URL
+  const endpoint = process.env.ALCODE_AGENT_TOOL_URL
   if (!endpoint || !URL.canParse(endpoint)) return
   const host = new URL(endpoint).hostname.replace(/^\\[|\\]$/g, "")
   for (const key of ["NO_PROXY", "no_proxy"]) {
@@ -349,7 +349,7 @@ ${entries.join('')}    })
 // A configured plugin has to be a directory carrying a package.json that
 // resolves an entrypoint; OpenCode skips a plain .js path.
 const PLUGIN_PACKAGE_JSON = `${JSON.stringify({
-  name: 'openchamber-agent-tool',
+  name: 'alcode-agent-tool',
   version: '0.0.0',
   private: true,
   type: 'module',
@@ -384,7 +384,7 @@ export const createAgentToolRuntime = (dependencies) => {
    */
   const materializePlugin = async ({ includeControl = true, includeWeb = true, includeMemory = true, includeNotify = false, codeMode = false } = {}) => {
     if (!includeControl && !includeWeb && !includeMemory && !includeNotify) {
-      throw new Error('At least one OpenChamber managed tool must be enabled to inject the plugin');
+      throw new Error('At least one Alcode managed tool must be enabled to inject the plugin');
     }
     await fsPromises.mkdir(pluginDirectory, { recursive: true });
     await fsPromises.writeFile(pluginManifestPath, PLUGIN_PACKAGE_JSON, { mode: 0o600 });
@@ -402,12 +402,12 @@ export const createAgentToolRuntime = (dependencies) => {
   const createChildEnv = () => {
     const port = getActivePort();
     if (!Number.isInteger(port) || port <= 0) {
-      throw new Error('OpenChamber listener port is unavailable for managed tool injection');
+      throw new Error('Alcode listener port is unavailable for managed tool injection');
     }
     activeToken = crypto.randomBytes(32).toString('base64url');
     return {
-      OPENCHAMBER_AGENT_TOOL_URL: `http://${callbackHost()}:${port}/api/openchamber/agent-tool`,
-      OPENCHAMBER_AGENT_TOOL_TOKEN: activeToken,
+      ALCODE_AGENT_TOOL_URL: `http://${callbackHost()}:${port}/api/alcode/agent-tool`,
+      ALCODE_AGENT_TOOL_TOKEN: activeToken,
     };
   };
 
@@ -431,14 +431,14 @@ export const createAgentToolRuntime = (dependencies) => {
     }
     const action = resolution.action;
     if (!ACTIONS.has(action)) {
-      return createResult({ ok: false, action, error: { message: `Unsupported OpenChamber action: ${action}`, kind: 'usage' } });
+      return createResult({ ok: false, action, error: { message: `Unsupported Alcode action: ${action}`, kind: 'usage' } });
     }
     const usageError = agentOnlyUsageError(action, payload.input ?? {});
     if (usageError) {
       return createResult({ ok: false, action, error: { message: usageError, kind: 'usage' } });
     }
     if (typeof executeAction !== 'function') {
-      return createResult({ ok: false, action, error: { message: 'OpenChamber control service is unavailable', kind: 'runtime' } });
+      return createResult({ ok: false, action, error: { message: 'Alcode control service is unavailable', kind: 'runtime' } });
     }
     // OpenCode 2 tools no longer receive a directory, so the plugin sends the
     // session id and the directory is resolved here. An unresolvable session
@@ -499,7 +499,7 @@ export const createAgentToolRuntime = (dependencies) => {
   };
 
   const registerRoutes = (app, express) => {
-    app.post('/api/openchamber/agent-tool', express.json({ limit: '1mb' }), async (req, res) => {
+    app.post('/api/alcode/agent-tool', express.json({ limit: '1mb' }), async (req, res) => {
       if (!authorize(req)) return res.status(401).json({ error: 'Unauthorized' });
       const controller = new AbortController();
       const abortOnDisconnect = () => {

@@ -1,4 +1,4 @@
-// Service handler tests for the openchamber-builtin-dag-pane guest (project-ide todo 13).
+// Service handler tests for the alcode-builtin-dag-pane guest (project-ide todo 13).
 // bun:test, no servers: `handleRequest` is called directly with a scripted
 // bridge. The live steer/cancel path spawns a REAL sleeper child (the
 // platform node binary) and kills it through the REAL bridge `cancelRun`,
@@ -11,6 +11,7 @@ import { join } from 'node:path';
 
 import { cancelRun } from '../../../web/server/lib/opencode/omo-bridge-runtime.js';
 import { createDagServiceHandlers } from './handlers.js';
+import { parseManifest } from '../../../sdk/src/parse.ts';
 import { parseSnapshotDoc } from '../panel/dag-view.ts';
 
 const scratchDirs = [];
@@ -99,12 +100,50 @@ const waitForFile = async (path, timeoutMs = 5000) => {
   }
 };
 
+describe('dag guest manifest compat', () => {
+  test('a legacy openchamber-block manifest still validates as this guest', () => {
+    const legacy = parseManifest({
+      openchamber: {
+        apiVersion: 1,
+        engines: { openchamber: '>=1.22.0' },
+        contributes: {
+          panel: {
+            id: 'openchamber-builtin-dag-pane',
+            name: 'DAG runs',
+            icon: 'icon.svg',
+            entry: 'panel/index.html',
+          },
+          service: { entry: 'service/main.js', runtime: 'host' },
+          attach: false,
+        },
+      },
+    });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok) {
+      expect(legacy.manifest.contributes.panel.id).toBe('alcode-builtin-dag-pane');
+      expect(legacy.manifest.engines).toEqual({ alcode: '>=1.22.0' });
+    }
+  });
+
+  test('the shipped manifest keeps both blocks and the new spelling wins', () => {
+    const shipped = JSON.parse(nodeFs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(shipped.alcode.contributes.panel.id).toBe('alcode-builtin-dag-pane');
+    expect(shipped.alcode.engines).toEqual({ alcode: '>=1.22.0' });
+    expect(shipped.openchamber.contributes.panel.id).toBe('openchamber-builtin-dag-pane');
+    const parsed = parseManifest(shipped);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.manifest.contributes.panel.id).toBe('alcode-builtin-dag-pane');
+    }
+  });
+});
+
 describe('dag service handlers', () => {
   test('health answers ready', async () => {
     const { handleRequest } = handlersWith(makeSnapshotDir(), absentBridge);
     const answer = await handleRequest({ method: 'GET', path: '/health' });
     expect(answer.status).toBe(200);
-    expect(answer.body).toEqual({ ok: true, service: 'openchamber-builtin-dag-pane' });
+    expect(answer.body).toEqual({ ok: true, service: 'alcode-builtin-dag-pane' });
   });
 
   test('status passes the probe through and lists snapshot sessions', async () => {

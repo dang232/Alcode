@@ -11,8 +11,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
-      "@openchamber/sdk": ["./src/index.ts"],
-      "@openchamber/sdk/ui": ["./src/ui/index.ts"]
+      "@alcode/sdk": ["./src/index.ts"],
+      "@alcode/sdk/ui": ["./src/ui/index.ts"]
     }
   },
   "include": ["src", "examples/**/*.ts"],

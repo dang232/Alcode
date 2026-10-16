@@ -22,7 +22,7 @@ Then load the branch-specific context before editing:
 | Code transfer or apply | DESIGN.md, *Code in and out*, and `docs/isolated-spaces/stage-0/e4-git-over-exec.md` |
 | Dispatcher, session identity or preview content | DESIGN.md, *Dispatcher, sessions, events*, and the nearest documentation for the changed route, transport or state owner |
 
-`openchamber-change-discipline` owns change scope and validation risk. Follow `desktop-shell` for child processes. Dispatcher and event changes also use `ui-api-decoupling`, `relay-transport` and `sync-state-invariants` for their respective contracts.
+`alcode-change-discipline` owns change scope and validation risk. Follow `desktop-shell` for child processes. Dispatcher and event changes also use `ui-api-decoupling`, `relay-transport` and `sync-state-invariants` for their respective contracts.
 
 ## Trace The Guarantee
 

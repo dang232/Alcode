@@ -82,9 +82,9 @@ const storedEntriesSchema = z.record(
 );
 
 const defaultKeyIdFilePath = () => {
-  const root = process.env.OPENCHAMBER_DATA_DIR
-    ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-    : path.join(os.homedir(), '.config', 'openchamber');
+  const root = process.env.ALCODE_DATA_DIR
+    ? path.resolve(process.env.ALCODE_DATA_DIR)
+    : path.join(os.homedir(), '.config', 'alcode');
   return path.join(root, PERSONAL_KEY_FILE_NAME);
 };
 

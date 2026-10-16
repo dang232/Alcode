@@ -87,8 +87,8 @@ describe('getVisibleContextRailSurfaces', () => {
 
   test('keeps the DAG side pane on the Electron desktop shell only', () => {
     const dag = {
-      id: 'plugin:openchamber-builtin-dag-pane' as const,
-      mode: 'plugin:openchamber-builtin-dag-pane' as const,
+      id: 'plugin:alcode-builtin-dag-pane' as const,
+      mode: 'plugin:alcode-builtin-dag-pane' as const,
       icon: 'window' as const,
       label: 'DAG runs',
       labelKey: 'contextRail.surface.plugin' as const,
@@ -96,8 +96,8 @@ describe('getVisibleContextRailSurfaces', () => {
       availability: 'always' as const,
       defaultWidthFraction: 0.45,
     };
-    expect(getVisibleContextRailSurfaces({ ...baseOptions, extras: [dag] }).some((s) => s.id === 'plugin:openchamber-builtin-dag-pane')).toBe(false);
-    expect(getVisibleContextRailSurfaces({ ...baseOptions, extras: [dag], isVSCode: true }).some((s) => s.id === 'plugin:openchamber-builtin-dag-pane')).toBe(false);
-    expect(getVisibleContextRailSurfaces({ ...baseOptions, extras: [dag], isDesktopShell: true }).some((s) => s.id === 'plugin:openchamber-builtin-dag-pane')).toBe(true);
+    expect(getVisibleContextRailSurfaces({ ...baseOptions, extras: [dag] }).some((s) => s.id === 'plugin:alcode-builtin-dag-pane')).toBe(false);
+    expect(getVisibleContextRailSurfaces({ ...baseOptions, extras: [dag], isVSCode: true }).some((s) => s.id === 'plugin:alcode-builtin-dag-pane')).toBe(false);
+    expect(getVisibleContextRailSurfaces({ ...baseOptions, extras: [dag], isDesktopShell: true }).some((s) => s.id === 'plugin:alcode-builtin-dag-pane')).toBe(true);
   });
 });

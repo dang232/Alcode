@@ -24,9 +24,9 @@ Method: code reading only, 2026-09-19. Nothing was run. Paths are relative to th
 | Global event WebSocket and SSE | `ui/sync/event-pipeline.ts:215-240`, `:565` | n/a | one stream for all directories, each event carries its directory (`:168-190`) |
 | Dev tunnel | `ui/lib/browser/devTunnel.ts:39-40` | No | `?port=` only |
 | Dev servers, probe, free port | `ui/lib/browser/devServers.ts:33,60`, `ui/lib/detectDevServer.ts:87` | No | nothing |
-| Dictation, guests, notifications, OpenChamber events | `dictation-client.ts:123`, `guests/surface-client.ts:67`, `useWebNotificationStream.ts:37`, `openchamberEvents.ts:376` | n/a | host services, never a space |
+| Dictation, guests, notifications, Alcode events | `dictation-client.ts:123`, `guests/surface-client.ts:67`, `useWebNotificationStream.ts:37`, `alcodeEvents.ts:376` | n/a | host services, never a space |
 | Authenticated assets | `FilesView.tsx:3089` (`/api/fs/raw`), `FilesView.tsx:4044` (`/api/fs/serve/...`), `markdownImageAssets.ts:252`, `runtime-url.ts:157` | Path always | `?path=` or path segment, plus `oc_url_token` (`runtime-url.ts:103-112`) |
-| Session-keyed OpenChamber routes | see next table | From session record | id in the URL path |
+| Session-keyed Alcode routes | see next table | From session record | id in the URL path |
 
 Totals: 378 `runtimeFetch(` calls in 107 files. Openers that use the resolver directly: 5 WebSocket, 2 SSE, 5 asset URL builders.
 
@@ -48,7 +48,7 @@ Totals: 378 `runtimeFetch(` calls in 107 files. Openers that use the resolver di
 
 ## Design A cost
 
-- The dispatcher would have to read four places: query (`directory`, `path`, `cwd`), header, JSON body, and ids. OpenChamber routes get `express.json` up to 50 MB (`server/lib/opencode/core-routes.js:1089-1117`). OpenCode proxy routes skip the parser so bodies stream (`core-routes.js:1118-1119`). Sniffing a body means parsing before proxying and re-serialising, which is no longer "forward whole".
+- The dispatcher would have to read four places: query (`directory`, `path`, `cwd`), header, JSON body, and ids. Alcode routes get `express.json` up to 50 MB (`server/lib/opencode/core-routes.js:1089-1117`). OpenCode proxy routes skip the parser so bodies stream (`core-routes.js:1118-1119`). Sniffing a body means parsing before proxying and re-serialising, which is no longer "forward whole".
 - The terminal socket cannot be forwarded whole. One socket carries frames for host and space terminals. The dispatcher would have to split frames by terminal id and keep a terminal-to-space index.
 - Session-keyed and terminal-keyed routes need a host index from id to space. That index is a cache of untrusted space data. When it is stale or missing, the dispatcher guesses. A malicious space can also claim another space's session id.
 - The dev tunnel and `/api/dev-servers` carry nothing to sniff. They need a new parameter, which is already design B.

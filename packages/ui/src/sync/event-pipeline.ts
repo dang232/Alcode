@@ -1,7 +1,7 @@
 /**
  * Event Pipeline — transport connection, translation, coalescing, and batched flush.
  *
- * Wire events (OpenCode v2 `/api/event`, or the OpenChamber server's WebSocket
+ * Wire events (OpenCode v2 `/api/event`, or the Alcode server's WebSocket
  * bridge of that stream) are translated into `SyncEvent`s here and coalesced
  * per directory before the reducer sees them. This module must not make
  * state-dependent decisions about event validity: deciding whether a delta is
@@ -100,7 +100,7 @@ export type EventPipeline = {
   reconnect: (reason?: string) => void
 }
 
-// Frames the OpenChamber server sends on `/api/global/event/ws`. `payload` is
+// Frames the Alcode server sends on `/api/global/event/ws`. `payload` is
 // the wire event as OpenCode published it; the server adds replay metadata.
 const wsFrameSchema = z.object({
   type: z.enum(["ready", "event", "error", "backpressure"]),
@@ -111,10 +111,10 @@ const wsFrameSchema = z.object({
   message: z.string().optional(),
 })
 
-// OpenChamber's own session-status bridge rides the same stream. It predates
+// Alcode's own session-status bridge rides the same stream. It predates
 // OpenCode's `session.status` and carries the status in `properties`.
-const openchamberStatusSchema = z.object({
-  type: z.literal("openchamber:session-status"),
+const alcodeStatusSchema = z.object({
+  type: z.literal("alcode:session-status"),
   properties: z.object({
     sessionID: z.string().min(1).optional(),
     sessionId: z.string().min(1).optional(),
@@ -123,19 +123,19 @@ const openchamberStatusSchema = z.object({
   }),
 })
 
-// OpenChamber owns archive state; its server announces changes on the stream.
-const openchamberArchivedSchema = z.object({
-  type: z.literal("openchamber:session-archived"),
+// Alcode owns archive state; its server announces changes on the stream.
+const alcodeArchivedSchema = z.object({
+  type: z.literal("alcode:session-archived"),
   properties: z.object({ sessionID: z.string().min(1), archivedAt: z.number().nullable() }),
 })
 
-const openchamberMetadataSchema = z.object({
-  type: z.literal("openchamber:session-metadata"),
+const alcodeMetadataSchema = z.object({
+  type: z.literal("alcode:session-metadata"),
   properties: z.object({ sessionID: z.string().min(1), metadata: z.record(z.string(), z.unknown()) }),
 })
 
-const openchamberNotificationSchema = z.object({
-  type: z.literal("openchamber:notification"),
+const alcodeNotificationSchema = z.object({
+  type: z.literal("alcode:notification"),
   properties: z
     .object({
       kind: z.string(),
@@ -154,8 +154,8 @@ const openchamberNotificationSchema = z.object({
 
 // The host's announcement of an isolated space's event connection. It is not an event of any
 // session, so it never enters a directory queue; the pipeline hands it to its owner.
-const openchamberSpaceStreamSchema = z.object({
-  type: z.literal("openchamber:space-stream"),
+const alcodeSpaceStreamSchema = z.object({
+  type: z.literal("alcode:space-stream"),
   properties: z.object({
     spaceId: z.string().regex(/^[0-9a-f]{12}$/),
     status: z.enum(["connected", "disconnected"]),
@@ -164,8 +164,8 @@ const openchamberSpaceStreamSchema = z.object({
 })
 
 // A step of an isolated space's creation, announced on the host's hub the same way.
-const openchamberSpaceProgressSchema = z.object({
-  type: z.literal("openchamber:space-progress"),
+const alcodeSpaceProgressSchema = z.object({
+  type: z.literal("alcode:space-progress"),
   properties: z.object({
     spaceId: z.string().regex(/^[0-9a-f]{12}$/),
     step: z.union([spaceCreationStepSchema, z.literal("failed")]),
@@ -173,16 +173,16 @@ const openchamberSpaceProgressSchema = z.object({
   }),
 })
 
-export type SpaceProgress = z.infer<typeof openchamberSpaceProgressSchema>["properties"]
+export type SpaceProgress = z.infer<typeof alcodeSpaceProgressSchema>["properties"]
 
 // The setup commands of a space moved on: the list says how.
-const openchamberSpaceSetupSchema = z.object({
-  type: z.literal("openchamber:space-setup"),
+const alcodeSpaceSetupSchema = z.object({
+  type: z.literal("alcode:space-setup"),
   properties: z.object({ spaceId: z.string().regex(/^[0-9a-f]{12}$/) }),
 })
 
-const openchamberAutoAcceptSchema = z.object({
-  type: z.literal("openchamber:permission-auto-accept.updated"),
+const alcodeAutoAcceptSchema = z.object({
+  type: z.literal("alcode:permission-auto-accept.updated"),
   properties: z.object({
     sessions: z.record(z.string(), z.boolean()),
     modes: z.record(z.string(), z.enum(["ask", "safety", "auto"])).optional(),
@@ -192,8 +192,8 @@ const openchamberAutoAcceptSchema = z.object({
 
 // The server's auto-answer in a `safety` or `auto` session held back or failed:
 // the request is the user's after all.
-const openchamberLeftForUserSchema = z.object({
-  type: z.literal("openchamber:permission-auto-accept.left-for-user"),
+const alcodeLeftForUserSchema = z.object({
+  type: z.literal("alcode:permission-auto-accept.left-for-user"),
   properties: z.object({
     permissionId: z.string().min(1),
     sessionId: z.string().min(1),
@@ -210,32 +210,32 @@ const wireEventSchema = z.object({
   location: z.object({ directory: z.string() }).partial().optional(),
 })
 
-function translateOpenchamberArchived(payload: unknown): SyncEvent | null {
-  const parsed = openchamberArchivedSchema.safeParse(payload)
+function translateAlcodeArchived(payload: unknown): SyncEvent | null {
+  const parsed = alcodeArchivedSchema.safeParse(payload)
   if (!parsed.success) return null
   const { sessionID, archivedAt } = parsed.data.properties
   return { type: "session.patched", properties: { sessionID, patch: { time: { archived: archivedAt } } } }
 }
 
-function translateOpenchamberNative(payload: unknown): SyncEvent | null {
-  const metadata = openchamberMetadataSchema.safeParse(payload)
+function translateAlcodeNative(payload: unknown): SyncEvent | null {
+  const metadata = alcodeMetadataSchema.safeParse(payload)
   if (metadata.success) {
     const { sessionID } = metadata.data.properties
     // SAFETY: the server serialises this object from JSON, so every value is a JsonValue.
     const value = metadata.data.properties.metadata as Metadata
     return { type: "session.patched", properties: { sessionID, patch: { metadata: value } } }
   }
-  const notification = openchamberNotificationSchema.safeParse(payload)
-  if (notification.success) return { type: "openchamber.notification", properties: notification.data.properties }
-  const autoAccept = openchamberAutoAcceptSchema.safeParse(payload)
-  if (autoAccept.success) return { type: "openchamber.permission-auto-accept", properties: autoAccept.data.properties }
-  const leftForUser = openchamberLeftForUserSchema.safeParse(payload)
-  if (leftForUser.success) return { type: "openchamber.permission-left-for-user", properties: leftForUser.data.properties }
+  const notification = alcodeNotificationSchema.safeParse(payload)
+  if (notification.success) return { type: "alcode.notification", properties: notification.data.properties }
+  const autoAccept = alcodeAutoAcceptSchema.safeParse(payload)
+  if (autoAccept.success) return { type: "alcode.permission-auto-accept", properties: autoAccept.data.properties }
+  const leftForUser = alcodeLeftForUserSchema.safeParse(payload)
+  if (leftForUser.success) return { type: "alcode.permission-left-for-user", properties: leftForUser.data.properties }
   return null
 }
 
-function translateOpenchamberStatus(payload: unknown): SyncEvent | null {
-  const parsed = openchamberStatusSchema.safeParse(payload)
+function translateAlcodeStatus(payload: unknown): SyncEvent | null {
+  const parsed = alcodeStatusSchema.safeParse(payload)
   if (!parsed.success) return null
   const { sessionID, sessionId, status, metadata } = parsed.data.properties
   const id = sessionID ?? sessionId
@@ -256,7 +256,7 @@ function translateOpenchamberStatus(payload: unknown): SyncEvent | null {
  * not name a location.
  */
 function translatePayload(payload: unknown, frameDirectory: string | undefined): Array<{ directory: string; event: SyncEvent }> {
-  const bridged = translateOpenchamberStatus(payload) ?? translateOpenchamberArchived(payload) ?? translateOpenchamberNative(payload)
+  const bridged = translateAlcodeStatus(payload) ?? translateAlcodeArchived(payload) ?? translateAlcodeNative(payload)
   if (bridged) return [{ directory: frameDirectory ?? GLOBAL_EVENT_DIRECTORY, event: bridged }]
   if (!wireEventSchema.safeParse(payload).success) return []
   // SAFETY: the discriminator and location were validated above; the rest of
@@ -466,7 +466,7 @@ export function createEventPipeline(input: EventPipelineInput): EventPipeline {
    * Wait between reconnect attempts. Resolves early when:
    *   - the browser fires `online` (network came back — probe immediately),
    *   - the tab becomes visible (user came back — probe immediately),
-   *   - an expired OpenChamber session becomes usable (the user logged in),
+   *   - an expired Alcode session becomes usable (the user logged in),
    *   - the pipeline is being torn down (cleanup aborts).
    * Otherwise resolves after `ms` like a plain timer.
    */
@@ -601,17 +601,17 @@ export function createEventPipeline(input: EventPipelineInput): EventPipeline {
   }
 
   const enqueuePayload = (payload: unknown, frameDirectory: string | undefined) => {
-    const spaceStream = openchamberSpaceStreamSchema.safeParse(payload)
+    const spaceStream = alcodeSpaceStreamSchema.safeParse(payload)
     if (spaceStream.success) {
       onSpaceStream?.(spaceStream.data.properties)
       return
     }
-    const spaceProgress = openchamberSpaceProgressSchema.safeParse(payload)
+    const spaceProgress = alcodeSpaceProgressSchema.safeParse(payload)
     if (spaceProgress.success) {
       onSpaceProgress?.(spaceProgress.data.properties)
       return
     }
-    const spaceSetup = openchamberSpaceSetupSchema.safeParse(payload)
+    const spaceSetup = alcodeSpaceSetupSchema.safeParse(payload)
     if (spaceSetup.success) {
       onSpaceSetup?.(spaceSetup.data.properties.spaceId)
       return
@@ -859,7 +859,7 @@ export function createEventPipeline(input: EventPipelineInput): EventPipeline {
 
   void (async () => {
     while (!abort.signal.aborted) {
-      // An expired OpenChamber session refuses every attempt; wait for the
+      // An expired Alcode session refuses every attempt; wait for the
       // user to log in rather than retrying into 401s.
       await waitForAuthSession(abort.signal)
       if (abort.signal.aborted) return
@@ -1000,7 +1000,7 @@ export function createEventPipeline(input: EventPipelineInput): EventPipeline {
   // Use globalThis (not window) for the system-resume listener so that
   // test environments can replace globalThis.window with a stub.
   if (typeof globalThis.window !== "undefined") {
-    globalThis.window.addEventListener("openchamber:system-resume", onSystemResume)
+    globalThis.window.addEventListener("alcode:system-resume", onSystemResume)
     globalThis.window.addEventListener("online", onOnline)
     globalThis.window.addEventListener("offline", onOffline)
   }
@@ -1011,7 +1011,7 @@ export function createEventPipeline(input: EventPipelineInput): EventPipeline {
       window.removeEventListener("pageshow", onPageShow)
     }
     if (typeof globalThis.window !== "undefined") {
-      globalThis.window.removeEventListener("openchamber:system-resume", onSystemResume)
+      globalThis.window.removeEventListener("alcode:system-resume", onSystemResume)
       globalThis.window.removeEventListener("online", onOnline)
       globalThis.window.removeEventListener("offline", onOffline)
     }

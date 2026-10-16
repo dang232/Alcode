@@ -43,7 +43,7 @@ const isNgrokHost = (hostname: string): boolean =>
 export const addRuntimeProxyHeaders = (url: string, headers: Headers): Headers => {
   try {
     if (isNgrokHost(new URL(url).hostname) && !headers.has('ngrok-skip-browser-warning')) {
-      headers.set('ngrok-skip-browser-warning', 'openchamber');
+      headers.set('ngrok-skip-browser-warning', 'alcode');
     }
   } catch {
     // Relative and non-HTTP runtime paths do not need proxy-specific headers.
@@ -132,7 +132,7 @@ const addressSpace = (input: string | URL | Request, init: RuntimeFetchOptions):
 
 /**
  * Where the active runtime lives: its origin plus any sub-path prefix the host
- * is served under (https://host/openchamber), or null for a same-origin runtime.
+ * is served under (https://host/alcode), or null for a same-origin runtime.
  */
 const activeRuntimeServiceRoot = (): string | null => {
   const apiBase = getRuntimeUrlResolver().api('/api');

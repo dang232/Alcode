@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { getProviderSources, getStoredProviderConfig, readConfig, upsertProviderConfig } from './opencodeConfig';
 import { getProviderAuth } from './opencodeAuth';
 import { OpenCode } from '@opencode/client';
-import { asSessionId, asSessionIdList, asSessionMetadata, asTimestamp, parseJson, type JsonValue, type SessionMetadataOnOpenCode, type SessionStateStore } from './openchamberSessionState';
+import { asSessionId, asSessionIdList, asSessionMetadata, asTimestamp, parseJson, type JsonValue, type SessionMetadataOnOpenCode, type SessionStateStore } from './alcodeSessionState';
 import type { OpenCodeManager } from './opencode';
 import { activateQuotaGiftReset, fetchQuotaForProvider, listConfiguredQuotaProviders, type QuotaGiftResetType } from './quotaProviders';
 import { credentialStatus, deleteCredential, importCursorCredential, normalizeCredential, readCredential, validateCredential, writeCredential, type ManagedProvider } from './quotaCredentials';
@@ -85,12 +85,12 @@ const claimNotification = (key: string): boolean => {
 };
 
 
-const getOpenChamberConfigDir = (): string => {
+const getAlcodeConfigDir = (): string => {
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA;
-    if (appData) return path.join(appData, 'openchamber');
+    if (appData) return path.join(appData, 'alcode');
   }
-  return path.join(os.homedir(), '.config', 'openchamber');
+  return path.join(os.homedir(), '.config', 'alcode');
 };
 
 const sanitizeInstallScope = (scope: string): 'vscode' | 'web' => {
@@ -99,7 +99,7 @@ const sanitizeInstallScope = (scope: string): 'vscode' | 'web' => {
 };
 
 const getOrCreateInstallId = (scope: string): string => {
-  const configDir = getOpenChamberConfigDir();
+  const configDir = getAlcodeConfigDir();
   const normalizedScope = sanitizeInstallScope(scope);
   const idPath = path.join(configDir, `install-id-${normalizedScope}`);
 
@@ -132,7 +132,7 @@ const mapNodeArchToApiArch = (value: string): 'arm64' | 'x64' | 'unknown' => {
   return 'unknown';
 };
 
-const VIRTUAL_DIFF_SCHEME = 'openchamber-diff';
+const VIRTUAL_DIFF_SCHEME = 'alcode-diff';
 const virtualDiffContents = new Map<string, string>();
 let virtualDiffCounter = 0;
 let virtualDiffProviderDisposable: vscode.Disposable | null = null;
@@ -185,7 +185,7 @@ export async function handleSystemBridgeMessage(
   const { id, type, payload } = message;
 
   switch (type) {
-    case 'api:openchamber/directory': {
+    case 'api:alcode/directory': {
       const target = (payload as { path?: string })?.path;
       if (!target) {
         return { id, type, success: false, error: 'Path is required' };
@@ -272,12 +272,12 @@ export async function handleSystemBridgeMessage(
     }
 
     // The same machine policy the web server enforces (policy file or
-    // OPENCHAMBER_ENTERPRISE_MODE in the editor's environment).
-    case 'api:openchamber:enterprise-policy': {
+    // ALCODE_ENTERPRISE_MODE in the editor's environment).
+    case 'api:alcode:enterprise-policy': {
       return { id, type, success: true, data: publicEnterprisePolicy() };
     }
 
-    case 'api:openchamber:update-check': {
+    case 'api:alcode:update-check': {
       try {
         const body = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
         const currentVersion = typeof body.currentVersion === 'string' && body.currentVersion.trim().length > 0
@@ -396,10 +396,10 @@ export async function handleSystemBridgeMessage(
       }
     }
 
-    // OpenChamber-owned session state. OpenCode 2.x has no route that sets
+    // Alcode-owned session state. OpenCode 2.x has no route that sets
     // `time.archived` or rewrites metadata after creation; the web server keeps
     // both in files, and the extension host keeps the same files (see
-    // openchamberSessionState.ts). The proxy runtime folds them back onto
+    // alcodeSessionState.ts). The proxy runtime folds them back onto
     // session reads.
     case 'api:sessions/archive': {
       const { ids, archivedAt } = (payload || {}) as { ids?: JsonValue; archivedAt?: JsonValue };

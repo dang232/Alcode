@@ -21,14 +21,14 @@ describe('notifications over the authenticated control stream', () => {
       getDesktopNotifyEnabled: () => false,
       desktopNotifyPrefix: '',
       getUiNotificationClients: () => new Set(),
-      getOpenChamberEventClients: () => clients,
+      getAlcodeEventClients: () => clients,
     });
     const app = express();
     app.use(express.json());
     app.post('/auth/url-token', auth.handleUrlAuthToken);
     app.use('/api', auth.requireAuth);
     registerScheduledTaskRoutes(app, {
-      getOpenChamberEventClients: () => clients,
+      getAlcodeEventClients: () => clients,
       writeSseEvent: emitter.writeSseEvent,
     });
     const server = createServer(app);
@@ -36,7 +36,7 @@ describe('notifications over the authenticated control stream', () => {
     const base = `http://127.0.0.1:${server.address().port}`;
     const abort = new AbortController();
     try {
-      const denied = await fetch(`${base}/api/openchamber/events`);
+      const denied = await fetch(`${base}/api/alcode/events`);
       expect(denied.status).toBe(401);
       expect(clients.size).toBe(0);
       const tokenResponse = await fetch(`${base}/auth/url-token`, {
@@ -45,17 +45,17 @@ describe('notifications over the authenticated control stream', () => {
       expect(tokenResponse.status).toBe(200);
       const { token } = await tokenResponse.json();
       expect(token).toBeTruthy();
-      const response = await fetch(`${base}/api/openchamber/events?browser=1&oc_url_token=${encodeURIComponent(token)}`, { signal: abort.signal });
+      const response = await fetch(`${base}/api/alcode/events?browser=1&oc_url_token=${encodeURIComponent(token)}`, { signal: abort.signal });
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toContain('text/event-stream');
       const reader = response.body.getReader();
       const ready = new TextDecoder().decode((await reader.read()).value);
-      expect(ready).toContain('openchamber:event-stream-ready');
+      expect(ready).toContain('alcode:event-stream-ready');
       expect(clients.size).toBe(1);
-      expect([...clients][0].openchamberBrowserCapable).toBe(true);
+      expect([...clients][0].alcodeBrowserCapable).toBe(true);
       emitter.broadcastUiNotification({ title: 'Done', sessionId: 's1', kind: 'complete' });
       const notification = new TextDecoder().decode((await reader.read()).value);
-      expect(notification).toContain('"type":"openchamber:notification"');
+      expect(notification).toContain('"type":"alcode:notification"');
       expect(notification).toContain('"sessionId":"s1"');
       await reader.cancel();
     } finally {

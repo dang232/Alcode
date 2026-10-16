@@ -7,10 +7,10 @@ const LEGACY_CLOUDFLARE_MANAGED_REMOTE_FILE_NAME = 'cloudflare-managed-remote-tu
 const TUNNEL_CLI_STATE_FILE_NAME = 'tunnel-cli-state.json';
 
 function getDataDir() {
-  if (typeof process.env.OPENCHAMBER_DATA_DIR === 'string' && process.env.OPENCHAMBER_DATA_DIR.trim().length > 0) {
-    return path.resolve(process.env.OPENCHAMBER_DATA_DIR.trim());
+  if (typeof process.env.ALCODE_DATA_DIR === 'string' && process.env.ALCODE_DATA_DIR.trim().length > 0) {
+    return path.resolve(process.env.ALCODE_DATA_DIR.trim());
   }
-  return path.join(os.homedir(), '.config', 'openchamber');
+  return path.join(os.homedir(), '.config', 'alcode');
 }
 
 function getLogsDir() {
@@ -51,7 +51,17 @@ function ensureLogsDir() {
 }
 
 function getLogFilePath(port) {
-  return path.join(getLogsDir(), `openchamber-${port}.log`);
+  const current = path.join(getLogsDir(), `alcode-${port}.log`);
+  // A server started by the pre-rename CLI wrote `openchamber-<port>.log`;
+  // keep tailing it instead of an empty new file. New servers always write
+  // the `alcode-` name.
+  try {
+    if (!fs.existsSync(current) && fs.existsSync(path.join(getLogsDir(), `openchamber-${port}.log`))) {
+      return path.join(getLogsDir(), `openchamber-${port}.log`);
+    }
+  } catch {
+  }
+  return current;
 }
 
 function getTunnelProfilesFilePath() {

@@ -32,7 +32,11 @@ const isSameActiveEditorFilePayload = (a: ActiveEditorFilePayload | null, b: Act
 };
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'openchamber.chatView';
+  // Single stable view id on purpose, not dual-registered like commands: a
+  // view id is layout state (pinned views, `when`-clauses such as
+  // `view == alcode.chatView`, and `alcode.chatView.focus`). A second id
+  // would split one chat into two competing surfaces.
+  public static readonly viewType = 'alcode.chatView';
 
   private _view?: vscode.WebviewView;
 
@@ -175,7 +179,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (message.type === 'inlineComments:sync') {
         // Tagged with the sidebar's identity: a snapshot only speaks for the
         // store that produced it, and each session panel has its own.
-        void vscode.commands.executeCommand('openchamber.internal.inlineCommentsSync', {
+        void vscode.commands.executeCommand('alcode.internal.inlineCommentsSync', {
           snapshot: message.payload,
           surfaceId: SIDEBAR_SURFACE_ID,
         });
@@ -210,7 +214,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       void this._sendMessageWithRetry(response);
 
       if (message.type === 'api:config/settings:save' && response.success) {
-        void vscode.commands.executeCommand('openchamber.internal.settingsSynced', response.data);
+        void vscode.commands.executeCommand('alcode.internal.settingsSynced', response.data);
       }
     });
   }

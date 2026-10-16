@@ -1,6 +1,6 @@
 /**
  * Owns Jev routing at runtime: which classification provider answers, whether
- * Auto is ready, which model and agent a send that selected `openchamber/auto`
+ * Auto is ready, which model and agent a send that selected `alcode/auto`
  * runs on, and the safety net consulted in a `safety` permission session.
  * Failure paths fall back to the user's own behaviour for routing (the
  * fallback model) and to the user's own decision for the safety net: a request
@@ -70,7 +70,7 @@ const customEndpointInputSchema = z.object({
   key: z.string().trim().max(4000).nullable().optional(),
 });
 
-/** OpenChamber stores a model as `{ providerID, modelID }`; v2 wants a `Model.Ref`. */
+/** Alcode stores a model as `{ providerID, modelID }`; v2 wants a `Model.Ref`. */
 const toModelRef = (model, variant) => {
   const ref = { providerID: model.providerID, id: model.modelID };
   if (variant) ref.variant = variant;
@@ -181,7 +181,7 @@ export function createRoutingRuntime({
     const autoReady = jevAvailable && config.enabled && Boolean(config.fallback) && enabledCategories(config).length >= 2;
     // Built-in text travels with the config so "Reset" in Settings restores the shipped wording.
     // `available` stays in the payload for the client: a runtime without an
-    // OpenChamber server (VS Code) answers 404 and reads it as false.
+    // Alcode server (VS Code) answers 404 and reads it as false.
     // `jevSource` is the two-value field clients from before the classifier
     // pick parse, `classifier` what v2.0.2 clients parse, and `classification`
     // the full picture.
@@ -202,7 +202,7 @@ export function createRoutingRuntime({
 
   const publishUpdated = async () => {
     const state = await describe();
-    broadcast('openchamber:routing.updated', {
+    broadcast('alcode:routing.updated', {
       available: state.available,
       autoReady: state.autoReady,
       jevAvailable: state.jevAvailable,
@@ -326,7 +326,7 @@ export function createRoutingRuntime({
     }
     selection = await withKnownVariant(selection, directory);
     Object.assign(decision, selection.decision);
-    broadcast('openchamber:routing.decision', decision);
+    broadcast('alcode:routing.decision', decision);
     return { model: selection.model, agent: selection.agent, decision };
   };
 
@@ -397,13 +397,13 @@ export function createRoutingRuntime({
     } catch (error) {
       // Not remembered: reconnect reconciliation asks Jev again, and may accept.
       const skipped = errorMessage(error);
-      broadcast('openchamber:routing.safety-skipped', {
+      broadcast('alcode:routing.safety-skipped', {
         permissionId: permission.id, sessionId: permission.sessionID, directory: directory ?? null, error: skipped,
       });
       return { action: 'hold', skipped };
     }
     if (result.action === 'hold') {
-      broadcast('openchamber:routing.permission-held', {
+      broadcast('alcode:routing.permission-held', {
         permissionId: permission.id, sessionId: permission.sessionID, directory: directory ?? null, score: result.score, kind: result.kind,
       });
     }

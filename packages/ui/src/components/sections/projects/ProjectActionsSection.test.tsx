@@ -10,7 +10,7 @@ const desktopSshState = { instances: [], load: async () => undefined };
 mock.module('@/stores/useDesktopSshStore', () => ({
   useDesktopSshStore: <T,>(selector: (state: typeof desktopSshState) => T): T => selector(desktopSshState),
 }));
-mock.module('@/lib/openchamberConfig', () => ({
+mock.module('@/lib/alcodeConfig', () => ({
   getProjectSetup: async () => ({
     trust: { hash: 'sha256:abc', trusted: true },
     setupWorktree: [],
@@ -20,7 +20,7 @@ mock.module('@/lib/openchamberConfig', () => ({
     draftStarters: [],
     shared: {
       status: 'ok',
-      path: '.openchamber/project.json',
+      path: '.alcode/project.json',
       setupWorktree: [],
       setupWorktreeWait: null,
       projectActions: [{ id: 'dev', name: 'Team dev', command: 'bun run dev', icon: null }],
@@ -114,7 +114,7 @@ describe('ProjectActionsSection', () => {
 
     const text = host.textContent ?? '';
     expect(text).toContain('Team dev');
-    expect(text).toContain('Stored in the repository (.openchamber/project.json)');
+    expect(text).toContain('Stored in the repository (.alcode/project.json)');
     // The shared row is not a collapsible editor: no button carries its name.
     const sharedTrigger = Array.from(host.querySelectorAll('button'))
       .find((button) => button.textContent?.includes('Team dev'));

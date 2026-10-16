@@ -9,7 +9,7 @@
  * so reopening the picker to toggle a PR's diff never duplicates the chip.
  */
 
-import type { JsonValue } from '@openchamber/sdk';
+import type { JsonValue } from '@alcode/sdk';
 
 import type { SourceControlProvider } from '@/lib/api/types';
 

@@ -37,7 +37,7 @@ From inside a space, each attempt must fail:
 - Issue itself a grant, or forge a grant request through the server inside the space.
 - Make the host run something through apply: git hooks, tags, refs outside the quarantine namespace.
 - Make a file from the space render as a page under the app's origin, or set a cookie on it.
-- See the user's OpenChamber cookies or tokens in any forwarded request.
+- See the user's Alcode cookies or tokens in any forwarded request.
 - Claim, in its session list or events, a directory outside its own root, another space's directory, or a session id that exists on the host.
 - Hang the result fetch forever or fill the host's disk with it. The host's timeout and size cap must end both, and the process left inside the space must be cleaned up.
 - Get tree paths such as `.git/hooks/x`, `.GIT`, `..`, or `a/../../x` past the host's object checks, or write through a symlink or into `.git/` when applied as a patch.

@@ -141,7 +141,7 @@ With both env flags set, `opencode serve` asked DNS for `gatekeeper` only and wa
 - Whether `opencode.json` `options.baseURL` on `openai` conflicts with an oauth record for the same id.
 - Which code path makes the leftover `registry.npmjs.org` attempts.
 - The exact refresh payload. With a dummy refresh string the real issuer answers 401.
-- OpenChamber server in the space, Copilot, git URL rewrite and the npm registry window.
+- Alcode server in the space, Copilot, git URL rewrite and the npm registry window.
 - `serve` under `strace` with proxy env was slow to answer health checks. I dropped strace there and did not look further.
 
 Cleanup: all `oc-s0-e3-` containers, networks and images removed. The filtered `docker ps -a`, `docker network ls` and `docker volume ls` outputs were empty.

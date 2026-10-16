@@ -47,7 +47,7 @@ const pickRepository = async (
     })),
     {
       placeHolder: localize('Select a repository'),
-      title: localize('OpenChamber: Generate Commit Message'),
+      title: localize('Alcode: Generate Commit Message'),
     },
   );
   return picked?.repo;
@@ -67,7 +67,7 @@ const waitForOpenCodeApiUrl = async (manager: OpenCodeManager): Promise<string> 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       disposable.dispose();
-      reject(new Error(localize('OpenChamber: OpenCode is not ready')));
+      reject(new Error(localize('Alcode: OpenCode is not ready')));
     }, OPENCODE_WAIT_MS);
 
     const disposable = manager.onStatusChange((status, error) => {
@@ -82,7 +82,7 @@ const waitForOpenCodeApiUrl = async (manager: OpenCodeManager): Promise<string> 
       if (status === 'error') {
         clearTimeout(timeout);
         disposable.dispose();
-        reject(new Error(error || localize('OpenChamber: OpenCode is not ready')));
+        reject(new Error(error || localize('Alcode: OpenCode is not ready')));
       }
     });
   });
@@ -92,25 +92,28 @@ export const registerGenerateCommitMessageCommand = (
   context: vscode.ExtensionContext,
   manager: OpenCodeManager,
 ): void => {
+  // Same handler under the pre-rename id, so keybindings and scripts written
+  // against `openchamber.generateCommitMessage` keep working.
+  for (const commandId of ['alcode.generateCommitMessage', 'openchamber.generateCommitMessage'] as const) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      'openchamber.generateCommitMessage',
+      commandId,
       async (sourceControl?: vscode.SourceControl) => {
         if (inFlight) {
-          vscode.window.setStatusBarMessage(localize('OpenChamber: Commit message generation already in progress'), 2000);
+          vscode.window.setStatusBarMessage(localize('Alcode: Commit message generation already in progress'), 2000);
           return;
         }
         inFlight = true;
         try {
           const git = await getGitApi();
           if (!git) {
-            vscode.window.showWarningMessage(localize('OpenChamber: Git extension not found'));
+            vscode.window.showWarningMessage(localize('Alcode: Git extension not found'));
             return;
           }
 
           const repo = await pickRepository(git, sourceControl);
           if (!repo) {
-            vscode.window.showWarningMessage(localize('OpenChamber: No Git repository found'));
+            vscode.window.showWarningMessage(localize('Alcode: No Git repository found'));
             return;
           }
 
@@ -119,7 +122,7 @@ export const registerGenerateCommitMessageCommand = (
           const status = await getGitStatus(directory, { mode: 'light' });
           const files = selectCommitFilePaths(status.files);
           if (files.length === 0) {
-            vscode.window.showInformationMessage(localize('OpenChamber: No changes to generate a commit message for'));
+            vscode.window.showInformationMessage(localize('Alcode: No changes to generate a commit message for'));
             return;
           }
 
@@ -127,7 +130,7 @@ export const registerGenerateCommitMessageCommand = (
           const generated = await vscode.window.withProgress(
             {
               location: vscode.ProgressLocation.SourceControl,
-              title: localize('OpenChamber: Generating commit message...'),
+              title: localize('Alcode: Generating commit message...'),
               cancellable: false,
             },
             async () => {
@@ -147,17 +150,18 @@ export const registerGenerateCommitMessageCommand = (
           );
 
           if (repo.inputBox.value !== inputBefore) {
-            vscode.window.setStatusBarMessage(localize('OpenChamber: Left your commit message unchanged'), 4000);
+            vscode.window.setStatusBarMessage(localize('Alcode: Left your commit message unchanged'), 4000);
             return;
           }
           repo.inputBox.value = formatCommitMessageForScm(generated);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          vscode.window.showErrorMessage(localize('OpenChamber: Failed to generate commit message - {0}', message));
+          vscode.window.showErrorMessage(localize('Alcode: Failed to generate commit message - {0}', message));
         } finally {
           inFlight = false;
         }
       },
     ),
   );
+  }
 };

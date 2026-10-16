@@ -142,7 +142,7 @@ describe('desktop email proxies', () => {
     });
     const { res, headers } = await h.call('POST', '/api/auth/desktop/email/login', {
       body: {
-        email: 'A@Example.Test ', password: 's3cret!!', trustDevice: true, issueClientToken: true, clientLabel: 'OpenChamber Desktop',
+        email: 'A@Example.Test ', password: 's3cret!!', trustDevice: true, issueClientToken: true, clientLabel: 'Alcode Desktop',
       },
     });
     expect(res.statusCode).toBe(200);
@@ -152,7 +152,7 @@ describe('desktop email proxies', () => {
       alcoreToken: 'svc-access-token',
       trustDevice: true,
       issueClientToken: true,
-      clientLabel: 'OpenChamber Desktop',
+      clientLabel: 'Alcode Desktop',
     });
     expect(headers['set-cookie']).toBeUndefined();
   });
@@ -456,7 +456,7 @@ describe('desktop google loopback', () => {
       query: { state: requestId, code: 'loopback-code' },
     });
     expect(landed.res.statusCode).toBe(200);
-    expect(landed.res.text).toContain('return to the OpenChamber app');
+    expect(landed.res.text).toContain('return to the Alcode app');
     expect(seen).toHaveLength(1);
 
     // Double navigation after capture: idempotent success, no second exchange.
@@ -467,7 +467,7 @@ describe('desktop google loopback', () => {
     expect(seen).toHaveLength(1);
 
     const done = await h.call('POST', '/api/auth/desktop/google-complete', {
-      body: { requestId, trustDevice: true, issueClientToken: true, clientLabel: 'OpenChamber Desktop' },
+      body: { requestId, trustDevice: true, issueClientToken: true, clientLabel: 'Alcode Desktop' },
     });
     expect(done.res.statusCode).toBe(200);
     expect(h.seenSessions).toHaveLength(1);
@@ -475,7 +475,7 @@ describe('desktop google loopback', () => {
       alcoreToken: 'desktop-access-token',
       trustDevice: true,
       issueClientToken: true,
-      clientLabel: 'OpenChamber Desktop',
+      clientLabel: 'Alcode Desktop',
     });
 
     const twice = await h.call('POST', '/api/auth/desktop/google-complete', { body: { requestId } });
@@ -514,7 +514,7 @@ describe('desktop google loopback', () => {
       query: { state: requestId, code: 'loopback-code' },
     });
     expect(landed.res.statusCode).toBe(200);
-    expect(landed.res.text).toContain('return to the OpenChamber app');
+    expect(landed.res.text).toContain('return to the Alcode app');
     expect(seen).toHaveLength(1);
 
     const done = await h.call('POST', '/api/auth/desktop/google-complete', { body: { requestId } });

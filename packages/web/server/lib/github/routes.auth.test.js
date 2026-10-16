@@ -12,17 +12,17 @@ let auth;
 let registerGitHubRoutes;
 
 beforeEach(async () => {
-  directory = await fs.mkdtemp(path.join(os.tmpdir(), 'openchamber-github-routes-'));
-  previousDataDirectory = process.env.OPENCHAMBER_DATA_DIR;
-  process.env.OPENCHAMBER_DATA_DIR = directory;
+  directory = await fs.mkdtemp(path.join(os.tmpdir(), 'alcode-github-routes-'));
+  previousDataDirectory = process.env.ALCODE_DATA_DIR;
+  process.env.ALCODE_DATA_DIR = directory;
   vi.resetModules();
   auth = await import('./auth.js');
   ({ registerGitHubRoutes } = await import('./routes.js'));
 });
 
 afterEach(async () => {
-  if (previousDataDirectory === undefined) delete process.env.OPENCHAMBER_DATA_DIR;
-  else process.env.OPENCHAMBER_DATA_DIR = previousDataDirectory;
+  if (previousDataDirectory === undefined) delete process.env.ALCODE_DATA_DIR;
+  else process.env.ALCODE_DATA_DIR = previousDataDirectory;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   await fs.rm(directory, { recursive: true, force: true });

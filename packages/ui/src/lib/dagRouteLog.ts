@@ -13,7 +13,7 @@
 // debug line alone.
 import { runtimeFetch } from "@/lib/runtime-fetch"
 
-export const DAG_PANE_GUEST_ID = 'openchamber-builtin-dag-pane'
+export const DAG_PANE_GUEST_ID = 'alcode-builtin-dag-pane'
 export const DAG_ROUTE_SAMPLE_MAX = 60
 
 export type DagRouteDecision = 'captured-to-/ulw' | 'plain-prompt' | 'shell' | 'slash-command'

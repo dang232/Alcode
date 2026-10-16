@@ -12,7 +12,7 @@
  */
 import { findSubagentRun, readSubagentRun } from '@/lib/opencode/subagent-run';
 import { isSubagentTool, subagentDescription, subagentSessionId } from '@/lib/opencode/tools';
-import type { JsonValue } from '@openchamber/sdk';
+import type { JsonValue } from '@alcode/sdk';
 import type { Message, Part, Session, SessionStatus } from '@/lib/opencode/model';
 
 export type DagChildState = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';

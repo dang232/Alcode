@@ -9,7 +9,7 @@ Keep authored definitions separate from runtime colors. Optional values are mean
 CodeMirror, Shiki/Pierre and chat/tool output use the authored
 `syntax.base.background` directly, exposed as `--syntax-background` in CSS.
 There is no global opacity or canvas-mixing adjustment. Built-in palettes keep
-that background close to the canvas, using OpenChamber Light's quiet separation
+that background close to the canvas, using Alcode Light's quiet separation
 as a reference. Their background-to-background contrast stays at or below 1.10;
 this is a surface distinction budget, not a text contrast target. Custom themes
 retain their exact authored background. Bodies and gutters use the same fill.
@@ -48,7 +48,7 @@ Body, secondary and bold text retain the palette's neutral cast with distinct
 contrast levels; bold text is a stronger body color rather than a syntax accent.
 These authored choices apply to built-ins, not to existing custom theme files.
 
-Built-in border strength uses OpenChamber's matching light/dark palette as the
+Built-in border strength uses Alcode's matching light/dark palette as the
 reference. Compare alpha-composited contrast on canvas, sidebar and elevated
 surfaces separately for ordinary borders, hover borders, tool outlines and
 dividers. Only soften roles exceeding the reference's strongest contrast across
@@ -58,7 +58,7 @@ own emphasis.
 
 The VS Code adapter maps the main canvas from chat/editor, secondary layout from
 sidebar/panel, and the shared elevated role from an editor-widget, dropdown or
-input pair in that order. OpenChamber currently has one elevated role for fields
+input pair in that order. Alcode currently has one elevated role for fields
 and floating UI, so it cannot retain different VS Code input and popup fills at
 the same time. Always keep the foreground paired with the chosen source.
 Selection prefers the authored list pair, then menu and editor pairs, but skips
@@ -90,7 +90,7 @@ Readability takes precedence over ceilings. Bubble text is checked after adding
 the faint primary tint. Bold uses stronger neutral text. Code backgrounds stay
 within 1.10 of the canvas; syntax token and diff colors retain their source values.
 
-Borders use the matching OpenChamber role's contrast on each corresponding
+Borders use the matching Alcode role's contrast on each corresponding
 surface as a baseline, including explicit tool and quote borders. Each cap allows
 20% of the gap toward the role's strongest reference contrast to retain a little
 more definition. The sidebar's
@@ -112,7 +112,7 @@ It accepts bounded JSON/JSONC with literal VS Code colors. Missing neutral roles
 derive from the imported canvas, while the adapter owns UI role precedence.
 General semantic selectors override general TextMate rules unless semantic
 highlighting is disabled. Language-specific selectors do not become global colors.
-Missing code categories inherit code text, not the default OpenChamber syntax.
+Missing code categories inherit code text, not the default Alcode syntax.
 `include` and external token files fail explicitly instead of guessing missing data.
 
 The provider persists imports through `POST /api/config/themes` before adding them

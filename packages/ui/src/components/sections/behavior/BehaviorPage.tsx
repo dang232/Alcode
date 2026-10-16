@@ -216,7 +216,7 @@ export const BehaviorPage: React.FC = () => {
 
     if (!promptChanged && !settingsChanged) return AUTOSAVE_UNCHANGED;
 
-    // The prompt lives in AGENTS.md; the rest lives in OpenChamber settings.
+    // The prompt lives in AGENTS.md; the rest lives in Alcode settings.
     const content = promptChanged ? normalizeAgentsMdContent(prompt) : saved.prompt;
     if (promptChanged) {
       const response = await runtimeFetch('/api/behavior/agents-md', {

@@ -1,4 +1,4 @@
-// Snapshot -> view parser for the openchamber-builtin-dag-pane guest (project-ide todo 13).
+// Snapshot -> view parser for the alcode-builtin-dag-pane guest (project-ide todo 13).
 //
 // This module is the panel's I/O boundary: it reads the bridge snapshot
 // document the adapter-A writer produces (`{ schemaVersion: 1, sessionId,
@@ -11,7 +11,7 @@
 // strings, `Object(value) === value` for records): no `typeof` operators,
 // no `unknown` parameters, every input typed as the SDK's `JsonValue`
 // owner contract. No DOM here: unit-tested in bun:test without a browser.
-import type { JsonValue } from '@openchamber/sdk';
+import type { JsonValue } from '@alcode/sdk';
 
 export const DAG_SNAPSHOT_SCHEMA_VERSION = 1;
 

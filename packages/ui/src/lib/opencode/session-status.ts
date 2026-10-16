@@ -18,7 +18,7 @@ const hostFormRequestSchema = z.object({
   title: z.string(),
 })
 
-// Cross-project status kept by the OpenChamber host (web server or VS Code
+// Cross-project status kept by the Alcode host (web server or VS Code
 // extension host) from its single upstream event stream. Entries carry the
 // host's own clock so staleness is judged against `serverTime`, not the client.
 export const hostSessionStatusSnapshotSchema = z.object({

@@ -13,7 +13,7 @@ import { isDesktopShell } from '@/lib/desktop';
 import { normalizeContextPanelDirectoryKey, useUIStore } from '@/stores/useUIStore';
 
 /** The context-panel mode of the built-in DAG runs pane. */
-export const DAG_PANE_SURFACE_MODE = 'plugin:openchamber-builtin-dag-pane';
+export const DAG_PANE_SURFACE_MODE = 'plugin:alcode-builtin-dag-pane';
 
 /**
  * Whether the sent text starts a ulw run. Mirrors the engine trigger: shell

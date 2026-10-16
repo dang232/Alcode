@@ -45,7 +45,7 @@ import { DiffViewToggle, type DiffViewMode } from '../DiffViewToggle';
 import { MinDurationShineText } from './MinDurationShineText';
 import { getToolIcon } from './toolPresentation';
 import { GuestToolTable } from './GuestToolTable';
-import type { JsonValue } from '@openchamber/sdk';
+import type { JsonValue } from '@alcode/sdk';
 import {
     guestToolTableRows,
     renderGuestToolHeader,
@@ -1089,10 +1089,10 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
     );
     const hasVisualDiffEntry = diffEntries.some((entry) => entry.renderMode === 'diff');
     // `execute` renders its script and its call list itself, below.
-    const hideToolInputPreview = part.tool === 'openchamber'
-        || part.tool === 'openchamber_web'
-        || part.tool === 'openchamber_memory'
-        || part.tool === 'openchamber_notify'
+    const hideToolInputPreview = part.tool === 'alcode'
+        || part.tool === 'alcode_web'
+        || part.tool === 'alcode_memory'
+        || part.tool === 'alcode_notify'
         || isPatchTool(part.tool)
         || isEditTool(part.tool)
         || isExecuteTool(part.tool);

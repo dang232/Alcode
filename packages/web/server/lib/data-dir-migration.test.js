@@ -47,6 +47,27 @@ describe('migrateLegacyUserDirs', () => {
     }
   });
 
+  it('copies missing flat files once, never overwrites, rerun is a no-op', async () => {
+    const { legacyRoot, dataDir, cleanup } = await setup();
+    try {
+      await fsPromises.writeFile(path.join(legacyRoot, 'settings.json'), '{"theme":"dark"}');
+      await fsPromises.writeFile(path.join(legacyRoot, 'tunnel-profiles.json'), '{}');
+      await fsPromises.mkdir(dataDir, { recursive: true });
+      await fsPromises.writeFile(path.join(dataDir, 'settings.json'), '{"theme":"light"}');
+      const warnings = [];
+      const moved = await migrateLegacyUserDirs({ fsPromises, path, dataDir, legacyRoot, warn: (message) => warnings.push(message) });
+      expect(moved).toContain('tunnel-profiles.json');
+      expect(moved).not.toContain('settings.json');
+      expect(warnings).toEqual([]);
+      expect(await fsPromises.readFile(path.join(dataDir, 'tunnel-profiles.json'), 'utf8')).toBe('{}');
+      expect(await fsPromises.readFile(path.join(dataDir, 'settings.json'), 'utf8')).toBe('{"theme":"light"}');
+      expect(await fsPromises.readFile(path.join(legacyRoot, 'settings.json'), 'utf8')).toBe('{"theme":"dark"}');
+      expect(await migrateLegacyUserDirs({ fsPromises, path, dataDir, legacyRoot })).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('is a no-op when the data dir is the default root', async () => {
     const { legacyRoot, cleanup } = await setup();
     try {
@@ -62,7 +83,7 @@ describe('ensureChatsDir', () => {
   it('creates a missing chats folder, parents included, and leaves an existing one as it is', async () => {
     const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'oc-chats-dir-'));
     try {
-      const chatsDir = path.join(root, 'openchamber', 'chats');
+      const chatsDir = path.join(root, 'alcode', 'chats');
       expect(await ensureChatsDir({ fsPromises, chatsDir })).toBe(true);
       expect((await fsPromises.stat(chatsDir)).isDirectory()).toBe(true);
 
@@ -78,14 +99,78 @@ describe('ensureChatsDir', () => {
     const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'oc-chats-dir-'));
     try {
       // A file where a parent folder should be makes the folder impossible to create.
-      await fsPromises.writeFile(path.join(root, 'openchamber'), '');
+      await fsPromises.writeFile(path.join(root, 'alcode'), '');
       const warnings = [];
-      const chatsDir = path.join(root, 'openchamber', 'chats');
+      const chatsDir = path.join(root, 'alcode', 'chats');
       expect(await ensureChatsDir({ fsPromises, chatsDir, warn: (message) => warnings.push(message) })).toBe(false);
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain(chatsDir);
     } finally {
       await fsPromises.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('migrateLegacyUserDirs from the pre-rename root', () => {
+  const setupLegacyRoots = async () => {
+    const root = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'oc-data-dir-legacy-'));
+    const defaultRoot = path.join(root, 'alcode');
+    const legacyRoot = path.join(root, 'openchamber');
+    const dataDir = path.join(root, 'custom');
+    return { root, defaultRoot, legacyRoot, dataDir, cleanup: () => fsPromises.rm(root, { recursive: true, force: true }) };
+  };
+
+  it('copies missing entries from the legacy openchamber root and never deletes it', async () => {
+    const { defaultRoot, legacyRoot, dataDir, cleanup } = await setupLegacyRoots();
+    try {
+      await fsPromises.mkdir(path.join(legacyRoot, 'chats'), { recursive: true });
+      await fsPromises.writeFile(path.join(legacyRoot, 'chats', 'c.json'), '{"c":1}');
+      await fsPromises.mkdir(path.join(legacyRoot, 'projects'), { recursive: true });
+      await fsPromises.writeFile(path.join(legacyRoot, 'projects', 'p.json'), '{"a":1}');
+      const warnings = [];
+      const moved = await migrateLegacyUserDirs({
+        fsPromises, path, dataDir, legacyRoots: [defaultRoot, legacyRoot], warn: (message) => warnings.push(message),
+      });
+      expect(moved).toEqual(['chats', 'projects']);
+      expect(warnings).toEqual([]);
+      expect(await fsPromises.readFile(path.join(dataDir, 'chats', 'c.json'), 'utf8')).toBe('{"c":1}');
+      expect(await fsPromises.readFile(path.join(dataDir, 'projects', 'p.json'), 'utf8')).toBe('{"a":1}');
+      // The legacy install keeps its own copy; a second start copies nothing more.
+      expect(await fsPromises.readFile(path.join(legacyRoot, 'chats', 'c.json'), 'utf8')).toBe('{"c":1}');
+      expect(await migrateLegacyUserDirs({ fsPromises, path, dataDir, legacyRoots: [defaultRoot, legacyRoot] })).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('prefers the newer root when both roots hold the same entry', async () => {
+    const { defaultRoot, legacyRoot, dataDir, cleanup } = await setupLegacyRoots();
+    try {
+      await fsPromises.mkdir(path.join(defaultRoot, 'projects'), { recursive: true });
+      await fsPromises.writeFile(path.join(defaultRoot, 'projects', 'new.json'), '{}');
+      await fsPromises.mkdir(path.join(legacyRoot, 'projects'), { recursive: true });
+      await fsPromises.writeFile(path.join(legacyRoot, 'projects', 'old.json'), '{}');
+      const moved = await migrateLegacyUserDirs({ fsPromises, path, dataDir, legacyRoots: [defaultRoot, legacyRoot] });
+      expect(moved).toEqual(['projects']);
+      expect(await fsPromises.readdir(path.join(dataDir, 'projects'))).toEqual(['new.json']);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('skips roots equal to the data dir but still reads the legacy root', async () => {
+    const { defaultRoot, legacyRoot, cleanup } = await setupLegacyRoots();
+    try {
+      await fsPromises.mkdir(path.join(legacyRoot, 'themes'), { recursive: true });
+      await fsPromises.writeFile(path.join(legacyRoot, 'themes', 't.json'), '{}');
+      const moved = await migrateLegacyUserDirs({
+        fsPromises, path, dataDir: defaultRoot, legacyRoots: [defaultRoot, legacyRoot],
+      });
+      expect(moved).toEqual(['themes']);
+      expect(await fsPromises.readFile(path.join(defaultRoot, 'themes', 't.json'), 'utf8')).toBe('{}');
+      expect(await fsPromises.readFile(path.join(legacyRoot, 'themes', 't.json'), 'utf8')).toBe('{}');
+    } finally {
+      await cleanup();
     }
   });
 });

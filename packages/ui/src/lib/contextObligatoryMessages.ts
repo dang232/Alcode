@@ -16,10 +16,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 export const getContextObligatoryMessages = (
   session: Session | null | undefined,
 ): ContextObligatoryMessage[] => {
-  const openchamber = getSessionMetadata(session).openchamber;
-  if (!isRecord(openchamber) || !Array.isArray(openchamber.context_obligatory_messages)) return [];
+  const alcode = getSessionMetadata(session).alcode;
+  if (!isRecord(alcode) || !Array.isArray(alcode.context_obligatory_messages)) return [];
 
-  return openchamber.context_obligatory_messages
+  return alcode.context_obligatory_messages
     .filter((value): value is ContextObligatoryMessage =>
       isRecord(value)
       && typeof value.id === 'string'
@@ -34,9 +34,9 @@ export const withContextObligatoryMessage = (
   message: ContextObligatoryMessage,
   pinned: boolean,
 ): SessionMetadataRecord => {
-  const openchamber = isRecord(metadata.openchamber) ? metadata.openchamber : {};
-  const current = Array.isArray(openchamber.context_obligatory_messages)
-    ? openchamber.context_obligatory_messages.filter((value): value is ContextObligatoryMessage =>
+  const alcode = isRecord(metadata.alcode) ? metadata.alcode : {};
+  const current = Array.isArray(alcode.context_obligatory_messages)
+    ? alcode.context_obligatory_messages.filter((value): value is ContextObligatoryMessage =>
       isRecord(value) && typeof value.id === 'string')
     : [];
   const withoutMessage = current.filter((value) => value.id !== message.id);
@@ -44,8 +44,8 @@ export const withContextObligatoryMessage = (
 
   return {
     ...metadata,
-    openchamber: {
-      ...openchamber,
+    alcode: {
+      ...alcode,
       context_obligatory_messages: nextMessages,
     },
   };

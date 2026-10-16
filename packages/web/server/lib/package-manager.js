@@ -20,24 +20,24 @@ import { resolveNpmRegistryRequest } from './opencode/npm-registry-config.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PACKAGE_NAME = '@openchamber/web';
+const PACKAGE_NAME = '@alcode/web';
 const PACKAGE_PATH_SEGMENTS = PACKAGE_NAME.split('/');
-const GITHUB_RELEASES_URL = 'https://github.com/openchamber/openchamber/releases';
-const GITHUB_RELEASES_API_URL = 'https://api.github.com/repos/openchamber/openchamber/releases';
+const GITHUB_RELEASES_URL = 'https://github.com/dang232/Alcode/releases';
+const GITHUB_RELEASES_API_URL = 'https://api.github.com/repos/dang232/Alcode/releases';
 let cachedDetectedPm = null;
 
 function getSpawnSyncBaseOptions() {
   return process.platform === 'win32' ? { windowsHide: true } : {};
 }
-const UPDATE_CHECK_URL = process.env.OPENCHAMBER_UPDATE_API_URL || 'https://api.openchamber.dev/v1/update/check';
+const UPDATE_CHECK_URL = process.env.ALCODE_UPDATE_API_URL || 'https://api.openchamber.dev/v1/update/check';
 
-function getOpenChamberConfigDir() {
+function getAlcodeConfigDir() {
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA;
-    if (appData) return path.join(appData, 'openchamber');
+    if (appData) return path.join(appData, 'alcode');
   }
 
-  return path.join(os.homedir(), '.config', 'openchamber');
+  return path.join(os.homedir(), '.config', 'alcode');
 }
 
 function sanitizeInstallScope(scope) {
@@ -46,7 +46,7 @@ function sanitizeInstallScope(scope) {
 }
 
 function getOrCreateInstallId(scope = 'web') {
-  const configDir = getOpenChamberConfigDir();
+  const configDir = getAlcodeConfigDir();
   const normalizedScope = sanitizeInstallScope(scope);
   const idPath = path.join(configDir, `install-id-${normalizedScope}`);
 
@@ -109,7 +109,7 @@ async function resolveAndroidApkUrl(version, candidateUrl) {
     const response = await fetch(`${GITHUB_RELEASES_API_URL}/tags/v${version}`, {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'openchamber-update-check',
+        'User-Agent': 'alcode-update-check',
       },
       signal: AbortSignal.timeout(10000),
     });
@@ -123,7 +123,7 @@ async function resolveAndroidApkUrl(version, candidateUrl) {
         && typeof asset.browser_download_url === 'string'
       ))
       : [];
-    const canonicalAsset = apkAssets.find((asset) => /^OpenChamber-.+-android\.apk$/i.test(asset.name));
+    const canonicalAsset = apkAssets.find((asset) => /^Alcode-.+-android\.apk$/i.test(asset.name));
     return (canonicalAsset || apkAssets[0])?.browser_download_url;
   } catch {
     return undefined;
@@ -362,7 +362,7 @@ function getGlobalNodeModulesRoots(pm) {
 function getOwnedPackagePathsFromGlobalBins(pm) {
   const packagePaths = [];
   for (const binDir of getGlobalBinDirs(pm)) {
-    const binaryName = process.platform === 'win32' ? 'openchamber.cmd' : 'openchamber';
+    const binaryName = process.platform === 'win32' ? 'alcode.cmd' : 'alcode';
     const binaryPath = path.join(binDir, binaryName);
     if (!fs.existsSync(binaryPath)) continue;
 
@@ -404,7 +404,7 @@ export function detectPackageManagerDetails() {
   // dozen spawnSync(pm, ['bin', '-g']) calls with 10s timeouts each; under
   // the in-process server every one blocks the Electron main event loop and
   // manifests as a multi-second UI freeze. Short-circuit here.
-  if (process.env.OPENCHAMBER_RUNTIME === 'desktop') {
+  if (process.env.ALCODE_RUNTIME === 'desktop') {
     return {
       packageManager: 'electron',
       reason: 'desktop-runtime',
@@ -424,7 +424,7 @@ export function detectPackageManagerDetails() {
       };
   }
 
-  const forcedPm = process.env.OPENCHAMBER_PACKAGE_MANAGER?.trim();
+  const forcedPm = process.env.ALCODE_PACKAGE_MANAGER?.trim();
   if (forcedPm && ['npm', 'pnpm', 'yarn', 'bun'].includes(forcedPm)) {
     const forcedPmCommand = resolvePackageManagerCommand(forcedPm);
     if (isCommandAvailable(forcedPmCommand)) {
@@ -663,7 +663,7 @@ function isPackageInstalledWith(pm) {
     });
 
     if (result.status !== 0) return false;
-    return result.stdout.includes(PACKAGE_NAME) || result.stdout.includes('openchamber');
+    return result.stdout.includes(PACKAGE_NAME) || result.stdout.includes('alcode');
   } catch {
     return false;
   }
@@ -671,7 +671,7 @@ function isPackageInstalledWith(pm) {
 
 // npm, bun and yarn print `name@version`; pnpm separates the name and the
 // version with whitespace. An optional `v` covers yarn listing formats.
-const GLOBAL_VERSION_PATTERN = /@openchamber\/web[@\s]+v?(\d[\w.+-]*)/;
+const GLOBAL_VERSION_PATTERN = /@alcode\/web[@\s]+v?(\d[\w.+-]*)/;
 
 /**
  * Read the globally installed version of the package as reported by the
@@ -822,7 +822,7 @@ export async function checkForUpdates(options = {}) {
       return {
         ...remote,
         packageManager: pm,
-        updateCommand: 'openchamber update',
+        updateCommand: 'alcode update',
       };
     }
   }
@@ -856,7 +856,7 @@ export async function checkForUpdates(options = {}) {
     downloadUrl,
     packageManager: pm,
     // Show our CLI command, not raw package manager command
-    updateCommand: 'openchamber update',
+    updateCommand: 'alcode update',
   };
 }
 

@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { commandMatchesSearch, mergeCommandAutocompleteItems } from '../commandAutocompleteItems';
+import { COMMAND_NAMESPACE_ALIASES, normalizeCommandSearchQuery } from '../commandNamespaces';
 
 interface Item {
   name: string;
-  source: 'openchamber' | 'opencode' | 'skill';
+  source: 'alcode' | 'opencode' | 'skill';
   description?: string;
   searchAliases?: string[];
   isBuiltIn?: boolean;
@@ -37,7 +38,7 @@ describe('mergeCommandAutocompleteItems', () => {
   test('built-ins win collisions with commands and skills without losing search aliases', () => {
     const builtIn: Item = {
       name: 'summary',
-      source: 'openchamber',
+      source: 'alcode',
       description: 'Summarize this session',
       isBuiltIn: true,
     };
@@ -80,7 +81,7 @@ describe('mergeCommandAutocompleteItems', () => {
   });
 
   test('deduplicates every pairwise source collision by executable precedence', () => {
-    const builtIn: Item = { name: 'compact', source: 'openchamber', isBuiltIn: true };
+    const builtIn: Item = { name: 'compact', source: 'alcode', isBuiltIn: true };
     const command: Item = { name: 'compact', source: 'opencode' };
     const skill: Item = { name: 'compact', source: 'skill', isSkill: true };
 
@@ -115,7 +116,7 @@ describe('mergeCommandAutocompleteItems', () => {
   });
 
   test('keeps a case-distinct command when the built-in is disabled', () => {
-    const builtIn: Item = { name: 'init', source: 'openchamber', isBuiltIn: true };
+    const builtIn: Item = { name: 'init', source: 'alcode', isBuiltIn: true };
     const command: Item = { name: 'Init', source: 'opencode', description: 'Custom init' };
     const merged = mergeCommandAutocompleteItems([builtIn], [command], []);
 
@@ -124,7 +125,7 @@ describe('mergeCommandAutocompleteItems', () => {
   });
 
   test('keeps first-seen ordering and unrelated commands', () => {
-    const builtIns: Item[] = [{ name: 'undo', source: 'openchamber' }];
+    const builtIns: Item[] = [{ name: 'undo', source: 'alcode' }];
     const commands: Item[] = [
       { name: 'test', source: 'opencode' },
       { name: 'deploy', source: 'opencode' },
@@ -153,5 +154,54 @@ describe('mergeCommandAutocompleteItems', () => {
 
   test('handles empty inputs', () => {
     expect(mergeCommandAutocompleteItems([], [], [])).toEqual([]);
+  });
+});
+
+describe('rename backward compatibility (alcode:* / openchamber:*)', () => {
+  test('the alias map resolves both namespace spellings to the new one', () => {
+    expect(COMMAND_NAMESPACE_ALIASES['alcode:']).toBe('alcode:');
+    expect(COMMAND_NAMESPACE_ALIASES['openchamber:']).toBe('alcode:');
+  });
+
+  test('normalizeCommandSearchQuery strips either namespace prefix', () => {
+    expect(normalizeCommandSearchQuery('openchamber:btw')).toBe('btw');
+    expect(normalizeCommandSearchQuery('alcode:btw')).toBe('btw');
+    expect(normalizeCommandSearchQuery('OpenChamber:plan-feature')).toBe('plan-feature');
+    expect(normalizeCommandSearchQuery('btw')).toBe('btw');
+    expect(normalizeCommandSearchQuery('')).toBe('');
+  });
+
+  test('a command carrying both namespace aliases matches either spelling', () => {
+    const item: Item = {
+      name: 'btw',
+      source: 'alcode',
+      description: 'Ask a side question',
+      searchAliases: ['alcode:btw', 'openchamber:btw'],
+      isBuiltIn: true,
+    };
+
+    expect(commandMatchesSearch(item, 'btw')).toBe(true);
+    expect(commandMatchesSearch(item, 'alcode:btw')).toBe(true);
+    expect(commandMatchesSearch(item, 'openchamber:btw')).toBe(true);
+  });
+
+  test('merge preserves both namespace aliases through collisions', () => {
+    const builtIn: Item = {
+      name: 'summary',
+      source: 'alcode',
+      description: 'Summarize this session',
+      searchAliases: ['alcode:summary', 'openchamber:summary'],
+      isBuiltIn: true,
+    };
+    const command: Item = {
+      name: 'summary',
+      source: 'opencode',
+      description: 'Plugin session digest',
+    };
+
+    const merged = mergeCommandAutocompleteItems([builtIn], [command], []);
+    expect(merged).toHaveLength(1);
+    expect(commandMatchesSearch(merged[0], 'alcode:summary')).toBe(true);
+    expect(commandMatchesSearch(merged[0], 'openchamber:summary')).toBe(true);
   });
 });

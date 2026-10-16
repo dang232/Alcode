@@ -12,14 +12,14 @@ import { createRequestSecurityRuntime } from './security/request-security.js';
 import { createTerminalRuntime } from './terminal/runtime.js';
 import { readTerminalWsControlFrame } from './terminal/terminal-ws-protocol.js';
 
-const previousDataDir = process.env.OPENCHAMBER_DATA_DIR;
+const previousDataDir = process.env.ALCODE_DATA_DIR;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-proxy-terminal-'));
-process.env.OPENCHAMBER_DATA_DIR = dataDir;
+process.env.ALCODE_DATA_DIR = dataDir;
 const { createUiAuth } = await import('./ui-auth/ui-auth.js');
 
 afterAll(() => {
-  if (previousDataDir === undefined) delete process.env.OPENCHAMBER_DATA_DIR;
-  else process.env.OPENCHAMBER_DATA_DIR = previousDataDir;
+  if (previousDataDir === undefined) delete process.env.ALCODE_DATA_DIR;
+  else process.env.ALCODE_DATA_DIR = previousDataDir;
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -58,7 +58,7 @@ const login = async (origin, alcoreToken) => {
   return token;
 };
 
-const connect = (url, origin = 'openchamber-ui://app') => new Promise((resolve, reject) => {
+const connect = (url, origin = 'alcode-ui://app') => new Promise((resolve, reject) => {
   const socket = new WebSocket(url, { origin });
   let hello = null;
   let status = null;

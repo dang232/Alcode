@@ -1,7 +1,7 @@
 # Session assist
 
 The server generates a short reminder of recent work and an optional next user
-message with Small Model. Results live in `metadata.openchamber.assist` with
+message with Small Model. Results live in `metadata.alcode.assist` with
 `recap`, `suggestion`, `forMessageID`, and `generatedAt`. The payload shape is
 unchanged; an empty suggestion is a successful outcome.
 

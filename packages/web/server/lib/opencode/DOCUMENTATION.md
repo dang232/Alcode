@@ -13,12 +13,12 @@ This module provides OpenCode server integration utilities for the web server ru
 - `packages/web/server/lib/opencode/routes.js`: OpenCode/provider settings and auth-related route registration.
 - `packages/web/server/lib/opencode/v1-migration-topup.js`: re-arms OpenCode's own V1 -> V2 session import for V1 sessions changed by 1.x after the last completed import; runs only before a managed spawn. See "v1-migration-topup.js" below.
 - `packages/web/server/lib/opencode/lifecycle.js`: OpenCode process lifecycle runtime (startup, restart, readiness, health monitoring). After readiness it warms the last-used directory only (first entry of the `getWarmupDirectories` dep, best-effort) because OpenCode initializes each directory lazily on first request and that cost would otherwise be paid by the user's first interactive session open. It warms no other projects: on OpenCode 2 the first directory-scoped read boots that location's whole MCP fleet. The warmed directory is also `getDefaultOpenCodeDirectory()`, the scope for server-side reads that have no directory of their own (integrations in `auth.js`, the small model's model and provider lists, the agent check after a restart): v2 answers a location read without one for its own working directory, the user's home for a managed OpenCode, and would start an MCP fleet there. The getter revalidates that directory on every read: once it is no longer a readable directory (deleted, moved, replaced by a file, or stripped of read/execute permission) it is never sent, and the lifecycle advances to another directory the warm pass validated or re-reads `getWarmupDirectories` (coalesced, with a short cooldown) so a currently-valid `lastDirectory` replaces the stale one. A stale cached path would otherwise make every directory-scoped read answer `500 FileSystem.realPath ... ENOENT` — the failure that took the quota credential read down with it.
-- The managed OpenCode's environment also carries the user's variables from Settings and from `opencode service set env` (`getUserEnvironment`, see `../environment`), over the inherited environment and under everything OpenChamber sets for OpenCode itself; enterprise mode passes none. `getManagedOpenCodeProcessEnv()` therefore includes them, so a provider key given this way is visible to the credential reader like any other variable OpenCode reports.
+- The managed OpenCode's environment also carries the user's variables from Settings and from `opencode service set env` (`getUserEnvironment`, see `../environment`), over the inherited environment and under everything Alcode sets for OpenCode itself; enterprise mode passes none. `getManagedOpenCodeProcessEnv()` therefore includes them, so a provider key given this way is visible to the credential reader like any other variable OpenCode reports.
 - `packages/web/server/lib/opencode/provider-env-aliases.js`: mirrors known provider credential env aliases into the managed OpenCode process environment (for example `GEMINI_API_KEY` → `GOOGLE_GENERATIVE_AI_API_KEY`) so OpenCode connection detection and the upstream AI SDK agree on the same key names. Canonical implementation shared by web lifecycle and the VS Code managed spawn path (`packages/vscode/src/provider-env-aliases.ts` re-exports this module).
 - `packages/web/server/lib/opencode/env-runtime.js`: OpenCode CLI/binary resolution and shell environment runtime.
 - `packages/web/server/lib/opencode/env-config.js`: OpenCode-related environment variable parsing and validation (host/port/hostname).
 - `packages/web/server/lib/opencode/hmr-state-runtime.js`: HMR-persistent runtime state initialization, auth-state bootstrap, and HMR sync helpers.
-- `packages/web/server/lib/opencode/bootstrap-runtime.js`: base app bootstrap runtime for status/auth/tts/notification/OpenChamber route wiring.
+- `packages/web/server/lib/opencode/bootstrap-runtime.js`: base app bootstrap runtime for status/auth/tts/notification/Alcode route wiring.
 - `packages/web/server/lib/opencode/network-runtime.js`: OpenCode URL construction, health-probe readiness checks, and API prefix runtime.
 - `packages/web/server/lib/opencode/project-directory-runtime.js`: request-scoped and settings-backed project directory resolution/validation runtime.
 - `packages/web/server/lib/opencode/config-entity-routes.js`: route registration for agent/command/MCP config orchestration. OpenCode 2 watches these files, so a write is live as soon as it lands and the route answers plain success.
@@ -31,7 +31,7 @@ This module provides OpenCode server integration utilities for the web server ru
 - `packages/web/server/lib/opencode/npm-registry-config.js`: resolves npm package metadata requests from inherited npm registry settings or the user's `.npmrc`, including scoped registries and matching bearer/basic HTTP authentication.
 - `packages/web/server/lib/opencode/server-startup-runtime.js`: server listen/startup tunnel flow and process/signal handler orchestration runtime.
 - `packages/web/server/lib/opencode/static-routes-runtime.js`: static asset/SPA fallback route registration and manifest route wiring.
-- `packages/web/server/lib/opencode/feature-routes-runtime.js`: feature route composition runtime for dynamic import-backed config/skill/provider route registration. Source-control provider registration is delegated to `lib/source-control/routes.js`. One exact persisted-credential resolver, including optional revision pinning, is shared by transport binding, clone planning, contributor transfer, execution, and safe HTTPS binding-read presentation. The managed SSH inventory supplies the matching verified-fingerprint projection without exposing its key record or path. Server composition supplies one durable worktree-bootstrap store to both Git and OpenChamber-session routes; the runtime exposes a lazy bound-checkout hydration adapter so session-created worktrees use the same local inspection and exact parent authority rules as Git-route worktrees.
+- `packages/web/server/lib/opencode/feature-routes-runtime.js`: feature route composition runtime for dynamic import-backed config/skill/provider route registration. Source-control provider registration is delegated to `lib/source-control/routes.js`. One exact persisted-credential resolver, including optional revision pinning, is shared by transport binding, clone planning, contributor transfer, execution, and safe HTTPS binding-read presentation. The managed SSH inventory supplies the matching verified-fingerprint projection without exposing its key record or path. Server composition supplies one durable worktree-bootstrap store to both Git and Alcode-session routes; the runtime exposes a lazy bound-checkout hydration adapter so session-created worktrees use the same local inspection and exact parent authority rules as Git-route worktrees.
 - `packages/web/server/lib/opencode/opencode-resolution-runtime.js`: OpenCode binary resolution snapshot runtime for settings routes and diagnostics.
 - `packages/web/server/lib/opencode/upgrade-capability.js`: authoritative upgrade ownership policy for the active OpenCode runtime. Bundled, external, and unresolved runtimes fail closed; only managed non-bundled runtimes delegate upgrades to OpenCode.
 - `packages/web/server/lib/opencode/tunnel-wiring-runtime.js`: tunnel service/routes composition runtime and active-port wiring for main server startup.
@@ -39,7 +39,7 @@ This module provides OpenCode server integration utilities for the web server ru
 - `packages/web/server/lib/opencode/startup-performance.js`: opt-in startup phase diagnostics with fixed labels and numeric metadata allowlists.
 - `packages/web/server/lib/agent-tool/runtime.js`: managed OpenCode custom-tool materialization, environment injection, same-machine authentication (loopback, or the bound address for a concrete bind), and fixed CLI action dispatch.
 - `packages/web/server/lib/opencode/managed-plugin-config.js`: the `OPENCODE_CONFIG_CONTENT` merge used only on the fallback path, when the user's own environment owns `OPENCODE_CONFIG`.
-- `packages/web/server/lib/opencode/managed-config-file.js`: the managed OpenCode config layer — materializes the enabled OpenChamber plugins (agent tools, system prompt optimizer) and publishes them in a file OpenCode watches.
+- `packages/web/server/lib/opencode/managed-config-file.js`: the managed OpenCode config layer — materializes the enabled Alcode plugins (agent tools, system prompt optimizer) and publishes them in a file OpenCode watches.
 
 ### Managed plugins on OpenCode 2.x
 A configured plugin must be a DIRECTORY holding a `package.json` that resolves an
@@ -57,9 +57,9 @@ Two v1 affordances are gone and the generated tools work around them: a tool
 result has no `title` (it travels in `metadata`) and must not carry `output`
 unless an output schema is declared; and a tool call no longer receives
 `context.directory` or `context.abort`, so the callback sends `context.sessionID`
-and OpenChamber resolves the directory itself.
+and Alcode resolves the directory itself.
 - `packages/web/server/lib/opencode/server-utils-runtime.js`: shared server runtime utilities for OpenCode proxy wiring, OpenCode port/readiness helpers, and snapshot fetchers.
-- `packages/web/server/lib/opencode/openchamber-routes.js`: OpenChamber update and models metadata route registration.
+- `packages/web/server/lib/opencode/alcode-routes.js`: Alcode update and models metadata route registration.
 - `packages/web/server/lib/opencode/model-discovery.js`: bounded custom-provider `/models` discovery and optional models.dev enrichment. It accepts only http(s), does not follow redirects, filters transport headers, never returns credentials, and treats models.dev failure as unenriched success. Edit requests may name the provider so the host can use its OpenCode-stored key when the form leaves the key blank, but only while the form's base URL still matches the saved one, so a changed URL never receives the stored credential; an explicitly entered replacement key wins.
 - `packages/web/server/lib/opencode/pwa-manifest-routes.js`: PWA manifest route registration with recent-session shortcut resolution and short-lived caching.
 - `packages/web/server/lib/opencode/project-icon-routes.js`: project icon upload/read/discovery route registration and icon storage orchestration.
@@ -101,7 +101,7 @@ and OpenChamber resolves the directory itself.
 
 ## Public exports (auth.js)
 `auth.js` is read-only. OpenCode 2.x owns every credential and, since 2.0.20,
-hands them back over `GET /api/credential`, secrets included. OpenChamber needs
+hands them back over `GET /api/credential`, secrets included. Alcode needs
 the raw credential for provider quota lookups, voice keys and routing, so
 `readOpenCodeCredentials()` asks the running OpenCode, through the connection
 `server/index.js` wires with `configureOpenCodeCredentials()`. Concurrent
@@ -156,7 +156,7 @@ under `migration.v1-v2` in the `kv` table. Anyone who kept using a bundled
 OpenCode 1.x beside a v2 install created V1 sessions after that point, and
 OpenCode never looks at them again — they are simply missing from the session
 list. `topUpV1Migration()` hands OpenCode a resume cursor so its own migration
-picks them up. OpenChamber never writes session rows itself.
+picks them up. Alcode never writes session rows itself.
 
 It runs from `lifecycle.js` immediately before the MANAGED OpenCode is spawned:
 never for an external, user-started OpenCode, and never while a managed one is
@@ -288,7 +288,7 @@ A filesystem lock prevents separate hosts sharing a home from installing at
 the same time. The installer has a five-minute deadline and owns its subprocess
 group. Existing executable/shim files are restored after an installation or
 verification failure. If rollback fails, backups and the lock remain under
-`.opencode/bin/.openchamber-install` for manual recovery. A successful install
+`.opencode/bin/.alcode-install` for manual recovery. A successful install
 followed by a settings/restart failure keeps v2 on disk; Check again can retry
 the restart. A host crash may also leave the lock for manual recovery.
 Installer output is discarded, not forwarded to clients or logs.
@@ -317,7 +317,7 @@ Installer output is discarded, not forwarded to clients or logs.
   - `markSessionUnviewed(sessionId, clientId)`
   - `markUserMessageSent(sessionId)`
   - `resetAllSessionActivityToIdle()`
-  - `interruptBusySessionsAfterRestart()`: settles every session whose authoritative status is `busy`/`retry` or whose activity phase is still busy, broadcasts `openchamber:session-status` idle plus an OpenCode-shaped `session.error`, resets leftover activity/cooldowns, and returns the interrupted session IDs in stable order.
+  - `interruptBusySessionsAfterRestart()`: settles every session whose authoritative status is `busy`/`retry` or whose activity phase is still busy, broadcasts `alcode:session-status` idle plus an OpenCode-shaped `session.error`, resets leftover activity/cooldowns, and returns the interrupted session IDs in stable order.
   - `dispose()`
 
 The runtime maintains active-session count incrementally from idempotent activity phase transitions. Upstream stall-timeout and lifecycle health checks read it in O(1); the hourly cleanup removes activity phases older than 24 hours without broadcasting synthetic state transitions. Snapshot generation remains reserved for the session-activity API.
@@ -337,7 +337,7 @@ The runtime maintains active-session count incrementally from idempotent activit
 
 Managed OpenCode launch also merges the environment returned by the agent-tool
 runtime and the opt-in system prompt optimizer, each appending its `file://`
-entry to the previous one's config. OpenChamber adds no automatic MCP reconnect
+entry to the previous one's config. Alcode adds no automatic MCP reconnect
 loop; recovery after a failed connection is manual for both local and remote
 servers. Previously generated reconnect plugin files are inert because managed
 launch no longer registers them. User-configured plugins remain user-owned.
@@ -346,7 +346,7 @@ and cannot be replaced by injected or inherited values; OpenCode 2 prefers
 `OPENCODE_PASSWORD`, so both carry the managed password. A user-provided
 password is read with the same precedence, and Basic auth always uses the
 `opencode` username because OpenCode 2 accepts no other. External OpenCode processes receive no
-OpenChamber tool injection. Managed launch env strips AppImage `ARGV0` before
+Alcode tool injection. Managed launch env strips AppImage `ARGV0` before
 spawn so zsh-backed OpenCode tools do not rewrite child argv[0] to the AppImage
 path (#2588).
 
@@ -356,11 +356,11 @@ from any present sibling (`GOOGLE_GENERATIVE_AI_API_KEY`, `GOOGLE_API_KEY`,
 the Generative AI SDK path used at chat time. Existing non-empty values are
 never overwritten.
 
-Set `OPENCHAMBER_STARTUP_PERF=1` to emit bounded startup phase records for server listen, managed OpenCode preparation/readiness, and proxy readiness holds. Every OpenCode bootstrap emits one terminal `opencode.bootstrap.ready` or `opencode.bootstrap.error` event, including reused and external server paths. Records contain controlled phase/outcome/route labels and timing values only; they never contain request URLs, runtime keys, directories, session IDs, credentials, or content.
+Set `ALCODE_STARTUP_PERF=1` to emit bounded startup phase records for server listen, managed OpenCode preparation/readiness, and proxy readiness holds. Every OpenCode bootstrap emits one terminal `opencode.bootstrap.ready` or `opencode.bootstrap.error` event, including reused and external server paths. Records contain controlled phase/outcome/route labels and timing values only; they never contain request URLs, runtime keys, directories, session IDs, credentials, or content.
 
 macOS `say` voice enumeration starts concurrently with server composition. The server listener and managed OpenCode startup do not wait for it; `/api/tts/say/status` awaits the same authoritative capability promise when queried before enumeration completes.
 
-Upstream health is probed with `GET /api/info` (OpenCode 2.0.8 removed `/api/health`). A 200 is the whole readiness answer — the payload is `{ version, pid, urls, paths }` and carries no `healthy` field — and its `version` is what the major-version gate reads. OpenChamber's own `/api/opencode/health` keeps answering `{ healthy }` to its clients, derived from that status.
+Upstream health is probed with `GET /api/info` (OpenCode 2.0.8 removed `/api/health`). A 200 is the whole readiness answer — the payload is `{ version, pid, urls, paths }` and carries no `healthy` field — and its `version` is what the major-version gate reads. Alcode's own `/api/opencode/health` keeps answering `{ healthy }` to its clients, derived from that status.
 
 Transport-triggered health checks share the periodic monitor's failure accounting interval. Rapid WS reconnect callbacks therefore cannot exhaust the managed-process restart threshold using one cached unhealthy result; an exited managed process still restarts immediately.
 
@@ -386,8 +386,8 @@ ConPTY or Console Window Host behavior.
 ## Public exports (env-runtime.js)
 - `createOpenCodeEnvRuntime(dependencies)`: creates runtime that owns OpenCode CLI environment and binary discovery state.
 - OpenCode CLI resolution order is persisted settings, environment overrides, bundled Desktop CLI when available, PATH, known install locations, then platform shell discovery. A path pinned by the administrator (`opencodeBinary` in the machine policy file, `../enterprise-mode.js`) comes before all of them and has no fallback: `applyOpencodeBinaryFromSettings()` and `ensureOpencodeCliEnv()` resolve only that path (source `policy`), an unusable pin fails strict start with `OPENCODE_BINARY_INVALID`, and a removed pin hands resolution back to the order above. While pinned, the install-v2 and upgrade capabilities report unsupported (`reason: 'policy'`) and upgrade status never announces a newer version.
-- Automatic bundled resolution under `OPENCHAMBER_RUNTIME=desktop` stays in runtime state and is returned to the managed launch function, including on OpenCode restart. It does not populate `process.env.OPENCODE_BINARY`: AppImage updater relaunch inherits that environment and would mistake the previous bundle path for an explicit override. Explicit settings/env selections and non-desktop or non-bundled resolution retain their existing environment behavior. This prevents future inheritance; it does not reinterpret overrides already inherited from older releases.
-- The login-shell snapshot (`$SHELL -lic 'echo __OPENCHAMBER_ENV__; env -0'`, parsed from after the last marker line so text an rc file prints to stdout never fuses with the first variable) is taken synchronously at import time, so it blocks whatever process embeds the server for as long as the user's shell startup files take. An embedding host that already probed the shell hands its result over before importing the server through `login-shell-env.js` (`provideLoginShellEnvSnapshot(snapshot | null)`); the runtime then uses that and never probes, `null` included. Desktop does this on macOS and Linux; on Windows the server keeps its own registry-based snapshot. The handoff is a module slot, never an environment variable: the snapshot is the user's whole shell environment and `process.env` reaches every child.
+- Automatic bundled resolution under `ALCODE_RUNTIME=desktop` stays in runtime state and is returned to the managed launch function, including on OpenCode restart. It does not populate `process.env.OPENCODE_BINARY`: AppImage updater relaunch inherits that environment and would mistake the previous bundle path for an explicit override. Explicit settings/env selections and non-desktop or non-bundled resolution retain their existing environment behavior. This prevents future inheritance; it does not reinterpret overrides already inherited from older releases.
+- The login-shell snapshot (`$SHELL -lic 'echo __ALCODE_ENV__; env -0'`, parsed from after the last marker line so text an rc file prints to stdout never fuses with the first variable) is taken synchronously at import time, so it blocks whatever process embeds the server for as long as the user's shell startup files take. An embedding host that already probed the shell hands its result over before importing the server through `login-shell-env.js` (`provideLoginShellEnvSnapshot(snapshot | null)`); the runtime then uses that and never probes, `null` included. Desktop does this on macOS and Linux; on Windows the server keeps its own registry-based snapshot. The handoff is a module slot, never an environment variable: the snapshot is the user's whole shell environment and `process.env` reaches every child.
 - Returned API:
   - `applyLoginShellEnvSnapshot()`
   - `getLoginShellEnvSnapshot()`
@@ -445,7 +445,7 @@ ConPTY or Console Window Host behavior.
 - Persistent per-session permission modes are stored under `permissionAutoAccept`, and the mode for new sessions under `permissionDefaultMode`; execution ownership lives in `lib/permission-auto-accept/`.
 - Queued follow-up messages live in `<data-dir>/message-queue.json`, not in settings; execution ownership lives in `lib/message-queue/`.
 - Shared sidebar preferences are stored as validated top-level fields: `sidebarProjectDisplayMode`, `sidebarSessionGroupingMode`, `sidebarProjectSortOrder`, and `sidebarShowRecentSection`. Device-local picker selection and sticky-header state do not enter either settings file.
-- Two files (`settings-files.js`): `settings.json` holds instance facts and any legacy or unknown keys; `preferences.json` beside it holds every key the generated registry snapshot (`settings-registry.json`) marks `profile`, as `{ version: 1, fields: { key: { value, updatedAt, surfaces? } } }`. Keys the snapshot marks `perSurface` are stored per surface kind: `GET`/`PUT /api/config/settings` read the client's kind from the `surface` query parameter (`settingsSurfaceOf`; the legacy `x-openchamber-surface` header is still honoured, but a header forces a CORS preflight that cross-origin shells and older instances refuse, so clients must not send one) (`web`, `desktop`, `vscode`, `mobile`; anything else means base), `persistSettings(changes, { surface })` writes a changed per-surface key under `surfaces[surface]` and never touches its base, and `readSettingsFromDisk({ surface })` resolves that kind's value first, the base otherwise. Callers without a surface (migrations, the seed, server-side feature writers) read and write the base. `readSettingsFromDisk()` returns the merged document and seeds `preferences.json` once from an existing `settings.json` (which it leaves intact). An existing `preferences.json` that fails to parse is a failure, not an empty profile: it is never seeded or overwritten, the merged read serves the instance part, and `persistSettings` drops profile keys with a warning until the file is fixed or removed. `writeSettingsToDisk(document)` splits by scope and writes `settings.json` as the instance part plus a copy of the profile's base values (`legacySettingsDocumentOf`): a build from before the split reads only that file, so a rollback keeps the user's preferences, while current builds ignore the copy because `preferences.json` wins in the merge; device keys are dropped from writes. Modules that read one profile key off the disk on a hot path use `readMergedSettingsSync`.
+- Two files (`settings-files.js`): `settings.json` holds instance facts and any legacy or unknown keys; `preferences.json` beside it holds every key the generated registry snapshot (`settings-registry.json`) marks `profile`, as `{ version: 1, fields: { key: { value, updatedAt, surfaces? } } }`. Keys the snapshot marks `perSurface` are stored per surface kind: `GET`/`PUT /api/config/settings` read the client's kind from the `surface` query parameter (`settingsSurfaceOf`; the legacy `x-alcode-surface` header is still honoured, but a header forces a CORS preflight that cross-origin shells and older instances refuse, so clients must not send one) (`web`, `desktop`, `vscode`, `mobile`; anything else means base), `persistSettings(changes, { surface })` writes a changed per-surface key under `surfaces[surface]` and never touches its base, and `readSettingsFromDisk({ surface })` resolves that kind's value first, the base otherwise. Callers without a surface (migrations, the seed, server-side feature writers) read and write the base. `readSettingsFromDisk()` returns the merged document and seeds `preferences.json` once from an existing `settings.json` (which it leaves intact). An existing `preferences.json` that fails to parse is a failure, not an empty profile: it is never seeded or overwritten, the merged read serves the instance part, and `persistSettings` drops profile keys with a warning until the file is fixed or removed. `writeSettingsToDisk(document)` splits by scope and writes `settings.json` as the instance part plus a copy of the profile's base values (`legacySettingsDocumentOf`): a build from before the split reads only that file, so a rollback keeps the user's preferences, while current builds ignore the copy because `preferences.json` wins in the merge; device keys are dropped from writes. Modules that read one profile key off the disk on a hot path use `readMergedSettingsSync`.
 
 ## Public exports (settings-files.js)
 - `parsePreferencesDocument(raw)`, `serializePreferencesDocument(fields)`, `flattenPreferences(fields)`, `buildPreferencesFields(previousFields, document, now)`, `instancePartOf(document)`, `seedPreferencesFrom(document, now)`, `readMergedSettingsSync({ fs, path, settingsFilePath })`, `getSettingsScope(key)`, `isProfileSettingsKey(key)`, `isDeviceSettingsKey(key)`, `preferencesFilePathFor(settingsFilePath, path)`.
@@ -495,12 +495,12 @@ Persistence path normalization (`normalizePathForPersistence` / `normalizeSettin
 
 ## Entity routes (v2 shapes)
 
-Everything OpenChamber persists into OpenCode config now speaks OpenCode 2.
+Everything Alcode persists into OpenCode config now speaks OpenCode 2.
 This section is the contract the Settings UI builds on.
 
 ### Ownership: which directory is written
 
-OpenCode 2 still discovers the v1 directories, so OpenChamber READS all of them
+OpenCode 2 still discovers the v1 directories, so Alcode READS all of them
 and WRITES only the v2 one:
 
 | Entity | Read from | Written to |
@@ -516,14 +516,14 @@ directory up to the worktree root, so a definition in a parent directory of a
 monorepo package counts; a nested id (`team/reviewer`) maps onto the path.
 Only files in the v2 `plugins/` directory are editable through the plugins
 page; a package directory or a v1 `plugin/` file is listed as a package that
-OpenCode loads and OpenChamber does not touch.
+OpenCode loads and Alcode does not touch.
 
 The global config directory is what OpenCode 2 uses: `OPENCODE_CONFIG_DIR`
 when set, else `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`. Config
 files are `opencode.json(c)` only: OpenCode 2 no longer discovers the v1-era
-`config.json`, so OpenChamber neither reads nor writes it. In a project both
+`config.json`, so Alcode neither reads nor writes it. In a project both
 `<project>/opencode.json(c)` and `<project>/.opencode/opencode.json(c)` are
-discovered by OpenCode, `.opencode/` winning; OpenChamber reads and writes the
+discovered by OpenCode, `.opencode/` winning; Alcode reads and writes the
 highest-priority existing one (`.opencode/opencode.json` for a new file), so
 an entry that lives only in a lower file is visible through the resolved
 catalog but not editable here.
@@ -756,7 +756,7 @@ headers }` or v1 `{ npm, options }`. The stored entry is always a
    - `app.use('/api', ...)` auth/tunnel guard
 - `registerSettingsUtilityRoutes(app, dependencies)`: registers small settings utility endpoints:
   - `GET /api/config/themes`
-  - `POST /api/config/reload` — restarts OpenCode on request. Config edits no longer need it; it stays for the changes that cannot be hot-applied (OpenCode binary, port, managed/external switch) and as a manual recovery. Managed OpenCode restarts and returns `requiresReload: true`. External OpenCode returns `requiresManualRestart: true` (changes are already on disk; the connected server must be restarted outside OpenChamber).
+  - `POST /api/config/reload` — restarts OpenCode on request. Config edits no longer need it; it stays for the changes that cannot be hot-applied (OpenCode binary, port, managed/external switch) and as a manual recovery. Managed OpenCode restarts and returns `requiresReload: true`. External OpenCode returns `requiresManualRestart: true` (changes are already on disk; the connected server must be restarted outside Alcode).
 - `registerCommonRequestMiddleware(app, dependencies)`: registers shared request middleware stack:
   - conditional JSON body parser behavior for `/api/*` vs non-API requests
   - URL-encoded parser setup
@@ -822,11 +822,11 @@ headers }` or v1 `{ npm, options }`. The stored entry is always a
 - Returned API:
   - `run(options)`
 
-The pipeline binds the OpenChamber listener and publishes its active port
+The pipeline binds the Alcode listener and publishes its active port
 before starting managed OpenCode. The managed custom tool therefore receives
-an authoritative loopback callback URL even when OpenChamber binds port `0`.
+an authoritative loopback callback URL even when Alcode binds port `0`.
 
-## Public exports (openchamber-routes.js)
+## Public exports (alcode-routes.js)
 Browser completion checks use `appType=web&updateStatus=true` to stay on the
 Desktop Host's native updater. A rejected native restart is retained in the
 server process and returned to these polls as `DESKTOP_UPDATE_RESTART_FAILED`;
@@ -837,16 +837,16 @@ for the installed native target version, rather than treating absence of a
 newer release as installation success. Poll requests have individual deadlines
 within a ten-minute overall deadline.
 
-- `registerOpenChamberRoutes(app, dependencies)`: registers OpenChamber endpoints:
-  - `GET /api/openchamber/update-check`
-  - `POST /api/openchamber/update-install`
+- `registerAlcodeRoutes(app, dependencies)`: registers Alcode endpoints:
+  - `GET /api/alcode/update-check`
+  - `POST /api/alcode/update-install`
     - Desktop-managed hosts delegate authenticated Web update requests to the Electron main process, which checks, downloads, and applies the update through `electron-updater` before restarting the host.
     - Foreground servers running under a systemd user unit queue installation in
       a separate transient unit and restart the configured service afterwards.
-      `OPENCHAMBER_SYSTEMD_UNIT` overrides the default `openchamber.service`.
+      `ALCODE_SYSTEMD_UNIT` overrides the default `openchamber.service`.
     - Foreground servers running under a macOS launchd User LaunchAgent update the
       package and trigger a `launchctl kickstart` (with a `launchctl bootstrap`
-      fallback, as `openchamber startup enable` uses) against
+      fallback, as `alcode startup enable` uses) against
       `~/Library/LaunchAgents/dev.openchamber.web.plist`. The server counts as the
       LaunchAgent only when the plist exists and launchd set `XPC_SERVICE_NAME` to
       its label, so a manual `serve --foreground` keeps the 409.
@@ -864,7 +864,7 @@ within a ten-minute overall deadline.
       detached child inherits the listening socket and would hold the port
       for the whole batch, so the restart inside it failed with "port already
       in use" and the update ended with no server.
-  - `GET /api/openchamber/models-metadata`
+  - `GET /api/alcode/models-metadata`
   - `GET /api/zen/models`
 
 ## Public exports (pwa-manifest-routes.js)
@@ -899,7 +899,7 @@ within a ten-minute overall deadline.
     - Downstream heartbeats keep clients and intermediaries alive, while a separate upstream-only stall watchdog closes the downstream response when OpenCode stops producing bytes so clients reconnect instead of trusting synthetic heartbeats indefinitely. Each watchdog reset uses the current load-aware timeout, matching the shared event transport.
   - Session message forwarder: `POST /api/session/:sessionId/message`
   - Session list and detail: `GET /api/session`, `GET /api/session/:sessionID`
-    - Both are sanitized to an allowlist of `SessionInfo` fields, then get archive state folded in from `lib/openchamber-sessions/archive-store.js`, because OpenCode 2.x has no archive route, plus any `metadata` entry `lib/openchamber-sessions/session-metadata-store.js` has not migrated from the legacy file yet. An unknown answer from either store leaves the upstream record untouched rather than reporting a session as un-archived or dropping its metadata.
+    - Both are sanitized to an allowlist of `SessionInfo` fields, then get archive state folded in from `lib/alcode-sessions/archive-store.js`, because OpenCode 2.x has no archive route, plus any `metadata` entry `lib/alcode-sessions/session-metadata-store.js` has not migrated from the legacy file yet. An unknown answer from either store leaves the upstream record untouched rather than reporting a session as un-archived or dropping its metadata.
   - Upstream paths are the request paths. OpenCode 2.x serves everything under `/api/*` itself, so the mount prefix Express strips is put back instead of being rewritten away.
   - There is no interactive OAuth forwarder any more: v2 connects providers through `/api/integration/*`, whose OAuth steps return immediately and are polled, so no route needs a longer deadline than the ordinary one.
   - Generic `/api/*` forwarding with hop-by-hop header filtering
@@ -933,13 +933,13 @@ The VS Code extension owns its separate Git and proxy implementation.
 
 ## Storage and configuration
 - Provider auth: read from the running OpenCode over `GET /api/credential` (2.0.20+); OpenCode 2.x owns credentials.
-- Session archive state: `sessions-archive.json` under the OpenChamber data dir.
-- Session metadata (goal progress, the assist recap, the obligatory-context cursor, pinned notes) lives on the OpenCode session record, written with `PATCH /api/session/{id}` (OpenCode 2.0.15+, the minimum `compatibility.js` enforces). OpenCode replaces the whole object, so `sessionMetadataStore.setSessionMetadata` reads the record, applies the JSON Merge Patch and writes the result, one write per session at a time; a record that cannot be read stops the write. Every reader and writer (routes, goal loop, session assist, session knowledge, obligatory context, notifications) goes through `sessionMetadataStore.get` / `setSessionMetadata`. Older OpenChamber versions kept this state in `sessions-metadata.json` under the data dir. Its entries are the newest metadata their sessions have: the proxy lays them over OpenCode's records, a session's next write pushes its entry, and a sweep after OpenCode starts pushes the rest (a session OpenCode no longer knows is dropped, any other failure waits for the next write or start). The emptied file is renamed to `sessions-metadata.json.migrated`. Archive mutations still run one transaction at a time in the archive store.
+- Session archive state: `sessions-archive.json` under the Alcode data dir.
+- Session metadata (goal progress, the assist recap, the obligatory-context cursor, pinned notes) lives on the OpenCode session record, written with `PATCH /api/session/{id}` (OpenCode 2.0.15+, the minimum `compatibility.js` enforces). OpenCode replaces the whole object, so `sessionMetadataStore.setSessionMetadata` reads the record, applies the JSON Merge Patch and writes the result, one write per session at a time; a record that cannot be read stops the write. Every reader and writer (routes, goal loop, session assist, session knowledge, obligatory context, notifications) goes through `sessionMetadataStore.get` / `setSessionMetadata`. Older Alcode versions kept this state in `sessions-metadata.json` under the data dir. Its entries are the newest metadata their sessions have: the proxy lays them over OpenCode's records, a session's next write pushes its entry, and a sweep after OpenCode starts pushes the rest (a session OpenCode no longer knows is dropped, any other failure waits for the next write or start). The emptied file is renamed to `sessions-metadata.json.migrated`. Archive mutations still run one transaction at a time in the archive store.
 - User config: `<config dir>/opencode.json(c)` where the config dir is `OPENCODE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`. The v1 `config.json` is not read.
 - Project config: `<workingDirectory>/.opencode/opencode.json(c)` first, else `<workingDirectory>/opencode.json(c)`.
 - Custom config: `OPENCODE_CONFIG` env var path.
-- Origins (`../security/request-security.js`): CORS with credentials and socket upgrades trust the request's own host, `publicOrigin`, and the packaged clients (`openchamber-ui://app`, `capacitor://localhost`, `https://localhost`). Any other loopback port is trusted only on a development server (`OPENCHAMBER_ELECTRON_DEV=1` or `OPENCHAMBER_ALLOW_DEV_ORIGINS=1`, which the dev scripts set). Without a UI password a socket that names an `Origin` must still come from one of these (`isPasswordlessSocketOriginAllowed`): nothing else would stop a website open in the user's browser from reaching the terminal on the loopback port. Clients that send no `Origin` are not pages and pass.
-- Rate limit config: `OPENCHAMBER_RATE_LIMIT_MAX_ATTEMPTS`, `OPENCHAMBER_RATE_LIMIT_NO_IP_MAX_ATTEMPTS` env vars. Login and tunnel-connect limits key on `req.ip`. `server/index.js` sets `trust proxy` to loopback and private ranges, so `X-Forwarded-For` counts only when a proxy on this machine or a private network sent it; from anyone else it is ignored and cannot open a fresh bucket per attempt.
+- Origins (`../security/request-security.js`): CORS with credentials and socket upgrades trust the request's own host, `publicOrigin`, and the packaged clients (`alcode-ui://app`, `capacitor://localhost`, `https://localhost`). Any other loopback port is trusted only on a development server (`ALCODE_ELECTRON_DEV=1` or `ALCODE_ALLOW_DEV_ORIGINS=1`, which the dev scripts set). Without a UI password a socket that names an `Origin` must still come from one of these (`isPasswordlessSocketOriginAllowed`): nothing else would stop a website open in the user's browser from reaching the terminal on the loopback port. Clients that send no `Origin` are not pages and pass.
+- Rate limit config: `ALCODE_RATE_LIMIT_MAX_ATTEMPTS`, `ALCODE_RATE_LIMIT_NO_IP_MAX_ATTEMPTS` env vars. Login and tunnel-connect limits key on `req.ip`. `server/index.js` sets `trust proxy` to loopback and private ranges, so `X-Forwarded-For` counts only when a proxy on this machine or a private network sent it; from anyone else it is ignored and cannot open a fresh bucket per attempt.
 
 ## Notes for contributors
 - This module serves as foundation for OpenCode-related server utilities.
@@ -958,21 +958,21 @@ file on disk no longer matches, the write is refused with `409` and code
 
 ## Managed OpenCode config layer (managed-config-file.js)
 
-OpenChamber injects its own OpenCode plugins through a file it owns rather than
+Alcode injects its own OpenCode plugins through a file it owns rather than
 through the process environment, because an environment variable cannot change
 under a running child.
 
 - Contract: the managed child gets `OPENCODE_CONFIG=<data-dir>/opencode.managed.json`.
   The file contains only `plugins`: `-opencode.browser` first, then the absolute
-  directory of every OpenChamber plugin currently switched on. OpenCode's
+  directory of every Alcode plugin currently switched on. OpenCode's
   built-in browser tools need OpenCode's own desktop app to attach a browser;
-  OpenChamber does not, so they would always fail with `browser.disconnected`
-  and steer agents away from `openchamber_web`. A project config listing
+  Alcode does not, so they would always fail with `browser.disconnected`
+  and steer agents away from `alcode_web`. A project config listing
   `opencode.browser` re-enables it. The fallback path merges the same entry. Its layer sits above the user's
   global `opencode.json` and below their project config.
 - `OPENCODE_CONFIG_CONTENT` is passed through untouched, so whatever the user
   put there still applies.
-- `OPENCHAMBER_AGENT_TOOL_URL` and a fresh `OPENCHAMBER_AGENT_TOOL_TOKEN` are
+- `ALCODE_AGENT_TOOL_URL` and a fresh `ALCODE_AGENT_TOOL_TOKEN` are
   always in the child environment, including while every managed tool is off —
   a tool switched on later then reaches a process that can already call back.
 - `persistSettings` rewrites the file (temp + rename) whenever
@@ -981,7 +981,7 @@ under a running child.
   file names them, and a disabled plugin is removed from the list. OpenCode
   reloads within a couple of seconds; no restart is involved.
 - Fallback: when the user's own environment already sets `OPENCODE_CONFIG`,
-  OpenChamber does not take it over. It merges its plugin directories into
+  Alcode does not take it over. It merges its plugin directories into
   `OPENCODE_CONFIG_CONTENT` instead, and those installs keep the old behavior —
   a managed-tool toggle needs an OpenCode restart to take effect.
 

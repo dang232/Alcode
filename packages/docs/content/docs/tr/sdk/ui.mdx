@@ -1,18 +1,18 @@
 ---
 title: UI kiti
-description: "@openchamber/sdk/ui içindeki düğmeler, alanlar, açılır listeler, sekmeler, listeler ve diğer yapı taşları; bir eklentiyi OpenChamber'ın geri kalanı gibi gösterir."
+description: "@alcode/sdk/ui içindeki düğmeler, alanlar, açılır listeler, sekmeler, listeler ve diğer yapı taşları; bir eklentiyi Alcode'ın geri kalanı gibi gösterir."
 ---
 
 # UI kiti
 
-`@openchamber/sdk/ui`, uygulamanın renklerini, yazı tiplerini ve boşluklarını kullanan hazır kontroller kümesidir; böylece eklentiniz stilleri kopyalamadan OpenChamber'ın geri kalanı gibi görünür. Her kontrol bir fonksiyondur: ona size ait bir öğe ve ayarlarını verirsiniz, kendini oraya çizer ve `{ update, dispose }` döndürür. Kontrolleri bir ekrana siz yerleştirir, veriyi siz tutarsınız. Kit sağlayıcınızı ya da OpenChamber'ı asla çağırmaz; `host.request`, `host.attach` ve diğerlerini yine kendiniz çağırırsınız. Kitte olmayan her şey için kendi HTML ve CSS'inizi yazabilirsiniz, ama önce kite başvurun: kontrolleri kullanıcının temasını, boşluklarını ve klavye alışkanlıklarını kendiliğinden izler; böylece onlarla kurulan bir panel içine gömülü bir web sitesi gibi değil, OpenChamber'ın bir parçası gibi hissedilir.
+`@alcode/sdk/ui`, uygulamanın renklerini, yazı tiplerini ve boşluklarını kullanan hazır kontroller kümesidir; böylece eklentiniz stilleri kopyalamadan Alcode'ın geri kalanı gibi görünür. Her kontrol bir fonksiyondur: ona size ait bir öğe ve ayarlarını verirsiniz, kendini oraya çizer ve `{ update, dispose }` döndürür. Kontrolleri bir ekrana siz yerleştirir, veriyi siz tutarsınız. Kit sağlayıcınızı ya da Alcode'ı asla çağırmaz; `host.request`, `host.attach` ve diğerlerini yine kendiniz çağırırsınız. Kitte olmayan her şey için kendi HTML ve CSS'inizi yazabilirsiniz, ama önce kite başvurun: kontrolleri kullanıcının temasını, boşluklarını ve klavye alışkanlıklarını kendiliğinden izler; böylece onlarla kurulan bir panel içine gömülü bir web sitesi gibi değil, Alcode'ın bir parçası gibi hissedilir.
 
 ## Önce `applyHostReady` çağırın
 
 Kontroller renklerini `applyHostReady` fonksiyonunun sayfaya yazdığı CSS değişkenlerinden okur. Ayrıca uygulamanın yazı tipini ve metin rengini sayfa köküne uygular; böylece kendi eklediğiniz düz HTML de doğru görünür. Bunu `host.onReady` içinde, ilk bağlamadan önce çağırın; kullanıcı temayı değiştirdiğinde renkler uygulamanın temasını izler.
 
 ```ts
-import { applyHostReady } from "@openchamber/sdk/ui";
+import { applyHostReady } from "@alcode/sdk/ui";
 
 let mounted = false;
 host.onReady((ctx) => {
@@ -36,7 +36,7 @@ Kendi CSS'iniz için `applyHostReady`; `--primary-text`, `--success-text`, `--wa
 Bu kontrolleri panelin mevcut `root` öğesine bir kez bağlayın:
 
 ```ts
-import { mountSelect, mountTabs } from "@openchamber/sdk/ui";
+import { mountSelect, mountTabs } from "@alcode/sdk/ui";
 
 let activeId = "convert";
 const tabs = mountTabs(root, {
@@ -87,7 +87,7 @@ Kontrollerin yanında üç düz yardımcı da gelir. `filterSelectOptions(option
 ## Aramalı bir liste
 
 ```ts
-import { applyHostReady, mountEmpty, mountList, mountSearchField } from "@openchamber/sdk/ui";
+import { applyHostReady, mountEmpty, mountList, mountSearchField } from "@alcode/sdk/ui";
 
 let mounted = false;
 host.onReady((ctx) => {
@@ -138,10 +138,10 @@ host.onReady((ctx) => {
 
 ## Sağlayıcı metnindeki bağlantılar
 
-Sayfanız bir sandbox içinde çalışır ve kendi başına yeni sekme açamaz. `mountText` kullanırken `onOpenUrl` verin ve bağlantıyı OpenChamber'a bırakın:
+Sayfanız bir sandbox içinde çalışır ve kendi başına yeni sekme açamaz. `mountText` kullanırken `onOpenUrl` verin ve bağlantıyı Alcode'a bırakın:
 
 ```ts
-import { mountText } from "@openchamber/sdk/ui";
+import { mountText } from "@alcode/sdk/ui";
 
 mountText(root, {
   text: comment.body,

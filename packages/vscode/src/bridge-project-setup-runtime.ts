@@ -1,8 +1,8 @@
 // Extension-host side of the project setup routes
 // (`GET/PUT /api/projects/:projectId/config`): the webview cannot reach the
 // filesystem, so it bridges here and this module reads and writes
-// `~/.config/openchamber/projects/<projectId>.json` with the same rules the
-// OpenChamber server applies (`project-setup.ts`). Server-owned keys in the
+// `~/.config/alcode/projects/<projectId>.json` with the same rules the
+// Alcode server applies (`project-setup.ts`). Server-owned keys in the
 // file (`version`, `scheduledTasks`) and keys from newer builds survive a
 // write untouched.
 
@@ -13,6 +13,7 @@ import path from 'node:path';
 
 import {
   EMPTY_SHARED_PROJECT_CONFIG,
+  LEGACY_SHARED_CONFIG_RELATIVE_PATH,
   ProjectSetupValidationError,
   SHARED_CONFIG_RELATIVE_PATH,
   applySharedProjectSetupPatch,
@@ -96,9 +97,9 @@ const writeJsonAtomic = async (filePath: string, text: string): Promise<void> =>
   }
 };
 
-/** A store over one projects directory; the default is the shared OpenChamber one. */
+/** A store over one projects directory; the default is the shared Alcode one. */
 export const createProjectSetupStore = (
-  projectsDir: string = path.join(os.homedir(), '.config', 'openchamber', 'projects'),
+  projectsDir: string = path.join(os.homedir(), '.config', 'alcode', 'projects'),
 ): ProjectSetupStore => {
   const filePathFor = (projectId: string): string => path.join(projectsDir, `${projectConfigFileStemOf(sanitizeProjectId(projectId))}.json`);
   // Where a build before the bounded name stored a long id's file, or null
@@ -134,6 +135,7 @@ export const createProjectSetupStore = (
     return projectPathFromId(projectId) || (typeof storedPath === 'string' ? storedPath.trim() : '');
   };
   const sharedConfigPathOf = (projectPath: string): string => path.join(projectPath, ...SHARED_CONFIG_RELATIVE_PATH.split('/'));
+  const legacySharedConfigPathOf = (projectPath: string): string => path.join(projectPath, ...LEGACY_SHARED_CONFIG_RELATIVE_PATH.split('/'));
 
   const readShared = async (projectId: string, personalRaw: Record<string, unknown>): Promise<SharedProjectConfigRead> => {
     const projectPath = projectPathOf(projectId, personalRaw);
@@ -142,8 +144,19 @@ export const createProjectSetupStore = (
     try {
       raw = await fs.promises.readFile(sharedConfigPathOf(projectPath), 'utf8');
     } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return { status: 'missing' };
-      return { status: 'invalid', reason: error instanceof Error ? error.message : String(error) };
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        // The pre-rename location is a read fallback only; writes go to the new path.
+        try {
+          raw = await fs.promises.readFile(legacySharedConfigPathOf(projectPath), 'utf8');
+        } catch (legacyError) {
+          if (legacyError instanceof Error && 'code' in legacyError && legacyError.code === 'ENOENT') {
+            return { status: 'missing' };
+          }
+          return { status: 'invalid', reason: legacyError instanceof Error ? legacyError.message : String(legacyError) };
+        }
+      } else {
+        return { status: 'invalid', reason: error instanceof Error ? error.message : String(error) };
+      }
     }
     return parseSharedProjectConfig(raw);
   };

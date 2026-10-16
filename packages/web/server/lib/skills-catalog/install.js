@@ -216,7 +216,7 @@ export async function installSkillsFromRepository({
     };
   }
 
-  const tempBase = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'openchamber-skills-install-'));
+  const tempBase = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'alcode-skills-install-'));
 
   try {
     const cloned = await cloneRepo({ cloneUrl, identity, tempDir: tempBase, ref: parsed.ref });

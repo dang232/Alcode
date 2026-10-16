@@ -7,8 +7,8 @@ const join = (...parts) => path.join(...parts);
 
 describe('stablePnpmEntrypoint', () => {
   const globalModules = join('/home/me', '.local', 'share', 'pnpm', 'global', '5', 'node_modules');
-  const storeEntry = join(globalModules, '.pnpm', '@openchamber+web@2.1.0', 'node_modules', '@openchamber', 'web', 'bin', 'cli.js');
-  const stableEntry = join(globalModules, '@openchamber', 'web', 'bin', 'cli.js');
+  const storeEntry = join(globalModules, '.pnpm', '@alcode+web@2.1.0', 'node_modules', '@alcode', 'web', 'bin', 'cli.js');
+  const stableEntry = join(globalModules, '@alcode', 'web', 'bin', 'cli.js');
 
   it('maps a pnpm store path to the version-independent link', () => {
     expect(stablePnpmEntrypoint(storeEntry, (candidate) => candidate === stableEntry)).toBe(stableEntry);
@@ -19,7 +19,7 @@ describe('stablePnpmEntrypoint', () => {
   });
 
   it('leaves npm installs alone', () => {
-    const npmEntry = join('/usr/local/lib', 'node_modules', '@openchamber', 'web', 'bin', 'cli.js');
+    const npmEntry = join('/usr/local/lib', 'node_modules', '@alcode', 'web', 'bin', 'cli.js');
     expect(stablePnpmEntrypoint(npmEntry, () => true)).toBeNull();
   });
 });

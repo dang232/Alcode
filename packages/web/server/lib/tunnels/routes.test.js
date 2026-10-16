@@ -21,7 +21,7 @@ describe('public tunnel gate', () => {
   };
 
   it('rejects the HTTP start route in enterprise mode without disturbing an existing tunnel', async () => {
-    process.env.OPENCHAMBER_ENTERPRISE_MODE = '1';
+    process.env.ALCODE_ENTERPRISE_MODE = '1';
     try {
       const { runtime, getStarts } = createRuntime();
       const routes = new Map();
@@ -32,7 +32,7 @@ describe('public tunnel gate', () => {
       });
       let status = 200;
       let body;
-      await routes.get('POST /api/openchamber/tunnel/start')({ body: {} }, {
+      await routes.get('POST /api/alcode/tunnel/start')({ body: {} }, {
         status(code) { status = code; return this; },
         json(payload) { body = payload; return this; },
       });
@@ -40,19 +40,19 @@ describe('public tunnel gate', () => {
       expect(body.code).toBe('enterprise_mode');
       expect(getStarts()).toBe(0);
     } finally {
-      delete process.env.OPENCHAMBER_ENTERPRISE_MODE;
+      delete process.env.ALCODE_ENTERPRISE_MODE;
     }
   });
 
   it('refuses every tunnel in enterprise mode', async () => {
-    process.env.OPENCHAMBER_ENTERPRISE_MODE = '1';
+    process.env.ALCODE_ENTERPRISE_MODE = '1';
     try {
       const { runtime, getStarts } = createRuntime();
       await expect(runtime.startTunnelWithNormalizedRequest({ provider: 'cloudflare', mode: 'quick' }))
         .rejects.toThrow('enterprise mode');
       expect(getStarts()).toBe(0);
     } finally {
-      delete process.env.OPENCHAMBER_ENTERPRISE_MODE;
+      delete process.env.ALCODE_ENTERPRISE_MODE;
     }
   });
 

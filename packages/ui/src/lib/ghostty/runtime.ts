@@ -21,14 +21,16 @@ const textDecoder = new TextDecoder();
 
 // The vendored artifact is fetched at runtime; `new URL` keeps this a plain
 // static asset for Vite in every surface (web, VS Code webview, Electron's
-// openchamber-ui:// protocol) and a readable file URL under bun's test runner.
+// alcode-ui:// protocol) and a readable file URL under bun's test runner.
 const ghosttyWasmUrl = new URL('./vendor/ghostty-vt.wasm', import.meta.url);
 
 /**
  * Compiled from scripts/ghostty-write-pty.zig: one exported function that
- * forwards libghostty-vt's write-PTY callback to the `openchamber_write_pty`
- * import. Embedding the 121 bytes avoids a second network fetch and any CSP
- * question about data: URLs.
+ * forwards libghostty-vt's write-PTY callback to the write-pty import.
+ * Embedding the 121 bytes avoids a second network fetch and any CSP
+ * question about data: URLs. The embedded bytes still spell the pre-rename
+ * `openchamber_write_pty` import (regenerating them needs the zig toolchain);
+ * the import object below serves both spellings, so either byte vintage links.
  */
 const WRITE_PTY_TRAMPOLINE = Uint8Array.from([
   0, 97, 115, 109, 1, 0, 0, 0, 1, 8, 1, 96, 4, 127, 127, 127, 127, 0, 2, 29, 1, 3, 101, 110, 118,
@@ -216,13 +218,16 @@ export class GhosttyRuntime {
   }
 
   private async installWritePtyTrampoline(): Promise<void> {
+    const writePty = (_terminal: number, userdata: number, pointer: number, length: number) => {
+      const writer = this.ptyWriters.get(userdata);
+      if (!writer || length === 0) return;
+      writer(textDecoder.decode(new Uint8Array(this.memory.buffer, pointer, length)));
+    };
     const result = await WebAssembly.instantiate(WRITE_PTY_TRAMPOLINE, {
       env: {
-        openchamber_write_pty: (_terminal: number, userdata: number, pointer: number, length: number) => {
-          const writer = this.ptyWriters.get(userdata);
-          if (!writer || length === 0) return;
-          writer(textDecoder.decode(new Uint8Array(this.memory.buffer, pointer, length)));
-        },
+        alcode_write_pty: writePty,
+        // Pre-rename twin of the import above; see WRITE_PTY_TRAMPOLINE.
+        openchamber_write_pty: writePty,
       },
     });
     const trampoline = result.instance.exports.ghostty_write_pty;

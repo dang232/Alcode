@@ -14,7 +14,7 @@ const { removeWorktree } = await import('./gitService.ts?worktree-remove-test');
 const tempDirs = [];
 
 const createTempDir = () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-vscode-worktree-remove-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-vscode-worktree-remove-'));
   tempDirs.push(dir);
   return dir;
 };

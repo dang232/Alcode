@@ -1,11 +1,12 @@
 {
-  "name": "@openchamber/web",
+  "name": "@alcode/web",
   "version": "2.1.1",
   "private": false,
   "type": "module",
   "main": "./server/index.js",
   "types": "./server/index.d.ts",
   "bin": {
+    "alcode": "./bin/cli.js",
     "openchamber": "./bin/cli.js"
   },
   "publishConfig": {
@@ -13,7 +14,7 @@
   },
   "scripts": {
     "dev": "bun run build:watch",
-    "dev:server": "bun ../../scripts/build-builtin-extensions.mjs && OPENCHAMBER_RELAY_HOST=${OPENCHAMBER_RELAY_HOST:-off} OPENCHAMBER_ALLOW_DEV_ORIGINS=1 bun server/index.js --port ${OPENCHAMBER_PORT:-3001}",
+    "dev:server": "bun ../../scripts/build-builtin-extensions.mjs && ALCODE_RELAY_HOST=${ALCODE_RELAY_HOST:-off} ALCODE_ALLOW_DEV_ORIGINS=1 bun server/index.js --port ${ALCODE_PORT:-3001}",
     "dev:server:watch": "bun ../../scripts/build-builtin-extensions.mjs && node ./scripts/dev-server-watch.mjs",
     "build": "bun ../../scripts/build-builtin-extensions.mjs && NODE_OPTIONS=--max-old-space-size=6144 vite build",
     "build:watch": "bun ../../scripts/build-builtin-extensions.mjs && vite build --watch",
@@ -27,7 +28,7 @@
     "@clack/prompts": "^1.1.0",
     "@gitbeaker/rest": "43.8.0",
     "@octokit/rest": "^22.0.1",
-    "@openchamber/sdk": "workspace:*",
+    "@alcode/sdk": "workspace:*",
     "@opencode/client": "2.0.23",
     "@opencode/schema": "2.0.23",
     "@simplewebauthn/server": "13.3.3",

@@ -1,18 +1,18 @@
 ---
 title: UI-Kit
-description: Buttons, Felder, Dropdowns, Tabs, Listen und andere Bausteine aus @openchamber/sdk/ui, mit denen eine Erweiterung wie der Rest von OpenChamber aussieht.
+description: Buttons, Felder, Dropdowns, Tabs, Listen und andere Bausteine aus @alcode/sdk/ui, mit denen eine Erweiterung wie der Rest von Alcode aussieht.
 ---
 
 # UI-Kit
 
-`@openchamber/sdk/ui` ist ein Satz fertiger Bedienelemente, die Farben, Schriften und Abstände der App verwenden. So sieht deine Erweiterung aus wie der Rest von OpenChamber, ohne dass du dessen Styles kopierst. Jedes Element ist eine Funktion: Du gibst ihr ein Element, das dir gehört, und seine Einstellungen; sie zeichnet sich dort und liefert `{ update, dispose }` zurück. Du setzt die Elemente zu einem Bildschirm zusammen und behältst die Daten bei dir. Das Kit ruft nie deinen Provider oder OpenChamber auf; `host.request`, `host.attach` und den Rest rufst du weiterhin selbst. Für alles, was das Kit nicht bietet, kannst du eigenes HTML und CSS schreiben, aber greif zuerst zum Kit: Seine Elemente folgen automatisch dem Theme, den Abständen und den Tastaturgewohnheiten des Nutzers, sodass ein daraus gebautes Panel wie ein Teil von OpenChamber wirkt und nicht wie eine Website darin.
+`@alcode/sdk/ui` ist ein Satz fertiger Bedienelemente, die Farben, Schriften und Abstände der App verwenden. So sieht deine Erweiterung aus wie der Rest von Alcode, ohne dass du dessen Styles kopierst. Jedes Element ist eine Funktion: Du gibst ihr ein Element, das dir gehört, und seine Einstellungen; sie zeichnet sich dort und liefert `{ update, dispose }` zurück. Du setzt die Elemente zu einem Bildschirm zusammen und behältst die Daten bei dir. Das Kit ruft nie deinen Provider oder Alcode auf; `host.request`, `host.attach` und den Rest rufst du weiterhin selbst. Für alles, was das Kit nicht bietet, kannst du eigenes HTML und CSS schreiben, aber greif zuerst zum Kit: Seine Elemente folgen automatisch dem Theme, den Abständen und den Tastaturgewohnheiten des Nutzers, sodass ein daraus gebautes Panel wie ein Teil von Alcode wirkt und nicht wie eine Website darin.
 
 ## Zuerst `applyHostReady` aufrufen
 
 Die Elemente lesen ihre Farben aus CSS-Variablen, die `applyHostReady` auf die Seite schreibt. Es setzt außerdem Schrift und Textfarbe der App auf der Seitenwurzel, sodass auch selbst hinzugefügtes einfaches HTML richtig aussieht. Ruf es in `host.onReady` vor dem ersten Mount auf, dann folgen die Farben dem Theme der App, wenn der Nutzer es wechselt.
 
 ```ts
-import { applyHostReady } from "@openchamber/sdk/ui";
+import { applyHostReady } from "@alcode/sdk/ui";
 
 let mounted = false;
 host.onReady((ctx) => {
@@ -36,7 +36,7 @@ Für eigenes CSS stellt `applyHostReady` die Variablen `--primary-text`, `--succ
 Mounte diese Controls einmal im vorhandenen `root` des Panels:
 
 ```ts
-import { mountSelect, mountTabs } from "@openchamber/sdk/ui";
+import { mountSelect, mountTabs } from "@alcode/sdk/ui";
 
 let activeId = "convert";
 const tabs = mountTabs(root, {
@@ -87,7 +87,7 @@ Neben den Elementen kommen drei einfache Helfer mit. `filterSelectOptions(option
 ## Eine Liste mit Suche
 
 ```ts
-import { applyHostReady, mountEmpty, mountList, mountSearchField } from "@openchamber/sdk/ui";
+import { applyHostReady, mountEmpty, mountList, mountSearchField } from "@alcode/sdk/ui";
 
 let mounted = false;
 host.onReady((ctx) => {
@@ -138,10 +138,10 @@ host.onReady((ctx) => {
 
 ## Links aus Provider-Text
 
-Deine Seite läuft in einer Sandbox und kann nicht selbst einen neuen Tab öffnen. Wenn du `mountText` verwendest, gib `onOpenUrl` mit und reiche den Link an OpenChamber weiter:
+Deine Seite läuft in einer Sandbox und kann nicht selbst einen neuen Tab öffnen. Wenn du `mountText` verwendest, gib `onOpenUrl` mit und reiche den Link an Alcode weiter:
 
 ```ts
-import { mountText } from "@openchamber/sdk/ui";
+import { mountText } from "@alcode/sdk/ui";
 
 mountText(root, {
   text: comment.body,

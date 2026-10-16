@@ -2,7 +2,7 @@
   "version": 1,
   "extensions": [
     {
-      "id": "openchamber-builtin-dag-pane",
+      "id": "alcode-builtin-dag-pane",
       "directory": "dag-pane",
       "files": [
         "panel/index.html",

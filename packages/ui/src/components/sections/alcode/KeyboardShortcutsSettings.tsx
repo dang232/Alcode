@@ -1,0 +1,156 @@
+import React from 'react';
+import { Button } from '@/components/ui/button';
+import { SettingsFieldRow, SettingsSection } from '@/components/sections/shared/SettingsSection';
+import { useUIStore } from '@/stores/useUIStore';
+import { updateDesktopSettings } from '@/lib/persistence';
+import {
+  formatShortcutForDisplay,
+  getCustomizableShortcutActions,
+  getEffectiveShortcutCombo,
+  getEffectiveShortcutPrefix,
+  UNASSIGNED_SHORTCUT,
+  type ShortcutActionId,
+  type ShortcutCombo,
+  type CustomizableShortcutAction,
+} from '@/lib/shortcuts';
+import { useI18n } from '@/lib/i18n';
+import { getDesktopMiniChatGlobalShortcut, setDesktopMiniChatGlobalShortcut } from '@/lib/desktop';
+import { ShortcutRecordingDialog } from './ShortcutRecordingDialog';
+
+const CATEGORIES = ['session', 'models', 'panels', 'navigation', 'application'] as const;
+
+export const KeyboardShortcutsSettings: React.FC = () => {
+  const { t } = useI18n();
+  const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
+  const setShortcutOverride = useUIStore((state) => state.setShortcutOverride);
+  const clearShortcutOverride = useUIStore((state) => state.clearShortcutOverride);
+  const resetAllShortcutOverrides = useUIStore((state) => state.resetAllShortcutOverrides);
+  const [editingAction, setEditingAction] = React.useState<CustomizableShortcutAction | null>(null);
+  // The OS-level Mini Chat combo lives in the desktop setting, not in
+  // shortcutOverrides; feed it to the recorder as a conflict source.
+  const [globalMiniChatCombo, setGlobalMiniChatCombo] = React.useState<ShortcutCombo | null>(null);
+  const refreshGlobalMiniChatCombo = React.useCallback(() => {
+    void getDesktopMiniChatGlobalShortcut()
+      .then((status) => setGlobalMiniChatCombo(status?.combo ?? null))
+      .catch(() => {});
+  }, []);
+  React.useEffect(() => {
+    refreshGlobalMiniChatCombo();
+  }, [refreshGlobalMiniChatCombo]);
+
+  const actions = React.useMemo(() => getCustomizableShortcutActions(), []);
+  const persist = (nextOverrides: Record<string, ShortcutCombo>) => {
+    void updateDesktopSettings({ shortcutOverrides: nextOverrides });
+  };
+  const save = (
+    actionId: ShortcutActionId,
+    combo: ShortcutCombo,
+    replaceActionId?: ShortcutActionId,
+  ) => {
+    const nextOverrides = { ...shortcutOverrides, [actionId]: combo };
+    setShortcutOverride(actionId, combo);
+    if (replaceActionId === 'mini_chat_global') {
+      // Releasing the OS-level Mini Chat combo goes through the desktop
+      // setting; the overrides only carried it as a conflict source.
+      void setDesktopMiniChatGlobalShortcut(null).then((status) => {
+        if (status) setGlobalMiniChatCombo(status.combo);
+      });
+    } else if (replaceActionId) {
+      nextOverrides[replaceActionId] = UNASSIGNED_SHORTCUT;
+      setShortcutOverride(replaceActionId, UNASSIGNED_SHORTCUT);
+    }
+    persist(nextOverrides);
+  };
+  const resetOne = (actionId: ShortcutActionId) => {
+    const nextOverrides = { ...shortcutOverrides };
+    delete nextOverrides[actionId];
+    clearShortcutOverride(actionId);
+    persist(nextOverrides);
+  };
+  const shortcutDisplay = (action: CustomizableShortcutAction): string => {
+    const isPrefixStyle = 'prefixStyle' in action && action.prefixStyle;
+    const combo = isPrefixStyle
+      ? getEffectiveShortcutPrefix(action.id, shortcutOverrides)
+      : getEffectiveShortcutCombo(action.id, shortcutOverrides);
+    const formatted = formatShortcutForDisplay(
+      combo,
+      t('settings.alcode.keyboardShortcuts.unassigned'),
+    );
+    if (!isPrefixStyle || !combo || combo === UNASSIGNED_SHORTCUT) return formatted;
+    const suffix = action.id === 'switch_session_tab'
+      ? t('settings.alcode.keyboardShortcuts.action.switch_session_tab.suffix')
+      : t('settings.alcode.keyboardShortcuts.action.switch_context_surface.suffix');
+    return `${formatted}${suffix}`;
+  };
+
+  return (
+    <>
+      {CATEGORIES.map((category, categoryIndex) => {
+        const categoryActions = actions.filter((action) => action.category === category);
+        if (categoryActions.length === 0) return null;
+        return (
+          <SettingsSection
+            key={category}
+            settingsItem={categoryIndex === 0 ? 'shortcuts.keyboard-shortcuts' : undefined}
+            title={t(`settings.alcode.keyboardShortcuts.category.${category}`)}
+            divider={categoryIndex !== 0}
+            info={categoryIndex === 0 ? t('settings.alcode.keyboardShortcuts.tooltip') : undefined}
+            headerAction={categoryIndex === 0 ? (
+              <Button type="button" variant="outline" size="xs" className="!font-normal" onClick={() => {
+                resetAllShortcutOverrides();
+                persist({});
+              }}>
+                {t('settings.alcode.keyboardShortcuts.actions.resetAll')}
+              </Button>
+            ) : undefined}
+          >
+            <div className="space-y-2">
+              {categoryActions.map((action) => (
+                <SettingsFieldRow key={action.id} label={t(action.settingsLabelKey)}>
+                  <kbd
+                    className="min-w-32 rounded-md border border-border bg-muted px-2 py-1 text-center typography-meta font-mono text-foreground"
+                  >
+                    {shortcutDisplay(action)}
+                  </kbd>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
+                    className="!font-normal"
+                    onClick={() => {
+                      refreshGlobalMiniChatCombo();
+                      setEditingAction(action);
+                    }}
+                  >
+                    {t('settings.alcode.keyboardShortcuts.actions.edit')}
+                  </Button>
+                  {action.id in shortcutOverrides ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      className="!font-normal"
+                      onClick={() => resetOne(action.id)}
+                    >
+                      {t('settings.common.actions.reset')}
+                    </Button>
+                  ) : null}
+                </SettingsFieldRow>
+              ))}
+            </div>
+          </SettingsSection>
+        );
+      })}
+      <ShortcutRecordingDialog
+        action={editingAction}
+        overrides={globalMiniChatCombo
+          ? { ...shortcutOverrides, mini_chat_global: globalMiniChatCombo }
+          : shortcutOverrides}
+        onSave={save}
+        onOpenChange={(open) => {
+          if (!open) setEditingAction(null);
+        }}
+      />
+    </>
+  );
+};

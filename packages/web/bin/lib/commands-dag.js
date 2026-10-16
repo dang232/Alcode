@@ -1,4 +1,4 @@
-// `openchamber dag` — text-only run visibility for OmO sessions
+// `alcode dag` — text-only run visibility for OmO sessions
 // (project-ide todo 13: CLI parity for the DAG side pane, no pane here).
 //
 // `dag status` prints the bridge snapshot file the adapter-A writer
@@ -268,11 +268,11 @@ const clackOutroIfHuman = (options, result) => {
 
 export function showDagHelp() {
   console.log(`
- OpenChamber DAG - text-only run visibility for OmO sessions
+ Alcode DAG - text-only run visibility for OmO sessions
 
 USAGE:
-  openchamber dag status --session <id> [--snapshot-dir <dir>]
-  openchamber dag stream --message <text> [--session <id>] [--port <n> | --attach <url>]
+  alcode dag status --session <id> [--snapshot-dir <dir>]
+  alcode dag stream --message <text> [--session <id>] [--port <n> | --attach <url>]
 
 SUBCOMMANDS:
   status         Print the snapshot for one run session

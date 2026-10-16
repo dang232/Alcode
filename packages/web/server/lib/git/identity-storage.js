@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { withSourceControlFileLockSync } from '../source-control/file-lock.js';
 
 const FILE_NAME = 'git-identities.json';
-const legacyDataDir = () => path.join(os.homedir(), '.config', 'openchamber');
+const legacyDataDir = () => path.join(os.homedir(), '.config', 'alcode');
 const isPlainObject = (value) => value === Object(value)
   && !Array.isArray(value)
   && Object.getPrototypeOf(value) === Object.prototype;
@@ -251,8 +251,8 @@ export function createGitIdentityStore({
 const stores = new Map();
 const defaultStore = () => {
   const oldFilePath = path.join(legacyDataDir(), FILE_NAME);
-  const dataDir = process.env.OPENCHAMBER_DATA_DIR
-    ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
+  const dataDir = process.env.ALCODE_DATA_DIR
+    ? path.resolve(process.env.ALCODE_DATA_DIR)
     : legacyDataDir();
   const filePath = path.join(dataDir, FILE_NAME);
   let store = stores.get(filePath);

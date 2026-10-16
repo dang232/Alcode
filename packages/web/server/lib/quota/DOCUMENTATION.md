@@ -22,7 +22,7 @@ These provider IDs are currently dispatchable via `fetchQuotaForProvider(provide
 
 Where this table says "OpenCode `auth.json`", the credential is the one the
 running OpenCode uses (stored, or from an environment variable when
-OpenChamber launched OpenCode), read through `../opencode/auth.js` (`GET
+Alcode launched OpenCode), read through `../opencode/auth.js` (`GET
 /api/credential`, see the opencode module docs); the name is the legacy shape
 the entries keep. The provider list reads it once and hands it to every
 `isConfigured(auth)`; each `fetchQuota` reads it again. When OpenCode cannot be
@@ -34,10 +34,10 @@ asked, `/api/quota/providers` answers 500 instead of an empty list.
 | `cline-pass` | ClinePass | `providers/cline-pass.js` | `cline-pass` (API key under `key` or `token`) |
 | `codex` | Codex | `providers/codex.js` | `openai`, `codex`, `chatgpt` |
 | `command-code` | Command Code | `providers/command-code.js` | `command-code` OAuth/API credential in OpenCode `auth.json`, or `COMMAND_CODE_API_KEY` |
-| `cursor` | Cursor | `providers/cursor.js` | Environment/token files, OpenChamber-managed credentials, or explicit one-time Cursor import |
+| `cursor` | Cursor | `providers/cursor.js` | Environment/token files, Alcode-managed credentials, or explicit one-time Cursor import |
 | `deepinfra` | DeepInfra | `providers/deepinfra.js` | `deepinfra`, `deep-infra`, `deep_infra` (API key under `key` or `token`) |
 | `deepseek` | DeepSeek | `providers/deepseek.js` | `deepseek` (API key under `key` or `token`) |
-| `exe-dev` | exe.dev | `providers/exe-dev.js` | Usage API token stored under `~/.config/openchamber/quota/` |
+| `exe-dev` | exe.dev | `providers/exe-dev.js` | Usage API token stored under `~/.config/alcode/quota/` |
 | `google` | Google | `providers/google/index.js` | `google`, `google.oauth`, Antigravity accounts file |
 | `hyper` | Charm Hyper | `providers/hyper.js` | `hyper` (API key under `key` or `token`) |
 | `github-copilot` | GitHub Copilot | `providers/copilot.js` | `github-copilot`, `copilot` |
@@ -49,12 +49,12 @@ asked, `/api/quota/providers` answers 500 instead of an empty list.
 | `zhipuai-coding-plan` | Zhipu AI Coding Plan | `providers/zhipuai-coding-plan.js` | `zhipuai-coding-plan`, `zhipuai`, `zhipu`; falls back to `provider.<alias>.options.apiKey` in opencode.json, resolving `{file:...}` (including `~/`) and `{env:...}` with `resolveConfigApiKey` (`utils/auth.js`) |
 | `minimax-coding-plan` | MiniMax Coding Plan (minimax.io) | `providers/minimax-coding-plan.js` / `providers/minimax-shared.js` | `minimax-coding-plan` |
 | `minimax-cn-coding-plan` | MiniMax Coding Plan (minimaxi.com) | `providers/minimax-cn-coding-plan.js` / `providers/minimax-shared.js` | `minimax-cn-coding-plan` |
-| `ollama-cloud` | Ollama Cloud | `providers/ollama-cloud.js` | Manual cookie pasted into Settings (`aid=...; __Secure-session=...` from `ollama.com`), stored under `~/.config/openchamber/quota/` |
+| `ollama-cloud` | Ollama Cloud | `providers/ollama-cloud.js` | Manual cookie pasted into Settings (`aid=...; __Secure-session=...` from `ollama.com`), stored under `~/.config/alcode/quota/` |
 | `wafer` | Wafer.ai | `providers/wafer.js` | `wafer`, `wafer-ai`, `wafer_ai`, `wafer.ai` |
 | `opencode-go` | OpenCode Go | `providers/opencode-go.js` | `opencode-go` API key from OpenCode `auth.json` |
 | `neuralwatt` | NeuralWatt | `providers/neuralwatt.js` | `neuralwatt` (API key under `key` or `token`) |
 | `kilo` | Kilo Code | `providers/kilo.js` | `kilo`, `kilocode`, `kilo-code` (API key under `key`, `token`, or OAuth `access`; organization id under `kilocodeOrganizationId`, `organizationId`, or OAuth `accountId`, else OpenCode `provider.kilo.options.kilocodeOrganizationId`) |
-| `zenmux` | ZenMux | `providers/zenmux.js` | Optional Platform API key stored under `~/.config/openchamber/quota/zenmux.json` (`platformApiKey`). The OpenCode chat key is not used. |
+| `zenmux` | ZenMux | `providers/zenmux.js` | Optional Platform API key stored under `~/.config/alcode/quota/zenmux.json` (`platformApiKey`). The OpenCode chat key is not used. |
 | `xai` | xAI | `providers/xai.js` | `xai` OAuth entry in OpenCode `auth.json` |
 
 ## Internal-only provider module
@@ -69,11 +69,11 @@ All providers should return results via shared helpers to preserve API shape:
 Provider modules must export `providerId`, `providerName`, `aliases`, `isConfigured(auth?)`, and `fetchQuota()`.
 `fetchQuota()` should return a quota result with `usage.windows` keyed by window name (for example `5h`, `7d`, `daily`) and optional provider-specific `usage.models` data.
 
-exe.dev, Ollama Cloud, Cursor, and ZenMux credentials are explicitly managed through Settings. exe.dev usage uses a separately generated HTTPS API token restricted to `billing credits usage` and aggregates every `exe-*` model provider into one monthly credit window. Generate the token with `ssh exe.dev "ssh-key generate-api-key --label=openchamber --exp=30d --cmds='billing credits usage'"`. ZenMux usage uses an optional Platform API key pasted on the Usage page; the OpenCode chat key is never used, and a missing Platform API key means ZenMux quota is not fetched. OpenCode Go usage uses `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` API key from OpenCode `auth.json` as a bearer token and the stable `x-opencode-session: openchamber-usage` workload id. The server validates managed credentials before atomic `0600` writes and never returns secrets through its API. OpenChamber never scans browser cookie stores or automatically reads Cursor storage; Cursor import is an explicit one-time user action and never modifies Cursor's database.
+exe.dev, Ollama Cloud, Cursor, and ZenMux credentials are explicitly managed through Settings. exe.dev usage uses a separately generated HTTPS API token restricted to `billing credits usage` and aggregates every `exe-*` model provider into one monthly credit window. Generate the token with `ssh exe.dev "ssh-key generate-api-key --label=alcode --exp=30d --cmds='billing credits usage'"`. ZenMux usage uses an optional Platform API key pasted on the Usage page; the OpenCode chat key is never used, and a missing Platform API key means ZenMux quota is not fetched. OpenCode Go usage uses `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` API key from OpenCode `auth.json` as a bearer token and the stable `x-opencode-session: alcode-usage` workload id. The server validates managed credentials before atomic `0600` writes and never returns secrets through its API. Alcode never scans browser cookie stores or automatically reads Cursor storage; Cursor import is an explicit one-time user action and never modifies Cursor's database.
 
 Command Code usage resolves account scope through `GET /alpha/whoami`, then reads server-backed credit balances and five-hour/weekly limits from `GET /alpha/billing/credits?orgId=...`. Personal accounts return `org: null` and use `/alpha/billing/credits` without an `orgId`; organization accounts include their organization id. Web/Electron and VS Code read the standard `command-code` OpenCode auth entry (including OAuth `access`) or `COMMAND_CODE_API_KEY`; credentials remain in the owning runtime and are never returned to shared UI.
 
-On the first OpenCode Go usage refresh after upgrading, OpenChamber deletes the obsolete `quota/opencode-go.json` credential file without reading its cookie value.
+On the first OpenCode Go usage refresh after upgrading, Alcode deletes the obsolete `quota/opencode-go.json` credential file without reading its cookie value.
 
 ## Codex credit balance semantics
 
@@ -84,7 +84,7 @@ Codex `credits.balance` is an OpenAI credit count, not a dollar amount. Web/Elec
 Claude quota reports the subscription limits Claude Code itself is bound by, read from `GET https://api.anthropic.com/api/oauth/usage`.
 
 - **Credential sources**, in priority order: the macOS Keychain entry `Claude Code-credentials`, then `${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json` (the Linux/WSL location), then the OpenCode `auth.json` entry, then `CLAUDE_CODE_OAUTH_TOKEN`. The Keychain wins on macOS because the credentials file there is a leftover Claude Code no longer updates.
-- **All sources are read-only.** OpenChamber never writes to Claude Code's credential store and never refreshes the OAuth token, because Anthropic does not support two live refresh tokens for one `client_id` — refreshing here would sign the user out of Claude Code. Credentials are read fresh per request so a Claude Code refresh is picked up immediately; an expired token yields an explicit "open Claude Code to sign in again" error rather than a bare 401.
+- **All sources are read-only.** Alcode never writes to Claude Code's credential store and never refreshes the OAuth token, because Anthropic does not support two live refresh tokens for one `client_id` — refreshing here would sign the user out of Claude Code. Credentials are read fresh per request so a Claude Code refresh is picked up immediately; an expired token yields an explicit "open Claude Code to sign in again" error rather than a bare 401.
 - **Limits come from the `limits` array**, keyed by `kind`: `session` maps to the `5h` window, `weekly_all` to `7d`, and `weekly_scoped` to a per-model `7d` window named by `scope.model.display_name`. The legacy `five_hour`/`seven_day` fields are only a fallback; `seven_day_sonnet`/`seven_day_opus` are no longer populated by Anthropic. Unrecognized limit kinds and Anthropic's rotating internal code names (`nimbus_quill`, `tangelo`, ...) are ignored rather than guessed at.
 - **Extra usage** is reported as the `extra_usage` window from `spend`, only while `spend.enabled` is true, with a money `valueLabel`.
 - **Rate limiting**: Anthropic returns 429 aggressively. The last successful usage payload is cached in memory and reserved during a cooldown (`Retry-After`, else five minutes, capped at one hour). The cache is keyed by a hash of the access and refresh tokens, so switching accounts drops it instead of showing the previous account's numbers.
@@ -94,7 +94,7 @@ Claude quota reports the subscription limits Claude Code itself is bound by, rea
 
 xAI quota reports the SuperGrok billing cycle from `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig` (gRPC-web, an empty-body request), authenticated with the `xai` OAuth entry's access token read from OpenCode.
 
-- **Credentials are read-only.** OpenChamber never refreshes the xAI OAuth token. xAI rotates (and rejects the previous) refresh token on every exchange, and OpenCode 2.x owns the credential store without exposing a refresh route, so a quota-side refresh would consume the token OpenCode still holds and force the user to re-authorize ("Grok expired every morning"). The provider uses the stored access token while it is valid and returns an explicit expired error (no `auth.x.ai` call) once it is stale, matching the Claude provider's "sign in again" handling; OpenCode's own refresh persists the rotated pair.
+- **Credentials are read-only.** Alcode never refreshes the xAI OAuth token. xAI rotates (and rejects the previous) refresh token on every exchange, and OpenCode 2.x owns the credential store without exposing a refresh route, so a quota-side refresh would consume the token OpenCode still holds and force the user to re-authorize ("Grok expired every morning"). The provider uses the stored access token while it is valid and returns an explicit expired error (no `auth.x.ai` call) once it is stale, matching the Claude provider's "sign in again" handling; OpenCode's own refresh persists the rotated pair.
 - **Skipping the standalone refresh also required OpenCode 2.x**: the pre-2.x `auth.json` write path no longer exists (`packages/web/server/lib/opencode/auth.js` is read-only), so there is nowhere correct to persist a rotated pair.
 - Keep `packages/web/server/lib/quota/providers/xai.js` and `packages/vscode/src/quotaProviders.ts` (`fetchXaiQuota`) in sync — the VS Code extension duplicates this logic rather than importing the web provider.
 

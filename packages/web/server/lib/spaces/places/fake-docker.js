@@ -137,7 +137,7 @@ const CONTROL_ANSWERS = {
   '/grants': jsonAnswer('{"ok":true}'),
 };
 
-const roleOf = (args) => readPairs(args, '--label')['openchamber.space.role'];
+const roleOf = (args) => readPairs(args, '--label')['alcode.space.role'];
 
 const readMounts = (args) => args
   .filter((arg, index) => args[index - 1] === '--mount')
@@ -249,7 +249,7 @@ export function createFakeDocker({
     const container = args[args.indexOf('--user') + 2];
     const argv = args.slice(args.indexOf('--user') + 3);
     if (!state.get(`container:${container}`)?.entry.State.Running) return failed(`Error response from daemon: container ${container} is not running`);
-    if (state.get(`container:${container}`).entry.Config.Labels?.['openchamber.space.role'] === 'gatekeeper') {
+    if (state.get(`container:${container}`).entry.Config.Labels?.['alcode.space.role'] === 'gatekeeper') {
       if (argv[0] === IMAGE_SH && argv[2].includes(`${GATEKEEPER_PROGRAM_PATH}.new`)) {
         programs.set(container, String(stdin));
         return ok();
@@ -286,7 +286,7 @@ export function createFakeDocker({
     if (result.code !== 0) return result;
     if (!stuck) state.delete(`container:${readFlag(args, '--name')}`);
     if (fails) return failed('Error response from daemon: simulated failure');
-    if (role === 'tools-fill' && !stuck) filled.set(toolsMount.volume, readPairs(args, '--label')['openchamber.space.tools.key']);
+    if (role === 'tools-fill' && !stuck) filled.set(toolsMount.volume, readPairs(args, '--label')['alcode.space.tools.key']);
     return result;
   };
 

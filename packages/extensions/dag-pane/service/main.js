@@ -1,24 +1,26 @@
 // DAG pane local service entry (project-ide todo 13).
 //
 // Host-spawned with the app runtime: binds 127.0.0.1 on
-// OPENCHAMBER_SERVICE_PORT, checks `Authorization: Bearer
-// OPENCHAMBER_SERVICE_TOKEN` on every request including /health, and proxies
+// ALCODE_SERVICE_PORT, checks `Authorization: Bearer
+// ALCODE_SERVICE_TOKEN` on every request including /health, and proxies
 // the guest's serviceRequest calls onto `createDagServiceHandlers` (which
-// owns the adapter-A bridge). Listens on loopback only, never 0.0.0.0.
+// owns the adapter-A bridge). The legacy OPENCHAMBER_SERVICE_PORT/TOKEN
+// names still work; ALCODE_* wins when both are set. Listens on loopback
+// only, never 0.0.0.0.
 // Shipped built (plain Node JS); the host never compiles TypeScript.
 import http from 'node:http';
 
 import { createDagServiceHandlers, DAG_SERVICE_MAX_BODY_BYTES } from './handlers.js';
 
-const port = Number.parseInt(process.env.OPENCHAMBER_SERVICE_PORT ?? '', 10);
-const token = process.env.OPENCHAMBER_SERVICE_TOKEN ?? '';
+const port = Number.parseInt(process.env.ALCODE_SERVICE_PORT ?? process.env.OPENCHAMBER_SERVICE_PORT ?? '', 10);
+const token = process.env.ALCODE_SERVICE_TOKEN ?? process.env.OPENCHAMBER_SERVICE_TOKEN ?? '';
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  console.error('openchamber-builtin-dag-pane service: OPENCHAMBER_SERVICE_PORT is missing or invalid.');
+  console.error('alcode-builtin-dag-pane service: ALCODE_SERVICE_PORT is missing or invalid.');
   process.exit(1);
 }
 if (token.length === 0) {
-  console.error('openchamber-builtin-dag-pane service: OPENCHAMBER_SERVICE_TOKEN is missing.');
+  console.error('alcode-builtin-dag-pane service: ALCODE_SERVICE_TOKEN is missing.');
   process.exit(1);
 }
 
@@ -76,5 +78,5 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`openchamber-builtin-dag-pane service ready on 127.0.0.1:${port}`);
+  console.log(`alcode-builtin-dag-pane service ready on 127.0.0.1:${port}`);
 });

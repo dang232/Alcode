@@ -65,7 +65,7 @@ describe('spaces-api', () => {
     const seen = answer(200, JSON.stringify({ enabled: false, hours: 12 }));
     expect(await setSpaceIdleStop({ enabled: false, hours: 12 })).toEqual({ enabled: false, hours: 12 });
     expect(seen[0].method).toBe('PUT');
-    expect(new URL(seen[0].url).pathname).toBe('/api/openchamber/spaces/idle-stop');
+    expect(new URL(seen[0].url).pathname).toBe('/api/alcode/spaces/idle-stop');
     expect(await seen[0].json()).toEqual({ enabled: false, hours: 12 });
     answer(200, JSON.stringify({ enabled: true, hours: 500 }));
     expect(await readSpaceIdleStop().catch((error: Error) => error)).toMatchObject({ code: 'space_answer_malformed' });
@@ -96,7 +96,7 @@ describe('spaces-api', () => {
     const seen = answer(202, JSON.stringify(entry));
     await createSpace({ projectDirectory: '/home/me/app', name: 'Fix login', start: 'clean', network: { mode: 'open', domains: [] }, setupCommands: ['npm ci'] });
     expect(seen[0]?.method).toBe('POST');
-    expect(new URL(seen[0]?.url ?? '').pathname).toBe('/api/openchamber/spaces');
+    expect(new URL(seen[0]?.url ?? '').pathname).toBe('/api/alcode/spaces');
     expect(await seen[0]?.json()).toEqual({ projectDirectory: '/home/me/app', name: 'Fix login', start: 'clean', network: { mode: 'open', domains: [] }, setupCommands: ['npm ci'] });
   });
 });
@@ -107,12 +107,12 @@ describe('the disk of a place', () => {
   test('reads the disk of a place, and a clean-up is a POST that answers what was freed and the disk after', async () => {
     const reads = answer(200, JSON.stringify(disk));
     expect(await readSpaceDisk('docker')).toEqual(disk);
-    expect(new URL(reads[0].url).pathname).toBe('/api/openchamber/spaces/places/docker/disk');
+    expect(new URL(reads[0].url).pathname).toBe('/api/alcode/spaces/places/docker/disk');
     const cleaned = { freedBytes: 1_632_000_000, kept: [{ kind: 'tools', reason: 'in_use' }], disk: { ...disk, imageBytes: null, freeBytes: 0, freesImage: false } };
     const posts = answer(200, JSON.stringify(cleaned));
     expect(await cleanUpSpaceDisk('docker')).toEqual(cleaned);
     expect(posts[0].method).toBe('POST');
-    expect(new URL(posts[0].url).pathname).toBe('/api/openchamber/spaces/places/docker/clean-up');
+    expect(new URL(posts[0].url).pathname).toBe('/api/alcode/spaces/places/docker/clean-up');
   });
 
   test('a failed read of the disk is thrown with its code, never answered as an empty disk', async () => {
@@ -140,7 +140,7 @@ describe('the journal and opened domains', () => {
     const seen = answer(200, JSON.stringify({ ...entry, state: 'running', setup: { state: 'running', index: 0, total: 1, command: 'npm ci' } }));
     expect((await runSpaceSetup(ID, ['npm ci'])).setup).toEqual({ state: 'running', index: 0, total: 1, command: 'npm ci' });
     expect(seen[0]?.method).toBe('POST');
-    expect(new URL(seen[0]?.url ?? '').pathname).toBe(`/api/openchamber/spaces/${ID}/setup`);
+    expect(new URL(seen[0]?.url ?? '').pathname).toBe(`/api/alcode/spaces/${ID}/setup`);
     expect(await seen[0]?.json()).toEqual({ commands: ['npm ci'] });
 
     answer(200, JSON.stringify({ setup: failed, output: 'npm ERR! 403' }));
@@ -153,7 +153,7 @@ describe('the journal and opened domains', () => {
     const seen = answer(200, JSON.stringify({ network: { mode: 'allowlist', domains: ['registry.npmjs.org'] } }));
     expect(await openSpaceDomain(ID, 'registry.npmjs.org')).toEqual({ mode: 'allowlist', domains: ['registry.npmjs.org'] });
     expect(seen[0].method).toBe('POST');
-    expect(new URL(seen[0].url).pathname).toBe(`/api/openchamber/spaces/${ID}/network/domains`);
+    expect(new URL(seen[0].url).pathname).toBe(`/api/alcode/spaces/${ID}/network/domains`);
     expect(await seen[0].json()).toEqual({ domain: 'registry.npmjs.org' });
   });
 

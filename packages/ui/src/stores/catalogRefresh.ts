@@ -2,7 +2,7 @@
  * Re-reads the Settings-facing lists after OpenCode rebuilt a catalog.
  *
  * OpenCode v2 watches its own config files and publishes what it rebuilt, so a
- * file written by OpenChamber, by the user's editor, or by another client all
+ * file written by Alcode, by the user's editor, or by another client all
  * arrive the same way. The sync layer refreshes its own slices; this module
  * refreshes the stores the Settings pages and the composer read, so an agent
  * added on disk shows up in the list without anyone pressing a button.
@@ -123,7 +123,7 @@ export function catalogRefreshTasks(
     case "credential":
       return [refreshProvidersAfterCredentialChange, refreshWebSearchIfLoaded];
     // A config file can carry any of them (a provider declared in
-    // opencode.json included), and OpenChamber's own plugin injection lives
+    // opencode.json included), and Alcode's own plugin injection lives
     // in one, so the whole set is re-read.
     case "config":
       return [() => refreshAgents(eventDirectories), refreshCommands, refreshSkills, refreshMcp, refreshPlugins, refreshProviders, refreshWebSearchIfLoaded];

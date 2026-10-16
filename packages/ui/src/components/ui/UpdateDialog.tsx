@@ -33,7 +33,7 @@ interface UpdateDialogProps {
   runtimeType?: 'desktop' | 'web' | 'vscode' | 'mobile' | null;
 }
 
-const GITHUB_RELEASES_URL = 'https://github.com/openchamber/openchamber/releases';
+const GITHUB_RELEASES_URL = 'https://github.com/dang232/Alcode/releases';
 
 type ChangelogSection = {
   version: string;
@@ -142,7 +142,7 @@ export const UpdateDialog: React.FC<UpdateDialogProps> = ({
 
   const isWebRuntime = runtimeType === 'web';
   const isMobileRuntime = runtimeType === 'mobile';
-  const updateCommand = info?.updateCommand || 'openchamber update';
+  const updateCommand = info?.updateCommand || 'alcode update';
 
   // Reset state when dialog closes
   useEffect(() => {

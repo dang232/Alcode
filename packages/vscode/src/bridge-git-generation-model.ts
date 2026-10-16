@@ -2,7 +2,7 @@
 // the choice is unit-tested without `vscode`; the catalog lookup is injected.
 //
 // Order: the request's explicit model, then the user's small-model override
-// from OpenChamber settings (the same setting every other utility generation in
+// from Alcode settings (the same setting every other utility generation in
 // the product uses), then the zen fallback.
 
 export const BRIDGE_ZEN_DEFAULT_MODEL = 'gpt-5-nano';

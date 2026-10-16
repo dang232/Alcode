@@ -21,7 +21,7 @@ changelog-*.png
 *.vsix
 /npm
 /tsc
-/openchamber@*
+/alcode@*
 local-dev*
 .tmp/
 /tmp/
@@ -72,8 +72,9 @@ workspaces/
 *.pid
 .worktrees/
 
-# OpenChamber app runtime state (sessions db, screenshots)
+# Alcode app runtime state (sessions db, screenshots)
 .openchamber/screenshots/
+.alcode/screenshots/
 
 # Marks a disposable clone dedicated to unattended maintenance tasks.
 .maintenance-clone

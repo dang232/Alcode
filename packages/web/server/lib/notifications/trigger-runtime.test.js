@@ -7,7 +7,7 @@ import { createNotificationTriggerRuntime } from './runtime.js';
  * v2 splits a turn: the step start names agent and model, the step end
  * carries the finish. What is pinned here: the finish is announced with the
  * agent and model from the start, a user abort announces nothing, and an
- * active goal (which lives in OpenChamber's own metadata) silences the push.
+ * active goal (which lives in Alcode's own metadata) silences the push.
  */
 const makeRuntime = ({ metadata = {} } = {}) => {
   const emitDesktopNotification = vi.fn(() => true);
@@ -75,9 +75,9 @@ describe('ready notification on v2 step events', () => {
     expect(emitDesktopNotification).not.toHaveBeenCalled();
   });
 
-  it('stays quiet while a goal from OpenChamber\'s own metadata is active', async () => {
+  it('stays quiet while a goal from Alcode\'s own metadata is active', async () => {
     const { runtime, emitDesktopNotification } = makeRuntime({
-      metadata: { openchamber: { goal: { id: 'g', status: 'active', objective: 'x' } } },
+      metadata: { alcode: { goal: { id: 'g', status: 'active', objective: 'x' } } },
     });
 
     await runtime.maybeSendPushForTrigger(stepStarted('ses_3', 'msg_3'));
@@ -154,7 +154,7 @@ describe('push content in enterprise mode', () => {
   it('sends only the scenario title and the deep link, on both channels', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: {} })));
-    process.env.OPENCHAMBER_ENTERPRISE_MODE = 'true';
+    process.env.ALCODE_ENTERPRISE_MODE = 'true';
     try {
       const { runtime, sendPushToAllUiSessions, sendApnsToAllUiSessions } = makePushRuntime();
       await runtime.maybeSendPushForTrigger(stepStarted('ses_e', 'msg_e'));
@@ -166,7 +166,7 @@ describe('push content in enterprise mode', () => {
       expect(sendApnsToAllUiSessions.mock.calls[0][0]).toMatchObject({ title: 'Agent response is ready', body: '' });
       expect(JSON.stringify([web, sendApnsToAllUiSessions.mock.calls[0][0]])).not.toMatch(/billing|customer/);
     } finally {
-      delete process.env.OPENCHAMBER_ENTERPRISE_MODE;
+      delete process.env.ALCODE_ENTERPRISE_MODE;
       vi.unstubAllGlobals();
     }
   });

@@ -334,7 +334,7 @@ mock.module("../session-actions", () => ({
     }
     const { useSessionUIStore: store } = await import("../session-ui-store")
     store.getState().setCurrentSession(session.id, sessionDirectory, selectionTransition)
-    store.getState().markSessionAsOpenChamberCreated(session.id)
+    store.getState().markSessionAsAlcodeCreated(session.id)
     return session
   }),
   forkAfterMessage: mock(async () => undefined),
@@ -362,7 +362,7 @@ mock.module("@/lib/git/branchNameGenerator", () => ({
   generateBranchName: () => "generated-branch",
 }))
 
-mock.module("@/lib/openchamberConfig", () => ({
+mock.module("@/lib/alcodeConfig", () => ({
   getWorktreeSetupCommands: async () => [],
   getWorktreeSetupWaitEnabled: async () => false,
 }))
@@ -642,7 +642,7 @@ describe("issue 2039 draft auto-accept", () => {
     activationPending = new Promise<void>((resolve) => { finish = resolve })
     projectsState.projects = [{ id: 'project-1', path: '/repo', defaultAgent: 'project-agent' }]
     useSessionUIStore.getState().openNewSessionDraft({ target: 'project', selectedProjectId: 'project-1', directoryOverride: '/repo' })
-    useSessionUIStore.getState().setNewSessionDraftTarget({ projectId: 'openchamber:chats' })
+    useSessionUIStore.getState().setNewSessionDraftTarget({ projectId: 'alcode:chats' })
     const appliedBeforeClose = applyDefaultModelAgentSelectionCalls.length
     useSessionUIStore.getState().closeNewSessionDraft()
     finish()
@@ -725,7 +725,7 @@ describe("issue 2039 draft auto-accept", () => {
     await materializeOpenDraftSession({ providerID: "provider", modelID: "model" })
 
     expect(createSessionCalls[0]?.metadata).toEqual({
-      openchamber: {
+      alcode: {
         project_context_pins: { notes: ["note-a"], plans: ["plan-a"] },
       },
     })

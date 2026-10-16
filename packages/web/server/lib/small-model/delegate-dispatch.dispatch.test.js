@@ -13,7 +13,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 const TEMP_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'small-model-delegate-dispatch-'));
 // Saved/restored per file: sibling suites assign their own temp dir at import
 // time, so without this the last-imported file wins for the whole process.
-const PREV_DATA_DIR = process.env.OPENCHAMBER_DATA_DIR;
+const PREV_DATA_DIR = process.env.ALCODE_DATA_DIR;
 
 const {
   generateSmallModelText,
@@ -68,7 +68,7 @@ let server;
 let baseUrl;
 
 beforeAll(async () => {
-  process.env.OPENCHAMBER_DATA_DIR = TEMP_DATA_DIR;
+  process.env.ALCODE_DATA_DIR = TEMP_DATA_DIR;
   server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const body = req.method === 'POST' ? await readBody(req) : {};
@@ -106,8 +106,8 @@ beforeAll(async () => {
 afterAll(() => {
   server?.close();
   fs.rmSync(TEMP_DATA_DIR, { recursive: true, force: true });
-  if (PREV_DATA_DIR === undefined) delete process.env.OPENCHAMBER_DATA_DIR;
-  else process.env.OPENCHAMBER_DATA_DIR = PREV_DATA_DIR;
+  if (PREV_DATA_DIR === undefined) delete process.env.ALCODE_DATA_DIR;
+  else process.env.ALCODE_DATA_DIR = PREV_DATA_DIR;
 });
 
 beforeEach(() => {
