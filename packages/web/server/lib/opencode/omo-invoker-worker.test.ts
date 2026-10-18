@@ -104,8 +104,8 @@ const makeEngineRoot = (barrel = STUB_BARREL) => {
 // records the scope it was called with and serves 25 ledger entries; the
 // throwing set proves the worker degrades to null/[] instead of crashing.
 const HAPPY_LOOP_SRC = {
-  'plan-io.ts': `export function readUlwLoopPlanSync(repoRoot: string, scope?: { sessionId?: string }): unknown {
-  const fs = require("node:fs") as typeof import("node:fs");
+  'plan-io.ts': `import fs from "node:fs";
+export function readUlwLoopPlanSync(repoRoot: string, scope?: { sessionId?: string }): unknown {
   if (process.env.OMO_WORKER_SCOPE_FILE) fs.writeFileSync(process.env.OMO_WORKER_SCOPE_FILE, JSON.stringify({ repoRoot, scope: scope ?? null }));
   return { goal: "fixture-goal", root: repoRoot };
 }

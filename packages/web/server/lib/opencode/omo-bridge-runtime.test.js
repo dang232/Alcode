@@ -1347,7 +1347,11 @@ describe('cancel (PROVISIONAL kill-with-reason)', () => {
     ].join('\n'));
     chmodSync(script, 0o755);
     const bridge = createOmoBridgeRuntime({
-      resolveEngineEntry: () => process.execPath,
+      // The wrapper entry is the executable fixture itself: the worker
+      // spawns the entry directly, and the suite may run under node
+      // (process.execPath is not a bun CLI there), so the binary is
+      // not a valid stand-in.
+      resolveEngineEntry: () => script,
       env: { OMO_NATIVE_RUN: '0', OMO_BUN_PATH: process.execPath },
     });
     const handle = bridge.invoke({ message: script, native: false });
