@@ -30,6 +30,7 @@ import {
   formatModelSelection,
   isRecord,
 } from './config-v2.js';
+import { OMO_NATIVE_AGENT_CONFIG } from '../agents/omo-native-catalog.bundle.js';
 
 // ============== AGENT SCOPE HELPERS ==============
 //
@@ -293,6 +294,30 @@ function getAgentConfig(agentName, workingDirectory, lookupCache = createAgentLo
     };
   }
 
+  // Managed-native fallback: a name the static OmO config ships (and the
+  // live child registers) but no file or json layer defines yet. Seed the
+  // editor base from the catalog entry so the v2 settings form loads real
+  // values — and so PATCH materializes an override of the real entry
+  // (updateAgent's built-in-override fallthrough) instead of an empty one.
+  // promptAppend is folded into the prompt: at runtime it is appended to
+  // the prompt, so the concatenation preserves behavior.
+  const catalogEntry = OMO_NATIVE_AGENT_CONFIG[agentName];
+  if (isRecord(catalogEntry)) {
+    const { promptAppend, ...rest } = catalogEntry;
+    const seed = { ...rest };
+    if (promptAppend !== undefined) {
+      if (seed.prompt === undefined) seed.prompt = promptAppend;
+      else seed.prompt = `${seed.prompt}\n\n${promptAppend}`;
+    }
+    return {
+      source: 'catalog',
+      scope: null,
+      path: null,
+      legacy: false,
+      config: toAgentEntity(seed),
+    };
+  }
+
   return {
     source: 'none',
     scope: null,
@@ -424,6 +449,11 @@ function applyAgentUpdates(entity, updates) {
   }
   for (const [field, value] of Object.entries(isRecord(updates) ? updates : {})) {
     if (field === 'scope' || value === undefined) continue;
+    // An empty string means "no change", not "clear": settings forms
+    // submit every field, so untouched inputs arrive as "". Letting them
+    // overwrite would gut seeded catalog values (description, system)
+    // into unusable stubs. Explicit clearing uses null (delete below).
+    if (value === '') continue;
     if (value === null) {
       deleteAgentField(next, field);
       continue;
@@ -600,8 +630,43 @@ function listDisabledAgents(workingDirectory) {
   return disabled;
 }
 
+/**
+ * Every usable user-global `.md` agent, for the managed child config.
+ *
+ * When OPENCODE_CONFIG carries an `agent` map, the child serves that map
+ * instead of the user's global agent files — so a custom agent that shares
+ * a name with a managed entry (or any custom agent at all) would silently
+ * vanish from the runtime even though Settings shows it. The managed file
+ * therefore ships these entries too, with the user's file winning on
+ * collision. Disabled agents and description-less stubs are skipped:
+ * OpenCode would not serve them either.
+ *
+ * @returns {Array<{name: string, entry: object}>} entity-shaped entries
+ *   (`system` inline — the same spelling opencode.json sections carry).
+ */
+function listUserCustomAgents() {
+  const cache = createAgentLookupCache();
+  buildUserAgentIndex(cache);
+  const customs = [];
+  for (const [name, mdPath] of [...cache.userAgentIndexByName.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    let entity;
+    try {
+      entity = readMdAgent(mdPath).entity;
+    } catch {
+      continue;
+    }
+    if (entity.disabled === true) continue;
+    // toAgentEntity only sets description for string input, so a missing or
+    // blank description means OpenCode would not serve this file either.
+    if (!entity.description?.trim()) continue;
+    customs.push({ name, entry: { ...entity } });
+  }
+  return customs;
+}
+
 export {
   listDisabledAgents,
+  listUserCustomAgents,
   getAgentSources,
   getAgentConfig,
   getAgentPermissions,

@@ -115,10 +115,13 @@ export function catalogRefreshTasks(
     // `provider.updated` and `model.updated` (2.0.8) are OpenCode's own
     // deduplicated announcements that the provider list, or the model list it
     // materialises, changed. Both are answered by re-reading the provider list,
-    // which is where the composer's models come from.
+    // which is where the composer's models come from. They are also the
+    // announcement that a cold location finished warming: an agent list read
+    // in the cold window answers empty or partial and nothing later corrects
+    // it, so the named (already running) directories re-read agents too.
     case "provider":
     case "model":
-      return [refreshProviders];
+      return [refreshProviders, () => refreshAgents(eventDirectories)];
     // A web search key is a credential too.
     case "credential":
       return [refreshProvidersAfterCredentialChange, refreshWebSearchIfLoaded];

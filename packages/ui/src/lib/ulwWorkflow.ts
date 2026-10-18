@@ -11,11 +11,10 @@
 // the send names `ulw` and nothing resolved, so the model runs the loop
 // instead of truthfully reporting that no workflow is loaded.
 //
-// The instruction drives the engine's owning interface
-// (`omo-agent-toolkit ulw-loop`, per
-// `packages/omo-engine/omo-codex/plugin/skills/ulw-loop/`): the CLI owns
-// state transitions (locks, revisions, session scoping), so the model
-// never hand-writes loop state — the skill forbids exactly that.
+// The instruction drives the engine's owning interface (the managed ULW
+// loop skill at `packages/omo-engine/omo-codex/plugin/skills/ulw-loop/`):
+// the CLI owns state transitions (locks, revisions, session scoping), so the
+// model never hand-writes loop state — the skill forbids exactly that.
 
 export const ULW_COMMAND_NAME = 'ulw';
 
@@ -30,10 +29,15 @@ export const ulwWorkflowInstruction = (sessionId: string): string => (
   'You are running the user\'s /ulw request: the ultrawork loop. '
   + 'There IS a ulw workflow — drive it below and never say it is missing.\n\n'
   + 'Drive the loop through the engine CLI and never hand-write loop state:\n'
-  + 'Resolve the CLI internal-first before the first command: `$OMO_ULW_LOOP_CLI` when set (the host exports '
-  + 'the internal build), else the checkout `packages/omo-engine/omo-codex/plugin/components/ulw-loop/dist/cli.js` via node, '
-  + 'else `omo-agent-toolkit` on PATH (it must answer `ulw-loop help`). '
-  + 'If none resolves, say how you looked and stop.\n'
+  + 'Resolve the CLI once, before the first command, through the authoritative '
+  + 'resolver that ships with the owning engine build — never `node scripts/` '
+  + 'relative to the project under analysis and never a PATH probe: '
+  + '`$OMO_ULW_LOOP_RESOLVER` when set, else walk upward for an Alcode '
+  + 'checkout root, else stop with the missing-resolver evidence. Reuse the '
+  + 'exact resolved value for every command in the '
+  + 'run (`"$ULW_LOOP_CLI" ulw-loop ...`, `& $ULW_LOOP_CLI ulw-loop ...`). '
+  + 'Never probe `omo-agent-toolkit` on PATH by hand and never fall back to a '
+  + 'global toolkit on a resolver failure: a non-zero exit names the fix.\n'
   + `- Scope every call: pass \`--session-id "${sessionId}"\` on each invocation; '\n`
   + '- `ulw-loop create-goals --session-id "<id>" --brief "<goal>" --json` first; do the work in steps; '
   + '`ulw-loop checkpoint` to advance and record evidence; `ulw-loop complete-goals` at the end; '

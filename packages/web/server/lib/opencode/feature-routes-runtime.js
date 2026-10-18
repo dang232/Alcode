@@ -62,6 +62,7 @@ import { SKILL_DIR, SKILL_SCOPE, readSkillSupportingFile, writeSkillSupportingFi
 import { getSkillSources, discoverSkills, mergeDiscoveredSkills, createSkill, updateSkill, deleteSkill, renameSkill, isManagedSkillPath } from './skills.js';
 import { getCuratedSkillsSources } from '../skills-catalog/curated-sources.js';
 import { createEngineSkillCatalog } from '../skills-catalog/engine-skills.js';
+import { createOmoSkillCatalog } from '../skills-catalog/omo-skills.js';
 import { getCacheKey, scanWithCache } from '../skills-catalog/cache.js';
 import { parseSkillRepoSource } from '../skills-catalog/source.js';
 import { scanSkillsRepository } from '../skills-catalog/scan.js';
@@ -200,6 +201,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       saveImportedTheme,
       deleteImportedTheme,
       refreshOpenCodeAfterConfigChange,
+      refreshManagedAgentsForChild,
       getOpenCodeResolutionSnapshot,
       getOpenCodeUpgradeCapability,
       upgradeOpenCodeCli,
@@ -327,6 +329,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       resolveProjectDirectory,
       resolveOptionalProjectDirectory,
       refreshOpenCodeAfterConfigChange,
+      refreshManagedAgentsForChild,
       clientReloadDelayMs,
       getAgentSources,
       getAgentConfig,
@@ -416,6 +419,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       // install into managed roots. Additive: OpenCode-config discovery
       // and bridge/pane resolution are untouched.
       engineSkillCatalog: createEngineSkillCatalog({ userSkillDir: SKILL_DIR, writeSkillFile: writeMdFile }),
+      omoSkillCatalog: createOmoSkillCatalog({ userSkillDir: SKILL_DIR, writeSkillFile: writeMdFile }),
     });
 
     registerQuotaRoutes(app, { getQuotaProviders });

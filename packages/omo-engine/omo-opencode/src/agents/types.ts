@@ -161,6 +161,7 @@ export function isGpt6Model(model: string): boolean {
 export type BuiltinAgentName =
   | "sisyphus"
   | "hephaestus"
+  | "prometheus"
   | "oracle"
   | "librarian"
   | "explore"
@@ -168,7 +169,12 @@ export type BuiltinAgentName =
   | "metis"
   | "momus"
   | "atlas"
-  | "sisyphus-junior";
+  | "sisyphus-junior"
+  | "plan-consultant"
+  | "plan-reviewer"
+  | "omo-native-code-reviewer"
+  | "omo-native-qa-executor"
+  | "omo-native-gate-reviewer";
 
 export type OverridableAgentName = "build" | BuiltinAgentName;
 

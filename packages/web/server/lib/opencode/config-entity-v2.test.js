@@ -11,7 +11,7 @@ process.env.XDG_CONFIG_HOME = path.join(root, 'xdg');
 delete process.env.OPENCODE_CONFIG;
 
 const { parseMdFile } = await import('./shared.js');
-const { getAgentConfig, getAgentPermissions, updateAgent, createAgent, listDisabledAgents } = await import('./agents.js');
+const { getAgentConfig, getAgentPermissions, updateAgent, createAgent, listDisabledAgents, listUserCustomAgents } = await import('./agents.js');
 const { getCommandConfig, updateCommand } = await import('./commands.js');
 const { getMcpConfig, listMcpConfigs, updateMcpConfig } = await import('./mcp.js');
 
@@ -69,6 +69,38 @@ describe('entity modules speak OpenCode 2 shapes', () => {
         { action: 'edit', resource: '*', effect: 'deny' },
       ],
     });
+  });
+
+  it('lists user-global agents for the managed child map, skipping stubs', () => {
+    const userAgentsDir = path.join(process.env.XDG_CONFIG_HOME, 'opencode', 'agents');
+    fs.mkdirSync(userAgentsDir, { recursive: true });
+    fs.writeFileSync(path.join(userAgentsDir, 'mine.md'), [
+      '---',
+      'description: Mine',
+      'mode: primary',
+      '---',
+      '',
+      'Do it.',
+    ].join('\n'), 'utf8');
+    fs.writeFileSync(path.join(userAgentsDir, 'stub.md'), ['---', 'mode: all', '---', ''].join('\n'), 'utf8');
+
+    const customs = listUserCustomAgents();
+    const mine = customs.find((custom) => custom.name === 'mine');
+    expect(mine.entry).toMatchObject({ description: 'Mine', mode: 'primary', system: 'Do it.' });
+    expect(customs.some((custom) => custom.name === 'stub')).toBe(false);
+  });
+
+  it('ignores empty-string fields so a form save cannot gut seeded values', () => {
+    // Catalog-seeded base (sisyphus ships in the static config with a
+    // description and prompt). A settings form submits every field, so
+    // untouched inputs arrive as "" — they must not overwrite the seed.
+    const result = updateAgent('sisyphus', { description: '', system: '', mode: 'primary' }, projectDir);
+    expect(result.source).toBe('md');
+    const parsed = parseMdFile(result.path);
+    expect(parsed.frontmatter.description).toBe('Ultrawork orchestrator: plans, delegates, and verifies complex work end to end.');
+    expect(parsed.frontmatter.mode).toBe('primary');
+    expect(parsed.body.length).toBeGreaterThan(0);
+    fs.unlinkSync(result.path);
   });
 
   it('rewrites a v1 agent file in place, at its own path, in v2 shape', () => {

@@ -110,6 +110,25 @@ Approach:
 - This is for tasks requiring exceptional creativity
 </Category_Context>`
 
+const ARCHITECT_CATEGORY_PROMPT_APPEND = `<Category_Context>
+You are working on SYSTEM DESIGN / ARCHITECTURE tasks.
+
+Architecture mindset:
+- Requirements and constraints first: state what the system must do and what bounds it
+- Decompose into components with explicit ownership and interfaces between them
+- Name failure modes and trade-offs for each significant decision
+- Keep the design at the smallest scope that meets the requirements
+
+Approach:
+- Read the existing structure before proposing a new one
+- Weigh at most three viable options with concrete selection criteria
+- Define module boundaries, data flow, and dependency direction
+- State what is deliberately out of scope
+
+Completion bar: every component has an owner, every interface is named, every
+trade-off records what was chosen and what was given up.
+</Category_Context>`
+
 export const GOOGLE_CATEGORIES: BuiltinCategoryDefinition[] = [
   {
     name: "visual-engineering",
@@ -122,5 +141,11 @@ export const GOOGLE_CATEGORIES: BuiltinCategoryDefinition[] = [
     config: { model: "anthropic/claude-fable-5-1", variant: "max" },
     description: "Complex problem-solving with unconventional, creative approaches - beyond standard patterns",
     promptAppend: ARTISTRY_CATEGORY_PROMPT_APPEND,
+  },
+  {
+    name: "architect",
+    config: { model: "anthropic/claude-fable-5-1", variant: "max" },
+    description: "System design and architecture: requirements, decomposition, interfaces, trade-offs",
+    promptAppend: ARCHITECT_CATEGORY_PROMPT_APPEND,
   },
 ]
