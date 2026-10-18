@@ -6,7 +6,9 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui';
 import { useSettingsDirectory } from '@/hooks/useSettingsDirectory';
-import { selectAgentsForDirectory, useAgentsStore, type AgentConfig, type AgentEntity, type AgentEntityEnvelope, type AgentMutationResult, type AgentRequest, type AgentRequestBody, type AgentScope, type AgentWithExtras } from '@/stores/useAgentsStore';
+import { selectAgentsForDirectory, selectDisabledAgentsForDirectory, useAgentsStore, type AgentConfig, type AgentEntity, type AgentEntityEnvelope, type AgentMutationResult, type AgentRequest, type AgentRequestBody, type AgentScope, type AgentWithExtras, type OmoCatalogItem } from '@/stores/useAgentsStore';
+import { resolveOmoAvailability } from '@/stores/omoAvailability';
+import { buildCatalogAgentConfig, canMaterializeCatalogAgent } from '@/lib/opencode/catalog-materialize';
 import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
 import { AgentColorField, isAgentHexColor } from './AgentColorField';
@@ -42,6 +44,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Icon } from '@/components/icon/Icon';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AgentPermissionsEditor } from './AgentPermissionsEditor';
 import { SettingsLegacyFormatNote } from '@/components/sections/shared/SettingsLegacyFormatNote';
 
@@ -101,6 +104,8 @@ export const AgentsPage: React.FC = () => {
     agentDraft,
     setAgentDraft,
     setSelectedAgent,
+    omoCatalog,
+    loadOmoCatalog,
   } = useAgentsStore(useShallow((s) => ({
     selectedAgentName: s.selectedAgentName,
     getAgentByName: s.getAgentByName,
@@ -110,12 +115,17 @@ export const AgentsPage: React.FC = () => {
     agentDraft: s.agentDraft,
     setAgentDraft: s.setAgentDraft,
     setSelectedAgent: s.setSelectedAgent,
+    omoCatalog: s.omoCatalog,
+    loadOmoCatalog: s.loadOmoCatalog,
   })));
 
   // Settings browses whichever project its own selector points at; the app
   // stays where it is.
   const settingsDirectory = useSettingsDirectory();
   const agents = useAgentsStore((state) => selectAgentsForDirectory(state, settingsDirectory));
+  React.useEffect(() => {
+    void loadOmoCatalog();
+  }, [loadOmoCatalog]);
   // SAFETY: the agents store attaches scope, group, path and legacy to every
   // entry it loads (`AgentWithExtras`); the editable fields are read from the
   // stored entry, not from the resolved `AgentInfo`.
@@ -450,6 +460,55 @@ export const AgentsPage: React.FC = () => {
           <p className="typography-meta mt-1 opacity-75">{t('settings.agents.page.empty.description')}</p>
         </div>
       </div>
+    );
+  }
+
+  // A bundled catalog entry has no stored entity, so the edit form has
+  // nothing to hydrate: it gets a read-only details view instead. Cloning
+  // re-enters the normal new-agent flow, backed by the existing createAgent.
+  const catalogItem = !selectedAgent && !isNewAgent
+    ? omoCatalog.find((item) => item.id === selectedAgentName) ?? null
+    : null;
+  if (catalogItem) {
+    const alreadyLive = getAgentByName(catalogItem.id, settingsDirectory) != null;
+    return (
+      <OmoCatalogDetails
+        item={catalogItem}
+        onClone={catalogItem.kind === 'agent' ? () => {
+          const baseName = catalogItem.id;
+          let copyNumber = 1;
+          let newName = `${baseName}-copy`;
+          while (getAgentByName(newName, settingsDirectory)) {
+            copyNumber++;
+            newName = `${baseName}-copy-${copyNumber}`;
+          }
+          setAgentDraft({
+            name: newName,
+            scope: 'user',
+            description: catalogItem.description,
+            system: catalogItem.prompt ?? undefined,
+            mode: 'subagent',
+          });
+          setSelectedAgent(newName);
+        } : undefined}
+        onRegister={canMaterializeCatalogAgent(catalogItem) && !alreadyLive ? async () => {
+          setIsCreating(true);
+          try {
+            const result = await createAgent(buildCatalogAgentConfig(catalogItem), settingsDirectory);
+            if (result.ok) {
+              toast.success(t('settings.agents.page.toast.created'));
+            } else {
+              toast.error(t('settings.agents.page.toast.createFailed'));
+            }
+          } catch (error) {
+            console.error('Error registering catalog agent:', error);
+            const message = error instanceof Error && error.message ? error.message : t('settings.agents.page.toast.saveUnexpectedError');
+            toast.error(message);
+          } finally {
+            setIsCreating(false);
+          }
+        } : undefined}
+      />
     );
   }
 
@@ -810,6 +869,223 @@ export const AgentsPage: React.FC = () => {
           </Button>
         </div>
       )}
+    </SettingsPageLayout>
+  );
+};
+
+interface CategoryModelOverrideEditorProps {
+  categoryName: string;
+}
+
+const CategoryModelOverrideEditor: React.FC<CategoryModelOverrideEditorProps> = ({ categoryName }) => {
+  const { t } = useI18n();
+  const detailsDirectory = useSettingsDirectory();
+  const entry = useAgentsStore((state) => state.categoryModels[categoryName]);
+  const fetchCategoryModel = useAgentsStore((state) => state.fetchCategoryModel);
+  const saveCategoryModel = useAgentsStore((state) => state.saveCategoryModel);
+  const clearCategoryModel = useAgentsStore((state) => state.clearCategoryModel);
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    void fetchCategoryModel(categoryName, detailsDirectory);
+  }, [categoryName, detailsDirectory, fetchCategoryModel]);
+
+  const overrideModel = entry?.override?.model ?? '';
+  const parsed = parseModelIdentifier(overrideModel);
+  const hasOverride = overrideModel !== '';
+
+  const handleReset = () => {
+    if (!hasOverride || isSaving) return;
+    setIsSaving(true);
+    clearCategoryModel(categoryName, detailsDirectory).then(
+      (result) => {
+        if (result.ok) toast.success(t('settings.agents.catalog.details.modelOverrideCleared'));
+        else toast.error(t('settings.agents.catalog.details.modelOverrideSaveFailed'));
+      },
+      (error) => {
+        console.error('Error clearing category model:', error);
+        toast.error(t('settings.agents.catalog.details.modelOverrideSaveFailed'));
+      },
+    ).finally(() => setIsSaving(false));
+  };
+
+  const handleChange = (providerId: string, modelId: string) => {
+    setIsSaving(true);
+    const done = () => setIsSaving(false);
+    if (providerId && modelId) {
+      saveCategoryModel(categoryName, `${providerId}/${modelId}`, detailsDirectory).then(
+        (result) => {
+          if (result.ok) toast.success(t('settings.agents.catalog.details.modelOverrideSaved'));
+          else toast.error(t('settings.agents.catalog.details.modelOverrideSaveFailed'));
+        },
+        (error) => {
+          console.error('Error saving category model:', error);
+          const message = error instanceof Error && error.message ? error.message : t('settings.agents.catalog.details.modelOverrideSaveFailed');
+          toast.error(message);
+        },
+      ).finally(done);
+    } else {
+      handleReset();
+    }
+  };
+
+  return (
+    <SettingsSection
+      title={t('settings.agents.page.section.modelParameters')}
+      divider={false}
+      contentClassName="space-y-3"
+    >
+      <SettingsFieldRow
+        settingsItem="agents.model"
+        label={t('settings.agents.page.field.overrideModel')}
+      >
+        <ModelSelector
+          providerId={parsed?.providerId ?? ''}
+          modelId={parsed?.modelId ?? ''}
+          onChange={isSaving ? () => {} : handleChange}
+          className={SETTINGS_CUSTOM_TRIGGER_CLASS}
+        />
+      </SettingsFieldRow>
+      {entry?.effectiveModel ? (
+        <p className="typography-meta text-muted-foreground">{t('settings.agents.catalog.details.modelOverrideEffective')}: {entry.effectiveModel}</p>
+      ) : null}
+      {hasOverride ? (
+        <div className="flex items-center gap-2">
+          <Button onClick={handleReset} variant="ghost" size="xs" className="!font-normal" disabled={isSaving}>
+            {t('chat.modelControls.resetToDefault')}
+          </Button>
+        </div>
+      ) : null}
+    </SettingsSection>
+  );
+};
+
+interface OmoCatalogDetailsProps {
+  item: OmoCatalogItem;
+  onClone?: () => void;
+  onRegister?: () => Promise<void>;
+}
+
+const OmoCatalogDetails: React.FC<OmoCatalogDetailsProps> = ({ item, onClone, onRegister }) => {
+  const { t } = useI18n();
+  const [isRegistering, setIsRegistering] = React.useState(false);
+  // Bundled instruction bodies are long: the summary stays scannable and
+  // the full text opens on demand.
+  const [promptOpen, setPromptOpen] = React.useState(false);
+  const detailsDirectory = useSettingsDirectory();
+  const directoryAgents = useAgentsStore((state) => selectAgentsForDirectory(state, detailsDirectory));
+  const directoryDisabled = useAgentsStore((state) => selectDisabledAgentsForDirectory(state, detailsDirectory));
+  const agentsLoading = useAgentsStore((state) => state.isLoading);
+  const providers = useConfigStore((state) => state.providers);
+  const requirements = [...(item.requiresModels ?? []), ...(item.requiresCapabilities ?? [])];
+  const modelPolicy = item.model ?? (item.categories?.join(', ') ?? null);
+  const allowedTools = item.tools?.allow ?? [];
+  const availability = React.useMemo(() => resolveOmoAvailability(item, {
+    agentNames: new Set(directoryAgents.map((agent) => agent.name)),
+    disabledNames: new Set(directoryDisabled.map((agent) => agent.name)),
+    listUnknown: agentsLoading && directoryAgents.length === 0,
+    agentModel: (name) => {
+      const live = directoryAgents.find((agent) => agent.name === name);
+      const model = live?.model;
+      if (!model || typeof model !== 'object') return null;
+      const ref = model as { providerID?: unknown; modelID?: unknown };
+      if (typeof ref.providerID !== 'string' || typeof ref.modelID !== 'string') return null;
+      return `${ref.providerID}/${ref.modelID}`;
+    },
+    isModelConnected: (ref) => {
+      const slash = ref.indexOf('/');
+      if (slash === -1) return false;
+      const provider = providers.find((entry) => entry.id === ref.slice(0, slash));
+      return findCatalogModel(provider?.models, ref.slice(slash + 1)) !== undefined;
+    },
+  }), [item, directoryAgents, directoryDisabled, agentsLoading, providers]);
+  const availabilityStatus = t(`settings.agents.catalog.details.status.${availability.status === 'fallback_available' ? 'fallbackAvailable' : availability.status}` as const);
+  const availabilityReason = availability.reason
+    ? t(
+        `settings.agents.catalog.details.reason.${availability.reason.key}` as const,
+        ('params' in availability.reason ? availability.reason.params : {}) as Record<string, string>,
+      )
+    : null;
+  return (
+    <SettingsPageLayout
+      title={item.id}
+      description={item.description}
+    >
+      <p className={`mb-4 flex items-start gap-1.5 ${SETTINGS_HELPER_CLASS}`}>
+        <Icon name="information" className="mt-[0.2em] h-3.5 w-3.5 shrink-0 opacity-70" />
+        <span>{t('settings.agents.catalog.details.bundledNote')}</span>
+      </p>
+      <SettingsSection
+        title={`${t('settings.agents.sidebar.badge.omo')} · ${item.kind} · ${item.edition}`}
+        divider={false}
+        contentClassName="space-y-3"
+      >
+        <SettingsStackedField label={t('settings.agents.catalog.details.availability')}>
+          <p className="typography-ui-label text-foreground">{availabilityStatus}</p>
+          {availability.resolvedModel ? (
+            <p className="typography-meta text-muted-foreground">{availability.resolvedModel}</p>
+          ) : null}
+          {availabilityReason ? (
+            <p className="typography-meta text-muted-foreground">{availabilityReason}</p>
+          ) : null}
+          {availability.fallback ? (
+            <p className="typography-meta text-muted-foreground">{t('settings.agents.catalog.details.fallback')}: {availability.fallback}</p>
+          ) : null}
+        </SettingsStackedField>
+        {requirements.length > 0 ? (
+          <SettingsStackedField label={t('settings.agents.catalog.details.modelPolicy')}>
+            <p className="typography-ui-label text-foreground">
+              {t('settings.agents.sidebar.item.requires', { list: requirements.join(', ') })}
+            </p>
+          </SettingsStackedField>
+        ) : null}
+        {modelPolicy ? (
+          <SettingsStackedField label={t('settings.agents.catalog.details.modelPolicy')}>
+            <p className="typography-ui-label text-foreground">{modelPolicy}</p>
+          </SettingsStackedField>
+        ) : null}
+        {allowedTools.length > 0 ? (
+          <SettingsStackedField label={t('settings.agents.catalog.details.tools')}>
+            <p className="typography-ui-label text-foreground">{allowedTools.join(', ')}</p>
+          </SettingsStackedField>
+        ) : null}
+        {item.kind === 'category' ? (
+          <CategoryModelOverrideEditor categoryName={item.id} />
+        ) : null}
+        {item.prompt ? (
+          <Collapsible open={promptOpen} onOpenChange={setPromptOpen}>
+            <CollapsibleTrigger className="flex w-auto items-center justify-start gap-1.5">
+              <span className="typography-ui-label text-foreground">{t('settings.agents.catalog.details.prompt')}</span>
+              <Icon name={promptOpen ? 'arrow-up-s' : 'arrow-down-s'} className="h-4 w-4 text-muted-foreground" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <pre className="typography-meta text-muted-foreground whitespace-pre-wrap max-h-[40vh] overflow-auto">{item.prompt}</pre>
+            </CollapsibleContent>
+          </Collapsible>
+        ) : null}
+      </SettingsSection>
+      {(onClone || onRegister) ? (
+        <div className="flex items-center gap-2 pb-8">
+          {onClone ? (
+            <Button onClick={onClone} size="xs" className="!font-normal">
+              {t('settings.agents.catalog.details.duplicateToCustomize')}
+            </Button>
+          ) : null}
+          {onRegister ? (
+            <Button
+              size="xs"
+              className="!font-normal"
+              disabled={isRegistering}
+              onClick={() => {
+                setIsRegistering(true);
+                void onRegister().finally(() => setIsRegistering(false));
+              }}
+            >
+              {t('settings.agents.catalog.details.registerInRuntime')}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </SettingsPageLayout>
   );
 };
