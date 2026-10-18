@@ -11,6 +11,7 @@ import {
   isFileChangeTool,
   isShellTool,
   isSubagentTool,
+  isUlwTool,
   isWebTool,
   normalizeToolName,
   subagentSessionId,
@@ -38,6 +39,18 @@ describe("tool identity", () => {
     expect(normalizeToolName(" Shell:2 ")).toBe("shell")
     expect(isShellTool("runtime.shell:3")).toBe(true)
     expect(normalizeToolName(undefined)).toBe("")
+  })
+
+  test("recognizes the bundled ulw namespace, not lookalikes", () => {
+    expect(isUlwTool("ulw_status")).toBe(true)
+    expect(isUlwTool("ulw_create-goals")).toBe(true)
+    expect(isUlwTool("mcp.ulw.status")).toBe(true)
+    expect(isUlwTool("mcp.ulw.create-goals")).toBe(true)
+    expect(isUlwTool("mcp.tasks.list")).toBe(false)
+    expect(isUlwTool("ulw")).toBe(false)
+    expect(isUlwTool("sulw_x")).toBe(false)
+    expect(isUlwTool("shell")).toBe(false)
+    expect(isUlwTool(undefined)).toBe(false)
   })
 
   test("only edit and patch results carry per-file diffs", () => {

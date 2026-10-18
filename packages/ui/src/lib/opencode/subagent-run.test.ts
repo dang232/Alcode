@@ -141,3 +141,56 @@ describe("stopping a subagent", () => {
     expect(findSubagentCancellation([report()], "ses_child")).toBe(false)
   })
 })
+
+import { resolveSubagentIdentity } from "./subagent-run"
+
+describe("resolveSubagentIdentity", () => {
+  test("prefers the live record over the report and the request", () => {
+    expect(resolveSubagentIdentity({
+      requestedAgent: "general",
+      reportedAgent: "explore",
+      liveChild: {
+        agent: "explore",
+        model: { id: "qwen3.7-plus", providerID: "opencode-go" },
+        permissions: [{ action: "subagent", resource: "edit", effect: "deny" }],
+        cost: 0.002,
+        time: { created: 1000, updated: 14060 },
+      },
+    })).toEqual({
+      agent: "explore",
+      model: "qwen3.7-plus via opencode-go",
+      permissionMode: "read-only",
+      durationMs: 13060,
+      cost: 0.002,
+    })
+  })
+
+  test("reads allow-write rulesets as read-write", () => {
+    expect(resolveSubagentIdentity({
+      requestedAgent: "build",
+      liveChild: { agent: "build", permissions: [{ action: "subagent", resource: "write", effect: "allow" }] },
+    }).permissionMode).toBe("read-write")
+  })
+
+  test("falls back to the documented research-agent denylist without a ruleset", () => {
+    expect(resolveSubagentIdentity({ requestedAgent: "explore", liveChild: null }).permissionMode).toBe("read-only")
+    expect(resolveSubagentIdentity({ requestedAgent: "build", liveChild: null }).permissionMode).toBe("default")
+  })
+
+  test("a row with no named agent stays generic", () => {
+    expect(resolveSubagentIdentity({}).agent).toBeNull()
+    expect(resolveSubagentIdentity({}).permissionMode).toBe("default")
+  })
+})
+
+import { getAgentToolRestrictions } from "../../../../omo-engine/omo-opencode/src/shared/agent-tool-restrictions"
+
+describe("read-only mirror parity", () => {
+  test("every mirrored research agent denies write and edit in the engine table", () => {
+    for (const name of ["explore", "librarian", "oracle", "metis", "momus", "plan-consultant", "plan-reviewer"]) {
+      const restrictions = getAgentToolRestrictions(name, { includeTeamToolDenylist: false });
+      expect(restrictions["write"]).toBe(false)
+      expect(restrictions["edit"]).toBe(false)
+    }
+  })
+})

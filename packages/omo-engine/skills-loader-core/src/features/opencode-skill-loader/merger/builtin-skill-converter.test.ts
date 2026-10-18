@@ -64,9 +64,10 @@ describe("builtinToLoadedSkill", () => {
   // #when converted to loaded skill
   // #then resolvedPath is not invented from the shared skills root
   test("#given an inline built-in skill without shared assets #when converted #then resolvedPath is left unset", () => {
-    // given
-    const builtin: BuiltinSkill = { ...baseBuiltin, name: "dev-browser" }
-    const inventedSharedPath = join(sharedSkillsRootPath(), "dev-browser")
+    // given (a name with no shared-skills directory: dev-browser ships shared
+    // assets since the skills restoration, so it no longer exercises this path)
+    const builtin: BuiltinSkill = { ...baseBuiltin, name: "inline-no-assets-skill" }
+    const inventedSharedPath = join(sharedSkillsRootPath(), "inline-no-assets-skill")
     expect(existsSync(inventedSharedPath)).toBe(false)
 
     // when

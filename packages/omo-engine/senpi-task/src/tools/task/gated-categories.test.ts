@@ -1,56 +1,51 @@
 import { describe, expect, test } from "bun:test"
 
-import { categoryGateModels } from "../../category/builtins"
 import { listTaskCategories } from "./categories"
-
-function requiredAnnotation(name: string): string {
-  const gateModels = categoryGateModels(name)
-  if (gateModels === undefined) throw new Error(`builtin category ${name} is not model-gated`)
-  return `(requires ${gateModels.join(" or ")})`
-}
 
 function entryFor(name: string, config: Parameters<typeof listTaskCategories>[0]) {
   return listTaskCategories(config).find((entry) => entry.name === name)
 }
 
-describe("gated category listing", () => {
-  describe("#given a builtin-only gated category", () => {
-    test("#when the categories are listed #then architect carries its required model annotation", () => {
+describe("ungated category listing", () => {
+  describe("#given a builtin-only category", () => {
+    test("#when the categories are listed #then architect carries its plain description with no model annotation", () => {
       // given / when
       const entry = entryFor("architect", {})
 
       // then
-      expect(entry?.description).toContain("(requires claude-fable-5-1)")
+      expect(entry?.description).toContain("Fable 5")
+      expect(entry?.description).not.toContain("requires")
     })
 
-    test("#when the categories are listed #then ultrabrain carries its required model annotation", () => {
+    test("#when the categories are listed #then ultrabrain carries its plain description with no model annotation", () => {
       // given / when
       const entry = entryFor("ultrabrain", {})
 
       // then
-      expect(entry?.description).toContain(requiredAnnotation("ultrabrain"))
+      expect(entry?.description).toBeDefined()
+      expect(entry?.description).not.toContain("requires")
     })
 
-    test("#when the categories are listed #then each deep lane carries its own required model annotation", () => {
+    test("#when the categories are listed #then each deep lane carries its plain description with no model annotation", () => {
       // given / when
       const low = entryFor("deep-low", {})
       const high = entryFor("deep-high", {})
 
       // then
-      expect(low?.description).toContain("(requires gpt-6.1-sol or gpt-6.1-sol-fast or gpt-5.6-sol-fast or gpt-5.6-sol)")
-      expect(low?.description).toContain(requiredAnnotation("deep-low"))
-      expect(low?.description).not.toContain("gpt-6-sol")
-      expect(high?.description).toContain("(requires gpt-6-astra)")
-      expect(high?.description).toContain(requiredAnnotation("deep-high"))
+      expect(low?.description).toBeDefined()
+      expect(low?.description).not.toContain("requires")
+      expect(high?.description).toBeDefined()
+      expect(high?.description).not.toContain("requires")
     })
   })
 
-  describe("#given a gated category configured in omo.json", () => {
-    test("#when the categories are listed #then the annotation is dropped because the gate is bypassed", () => {
+  describe("#given a category configured in omo.json", () => {
+    test("#when the categories are listed #then an explicit model override lists the builtin description verbatim", () => {
       // given / when
       const entry = entryFor("architect", { categories: { architect: { model: "kimi-coding/k3" } } })
 
       // then
+      expect(entry?.description).toContain("Fable 5")
       expect(entry?.description).not.toContain("requires")
     })
 

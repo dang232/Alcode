@@ -15,7 +15,7 @@
 
 import { z } from "zod"
 
-import type { Message, Metadata, Part, Session, SyntheticMessage, ToolPart } from "./model"
+import type { Message, Metadata, Part, PermissionRuleset, Session, SyntheticMessage, ToolPart } from "./model"
 import { isSubagentTool, subagentSessionId } from "./tools"
 
 export type SubagentRunState = "running" | "completed" | "error" | "cancelled"
@@ -37,6 +37,43 @@ const runMetadataSchema = z.object({
   agent: z.string().optional(),
   state: z.enum(["running", "completed", "error", "cancelled"]),
 })
+
+// Mirror of the exploration denylist the OpenCode runtime enforces for its
+// research agents (see
+// packages/omo-engine/omo-opencode/src/shared/agent-tool-restrictions.ts).
+// A client-side read of that table keeps this display join honest without
+// teaching the UI a second enforcement path; the engine stays authoritative.
+const READ_ONLY_AGENTS: ReadonlySet<string> = new Set([
+  'explore',
+  'librarian',
+  'oracle',
+  'metis',
+  'momus',
+])
+
+export type SubagentPermissionMode = 'read-only' | 'read-write' | 'default'
+
+export type SubagentIdentity = {
+  /** Resolved agent name, or null when no record names one. */
+  readonly agent: string | null
+  /** Model display ref, or null when the record carries none. */
+  readonly model: string | null
+  readonly permissionMode: SubagentPermissionMode
+  readonly durationMs: number | null
+  readonly cost: number | null
+}
+
+type SubagentIdentitySource = {
+  readonly requestedAgent?: string
+  readonly reportedAgent?: string
+  readonly liveChild?: {
+    readonly agent?: string | null
+    readonly model?: { readonly id?: string; readonly providerID?: string } | null
+    readonly permissions?: PermissionRuleset | null
+    readonly cost?: number | null
+    readonly time?: { readonly created?: number; readonly updated?: number } | null
+  } | null
+}
 
 const ENVELOPE = /^\s*<subagent\b[^>]*>\n?([\s\S]*?)\n?<\/subagent>\s*$/
 
@@ -98,6 +135,47 @@ export function readBackgroundSubagentChildID(part: ToolPart): string | undefine
   if (part.state.status !== "completed" || !isSubagentTool(part.tool)) return undefined
   const parsed = backgroundCallMetadataSchema.safeParse(part.state.metadata ?? {})
   return parsed.success ? parsed.data.sessionID : undefined
+}
+
+/**
+ * Resolved identity of a subagent row. Precedence is record-first: the live
+ * child record, then the settled report, then the requested input. A row
+ * with no named agent anywhere stays null and renders the generic label.
+ */
+export function resolveSubagentIdentity(source: SubagentIdentitySource): SubagentIdentity {
+  const child = source.liveChild ?? null
+  const agent = child?.agent || source.reportedAgent || source.requestedAgent || null
+  const modelId = child?.model?.id
+  const model =
+    typeof modelId === 'string' && modelId.length > 0
+      ? typeof child?.model?.providerID === 'string' && child.model.providerID.length > 0
+        ? `${modelId} via ${child.model.providerID}`
+        : modelId
+      : null
+  const rules = Array.isArray(child?.permissions) ? child.permissions : null
+  const deniesWrite = rules?.some(
+    (rule) => rule?.effect === 'deny' && (rule?.resource === 'write' || rule?.resource === 'edit'),
+  ) ?? false
+  const allowsWrite = rules?.some(
+    (rule) => rule?.effect === 'allow' && (rule?.resource === 'write' || rule?.resource === 'edit'),
+  ) ?? false
+  const permissionMode: SubagentPermissionMode = deniesWrite
+    ? 'read-only'
+    : allowsWrite
+      ? 'read-write'
+      : agent !== null && READ_ONLY_AGENTS.has(agent.toLowerCase())
+        ? 'read-only'
+        : 'default'
+  const created = child?.time?.created
+  const updated = child?.time?.updated
+  return {
+    agent,
+    model,
+    permissionMode,
+    durationMs:
+      typeof created === 'number' && typeof updated === 'number' ? Math.max(0, updated - created) : null,
+    cost: typeof child?.cost === 'number' ? child.cost : null,
+  }
 }
 
 /** The report of one child session among a session's messages. */

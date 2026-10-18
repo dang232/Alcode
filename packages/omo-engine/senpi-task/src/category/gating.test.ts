@@ -26,8 +26,8 @@ const MODELS_THE_PRE_GATING_CHAINS_WOULD_HAVE_ACCEPTED = [
   model("kimi-coding", "k3"),
 ] as const
 
-describe("category activation gating", () => {
-  describe("#given a builtin category gated on claude-fable-5-1", () => {
+describe("category chain-viability availability", () => {
+  describe("#given a builtin category whose only chain rung is claude-fable-5-1", () => {
     test("#when the registry offers only cross-family models #then architect is unavailable and never falls back", () => {
       // given
       const models = registry(MODELS_THE_PRE_GATING_CHAINS_WOULD_HAVE_ACCEPTED)
@@ -58,7 +58,7 @@ describe("category activation gating", () => {
       expect(result.availableCategories).toContain("architect")
     })
 
-    test("#when only Copilot carries claude-fable-5.1 under its dotted engine id #then the gate is satisfied and architect resolves on the copilot rung", () => {
+    test("#when only Copilot carries claude-fable-5.1 under its dotted engine id #then the rung resolves and architect resolves on the copilot rung", () => {
       // given — the senpi github-copilot catalog spells Claude ids with a dot (claude-fable-5.1); omo chains use a hyphen
       const models = registry([model("github-copilot", "claude-fable-5.1")])
 
@@ -86,7 +86,7 @@ describe("category activation gating", () => {
       expect(result.availableCategories).not.toContain("deep-low")
     })
 
-    test("#when the gate model is absent but omo.json configures the category #then the explicit entry bypasses the gate", () => {
+    test("#when the registry serves no chain rung but omo.json configures the category #then the explicit entry opts out of chain-viability", () => {
       // given
       const models = registry([model("kimi-coding", "k3")])
 
@@ -103,7 +103,7 @@ describe("category activation gating", () => {
       expect(result.spec.modelId).toBe("k3")
     })
 
-    test("#when the gate model is absent and omo.json only sets a description #then the gate is bypassed and the category stays listed", () => {
+    test("#when the registry serves no chain rung and omo.json only sets a description #then the explicit entry opts out and the category stays listed", () => {
       // given
       const models = registry([model("anthropic", "claude-opus-5-5")])
 
@@ -119,7 +119,7 @@ describe("category activation gating", () => {
     })
   })
 
-  describe("#given a builtin category gated on gpt-6-astra or gpt-5.6-sol", () => {
+  describe("#given a builtin category whose chain rungs are gpt-6-astra and gpt-5.6-sol", () => {
     test("#when the registry offers only cross-family models #then ultrabrain is unavailable and never falls back", () => {
       // given
       const models = registry(MODELS_THE_PRE_GATING_CHAINS_WOULD_HAVE_ACCEPTED)
@@ -165,7 +165,7 @@ describe("category activation gating", () => {
       expect(result.spec.variant).toBe("max")
     })
 
-    test("#when only Copilot carries gpt-5.6-sol #then the gate is satisfied and the copilot rung applies", () => {
+    test("#when only Copilot carries gpt-5.6-sol #then the copilot rung resolves and applies", () => {
       // given
       const models = registry([model("github-copilot", "gpt-5.6-sol")])
 
@@ -180,7 +180,7 @@ describe("category activation gating", () => {
     })
   })
 
-  describe("#given the two deep lanes, each gated on its own single-rung model", () => {
+  describe("#given the two deep lanes, each carrying only its own single-rung models", () => {
     test("#when the registry offers only cross-family models #then neither lane is available and neither falls back", () => {
       // given
       const models = registry(MODELS_THE_PRE_GATING_CHAINS_WOULD_HAVE_ACCEPTED)
@@ -232,7 +232,7 @@ describe("category activation gating", () => {
       expect(resolveCategory("deep-high", {}, models).kind).toBe("model_unavailable")
     })
 
-    test("#when the gate model is absent but omo.json configures the category #then the explicit entry bypasses the gate", () => {
+    test("#when the registry serves no chain rung but omo.json configures the category #then the explicit entry opts out of chain-viability", () => {
       // given
       const models = registry([model("anthropic", "claude-opus-5-5")])
 
@@ -279,8 +279,8 @@ describe("category activation gating", () => {
     })
   })
 
-  describe("#given a registry model whose last path segment collides with a gate model", () => {
-    test("#when architect resolves #then an unrelated vendor model must not open the fable gate", () => {
+  describe("#given a registry model whose last path segment collides with a chain rung model", () => {
+    test("#when architect resolves #then an unrelated vendor model must not resolve the fable rung", () => {
       // given
       const models = registry([model("custom", "unrelated/claude-fable-5-1")])
 
@@ -292,7 +292,7 @@ describe("category activation gating", () => {
       expect(result.availableCategories).not.toContain("architect")
     })
 
-    test("#when ultrabrain resolves #then an unrelated vendor model must not open the sol gate", () => {
+    test("#when ultrabrain resolves #then an unrelated vendor model must not resolve the sol rung", () => {
       // given
       const models = registry([model("custom", "unrelated/gpt-5.6-sol")])
 
@@ -304,7 +304,7 @@ describe("category activation gating", () => {
       expect(result.availableCategories).not.toContain("ultrabrain")
     })
 
-    test("#when ultrabrain resolves #then an unrelated vendor model must not open the astra gate", () => {
+    test("#when ultrabrain resolves #then an unrelated vendor model must not resolve the astra rung", () => {
       // given
       const models = registry([model("custom", "unrelated/gpt-6-astra")])
 
@@ -316,7 +316,7 @@ describe("category activation gating", () => {
       expect(result.availableCategories).not.toContain("ultrabrain")
     })
 
-    test("#when only an unlisted gateway re-publishes the gate model #then the gate stays closed", () => {
+    test("#when only an unlisted gateway re-publishes a rung model #then the chain stays dead", () => {
       // given
       const models = registry([model("vercel", "openai/gpt-5.6-sol")])
 
@@ -329,7 +329,7 @@ describe("category activation gating", () => {
     })
   })
 
-  describe("#given an ungated builtin category", () => {
+  describe("#given a builtin category with a multi-rung chain", () => {
     test("#when the registry offers only a chain rung #then the pre-gating fallback behavior is unchanged", () => {
       // given
       const models = registry([model("chatgpt-subscription", "gpt-6-luna-fast")])
@@ -344,7 +344,7 @@ describe("category activation gating", () => {
       expect(result.availableCategories).toContain("quick")
     })
 
-    test("#when a gated category is unmet #then other categories stay listed as available", () => {
+    test("#when a chain-dead category is unmet #then other categories stay listed as available", () => {
       // given
       const models = registry([model("chatgpt-subscription", "gpt-6-luna-fast")])
 

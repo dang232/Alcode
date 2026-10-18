@@ -16,6 +16,11 @@ import {
   securityReviewSkill,
   visualQaSkill,
   teamModeSkill,
+  ulwLoopSkill,
+  ultraworkSkill,
+  ulwPlanSkill,
+  ulwExecuteSkill,
+  ulwResearchSkill,
 } from "./skills/index"
 
 export interface CreateBuiltinSkillsOptions {
@@ -59,6 +64,11 @@ export function createBuiltinSkills(options: CreateBuiltinSkillsOptions = {}): B
 		securityResearchSkill,
 		securityReviewSkill,
 		visualQaSkill,
+		ulwLoopSkill,
+		ultraworkSkill,
+		ulwPlanSkill,
+		ulwExecuteSkill,
+		ulwResearchSkill,
 	]
 
   if (teamModeEnabled && !disabledSkills?.has("team-mode")) {

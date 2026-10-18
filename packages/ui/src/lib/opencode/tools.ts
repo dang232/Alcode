@@ -73,6 +73,18 @@ export const isShellTool = is(OPENCODE_TOOLS.shell)
  */
 export const isExecuteTool = is(OPENCODE_TOOLS.execute)
 export const isSubagentTool = is(OPENCODE_TOOLS.subagent)
+/**
+ * Bundled ULW control-plane tools: the managed config registers the MCP
+ * server under the `ulw` namespace, so sessions see `ulw_<tool>`
+ * (`ulw_status`, ...) or the dotted MCP form (`mcp.ulw.status`, ...).
+ * Namespace match, not an exact set, so a new control-plane tool joins
+ * ULW-aware rendering without a UI change.
+ */
+export const isUlwTool = (toolName: ToolName): boolean => {
+  if (normalizeToolName(toolName).startsWith("ulw_")) return true
+  const full = toolName?.trim().toLowerCase() ?? ""
+  return full.startsWith("mcp.ulw.") || full.startsWith("ulw.")
+}
 export const isQuestionTool = is(OPENCODE_TOOLS.question)
 export const isSkillTool = is(OPENCODE_TOOLS.skill)
 export const isEditTool = is(OPENCODE_TOOLS.edit)

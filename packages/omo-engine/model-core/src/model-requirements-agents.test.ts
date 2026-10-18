@@ -241,7 +241,7 @@ describe("AGENT_MODEL_REQUIREMENTS", () => {
     ])
     expect(hephaestus.requiresProvider).not.toContain("venice")
     expect(hephaestus.fallbackChain[0]?.providers).not.toContain("venice")
-    expect(hephaestus.requiresModel).toBeUndefined()
+    expect("requiresModel" in hephaestus).toBe(false)
     expect(hephaestus.requiresAnyModel).toBe(true)
   })
 
@@ -264,6 +264,96 @@ describe("AGENT_MODEL_REQUIREMENTS", () => {
           model: "gpt-5.6-sol",
           variant: "medium",
         })
+  })
+
+  test("plan-consultant leads with claude-fable-5-1 max over opus and kimi-k3", () => {
+    // given
+    const consultant = AGENT_MODEL_REQUIREMENTS["plan-consultant"]
+
+    // when
+    const [primary, second, last] = consultant.fallbackChain
+
+    // then
+    expect(consultant.fallbackChain).toHaveLength(3)
+    expect(primary).toEqual({
+          providers: ["anthropic", "github-copilot", "opencode"],
+          model: "claude-fable-5-1",
+          variant: "max",
+        })
+    expect(second?.model).toBe("claude-opus-5-5")
+    expect(last?.model).toBe("kimi-k3")
+  })
+
+  test("plan-reviewer leads with gpt-6-astra xhigh over opus, gemini, and glm", () => {
+    // given
+    const reviewer = AGENT_MODEL_REQUIREMENTS["plan-reviewer"]
+
+    // when
+    const modelIDs = reviewer.fallbackChain.map((entry) => entry.model)
+
+    // then
+    expect(modelIDs).toEqual([
+      "gpt-6-astra",
+      "gpt-6-astra",
+      "gpt-6-astra",
+      "claude-opus-5-5",
+      "gemini-3.1-pro",
+      "glm-5.2",
+    ])
+    expect(reviewer.fallbackChain[0]).toEqual({
+          providers: ["openai", "chatgpt-subscription"],
+          model: "gpt-6-astra",
+          variant: "xhigh",
+        })
+  })
+
+  test("omo-native-code-reviewer follows the unspecified-high lane", () => {
+    // given
+    const codeReviewer = AGENT_MODEL_REQUIREMENTS["omo-native-code-reviewer"]
+
+    // when
+    const modelIDs = codeReviewer.fallbackChain.map((entry) => entry.model)
+
+    // then
+    expect(modelIDs).toEqual(["claude-opus-5-5", "glm-5.3", "kimi-k3"])
+  })
+
+  test("omo-native-qa-executor leads deep-low before unspecified-low rungs", () => {
+    // given
+    const qa = AGENT_MODEL_REQUIREMENTS["omo-native-qa-executor"]
+
+    // when
+    const modelIDs = qa.fallbackChain.map((entry) => entry.model)
+
+    // then
+    expect(modelIDs.slice(0, 4)).toEqual([
+      "gpt-6.1-sol",
+      "gpt-6.1-sol-fast",
+      "gpt-5.6-sol",
+      "gpt-5.6-sol-fast",
+    ])
+    expect(modelIDs).toContain("claude-sonnet-5-5")
+    expect(modelIDs).toHaveLength(12)
+  })
+
+  test("omo-native-gate-reviewer leads gpt-6-astra high before unspecified-high rungs", () => {
+    // given
+    const gate = AGENT_MODEL_REQUIREMENTS["omo-native-gate-reviewer"]
+
+    // when
+    const [primary, ...rest] = gate.fallbackChain
+
+    // then
+    expect(primary).toEqual({
+          providers: ["openai", "chatgpt-subscription", "github-copilot", "opencode"],
+          model: "gpt-6-astra",
+          variant: "high",
+        })
+    expect(rest.map((entry) => entry.model)).toEqual([
+      "claude-opus-5-5",
+      "glm-5.3",
+      "kimi-k3",
+    ])
   })
 
 })

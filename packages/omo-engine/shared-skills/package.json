@@ -1,0 +1,1 @@
+{"description": "Shared SKILL.md skill bodies consumed by skills-loader-core builtin skills.", "exports": {".": {"import": "./index.mjs", "types": "./index.mjs"}}, "name": "@oh-my-opencode/shared-skills", "private": true, "type": "module", "version": "0.1.0"}

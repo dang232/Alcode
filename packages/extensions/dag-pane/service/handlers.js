@@ -280,8 +280,38 @@ const readLoopEventNames = (fs, directory, sessionId) => {
 const loopNodeStateForEvent = (event) => {
   if (event === 'completed' || event === 'goal_completed' || event === 'aggregate_completed' || event === 'batch_closed' || event === 'child_completed') return 'completed';
   if (event === 'failed' || event === 'error' || event === 'goal_failed' || event === 'final_review_failed' || event === 'criterion_failed' || event === 'child_failed') return 'failed';
-  if (event === 'started' || event === 'advanced' || event === 'resumed' || event === 'goal_started' || event === 'goal_resumed' || event === 'goal_retried' || event === 'goal_dispatched' || event === 'plan_created' || event === 'evidence_captured' || event === 'goal_added' || event === 'steering_accepted' || event === 'batch_updated' || event === 'criteria_revised') return 'running';
+  if (event === 'started' || event === 'advanced' || event === 'resumed' || event === 'goal_started' || event === 'goal_resumed' || event === 'goal_retried' || event === 'goal_dispatched' || event === 'plan_created' || event === 'evidence_captured' || event === 'goal_added' || event === 'steering_accepted' || event === 'batch_updated' || event === 'criteria_revised' || event === 'aggregate_objective_migrated') return 'running';
+  // Blocked-ish kinds (goal_blocked, goal_needs_user_decision,
+  // goal_review_blocked, criterion_blocked, steering_rejected) stay
+  // pending: they need attention, not a terminal verdict the loop itself
+  // has not recorded. Anything unrecognized also stays pending so the pane
+  // never invents motion.
   return 'pending';
+};
+
+// Parsed ledger entries for the per-goal corridor below: same capped window
+// as readLoopEventNames, malformed lines skipped, oldest first. Callers
+// treat an empty return as "no evidence", never as a terminal verdict.
+const readLoopEntries = (fs, directory, sessionId) => {
+  const root = directory.trim().replace(/[/\\]+$/, '');
+  const ledgerPath = `${root}/.omo/ulw-loop/${sessionId}/ledger.jsonl`;
+  let text;
+  try {
+    text = fs.readFileSync(ledgerPath, 'utf8').slice(0, DAG_DEBUG_MAX_LEDGER_BYTES);
+  } catch {
+    return [];
+  }
+  const entries = [];
+  for (const line of text.split('\n')) {
+    if (line.trim().length === 0) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (isRecord(parsed)) entries.push(parsed);
+    } catch {
+      // Malformed line: skipped here; the names reader keeps a marker for it.
+    }
+  }
+  return entries;
 };
 
 // Goal states (domain-types.ts UlwLoopItem.status) onto pane states.
@@ -344,9 +374,38 @@ const projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
   const goalsPlan = readLoopGoalsPlan(fs, directory, sessionId);
   const goalRecords = Array.isArray(goalsPlan?.goals) ? goalsPlan.goals.filter(isRecord) : [];
   if (goalRecords.length > 0) {
+    // Per-goal dispatch/result corridor from the ledger: which goals were
+    // dispatched, what each recorded child result says, and ledger-derived
+    // timestamps when the goal record carries none. CLI `kind` vocabulary
+    // only; host `.event` rows without a goalId keep the existing defaults.
+    // Every field is additive and null-by-default: no trail means no claim.
+    const ledgerByGoal = new Map();
+    for (const entry of readLoopEntries(fs, directory, sessionId)) {
+      const goalId = entry?.goalId?.trim?.() ?? '';
+      if (goalId === '') continue;
+      if (!ledgerByGoal.has(goalId)) ledgerByGoal.set(goalId, []);
+      ledgerByGoal.get(goalId).push(entry);
+    }
+    const ledgerTimes = (trail, kinds) => trail
+      .filter((entry) => kinds.includes(entry.kind) && (entry.at?.trim?.() ?? '') !== '')
+      .map((entry) => entry.at.trim())
+      .sort();
     const childNodes = goalRecords.map((goal, index) => {
       const id = asString(goal.id) || `goal-${index + 1}`;
       const label = (asString(goal.title) || id).slice(0, 80);
+      const trail = ledgerByGoal.get(id) ?? [];
+      const dispatched = trail.some((entry) => entry.kind === 'goal_dispatched');
+      const resultEntry = trail.filter((entry) => entry.kind === 'child_completed' || entry.kind === 'child_failed').at(-1) ?? null;
+      const result = resultEntry === null ? null : {
+        state: resultEntry.kind === 'child_completed' ? 'completed' : 'failed',
+        evidence: (((resultEntry.evidence?.trim?.() ?? '') || (resultEntry.message?.trim?.() ?? '')).slice(0, 280)) || null,
+        artifacts: Array.isArray(resultEntry.artifacts)
+          ? resultEntry.artifacts.map((name) => name?.trim?.() ?? '').filter((name) => name !== '').slice(0, 4)
+          : [],
+        at: resultEntry.at?.trim?.() || null,
+      };
+      const startedTimes = ledgerTimes(trail, ['goal_started', 'goal_dispatched', 'goal_resumed']);
+      const completedTimes = ledgerTimes(trail, ['goal_completed', 'goal_failed', 'goal_blocked', 'child_completed', 'child_failed']);
       return {
         id,
         label,
@@ -354,8 +413,10 @@ const projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
         attempt: Number.isInteger(goal.attempt) && goal.attempt > 0 ? goal.attempt : 1,
         prompt: (asString(goal.objective) || label).slice(0, 512),
         depends_on: ['parent'],
-        started_at: asString(goal.startedAt) || null,
-        completed_at: asString(goal.completedAt) || null,
+        started_at: asString(goal.startedAt) || startedTimes[0] || null,
+        completed_at: asString(goal.completedAt) || completedTimes.at(-1) || null,
+        dispatched,
+        result,
       };
     });
     const aggregateDone = isRecord(goalsPlan?.aggregateCompletion) && goalsPlan.aggregateCompletion.status === 'complete';

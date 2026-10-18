@@ -16,7 +16,7 @@ function fakeRegistry(models: readonly FakeModel[]): SenpiModelRegistryPort<Fake
 }
 
 describe("resolveAvailableCategoryNames", () => {
-  describe("#given no user categories and a registry exposing the architect gate model", () => {
+  describe("#given no user categories and a registry serving the architect chain rung", () => {
     describe("#when the runtime category list is resolved", () => {
       it("#then the builtin architect category is exposed", () => {
         const names = resolveAvailableCategoryNames({}, fakeRegistry([{ provider: "anthropic", id: "claude-fable-5-1" }]))
@@ -25,7 +25,7 @@ describe("resolveAvailableCategoryNames", () => {
     })
   })
 
-  describe("#given no user categories and a registry without the architect gate model", () => {
+  describe("#given no user categories and a registry serving no architect chain rung", () => {
     describe("#when the runtime category list is resolved", () => {
       it("#then the builtin architect category is not exposed", () => {
         const names = resolveAvailableCategoryNames({}, fakeRegistry([{ provider: "omo-mock", id: "mock-weak" }]))
@@ -36,7 +36,7 @@ describe("resolveAvailableCategoryNames", () => {
   })
 
   describe("#given a user-declared architect category", () => {
-    describe("#when the registry lacks the gate model", () => {
+    describe("#when the registry serves no chain rung", () => {
       it("#then the explicit declaration still exposes architect", () => {
         const names = resolveAvailableCategoryNames(
           { categories: { architect: { model: "anthropic/claude-fable-5-1" } } },

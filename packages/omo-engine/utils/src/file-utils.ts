@@ -1,6 +1,6 @@
-import { lstatSync, realpathSync } from "fs"
-import { promises as fs } from "fs"
-import { access, lstat } from "fs/promises"
+import { lstatSync, realpathSync } from "node:fs"
+import { promises as fs } from "node:fs"
+import { access, lstat } from "node:fs/promises"
 
 function normalizeDarwinRealpath(filePath: string): string {
   return filePath.startsWith("/private/var/") ? filePath.slice("/private".length) : filePath

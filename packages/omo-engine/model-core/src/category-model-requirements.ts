@@ -54,6 +54,26 @@ export const CATEGORY_MODEL_REQUIREMENTS: Record<string, ModelRequirement> = {
       }
     ],
   },
+  architect: {
+    // System design and architecture: Claude-led, same family order as the artistry lane.
+    fallbackChain: [
+      {
+        providers: ["anthropic", "anthropic-api", "github-copilot", "opencode"],
+        model: "claude-fable-5-1",
+        variant: "max",
+      },
+      {
+        providers: ["anthropic", "anthropic-api", "github-copilot", "opencode"],
+        model: "claude-opus-5-5",
+        variant: "max",
+      },
+      {
+        providers: ["kimi-for-coding", "moonshotai", "opencode-go", "opencode"],
+        model: "kimi-k3",
+        variant: "max",
+      }
+    ],
+  },
   artistry: {
     fallbackChain: [
       {

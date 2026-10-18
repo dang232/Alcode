@@ -72,7 +72,7 @@ describe("resolveAgent category stage", () => {
     expect(result.requested_model?.source).toBe("agent")
   })
 
-  test("#given categories deep then unspecified-high #when the deep gate model is absent #then the second category supplies the model", () => {
+  test("#given categories deep then unspecified-high #when the deep chain has no live rung #then the second category supplies the model", () => {
     // given
     const agents = categorizedAgent(["deep", "unspecified-high"])
     const models = registry([model("anthropic", "claude-opus-5-5")])

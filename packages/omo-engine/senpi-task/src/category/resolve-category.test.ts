@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { BUILTIN_CATEGORY_DEFAULTS, BUILTIN_CATEGORY_REQUIRES_MODEL, resolveCategory } from "./index"
+import { BUILTIN_CATEGORY_DEFAULTS, resolveCategory } from "./index"
 
 type FakeModel = {
   readonly provider: string
@@ -484,12 +484,7 @@ describe("builtin category defaults", () => {
       ["writing", "anthropic/claude-opus-5-5", "low"],
     ])
 
-    // then: availability gating applies only to the model-gated builtins; any listed id opens the gate
-    expect(BUILTIN_CATEGORY_REQUIRES_MODEL).toEqual({
-      architect: ["claude-fable-5-1"],
-      ultrabrain: ["gpt-6-astra", "gpt-5.6-sol"],
-      "deep-low": ["gpt-6.1-sol", "gpt-6.1-sol-fast", "gpt-5.6-sol-fast", "gpt-5.6-sol"],
-      "deep-high": ["gpt-6-astra"],
-    })
+    // then: no builtin carries a model gate; availability is purely chain viability against the live registry
+    expect(BUILTIN_CATEGORY_DEFAULTS.every((definition) => !("requiresModel" in definition))).toBe(true)
   })
 })

@@ -1,5 +1,6 @@
 import { OpenCode } from '@opencode/client';
 import { ENGINE_CATALOG_SOURCE_ID } from '../skills-catalog/engine-skills.js';
+import { OMO_SKILLS_SOURCE_ID } from '../skills-catalog/omo-skills.js';
 import { buildAppliedResponse } from './config-mutation-response.js';
 import { OPENCODE_CONFIG_DIR } from './shared.js';
 
@@ -50,6 +51,7 @@ export const registerSkillRoutes = (app, dependencies) => {
     getProfiles,
     getProfile,
     engineSkillCatalog = null,
+    omoSkillCatalog = null,
   } = dependencies;
 
   // Engine catalog additions stay additive: OpenCode-config discovery
@@ -346,12 +348,27 @@ export const registerSkillRoutes = (app, dependencies) => {
       if (engineSkillCatalog) {
         sources.push(engineSkillCatalog.source);
       }
+      if (omoSkillCatalog) {
+        sources.push(omoSkillCatalog.source);
+      }
 
       // Engine skills list inline: the loader-backed catalog has no git
       // repo to scan, so its items ship with the catalog itself (and feed
       // the client's catalog/source fallback for this source id).
       const itemsBySource = {};
       let engineSkillsUnavailable = false;
+      let omoSkillsUnavailable = false;
+      if (omoSkillCatalog) {
+        const omoListed = await omoSkillCatalog.listItems();
+        if (omoListed.ok) {
+          itemsBySource[OMO_SKILLS_SOURCE_ID] = await attachEngineInstalledFlags(
+            omoListed.items,
+            catalogDirectory,
+          );
+        } else {
+          omoSkillsUnavailable = true;
+        }
+      }
       if (engineSkillCatalog) {
         const engineListed = await engineSkillCatalog.listItems();
         if (engineListed.ok) {
@@ -389,6 +406,9 @@ export const registerSkillRoutes = (app, dependencies) => {
       if (engineSkillsUnavailable) {
         catalogBody.engineSkillsUnavailable = true;
       }
+      if (omoSkillsUnavailable) {
+        catalogBody.omoSkillsUnavailable = true;
+      }
       res.json(catalogBody);
     } catch (error) {
       console.error('Failed to load skills catalog:', error);
@@ -425,6 +445,15 @@ export const registerSkillRoutes = (app, dependencies) => {
 
       // Engine-backed source: no git repo to parse or scan. Installed
       // flags merge with the same OpenCode-config discovery as the list.
+      if (sourceId === OMO_SKILLS_SOURCE_ID && omoSkillCatalog) {
+        const omoListed = await omoSkillCatalog.listItems();
+        if (!omoListed.ok) {
+          return res.status(500).json({ ok: false, error: { kind: 'omo_unavailable', message: omoListed.error?.message || 'OmO skills unavailable' } });
+        }
+        const items = await attachEngineInstalledFlags(omoListed.items, directory);
+        return res.json({ ok: true, items });
+      }
+
       if (sourceId === ENGINE_CATALOG_SOURCE_ID && engineSkillCatalog) {
         const engineListed = await engineSkillCatalog.listItems();
         if (!engineListed.ok) {
@@ -613,6 +642,57 @@ export const registerSkillRoutes = (app, dependencies) => {
   // exact wins, unique short name resolves, ambiguous refuses). The
   // SKILL.md lands under a managed root so existing discovery lists it;
   // nothing here re-resolves OpenCode-config skills.
+  app.post('/api/config/skills/install-omo', async (req, res) => {
+    try {
+      if (!omoSkillCatalog) {
+        return res.status(500).json({
+          ok: false,
+          error: { kind: 'omo_unavailable', message: 'OmO skill catalog is not wired.' },
+        });
+      }
+      const { skillName, scope } = req.body || {};
+
+      let workingDirectory = null;
+      if (scope === 'project') {
+        const resolved = await resolveProjectDirectory(req);
+        if (!resolved.directory) {
+          return res.status(400).json({
+            ok: false,
+            error: { kind: 'invalidSource', message: resolved.error || 'Project installs require a directory parameter' },
+          });
+        }
+        workingDirectory = resolved.directory;
+      }
+
+      const result = await omoSkillCatalog.install({ skillName, scope, workingDirectory });
+
+      if (!result.ok) {
+        if (result.error?.kind === 'already_installed') {
+          return res.status(409).json({ ok: false, error: result.error });
+        }
+        if (result.error?.kind === 'omo_unavailable' || result.error?.kind === 'unknown') {
+          return res.status(500).json({ ok: false, error: result.error });
+        }
+        return res.status(400).json({ ok: false, error: result.error });
+      }
+
+      const installed = result.installed || [];
+      res.json({
+        ok: true,
+        installed,
+        skipped: result.skipped || [],
+        ...buildAppliedResponse(
+          installed.length > 0
+            ? `OmO skill ${installed[0].skillName} installed successfully.`
+            : 'No OmO skills were installed',
+        ),
+      });
+    } catch (error) {
+      console.error('Failed to install OmO skill:', error);
+      res.status(500).json({ ok: false, error: { kind: 'unknown', message: error.message || 'Failed to install OmO skill' } });
+    }
+  });
+
   app.post('/api/config/skills/install-engine', async (req, res) => {
     try {
       if (!engineSkillCatalog) {
