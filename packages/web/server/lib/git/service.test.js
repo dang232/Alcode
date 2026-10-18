@@ -2974,7 +2974,7 @@ describe('removeWorktree', () => {
       expect(injected).toBe(true);
       if (kind === 'file') expect(fs.readFileSync(fixture.gitEntry, 'utf8')).toBe(concurrentContents);
       else expect(fs.readlinkSync(fixture.gitEntry)).toBe(concurrentContents);
-      const claims = fs.readdirSync(fixture.worktree).filter(name => name.startsWith('.git.openchamber-'));
+      const claims = fs.readdirSync(fixture.worktree).filter(name => name.startsWith('.git.alcode-'));
       expect(claims).toHaveLength(1);
       const claim = path.join(fixture.worktree, claims[0]);
       expect(fs.readlinkSync(claim)).toBe(originalTarget);
@@ -3025,7 +3025,7 @@ describe('removeWorktree', () => {
         deleteLocalBranch: true,
       })).rejects.toBe(installationError);
       expect(fs.lstatSync(fixture.gitEntry, { throwIfNoEntry: false })).toBeUndefined();
-      const claims = fs.readdirSync(fixture.worktree).filter(name => name.startsWith('.git.openchamber-'));
+      const claims = fs.readdirSync(fixture.worktree).filter(name => name.startsWith('.git.alcode-'));
       expect(claims).toHaveLength(1);
       const claim = path.join(fixture.worktree, claims[0]);
       expect(fs.readlinkSync(claim)).toBe(originalTarget);
