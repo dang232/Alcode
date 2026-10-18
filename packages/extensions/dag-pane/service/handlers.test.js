@@ -952,4 +952,96 @@ describe('project-scoped chat-run persistence', () => {
     const parsed = parseSnapshotDoc(live.body);
     expect(parsed.ok).toBe(true);
   });
+
+  test('loop maps the full CLI kind vocabulary without inventing motion', async () => {
+    const dir = makeSnapshotDir();
+    const repo = nodeFs.mkdtempSync(join(tmpdir(), 'dag-loop-kindsfull-'));
+    scratchDirs.push(repo);
+    const loop = join(repo, '.omo', 'ulw-loop', 'ses_kindsfull');
+    nodeFs.mkdirSync(loop, { recursive: true });
+    const lines = [
+      '{"at":"2026-10-14T00:00:00.000Z","kind":"plan_created"}',
+      '{"at":"2026-10-14T00:01:00.000Z","kind":"goal_blocked","goalId":"G001"}',
+      '{"at":"2026-10-14T00:02:00.000Z","kind":"goal_needs_user_decision","goalId":"G001"}',
+      '{"at":"2026-10-14T00:03:00.000Z","kind":"goal_review_blocked","goalId":"G001"}',
+      '{"at":"2026-10-14T00:04:00.000Z","kind":"criterion_blocked","goalId":"G001"}',
+      '{"at":"2026-10-14T00:05:00.000Z","kind":"steering_rejected","goalId":"G001"}',
+      '{"at":"2026-10-14T00:06:00.000Z","kind":"aggregate_objective_migrated"}',
+      '{"at":"2026-10-14T00:07:00.000Z","kind":"steering_accepted","goalId":"G001"}',
+    ];
+    nodeFs.writeFileSync(join(loop, 'ledger.jsonl'), lines.join('\n') + '\n', 'utf8');
+    nodeFs.writeFileSync(join(loop, 'goals.json'), '{"version":1}', 'utf8');
+    const { handleRequest } = handlersWith(dir, absentBridge);
+    const answer = await handleRequest({ method: 'GET', path: '/loop', query: { sessionId: 'ses_kindsfull', directory: repo } });
+    expect(answer.status).toBe(200);
+    const run = answer.body.dag.runs[0];
+    expect(run.nodes.map((node) => node.label)).toEqual([
+      'plan_created', 'goal_blocked', 'goal_needs_user_decision', 'goal_review_blocked',
+      'criterion_blocked', 'steering_rejected', 'aggregate_objective_migrated', 'steering_accepted',
+    ]);
+    expect(run.nodes.map((node) => node.state)).toEqual([
+      'running', 'pending', 'pending', 'pending', 'pending', 'pending', 'running', 'running',
+    ]);
+    expect(parseSnapshotDoc(answer.body).ok).toBe(true);
+  });
+
+  test('loop attaches dispatch and result corridor to goal children', async () => {
+    const dir = makeSnapshotDir();
+    const repo = nodeFs.mkdtempSync(join(tmpdir(), 'dag-loop-corridor-'));
+    scratchDirs.push(repo);
+    const loop = join(repo, '.omo', 'ulw-loop', 'ses_corridor');
+    nodeFs.mkdirSync(loop, { recursive: true });
+    nodeFs.writeFileSync(join(loop, 'goals.json'), JSON.stringify({
+      version: 1,
+      brief: 'Corridor proof\n',
+      goals: [
+        { id: 'G001', title: 'arch', objective: 'survey arch', status: 'in_progress', successCriteria: [], attempt: 1 },
+        { id: 'G002', title: 'ops', objective: 'survey ops', status: 'pending', successCriteria: [], attempt: 0 },
+      ],
+    }), 'utf8');
+    const lines = [
+      '{"at":"2026-10-14T01:00:00.000Z","kind":"goal_dispatched","goalId":"G001"}',
+      '{"at":"2026-10-14T02:00:00.000Z","kind":"child_completed","goalId":"G001","evidence":"survey done","artifacts":["a.md","b.md"]}',
+      '{"at":"2026-10-14T03:00:00.000Z","kind":"child_failed","goalId":"G002","message":"boom"}',
+    ];
+    nodeFs.writeFileSync(join(loop, 'ledger.jsonl'), lines.join('\n') + '\n', 'utf8');
+    const { handleRequest } = handlersWith(dir, absentBridge);
+    const answer = await handleRequest({ method: 'GET', path: '/loop', query: { sessionId: 'ses_corridor', directory: repo } });
+    expect(answer.status).toBe(200);
+    const run = answer.body.dag.runs[0];
+    expect(run.nodes.map((node) => node.id)).toEqual(['parent', 'G001', 'G002', 'synthesis']);
+    const [g001, g002] = [run.nodes[1], run.nodes[2]];
+    expect(g001.dispatched).toBe(true);
+    expect(g002.dispatched).toBe(false);
+    expect(g001.result).toEqual({ state: 'completed', evidence: 'survey done', artifacts: ['a.md', 'b.md'], at: '2026-10-14T02:00:00.000Z' });
+    expect(g002.result).toEqual({ state: 'failed', evidence: 'boom', artifacts: [], at: '2026-10-14T03:00:00.000Z' });
+    expect(g001.started_at).toBe('2026-10-14T01:00:00.000Z');
+    expect(g001.completed_at).toBe('2026-10-14T02:00:00.000Z');
+    expect(run.edges).toContainEqual({ from: 'parent', to: 'G001' });
+    expect(run.edges).toContainEqual({ from: 'G002', to: 'synthesis' });
+    expect(parseSnapshotDoc(answer.body).ok).toBe(true);
+  });
+
+  test('loop corridor claims nothing without a ledger trail', async () => {
+    const dir = makeSnapshotDir();
+    const repo = nodeFs.mkdtempSync(join(tmpdir(), 'dag-loop-notrail-'));
+    scratchDirs.push(repo);
+    const loop = join(repo, '.omo', 'ulw-loop', 'ses_notrail');
+    nodeFs.mkdirSync(loop, { recursive: true });
+    nodeFs.writeFileSync(join(loop, 'goals.json'), JSON.stringify({
+      version: 1,
+      goals: [{ title: 'untracked', status: 'pending', successCriteria: [] }],
+    }), 'utf8');
+    nodeFs.writeFileSync(join(loop, 'ledger.jsonl'), '{"at":"t","kind":"plan_created"}\n', 'utf8');
+    const { handleRequest } = handlersWith(dir, absentBridge);
+    const answer = await handleRequest({ method: 'GET', path: '/loop', query: { sessionId: 'ses_notrail', directory: repo } });
+    expect(answer.status).toBe(200);
+    const node = answer.body.dag.runs[0].nodes[1];
+    expect(node.id).toBe('goal-1');
+    expect(node.dispatched).toBe(false);
+    expect(node.result).toBe(null);
+    expect(node.started_at).toBe(null);
+    expect(node.completed_at).toBe(null);
+    expect(parseSnapshotDoc(answer.body).ok).toBe(true);
+  });
 });

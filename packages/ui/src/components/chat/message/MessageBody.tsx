@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Part } from '@/lib/opencode/model';
-import { isQuestionTool } from '@/lib/opencode/tools';
+import { isQuestionTool, isUlwTool } from '@/lib/opencode/tools';
+import { collectUlvRun, isAllUlwExecutePart } from '@/lib/ulwActivity';
 
 import UserTextPart from './parts/UserTextPart';
 import ToolPart from './parts/ToolPart';
@@ -48,6 +49,7 @@ import { Icon } from "@/components/icon/Icon";
 import { formatTimestampForDisplay } from './timeFormat';
 import { ToolRevealOnMount } from './parts/ToolRevealOnMount';
 import { StaticToolRow } from './parts/ProgressiveGroup';
+import { ActivityCard } from './parts/ActivityCard';
 import { isExpandableTool, isStandaloneTool } from './parts/toolRenderUtils';
 import TurnActivity from '../components/TurnActivity';
 import { LiveActivityCollapse } from '../components/LiveActivityCollapse';
@@ -2001,6 +2003,31 @@ const AssistantMessageBody = React.memo(({
                 if (!shouldShowTool(toolPart)) {
                     flushSegmentsAfterTool(toolPartId);
                     i++;
+                    continue;
+                }
+
+                // ULW control-plane runs fold into one activity card: a compact
+                // header (phase + step counts) instead of a shell row per
+                // bookkeeping call. Raw rows stay expandable inside the card.
+                // In Code Mode the calls arrive wrapped in `execute` scripts;
+                // a script folds only when every call it made is ULW.
+                if (isUlwTool(toolPart.tool) || isAllUlwExecutePart(toolPart)) {
+                    const collected = collectUlvRun(visibleParts, i, messageId, (candidate) => shouldShowTool(candidate as ToolPartType));
+                    const calls = collected.run.map((entry) => ({ id: entry.id, part: visibleParts[entry.index] as ToolPartType }));
+                    for (const consumed of collected.run) flushSegmentsAfterTool(consumed.id);
+                    rendered.push(
+                        <ActivityCard
+                            key={`ulw-activity-${messageId}-${collected.run[0]?.id ?? i}`}
+                            messageId={messageId}
+                            calls={calls}
+                            expandedTools={expandedTools}
+                            onToggleTool={onToggleTool}
+                            isMobile={isMobile}
+                            alwaysShowActions={alwaysShowMessageActions}
+                            onShowPopup={onShowPopup}
+                        />
+                    );
+                    i = collected.next;
                     continue;
                 }
 

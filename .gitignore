@@ -80,3 +80,5 @@ workspaces/
 .maintenance-clone
 test-results/
 artifacts/
+/.omo
+bun.lock

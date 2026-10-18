@@ -21,7 +21,7 @@ function registry(models: readonly FakeModel[]) {
 }
 
 // A registry whose only providers serve none of the quick chain rungs; claude-opus-5-5 keeps
-// visual-engineering/unspecified-high alive so the gated list is not simply empty.
+// visual-engineering/unspecified-high alive so the chain-viability list is not simply empty.
 const OPUS_ONLY = registry([model("omo-mock", "mock-parent"), model("anthropic", "claude-opus-5-5")])
 
 describe("dead-chain category disabling", () => {
@@ -52,7 +52,7 @@ describe("dead-chain category disabling", () => {
       ])
     })
 
-    test("#when the gated category list is computed #then the dead-chain builtin is excluded", () => {
+    test("#when the chain-viability category list is computed #then the dead-chain builtin is excluded", () => {
       // given / when
       const result = resolveCategory("quick", {}, OPUS_ONLY)
 
@@ -69,7 +69,7 @@ describe("dead-chain category disabling", () => {
       expect(result.availableCategories).toContain("unspecified-high")
     })
 
-    test("#when a gated builtin's chain is also dead #then the gate failure carries the chain details", () => {
+    test("#when a former gated builtin's chain is also dead #then the dead-chain failure carries the chain details", () => {
       // given / when
       const result = resolveCategory("architect", {}, OPUS_ONLY)
 
@@ -166,7 +166,7 @@ describe("dead-chain category disabling", () => {
   })
 
   describe("#given a user-configured category with an explicit model", () => {
-    test("#when the builtin chain is dead #then the category is never gated and still resolves", () => {
+    test("#when the builtin chain is dead #then the category still resolves on an explicit user model", () => {
       // given
       const models = registry([model("omo-mock", "mock-parent")])
 
@@ -202,7 +202,7 @@ describe("dead-chain category disabling", () => {
   })
 
   describe("#given disabled and unknown targets", () => {
-    test("#when the category is disabled #then the result still returns the gated list", () => {
+    test("#when the category is disabled #then the result still returns the chain-viability list", () => {
       // given / when
       const result = resolveCategory("quick", { categories: { quick: { disable: true } } }, OPUS_ONLY)
 
@@ -214,7 +214,7 @@ describe("dead-chain category disabling", () => {
       expect(result.availableCategories).not.toContain("deep-high")
     })
 
-    test("#when the category is unknown #then the result still returns the gated list", () => {
+    test("#when the category is unknown #then the result still returns the chain-viability list", () => {
       // given / when
       const result = resolveCategory("nope", {}, OPUS_ONLY)
 

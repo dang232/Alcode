@@ -32,67 +32,21 @@ export const CATEGORY_PROMPT_APPENDS: Readonly<Record<string, string>> = Object.
   BUILTIN_CATEGORY_DEFAULTS.map((definition) => [definition.name, definition.promptAppend]),
 )
 
-function hasRequiresModel(
-  definition: BuiltinCategoryDefinition,
-): definition is BuiltinCategoryDefinition & { readonly requiresModel: string | readonly string[] } {
-  return definition.requiresModel !== undefined
-}
-
-// A gate lists every model id that opens the category; one present id is enough. ultrabrain gates on
-// gpt-6-astra OR gpt-5.6-sol so a registry carrying either GPT flagship keeps it, deep-low on either
-// GPT-6 Sol tier and deep-high on gpt-6-astra alone, and a registry with none of a lane's ids never
-// falls through to a cross-family model.
-export const BUILTIN_CATEGORY_REQUIRES_MODEL: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
-  BUILTIN_CATEGORY_DEFAULTS.filter(hasRequiresModel).map((definition) => [
-    definition.name,
-    typeof definition.requiresModel === "string" ? [definition.requiresModel] : definition.requiresModel,
-  ]),
-)
-
-export function categoryGateModels(categoryName: string): readonly string[] | undefined {
-  return Object.hasOwn(BUILTIN_CATEGORY_REQUIRES_MODEL, categoryName)
-    ? BUILTIN_CATEGORY_REQUIRES_MODEL[categoryName]
-    : undefined
-}
-
-function categoryChainProviders(categoryName: string): readonly string[] {
-  const chain = Object.hasOwn(CATEGORY_FALLBACK_CHAINS, categoryName)
-    ? CATEGORY_FALLBACK_CHAINS[categoryName]
-    : []
-  return chain.flatMap((rung) => rung.providers)
-}
-
-// `provider` serves `model` when the registry lists it under that provider, spelled as omo's routing
-// tables spell it (claude-fable-5-1) or through the provider-specific id transform delegate-core
-// applies at resolution time (github-copilot: claude-fable-5.1, kimi-coding: k3). The provider is
-// part of the check: a gateway re-publishing the model (openrouter/anthropic/claude-opus-5.5) serves
-// no builtin rung, because a builtin chain resolves only on the providers it lists (#9146).
-function providerServesModel(provider: string, model: string, availableModels: ReadonlySet<string>): boolean {
-  return availableModels.has(`${provider}/${model}`)
-    || availableModels.has(`${provider}/${transformModelForProvider(provider, model)}`)
-}
-
-// `availableModels` holds live registry models as `provider/id`. A gate opens only when a provider
-// this category's chain lists serves a gate model; family and version comparison stays exact.
-export function isCategoryGateSatisfied(
-  categoryName: string,
-  hasExplicitUserConfig: boolean,
-  availableModels: ReadonlySet<string>,
-): boolean {
-  const gateModels = categoryGateModels(categoryName)
-  if (gateModels === undefined || hasExplicitUserConfig) return true
-  const chainProviders = categoryChainProviders(categoryName)
-  return gateModels.some((gateModel) =>
-    chainProviders.some((provider) => providerServesModel(provider, gateModel, availableModels))
-  )
-}
-
-// A chain rung resolves when one of its own providers serves its model in the live registry.
+// A chain rung resolves when one of its own providers serves its model in the live registry:
+// the registry spells it as omo's routing tables spell it (claude-fable-5-1) or through the
+// provider-specific id transform delegate-core applies at resolution time (github-copilot:
+// claude-fable-5.1, kimi-coding: k3). The provider is part of the check: a gateway re-publishing
+// the model (openrouter/anthropic/claude-opus-5.5) resolves no builtin rung, because a builtin
+// chain resolves only on the providers it lists (#9146).
 export function isCategoryChainRungResolvable(
   entry: DelegateFallbackEntry,
   availableModels: ReadonlySet<string>,
 ): boolean {
-  return entry.providers.some((provider) => providerServesModel(provider, entry.model, availableModels))
+  return entry.providers.some(
+    (provider) =>
+      availableModels.has(`${provider}/${entry.model}`)
+      || availableModels.has(`${provider}/${transformModelForProvider(provider, entry.model)}`),
+  )
 }
 
 // Dead-chain availability: a builtin-only category is usable only when at least one of its

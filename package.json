@@ -207,8 +207,9 @@
     "tailwindcss": "^4.0.0",
     "tsx": "^4.20.6",
     "tw-animate-css": "^1.3.8",
-    "typescript": "~5.9.0",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.39.1",
+    "typescript-language-server": "^6.0.2",
     "vite": "^7.1.2"
   },
   "patchedDependencies": {

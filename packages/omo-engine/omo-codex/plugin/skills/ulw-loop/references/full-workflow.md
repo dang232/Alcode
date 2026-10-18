@@ -125,7 +125,11 @@ if (-not $ULW_LOOP_CLI) { exit 2 }
 ```
 Reuse that exact value for every command in the run (`"$ULW_LOOP_CLI"` in sh,
 `& $ULW_LOOP_CLI` in PowerShell — quoted invocation keeps paths with spaces
-working). The resolver itself honors an explicit `OMO_ULW_LOOP_CLI`
+working).
+
+When this prompt runs inside the app, prefer the native ulw_* tools for every loop state operation; use the resolved CLI command form only when those tools are unavailable in the run.
+
+The resolver itself honors an explicit `OMO_ULW_LOOP_CLI`
 (exported by the Electron host). A non-zero exit means misconfigured, not
 "try the global toolkit": stderr names a missing/stale checkout build with
 its exact rebuild command, or asks for `--allow-global` opt-in outside a

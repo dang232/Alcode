@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { getBundledModelCapabilitiesSnapshot, getModelCapabilities } from "./model-capabilities"
-import bundledModelCapabilitiesSnapshotJson from "../../../packages/omo-opencode/src/generated/model-capabilities.generated.json"
+import bundledModelCapabilitiesSnapshotJson from "../../omo-opencode/src/generated/model-capabilities.generated.json"
 
 describe("bundled model capabilities snapshot", () => {
   describe("#given xAI grok models where maxTokens equals contextWindow", () => {

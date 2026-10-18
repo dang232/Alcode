@@ -13,7 +13,7 @@ import { toolDisplayStyles } from '@/lib/typography';
 import { WorkerHighlightedCode } from '@/components/code/WorkerHighlightedCode';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useSessionUIStore } from '@/sync/session-ui-store';
-import { useDirectorySync, useSessionMessages } from '@/sync/sync-context';
+import { useAllLiveSessions, useDirectorySync, useSessionMessages } from '@/sync/sync-context';
 import { useRunningShell } from '@/sync/background-shells';
 import { findShellCancellation, findShellCompletion, readBackgroundShellID } from '@/lib/opencode/background-shell';
 import { opencodeClient } from '@/lib/opencode/client';
@@ -103,7 +103,7 @@ import { openApplyPatchFileInEditor } from './applyPatchEditorAction';
 import { WebSearchResults } from './WebSearchResults';
 import { toBackgroundShellPart, type BackgroundShellPhase } from './backgroundShellPart';
 import { toBackgroundSubagentPart, toStoppedSubagentPart, type BackgroundSubagentPhase } from './backgroundSubagentPart';
-import { findSubagentCancellation, findSubagentRun, readBackgroundSubagentChildID } from '@/lib/opencode/subagent-run';
+import { findSubagentCancellation, findSubagentRun, readBackgroundSubagentChildID, resolveSubagentIdentity, type SubagentIdentity } from '@/lib/opencode/subagent-run';
 import { useGlobalSessionStatusStore } from '@/sync/global-session-status';
 import { useBackgroundShellOutput } from './useBackgroundShellOutput';
 
@@ -1053,6 +1053,7 @@ interface ToolExpandedContentProps {
     isExpanded: boolean;
     onShowPopup?: (content: ToolPopupContent) => void;
     presentation: GuestToolRule | null;
+    subagentIdentity?: SubagentIdentity | null;
 }
 
 const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
@@ -1062,6 +1063,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
     isExpanded,
     onShowPopup,
     presentation,
+    subagentIdentity,
 }) => {
     const { t } = useI18n();
     const runtime = React.useContext(RuntimeAPIContext);
@@ -1479,6 +1481,27 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                         </div>
                     ) : null}
 
+                    {subagentIdentity && (subagentIdentity.agent || subagentIdentity.model) ? (
+                        <div className="my-1 space-y-0.5">
+                            {subagentIdentity.agent ? (
+                                <div className="flex items-baseline gap-2 typography-meta">
+                                    <span className="flex-shrink-0 font-medium text-muted-foreground/80">{t('chat.toolPart.subagent.identity.agent')}</span>
+                                    <span className="min-w-0 truncate text-foreground">{subagentIdentity.agent}</span>
+                                </div>
+                            ) : null}
+                            {subagentIdentity.model ? (
+                                <div className="flex items-baseline gap-2 typography-meta">
+                                    <span className="flex-shrink-0 font-medium text-muted-foreground/80">{t('chat.toolPart.subagent.identity.model')}</span>
+                                    <span className="min-w-0 truncate text-muted-foreground">{subagentIdentity.model}</span>
+                                </div>
+                            ) : null}
+                            <div className="flex items-baseline gap-2 typography-meta">
+                                <span className="flex-shrink-0 font-medium text-muted-foreground/80">{t('chat.toolPart.subagent.identity.permissions')}</span>
+                                <span className="min-w-0 truncate text-muted-foreground">{t(`chat.toolPart.subagent.identity.permission.${subagentIdentity.permissionMode === 'read-only' ? 'readOnly' : subagentIdentity.permissionMode === 'read-write' ? 'readWrite' : 'default'}` as const)}</span>
+                            </div>
+                        </div>
+                    ) : null}
+
                     {hasInputText ? (
                         <div className="my-1">
                             {renderScrollableBlock(
@@ -1557,7 +1580,7 @@ type ToolRowHeader = {
     stop?: { onStop: () => void; ariaLabel: string };
 };
 
-const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subagentSessionId?: string }> = ({
+const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subagentSessionId?: string; subagentIdentity?: SubagentIdentity | null }> = ({
     part,
     isExpanded,
     onToggle,
@@ -1566,6 +1589,7 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
     animateTailText = true,
     header,
     subagentSessionId: taskSessionId,
+    subagentIdentity,
 }) => {
     const { t } = useI18n();
     const state = part.state;
@@ -1718,7 +1742,12 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
         [input, metadata, presentation, stateOutput],
     );
     const description = guestHeader?.subtitle ?? builtInDescription;
-    const displayName = guestHeader?.title ?? getToolMetadata(normalizedPartTool || part.tool).displayName;
+    const baseDisplayName = guestHeader?.title ?? getToolMetadata(normalizedPartTool || part.tool).displayName;
+    // A resolved specialist replaces the generic label; a row with no named
+    // agent keeps it, so a generic worker is never mislabeled.
+    const displayName = isTaskTool && subagentIdentity?.agent && !guestHeader?.title
+        ? `${baseDisplayName} · ${subagentIdentity.agent}`
+        : baseDisplayName;
     
     // Tool title/description — shown inline as context. A subtitle the
     // extension declared replaces it, since both land in the same slot.
@@ -1982,7 +2011,7 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
                                     </button>
                                 ) : null}
                                 {taskSessionId ? (
-                                    <OpenSubtaskButton sessionId={taskSessionId} agent={subagentAgent(input)} isMobile={isMobile} />
+                                    <OpenSubtaskButton sessionId={taskSessionId} agent={subagentIdentity?.agent ?? subagentAgent(input)} isMobile={isMobile} />
                                 ) : null}
                             </div>
                             {showsDuration && typeof effectiveTimeStart === 'number' && !header?.durationUnknown ? (
@@ -2085,6 +2114,7 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
                             isExpanded={isExpanded}
                             onShowPopup={onShowPopup}
                             presentation={presentation}
+                            subagentIdentity={subagentIdentity}
                         />
                     </div>
                 ) : null}
@@ -2219,6 +2249,23 @@ const SubagentToolPartContent: React.FC<ToolPartProps> = (props) => {
     );
     const backgroundRunning = useGlobalSessionStatusStore((state) => backgroundChildID !== undefined && state.activeSessionIds.has(backgroundChildID));
     const [stopping, setStopping] = React.useState(false);
+    const liveSessions = useAllLiveSessions();
+    const subagentIdentity = React.useMemo(() => {
+        const liveChild = childSessionID !== undefined
+            ? liveSessions.find((session) => session.id === childSessionID) ?? null
+            : null;
+        return resolveSubagentIdentity({
+            requestedAgent: subagentAgent(props.part.state.input),
+            reportedAgent: run?.agent,
+            liveChild: liveChild ? {
+                agent: liveChild.agent ?? null,
+                model: liveChild.model ? { id: liveChild.model.id, providerID: liveChild.model.providerID } : null,
+                permissions: Array.isArray(liveChild.permissions) ? liveChild.permissions : null,
+                cost: liveChild.cost ?? null,
+                time: liveChild.time ? { created: liveChild.time.created, updated: liveChild.time.updated } : null,
+            } : null,
+        });
+    }, [childSessionID, liveSessions, props.part.state.input, run]);
 
     const backgroundPhase = React.useMemo((): BackgroundSubagentPhase | undefined => {
         if (!backgroundChildID) return undefined;
@@ -2259,7 +2306,7 @@ const SubagentToolPartContent: React.FC<ToolPartProps> = (props) => {
             : undefined,
     };
 
-    return <ToolPartContent {...props} part={part} header={header} subagentSessionId={childSessionID} />;
+    return <ToolPartContent {...props} part={part} header={header} subagentSessionId={childSessionID} subagentIdentity={subagentIdentity} />;
 };
 
 const ToolPart: React.FC<ToolPartProps> = (props) => {

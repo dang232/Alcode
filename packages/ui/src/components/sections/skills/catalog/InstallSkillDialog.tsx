@@ -21,6 +21,7 @@ import { Icon } from "@/components/icon/Icon";
 import { useI18n } from '@/lib/i18n';
 
 import type { SkillsCatalogItem } from '@/lib/api/types';
+import { runtimeFetch } from '@/lib/runtime-fetch';
 import { useSkillsCatalogStore } from '@/stores/useSkillsCatalogStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { InstallConflictsDialog, type ConflictDecision, type SkillConflict } from './InstallConflictsDialog';
@@ -56,6 +57,38 @@ export const InstallSkillDialog: React.FC<InstallSkillDialogProps> = ({ open, on
     skillDir: string;
     directoryOverride?: string | null;
   } | null>(null);
+  const [omoPending, setOmoPending] = React.useState(false);
+  const isOmoItem = item?.sourceId === 'omo';
+
+  // Bundled OmO skills install through their own endpoint: no repo, no
+  // destination choice beyond scope, no overwrite. The installed file is
+  // ordinary skill data, so the existing editor owns inspect/override and
+  // deleting it restores the packaged default.
+  const doInstallOmo = async () => {
+    if (!item || omoPending) return;
+    setOmoPending(true);
+    try {
+      const query = directoryOverride && scope === 'project'
+        ? `?directory=${encodeURIComponent(directoryOverride)}`
+        : '';
+      const response = await runtimeFetch(`/api/config/skills/install-omo${query}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ skillName: item.skillName, scope }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        toast.error(payload?.error?.message || t('settings.skills.catalog.installSkill.toast.installFailed'));
+        return;
+      }
+      toast.success(t('settings.skills.catalog.installSkill.toast.installed'));
+      onOpenChange(false);
+    } catch {
+      toast.error(t('settings.skills.catalog.installSkill.toast.installFailed'));
+    } finally {
+      setOmoPending(false);
+    }
+  };
 
   React.useEffect(() => {
     if (!open) return;
@@ -261,8 +294,12 @@ export const InstallSkillDialog: React.FC<InstallSkillDialogProps> = ({ open, on
             </Button>
             <Button
               size="sm"
-              disabled={isInstalling || !item.installable || (scope === 'project' && !directoryOverride)}
-              onClick={() =>
+              disabled={omoPending || isInstalling || !item.installable || (scope === 'project' && !directoryOverride)}
+              onClick={() => {
+                if (isOmoItem) {
+                  void doInstallOmo();
+                  return;
+                }
                 void doInstall({
                   source: item.repoSource,
                   subpath: item.repoSubpath,
@@ -271,7 +308,7 @@ export const InstallSkillDialog: React.FC<InstallSkillDialogProps> = ({ open, on
                   skillDir: item.skillDir,
                   directoryOverride,
                 })
-              }
+              }}
             >
               {isInstalling ? t('settings.skills.catalog.installSkill.actions.installing') : t('settings.skills.catalog.installSkill.actions.install')}
             </Button>

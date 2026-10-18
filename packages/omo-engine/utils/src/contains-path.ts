@@ -1,5 +1,5 @@
-import { existsSync, realpathSync } from "fs"
-import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "path"
+import { existsSync, realpathSync } from "node:fs"
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path"
 
 function findNearestExistingAncestor(resolvedPath: string): string {
   let candidatePath = resolvedPath

@@ -555,3 +555,96 @@ describe('skill-routes engine catalog', () => {
     expect(catalogPayload.sources.map((source) => source.id)).not.toContain('engine');
   });
 });
+
+describe('skill-routes omo catalog', () => {
+  /** @type {string | null} */
+  let projectRoot = null;
+  /** @type {{ close: () => Promise<void> } | null} */
+  let appHandle = null;
+
+  afterEach(async () => {
+    if (appHandle) {
+      await appHandle.close();
+      appHandle = null;
+    }
+    if (projectRoot) {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  it('lists the omo source with inline items in the catalog', async () => {
+    projectRoot = createTempProject();
+    const { createOmoSkillCatalog } = await import('../skills-catalog/omo-skills.js');
+    appHandle = startSkillsApp({
+      projectRoot,
+      overrides: { omoSkillCatalog: createOmoSkillCatalog() },
+    });
+
+    const response = await fetch(`${appHandle.baseUrl}/api/config/skills/catalog`);
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.sources.map((source) => source.id)).toContain('omo');
+    expect(payload.omoSkillsUnavailable).toBeUndefined();
+    expect(payload.itemsBySource.omo.map((item) => item.skillName)).toEqual([
+      'ultrawork',
+      'ulw-loop',
+      'ulw-plan',
+      'ulw-research',
+      'mass-ulw',
+      'hyperplan',
+      'onboarding',
+      'dag-library',
+    ]);
+  });
+
+  it('installs an omo skill into the project managed root with the real catalog', async () => {
+    projectRoot = createTempProject();
+    const { createOmoSkillCatalog } = await import('../skills-catalog/omo-skills.js');
+    appHandle = startSkillsApp({
+      projectRoot,
+      overrides: { omoSkillCatalog: createOmoSkillCatalog() },
+    });
+
+    const response = await fetch(`${appHandle.baseUrl}/api/config/skills/install-omo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skillName: 'ulw-plan', scope: 'project' }),
+    });
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.ok).toBe(true);
+    const target = path.join(projectRoot, '.opencode', 'skills', 'ulw-plan', 'SKILL.md');
+    expect(payload.installed[0].path).toBe(target);
+    expect(fs.existsSync(target)).toBe(true);
+
+    const listPayload = await (
+      await fetch(`${appHandle.baseUrl}/api/config/skills?directory=${encodeURIComponent(projectRoot)}`)
+    ).json();
+    expect(listPayload.skills.map((skill) => skill.name)).toContain('ulw-plan');
+
+    const again = await fetch(`${appHandle.baseUrl}/api/config/skills/install-omo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skillName: 'ulw-plan', scope: 'project' }),
+    });
+    expect(again.status).toBe(409);
+  });
+
+  it('answers omo_unavailable when the catalog is not wired', async () => {
+    projectRoot = createTempProject();
+    appHandle = startSkillsApp({ projectRoot });
+
+    const installResponse = await fetch(`${appHandle.baseUrl}/api/config/skills/install-omo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skillName: 'ulw-plan', scope: 'user' }),
+    });
+    expect(installResponse.status).toBe(500);
+    expect((await installResponse.json()).error.kind).toBe('omo_unavailable');
+
+    const catalogPayload = await (await fetch(`${appHandle.baseUrl}/api/config/skills/catalog`)).json();
+    expect(catalogPayload.sources.map((source) => source.id)).not.toContain('omo');
+  });
+});

@@ -13,6 +13,11 @@ const expectedAgents = [
   "momus",
   "atlas",
   "sisyphus-junior",
+  "plan-consultant",
+  "plan-reviewer",
+  "omo-native-code-reviewer",
+  "omo-native-qa-executor",
+  "omo-native-gate-reviewer",
 ] as const
 
 const expectedCategories = [
@@ -21,6 +26,7 @@ const expectedCategories = [
   "deep-low",
   "deep-high",
   "artistry",
+  "architect",
   "quick",
   "unspecified-low",
   "unspecified-high",

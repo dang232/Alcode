@@ -11,13 +11,11 @@ import {
 } from "../../../omo-config-core/src/index.ts"
 
 import {
-  CATEGORY_DESCRIPTIONS,
-  CATEGORY_PROMPT_APPEND_RESOLVERS,
+  CATEGORY_DESCRIPTIONS,  CATEGORY_PROMPT_APPEND_RESOLVERS,
   CATEGORY_PROMPT_APPENDS,
   DEFAULT_CATEGORIES,
   isCategoryChainRungResolvable,
   isCategoryChainViable,
-  isCategoryGateSatisfied,
 } from "./builtins"
 import { availableChainCandidates, buildRuntimeModelChain, chainRungCandidates, type ModelChainCandidate } from "../model-chain"
 import { CATEGORY_FALLBACK_CHAINS } from "./fallback-chains"
@@ -180,12 +178,11 @@ function availableCategoryNames(config: OmoConfig, availableModels?: ReadonlySet
   const userCategories = config.categories ?? {}
   return names.filter((name) => {
     const hasExplicitUserConfig = getOwnRecordValue(userCategories, name) !== undefined
-    return isCategoryGateSatisfied(name, hasExplicitUserConfig, availableModels)
-      && isCategoryChainViable(name, hasExplicitUserConfig, availableModels)
+    return isCategoryChainViable(name, hasExplicitUserConfig, availableModels)
   })
 }
 
-// Gated listing for the disabled/not_found early returns. The registry is only consulted best
+// Chain-viability listing for the disabled/not_found early returns. The registry is only consulted best
 // effort here: a throwing or malformed registry degrades to the ungated list (today's behavior),
 // since those results never resolve a model anyway.
 function gatedAvailableCategories<TModel extends SenpiModelPort>(
@@ -352,17 +349,6 @@ export function resolveCategory<TModel extends SenpiModelPort>(
         ...(unlistedModel !== undefined ? { unlisted_provider_model: unlistedModel } : {}),
       }
     : undefined
-  if (!isCategoryGateSatisfied(categoryName, userConfig !== undefined, availableModelSet)) {
-    return {
-      kind: "model_unavailable",
-      category: categoryName,
-      attemptedModel: builtinConfig?.model ?? config.model,
-      availableModels,
-      availableCategories: gatedCategories,
-      ...(deadChain ?? {}),
-    }
-  }
-
   // Dead-chain short-circuit: a builtin chain with zero resolvable rungs can never produce a model,
   // so fail before resolution with the rungs that were attempted. An explicit user model or user
   // fallback list opts the category out (its failure stays a plain user-model miss without chain

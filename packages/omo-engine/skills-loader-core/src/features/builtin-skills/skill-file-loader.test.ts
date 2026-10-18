@@ -1,10 +1,11 @@
 /// <reference path="../../../../../bun-test.d.ts" />
 
 import { describe, expect, test } from "bun:test"
-import { normalize } from "node:path"
+import { join, normalize } from "node:path"
 import { parseFrontmatter } from "../../../../utils/src/index.ts"
 import { createBuiltinSkills } from "./skills"
 import { createSharedSkillTemplateLoader, loadSharedSkillTemplate } from "./skill-file-loader"
+import { sharedSkillsRootPath } from "../../../../shared-skills/index.mjs"
 
 declare const Bun: {
   file(path: string): { text(): Promise<string> }
@@ -22,7 +23,9 @@ describe("shared builtin skill file loader", () => {
 
     // then
     for (const skillName of SHARED_BUILTIN_SKILLS) {
-      const content = await Bun.file(`packages/shared-skills/skills/${skillName}/SKILL.md`).text()
+      // Absolute root: this migration nests the engine under packages/omo-engine,
+      // so the upstream flat-layout relative path cannot resolve here.
+      const content = await Bun.file(join(sharedSkillsRootPath(), skillName, "SKILL.md")).text()
       const { body } = parseFrontmatter(content)
       expect(skillTemplates.get(skillName)).toBe(body)
       expect(loadSharedSkillTemplate(skillName)).toBe(body)

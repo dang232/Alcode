@@ -28,7 +28,8 @@ export const ULW_COMMAND_NAME = 'ulw';
 export const ulwWorkflowInstruction = (sessionId: string): string => (
   'You are running the user\'s /ulw request: the ultrawork loop. '
   + 'There IS a ulw workflow — drive it below and never say it is missing.\n\n'
-  + 'Drive the loop through the engine CLI and never hand-write loop state:\n'
+  + 'When this prompt runs inside the app, prefer the native ulw_* tools for every loop state operation; use the resolved CLI command form only when those tools are unavailable in the run.\n\n'
+  + 'When the native tools are unavailable, drive the loop through the engine CLI and never hand-write loop state:\n'
   + 'Resolve the CLI once, before the first command, through the authoritative '
   + 'resolver that ships with the owning engine build — never `node scripts/` '
   + 'relative to the project under analysis and never a PATH probe: '
@@ -36,6 +37,7 @@ export const ulwWorkflowInstruction = (sessionId: string): string => (
   + 'checkout root, else stop with the missing-resolver evidence. Reuse the '
   + 'exact resolved value for every command in the '
   + 'run (`"$ULW_LOOP_CLI" ulw-loop ...`, `& $ULW_LOOP_CLI ulw-loop ...`). '
+  + 'Match the shell dialect to the invocation form: in PowerShell MUST use Get-ChildItem piped to Select-Object -First N (never `ls -la | head -n`), while in sh/Bash keep `ls` piped to `head`. '
   + 'Never probe `omo-agent-toolkit` on PATH by hand and never fall back to a '
   + 'global toolkit on a resolver failure: a non-zero exit names the fix.\n'
   + `- Scope every call: pass \`--session-id "${sessionId}"\` on each invocation; '\n`

@@ -2,6 +2,26 @@ import { describe, expect, test } from "bun:test"
 import { CATEGORY_MODEL_REQUIREMENTS } from "./model-requirements"
 
 describe("CATEGORY_MODEL_REQUIREMENTS", () => {
+  test("architect leads claude-fable-5-1 max over opus and kimi-k3", () => {
+    expect(CATEGORY_MODEL_REQUIREMENTS["architect"].fallbackChain).toEqual([
+      {
+        providers: ["anthropic", "anthropic-api", "github-copilot", "opencode"],
+        model: "claude-fable-5-1",
+        variant: "max",
+      },
+      {
+        providers: ["anthropic", "anthropic-api", "github-copilot", "opencode"],
+        model: "claude-opus-5-5",
+        variant: "max",
+      },
+      {
+        providers: ["kimi-for-coding", "moonshotai", "opencode-go", "opencode"],
+        model: "kimi-k3",
+        variant: "max",
+      },
+    ])
+  })
+
   test("writing only activates when one of its own chain models is available", () => {
     expect(CATEGORY_MODEL_REQUIREMENTS["writing"].requiresAnyModel).toBe(true)
   })
@@ -285,16 +305,20 @@ describe("CATEGORY_MODEL_REQUIREMENTS", () => {
     ])
   })
 
-  test("the deep lanes and artistry no longer hard-require primary models", () => {
+  test("every category resolves dynamically with no gate-model field", () => {
     // given
     const deepLow = CATEGORY_MODEL_REQUIREMENTS["deep-low"]
     const deepHigh = CATEGORY_MODEL_REQUIREMENTS["deep-high"]
     const artistry = CATEGORY_MODEL_REQUIREMENTS["artistry"]
 
     // when / then
-    expect(deepLow.requiresModel).toBeUndefined()
-    expect(deepHigh.requiresModel).toBeUndefined()
-    expect(artistry.requiresModel).toBeUndefined()
+    expect("requiresModel" in deepLow).toBe(false)
+    expect("requiresModel" in deepHigh).toBe(false)
+    expect("requiresModel" in artistry).toBe(false)
+    for (const requirement of Object.values(CATEGORY_MODEL_REQUIREMENTS)) {
+      expect("requiresModel" in requirement).toBe(false)
+      expect(requirement.fallbackChain.length).toBeGreaterThan(0)
+    }
   })
 
 })
