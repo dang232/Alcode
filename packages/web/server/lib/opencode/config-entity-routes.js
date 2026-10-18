@@ -1,5 +1,7 @@
 import path from 'path';
 import { buildAppliedResponse } from './config-mutation-response.js';
+import { OMO_NATIVE_CATALOG_ITEMS as OMO_CATALOG_ITEMS, OMO_NATIVE_CATALOG_VERSION as OMO_CATALOG_VERSION } from '../agents/omo-native-catalog.bundle.js';
+import { clearCategoryModel, getCategoryConfig, setCategoryModel } from './category-config.js';
 
 // Agent and command names become file paths (`<dir>/<name>.md`), and Express
 // decodes `%2F` in a param. A nested name (`group/name`) is fine; one that
@@ -39,7 +41,23 @@ export const registerConfigEntityRoutes = (app, dependencies) => {
     updateSnippet,
     deleteSnippet,
     expandSnippets,
+    // Rewrites the watched managed child config so a user-scope agent write
+    // reaches the running child without a restart. Optional: older callers
+    // and unit tests omit it.
+    refreshManagedAgentsForChild,
   } = dependencies;
+
+  // Best-effort: a settings save must never fail because the managed-file
+  // rewrite hiccuped; the next child boot re-reads the files anyway.
+  const refreshManagedAgents = async (scope) => {
+    const refresh = refreshManagedAgentsForChild;
+    if (scope === 'project' || !refresh) return;
+    try {
+      await refresh();
+    } catch (error) {
+      console.error('Failed to refresh managed agents after agent change:', error);
+    }
+  };
 
   // Persist to disk immediately; OpenCode restart is deferred to an explicit
   // Apply & Restart so settings edits do not interrupt live sessions.
@@ -61,6 +79,62 @@ export const registerConfigEntityRoutes = (app, dependencies) => {
 
   // Its own path: under /api/config/agents/ it would shadow an agent named
   // "disabled".
+  // Its own path before `:name`: an agent literally named "catalog" stays addressable.
+  app.get('/api/config/agents/catalog', async (req, res) => {
+    try {
+      res.json({ version: OMO_CATALOG_VERSION, items: OMO_CATALOG_ITEMS });
+    } catch (error) {
+      console.error('Failed to list OmO agent catalog:', error);
+      res.status(500).json({ error: 'Failed to list OmO agent catalog' });
+    }
+  });
+
+  // Category model overrides: the delegation resolver reads
+  // `categories.<name>.model` from the .omo config chain, so PATCH here
+  // (or hand-editing .omo/omo.jsonc) reconfigures a category's model
+  // without touching the bundled defaults. Clearing restores the default.
+  app.get('/api/config/categories/:name', async (req, res) => {
+    try {
+      const { directory } = await resolveOptionalProjectDirectory(req);
+      res.json(getCategoryConfig(req.params.name, { projectDir: directory ?? undefined }));
+    } catch (error) {
+      console.error('Failed to get category config:', error);
+      res.status(error.message?.startsWith('Unknown category') ? 404 : 500).json({ error: error.message || 'Failed to get category config' });
+    }
+  });
+
+  app.patch('/api/config/categories/:name', async (req, res) => {
+    try {
+      const { scope, model } = req.body ?? {};
+      const { directory } = await resolveOptionalProjectDirectory(req);
+      const result = setCategoryModel(req.params.name, model, { scope: scope ?? 'user', projectDir: directory ?? undefined });
+      res.json(buildAppliedResponse(
+        `Category "${req.params.name}" model set to "${model}".`,
+        result,
+      ));
+    } catch (error) {
+      console.error('Failed to set category model:', error);
+      const status = error.message?.startsWith('Unknown category') ? 404 : 400;
+      res.status(status).json({ error: error.message || 'Failed to set category model' });
+    }
+  });
+
+  app.delete('/api/config/categories/:name', async (req, res) => {
+    try {
+      const { scope } = req.body ?? {};
+      const { directory } = await resolveOptionalProjectDirectory(req);
+      const result = clearCategoryModel(req.params.name, { scope: scope ?? 'user', projectDir: directory ?? undefined });
+      res.json(buildAppliedResponse(
+        `Category "${req.params.name}" model override cleared.`,
+        result,
+      ));
+    } catch (error) {
+      console.error('Failed to clear category model:', error);
+      const status = error.message?.startsWith('Unknown category') ? 404 : 400;
+      res.status(status).json({ error: error.message || 'Failed to clear category model' });
+    }
+  });
+
   app.get('/api/config/disabled-agents', async (req, res) => {
     try {
       const { directory, error } = await resolveProjectDirectory(req);
@@ -143,6 +217,7 @@ export const registerConfigEntityRoutes = (app, dependencies) => {
       console.log('[Server] Scope:', scope, 'Working directory:', directory);
 
       const created = createAgent(agentName, config, directory, scope);
+      await refreshManagedAgents(scope);
       res.json(buildAppliedResponse(
         `Agent ${agentName} created successfully.`,
         created,
@@ -167,6 +242,7 @@ export const registerConfigEntityRoutes = (app, dependencies) => {
       console.log('[Server] Working directory:', directory);
 
       const updated = updateAgent(agentName, updates, directory);
+      await refreshManagedAgents();
 
       console.log(`[Server] Agent ${agentName} updated successfully`);
 
@@ -191,6 +267,7 @@ export const registerConfigEntityRoutes = (app, dependencies) => {
 
       const scope = req.body?.scope;
       deleteAgent(agentName, directory, scope);
+      await refreshManagedAgents(scope);
       res.json(buildAppliedResponse(
         `Agent ${agentName} deleted successfully.`,
       ));
