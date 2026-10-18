@@ -17,7 +17,6 @@ import {
   type GuestMessage,
   type HostMessage,
   type HostReadyContext,
-  type JsonValue,
   type ResolveResultPayload,
 } from '@alcode/sdk';
 import { guestMessageSchema } from '@alcode/sdk/schemas';
