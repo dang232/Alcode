@@ -149,11 +149,6 @@ const DEEP_LOW_CATEGORY_CALLER_GUIDANCE = `<Selection_Gate>Of the two deep lanes
 
 const DEEP_HIGH_CATEGORY_CALLER_GUIDANCE = `<Selection_Gate>Route here only when you can name the decision evidence cannot settle: a trade-off with no single right answer, a contract change crossing a package or process boundary, a mechanism with no in-repo pattern to copy, or correctness argued from invariants rather than observed in a test. Wide scope with easy decisions is deep-low or unspecified-high; reasoning as the deliverable is ultrabrain.</Selection_Gate>`
 
-// Each deep lane is a single rung with no model fallback, so it gates on its own model and
-// disappears from the category list without it.
-const DEEP_LOW_GATE_MODELS = ["gpt-6.1-sol", "gpt-6.1-sol-fast", "gpt-5.6-sol-fast", "gpt-5.6-sol"] as const
-const DEEP_HIGH_GATE_MODEL = "gpt-6-astra"
-
 export const OPENAI_CATEGORIES: BuiltinCategoryDefinition[] = [
   {
     name: "ultrabrain",
@@ -169,7 +164,6 @@ export const OPENAI_CATEGORIES: BuiltinCategoryDefinition[] = [
     callerGuidance: DEEP_LOW_CATEGORY_CALLER_GUIDANCE,
     promptAppend: DEEP_LOW_CATEGORY_PROMPT_APPEND,
     resolvePromptAppend: resolveDeepLowCategoryPromptAppend,
-    requiresModel: DEEP_LOW_GATE_MODELS,
   },
   {
     name: "deep-high",
@@ -178,7 +172,6 @@ export const OPENAI_CATEGORIES: BuiltinCategoryDefinition[] = [
     callerGuidance: DEEP_HIGH_CATEGORY_CALLER_GUIDANCE,
     promptAppend: DEEP_HIGH_CATEGORY_PROMPT_APPEND,
     resolvePromptAppend: resolveDeepHighCategoryPromptAppend,
-    requiresModel: DEEP_HIGH_GATE_MODEL,
   },
   {
     name: "quick",

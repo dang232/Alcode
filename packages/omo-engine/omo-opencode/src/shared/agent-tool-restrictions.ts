@@ -57,6 +57,22 @@ const AGENT_RESTRICTIONS: Record<string, Record<string, boolean>> = {
   "sisyphus-junior": {
     task: false,
   },
+
+  // Plan-gated advisers: read-only like metis/momus. Dispatch itself is gated
+  // by the native plan-gate guard (applier stage); these entries only shape tools.
+  "plan-consultant": {
+    write: false,
+    edit: false,
+  },
+
+  "plan-reviewer": {
+    write: false,
+    edit: false,
+  },
+
+  // Final-gate trio: no tool restriction (they write report artifacts), but they
+  // must only dispatch at the final quality-gate stage — enforced by the gate
+  // dispatch guard, not here. No entry on purpose; see the plan-gate contract.
 }
 
 type AgentToolRestrictionsOptions = {
