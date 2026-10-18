@@ -7,9 +7,10 @@ import { describe, expect, it, afterEach } from 'bun:test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const WORKER_ENTRY = join(import.meta.dir, 'omo-invoker-worker.ts');
+const WORKER_ENTRY = join(import.meta.dir ?? dirname(fileURLToPath(import.meta.url)), 'omo-invoker-worker.ts');
 // A hung worker spawn is killed so one wedged case cannot block the file.
 const WORKER_TIMEOUT_MS = 30000;
 

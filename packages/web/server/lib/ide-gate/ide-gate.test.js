@@ -75,7 +75,7 @@ describe('ide gate fixture', () => {
   it('matches the Alwork matrix fixture tier-for-tier', () => {
     const vendored = readFixtureTiers();
     const upstream = loadTierMatrixFixture(
-      readFileSync('I:/migration/Alwork/config/ide-tier-matrix.json', 'utf8'),
+      readFileSync(new URL('../../../../../config/ide-tier-matrix.json', import.meta.url), 'utf8'),
     ).tiers;
     expect(upstream).toEqual(vendored);
   });
