@@ -29,7 +29,7 @@ let cachedDetectedPm = null;
 function getSpawnSyncBaseOptions() {
   return process.platform === 'win32' ? { windowsHide: true } : {};
 }
-const UPDATE_CHECK_URL = process.env.ALCODE_UPDATE_API_URL || 'https://api.openchamber.dev/v1/update/check';
+const UPDATE_CHECK_URL = process.env.ALCODE_UPDATE_API_URL || 'https://api.alcode.dev/v1/update/check';
 
 function getAlcodeConfigDir() {
   if (process.platform === 'win32') {

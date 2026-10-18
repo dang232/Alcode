@@ -6,15 +6,18 @@ const openCodeAuth = vi.fn(() => ({}));
 
 vi.mock('child_process', () => ({ execFileSync: (...args) => execFileSync(...args) }));
 
-vi.mock('fs', () => {
-  const fs = {
+vi.mock('fs', async (importOriginal) => {
+  // Passthrough spread: the quota chain loads modules that need the rest
+  // of fs (lstatSync and friends); only the credential reads are faked.
+  const actual = await importOriginal();
+  const mocked = {
     existsSync: (filePath) => files.has(filePath),
     readFileSync: (filePath) => {
       if (!files.has(filePath)) throw new Error('ENOENT');
       return files.get(filePath);
     },
   };
-  return { ...fs, default: fs };
+  return { ...actual, ...mocked, default: { ...actual, ...mocked } };
 });
 
 vi.mock('../../../opencode/auth.js', () => ({ readOpenCodeCredentials: async () => openCodeAuth() }));

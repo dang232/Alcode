@@ -283,7 +283,9 @@ export const registerAlcodeRoutes = (app, dependencies) => {
           const child = spawnChild(shell, [shellFlag, updateCmd], {
             detached: true,
             stdio: 'ignore',
-            env: process.env,
+            // The child inherits the real environment (secrets included),
+            // not the injected test double: `process` here is dependencies.
+            env: globalThis.process.env,
           });
           child.unref();
         }, 500);
@@ -476,7 +478,8 @@ export const registerAlcodeRoutes = (app, dependencies) => {
         const child = spawnChild(shell, [shellFlag, script], {
           detached: true,
           stdio: logFd !== null ? ['ignore', logFd, logFd] : 'ignore',
-          env: process.env,
+          // Same real-environment inheritance as the container restart above.
+          env: globalThis.process.env,
           windowsHide: true,
         });
         child.unref();

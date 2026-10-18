@@ -62,8 +62,10 @@ const resolveBarrelSpecifier = (root: string): string => {
   const specifier = barrelOverride ?? `${root}/packages/omo-opencode/src/cli/run/index.ts`;
   // Bare relative paths are package names to the loader and module-relative
   // paths anchor to this file, not the shell: resolve everything that is not
-  // already absolute or URL-shaped against the working directory.
-  return /^[a-zA-Z]+:/.test(specifier) ? specifier : pathToFileURL(path.resolve(specifier)).href;
+  // already absolute or URL-shaped against the working directory. The scheme
+  // check requires :// so Windows drive letters (C:\...) are not mistaken
+  // for URLs.
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(specifier) ? specifier : pathToFileURL(path.resolve(specifier)).href;
 };
 // The run barrel loads lazily: loop-status serves pure state reads and
 // must never pay for (or fail on) the run entry.
@@ -151,7 +153,7 @@ if (loopStatusIndex !== -1) {
     console.log(JSON.stringify({ ok: true, sessionId: null, plan: null, ledgerTail: [] }));
     process.exit(0);
   }
-  const anchorLoop = /^[a-zA-Z]+:/.test(loopSrc) ? loopSrc : pathToFileURL(path.resolve(loopSrc)).href;
+  const anchorLoop = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(loopSrc) ? loopSrc : pathToFileURL(path.resolve(loopSrc)).href;
   let planIo: unknown;
   let planCrud: unknown;
   let ledgerMod: unknown;

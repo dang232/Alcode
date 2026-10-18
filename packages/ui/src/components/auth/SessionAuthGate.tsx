@@ -123,7 +123,6 @@ const readStoredTrustDevice = (): boolean => {
   return window.localStorage.getItem(TRUST_DEVICE_STORAGE_KEY) === 'true';
 };
 
-const DESKTOP_AUTH_TIMEOUT_MS = 15_000;
 const GOOGLE_POLL_INTERVAL_MS = 2_000;
 const GOOGLE_POLL_MAX_ATTEMPTS = 150;
 

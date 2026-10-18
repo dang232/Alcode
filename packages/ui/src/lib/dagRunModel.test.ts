@@ -265,8 +265,10 @@ describe('dagRunModelToSnapshotDoc', () => {
     const run = outcome.view.runs[0];
     if (!run) throw new Error('doc must carry one run');
     expect(run.nodes.map((n) => n.id)).toEqual(['parent', 'ses_a', 'ses_b', 'ses_c', 'synthesis']);
-    expect(run.edges).toContainEqual({ from: 'parent', to: 'ses_a' });
-    expect(run.edges).toContainEqual({ from: 'ses_c', to: 'synthesis' });
+    // bun:test has no toContainEqual type: same deep-contains check via some().
+    const hasEdge = (from: string, to: string) => run.edges.some((edge) => edge.from === from && edge.to === to);
+    expect(hasEdge('parent', 'ses_a')).toBe(true);
+    expect(hasEdge('ses_c', 'synthesis')).toBe(true);
     expect(run.waves.map((w) => w.nodeIds)).toEqual([['parent'], ['ses_a', 'ses_b', 'ses_c'], ['synthesis']]);
     const childNode = run.nodes.find((n) => n.id === 'ses_a');
     expect(childNode?.prompt).toBe('A\n\nResult:\na');

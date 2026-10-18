@@ -7,7 +7,7 @@
 import { describe, expect, it, afterEach } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { spawn as realSpawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
@@ -1331,7 +1331,11 @@ describe('cancel (PROVISIONAL kill-with-reason)', () => {
     // worker) and records its pid beside itself for the reap check.
     const dir = mkdtempSync(join(tmpdir(), 'omo-cancel-tree-'));
     const script = join(dir, 'wrapper.mjs');
+    // A user-installed wrapper entry is an executable: the worker spawns
+    // the entry directly, so the fixture needs a shebang plus exec bit
+    // (plain .mjs files cannot be spawned on any platform).
     writeFileSync(script, [
+      '#!/usr/bin/env node',
       'import fs from "node:fs";',
       'import path from "node:path";',
       'import { fileURLToPath } from "node:url";',
@@ -1341,8 +1345,13 @@ describe('cancel (PROVISIONAL kill-with-reason)', () => {
       'setInterval(() => {}, 1000);',
       '',
     ].join('\n'));
+    chmodSync(script, 0o755);
     const bridge = createOmoBridgeRuntime({
-      resolveEngineEntry: () => process.execPath,
+      // The wrapper entry is the executable fixture itself: the worker
+      // spawns the entry directly, and the suite may run under node
+      // (process.execPath is not a bun CLI there), so the binary is
+      // not a valid stand-in.
+      resolveEngineEntry: () => script,
       env: { OMO_NATIVE_RUN: '0', OMO_BUN_PATH: process.execPath },
     });
     const handle = bridge.invoke({ message: script, native: false });

@@ -7,9 +7,10 @@ import { describe, expect, it, afterEach } from 'bun:test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const WORKER_ENTRY = join(import.meta.dir, 'omo-invoker-worker.ts');
+const WORKER_ENTRY = join(import.meta.dir ?? dirname(fileURLToPath(import.meta.url)), 'omo-invoker-worker.ts');
 // A hung worker spawn is killed so one wedged case cannot block the file.
 const WORKER_TIMEOUT_MS = 30000;
 
@@ -103,8 +104,8 @@ const makeEngineRoot = (barrel = STUB_BARREL) => {
 // records the scope it was called with and serves 25 ledger entries; the
 // throwing set proves the worker degrades to null/[] instead of crashing.
 const HAPPY_LOOP_SRC = {
-  'plan-io.ts': `export function readUlwLoopPlanSync(repoRoot: string, scope?: { sessionId?: string }): unknown {
-  const fs = require("node:fs") as typeof import("node:fs");
+  'plan-io.ts': `import fs from "node:fs";
+export function readUlwLoopPlanSync(repoRoot: string, scope?: { sessionId?: string }): unknown {
   if (process.env.OMO_WORKER_SCOPE_FILE) fs.writeFileSync(process.env.OMO_WORKER_SCOPE_FILE, JSON.stringify({ repoRoot, scope: scope ?? null }));
   return { goal: "fixture-goal", root: repoRoot };
 }

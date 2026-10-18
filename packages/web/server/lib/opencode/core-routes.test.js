@@ -1145,16 +1145,20 @@ describe('global sign-out alcore cleanup', () => {
       await request(app).get('/api/engine/status').expect(401);
     });
 
-    it('serves the absent-engine shape with binding defaults, never a secret', async () => {
+    it('serves the native-ok shape with binding defaults, never a secret', async () => {
       const previous = process.env.OMO_WRAPPER_PATH;
       delete process.env.OMO_WRAPPER_PATH;
       try {
         const app = mountEngineApp((_req, _res, next) => next());
         const response = await request(app).get('/api/engine/status').expect(200);
+        // No user wrapper, but the checkout carries the vendored engine:
+        // the probe resolves native-first by design, so the route reports
+        // the builtin engine as available (entry stays null).
         expect(response.body).toMatchObject({
           entry: null,
-          available: false,
-          compatible: false,
+          builtin: true,
+          available: true,
+          compatible: true,
           binding: {
             defaultRole: 'default',
           },

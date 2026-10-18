@@ -1375,7 +1375,7 @@ describe('Windows startup task command builder', () => {
     // Overhead = 57 chars (prefix + closing quote), so max wrapper for <261 total is 203
     const longPath =
       'C:\\Users\\' +
-      'a'.repeat(139) +
+      'a'.repeat(141) +
       '\\.config\\alcode\\bin\\Alcode.ps1';
     expect(longPath.length).toBeGreaterThanOrEqual(180);
 
