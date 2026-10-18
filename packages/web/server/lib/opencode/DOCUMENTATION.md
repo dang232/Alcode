@@ -642,6 +642,8 @@ back with `formatModelSelection(selection)`. Both are exported from
 
 ### Request and response JSON per route
 
+`GET /api/config/agents/catalog` — the bundled OmO-compatible catalog (version + items with id, kind agent|category, description, source, edition senpi|opencode, requirements, and model/tool policy). Served from the committed `server/lib/agents/omo-catalog.bundle.js` (regen with `bun ./omo-catalog.regen.js`); registered before `:name` so an agent literally named "catalog" stays addressable.
+
 `GET /api/config/agents/:name` — metadata about where the agent is defined.
 ```jsonc
 {
@@ -963,15 +965,25 @@ through the process environment, because an environment variable cannot change
 under a running child.
 
 - Contract: the managed child gets `OPENCODE_CONFIG=<data-dir>/opencode.managed.json`.
-  The file contains only `plugins`: `-opencode.browser` first, then the absolute
+  The file contains `plugins`, the default `mcp.servers` entries, and the
+  `agent` map: the static OmO-native entries overlaid with the user's own
+  global `.md` agents (user wins on collision). The overlay is required
+  because a config-level `agent` map replaces the user's global agent
+  files in the running child — shipping only the statics would hide every
+  custom agent from the runtime while Settings still shows it.
+  `-opencode.browser` first, then the absolute
   directory of every Alcode plugin currently switched on. OpenCode's
   built-in browser tools need OpenCode's own desktop app to attach a browser;
   Alcode does not, so they would always fail with `browser.disconnected`
   and steer agents away from `alcode_web`. A project config listing
-  `opencode.browser` re-enables it. The fallback path merges the same entry. Its layer sits above the user's
+  `opencode.browser` re-enables it. The fallback path merges the same entries. Its layer sits above the user's
   global `opencode.json` and below their project config.
-- `OPENCODE_CONFIG_CONTENT` is passed through untouched, so whatever the user
-  put there still applies.
+
+  The same layer registers the bundled ULW MCP server by default. The file carries `mcp.servers.ulw`, a local server that runs the install's own `packages/web/server/lib/ulw-mcp/server.js` under the runtime already executing Alcode, named by an absolute path so it resolves from any working directory. On the Electron host the entry additionally sets `ELECTRON_RUN_AS_NODE=1` so the app binary behaves as Node; every other host gets the same entry without it. App sessions see its tools under the `ulw` namespace (`ulw_<tool>`, for example `ulw_status`). A project config can still override or disable `ulw`, and the fallback path merges the same entry into `OPENCODE_CONFIG_CONTENT` without touching an `ulw` entry the user wrote there.
+- `OPENCODE_CONFIG_CONTENT` otherwise passes through untouched, so whatever
+  the user put there still applies — except the `agent` map, which merges
+  statics, then `.md` customs, under the user's explicit entries (explicit
+  content wins, then files, then statics).
 - `ALCODE_AGENT_TOOL_URL` and a fresh `ALCODE_AGENT_TOOL_TOKEN` are
   always in the child environment, including while every managed tool is off —
   a tool switched on later then reaches a process that can already call back.

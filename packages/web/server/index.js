@@ -144,12 +144,14 @@ import { attachRealtimeProxy } from './lib/realtime-proxy.js';
 import { createRelayService, relayBlockedByEnterprise } from './lib/relay/service.js';
 import { createRelayHostLock } from './lib/relay/host-lock.js';
 import { createAgentToolRuntime } from './lib/agent-tool/runtime.js';
+import { createOmoNativeRuntime } from './lib/omo-native/runtime.js';
 import { createBrowserControlBroker } from './lib/browser-control/broker.js';
 import { createBrowserControlRouter } from './lib/browser-control/provider.js';
 import { createDevServerScanner } from './lib/dev-servers/routes.js';
 import { createDevTunnelRuntime } from './lib/dev-tunnel/runtime.js';
 import { registerBrowserControlRoutes } from './lib/browser-control/routes.js';
 import { createManagedConfigRuntime } from './lib/opencode/managed-config-file.js';
+import { listUserCustomAgents } from './lib/opencode/agents.js';
 import { createAlcodeSessionService } from './lib/alcode-sessions/routes.js';
 import { createSessionMetadataStore, createOpenCodeSessionMetadata } from './lib/alcode-sessions/session-metadata-store.js';
 import { createOpenCodeClient } from './lib/alcode-sessions/opencode-client.js';
@@ -1912,8 +1914,14 @@ async function main(options = {}) {
     dataDir: ALCODE_DATA_DIR,
     env: process.env,
     agentToolRuntime,
+    omoNativeRuntime: createOmoNativeRuntime({
+      fsPromises,
+      path,
+      dataDir: ALCODE_DATA_DIR,
+    }),
     readSettings: () => readSettingsFromDiskMigrated(),
     isAgentMemoryAvailable: isAgentMemoryFeatureAvailable,
+    listUserCustomAgents,
   });
   await ensureChatsDir({ fsPromises, chatsDir: ALCODE_CHATS_DIR, warn: (message) => console.warn(`[data-dir] ${message}`) });
 
@@ -2470,6 +2478,7 @@ async function main(options = {}) {
     saveImportedTheme,
     deleteImportedTheme,
     refreshOpenCodeAfterConfigChange,
+    refreshManagedAgentsForChild: () => managedConfigRuntime?.refreshManagedConfigFile(),
     getOpenCodeResolutionSnapshot,
     getOpenCodeUpgradeCapability,
     getOpenCodeCompatibility,
