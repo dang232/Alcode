@@ -19,9 +19,11 @@ jobs:
   review:
     name: automation
     if: |
-      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'pull_request_target' ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@alcode-bot review' || startsWith(github.event.comment.body, '@alcode-bot review '))) ||
-      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@alcode-bot review' || startsWith(github.event.comment.body, '@alcode-bot review ')))
+      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@alcode-bot review' || startsWith(github.event.comment.body, '@alcode-bot review ')))) &&
+      secrets.OC_REVIEW_APP_ID != ''
+    # No bot app secret on this repo: skip instead of failing red.
     runs-on: ubuntu-latest
     permissions:
       contents: read
