@@ -89,7 +89,7 @@ printf '4321\\n'`);
       const parsed = { destination: 'user@example.test', args: [] };
 
       await manager.installAlcodeManaged(parsed, '/unused.sock', '1.2.3', 'auto');
-      expect(fs.readFileSync(path.join(home, 'install-args'), 'utf8')).toBe('add\n-g\n@openchamber/web@1.2.3\n');
+      expect(fs.readFileSync(path.join(home, 'install-args'), 'utf8')).toBe('add\n-g\n@alcode/web@1.2.3\n');
       const result = await manager.ensureRemoteServer({
         id: 'ssh-paths', auth: {}, remoteAlcode: { mode: 'managed', installMethod: 'auto' },
       }, parsed, '/unused.sock');
