@@ -48,6 +48,7 @@ import {
   resolveHostRequestErrorCode,
   type GuestMessage,
   type HostMessage,
+  type JsonValue,
 } from './contract.ts';
 import { GUEST_FILE_EDITOR_CONTENT_MAX, GUEST_FILE_EDITOR_VERSION_MAX } from './file-editor.ts';
 
@@ -55,6 +56,19 @@ import { GUEST_FILE_EDITOR_CONTENT_MAX, GUEST_FILE_EDITOR_VERSION_MAX } from './
 // `instanceof` holds for bytes that crossed postMessage.
 const fileBytesSchema = z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength <= GUEST_FILE_EDITOR_CONTENT_MAX);
 const fileTextSchema = z.string().max(GUEST_FILE_EDITOR_CONTENT_MAX);
+
+// Transport-level JSON-clonable document: the panel's parser validates the
+// document shape, but anything crossing here must already be JSON-clonable.
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
 
 const envelope = {
   // Both channel spellings cross the wire; guests written before the rename still send `openchamber.sdk`.
@@ -355,8 +369,8 @@ export const hostMessageSchema = z.union([
     payload: z.object({
       conversationId: z.string().min(1),
       // The snapshot document itself is validated by the panel's parser,
-      // not the transport: anything JSON-clonable crosses here.
-      snapshot: z.unknown().nullable(),
+      // but the transport only carries JSON-clonable documents.
+      snapshot: jsonValueSchema.nullable(),
     }),
   }),
   z.object({
