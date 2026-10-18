@@ -929,7 +929,7 @@ export const useAgentsStore = create<AgentsStore>()(
         fetchCategoryModel: async (name: string, requestedDirectory?: string | null) => {
           const configDirectory = resolveDirectory(requestedDirectory);
           const query = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
-          const headers = configDirectory
+          const headers: Record<string, string> = configDirectory
             ? { 'Cache-Control': 'no-cache', 'x-opencode-directory': configDirectory }
             : { 'Cache-Control': 'no-cache' };
           try {
@@ -954,7 +954,7 @@ export const useAgentsStore = create<AgentsStore>()(
           try {
             const configDirectory = resolveDirectory(requestedDirectory);
             const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
-            const headers = configDirectory
+            const headers: Record<string, string> = configDirectory
             ? { 'Content-Type': 'application/json', 'x-opencode-directory': configDirectory }
             : { 'Content-Type': 'application/json' };
             const response = await runtimeFetch(`/api/config/categories/${encodeURIComponent(name)}${queryParams}`, {
@@ -979,7 +979,7 @@ export const useAgentsStore = create<AgentsStore>()(
           try {
             const configDirectory = resolveDirectory(requestedDirectory);
             const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
-            const headers = configDirectory
+            const headers: Record<string, string> = configDirectory
             ? { 'Content-Type': 'application/json', 'x-opencode-directory': configDirectory }
             : { 'Content-Type': 'application/json' };
             const response = await runtimeFetch(`/api/config/categories/${encodeURIComponent(name)}${queryParams}`, {

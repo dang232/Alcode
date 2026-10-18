@@ -63,7 +63,8 @@ jobs:
   intake:
     name: Label PR ${{ matrix.target.number }}
     needs: collect
-    if: ${{ needs.collect.outputs.targets != '[]' }}
+    # No bot app secret on this repo: skip instead of failing red.
+    if: ${{ needs.collect.outputs.targets != '[]' && secrets.OC_REVIEW_APP_ID != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
