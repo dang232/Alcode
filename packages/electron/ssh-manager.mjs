@@ -13,7 +13,7 @@ const DEFAULT_LOCAL_BIND_HOST = '127.0.0.1';
 // Global npm prefixes are root-owned on most distributions, so `npm install -g`
 // fails with EACCES for a normal SSH user. Everything we install goes to a
 // prefix inside the user's home instead.
-const REMOTE_USER_PREFIX = '$HOME/.openchamber/npm-global';
+const REMOTE_USER_PREFIX = '$HOME/.alcode/npm-global';
 const REMOTE_BUN_CANDIDATE = '"${BUN_INSTALL:-$HOME/.bun}/bin/bun"';
 // nvm puts node on PATH only from an interactive ~/.bashrc, which the SSH
 // login shell never runs. Use its newest installed node; with no nvm the path
@@ -27,14 +27,14 @@ const REMOTE_OPENCODE_CANDIDATES = [
   '"${BUN_INSTALL:-$HOME/.bun}/bin/opencode"',
   '"${XDG_CACHE_HOME:-$HOME/.cache}/.bun/bin/opencode"',
   '"$HOME/.local/bin/opencode"',
-  '"$HOME/.openchamber/npm-global/bin/opencode"',
+  '"$HOME/.alcode/npm-global/bin/opencode"',
   `"${REMOTE_NVM_BIN}/opencode"`,
 ];
-const REMOTE_PATH_PREFIX = `$HOME/.opencode/bin:\${BUN_INSTALL:-$HOME/.bun}/bin:\${XDG_CACHE_HOME:-$HOME/.cache}/.bun/bin:$HOME/.local/bin:$HOME/.openchamber/npm-global/bin:${REMOTE_NVM_BIN}`;
+const REMOTE_PATH_PREFIX = `$HOME/.opencode/bin:\${BUN_INSTALL:-$HOME/.bun}/bin:\${XDG_CACHE_HOME:-$HOME/.cache}/.bun/bin:$HOME/.local/bin:$HOME/.alcode/npm-global/bin:${REMOTE_NVM_BIN}`;
 const REMOTE_BIN_CANDIDATES = [
-  '"$HOME/.openchamber/npm-global/bin/openchamber"',
-  '"${BUN_INSTALL:-$HOME/.bun}/bin/openchamber"',
-  '"${XDG_CACHE_HOME:-$HOME/.cache}/.bun/bin/openchamber"',
+  '"$HOME/.alcode/npm-global/bin/alcode"',
+  '"${BUN_INSTALL:-$HOME/.bun}/bin/alcode"',
+  '"${XDG_CACHE_HOME:-$HOME/.cache}/.bun/bin/alcode"',
 ];
 const DEFAULT_CONTROL_PERSIST_SEC = 300;
 const DEFAULT_READY_TIMEOUT_SEC = 30;
@@ -44,7 +44,7 @@ const MAX_LOG_LINES_PER_INSTANCE = 1200;
 const MONITOR_INITIAL_POLL_MS = 2000;
 const MONITOR_STEADY_POLL_MS = 10000;
 const MONITOR_STABILIZE_TICKS = 5;
-const SSH_STATUS_EVENT = 'openchamber:ssh-instance-status';
+const SSH_STATUS_EVENT = 'alcode:ssh-instance-status';
 const MAX_PROCESS_ERROR_CHARS = 2000;
 const MAX_PROCESS_ERROR_CAPTURE_CHARS = MAX_PROCESS_ERROR_CHARS * 2;
 const childProcessDiagnostics = new WeakMap();
@@ -262,9 +262,9 @@ const buildSshArgs = (parsed, preDestinationArgs = [], remoteCommand = null) => 
 const askpassScriptContent = () => `#!/bin/bash
 PROMPT="$1"
 
-if [[ -n "$OPENCHAMBER_SSH_ASKPASS_VALUE" ]]; then
+if [[ -n "$ALCODE_SSH_ASKPASS_VALUE" ]]; then
   if [[ "$PROMPT" == *"assword"* || "$PROMPT" == *"passphrase"* ]]; then
-    printf '%s\\n' "$OPENCHAMBER_SSH_ASKPASS_VALUE"
+    printf '%s\\n' "$ALCODE_SSH_ASKPASS_VALUE"
     exit 0
   fi
 fi
@@ -307,7 +307,7 @@ const writeAskpassScript = async (scriptPath) => {
   await fsp.chmod(scriptPath, 0o700);
 };
 
-const windowsAskpassScriptContent = () => `$value = [Environment]::GetEnvironmentVariable('OPENCHAMBER_SSH_ASKPASS_VALUE')
+const windowsAskpassScriptContent = () => `$value = [Environment]::GetEnvironmentVariable('ALCODE_SSH_ASKPASS_VALUE')
 if ($null -ne $value) {
   [Console]::Out.WriteLine($value)
 }
@@ -388,7 +388,7 @@ const waitLocalForwardReady = async (localPort) => {
     await new Promise((resolve) => setTimeout(resolve, pollMs));
     pollMs = Math.min(pollMs * 2, 2000);
   }
-  throw new Error('Timed out waiting for forwarded OpenChamber health');
+  throw new Error('Timed out waiting for forwarded Alcode health');
 };
 
 const parseVersionToken = (raw) => {
@@ -445,7 +445,7 @@ export class ElectronSshManager {
       SSH_ASKPASS_REQUIRE: 'force',
       SSH_ASKPASS: auth.askpassPath,
       DISPLAY: '1',
-      ...(auth.sshPassword ? { OPENCHAMBER_SSH_ASKPASS_VALUE: auth.sshPassword.trim() } : {}),
+      ...(auth.sshPassword ? { ALCODE_SSH_ASKPASS_VALUE: auth.sshPassword.trim() } : {}),
     };
   }
 
@@ -867,15 +867,15 @@ export class ElectronSshManager {
       connectionTimeoutSec: Number.isFinite(instance?.connectionTimeoutSec) && Number(instance.connectionTimeoutSec) > 0
         ? Number(instance.connectionTimeoutSec)
         : DEFAULT_CONNECTION_TIMEOUT_SEC,
-      remoteOpenchamber: {
-        mode: instance?.remoteOpenchamber?.mode === 'external' ? 'external' : 'managed',
-        keepRunning: instance?.remoteOpenchamber?.keepRunning !== false,
-        ...(Number.isFinite(instance?.remoteOpenchamber?.preferredPort) ? { preferredPort: Number(instance.remoteOpenchamber.preferredPort) } : {}),
-        installMethod: ['auto', 'npm', 'bun'].includes(instance?.remoteOpenchamber?.installMethod)
-          ? instance.remoteOpenchamber.installMethod
+      remoteAlcode: {
+        mode: instance?.remoteAlcode?.mode === 'external' ? 'external' : 'managed',
+        keepRunning: instance?.remoteAlcode?.keepRunning !== false,
+        ...(Number.isFinite(instance?.remoteAlcode?.preferredPort) ? { preferredPort: Number(instance.remoteAlcode.preferredPort) } : {}),
+        installMethod: ['auto', 'npm', 'bun'].includes(instance?.remoteAlcode?.installMethod)
+          ? instance.remoteAlcode.installMethod
           : 'auto',
-        bindHost: instance?.remoteOpenchamber?.bindHost === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1',
-        uploadBundleOverSsh: Boolean(instance?.remoteOpenchamber?.uploadBundleOverSsh),
+        bindHost: instance?.remoteAlcode?.bindHost === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1',
+        uploadBundleOverSsh: Boolean(instance?.remoteAlcode?.uploadBundleOverSsh),
       },
       localForward: {
         bindHost: sanitizeBindHost(instance?.localForward?.bindHost),
@@ -883,7 +883,9 @@ export class ElectronSshManager {
       },
       auth: {
         ...(this.sanitizeStoredSecret(instance?.auth?.sshPassword) ? { sshPassword: this.sanitizeStoredSecret(instance.auth.sshPassword) } : {}),
-        ...(this.sanitizeStoredSecret(instance?.auth?.openchamberPassword) ? { openchamberPassword: this.sanitizeStoredSecret(instance.auth.openchamberPassword) } : {}),
+        // Legacy `alcodePassword` (pre-Alcore name for the same per-host
+        // secret) still unlocks existing stored hosts; new writes use `alcoreSecret`.
+        ...(this.sanitizeStoredSecret(instance?.auth?.alcoreSecret ?? instance?.auth?.alcodePassword) ? { alcoreSecret: this.sanitizeStoredSecret(instance.auth.alcoreSecret ?? instance.auth.alcodePassword) } : {}),
       },
       portForwards,
     };
@@ -910,9 +912,9 @@ export class ElectronSshManager {
     await writeJsonRoot(this.settingsFilePath, root);
   }
 
-  async issueClientToken(localUrl, openchamberPassword) {
-    const password = typeof openchamberPassword === 'string' ? openchamberPassword.trim() : '';
-    if (!password) return '';
+  async issueClientToken(localUrl, alcoreSecret) {
+    const secret = typeof alcoreSecret === 'string' ? alcoreSecret.trim() : '';
+    if (!secret) return '';
 
     const loginResponse = await fetch(new URL('/auth/session', `${localUrl}/`).toString(), {
       method: 'POST',
@@ -922,14 +924,14 @@ export class ElectronSshManager {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        password,
+        alcoreToken: secret,
         trustDevice: true,
         issueClientToken: true,
-        clientLabel: 'OpenChamber Desktop SSH',
+        clientLabel: 'Alcode Desktop SSH',
       }),
     });
     if (!loginResponse.ok) {
-      throw new Error(`Configured OpenChamber UI password was rejected by forwarded server (status ${loginResponse.status})`);
+      throw new Error(`The stored Alcore secret was rejected by the forwarded server (status ${loginResponse.status})`);
     }
 
     const payload = await loginResponse.json().catch(() => null);
@@ -947,7 +949,7 @@ export class ElectronSshManager {
         'Content-Type': 'application/json',
         Cookie: cookie,
       },
-      body: JSON.stringify({ label: 'OpenChamber Desktop SSH' }),
+      body: JSON.stringify({ label: 'Alcode Desktop SSH' }),
     });
     if (!tokenResponse.ok) return '';
     const tokenPayload = await tokenResponse.json().catch(() => null);
@@ -1044,8 +1046,10 @@ export class ElectronSshManager {
     throw new Error('SSH ControlMaster connection timed out');
   }
 
-  configuredOpenChamberPassword(instance) {
-    const secret = instance?.auth?.openchamberPassword;
+  configuredAlcoreSecret(instance) {
+    // Legacy `alcodePassword` (pre-Alcore name) still unlocks existing
+    // stored hosts; the UI writes `alcoreSecret` for new ones.
+    const secret = instance?.auth?.alcoreSecret ?? instance?.auth?.alcodePassword;
     return secret?.enabled && typeof secret.value === 'string' && secret.value.trim() ? secret.value.trim() : null;
   }
 
@@ -1071,12 +1075,12 @@ export class ElectronSshManager {
     }
   }
 
-  // Every place OpenChamber may live on the remote host, with the version each
+  // Every place Alcode may live on the remote host, with the version each
   // one reports. Installs land in the user prefix while an older copy can still
   // sit on PATH, so the caller picks by version instead of trusting PATH order.
-  async remoteOpenChamberCandidates(parsed, controlPath) {
+  async remoteAlcodeCandidates(parsed, controlPath) {
     const script = [
-      `for candidate in ${REMOTE_BIN_CANDIDATES.join(' ')} "$(command -v openchamber 2>/dev/null)"; do`,
+      `for candidate in ${REMOTE_BIN_CANDIDATES.join(' ')} "$(command -v alcode 2>/dev/null)"; do`,
       '  [ -n "$candidate" ] || continue;',
       '  [ -x "$candidate" ] || continue;',
       `  printf '%s\t%s\n' "$candidate" "$("$candidate" --version 2>/dev/null | head -n 1)";`,
@@ -1102,7 +1106,7 @@ export class ElectronSshManager {
     return candidates;
   }
 
-  async installOpenChamberManaged(parsed, controlPath, version, preferred) {
+  async installAlcodeManaged(parsed, controlPath, version, preferred) {
     const bunPath = await this.resolveRemoteTool(parsed, controlPath, 'bun', [
       REMOTE_BUN_CANDIDATE,
       '"${XDG_CACHE_HOME:-$HOME/.cache}/.bun/bin/bun"',
@@ -1111,10 +1115,10 @@ export class ElectronSshManager {
 
     // bun's global install targets `~/.bun` or `${XDG_CACHE_HOME:-~/.cache}/.bun` (bun 1.3.x XDG-aware);
     // npm is pinned to a prefix in the user's home so it never touches the root-owned global directory.
-    const bunCommand = bunPath ? `${shellQuote(bunPath)} add -g @openchamber/web@${version}` : null;
+    const bunCommand = bunPath ? `${shellQuote(bunPath)} add -g @alcode/web@${version}` : null;
     const npmCommand = npmPath
       // npm is a node script: an nvm npm finds its node only next to itself.
-      ? `mkdir -p "${REMOTE_USER_PREFIX}" && PATH="$(dirname ${shellQuote(npmPath)}):$PATH" ${shellQuote(npmPath)} install -g --prefix "${REMOTE_USER_PREFIX}" @openchamber/web@${version}`
+      ? `mkdir -p "${REMOTE_USER_PREFIX}" && PATH="$(dirname ${shellQuote(npmPath)}):$PATH" ${shellQuote(npmPath)} install -g --prefix "${REMOTE_USER_PREFIX}" @alcode/web@${version}`
       : null;
 
     const commands = [];
@@ -1139,18 +1143,18 @@ export class ElectronSshManager {
         lastError = error;
       }
     }
-    throw lastError || new Error('Failed to install OpenChamber on remote host');
+    throw lastError || new Error('Failed to install Alcode on remote host');
   }
 
-  async probeRemoteSystemInfo(parsed, controlPath, port, openchamberPassword) {
-    return (await this.probeRemoteServer(parsed, controlPath, port, openchamberPassword)).info;
+  async probeRemoteSystemInfo(parsed, controlPath, port, alcoreSecret) {
+    return (await this.probeRemoteServer(parsed, controlPath, port, alcoreSecret)).info;
   }
 
-  // `passwordAccepted` is reported on its own because /api/system/info is
-  // public: a server answers it whether or not the password fits.
-  async probeRemoteServer(parsed, controlPath, port, openchamberPassword) {
-    const authPayload = openchamberPassword ? JSON.stringify({ password: openchamberPassword }) : '{}';
-    const authEnabled = openchamberPassword ? '1' : '0';
+  // `alcoreAccepted` is reported on its own because /api/system/info is
+  // public: a server answers it whether or not the secret fits.
+  async probeRemoteServer(parsed, controlPath, port, alcoreSecret) {
+    const authPayload = alcoreSecret ? JSON.stringify({ alcoreToken: alcoreSecret }) : '{}';
+    const authEnabled = alcoreSecret ? '1' : '0';
     const script = `AUTH_STATUS=0; INFO_STATUS=0; HEALTH_STATUS=0; BODY_FILE="$(mktemp)"; COOKIE_FILE="$(mktemp)"; cleanup(){ rm -f "$BODY_FILE" "$COOKIE_FILE"; }; trap cleanup EXIT; if command -v curl >/dev/null 2>&1; then if [ "${authEnabled}" = "1" ]; then AUTH_STATUS="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' -c "$COOKIE_FILE" -H 'content-type: application/json' --data ${shellQuote(authPayload)} http://127.0.0.1:${port}/auth/session || true)"; if [ "$AUTH_STATUS" = "200" ]; then INFO_STATUS="$(curl -sS --max-time 3 -b "$COOKIE_FILE" -o "$BODY_FILE" -w '%{http_code}' http://127.0.0.1:${port}/api/system/info || true)"; else INFO_STATUS="$(curl -sS --max-time 3 -o "$BODY_FILE" -w '%{http_code}' http://127.0.0.1:${port}/api/system/info || true)"; fi; else INFO_STATUS="$(curl -sS --max-time 3 -o "$BODY_FILE" -w '%{http_code}' http://127.0.0.1:${port}/api/system/info || true)"; fi; HEALTH_STATUS="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:${port}/health || true)"; elif command -v wget >/dev/null 2>&1; then wget -qO "$BODY_FILE" http://127.0.0.1:${port}/api/system/info >/dev/null 2>&1; if [ $? -eq 0 ]; then INFO_STATUS=200; fi; wget -qO- http://127.0.0.1:${port}/health >/dev/null 2>&1; if [ $? -eq 0 ]; then HEALTH_STATUS=200; fi; else exit 127; fi; printf 'INFO_STATUS=%s\\nAUTH_STATUS=%s\\nHEALTH_STATUS=%s\\n' "$INFO_STATUS" "$AUTH_STATUS" "$HEALTH_STATUS"; cat "$BODY_FILE" 2>/dev/null || true`;
     const output = await this.runRemoteCommand(parsed, controlPath, script);
     const lines = output.split(/\r?\n/);
@@ -1158,32 +1162,32 @@ export class ElectronSshManager {
     const authStatus = parseProbeStatusLine(lines[1], 'AUTH_STATUS=') || 0;
     const healthStatus = parseProbeStatusLine(lines[2], 'HEALTH_STATUS=') || 0;
     const body = lines.slice(3).join('\n');
-    const passwordAccepted = authStatus === 200;
+    const alcoreAccepted = authStatus === 200;
 
     if (isLivenessHttpStatus(infoStatus)) {
       if (isAuthHttpStatus(infoStatus)) {
-        if (openchamberPassword && authStatus !== 200) {
-          throw new Error(`Remote OpenChamber requires UI authentication and configured password was rejected (auth status ${authStatus})`);
+        if (alcoreSecret && authStatus !== 200) {
+          throw new Error(`Remote Alcode requires UI authentication and the configured secret was rejected (auth status ${authStatus})`);
         }
-        if (isLivenessHttpStatus(healthStatus)) return { info: {}, passwordAccepted, authStatus };
-        throw new Error('Remote OpenChamber requires UI authentication on /api/system/info; configure OpenChamber UI password');
+        if (isLivenessHttpStatus(healthStatus)) return { info: {}, alcoreAccepted, authStatus };
+        throw new Error("Remote Alcode requires UI authentication on /api/system/info; enter this host's Alcore secret in its settings");
       }
     } else if (isLivenessHttpStatus(healthStatus)) {
-      return { info: {}, passwordAccepted, authStatus };
+      return { info: {}, alcoreAccepted, authStatus };
     } else {
-      throw new Error(`Remote OpenChamber probe failed (info status ${infoStatus}, health status ${healthStatus})`);
+      throw new Error(`Remote Alcode probe failed (info status ${infoStatus}, health status ${healthStatus})`);
     }
 
     try {
-      return { info: JSON.parse(body), passwordAccepted, authStatus };
+      return { info: JSON.parse(body), alcoreAccepted, authStatus };
     } catch {
-      return { info: {}, passwordAccepted, authStatus };
+      return { info: {}, alcoreAccepted, authStatus };
     }
   }
 
-  async remoteServerRunning(parsed, controlPath, port, openchamberPassword) {
+  async remoteServerRunning(parsed, controlPath, port, alcoreSecret) {
     try {
-      await this.probeRemoteSystemInfo(parsed, controlPath, port, openchamberPassword);
+      await this.probeRemoteSystemInfo(parsed, controlPath, port, alcoreSecret);
       return true;
     } catch {
       return false;
@@ -1196,25 +1200,26 @@ export class ElectronSshManager {
       throw new Error('The opencode CLI is not installed on the remote machine. Install it there, then connect again');
     }
 
-    const secret = this.configuredOpenChamberPassword(instance);
-    const remoteBindHost = instance.remoteOpenchamber?.bindHost === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1';
+    const secret = this.configuredAlcoreSecret(instance);
+    const remoteBindHost = instance.remoteAlcode?.bindHost === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1';
     // Binding the remote server to every interface publishes its UI to the
-    // remote machine's whole network, so it may not run without a password.
+    // remote machine's whole network, so it may not run without its Alcore secret,
+    // which becomes that server's Alcore secret for browser login.
     if (remoteBindHost === '0.0.0.0' && !secret) {
-      throw new Error('Exposing the remote server to its network requires a UI password');
+      throw new Error("Exposing the remote server to its network requires its Alcore secret (browser login uses Alcore, so the secret is provisioned as the remote server's Alcore secret)");
     }
 
-    let envPrefix = `PATH="${REMOTE_PATH_PREFIX}:$PATH" OPENCODE_BINARY=${shellQuote(opencodePath)} OPENCHAMBER_RUNTIME=ssh-remote`;
+    let envPrefix = `PATH="${REMOTE_PATH_PREFIX}:$PATH" OPENCODE_BINARY=${shellQuote(opencodePath)} ALCODE_RUNTIME=ssh-remote`;
     if (secret) {
-      envPrefix += ` OPENCHAMBER_UI_PASSWORD=${shellQuote(secret)}`;
+      envPrefix += ` ALCORE_JWT_SECRET=${shellQuote(secret)}`;
     }
     const output = await this.runRemoteCommand(parsed, controlPath, `${envPrefix} ${shellQuote(binPath)} serve --hostname ${remoteBindHost} --port ${desiredPort}`);
     const port = output.split(/\s+/).map((token) => Number.parseInt(token, 10)).find((value) => Number.isFinite(value));
     return port || desiredPort;
   }
 
-  // `openchamber stop` owns the daemon lifecycle. The HTTP shutdown route sits
-  // behind UI authentication, so it cannot stop a password-protected server.
+  // `alcode stop` owns the daemon lifecycle. The HTTP shutdown route sits
+  // behind UI authentication, so it cannot stop an auth-protected server.
   async stopRemoteServerBestEffort(parsed, controlPath, remotePort, remoteBinPath) {
     if (!remoteBinPath) return;
     try {
@@ -1295,16 +1300,16 @@ export class ElectronSshManager {
   // `daemon` marks a server the remote CLI started in the background, the only
   // kind this manager may stop.
   async adoptRunningRemoteServer(instance, parsed, controlPath, binPath) {
-    const password = this.configuredOpenChamberPassword(instance);
-    const preferredPort = instance.remoteOpenchamber.preferredPort || null;
-    const wantsNetwork = instance.remoteOpenchamber.bindHost === '0.0.0.0';
+    const secret = this.configuredAlcoreSecret(instance);
+    const preferredPort = instance.remoteAlcode.preferredPort || null;
+    const wantsNetwork = instance.remoteAlcode.bindHost === '0.0.0.0';
 
     let servers = [];
     try {
       servers = await this.listRemoteServers(parsed, controlPath, binPath);
     } catch (error) {
       // Not knowing what runs there is not the same as nothing running there.
-      this.appendLogWithLevel(instance.id, 'WARN', `Could not list OpenChamber servers on the remote host; an already running one will not be reused: ${error instanceof Error ? error.message : String(error)}`);
+      this.appendLogWithLevel(instance.id, 'WARN', `Could not list Alcode servers on the remote host; an already running one will not be reused: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (preferredPort) {
       // A pinned port is reused even when the registry does not know the server on it.
@@ -1314,23 +1319,23 @@ export class ElectronSshManager {
     for (const server of servers) {
       let probe;
       try {
-        probe = await this.probeRemoteServer(parsed, controlPath, server.port, password);
+        probe = await this.probeRemoteServer(parsed, controlPath, server.port, secret);
       } catch (error) {
-        // The probe command carries the UI password, and a remote shell may echo it.
-        this.appendLogWithLevel(instance.id, 'INFO', `Not reusing the server on remote port ${server.port}: ${sanitizeProcessDiagnostic(error instanceof Error ? error.message : String(error), password)}`);
+        // The probe command carries the Alcore secret, and a remote shell may echo it.
+        this.appendLogWithLevel(instance.id, 'INFO', `Not reusing the server on remote port ${server.port}: ${sanitizeProcessDiagnostic(error instanceof Error ? error.message : String(error), secret)}`);
         continue;
       }
       // A server that answers is not yet ours: it has to take this instance's
-      // password, or have none when the instance has none. Anything else belongs
+      // secret, or have none when the instance has none. Anything else belongs
       // to someone else and is neither reused nor stopped.
-      const passwordFits = password ? probe.passwordAccepted : server.passwordProtected !== true;
-      if (!passwordFits) {
-        this.appendLogWithLevel(instance.id, 'INFO', `Not reusing the server on remote port ${server.port}: it does not take this instance's UI password (auth status ${probe.authStatus})`);
+      const secretFits = secret ? probe.alcoreAccepted : server.passwordProtected !== true;
+      if (!secretFits) {
+        this.appendLogWithLevel(instance.id, 'INFO', `Not reusing the server on remote port ${server.port}: it does not take this instance's Alcore secret (auth status ${probe.authStatus})`);
         continue;
       }
       const { info } = probe;
       const adopted = { port: server.port, daemon: server.launchMode === 'daemon' };
-      const runningVersion = parseVersionToken(info.openchamberVersion || '');
+      const runningVersion = parseVersionToken(info.alcodeVersion || '');
       const otherVersion = Boolean(runningVersion) && runningVersion !== this.appVersion;
       // Both directions count: a server left on 0.0.0.0 would keep an instance
       // published after the user turned that off.
@@ -1345,9 +1350,9 @@ export class ElectronSshManager {
         this.appendLogWithLevel(instance.id, 'INFO', `Not reusing the server on remote port ${server.port}: it runs in the foreground with another version or bind address and is left to its process manager`);
         continue;
       }
-      this.appendLogWithLevel(instance.id, 'INFO', `Replacing the managed server on remote port ${server.port}: ${otherVersion ? `it runs OpenChamber ${runningVersion}` : `it is bound to ${server.bindHost}`}`);
+      this.appendLogWithLevel(instance.id, 'INFO', `Replacing the managed server on remote port ${server.port}: ${otherVersion ? `it runs Alcode ${runningVersion}` : `it is bound to ${server.bindHost}`}`);
       await this.stopRemoteServerBestEffort(parsed, controlPath, server.port, binPath);
-      if (await this.remoteServerRunning(parsed, controlPath, server.port, password)) {
+      if (await this.remoteServerRunning(parsed, controlPath, server.port, secret)) {
         this.appendLogWithLevel(instance.id, 'WARN', `The managed server on remote port ${server.port} did not stop and keeps running`);
         // Nothing else can start on a pinned port while this one holds it.
         if (server.port === preferredPort) return adopted;
@@ -1357,48 +1362,48 @@ export class ElectronSshManager {
   }
 
   async ensureRemoteServer(instance, parsed, controlPath) {
-    if (instance.remoteOpenchamber.mode === 'external') {
-      if (!instance.remoteOpenchamber.preferredPort) {
-        throw new Error('External mode requires a preferred remote OpenChamber port');
+    if (instance.remoteAlcode.mode === 'external') {
+      if (!instance.remoteAlcode.preferredPort) {
+        throw new Error('External mode requires a preferred remote Alcode port');
       }
-      const port = instance.remoteOpenchamber.preferredPort;
-      this.setStatus(instance.id, 'server_detecting', 'Probing external OpenChamber server', null, null, port, false, 0, false);
-      await this.probeRemoteSystemInfo(parsed, controlPath, port, this.configuredOpenChamberPassword(instance));
+      const port = instance.remoteAlcode.preferredPort;
+      this.setStatus(instance.id, 'server_detecting', 'Probing external Alcode server', null, null, port, false, 0, false);
+      await this.probeRemoteSystemInfo(parsed, controlPath, port, this.configuredAlcoreSecret(instance));
       return { remotePort: port, startedByUs: false, ownsRemoteServer: false, remoteBinPath: null };
     }
 
-    this.setStatus(instance.id, 'remote_probe', 'Checking remote OpenChamber installation');
-    const installed = await this.remoteOpenChamberCandidates(parsed, controlPath);
+    this.setStatus(instance.id, 'remote_probe', 'Checking remote Alcode installation');
+    const installed = await this.remoteAlcodeCandidates(parsed, controlPath);
     let binary = installed.find((candidate) => candidate.version === this.appVersion) || null;
 
     if (!binary) {
       const existing = installed[0] || null;
       if (existing) {
-        this.setStatus(instance.id, 'updating', `Updating remote OpenChamber from ${existing.version || 'unknown'} to ${this.appVersion}`);
+        this.setStatus(instance.id, 'updating', `Updating remote Alcode from ${existing.version || 'unknown'} to ${this.appVersion}`);
       } else {
-        this.setStatus(instance.id, 'installing', 'Installing OpenChamber on remote host');
+        this.setStatus(instance.id, 'installing', 'Installing Alcode on remote host');
       }
-      await this.installOpenChamberManaged(parsed, controlPath, this.appVersion, instance.remoteOpenchamber.installMethod);
+      await this.installAlcodeManaged(parsed, controlPath, this.appVersion, instance.remoteAlcode.installMethod);
 
-      const afterInstall = await this.remoteOpenChamberCandidates(parsed, controlPath);
+      const afterInstall = await this.remoteAlcodeCandidates(parsed, controlPath);
       binary = afterInstall.find((candidate) => candidate.version === this.appVersion) || afterInstall[0] || existing;
       if (!binary) {
-        throw new Error('OpenChamber was installed on the remote host but no openchamber binary could be found');
+        throw new Error('Alcode was installed on the remote host but no alcode binary could be found');
       }
     }
 
-    this.setStatus(instance.id, 'server_detecting', 'Detecting managed OpenChamber server');
+    this.setStatus(instance.id, 'server_detecting', 'Detecting managed Alcode server');
     const adopted = await this.adoptRunningRemoteServer(instance, parsed, controlPath, binary.binPath);
     let remotePort = adopted?.port || null;
     let startedByUs = false;
     if (!remotePort) {
-      this.setStatus(instance.id, 'server_starting', 'Starting managed OpenChamber server');
-      const desiredPort = instance.remoteOpenchamber.preferredPort || randomPortCandidate(instance.id);
+      this.setStatus(instance.id, 'server_starting', 'Starting managed Alcode server');
+      const desiredPort = instance.remoteAlcode.preferredPort || randomPortCandidate(instance.id);
       remotePort = await this.startRemoteServerManaged(parsed, controlPath, instance, desiredPort, binary.binPath);
       startedByUs = true;
     }
-    if (!(await this.remoteServerRunning(parsed, controlPath, remotePort, this.configuredOpenChamberPassword(instance)))) {
-      throw new Error('Managed OpenChamber server failed to become reachable');
+    if (!(await this.remoteServerRunning(parsed, controlPath, remotePort, this.configuredAlcoreSecret(instance)))) {
+      throw new Error('Managed Alcode server failed to become reachable');
     }
     // An adopted daemon is as much this instance's server as one it just
     // started: with keepRunning off, disconnecting stops either.
@@ -1416,7 +1421,7 @@ export class ElectronSshManager {
     this.sessions.delete(id);
 
     if (session) {
-      if (session.ownsRemoteServer && session.remotePort && session.instance.remoteOpenchamber.mode === 'managed' && !session.instance.remoteOpenchamber.keepRunning) {
+      if (session.ownsRemoteServer && session.remotePort && session.instance.remoteAlcode.mode === 'managed' && !session.instance.remoteAlcode.keepRunning) {
         await this.stopRemoteServerBestEffort(session.parsed, session.controlPath, session.remotePort, session.remoteBinPath);
       }
       await this.stopControlMasterBestEffort(session.parsed, session.controlPath);
@@ -1541,7 +1546,7 @@ export class ElectronSshManager {
 
     const localUrl = `http://127.0.0.1:${localPort}`;
     const label = instance.nickname?.trim() || parsed.destination || id;
-    const clientToken = await this.issueClientToken(localUrl, this.configuredOpenChamberPassword(instance));
+    const clientToken = await this.issueClientToken(localUrl, this.configuredAlcoreSecret(instance));
     await this.updateHostRuntime(id, label, localUrl, clientToken);
     if (instance.localForward?.preferredLocalPort !== localPort) {
       await this.persistLocalPort(id, localPort);

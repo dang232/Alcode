@@ -1105,7 +1105,7 @@ interface UIStore {
   agentKnowledgeToolEnabled: boolean;
   agentNotifyToolEnabled: boolean;
   agentRenderToolEnabled: boolean;
-  /** Whether OpenChamber's agent tools sit behind OpenCode's Code Mode instead of being direct tools. */
+  /** Whether Alcode's agent tools sit behind OpenCode's Code Mode instead of being direct tools. */
   agentToolsCodeMode: boolean;
   /** The isolated-spaces switch as saved; the server applies it at its next start. */
   isolatedSpacesEnabled: boolean;
@@ -3490,10 +3490,10 @@ export const useUIStore = create<UIStore>()(
               let legacyEnabled = true;
               try {
                 if (typeof localStorage !== 'undefined') {
-                  const legacy = localStorage.getItem('openchamber:files:auto-save-enabled');
+                  const legacy = localStorage.getItem('alcode:files:auto-save-enabled');
                   if (legacy !== null) {
                     legacyEnabled = legacy !== 'false';
-                    localStorage.removeItem('openchamber:files:auto-save-enabled');
+                    localStorage.removeItem('alcode:files:auto-save-enabled');
                   }
                 }
               } catch {

@@ -1,9 +1,9 @@
 // Private relay service: config persistence, lifecycle of the relay host
-// client, and the /api/openchamber/relay/* management routes.
+// client, and the /api/alcode/relay/* management routes.
 //
 // Config lives in the server settings file as `settings.privateRelay =
 // { enabled, relayUrl }` (same storage precedent as tunnels/notifications).
-// Routes are registered with the other OpenChamber feature routes, before the
+// Routes are registered with the other Alcode feature routes, before the
 // generic OpenCode proxy, and are covered by the same global UI auth gate.
 //
 // Cross-runtime parity note: relay host mode intentionally targets the web
@@ -18,6 +18,10 @@ import { describeRelayError, startRelayHost } from './host-client.js';
 import { isEnterpriseMode, readEnterprisePolicy } from '../enterprise-mode.js';
 
 export const DEFAULT_RELAY_URL = 'wss://relay.openchamber.dev/ws';
+
+// Every relay management route answers on both the current `/api/alcode/*`
+// prefix and the pre-rename `/api/openchamber/*` prefix.
+const relayRoutePaths = (name) => [`/api/alcode/relay/${name}`, `/api/openchamber/relay/${name}`];
 
 const isValidRelayUrl = (value) => {
   if (typeof value !== 'string') return false;
@@ -38,7 +42,7 @@ const normalizeRelayUrl = (value) => {
 
 // A deployment can pin the relay endpoint (e.g. a self-hosted relay on your
 // own Cloudflare account/domain): `relayUrl` in the machine policy file, else
-// OPENCHAMBER_RELAY_URL (see ../enterprise-mode.js). When set and valid it
+// ALCODE_RELAY_URL (see ../enterprise-mode.js). When set and valid it
 // overrides the stored setting entirely, so the host connection, the pairing
 // offer, and the status all point at it — clients then inherit it from the
 // offer automatically. An invalid pinned value pins nothing.
@@ -51,7 +55,7 @@ export const pinnedRelayUrl = () => {
 // on a pinned self-hosted endpoint, never on ours.
 // Traffic is end-to-end encrypted either way; what stays in-house is the
 // metadata and the path into this machine.
-const RELAY_BLOCKED_ERROR = 'In enterprise mode the relay runs on your own endpoint: set relayUrl in the policy file or OPENCHAMBER_RELAY_URL to a self-hosted relay.';
+const RELAY_BLOCKED_ERROR = 'In enterprise mode the relay runs on your own endpoint: set relayUrl in the policy file or ALCODE_RELAY_URL to a self-hosted relay.';
 export const relayBlockedByEnterprise = () => isEnterpriseMode() && pinnedRelayUrl() === null;
 
 /**
@@ -132,8 +136,8 @@ export const createRelayService = ({
   const standbyStatus = (holder) => ({
     state: 'standby',
     lastError: holder?.host
-      ? `relay host is owned by another OpenChamber process sharing this data dir (pid ${holder.pid} on ${holder.host})`
-      : 'relay host is owned by another OpenChamber process sharing this data dir',
+      ? `relay host is owned by another local Alcode process sharing this data dir (pid ${holder.pid} on ${holder.host})`
+      : 'relay host is owned by another local Alcode process sharing this data dir',
     connectedClients: 0,
   });
 
@@ -351,7 +355,7 @@ export const createRelayService = ({
   };
 
   const registerRoutes = (app) => {
-    app.get('/api/openchamber/relay/status', async (_req, res) => {
+    app.get(relayRoutePaths('status'), async (_req, res) => {
       try {
         res.json(await getStatus());
       } catch (error) {
@@ -359,7 +363,7 @@ export const createRelayService = ({
       }
     });
 
-    app.post('/api/openchamber/relay/enable', express.json({ limit: '16kb' }), async (req, res) => {
+    app.post(relayRoutePaths('enable'), express.json({ limit: '16kb' }), async (req, res) => {
       if (relayBlockedByEnterprise()) {
         return res.status(403).json({ error: RELAY_BLOCKED_ERROR, code: 'enterprise_mode' });
       }
@@ -376,7 +380,7 @@ export const createRelayService = ({
       }
     });
 
-    app.post('/api/openchamber/relay/reset-identity', async (_req, res) => {
+    app.post(relayRoutePaths('reset-identity'), async (_req, res) => {
       try {
         await resetIdentity();
         res.json(await getStatus());
@@ -385,7 +389,7 @@ export const createRelayService = ({
       }
     });
 
-    app.post('/api/openchamber/relay/disable', async (_req, res) => {
+    app.post(relayRoutePaths('disable'), async (_req, res) => {
       try {
         const current = await readConfig();
         await writeConfig({ enabled: false, relayUrl: current.relayUrl });

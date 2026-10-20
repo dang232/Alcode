@@ -56,8 +56,17 @@ export const parseConnectionPayload = (raw: string): MobileConnectionPayload | M
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
-  if (/^openchamber:\/\//i.test(trimmed)) {
-    const pairing = parsePairingConnectionPayload(trimmed);
+  if (/^(?:alcode|openchamber):\/\//i.test(trimmed)) {
+    // The pairing parser only decodes the new scheme, so fold the pre-rename
+    // twin before parsing. Legacy QR codes stay scannable; new codes are
+    // always minted as `alcode://` (see encodePairingConnectionPayload). The
+    // authority is lowercased because the URL parser keeps a non-special
+    // scheme's host case (`OpenChamber://CONNECT` would otherwise miss); the
+    // base64url payload in the query is case-sensitive and stays untouched.
+    const normalized = trimmed
+      .replace(/^openchamber:\/\//i, 'alcode://')
+      .replace(/^([a-z][a-z0-9+.-]*:\/\/[^/?#]*)/i, (head) => head.toLowerCase());
+    const pairing = parsePairingConnectionPayload(normalized);
     return pairing ? { pairing } : null;
   }
 
@@ -68,7 +77,7 @@ export const parseConnectionPayload = (raw: string): MobileConnectionPayload | M
 const resultFromRawValue = (raw: string, options?: { pairingStringFallback?: boolean }): QrScanResult => {
   const payload = parseConnectionPayload(raw);
   if (!payload && options?.pairingStringFallback) {
-    // Old Android WebViews resolve openchamber://… with hostname "" / pathname "//connect",
+    // Old Android WebViews resolve alcode://… with hostname "" / pathname "//connect",
     // so the URL-based parse above fails even though the scanned string is intact. Retry
     // with the URL-API-free string parser before declaring the scan invalid.
     const pairing = parsePairingConnectionPayloadString(raw);

@@ -47,9 +47,9 @@ describe('Dock badge with the macOS menu bar disabled', () => {
   beforeEach(() => {
     dom = new Window({ url: 'http://localhost/' });
     Object.assign(dom, {
-      __OPENCHAMBER_PLATFORM__: 'darwin',
-      __OPENCHAMBER_ELECTRON__: { runtime: 'electron', trayEnabled: false },
-      __OPENCHAMBER_DESKTOP__: { invoke, listen },
+      __ALCODE_PLATFORM__: 'darwin',
+      __ALCODE_ELECTRON__: { runtime: 'electron', trayEnabled: false },
+      __ALCODE_DESKTOP__: { invoke, listen },
       setInterval: intervals,
     });
     Object.assign(globalThis, {
@@ -137,7 +137,7 @@ describe('Dock badge with the macOS menu bar disabled', () => {
   });
 
   test('does not publish desktop state outside Electron', async () => {
-    Object.assign(dom, { __OPENCHAMBER_ELECTRON__: undefined });
+    Object.assign(dom, { __ALCODE_ELECTRON__: undefined });
     await act(async () => root.render(<Harness />));
     append('root');
     await flush();

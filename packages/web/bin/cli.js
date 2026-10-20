@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
+import '../server/lib/alcode-env-compat.js';
 import fs from 'fs';
+import fsPromises from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -8,10 +11,6 @@ import { isModuleCliExecution } from './cli-entry.js';
 import { EXIT_CODE, TunnelCliError } from './lib/cli-errors.js';
 import {
   resolveServeHost,
-  hasUiPasswordConfigured,
-  generateUiPassword,
-  resolveServeUiPassword,
-  assertAuthenticatedNetworkExposure,
 } from './lib/cli-network.js';
 import {
   maskToken,
@@ -31,13 +30,15 @@ import {
   generateCompletionScript,
   findClosestMatch,
 } from './lib/cli-args.js';
-import { readDesktopLocalPortFromSettings } from './lib/cli-paths.js';
+import { readDesktopLocalPortFromSettings, getDataDir } from './lib/cli-paths.js';
+import { migrateLegacyUserDirs } from '../server/lib/data-dir-migration.js';
 import { resolveExplicitBinary, searchPathFor } from './lib/cli-executables.js';
 import { startupCommand } from './lib/commands-startup.js';
 import { logsCommand } from './lib/commands-logs.js';
 import { statusCommand } from './lib/commands-status.js';
 import { scheduleCommand } from './lib/commands-schedule.js';
 import { sessionCommand } from './lib/commands-session.js';
+import { createDagCommand } from './lib/commands-dag.js';
 import { modelsCommand } from './lib/commands-models.js';
 import { projectsCommand } from './lib/commands-projects.js';
 import { createUpdateCommand } from './lib/commands-update.js';
@@ -48,7 +49,7 @@ import { createTunnelCommand, isValidTunnelDoctorResponse, shouldDisplayTunnelQr
 import {
   resolveDoctorPortStatuses,
   discoverRunningInstances,
-  discoverOpenChamberInstanceOnPort,
+  discoverAlcodeInstanceOnPort,
   discoverLifecycleInstances,
   discoverUnconfirmedRegistryInstanceOnPort,
   resolveTunnelProviders,
@@ -61,9 +62,9 @@ import {
   getPidFilePath,
   getInstanceFilePath,
   isProcessRunning,
-  isOpenchamberCmdline,
-  isOpenchamberProcessRunning,
-  getOpenchamberProcessState,
+  isAlcodeCmdline,
+  isAlcodeProcessRunning,
+  getAlcodeProcessState,
 } from './lib/cli-process.js';
 import {
   intro as clackIntro, outro as clackOutro, cancel as clackCancel,
@@ -197,6 +198,8 @@ const commands = {
 
   session: sessionCommand,
 
+  dag: null,
+
   models: modelsCommand,
 
   projects: projectsCommand,
@@ -241,9 +244,11 @@ commands.update = createUpdateCommand({
   serveCommand: commands.serve.bind(commands),
 });
 
+commands.dag = createDagCommand({ setCancelCleanup });
+
 async function main() {
   const parsed = parseArgs();
-  const { command, subcommand, tunnelAction, startupAction, scheduleAction, sessionAction, controlAction, options, removedFlagErrors, helpRequested, versionRequested } = parsed;
+  const { command, subcommand, tunnelAction, startupAction, scheduleAction, sessionAction, dagAction, controlAction, options, removedFlagErrors, helpRequested, versionRequested } = parsed;
   activeCommandOptions = options;
 
   if (versionRequested) {
@@ -283,6 +288,8 @@ async function main() {
       await commands.schedule(options, 'help');
     } else if (command === 'session') {
       await commands.session(options, 'help');
+    } else if (command === 'dag') {
+      await commands.dag(options, 'help');
     } else if (command === 'models') {
       await commands.models(options, 'help');
     } else if (command === 'projects') {
@@ -293,6 +300,22 @@ async function main() {
       showHelp();
     }
     return;
+  }
+
+  // Best-effort legacy profile migration for CLI-only commands (connect-url,
+  // pairing, tunnel): the server migrates on boot, but these commands read
+  // settings.json without ever starting it. Never fails the command.
+  try {
+    await migrateLegacyUserDirs({
+      fsPromises,
+      path,
+      dataDir: getDataDir(),
+      legacyRoots: [path.join(os.homedir(), '.config', 'alcode'), path.join(os.homedir(), '.config', 'openchamber')],
+      warn: () => {},
+    });
+  } catch {
+    // A locked or unreadable profile must not break CLI usage; the server
+    // run reports migration problems through its own warning channel.
   }
 
   if (command === 'tunnel') {
@@ -315,6 +338,11 @@ async function main() {
     return;
   }
 
+  if (command === 'dag') {
+    await commands.dag(options, dagAction);
+    return;
+  }
+
   if (command === 'models') {
     await commands.models(options, 'show');
     return;
@@ -334,7 +362,7 @@ async function main() {
   }
 
   if (!commands[command]) {
-    const knownCommands = ['serve', 'stop', 'restart', 'status', 'schedule', 'session', 'models', 'projects', 'control', 'tunnel', 'startup', 'logs', 'update'];
+    const knownCommands = ['serve', 'stop', 'restart', 'status', 'schedule', 'session', 'dag', 'models', 'projects', 'control', 'tunnel', 'startup', 'logs', 'update'];
     const suggestion = findClosestMatch(command, knownCommands);
     const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
     if (isJsonMode(options)) {
@@ -355,7 +383,7 @@ async function main() {
   await commands[command](options);
 }
 
-const isCliExecution = isModuleCliExecution(process.argv[1], import.meta.url, fs.realpathSync, 'openchamber');
+const isCliExecution = isModuleCliExecution(process.argv[1], import.meta.url, fs.realpathSync, 'alcode');
 
 if (isCliExecution) {
   let isHandlingSigint = false;
@@ -437,25 +465,21 @@ export {
   main,
   commands,
   parseArgs,
-  assertAuthenticatedNetworkExposure,
   resolveServeHost,
-  hasUiPasswordConfigured,
-  generateUiPassword,
-  resolveServeUiPassword,
   shouldDisplayTunnelQr,
   isValidTunnelDoctorResponse,
   readDesktopLocalPortFromSettings,
   getPidFilePath,
   getInstanceFilePath,
   isProcessRunning,
-  isOpenchamberProcessRunning,
-  isOpenchamberCmdline,
-  getOpenchamberProcessState,
+  isAlcodeProcessRunning,
+  isAlcodeCmdline,
+  getAlcodeProcessState,
   resolveTunnelProviders,
   fetchTunnelProvidersFromPort,
   fetchSystemInfoFromPort,
   discoverRunningInstances,
-  discoverOpenChamberInstanceOnPort,
+  discoverAlcodeInstanceOnPort,
   discoverLifecycleInstances,
   discoverUnconfirmedRegistryInstanceOnPort,
   ensureTunnelProfilesMigrated,

@@ -1,4 +1,4 @@
-import { serviceProvides } from '@openchamber/sdk';
+import { serviceProvides } from '@alcode/sdk';
 
 import { isGuestActive } from './capabilities.ts';
 import type { InstalledGuest } from './types.ts';

@@ -146,12 +146,12 @@ export interface PermissionRule {
 }
 
 /**
- * The agent entity as OpenChamber persists it, i.e. the OpenCode 2 shape the
+ * The agent entity as Alcode persists it, i.e. the OpenCode 2 shape the
  * config routes read and write. `model` is the joined `provider/model#variant`
  * string; sampling parameters live under `request.body`.
  */
 /**
- * The sampling parameters OpenChamber edits. OpenCode 2 keeps them under
+ * The sampling parameters Alcode edits. OpenCode 2 keeps them under
  * `request.body`; any other key a user put there is preserved on write.
  */
 export interface AgentRequestBody {
@@ -185,7 +185,7 @@ export interface AgentConfig extends AgentEntity {
 
 /** What `GET /api/config/agents/:name/config` answers. */
 export interface AgentEntityEnvelope {
-  source: 'md' | 'json' | 'none';
+  source: 'md' | 'json' | 'none' | 'catalog';
   scope: AgentScope | null;
   path: string | null;
   legacy: boolean;
@@ -204,7 +204,7 @@ interface AgentPermissionsEnvelope {
 /**
  * Result of an agent config mutation.
  * `requiresManualRestart` is true when the change was persisted to disk but the
- * connected (external) OpenCode server could not be reloaded by OpenChamber, so
+ * connected (external) OpenCode server could not be reloaded by Alcode, so
  * the user must restart that server before the change takes effect.
  */
 export interface AgentMutationResult {
@@ -214,7 +214,7 @@ export interface AgentMutationResult {
 
 /**
  * An agent plus the facts that live in its config file rather than in v2's
- * `AgentInfo`: where it is defined, and the authoring fields OpenChamber writes.
+ * `AgentInfo`: where it is defined, and the authoring fields Alcode writes.
  */
 export type AgentWithExtras = Agent & {
   native?: boolean;
@@ -222,7 +222,7 @@ export type AgentWithExtras = Agent & {
   scope?: AgentScope;
   /** Subfolder name parsed from file path, e.g. "business", "development" */
   group?: string;
-  /** The file OpenChamber would rewrite on the next save. */
+  /** The file Alcode would rewrite on the next save. */
   path?: string | null;
   /** The file still uses v1 spellings; the next save rewrites it in v2. */
   legacy?: boolean;
@@ -344,6 +344,21 @@ interface AgentDraft {
   hidden?: boolean;
 }
 
+/** One category's persisted model tuning, as stored in the .omo chain. */
+export interface CategoryModelOverride {
+  model?: string;
+  reasoning?: string;
+}
+
+/** What `GET /api/config/categories/:name` answers: catalog defaults plus
+ * the merged .omo-chain override and the model the resolver will use. */
+export interface CategoryModelConfig {
+  name: string;
+  defaults: { requiresModels: string[]; model: string | null };
+  override: CategoryModelOverride | null;
+  effectiveModel: string | null;
+}
+
 interface AgentsStore {
 
   selectedAgentName: string | null;
@@ -370,6 +385,19 @@ interface AgentsStore {
   disabledAgentsByDirectory: Record<string, DisabledAgent[]>;
   /** Re-read the disabled agents; a failed read keeps the previous list. */
   loadDisabledAgents: (directory?: string | null) => Promise<boolean>;
+  /** Category model overrides by category name, backed by the .omo chain. */
+  categoryModels: Record<string, CategoryModelConfig>;
+  /** Read one category's effective model config; a failed read keeps the previous entry. */
+  fetchCategoryModel: (name: string, directory?: string | null) => Promise<CategoryModelConfig | null>;
+  /** Persist one category's model override to the user .omo layer. */
+  saveCategoryModel: (name: string, model: string, directory?: string | null) => Promise<AgentMutationResult>;
+  /** Remove one category's model override, restoring the bundled default. */
+  clearCategoryModel: (name: string, directory?: string | null) => Promise<AgentMutationResult>;
+  /** Bundled OmO-compatible catalog: global, not per directory. */
+  omoCatalog: OmoCatalogItem[];
+  omoCatalogStatus: 'idle' | 'loading' | 'loaded' | 'failed';
+  /** Load the catalog once; a failed load keeps the previous list. */
+  loadOmoCatalog: () => Promise<boolean>;
   // Returns only visible agents (excludes hidden internal agents)
   getVisibleAgents: (directory?: string | null) => Agent[];
 }
@@ -400,6 +428,28 @@ export const selectDisabledAgentsForDirectory = (
   directory?: string | null,
 ): DisabledAgent[] => state.disabledAgentsByDirectory[getAgentsCacheKey(resolveDirectory(directory))] ?? EMPTY_DISABLED_AGENTS;
 
+const OmoCatalogItemSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['agent', 'category']),
+  description: z.string(),
+  source: z.string(),
+  edition: z.enum(['senpi', 'opencode']),
+  requiresModels: z.array(z.string()).optional(),
+  requiresCapabilities: z.array(z.string()).optional(),
+  fallback: z.array(z.string()).optional(),
+  prompt: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
+  models: z.unknown().nullable().optional(),
+  categories: z.array(z.string()).nullable().optional(),
+  executionMode: z.string().nullable().optional(),
+  tools: z.object({
+    allow: z.array(z.string()),
+    deny: z.array(z.string()),
+  }).nullable().optional(),
+});
+
+export type OmoCatalogItem = z.infer<typeof OmoCatalogItemSchema>;
+
 /**
  * Read one of the agent config sub-resources. Returns null on any failure so a
  * fetch error never reads as "this agent has no config".
@@ -422,7 +472,7 @@ async function fetchAgentResource<T>(
       },
     );
     if (!response.ok) return null;
-    // SAFETY: `/api/config/agents/:name/{config,permissions}` is OpenChamber's
+    // SAFETY: `/api/config/agents/:name/{config,permissions}` is Alcode's
     // own route; it normalizes every entry through `config-v2.js` before
     // answering, so the payload is already in the canonical v2 shape.
     return (await response.json()) as T;
@@ -453,8 +503,40 @@ export const useAgentsStore = create<AgentsStore>()(
         agents: [],
         agentsByDirectory: {},
         disabledAgentsByDirectory: {},
+        categoryModels: {},
+        omoCatalog: [],
+        omoCatalogStatus: 'idle',
         isLoading: false,
         agentDraft: null,
+
+        loadOmoCatalog: async () => {
+          const status = get().omoCatalogStatus;
+          if (status === 'loading' || status === 'loaded') return status === 'loaded';
+          set({ omoCatalogStatus: 'loading' });
+          try {
+            const response = await runtimeFetch('/api/config/agents/catalog', {
+              headers: { 'Cache-Control': 'no-cache' },
+            });
+            if (!response.ok) {
+              set({ omoCatalogStatus: 'failed' });
+              return false;
+            }
+            const parsed = z.object({
+              version: z.number(),
+              items: z.array(OmoCatalogItemSchema),
+            }).safeParse(await response.json().catch(() => null));
+            if (!parsed.success) {
+              set({ omoCatalogStatus: 'failed' });
+              return false;
+            }
+            set({ omoCatalog: parsed.data.items, omoCatalogStatus: 'loaded' });
+            return true;
+          } catch (error) {
+            console.warn('[AgentsStore] Failed to read OmO agent catalog:', error);
+            set({ omoCatalogStatus: 'failed' });
+            return false;
+          }
+        },
 
         loadDisabledAgents: async (requestedDirectory?: string | null) => {
           const configDirectory = resolveDirectory(requestedDirectory);
@@ -837,6 +919,80 @@ export const useAgentsStore = create<AgentsStore>()(
 
         getVisibleAgents: (requestedDirectory?: string | null) => {
           return filterVisibleAgents(selectAgentsForDirectory(get(), requestedDirectory));
+        },
+
+        fetchCategoryModel: async (name: string, requestedDirectory?: string | null) => {
+          const configDirectory = resolveDirectory(requestedDirectory);
+          const query = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
+          const headers: Record<string, string> = configDirectory
+            ? { 'Cache-Control': 'no-cache', 'x-opencode-directory': configDirectory }
+            : { 'Cache-Control': 'no-cache' };
+          try {
+            const response = await runtimeFetch(
+              `/api/config/categories/${encodeURIComponent(name)}${query}`,
+              { headers },
+            );
+            if (!response.ok) return null;
+            // SAFETY: `/api/config/categories/:name` is Alcode's own route; it answers the fixed
+            // getCategoryConfig shape (name/defaults/override/effectiveModel), so the cast cannot misread.
+            const payload = (await response.json().catch(() => null)) as CategoryModelConfig | null;
+            if (!payload || payload.name !== name) return null;
+            set({ categoryModels: { ...get().categoryModels, [name]: payload } });
+            return payload;
+          } catch (error) {
+            console.warn(`[AgentsStore] Failed to read category model for ${name}:`, error);
+            return null;
+          }
+        },
+
+        saveCategoryModel: async (name: string, model: string, requestedDirectory?: string | null) => {
+          try {
+            const configDirectory = resolveDirectory(requestedDirectory);
+            const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
+            const headers: Record<string, string> = configDirectory
+            ? { 'Content-Type': 'application/json', 'x-opencode-directory': configDirectory }
+            : { 'Content-Type': 'application/json' };
+            const response = await runtimeFetch(`/api/config/categories/${encodeURIComponent(name)}${queryParams}`, {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({ model, scope: 'user' }),
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+              throw new Error(payload?.error || 'Failed to update category model');
+            }
+            await get().fetchCategoryModel(name, requestedDirectory);
+            emitConfigChange("agents", { source: CONFIG_EVENT_SOURCE });
+            return { ok: true };
+          } catch (error) {
+            console.error('Failed to update category model:', error);
+            throw error;
+          }
+        },
+
+        clearCategoryModel: async (name: string, requestedDirectory?: string | null) => {
+          try {
+            const configDirectory = resolveDirectory(requestedDirectory);
+            const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';
+            const headers: Record<string, string> = configDirectory
+            ? { 'Content-Type': 'application/json', 'x-opencode-directory': configDirectory }
+            : { 'Content-Type': 'application/json' };
+            const response = await runtimeFetch(`/api/config/categories/${encodeURIComponent(name)}${queryParams}`, {
+              method: 'DELETE',
+              headers,
+              body: JSON.stringify({ scope: 'user' }),
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+              throw new Error(payload?.error || 'Failed to clear category model');
+            }
+            await get().fetchCategoryModel(name, requestedDirectory);
+            emitConfigChange("agents", { source: CONFIG_EVENT_SOURCE });
+            return { ok: true };
+          } catch (error) {
+            console.error('Failed to clear category model:', error);
+            throw error;
+          }
         },
       }),
       {

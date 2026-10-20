@@ -1,10 +1,13 @@
 /**
- * `metadata.openchamber.work`: whether a session is in work and what Jev
+ * `metadata.alcode.work`: whether a session is in work and what Jev
  * currently suggests about it; `metadata.openchamber.reviewOffer`: Jev's offer
  * to look over the last turn's changes, which does not depend on work. Every
  * function returns a JSON merge patch for the session metadata store, or null
  * when nothing changes, so the store can decide against the record as it is
  * at write time.
+ * currently suggests about it. Every function returns a JSON merge patch for
+ * the session metadata store, or null when nothing changes, so the store can
+ * decide against the record as it is at write time.
  *
  * The rule the patches keep: sending a message opens, the user alone closes.
  * A message reopens a session the user closed, but only one sent after the
@@ -21,13 +24,13 @@ const workSchema = z.object({
   suggestDoneAt: z.number().optional(),
 });
 
-const metadataSchema = z.object({ openchamber: z.object({ work: workSchema }) });
+const metadataSchema = z.object({ alcode: z.object({ work: workSchema }) });
 const reviewOfferSchema = z.object({ openchamber: z.object({ reviewOffer: z.object({ at: z.number() }) }) });
 
 /** The session's work record, or null when it has none (or a malformed one). */
-export const readWork = (metadata) => metadataSchema.safeParse(metadata).data?.openchamber.work ?? null;
+export const readWork = (metadata) => metadataSchema.safeParse(metadata).data?.alcode.work ?? null;
 
-const patchOf = (work) => ({ openchamber: { work } });
+const patchOf = (work) => ({ alcode: { work } });
 
 /** The user sent a message at `requestAt`. */
 export const openPatch = (metadata, { requestAt, now }) => {

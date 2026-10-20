@@ -162,7 +162,7 @@ export const useKeyboardShortcuts = () => {
       // with the sidebar visible the list is already on screen, so the
       // shortcut opens the sidebar's session search instead.
       if (state.isSidebarOpen) {
-        window.dispatchEvent(new CustomEvent('openchamber:sidebar-session-search'));
+        window.dispatchEvent(new CustomEvent('alcode:sidebar-session-search'));
         return;
       }
       state.setSessionDropdownOpen(true);
@@ -340,7 +340,7 @@ export const useKeyboardShortcuts = () => {
       ) {
         return false;
       }
-      window.dispatchEvent(new CustomEvent('openchamber:dictation-toggle'));
+      window.dispatchEvent(new CustomEvent('alcode:dictation-toggle'));
     },
     abort_run: () => {
       if (sessionPhase === 'idle' || !currentSessionId) return false;

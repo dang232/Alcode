@@ -12,6 +12,8 @@ resources/opencode-cli/*
 !resources/opencode-cli/.gitkeep
 resources/ripgrep/*
 !resources/ripgrep/.gitkeep
+resources/ulw-loop-cli/*
+!resources/ulw-loop-cli/.gitkeep
 .cache/
 
 # OS-specific

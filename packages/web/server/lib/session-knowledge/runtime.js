@@ -60,24 +60,25 @@ const renderMemorySection = (entries) => entries
  * tool description alone is read only when the agent already means to call it,
  * so agents told nothing here saved only when the user said "remember".
  */
-const MEMORY_SAVE_GUIDANCE = 'The openchamber_memory tool keeps memory across sessions. Save to it in the'
-  + ' moment, without asking, when the user corrects how you work or states a'
-  + ' preference, confirms a non-obvious approach worked, or you learn a project fact'
-  + ' that took real effort to find. A project fact an agent would learn from the code,'
-  + ' docs and skills, including why and whether it may change, needs no entry; the'
-  + ' user\'s corrections and preferences always do. Save before your final reply and'
-  + ' mention the save there briefly: the app shows only the text after a turn\'s last'
-  + ' tool call as the reply.';
+const MEMORY_SAVE_GUIDANCE = 'You have memory that persists across sessions, through the'
+  + ' alcode_memory tool. Save to it in the moment, without asking first, when:'
+  + ' the user corrects how you work or states a preference; the user confirms that'
+  + ' a non-obvious approach worked; or you learn a project fact that took real'
+  + ' effort to find and is not in the code or docs. One fact per entry. The user'
+  + ' can review and remove what you save, so save when it fits and mention it'
+  + ' briefly.';
 
 /**
- * When to link, stated in every session that has the `openchamber` tool, and
- * only here. Stated only in the action's description, an agent given an issue
- * to investigate never opened the tool and so never linked it.
+ * When to link, stated in every session that has the `alcode` tool. The
+ * same rule leads that tool's description; stated only there, an agent given
+ * an issue to investigate never opened the tool and so never linked it.
+ * The tool description states the same rule; change both together.
  */
-export const SESSION_LINK_GUIDANCE = "Link to this session with the openchamber tool's session.link,"
-  + " as soon as you know it, each issue or pull or merge request the user gives you to"
-  + " work on, fix, investigate or review, that you open for this work, or that the work"
-  + " resolves. One merely mentioned in passing stays unlinked. The reply need not say you linked it.";
+export const SESSION_LINK_GUIDANCE = "When the user gives you an issue or a change under"
+  + " review (a pull or merge request) to work on, fix, investigate or review, when you"
+  + " open one for this work, and when the work resolves one, link it to this session"
+  + " with the alcode tool's session.link as soon as you know it, so the user"
+  + " sees it with the session. Not one merely mentioned in passing.";
 
 /**
  * When to draw a page, stated in every session that has the
@@ -124,6 +125,17 @@ const buildMemoryBlock = ({ global, project, enabled = false, complete = false }
       + ' before acting on it, once per conversation, again only after your context was'
       + ' summarized. Memory was true when written; verify the files, flags and'
       + ' commands it names.',
+    'Stored memory from earlier sessions: only the titles are listed below.',
+    'A title is an abbreviation, not the memory. Read the entry with the'
+      + ' alcode_memory tool before you act on it: titles routinely leave out'
+      + ' the conditions, exceptions and reasons that decide how the memory'
+      + ' applies, and a title that looks self-explanatory is the most likely to'
+      + ' be hiding them. Read every title that could bear on the task at hand;'
+      + ' you need not read the ones unrelated to what you are doing. Read each'
+      + ' entry once per conversation: what you read stays in your context, so do'
+      + ' not read it again on later turns unless your context was summarized.',
+    'Memory records what was true when it was written. Verify anything it says'
+      + ' about files, flags or commands before relying on it.',
     ...sections,
   ].join('\n\n');
 };
@@ -182,14 +194,15 @@ export const createSessionKnowledgeRuntime = (dependencies) => {
     agentMemoryRuntime,
     resolveProjectId,
     isAgentMemoryEnabled,
-    // Whether this session's agent has the `openchamber` tool to link with.
+    // Whether this session's agent has the `alcode` tool to link with.
     isSessionLinkingAvailable = null,
     // The checked-out branch, or '' when none is checked out. Failures throw;
     // read only while the agent has the tool.
     readCheckoutBranch = null,
     // Whether this session's agent has the `openchamber_render` tool.
     isPageRenderingAvailable = async () => false,
-    // Pins live in OpenChamber's own session metadata store.
+    // Pins and the delivered-signature cursor live in Alcode's own session
+    // metadata store: OpenCode 2.x accepts session metadata only at create time,
     readSessionMetadata = null,
     persistSessionMetadata = null,
     // The session's instruction entries in OpenCode: `put(sessionId,
@@ -209,8 +222,8 @@ export const createSessionKnowledgeRuntime = (dependencies) => {
 
   const readPins = (session) => {
     const metadata = isRecord(session?.metadata) ? session.metadata : {};
-    const openchamber = isRecord(metadata.openchamber) ? metadata.openchamber : {};
-    const pins = isRecord(openchamber[PINS_METADATA_KEY]) ? openchamber[PINS_METADATA_KEY] : {};
+    const alcode = isRecord(metadata.alcode) ? metadata.alcode : {};
+    const pins = isRecord(alcode[PINS_METADATA_KEY]) ? alcode[PINS_METADATA_KEY] : {};
     const strings = (value) => Array.isArray(value)
       ? [...new Set(value.filter((entry) => typeof entry === 'string' && entry.trim()).map((entry) => entry.trim()))]
       : [];
@@ -332,6 +345,34 @@ export const createSessionKnowledgeRuntime = (dependencies) => {
     return { notes, plans, memory };
   };
 
+  const readDeliveredSignature = (session) => {
+    const metadata = isRecord(session?.metadata) ? session.metadata : {};
+    const alcode = isRecord(metadata.alcode) ? metadata.alcode : {};
+    const delivered = alcode[KNOWLEDGE_METADATA_KEY];
+    return typeof delivered === 'string' ? delivered : '';
+  };
+
+  /**
+   * The text this session still owes, or an empty string when it is already
+   * carrying it. `deliveredSignature` comes from the session's metadata.
+   */
+  const resolvePending = async (directory, deliveredSignature, pins = { notes: [], plans: [] }) => {
+    const collected = await collect(directory, pins);
+    const signature = buildKnowledgeSignature(collected);
+    if (!signature || signature === deliveredSignature) {
+      return { text: '', signature };
+    }
+    return { text: buildKnowledgeText(collected), signature };
+  };
+
+  /**
+   * What this session still owes, read from its own stored signature.
+   */
+  const resolvePendingForSession = async (sessionId, directory) => {
+    const session = await readStoredSession(sessionId).catch(() => null);
+    return resolvePending(directory, readDeliveredSignature(session), readPins(session));
+  };
+
   const collectSummaryForSession = async (sessionId, directory) => {
     const session = await readStoredSession(sessionId).catch(() => null);
     return collectSummary(directory, readPins(session));
@@ -372,8 +413,28 @@ export const createSessionKnowledgeRuntime = (dependencies) => {
     // neighbouring state alone.
     await persistSessionMetadata(sessionId, directory, {
       openchamber: { [PINS_METADATA_KEY]: { ...pins, [key]: [...next] } },
+      alcode: {
+        [PINS_METADATA_KEY]: { ...pins, [key]: [...next] },
+        [KNOWLEDGE_METADATA_KEY]: '',
+      },
     });
     return { ...pins, [key]: [...next] };
+  };
+
+  /**
+   * Recorded only once the message carrying it has actually gone out. Writing
+   * it when the text is handed over would leave a failed send believing the
+   * agent had context it never received.
+   *
+   * Merged onto a fresh read, because the session's metadata holds other
+   * Alcode state — pinned messages among it — and a blind write would
+   * drop whatever changed in between.
+   */
+  const recordDelivered = async (sessionId, directory, signature) => {
+    requireMetadataStore();
+    await persistSessionMetadata(sessionId, directory, {
+      alcode: { [KNOWLEDGE_METADATA_KEY]: signature },
+    });
   };
 
   return {

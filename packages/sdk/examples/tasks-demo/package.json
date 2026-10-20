@@ -1,8 +1,8 @@
 {
-  "name": "@openchamber/example-tasks-demo",
+  "name": "@alcode/example-tasks-demo",
   "version": "1.1.0",
   "private": true,
-  "openchamber": {
+  "alcode": {
     "apiVersion": 1,
     "contributes": {
       "panel": {
@@ -64,6 +64,6 @@
     }
   },
   "dependencies": {
-    "@openchamber/sdk": "workspace:*"
+    "@alcode/sdk": "workspace:*"
   }
 }

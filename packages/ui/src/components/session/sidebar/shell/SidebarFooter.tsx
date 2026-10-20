@@ -88,18 +88,14 @@ export function SidebarFooter({
             </TooltipTrigger>
             <TooltipContent side="top" sideOffset={4}><p>{t('sessions.sidebar.footer.actions.shortcuts')}</p></TooltipContent>
           </Tooltip>
-          {/* An available update takes About's place rather than adding a
-              control: it is the one moment that slot has something to say. */}
-          {showUpdateButton ? updateButton : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button type="button" onClick={onOpenAbout} className={footerButtonClassName} aria-label={t('sessions.sidebar.footer.actions.aboutOpenChamber')}>
-                  <Icon name="information" className="h-4 w-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={4}><p>{t('sessions.sidebar.footer.actions.aboutOpenChamber')}</p></TooltipContent>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" onClick={onOpenAbout} className={footerButtonClassName} aria-label={t('sessions.sidebar.footer.actions.aboutAlcode')}>
+                <Icon name="information" className="h-4.5 w-4.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}><p>{t('sessions.sidebar.footer.actions.aboutAlcode')}</p></TooltipContent>
+          </Tooltip>
         </>
       ) : null}
       {!showRuntimeButtons && showUpdateButton ? updateButton : null}

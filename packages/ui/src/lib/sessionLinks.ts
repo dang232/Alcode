@@ -2,9 +2,9 @@ import { isLinkIdentifier } from '@/lib/router/messageFocus';
 
 // Links to a session, optionally to one message in it. They extend the links
 // the app already understands: the web route (`?session=<id>`) and the native
-// deep link (`openchamber://session/<id>`), each with a `message` parameter.
+// deep link (`alcode://session/<id>`), each with a `message` parameter.
 // A link is a place on this server, not a public share: it opens only for
-// someone who can reach the same OpenChamber instance.
+// someone who can reach the same Alcode instance.
 //
 // Pure on purpose: the markdown sanitizer, which may run in a worker, uses it.
 
@@ -18,7 +18,9 @@ export type MessageLinkForm =
     | { readonly kind: 'deep-link' }
     | { readonly kind: 'web'; readonly origin: string; readonly pathname: string };
 
-const DEEP_LINK_PREFIX = 'openchamber://session/';
+const DEEP_LINK_PREFIX = 'alcode://session/';
+/** Pre-rename twin: still read from chat content, never minted. */
+const LEGACY_DEEP_LINK_PREFIX = 'openchamber://session/';
 
 export const buildMessageLink = (sessionId: string, messageId: string, form: MessageLinkForm): string | null => {
     if (!isLinkIdentifier(sessionId) || !isLinkIdentifier(messageId)) return null;
@@ -65,7 +67,8 @@ export const parseSessionLink = (href: string, ownOrigins: readonly string[]): S
         return null;
     }
 
-    if (url.protocol === 'openchamber:') {
+    if (url.protocol === 'alcode:' || url.protocol === 'openchamber:') {
+        // The pre-rename scheme parses identically; links are always minted new.
         // Old Android WebViews put the route in the path instead of the host.
         const segments = [url.host, ...url.pathname.split('/')].filter(Boolean);
         if (segments[0]?.toLowerCase() !== 'session' || segments.length !== 2) return null;
@@ -79,7 +82,9 @@ export const parseSessionLink = (href: string, ownOrigins: readonly string[]): S
     return null;
 };
 
-/** True for `openchamber://session/...` links, the only native deep links chat content may carry. */
-export const isSessionDeepLink = (href: string): boolean => (
-    href.toLowerCase().startsWith(DEEP_LINK_PREFIX) && parseSessionLink(href, []) !== null
-);
+/** True for `alcode://session/...` links (and their pre-rename `openchamber://` twins). */
+export const isSessionDeepLink = (href: string): boolean => {
+    const lower = href.toLowerCase();
+    return (lower.startsWith(DEEP_LINK_PREFIX) || lower.startsWith(LEGACY_DEEP_LINK_PREFIX))
+        && parseSessionLink(href, []) !== null;
+};

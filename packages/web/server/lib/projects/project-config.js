@@ -5,6 +5,7 @@ import { projectConfigFileStemOf, projectPathFromId } from './project-id.js';
 import {
   DEFAULT_PLANS_DIR,
   EMPTY_SHARED_PROJECT_CONFIG,
+  LEGACY_SHARED_CONFIG_RELATIVE_PATH,
   SHARED_CONFIG_RELATIVE_PATH,
   applySharedProjectSetupPatch,
   isSharedProjectConfigEmpty,
@@ -274,7 +275,7 @@ const normalizeState = (value, fallback) => {
     ? Math.max(0, Math.round(source.nextRunAt))
     : undefined;
   // Absolute ms of the schedule occurrence last claimed for dispatch. Used so
-  // two OpenChamber server instances sharing this config cannot both start a
+  // two Alcode server instances sharing this config cannot both start a
   // run for the same daily/weekly/cron/once slot (see issue #2710).
   const lastScheduledFor = typeof source.lastScheduledFor === 'number' && Number.isFinite(source.lastScheduledFor)
     ? Math.max(0, Math.round(source.lastScheduledFor))
@@ -782,7 +783,7 @@ export const createProjectConfigRuntime = (deps) => {
    * `predicate(currentTask)` is evaluated after the latest on-disk read; when
    * it returns false the write is skipped and `{ updated: false }` is returned.
    * Used by the scheduled-tasks runtime to claim a single schedule occurrence
-   * across concurrent OpenChamber server instances.
+   * across concurrent Alcode server instances.
    */
   const updateScheduledTaskStateIf = async (projectID, taskID, predicate, statePatch) => {
     return withProjectWriteLock(projectID, async () => {
@@ -1015,6 +1016,7 @@ export const createProjectConfigRuntime = (deps) => {
     projectPathFromId(projectID) || (typeof personalRaw.projectPath === 'string' ? personalRaw.projectPath.trim() : '')
   );
   const sharedConfigPathOf = (projectPath) => path.join(projectPath, ...SHARED_CONFIG_RELATIVE_PATH.split('/'));
+  const legacySharedConfigPathOf = (projectPath) => path.join(projectPath, ...LEGACY_SHARED_CONFIG_RELATIVE_PATH.split('/'));
 
   const readSharedProjectConfig = async (projectID, personalRaw) => {
     const projectPath = projectPathOf(projectID, personalRaw);
@@ -1023,8 +1025,16 @@ export const createProjectConfigRuntime = (deps) => {
     try {
       raw = await fsPromises.readFile(sharedConfigPathOf(projectPath), 'utf8');
     } catch (error) {
-      if (error && typeof error === 'object' && error.code === 'ENOENT') return { status: 'missing' };
-      return { status: 'invalid', reason: error instanceof Error ? error.message : String(error) };
+      if (!(error && typeof error === 'object' && error.code === 'ENOENT')) {
+        return { status: 'invalid', reason: error instanceof Error ? error.message : String(error) };
+      }
+      // The pre-rename location is a read fallback only; writes go to the new path.
+      try {
+        raw = await fsPromises.readFile(legacySharedConfigPathOf(projectPath), 'utf8');
+      } catch (legacyError) {
+        if (legacyError && typeof legacyError === 'object' && legacyError.code === 'ENOENT') return { status: 'missing' };
+        return { status: 'invalid', reason: legacyError instanceof Error ? legacyError.message : String(legacyError) };
+      }
     }
     return parseSharedProjectConfig(raw);
   };
@@ -1052,7 +1062,7 @@ export const createProjectConfigRuntime = (deps) => {
    * Change the team's shared file in the checkout: the patch replaces the
    * keys it names over the current file (a broken file counts as empty, so
    * a write repairs it). A result with nothing in it removes the file (and
-   * the `.openchamber` folder when that leaves it empty), so unsharing the
+   * the `.alcode` folder when that leaves it empty), so unsharing the
    * last item leaves no trace. The writer has seen the commands it just
    * shared, so the personal trust record is set to the new hash on this
    * instance; teammates still get the prompt.
@@ -1098,7 +1108,7 @@ export const createProjectConfigRuntime = (deps) => {
 
   /**
    * The absolute repository plans folder of a project: `plansDir` from the
-   * shared file when set, else the default `.openchamber/plans`. Setting
+   * shared file when set, else the default `.alcode/plans`. Setting
    * `plansDir` replaces the default outright (nothing is read from it any
    * more); moving files between the two is the user's job. Null only when the
    * checkout cannot be located.

@@ -83,7 +83,7 @@ describe('core-routes', () => {
         shutdownOpts = opts;
       }),
       getHealthSnapshot: () => ({ status: 'ok' }),
-      openchamberVersion: '1.0.0',
+      alcodeVersion: '1.0.0',
       runtimeName: 'test',
       express,
     };
@@ -136,7 +136,7 @@ describe('core-routes', () => {
     const dependencies = {
       gracefulShutdown: vi.fn(async () => {}),
       getHealthSnapshot: () => ({ status: 'ok' }),
-      openchamberVersion: '1.0.0',
+      alcodeVersion: '1.0.0',
       runtimeName: 'test',
       express,
       tunnelAuthController: {
@@ -163,7 +163,7 @@ describe('core-routes', () => {
     const dependencies = {
       gracefulShutdown: vi.fn(async () => {}),
       getHealthSnapshot: () => ({ status: 'ok' }),
-      openchamberVersion: '1.0.0',
+      alcodeVersion: '1.0.0',
       runtimeName: 'test',
       express,
       tunnelAuthController: {
@@ -190,7 +190,7 @@ describe('core-routes', () => {
     const dependencies = {
       gracefulShutdown: vi.fn(async () => {}),
       getHealthSnapshot: () => ({ status: 'ok' }),
-      openchamberVersion: '1.0.0',
+      alcodeVersion: '1.0.0',
       runtimeName: 'test',
       express,
       tunnelAuthController: {
@@ -619,7 +619,7 @@ describe('core-routes', () => {
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body).toMatchObject({
       ok: true,
-      server: { label: 'OpenChamber', url: 'http://runtime.example', fingerprint: 'ABCD-1234' },
+      server: { label: 'Alcode', url: 'http://runtime.example', fingerprint: 'ABCD-1234' },
       client: { id: 'client-1', authMethod: 'pairing' },
       clientToken: 'oc_client_token',
     });
@@ -872,7 +872,7 @@ describe('client auth routes', () => {
 
     const current = await request(app)
       .post('/api/client-auth/clients')
-      .send({ label: 'OpenChamber Desktop', clientKind: 'desktop-local' });
+      .send({ label: 'Alcode Desktop', clientKind: 'desktop-local' });
     const other = await request(app)
       .post('/api/client-auth/clients')
       .send({ label: 'Other device' });
@@ -907,7 +907,7 @@ describe('client auth routes', () => {
 
     const desktop = await request(app)
       .post('/api/client-auth/clients')
-      .send({ label: 'OpenChamber Desktop', clientKind: 'desktop-local' });
+      .send({ label: 'Alcode Desktop', clientKind: 'desktop-local' });
     const other = await request(app)
       .post('/api/client-auth/clients')
       .send({ label: 'Other device' });
@@ -940,7 +940,7 @@ describe('client auth routes', () => {
 
     const desktop = await request(app)
       .post('/api/client-auth/clients')
-      .send({ label: 'OpenChamber Desktop', clientKind: 'desktop-local' });
+      .send({ label: 'Alcode Desktop', clientKind: 'desktop-local' });
     const remote = await request(app)
       .post('/api/client-auth/clients')
       .send({ label: 'Phone' });
@@ -1045,7 +1045,7 @@ describe('client auth routes', () => {
       serverStartedAt: '2026-01-01T00:00:00.000Z',
       gracefulShutdown: vi.fn(async () => {}),
       getHealthSnapshot: () => ({ status: 'ok' }),
-      openchamberVersion: '1.0.0',
+      alcodeVersion: '1.0.0',
       runtimeName: 'test',
       express,
       uiAuthController: signedIn,
@@ -1053,6 +1053,7 @@ describe('client auth routes', () => {
 
     const response = await request(app).get('/api/system/info');
     expect(response.status).toBe(200);
+    expect(response.body.alcodeVersion).toBe('1.0.0');
     expect(response.body.openchamberVersion).toBe('1.0.0');
     expect(response.body.runtime).toBe('test');
     expect(response.body.pid).toBeTypeOf('number');
@@ -1068,7 +1069,7 @@ describe('client auth routes', () => {
       serverStartedAt: '2026-01-01T00:00:00.000Z',
       gracefulShutdown: vi.fn(async () => {}),
       getHealthSnapshot: () => ({ status: 'ok' }),
-      openchamberVersion: '1.0.0',
+      alcodeVersion: '1.0.0',
       runtimeName: 'test',
       express,
       getServerPort: () => 9988,
@@ -1082,6 +1083,197 @@ describe('client auth routes', () => {
     expect(response.body.tunnelUrl).toBe('https://worktree-a.example.trycloudflare.com');
   });
 
+describe('global sign-out alcore cleanup', () => {
+    const mountResetApp = ({ subject = 'user-1', withProvider = true } = {}) => {
+      const app = express();
+      const clearedSubs = [];
+      const syncedSubs = [];
+      const dependencies = {
+        express,
+        tunnelAuthController: {
+          classifyRequestScope: () => 'local',
+          requireTunnelSession: (_req, _res, next) => next(),
+          getTunnelSessionFromRequest: () => null,
+          clearTunnelSessionCookie: () => {},
+        },
+        uiAuthController: {
+          requireAuth: (_req, _res, next) => next(),
+          requireSessionAuth: (_req, _res, next) => next(),
+          resolveRequestAlcoreSub: async () => subject,
+          handleSessionStatus: (_req, res) => res.json({ authenticated: true }),
+          handleSessionCreate: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyStatus: (_req, res) => res.json({ enabled: false }),
+          handlePasskeyAuthenticationOptions: (_req, res) => res.json({}),
+          handlePasskeyAuthenticationVerify: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyRegistrationOptions: (_req, res) => res.json({}),
+          handlePasskeyRegistrationVerify: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyList: (_req, res) => res.json({ passkeys: [] }),
+          handlePasskeyRevoke: (_req, res) => res.json({ revoked: true }),
+          handleResetAuth: (_req, res) => res.json({ cleared: true, clearedPasskeys: 0, signedOutEverywhere: true }),
+        },
+        readSettingsFromDiskMigrated: async () => ({}),
+        normalizeTunnelSessionTtlMs: () => 1000,
+      };
+      if (withProvider) {
+        dependencies.alcoreProvider = {
+          syncOnLogin: async (sub) => { syncedSubs.push(sub); return { ok: true, models: 1 }; },
+          clearOnSignOut: async (sub) => { clearedSubs.push(sub); return { cleared: true, removed: true }; },
+        };
+      }
+      registerAuthAndAccessRoutes(app, dependencies);
+      return { app, clearedSubs, syncedSubs };
+    };
+
+    it('tears down the alcore provider keyed by the pre-reset subject', async () => {
+      const { app, clearedSubs } = mountResetApp({ subject: 'user-1' });
+      await request(app)
+        .post('/api/auth/reset')
+        .expect(200, { cleared: true, clearedPasskeys: 0, signedOutEverywhere: true });
+      expect(clearedSubs).toEqual(['user-1']);
+    });
+
+    it('still runs cleanup for an unknown subject and keeps the response', async () => {
+      const { app, clearedSubs } = mountResetApp({ subject: '' });
+      await request(app)
+        .post('/api/auth/reset')
+        .expect(200, { cleared: true, clearedPasskeys: 0, signedOutEverywhere: true });
+      expect(clearedSubs).toEqual(['']);
+    });
+
+    it('signs out unchanged when the provider wiring is absent', async () => {
+      const { app } = mountResetApp({ withProvider: false });
+      await request(app)
+        .post('/api/auth/reset')
+        .expect(200, { cleared: true, clearedPasskeys: 0, signedOutEverywhere: true });
+    });
+  });
+
+  describe('alcore readiness route', () => {
+    const mountReadinessApp = (alcoreProvider) => {
+      const app = express();
+      const dependencies = {
+        express,
+        tunnelAuthController: {
+          classifyRequestScope: () => 'local',
+          requireTunnelSession: (_req, _res, next) => next(),
+          getTunnelSessionFromRequest: () => null,
+          clearTunnelSessionCookie: () => {},
+        },
+        uiAuthController: {
+          requireAuth: (_req, _res, next) => next(),
+          requireSessionAuth: (_req, _res, next) => next(),
+          resolveRequestAlcoreSub: async () => 'user-1',
+          handleSessionStatus: (_req, res) => res.json({ authenticated: true }),
+          handleSessionCreate: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyStatus: (_req, res) => res.json({ enabled: false }),
+          handlePasskeyAuthenticationOptions: (_req, res) => res.json({}),
+          handlePasskeyAuthenticationVerify: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyRegistrationOptions: (_req, res) => res.json({}),
+          handlePasskeyRegistrationVerify: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyList: (_req, res) => res.json({ passkeys: [] }),
+          handlePasskeyRevoke: (_req, res) => res.json({ revoked: true }),
+          handleResetAuth: (_req, res) => res.json({ cleared: true, clearedPasskeys: 0, signedOutEverywhere: true }),
+        },
+        readSettingsFromDiskMigrated: async () => ({}),
+        normalizeTunnelSessionTtlMs: () => 1000,
+      };
+      if (alcoreProvider !== undefined) dependencies.alcoreProvider = alcoreProvider;
+      registerAuthAndAccessRoutes(app, dependencies);
+      return app;
+    };
+
+    it('serves the provider readiness snapshot without secrets', async () => {
+      const app = mountReadinessApp({
+        getReadiness: () => ({ state: 'syncing', updatedAt: 123, needsRestart: false }),
+      });
+      await request(app)
+        .get('/api/alcore/readiness')
+        .expect(200, { state: 'syncing', needsRestart: false });
+    });
+
+    it('answers idle when the provider wiring is absent', async () => {
+      const app = mountReadinessApp(undefined);
+      await request(app)
+        .get('/api/alcore/readiness')
+        .expect(200, { state: 'idle', needsRestart: false });
+    });
+
+    it('answers idle when the snapshot is malformed or the provider throws', async () => {
+      const malformed = mountReadinessApp({ getReadiness: () => null });
+      await request(malformed)
+        .get('/api/alcore/readiness')
+        .expect(200, { state: 'idle', needsRestart: false });
+      const throwing = mountReadinessApp({
+        getReadiness: () => { throw new Error('provider down'); },
+      });
+      await request(throwing)
+        .get('/api/alcore/readiness')
+        .expect(200, { state: 'idle', needsRestart: false });
+    });
+  });
+  describe('engine status route', () => {
+    const mountEngineApp = (requireAuth) => {
+      const app = express();
+      registerAuthAndAccessRoutes(app, {
+        express,
+        tunnelAuthController: {
+          classifyRequestScope: () => 'local',
+          requireTunnelSession: (_req, _res, next) => next(),
+          getTunnelSessionFromRequest: () => null,
+          clearTunnelSessionCookie: () => {},
+        },
+        uiAuthController: {
+          requireAuth,
+          handleSessionStatus: (_req, res) => res.json({ authenticated: true }),
+          handleSessionCreate: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyStatus: (_req, res) => res.json({ enabled: false }),
+          handlePasskeyAuthenticationOptions: (_req, res) => res.json({}),
+          handlePasskeyAuthenticationVerify: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyRegistrationOptions: (_req, res) => res.json({}),
+          handlePasskeyRegistrationVerify: (_req, res) => res.json({ authenticated: true }),
+          handlePasskeyList: (_req, res) => res.json({ passkeys: [] }),
+          handlePasskeyRevoke: (_req, res) => res.json({ revoked: true }),
+          handleResetAuth: (_req, res) => res.json({ cleared: true, clearedPasskeys: 0, signedOutEverywhere: true }),
+        },
+        readSettingsFromDiskMigrated: async () => ({}),
+        normalizeTunnelSessionTtlMs: () => 1000,
+      });
+      return app;
+    };
+
+    it('refuses unauthenticated callers before probing', async () => {
+      const app = mountEngineApp((_req, res) => res.status(401).json({ error: 'Unauthorized' }));
+      await request(app).get('/api/engine/status').expect(401);
+    });
+
+    it('serves the native-ok shape with binding defaults, never a secret', async () => {
+      const previous = process.env.OMO_WRAPPER_PATH;
+      delete process.env.OMO_WRAPPER_PATH;
+      try {
+        const app = mountEngineApp((_req, _res, next) => next());
+        const response = await request(app).get('/api/engine/status').expect(200);
+        // No user wrapper, but the checkout carries the vendored engine:
+        // the probe resolves native-first by design, so the route reports
+        // the builtin engine as available (entry stays null).
+        expect(response.body).toMatchObject({
+          entry: null,
+          builtin: true,
+          available: true,
+          compatible: true,
+          binding: {
+            defaultRole: 'default',
+          },
+        });
+        expect(typeof response.body.builtin).toBe('boolean');
+        expect(Array.isArray(response.body.binding.alcoreModels)).toBe(true);
+        expect(response.body.binding.alcoreModels.length).toBeGreaterThan(0);
+        expect(JSON.stringify(response.body)).not.toMatch(/tp_live_|Bearer/);
+      } finally {
+        if (previous === undefined) delete process.env.OMO_WRAPPER_PATH;
+        else process.env.OMO_WRAPPER_PATH = previous;
+      }
+    });
+  });
   it('keeps the pid but not where the server is reachable on /api/system/info before login', async () => {
     const app = express();
     registerServerStatusRoutes(app, {
@@ -1089,7 +1281,7 @@ describe('client auth routes', () => {
       serverStartedAt: '2026-01-01T00:00:00.000Z',
       gracefulShutdown: vi.fn(async () => {}),
       getHealthSnapshot: () => ({ status: 'ok' }),
-      openchamberVersion: '1.0.0',
+      alcodeVersion: '1.0.0',
       runtimeName: 'test',
       express,
       getServerPort: () => 9988,

@@ -1,6 +1,14 @@
 import { buildExternalManualRestartResponse } from './config-mutation-response.js';
+import {
+  OMO_BRIDGE_DEFAULT_ALCORE_MODELS,
+  OMO_BRIDGE_DEFAULT_MODEL_ROLE,
+  createOmoBridgeRuntime,
+  resolveVendoredRoot,
+} from './omo-bridge-runtime.js';
 import { ThemeImportStorageError } from './theme-runtime.js';
 import { registerThemeCatalogRoutes } from './theme-catalog.js';
+import { createDesktopAuthRuntime } from '../desktop-auth/desktop-auth.js';
+import { sharedUserTokenStore } from '../user-tokens/user-token-store.js';
 import { collectLocalFileDiagnostics } from '../diagnostics/local-files.js';
 import { serverDiagnosticJournal } from '../diagnostics/server-journal.js';
 
@@ -55,12 +63,12 @@ export const registerServerStatusRoutes = (app, dependencies) => {
   const {
     express,
     process,
-    openchamberVersion,
+    alcodeVersion,
     runtimeName,
     serverStartedAt,
     gracefulShutdown,
     getHealthSnapshot,
-    // Port this OpenChamber instance serves on and the tunnel public URL (if
+    // Port this Alcode instance serves on and the tunnel public URL (if
     // a tunnel is active). Exposed on /api/system/info so the UI can surface
     // the active instance's service URLs. Optional: older wiring omits them
     // and the endpoint reports null.
@@ -131,7 +139,7 @@ export const registerServerStatusRoutes = (app, dependencies) => {
   const isDevShutdownAllowed = () => {
     // Dev-only escape hatch: allow terminating the whole dev process group.
     // This should never be enabled in production runtimes.
-    return process.env.OPENCHAMBER_DEV_SHUTDOWN === 'true';
+    return process.env.ALCODE_DEV_SHUTDOWN === 'true';
   };
 
   const isSameOriginRequest = (req) => {
@@ -239,7 +247,8 @@ export const registerServerStatusRoutes = (app, dependencies) => {
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      openchamberVersion,
+      alcodeVersion,
+      openchamberVersion: alcodeVersion,
       runtime: runtimeName,
       compatibility,
       ...(serverId ? { serverId } : {}),
@@ -271,7 +280,8 @@ export const registerServerStatusRoutes = (app, dependencies) => {
     const serverId = await resolveServerId();
     res.json({
       status: 'ok',
-      openchamberVersion,
+      alcodeVersion,
+      openchamberVersion: alcodeVersion,
       runtime: runtimeName,
       startedAt: serverStartedAt,
       compatibility,
@@ -377,7 +387,8 @@ export const registerServerStatusRoutes = (app, dependencies) => {
     // its own server from whatever else holds the port. Where this server is
     // reachable (port, tunnel address) is for signed-in callers only.
     const info = {
-      openchamberVersion,
+      alcodeVersion,
+      openchamberVersion: alcodeVersion,
       runtime: runtimeName,
       pid: process.pid,
       startedAt: serverStartedAt,
@@ -432,7 +443,13 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
     getServerId = async () => null,
     // Display name a paired device shows for THIS server (issuing machine's
     // hostname), distinct from the per-device pairing label typed by the operator.
-    getServerLabel = () => 'OpenChamber',
+    getServerLabel = () => 'Alcode',
+    // Alcore provider sync (login registration, sign-out removal). Null in
+    // tests and in runtimes without the provider wiring: both hooks skip.
+    alcoreProvider = null,
+    alcoreSecret,
+    alcorePreviousSecret,
+    alcoreIssuer,
   } = dependencies;
   const PAIRING_REDEEM_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
   const PAIRING_REDEEM_RATE_LIMIT_MAX_ATTEMPTS = 10;
@@ -704,9 +721,88 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
   app.post('/auth/session', (req, res) => {
     const requestScope = tunnelAuthController.classifyRequestScope(req);
     if (requestScope === 'tunnel' || requestScope === 'unknown-public') {
-      return res.status(403).json({ error: 'Password login is disabled for tunnel scope', tunnelLocked: true });
+      return res.status(403).json({ error: 'Alcore login is disabled for tunnel scope', tunnelLocked: true });
     }
     return uiAuthController.handleSessionCreate(req, res);
+  });
+
+  const desktopAuthRuntime = createDesktopAuthRuntime({
+    uiAuthController,
+    alcoreSecret,
+    alcorePreviousSecret,
+    alcoreIssuer,
+    // The quota proxy shares this instance: a pair captured at loopback
+    // completion is the pair the proxy presents.
+    userTokenStore: sharedUserTokenStore(),
+    // Fire-and-forget on purpose: the provider sync fetches the live
+    // catalog over the network and must never delay the login response.
+    // The sync itself never rejects; the desktop seam swallows hook errors.
+    onLoginTokens: alcoreProvider === null || alcoreProvider === undefined
+      ? null
+      // A missing sync method throws inside the call: the desktop seam
+      // swallows hook errors, so no capability probe is needed here.
+      : (sub) => { void alcoreProvider.syncOnLogin(sub); },
+  });
+  desktopAuthRuntime.registerRoutes({
+    get: (path, ...handlers) => app.get(path, ...handlers),
+    post: (path, ...handlers) => app.post(path, ...handlers),
+  }, { express, tunnelAuthController });
+
+  // Alcore readiness gate (task 55): the composer hold reads this before
+  // the first alcore send. A snapshot of the login sync's model-surface
+  // poll — never a probe, never a secret, so no auth gate beyond the
+  // surrounding app applies. Unwired (tests, runtimes without the provider
+  // wiring) answers idle so a send never blocks on a gate that does not
+  // exist here. Registered here (not in the status routes) because the
+  // provider runtime arrives with these dependencies.
+  app.get('/api/alcore/readiness', async (_req, res) => {
+    // A snapshot, never a probe: the only secret-adjacent value here is
+    // none — state enum plus restart hint, safe to serve as-is.
+    const unreadable = { state: 'idle', needsRestart: false };
+    try {
+      const snapshot = await alcoreProvider?.getReadiness?.();
+      const state = snapshot?.state;
+      if (
+        state === 'idle'
+        || state === 'syncing'
+        || state === 'ready'
+        || state === 'syncing_retry'
+        || state === 'needs_restart'
+      ) {
+        res.json({ state, needsRestart: snapshot?.needsRestart === true });
+        return;
+      }
+      res.json(unreadable);
+      return;
+    } catch {
+      res.json(unreadable);
+    }
+  });
+
+  // Engine status for the Settings → Engine page: probe the user-installed
+  // OmO wrapper plus the Slice-E binding defaults. Gated behind UI auth:
+  // the probe spawns a subprocess and the answer names a server-local
+  // path. Never a secret. The probe is bounded well under the bridge
+  // default so a wedged engine cannot hold the settings page hostage.
+  app.get('/api/engine/status', async (req, res, next) => {
+    await runWithUiAuth(req, res, next, async () => {
+      const bridge = createOmoBridgeRuntime();
+      const probe = await bridge.probe({ timeoutMs: 5000, includeToolkit: true });
+      res.json({
+        entry: probe.entry ?? null,
+        builtin: resolveVendoredRoot() !== null,
+        available: probe.available === true,
+        compatible: probe.compatible === true,
+        version: probe.version ?? null,
+        runFlags: probe.runFlags ?? [],
+        missingRunFlags: probe.missingRunFlags ?? [],
+        message: probe.message ?? null,
+        binding: {
+          alcoreModels: [...OMO_BRIDGE_DEFAULT_ALCORE_MODELS],
+          defaultRole: OMO_BRIDGE_DEFAULT_MODEL_ROLE,
+        },
+      });
+    });
   });
 
   app.post('/auth/url-token', async (req, res, next) => {
@@ -818,7 +914,29 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
     }
     try {
       await uiAuthController.requireSessionAuth(req, res, async () => {
+        // Resolve the caller before the reset rotates secrets and clears
+        // the session: the Alcore teardown below is keyed by this subject.
+        let alcoreSub = '';
+        try {
+          alcoreSub = await uiAuthController.resolveRequestAlcoreSub?.(req) ?? '';
+        } catch {
+          alcoreSub = '';
+        }
         await uiAuthController.handleResetAuth(req, res);
+        // Best-effort Alcore teardown (keychain pair, provider entry,
+        // ambient credential). The reset response above is unchanged and
+        // cleanup never fails it — an unknown subject still drops the
+        // ambient credential inside clearOnSignOut.
+        try {
+          if (alcoreProvider !== null && alcoreProvider !== undefined) {
+            // The resolver answers a string; anything foreign coerces to
+            // one here and clearOnSignOut validates it again — an unknown
+            // subject still drops the ambient credential in there.
+            await alcoreProvider.clearOnSignOut(`${alcoreSub ?? ''}`);
+          }
+        } catch {
+          // Best-effort: sign-out already rotated the session secret.
+        }
       });
     } catch (error) {
       next(error);
@@ -1090,6 +1208,8 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
       next(err);
     }
   });
+
+  return { desktopAuthRuntime };
 };
 
 export const registerSettingsUtilityRoutes = (app, dependencies) => {
@@ -1200,7 +1320,7 @@ export const registerCommonRequestMiddleware = (app, dependencies) => {
       req.path.startsWith('/api/prompts') ||
       req.path.startsWith('/api/terminal') ||
       req.path.startsWith('/api/opencode') ||
-      req.path === '/api/openchamber/directory' ||
+      req.path === '/api/alcode/directory' ||
       req.path.startsWith('/api/push') ||
       req.path.startsWith('/api/notifications') ||
       req.path.startsWith('/api/permission-auto-accept') ||
@@ -1214,8 +1334,8 @@ export const registerCommonRequestMiddleware = (app, dependencies) => {
       req.path.startsWith('/api/voice') ||
       req.path.startsWith('/api/environment') ||
       req.path.startsWith('/api/tts') ||
-      req.path.startsWith('/api/openchamber/tunnel') ||
-      req.path.startsWith('/api/openchamber/spaces')
+      req.path.startsWith('/api/alcode/tunnel') ||
+      req.path.startsWith('/api/alcode/spaces')
     ) {
       express.json({ limit: '50mb' })(req, res, next);
     } else if (req.path.startsWith('/api')) {

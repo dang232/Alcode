@@ -40,15 +40,15 @@ describe('getPullRequestDiff', () => {
     // The bound repository is a fork of `upstream/project`: the same network the
     // bound pull request list reads.
     resolveRepoNetwork = vi.fn().mockResolvedValue([
-      { owner: 'openchamber', repo: 'openchamber', source: 'origin' },
+      { owner: 'dang232', repo: 'Alcode', source: 'origin' },
       { owner: 'upstream', repo: 'project', source: 'upstream' },
     ]);
     // The resolver hands back a wrapper, not the repo. Reading `.owner` off the
     // wrapper made every repository look remote-less, which is what this suite
     // exists to prevent.
     resolveGitHubRepoFromDirectory = vi.fn().mockResolvedValue({
-      repo: { owner: 'openchamber', repo: 'openchamber' },
-      remoteUrl: 'git@github.com:openchamber/openchamber.git',
+      repo: { owner: 'dang232', repo: 'Alcode' },
+      remoteUrl: 'git@github.com:dang232/Alcode.git',
     });
   });
 
@@ -56,10 +56,10 @@ describe('getPullRequestDiff', () => {
     const result = await read();
 
     expect(result.patch).toBe(PATCH);
-    expect(result.meta).toEqual({ owner: 'openchamber', repo: 'openchamber', number: 2122 });
+    expect(result.meta).toEqual({ owner: 'dang232', repo: 'Alcode', number: 2122 });
     expect(request).toHaveBeenCalledWith('GET /repos/{owner}/{repo}/pulls/{pull_number}', {
-      owner: 'openchamber',
-      repo: 'openchamber',
+      owner: 'dang232',
+      repo: 'Alcode',
       pull_number: 2122,
       headers: { accept: 'application/vnd.github.v3.diff' },
     });
@@ -78,9 +78,9 @@ describe('getPullRequestDiff', () => {
   });
 
   it('reads a named source repository when it is the bound one, without resolving the network', async () => {
-    const result = await read({ sourceRepo: { owner: 'OpenChamber', repo: 'OpenChamber' } });
+    const result = await read({ sourceRepo: { owner: 'DANG232', repo: 'ALCODE' } });
 
-    expect(result.meta).toEqual({ owner: 'openchamber', repo: 'openchamber', number: 2122 });
+    expect(result.meta).toEqual({ owner: 'dang232', repo: 'Alcode', number: 2122 });
     expect(request).toHaveBeenCalledOnce();
     expect(resolveRepoNetwork).not.toHaveBeenCalled();
   });

@@ -5,9 +5,9 @@ import path from 'node:path';
 const MANAGED_QUOTA_PROVIDERS = new Set(['exe-dev', 'cursor', 'zenmux']);
 
 const credentialsDirectory = () => path.join(
-  process.env.OPENCHAMBER_DATA_DIR
-    ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-    : path.join(os.homedir(), '.config', 'openchamber'),
+  process.env.ALCODE_DATA_DIR
+    ? path.resolve(process.env.ALCODE_DATA_DIR)
+    : path.join(os.homedir(), '.config', 'alcode'),
   'quota',
 );
 

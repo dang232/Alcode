@@ -57,8 +57,8 @@ const copyCurrentSelectionFallback = async (): Promise<boolean> => {
   return document.execCommand('copy');
 };
 
-const MENU_ACTION_EVENT = 'openchamber:menu-action';
-const CHECK_FOR_UPDATES_EVENT = 'openchamber:check-for-updates';
+const MENU_ACTION_EVENT = 'alcode:menu-action';
+const CHECK_FOR_UPDATES_EVENT = 'alcode:check-for-updates';
 
 type MenuAction =
   | 'about'
@@ -262,7 +262,7 @@ export const useMenuActions = (
         }
 
         case 'copy': {
-          const copyEvent = new Event('openchamber:copy', { cancelable: true });
+          const copyEvent = new Event('alcode:copy', { cancelable: true });
           const wasHandled = !window.dispatchEvent(copyEvent);
           if (!wasHandled) {
             void copyCurrentSelectionFallback();
@@ -369,4 +369,53 @@ export const useMenuActions = (
     };
   }, [handleAction, handleCheckForUpdates]);
 
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const desktop = (window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal }).__ALCODE_DESKTOP__;
+    const listen = desktop?.listen;
+    if (typeof listen !== 'function') return;
+
+    let unlistenMenu: null | (() => void | Promise<void>) = null;
+    let unlistenUpdate: null | (() => void | Promise<void>) = null;
+
+    listen('alcode:menu-action', (evt) => {
+      const action = evt?.payload;
+      if (typeof action !== 'string') return;
+      handleAction(action as MenuAction);
+    })
+      .then((fn) => {
+        unlistenMenu = fn;
+      })
+      .catch(() => {
+        // ignore
+      });
+
+    listen('alcode:check-for-updates', () => {
+      window.dispatchEvent(new Event(CHECK_FOR_UPDATES_EVENT));
+    })
+      .then((fn) => {
+        unlistenUpdate = fn;
+      })
+      .catch(() => {
+        // ignore
+      });
+
+    return () => {
+      const cleanup = async () => {
+        try {
+          const a = unlistenMenu?.();
+          if (a instanceof Promise) await a;
+        } catch {
+          // ignore
+        }
+        try {
+          const b = unlistenUpdate?.();
+          if (b instanceof Promise) await b;
+        } catch {
+          // ignore
+        }
+      };
+      void cleanup();
+    };
+  }, [handleAction]);
 };

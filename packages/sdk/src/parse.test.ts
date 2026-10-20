@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import { OPENCHAMBER_SDK_API_VERSION } from './api-version.ts';
-import { clampStatusSectionHeight, hasGuestPage, requestedGuestCapabilities, resolveAttachEntry, resolveStatusSectionEntry, resolveAttachMode, resolveIntegrationApi, toPublicIntegration, type OpenChamberContributes } from './manifest.ts';
+import { ALCODE_SDK_API_VERSION } from './api-version.ts';
+import { clampStatusSectionHeight, hasGuestPage, requestedGuestCapabilities, resolveAttachEntry, resolveStatusSectionEntry, resolveAttachMode, resolveIntegrationApi, toPublicIntegration, type AlcodeContributes } from './manifest.ts';
 import { parseManifest, parseManifestJson } from './parse.ts';
 
 const validBlock = {
-  apiVersion: OPENCHAMBER_SDK_API_VERSION,
+  apiVersion: ALCODE_SDK_API_VERSION,
   contributes: {
     panel: {
       id: 'acme-hello',
@@ -68,9 +68,9 @@ describe('parseManifest', () => {
     expect(parseManifest({ ...validBlock, contributes: { ...validBlock.contributes, statusSection: { entry: 'status/index.html', defaultExpanded: 'no' } } })).toMatchObject({ ok: false, code: 'invalid-status-section' });
   });
 
-  test('reads package.json openchamber', () => {
+  test('reads package.json alcode', () => {
     const result = parseManifest({
-      openchamber: validBlock,
+      alcode: validBlock,
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -83,7 +83,7 @@ describe('parseManifest', () => {
     const result = parseManifestJson(JSON.stringify({
       name: '@acme/hello-panel',
       version: '1.2.3',
-      openchamber: validBlock,
+      alcode: validBlock,
     }));
     expect(result).toMatchObject({
       ok: true,
@@ -96,7 +96,7 @@ describe('parseManifest', () => {
     const result = parseManifestJson(JSON.stringify({
       name: '@acme/hello-panel',
       version: 'latest',
-      openchamber: validBlock,
+      alcode: validBlock,
     }));
     expect(result).toMatchObject({ ok: false, code: 'invalid-version' });
   });
@@ -105,7 +105,7 @@ describe('parseManifest', () => {
     const result = parseManifestJson(JSON.stringify({
       name: '@acme/hello-panel',
       extra: true,
-      openchamber: {
+      alcode: {
         apiVersion: 1,
         extra: true,
         contributes: {
@@ -139,10 +139,76 @@ describe('parseManifest', () => {
     expect(parseManifestJson('"nope"')).toMatchObject({ ok: false, code: 'not-object' });
   });
 
-  test('rejects a missing or non-object openchamber key', () => {
-    const missing = parseManifestJson('{"name":"@acme/hello-panel","openchamber":null}');
+  test('rejects a missing or non-object alcode key', () => {
+    const missing = parseManifestJson('{"name":"@acme/hello-panel","alcode":null}');
     expect(missing.ok).toBe(false);
-    if (!missing.ok) expect(missing.code).toBe('missing-openchamber');
+    if (!missing.ok) expect(missing.code).toBe('missing-alcode');
+  });
+
+  test('reads a legacy package.json openchamber block, preferring alcode when both are present', () => {
+    const legacy = parseManifest({ openchamber: validBlock });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok) {
+      expect(legacy.manifest.contributes.panel.id).toBe('acme-hello');
+    }
+    const both = parseManifest({
+      alcode: { ...validBlock, contributes: { panel: { ...validBlock.contributes.panel, id: 'new-id' } } },
+      openchamber: validBlock,
+    });
+    expect(both.ok).toBe(true);
+    if (both.ok) {
+      expect(both.manifest.contributes.panel.id).toBe('new-id');
+    }
+    expect(parseManifestJson(JSON.stringify({ name: '@acme/hello', openchamber: validBlock })))
+      .toMatchObject({ ok: true });
+  });
+
+  test('missing-manifest errors name both spellings', () => {
+    for (const json of [
+      '{"name":"@acme/hello-panel","alcode":null}',
+      '{"name":"@acme/hello-panel","openchamber":null}',
+      '{"name":"@acme/hello-panel","alcode":42}',
+      '{"name":"@acme/hello-panel","openchamber":"nope"}',
+    ]) {
+      const result = parseManifestJson(json);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe('missing-alcode');
+        expect(result.message).toContain('"alcode"');
+        expect(result.message).toContain('"openchamber"');
+      }
+    }
+  });
+
+  test('reads legacy engines.openchamber and writes it back as engines.alcode', () => {
+    const result = parseManifest({ ...validBlock, engines: { openchamber: '>=1.22.0' } });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.manifest.engines).toEqual({ alcode: '>=1.22.0' });
+    }
+    expect(parseManifest({ ...validBlock, engines: { openchamber: '^1.22.0' } }))
+      .toMatchObject({ ok: false, code: 'invalid-engines' });
+    expect(parseManifest({ ...validBlock, engines: {} }))
+      .toMatchObject({ ok: false, code: 'invalid-engines' });
+  });
+
+  test('rewrites a legacy openchamber-builtin panel id to the new prefix', () => {
+    const result = parseManifest({
+      ...validBlock,
+      contributes: { panel: { ...validBlock.contributes.panel, id: 'openchamber-builtin-dag-pane' } },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.manifest.contributes.panel.id).toBe('alcode-builtin-dag-pane');
+    }
+    const kept = parseManifest({
+      ...validBlock,
+      contributes: { panel: { ...validBlock.contributes.panel, id: 'alcode-builtin-dag-pane' } },
+    });
+    expect(kept.ok).toBe(true);
+    if (kept.ok) {
+      expect(kept.manifest.contributes.panel.id).toBe('alcode-builtin-dag-pane');
+    }
   });
 
   test('rejects an unknown apiVersion', () => {
@@ -329,10 +395,10 @@ describe('parseManifest', () => {
     }
   });
 
-  test('rejects a junk engines.openchamber range', () => {
+  test('rejects a junk engines.alcode range', () => {
     const result = parseManifest({
       ...validBlock,
-      engines: { openchamber: '^1.22.0' },
+      engines: { alcode: '^1.22.0' },
     });
     expect(result).toMatchObject({ ok: false, code: 'invalid-engines' });
   });
@@ -693,9 +759,9 @@ describe('parseManifest', () => {
 
   test('reads a token integration', () => {
     const result = parseManifestJson(JSON.stringify({
-      name: '@openchamber/clickup',
-      openchamber: {
-        apiVersion: OPENCHAMBER_SDK_API_VERSION,
+      name: '@alcode/clickup',
+      alcode: {
+        apiVersion: ALCODE_SDK_API_VERSION,
         contributes: {
           panel: { id: 'clickup', name: 'ClickUp', icon: 'window', entry: 'panel/index.html' },
           integration: {
@@ -720,9 +786,9 @@ describe('parseManifest', () => {
 
   test('reads a host Linear integration', () => {
     const result = parseManifestJson(JSON.stringify({
-      name: '@openchamber/linear',
-      openchamber: {
-        apiVersion: OPENCHAMBER_SDK_API_VERSION,
+      name: '@alcode/linear',
+      alcode: {
+        apiVersion: ALCODE_SDK_API_VERSION,
         contributes: {
           panel: { id: 'linear-issues', name: 'Linear', icon: 'window', entry: 'panel/index.html' },
           integration: {
@@ -744,9 +810,9 @@ describe('parseManifest', () => {
 
   test('reads an OAuth integration', () => {
     const result = parseManifestJson(JSON.stringify({
-      name: '@openchamber/gitlab',
-      openchamber: {
-        apiVersion: OPENCHAMBER_SDK_API_VERSION,
+      name: '@alcode/gitlab',
+      alcode: {
+        apiVersion: ALCODE_SDK_API_VERSION,
         contributes: {
           panel: { id: 'gitlab', name: 'GitLab', icon: 'window', entry: 'panel/index.html' },
           integration: {
@@ -909,7 +975,7 @@ describe('contributes.tools', () => {
 
 describe('page-less extensions', () => {
   const pageless = { id: 'tools-only', name: 'Tools Only', icon: 'tools' };
-  const withContributes = (extra: Partial<Omit<OpenChamberContributes, 'panel'>>) => parseManifest({
+  const withContributes = (extra: Partial<Omit<AlcodeContributes, 'panel'>>) => parseManifest({
     apiVersion: 1,
     contributes: { panel: pageless, ...extra },
   });
@@ -932,7 +998,7 @@ describe('page-less extensions', () => {
   });
 
   test('background-only packages reject visible surfaces and actions that would open a panel', () => {
-    const visible: Partial<Omit<OpenChamberContributes, 'panel'>>[] = [
+    const visible: Partial<Omit<AlcodeContributes, 'panel'>>[] = [
       { page: true }, { page: { entry: 'page.html' } }, { attach: true }, { attach: 'dialog' },
       { actions: [{ id: 'inspect', label: 'Inspect', where: 'message' }] },
       { actions: [{ id: 'inspect', label: 'Inspect', where: 'session', mode: 'open' }] },
@@ -970,7 +1036,7 @@ describe('page-less extensions', () => {
   });
 
   test('refuses every page-only contribution without entry as invalid-panel', () => {
-    const cases: Partial<Omit<OpenChamberContributes, 'panel'>>[] = [
+    const cases: Partial<Omit<AlcodeContributes, 'panel'>>[] = [
       { attach: true },
       { attach: 'panel' },
       { attach: 'dialog' },

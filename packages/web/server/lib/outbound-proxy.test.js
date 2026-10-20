@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import http from 'node:http';
 
 import { applyOutboundProxyFromEnv, resolveOutboundProxyEnv } from './outbound-proxy.js';
 
@@ -33,6 +34,10 @@ describe('applyOutboundProxyFromEnv', () => {
   });
 
   it('sends fetch through the proxy and keeps loopback direct in a real Node process', () => {
+    // The child relies on http.setGlobalProxyFromEnv, a Node 24 API:
+    // without it the proxy cannot apply and there is nothing to assert
+    // (same early-return convention as the platform-gated suites).
+    if (typeof http.setGlobalProxyFromEnv !== 'function') return;
     const moduleUrl = new URL('./outbound-proxy.js', import.meta.url).href;
     const result = spawnSync('node', ['--input-type=module', '--eval', `
       import http from 'node:http';

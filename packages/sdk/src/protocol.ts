@@ -4,7 +4,7 @@ import { guestStatusControlEventSchema, guestStatusControlsSchema } from './stat
 import { guestPopoverClosedEventSchema, guestPopoverDataSchema, guestPopoverRequestSchema } from './popover-schemas.ts';
 import { GUEST_SHELL_END_STATUSES, GUEST_SHELL_ID_MAX, GUEST_SHELLS_MAX, GUEST_SHELL_OUTPUT_TAIL_MAX } from './shells.ts';
 
-import { OPENCHAMBER_SDK_API_VERSION, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
 import {
   SERVICE_STATUS_VALUES,
   ATTACH_PROVIDER_ID,
@@ -49,6 +49,7 @@ import {
   HOST_REQUEST_ERROR_CODES,
   type GuestMessage,
   type HostMessage,
+  type JsonValue,
 } from './contract.ts';
 import { GUEST_FILE_EDITOR_CONTENT_MAX, GUEST_FILE_EDITOR_VERSION_MAX } from './file-editor.ts';
 
@@ -57,9 +58,23 @@ import { GUEST_FILE_EDITOR_CONTENT_MAX, GUEST_FILE_EDITOR_VERSION_MAX } from './
 const fileBytesSchema = z.instanceof(Uint8Array).refine((bytes) => bytes.byteLength <= GUEST_FILE_EDITOR_CONTENT_MAX);
 const fileTextSchema = z.string().max(GUEST_FILE_EDITOR_CONTENT_MAX);
 
+// Transport-level JSON-clonable document: the panel's parser validates the
+// document shape, but anything crossing here must already be JSON-clonable.
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 const envelope = {
-  channel: z.literal(OPENCHAMBER_SDK_CHANNEL),
-  v: z.literal(OPENCHAMBER_SDK_API_VERSION),
+  // Both channel spellings cross the wire; guests written before the rename still send `openchamber.sdk`.
+  channel: z.enum([ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_CHANNEL]),
+  v: z.literal(ALCODE_SDK_API_VERSION),
 };
 
 const themeTokensSchema = z.object({
@@ -359,6 +374,16 @@ export const hostMessageSchema = z.union([
     type: z.literal('session'),
     payload: z.object({
       session: sessionSnapshotSchema,
+    }),
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal('run-model'),
+    payload: z.object({
+      conversationId: z.string().min(1),
+      // The snapshot document itself is validated by the panel's parser,
+      // but the transport only carries JSON-clonable documents.
+      snapshot: jsonValueSchema.nullable(),
     }),
   }),
   z.object({

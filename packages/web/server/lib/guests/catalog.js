@@ -1,12 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { hasGuestPage, requestedGuestCapabilities, resolveAttachEntry, resolveAttachMode, resolvePageEntry, resolveStatusSectionEntry, toPublicService, toPublicIntegration, hostMeetsOpenChamberEngine, openChamberEngineMinimum } from '@openchamber/sdk';
-import { parseManifestJson } from '@openchamber/sdk/schemas';
+import { hasGuestPage, requestedGuestCapabilities, resolveAttachEntry, resolveAttachMode, resolvePageEntry, resolveStatusSectionEntry, toPublicService, toPublicIntegration, hostMeetsAlcodeEngine, alcodeEngineMinimum } from '@alcode/sdk';
+import { parseManifestJson } from '@alcode/sdk/schemas';
 
 import { listRelativeGuestScriptHrefs, resolveGuestHtmlRelativePath } from './html-tokens.js';
 import { effectiveGrants, guestGrantScope } from './grant-scope.js';
-import { enterpriseBlockedCapabilities } from './enterprise.js';
+import { enterpriseBlockedCapabilities, isAllowedRepository } from './enterprise.js';
 import { readEnterprisePolicy } from '../enterprise-mode.js';
 import { ensureGuestStorageIds, onExtensionStoreWrite, readExtensionStore } from './persist.js';
 import { buildPublicSocketBindings } from './sockets.js';
@@ -148,7 +148,7 @@ const guestBuiltScriptsReady = async (packageRoot, entry) => {
   return true;
 };
 
-export const inspectGuestPackage = async (packageRoot, { openchamberVersion, skipEngineCheck } = {}) => {
+export const inspectGuestPackage = async (packageRoot, { alcodeVersion, skipEngineCheck } = {}) => {
   let raw;
   try {
     raw = await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8');
@@ -164,12 +164,12 @@ export const inspectGuestPackage = async (packageRoot, { openchamberVersion, ski
   }
   const engine = parsed.manifest.engines?.alcode;
   if (engine && !skipEngineCheck) {
-    const hostVersion = typeof openchamberVersion === 'string' ? openchamberVersion : '';
-    if (!hostMeetsOpenChamberEngine(hostVersion, engine)) {
+    const hostVersion = typeof alcodeVersion === 'string' ? alcodeVersion : '';
+    if (!hostMeetsAlcodeEngine(hostVersion, engine)) {
       return {
         ok: false,
         code: 'host-too-old',
-        required: openChamberEngineMinimum(engine) ?? engine,
+        required: alcodeEngineMinimum(engine) ?? engine,
       };
     }
   }
@@ -459,19 +459,34 @@ onExtensionStoreWrite(invalidateGuestCatalog);
  * none of them, and `enterpriseBlocked` names them for Settings. Every route
  * and proxy takes grants from this row, so none of them can use the refused
  * capabilities.
+ *
+ * Allowlist enforcement at load: a Git package from a repository the
+ * administrator did not list never loads, even when it is installed and
+ * approved. Store or registry membership cannot bypass the policy; the
+ * refusal is logged with its reason. Packages without a repository origin
+ * (built-ins, local folders, ZIP copies) keep the grant-narrowing below.
  */
 const withEnterprisePolicy = (guests) => {
   const policy = readEnterprisePolicy();
   if (!policy.enterpriseMode) return guests;
-  return guests.map((guest) => {
+  const loaded = [];
+  for (const guest of guests) {
+    if (guest.source === 'git' && !isAllowedRepository(guest.gitOrigin?.url, policy.allowedExtensions)) {
+      console.warn(`[guests] Refusing ${guest.id}: origin ${guest.gitOrigin?.url ?? 'unknown'} is not in allowedExtensions`);
+      continue;
+    }
     const blocked = enterpriseBlockedCapabilities(guest, { source: guest.source, gitUrl: guest.gitOrigin?.url }, policy);
-    if (blocked.length === 0) return guest;
-    return {
+    if (blocked.length === 0) {
+      loaded.push(guest);
+      continue;
+    }
+    loaded.push({
       ...guest,
       capabilityGrants: guest.capabilityGrants.filter((capability) => !blocked.includes(capability)),
       enterpriseBlocked: blocked,
-    };
-  });
+    });
+  }
+  return loaded;
 };
 
 export const listInstalledGuests = async ({ persistPath } = {}) => {
@@ -524,7 +539,7 @@ const listInstalledGuestsUncached = async ({ persistPath } = {}) => {
     if (!root) {
       continue;
     }
-    // Already-installed packages stay listed even if engines.openchamber is newer
+    // Already-installed packages stay listed even if engines.alcode is newer
     // than this host. Install is the gate.
     const guest = await loadGuestFromPackageRoot(root, { skipEngineCheck: true });
     if (!guest || seen.has(guest.id) || isReservedBuiltInId(guest.id)) {

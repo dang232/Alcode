@@ -1,5 +1,5 @@
 /**
- * The settings registry: one table that names every OpenChamber setting, who
+ * The settings registry: one table that names every Alcode setting, who
  * owns it (`scope`), how a value is parsed at the boundary, and where the UI
  * keeps its live copy.
  *
@@ -245,11 +245,6 @@ export const SETTINGS_REGISTRY = {
   desktopMinimizeToTrayEnabled: field({ scope: 'instance', surfaces: ['desktop'], parse: parseBoolean }),
   desktopMacMenuBarEnabled: field({ scope: 'instance', surfaces: ['desktop'], parse: parseBoolean }),
   desktopLinuxNativeFrame: field({ scope: 'instance', surfaces: ['desktop'], parse: parseBoolean }),
-  // Write-only: the desktop network page learns whether one is set from
-  // `hasDesktopUiPassword` and sends a value only when the user types a new
-  // one (or removes it with an empty string).
-  desktopUiPassword: field({ scope: 'instance', secret: true, surfaces: ['desktop'], parse: parseTrimmedString }),
-  hasDesktopUiPassword: field({ scope: 'instance', computed: true, surfaces: ['desktop'], parse: parseBoolean }),
   desktopLanAccessActive: field({ scope: 'instance', computed: true, surfaces: ['desktop'], parse: parseBoolean }),
   desktopLanAccessBlockedReason: field({ scope: 'instance', computed: true, surfaces: ['desktop'], parse: parseTrimmedString }),
   githubClientId: field({ scope: 'instance', parse: parseNonEmptyTrimmedString }),
@@ -267,7 +262,7 @@ export const SETTINGS_REGISTRY = {
     })),
   }),
   // The mode the server writes onto each new top-level session. VS Code has no
-  // OpenChamber server to write it.
+  // Alcode server to write it.
   permissionDefaultMode: field({
     scope: 'instance',
     surfaces: ['web', 'desktop', 'mobile'],
@@ -275,7 +270,7 @@ export const SETTINGS_REGISTRY = {
     ui: uiStore('permissionDefaultMode', (v) => useUIStore.getState().setPermissionDefaultMode(v)),
   }),
   // The server keeps the message search index only while this is on; VS Code
-  // has no OpenChamber server to keep one.
+  // has no Alcode server to keep one.
   messageSearchEnabled: field({
     scope: 'instance',
     surfaces: ['web', 'desktop', 'mobile'],
@@ -540,8 +535,10 @@ export const SETTINGS_REGISTRY = {
   sessionSuggestionEnabled: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('sessionSuggestionEnabled', (v) => useUIStore.getState().setSessionSuggestionEnabled(v)) }),
   sessionWorkEnabled: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('sessionWorkEnabled', (v) => useUIStore.getState().setSessionWorkEnabled(v)) }),
   sessionReviewOfferEnabled: field({ scope: 'profile', surfaces: ['web', 'desktop', 'mobile'], parse: parseBoolean, ui: uiStore('sessionReviewOfferEnabled', (v) => useUIStore.getState().setSessionReviewOfferEnabled(v)) }),
+  // Jev runs on the Alcode server, which VS Code does not have.
+  sessionWorkAutoOpen: field({ scope: 'profile', surfaces: ['web', 'desktop', 'mobile'], parse: parseBoolean, ui: uiStore('sessionWorkAutoOpen', (v) => useUIStore.getState().setSessionWorkAutoOpen(v)) }),
   sessionGoalEnabled: field({ scope: 'profile', parse: parseBoolean, ui: uiStore('sessionGoalEnabled', (v) => useUIStore.getState().setSessionGoalEnabled(v)) }),
-  // Who checks goal progress. The goal loop runs on the OpenChamber server,
+  // Who checks goal progress. The goal loop runs on the Alcode server,
   // which VS Code does not have.
   sessionGoalChecker: field({
     scope: 'profile',

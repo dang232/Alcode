@@ -28,7 +28,7 @@ export const LOCAL_HOST_ID = 'local';
  */
 export const getLocalDesktopOrigin = (): string => {
   if (typeof window === 'undefined') return '';
-  return window.__OPENCHAMBER_LOCAL_ORIGIN__?.trim() || '';
+  return window.__ALCODE_LOCAL_ORIGIN__ || window.location.origin;
 };
 
 /**
@@ -93,11 +93,7 @@ export const resolveCurrentDesktopHost = (hosts: DesktopHost[]): ResolvedDesktop
     return { id: match.id, label: match.label, url: normalizeHostUrl(match.url) || match.url };
   }
 
-  const packagedPage = currentHref.startsWith('openchamber-ui://');
-  // The packaged UI talks to Local unless the window was given another address.
-  // Without a local server (OPENCHAMBER_SKIP_LOCAL_SERVER=1) that address is
-  // all there is, and calling it Local named an entry the list does not have.
-  if (packagedPage && localOrigin && !runtimeApiBaseUrl) {
+  if (currentHref.startsWith('alcode-ui://')) {
     return { id: LOCAL_HOST_ID, label: 'Local', url: normalizedLocal };
   }
 

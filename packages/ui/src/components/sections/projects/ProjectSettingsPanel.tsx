@@ -5,6 +5,9 @@ import { SortableTabsStrip, type SortableTabsStripItem } from '@/components/ui/s
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { SettingsPageLayout } from '@/components/sections/shared/SettingsPageLayout';
 import { ProjectActionsTab } from '@/components/sections/projects/ProjectActionsTab';
+import { WorktreeSectionContent } from '@/components/sections/alcode/WorktreeSectionContent';
+import { ProjectActionsSection } from '@/components/sections/projects/ProjectActionsSection';
+import { SharedProjectConfigSection } from '@/components/sections/projects/SharedProjectConfigSection';
 import { ProjectEnvironmentSection } from '@/components/sections/projects/ProjectEnvironmentSection';
 import { ProjectGeneralTab } from '@/components/sections/projects/ProjectGeneralTab';
 import { ProjectSettingsHeader } from '@/components/sections/projects/ProjectSettingsHeader';
@@ -115,14 +118,13 @@ export const ProjectSettingsPanel: React.FC<ProjectSettingsPanelProps> = ({
   // The dialog has a fixed height: the header and tabs stay put and only the
   // tab's content scrolls, so switching tabs never resizes the dialog.
   return (
-    <div className="flex min-h-0 flex-1 flex-col @container">
-      <div className="shrink-0 space-y-6 px-4 pt-6 pb-5 sm:px-6 sm:pt-8">
-        {header}
-        {tabStrip}
-      </div>
-      <ScrollableOverlay outerClassName="min-h-0 flex-1" className="w-full">
-        <div className="px-4 pb-6 sm:px-6 [&>section:first-of-type]:border-t-0 [&>section:first-of-type]:pt-0">{tabContent}</div>
-      </ScrollableOverlay>
+    <div className="space-y-0">
+      <ProjectIdentityFields form={form} />
+      <ProjectActionsSection projectRef={projectRef} />
+      {/* VS Code runs no Alcode server that could apply these. */}
+      {!isVSCodeRuntime() ? <ProjectEnvironmentSection projectRef={projectRef} /> : null}
+      {showWorktrees ? <WorktreeSectionContent projectRef={projectRef} /> : null}
+      <SharedProjectConfigSection projectRef={projectRef} />
     </div>
   );
 };

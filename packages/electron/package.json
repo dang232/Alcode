@@ -1,9 +1,9 @@
 {
-  "name": "@openchamber/electron",
-  "version": "2.5.0",
+  "name": "@alcode/electron",
+  "version": "2.1.1",
   "private": true,
-  "description": "Electron desktop runtime for OpenChamber",
-  "author": "OpenChamber",
+  "description": "Electron desktop runtime for Alcode",
+  "author": "Alcode",
   "homepage": "https://openchamber.dev",
   "type": "module",
   "main": "./dist-bundle/entry.mjs",
@@ -11,7 +11,7 @@
     "version": "2.0.32"
   },
   "dependencies": {
-    "@openchamber/web": "workspace:*",
+    "@alcode/web": "workspace:*",
     "electron-context-menu": "^4.1.2",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
@@ -40,8 +40,11 @@
     "ensure:electron": "node ./scripts/ensure-electron.mjs",
     "prepare:opencode-cli": "node ./scripts/prepare-opencode-cli.mjs",
     "prepare:ripgrep": "node ./scripts/prepare-ripgrep.mjs",
+    "prepare:ulw-loop-cli": "node ./scripts/prepare-ulw-loop-cli.mjs",
     "verify:opencode-cli": "node ./scripts/verify-opencode-cli.mjs --staged",
     "verify:opencode-cli:packaged": "node ./scripts/verify-opencode-cli.mjs --packaged",
+    "verify:ulw-loop-cli": "node ./scripts/verify-ulw-loop-cli.mjs --staged",
+    "verify:ulw-loop-cli:packaged": "node ./scripts/verify-ulw-loop-cli.mjs --packaged",
     "verify:linux-appimage": "node ./scripts/verify-linux-appimage.mjs",
     "bundle:main": "bun ./scripts/bundle-main.mjs",
     "generate:macos-icon": "node ./scripts/generate-macos-icon-assets.cjs",
@@ -52,19 +55,20 @@
     "test:linux-desktop": "node --test ./linux-autostart.test.mjs ./linux-desktop-entry.test.mjs && node ./scripts/smoke-linux-app-discovery.mjs && node ./scripts/smoke-path-open-utils.mjs",
     "updater:e2e:fixture": "node ./scripts/updater-e2e-fixture.mjs",
     "verify:update-manifest": "node ./scripts/verify-update-manifest.mjs",
-    "package": "bun run build:web-assets && bun run prepare:opencode-cli && bun run prepare:ripgrep && bun run bundle:main && bun run rebuild:native && node ./scripts/package.mjs",
+    "package": "bun run build:web-assets && bun run prepare:opencode-cli && bun run prepare:ripgrep && bun run prepare:ulw-loop-cli && bun run bundle:main && bun run rebuild:native && node ./scripts/package.mjs",
     "finalize:latest-yml": "node ./scripts/finalize-latest-yml.mjs",
     "type-check": "node --check ./entry.mjs && node --check ./early-startup.mjs && node --check ./main.mjs && node --check ./preload.mjs && node --check ./browser-panel-preload.cjs",
     "lint": "node -e \"process.exit(0)\""
   },
   "build": {
     "appId": "dev.openchamber.desktop",
-    "productName": "OpenChamber",
+    "productName": "Alcode",
     "asarUnpack": [
-      "node_modules/@openchamber/web/server/built-in-extensions/**/*",
-      "node_modules/@openchamber/web/server/lib/git/credential-helper.js",
-      "node_modules/@openchamber/web/server/lib/git/ssh-wrapper.js",
-      "node_modules/@openchamber/web/server/lib/git/repository-credential-helper.js"
+      "node_modules/@alcode/web/server/built-in-extensions/**/*",
+      "node_modules/@alcode/web/server/lib/opencode/omo-invoker-worker.ts",
+      "node_modules/@alcode/web/server/lib/git/credential-helper.js",
+      "node_modules/@alcode/web/server/lib/git/ssh-wrapper.js",
+      "node_modules/@alcode/web/server/lib/git/repository-credential-helper.js"
     ],
     "files": [
       "dist-bundle/entry.mjs",
@@ -107,6 +111,14 @@
       {
         "from": "resources/ripgrep",
         "to": "ripgrep"
+      },
+      {
+        "from": "resources/ulw-loop-cli",
+        "to": "ulw-loop-cli"
+      },
+      {
+        "from": "../omo-engine",
+        "to": "omo-engine"
       }
     ],
     "afterPack": "scripts/after-pack.cjs",
@@ -122,7 +134,7 @@
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
       "extendInfo": {
         "CFBundleIconName": "AppIcon",
-        "NSLocalNetworkUsageDescription": "OpenChamber needs access to devices and services on your local network."
+        "NSLocalNetworkUsageDescription": "Alcode needs access to devices and services on your local network."
       },
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -152,15 +164,15 @@
       "maintainer": "OpenChamber <security@openchamber.dev>",
       "vendor": "OpenChamber",
       "synopsis": "Desktop runtime for OpenChamber",
-      "icon": "resources/icons/app-icon.png",
-      "executableName": "openchamber",
+      "icon": "resources/icons/app-icon.svg",
+      "executableName": "alcode",
       "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
       "desktop": {
         "entry": {
-          "Name": "OpenChamber",
-          "Comment": "Desktop runtime for OpenChamber",
-          "Icon": "openchamber",
-          "StartupWMClass": "openchamber"
+          "Name": "Alcode",
+          "Comment": "Desktop runtime for Alcode",
+          "Icon": "alcode",
+          "StartupWMClass": "alcode"
         }
       }
     },
@@ -206,8 +218,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "openchamber",
-      "repo": "openchamber"
+      "owner": "dang232",
+      "repo": "Alcode"
     }
   }
 }

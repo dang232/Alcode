@@ -1,7 +1,7 @@
 # UI Auth Module Documentation
 
 ## Purpose
-This module owns OpenChamber UI authentication for browser access, including password session auth, WebAuthn passkeys, and trusted-device session handling.
+This module owns Alcode UI authentication for browser access, including password session auth, WebAuthn passkeys, and trusted-device session handling.
 
 Trusted-device access has one durable credential model: a remote client bearer token stored by `packages/web/server/lib/client-auth/remote-clients.js`. Password, passkey, and Pairing v2 are issuance methods for that credential, not separate credential systems. Issued client tokens are returned once, stored server-side only as hashes, and are later authenticated via `Authorization: Bearer oc_client_...`.
 
@@ -15,14 +15,38 @@ Pairing v2 is implemented by `packages/web/server/lib/client-auth/pairing.js`. I
 - `packages/web/server/lib/client-auth/pairing.js`: short-lived Pairing v2 sessions and one-time secret redemption into trusted-device client tokens.
 
 ## Session cookie scoping
-Browsers key a cookie jar on the host only, never the port (RFC 6265). Two OpenChamber instances reached through the same hostname on different ports therefore shared a single `oc_ui_session` cookie. Logging into the second overwrote the first instance's session cookie (issue #2377). This affects LAN and loopback hosts alike.
+Browsers key a cookie jar on the host only, never the port (RFC 6265). Two Alcode instances reached through the same hostname on different ports therefore shared a single `oc_ui_session` cookie. Logging into the second overwrote the first instance's session cookie (issue #2377). This affects LAN and loopback hosts alike.
 
 `sessionCookieNameForRequest(req, base)` folds the request `Host` port into the cookie name: `oc_ui_session_<port>` when the host carries an explicit port (including a port from `x-forwarded-host`), or the bare `oc_ui_session` when it does not. `localhost:3000` and `localhost:3001` use separate names, just like two ports on one LAN address. Password and browser passkey login both call `issueSession` and receive this cookie. Session validation, clearing, and notification identity extraction use the same resolver; identity extraction does not provide a CSRF token. Bearer-token validation is unchanged.
 
 Compatibility: upgrading renames the cookie for any explicit-port host, so already-signed-in browser sessions must log in once again. No on-disk format changes.
 
+## Session profile read-through
+
+A login-time `profile` in the session body (`{ name?, picture?, email? }`,
+passed by the desktop completion path) is bound to the issued session —
+the cookie token, plus the desktop client id when one is minted alongside
+— in a TTL-bounded in-memory map (2000 keys max, swept on write, expired
+with the owning session, cleared on global sign-out and dispose). `GET
+/auth/session` then carries `alcore: { sub, name?, picture?, email? }` on
+cookie and client sessions, which the header account surface parses; every
+other shape is byte-identical to before. Validation, cookies, JWTs, TTLs,
+rate limits, and client issuance are untouched: a missing or malformed
+profile answers exactly the old shape. The sub link is always
+server-verified; display fields are bound to that verified sub.
+
+## Request subject seam
+
+`resolveRequestAlcoreSub(req)` answers the caller's own Alcore `sub`
+for the TokenPanel quota proxy's self-only check: a Bearer Alcore token
+verifies to its sub; a cookie session reads the sub bound at issuance;
+anything else answers `''`. It mirrors exactly what `GET /auth/session`
+reports, so the proxy and the panel's subject agree. Read-only and
+additive — never consulted by validation, and issuance/cookies/TTLs are
+untouched.
+
 ## Public exports (ui-auth.js)
-- `readSessionTtlMs(raw, unitMs, fallbackMs)`: parses a positive session lifetime from an environment value, else the fallback. Defaults come from `OPENCHAMBER_UI_SESSION_TTL_HOURS` (12) and `OPENCHAMBER_UI_TRUSTED_SESSION_TTL_DAYS` (7, used when the user ticks "trust this device").
+- `readSessionTtlMs(raw, unitMs, fallbackMs)`: parses a positive session lifetime from an environment value, else the fallback. Defaults come from `ALCODE_UI_SESSION_TTL_HOURS` (12) and `ALCODE_UI_TRUSTED_SESSION_TTL_DAYS` (7, used when the user ticks "trust this device").
 - `createUiAuth({ password, cookieName, sessionTtlMs, trustedSessionTtlMs, readSettingsFromDiskMigrated })`: creates UI auth controller with methods:
   - `enabled`
   - `requireAuth(req, res, next)`
@@ -37,6 +61,7 @@ Compatibility: upgrading renames the cookie for any explicit-port host, so alrea
   - `handlePasskeyRevoke(req, res)`
   - `handlePasskeyRename(req, res)`
   - `handleResetAuth(req, res)`
+  - `resolveRequestAlcoreSub(req)`
   - `ensureSessionToken(req, res)`
   - `dispose()`
 

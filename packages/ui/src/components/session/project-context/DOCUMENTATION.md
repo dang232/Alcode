@@ -210,7 +210,7 @@ and it never lets the editor guess. `PlanView` receives the owner as
 `savedProjectPlan={{ projectRef, planId }}` — load and autosave both go to that
 exact project. An earlier version let the editor re-derive the project from the
 current directory, which silently opened an empty document for plans stored
-under the managed Chats owner (`openchamber:chats`), for plans opened from a
+under the managed Chats owner (`alcode:chats`), for plans opened from a
 worktree the directory lookup missed, and for plan tabs restored after a
 reload. The context panel has no plan surface anymore: OpenCode 2.x dropped
 plan mode, and saved plans open here. Persisted `plan` tabs from older builds
@@ -262,7 +262,7 @@ cannot silently clear another's badges.
 The store is loaded by `useAgentMemorySync`, called from both app roots (`App.tsx`
 and `apps/MobileApp.tsx`; the phone once had no call, so it showed no memory and
 sent no memory index), and reloads on
-`openchamber:agent-memory-changed`, because the agent writes mid-turn through
+`alcode:agent-memory-changed`, because the agent writes mid-turn through
 its own tool. It feeds this panel only — what a session is told about memory is
 decided server-side by `packages/web/server/lib/session-knowledge`, so it
 reaches sessions that have no UI at all and survives compaction.
@@ -318,7 +318,7 @@ useProjectContextStore  ->  ProjectNotesTodoPanel  ->  sections
 ```
 
 There is deliberately no cross-panel event. An earlier version broadcast
-`openchamber:project-notes-updated` / `openchamber:project-plan-saved` on the
+`alcode:project-notes-updated` / `alcode:project-plan-saved` on the
 window and every mounted panel re-read the whole config in response. Writers now
 mutate the store and readers re-render from it.
 

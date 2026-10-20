@@ -9,7 +9,9 @@ import { GUEST_GENERATE_PROMPT_MAX, GUEST_GENERATE_SYSTEM_MAX, GUEST_GENERATE_TI
 // The settings override is read straight from disk, so without this the suite
 // would resolve whatever small model the developer running it has configured.
 const TEMP_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'small-model-settings-'));
-process.env.OPENCHAMBER_DATA_DIR = TEMP_DATA_DIR;
+// Saved/restored per file: sibling suites assign their own temp dir at import
+// time, so without this the last-imported file wins for the whole process.
+const PREV_DATA_DIR = process.env.ALCODE_DATA_DIR;
 
 const { generateSmallModelText, describeSmallModel, listAuthenticatedProviders, setUnavailableRetryDelaysForTest, generationBudgetMs } = await import('./index.js');
 const { configureOpenCodeRuntimeProviders, resetOpenCodeRuntimeProviders } = await import('./client.js');
@@ -61,6 +63,7 @@ const readBody = (req) => new Promise((resolve) => {
 });
 
 beforeAll(async () => {
+  process.env.ALCODE_DATA_DIR = TEMP_DATA_DIR;
   server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const body = req.method === 'POST' ? await readBody(req) : {};
@@ -106,6 +109,8 @@ beforeAll(async () => {
 afterAll(() => {
   server?.close();
   fs.rmSync(TEMP_DATA_DIR, { recursive: true, force: true });
+  if (PREV_DATA_DIR === undefined) delete process.env.ALCODE_DATA_DIR;
+  else process.env.ALCODE_DATA_DIR = PREV_DATA_DIR;
 });
 
 beforeEach(() => {

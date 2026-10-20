@@ -12,6 +12,7 @@ This module provides skill discovery, scanning, and installation capabilities fo
   - `install.js`: Skills installation from git repositories.
   - `installed-sources.js`: Which source and repo subpath each catalog-installed skill came from, for the Installed badge.
   - `scan.js`: Skills scanning from git repositories.
+  - `engine-skills.js`: Engine (OmO skills-loader) builtin skill catalog listing and SKILL.md installation into managed roots.
   - `source.js`: Source string parsing for git repositories.
 
 ## Public API
@@ -24,7 +25,7 @@ The following functions are exported and used by the web server:
 - `setCachedScan(key, value, ttlMs)`: Store scan result with TTL (default 3 hours).
 - `scanWithCache(key, loader, { refresh })`: Run a scan loader with cache lookup, in-flight deduplication, and a global concurrency limit (2 concurrent scans); only `ok: true` results are cached.
 - `clearCache()`: Clear all cached scan results.
-- Scan results persist to `skills-catalog-cache.json` in the OpenChamber data dir (debounced, atomic rename) and survive server restarts within the TTL.
+- Scan results persist to `skills-catalog-cache.json` in the Alcode data dir (debounced, atomic rename) and survive server restarts within the TTL.
 
 ### Curated Sources (`curated-sources.js`)
 - `getCuratedSkillsSources()`: Return list of curated skill sources (Anthropic, OpenAI, Cursor, Matt Pocock).
@@ -51,6 +52,27 @@ The catalog's Installed badge used to match by name alone, so every same-named e
 - `removeInstalledSources(skillName)`: forget a deleted skill's records, called after a skill delete.
 - `isInstalledFromSource(byName, skillName, sourceId, skillDir)`: the badge rule. A name with records reads as installed only for a recorded source and subpath; a name without records (installed before the registry existed, or by hand) keeps the plain name match.
 Web (`../opencode/skill-routes.js`) and VS Code (`packages/vscode/src/skillsCatalog.ts`, `bridge-config-runtime.ts`) share this module and file.
+
+### Engine Skills (`engine-skills.js`)
+- `ENGINE_CATALOG_SOURCE_ID` (`'engine'`): catalog source id for loader-backed skills.
+- `ENGINE_SKILL_REGISTRY`: the builtin skills `createBuiltinSkills()` registers in `skills-loader-core` (verified against its source), each with catalog `variant`, loader `skillName`, module path, and kind (`standard` | `browser` | `conditional`). The two `playwright` variants (MCP vs CLI) share one loader name; the catalog lists both and refuses to guess between them.
+- `resolveEngineRoot({ env, moduleDir })`: vendored `packages/omo-engine` location (`OMO_ENGINE_ROOT` override first). Returns null when the loader marker is absent so callers degrade to `engine_unavailable`.
+- `listEngineSkills({ engineRoot, importSkillModule, teamModeEnabled, browserProvider, disabledSkills })`: lists every registry skill. Each engine import is isolated: an unloadable module is listed with `installable: false` and its reason, never dropped. Items carry `invokeAtRuntime` + `invokeReason` (see table).
+- `resolveEngineSkillForInstall(items, requestedName, { engineRoot, importSkillModule, matchSkillByName, findPartialMatches, variant })`: resolves through the loader's own `matchSkillByName` (exact wins, unique short name resolves, ambiguous refuses). Typed refusals: `invalid_skill_name` (includes traversal shapes; nothing is touched), `missing_skill` (+ substring suggestions), `ambiguous_skill` (+ candidates), `engine_skill_unavailable`, `engine_unavailable`.
+- `installEngineSkill({ skillName, variant, scope, workingDirectory, userSkillDir, ... })`: resolves, then writes `<root>/<name>/SKILL.md` (user: `userSkillDir`; project: `<workingDirectory>/.opencode/skills`) with loader name/description/license/compatibility/metadata frontmatter and the template body verbatim (data, never executed). Refuses overwrites (`already_installed`); asserts containment in the managed root.
+- `createEngineSkillCatalog({ userSkillDir, writeSkillFile })`: route-wiring seam (`{ source, listItems, install }`).
+
+#### Invoke-at-run-time (`invokeAtRuntime`)
+
+Per the loader contract (`createBuiltinSkills` / `resolveActiveBuiltinSkills`):
+
+| Status | Meaning |
+|---|---|
+| `in` | The loader includes the skill at run time under these options. |
+| `out` + `conditional: team_mode disabled` | `team-mode` without `team_mode.enabled`. |
+| `out` + `browser-variant-not-selected (active: X)` | Non-selected browser skill variant. |
+| `out` + `disabled-by-config` | Name in the caller's `disabledSkills`. |
+| `out` + `engine-source-missing: ...` | Module unloadable here (e.g. non-vendored `shared-skills` root, bun-only text import under vitest, no TS runtime under plain node). |
 
 ## Internal Helpers
 
@@ -138,7 +160,7 @@ The following functions are internal helpers used by exported functions:
 ### Cache Management
 - Cache keys include `normalizedRepo`, `subpath`, and `identityId` for isolation.
 - Default TTL is 3 hours for both scan results and GitHub repository metadata.
-- Scan and GitHub metadata caches persist to JSON files in the OpenChamber data dir, so app restarts and page refreshes reuse previous results instead of re-hitting GitHub.
+- Scan and GitHub metadata caches persist to JSON files in the Alcode data dir, so app restarts and page refreshes reuse previous results instead of re-hitting GitHub.
 - Scans run through a global concurrency limiter (2 at a time) with per-key in-flight deduplication.
 - The refresh button passes `refresh: true` and bypasses the cache.
 

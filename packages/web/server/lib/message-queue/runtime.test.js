@@ -17,7 +17,7 @@ const item = (overrides = {}) => ({
 
 const tempDirs = [];
 const makeDataDir = () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-message-queue-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-message-queue-'));
   tempDirs.push(dir);
   return dir;
 };
@@ -57,7 +57,7 @@ const createOpenCode = () => {
     }
     if (method === 'POST' && state.htmlNext?.test(pathname)) {
       state.htmlNext = null;
-      return new Response('<!doctype html><title>OpenChamber</title>', { status: 200, headers: { 'content-type': 'text/html' } });
+      return new Response('<!doctype html><title>Alcode</title>', { status: 200, headers: { 'content-type': 'text/html' } });
     }
     // Real shape: `{ data }` without a `location`, unlike directory-scoped routes.
     if (pathname === '/api/session/active') return Response.json({ data: state.active });
@@ -305,7 +305,7 @@ describe('auto routing', () => {
     runtime.start();
     openCode.state.statuses = { [SESSION]: { type: 'busy' } };
     openCode.state.commands = [{ name: 'review', template: 'Review $ARGUMENTS' }];
-    const auto = { providerID: 'openchamber', modelID: 'auto', agent: 'build' };
+    const auto = { providerID: 'alcode', modelID: 'auto', agent: 'build' };
     await runtime.enqueue(SESSION, DIRECTORY, item({ content: 'plain', text: 'plain', sendConfig: auto }));
     await runtime.enqueue(SESSION, DIRECTORY, item({ content: '/review src', text: '/review src', sendConfig: auto }));
 
@@ -365,12 +365,12 @@ describe('parseQueuedItemInput', () => {
 
   it('keeps captured context and rejects a malformed part', () => {
     const context = [
-      { kind: 'context', text: 'Comment on `a.ts`', metadata: { openchamberContext: { kind: 'code-comment' } }, instructions: '' },
+      { kind: 'context', text: 'Comment on `a.ts`', metadata: { alcodeContext: { kind: 'code-comment' } }, instructions: '' },
       { kind: 'instruction', text: 'use the skill' },
       { kind: 'synthetic', text: 'conflict payload' },
     ];
     expect(parseQueuedItemInput(item({ context })).context).toEqual([
-      { kind: 'context', text: 'Comment on `a.ts`', metadata: { openchamberContext: { kind: 'code-comment' } } },
+      { kind: 'context', text: 'Comment on `a.ts`', metadata: { alcodeContext: { kind: 'code-comment' } } },
       { kind: 'instruction', text: 'use the skill' },
       { kind: 'synthetic', text: 'conflict payload' },
     ]);
@@ -496,7 +496,7 @@ describe('message queue runtime', () => {
     expect(runtime.sessionSnapshot(SESSION).items.map((entry) => entry.content)).toEqual(['second']);
     // Clients learned about the in-flight item and then the removal.
     expect(broadcasts.at(-1)).toMatchObject({
-      type: 'openchamber:message-queue.updated',
+      type: 'alcode:message-queue.updated',
       properties: { session: { sessionId: SESSION, sendingId: null } },
     });
 
@@ -765,7 +765,7 @@ describe('message queue runtime', () => {
   it('retains a bounded context preview in snapshots and broadcasts without exposing the full payload', async () => {
     const { runtime, broadcasts } = createRuntime();
     runtime.start();
-    const context = [{ kind: 'context', text: 'Full quoted content', metadata: { openchamberContext: { kind: 'chat-quote', quote: 'Original answer', text: 'Explain this' } } }];
+    const context = [{ kind: 'context', text: 'Full quoted content', metadata: { alcodeContext: { kind: 'chat-quote', quote: 'Original answer', text: 'Explain this' } } }];
     const { itemId } = await runtime.enqueue(SESSION, DIRECTORY, item({ content: '', text: '', context, contextPreview: 'Explain this' }));
     const projected = runtime.sessionSnapshot(SESSION).items[0];
     expect(projected.contextPreview).toBe('Explain this');
@@ -786,7 +786,7 @@ describe('message queue runtime', () => {
     runtime.start();
     await runtime.enqueue(SESSION, DIRECTORY, item({ content: '', text: '', context: [
       { kind: 'instruction', text: 'Use the skill' },
-      { kind: 'context', text: 'Model-facing wrapper', metadata: { openchamberContext: { kind: 'browser-annotation', text: 'Fix the button\nMore detail' } } },
+      { kind: 'context', text: 'Model-facing wrapper', metadata: { alcodeContext: { kind: 'browser-annotation', text: 'Fix the button\nMore detail' } } },
     ] }));
     expect(runtime.sessionSnapshot(SESSION).items[0].contextPreview).toBe('Fix the button...');
   });
@@ -841,7 +841,7 @@ describe('message queue runtime', () => {
   it('delivers captured context as synthetic messages, instructions first', async () => {
     const { runtime, openCode, emit } = createRuntime();
     runtime.start();
-    const metadata = { openchamberContext: { kind: 'github-pr', number: 7, title: 'PR', url: 'https://x/pr/7' } };
+    const metadata = { alcodeContext: { kind: 'github-pr', number: 7, title: 'PR', url: 'https://x/pr/7' } };
     await runtime.enqueue(SESSION, DIRECTORY, item({
       agentMention: 'reviewer',
       attachments: [{ id: 'a', filename: 'f.txt', mimeType: 'text/plain', size: 1, source: 'local', dataUrl: 'data:text/plain,hi' }],
@@ -902,7 +902,7 @@ describe('message queue runtime', () => {
     const { runtime, openCode, emit } = createRuntime();
     runtime.start();
     openCode.state.commands = [{ name: 'review', description: 'Review' }];
-    const metadata = { openchamberContext: { kind: 'chat-quote', quote: 'q', text: 'why?' } };
+    const metadata = { alcodeContext: { kind: 'chat-quote', quote: 'q', text: 'why?' } };
     await runtime.enqueue(SESSION, DIRECTORY, item({
       content: '/review src "error handling"',
       text: '/review src "error handling"',

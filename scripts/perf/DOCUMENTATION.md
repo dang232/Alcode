@@ -1,7 +1,7 @@
 # Performance Measurement Tooling
 
 Owns the unattended performance capture commands and their shared Chrome
-DevTools Protocol plumbing. Read this before measuring OpenChamber performance
+DevTools Protocol plumbing. Read this before measuring Alcode performance
 or extending these scripts. The methodology rules they enforce come from
 `.agents/skills/performance-engineering/SKILL.md`.
 
@@ -37,14 +37,14 @@ diagnostic build with `--render-probe` and read it with `profile:analyze`
 behaviour does not represent what users run.
 
 When launching from an agent inside packaged Desktop, explicitly set
-`OPENCHAMBER_DIST_DIR` to the checkout's `packages/web/dist`. The inherited
+`ALCODE_DIST_DIR` to the checkout's `packages/web/dist`. The inherited
 value can point at the installed app's `web-dist`, so rebuilding the checkout
 would leave the browser running the old bundle. Before comparing runs, match
 the loaded module script URL against the checkout's built `index.html`. Bypass
 the service worker and HTTP cache during this check.
 
 An authenticated browser run can use a separate server with an isolated
-`HOME` and `OPENCHAMBER_DATA_DIR`, a generated `OPENCHAMBER_UI_PASSWORD`, and
+`HOME` and `ALCODE_DATA_DIR`, a generated `ALCODE_UI_PASSWORD`, and
 its own Chrome profile. Keep the password inside the launcher and pass it to
 CDP input without logging it. For heap comparisons, start each run in a fresh
 page and close previous test pages; retained back/forward-cache documents can
@@ -69,27 +69,27 @@ to the session commands. Every command except `profile:animation` and
 Any server, dev shell or Electron an agent starts for a check runs beside the
 maintainer's own app and dev shell, on the same machine.
 
-- **Own data dir, own env.** Use a scratch `OPENCHAMBER_DATA_DIR` (and `HOME`
+- **Own data dir, own env.** Use a scratch `ALCODE_DATA_DIR` (and `HOME`
   where the run needs one); a headless client on the real
-  `~/.config/openchamber` writes its default theme into the user's settings and
+  `~/.config/alcode` writes its default theme into the user's settings and
   the desktop app flips themes. Copy `settings.json` in, minus
   `desktopUiPassword`, when the run needs the saved projects or hosts. A shell
-  inside the desktop app inherits its `OPENCHAMBER_*` variables (UI password,
+  inside the desktop app inherits its `ALCODE_*` variables (UI password,
   dist dir, agent-tool URL and token) and `OPENCODE_PASSWORD`: start copies
   with `env -i HOME USER PATH SHELL TMPDIR` or unset them first, and use
-  `OPENCODE_BINARY=/Applications/OpenChamber.app/Contents/Resources/opencode-cli/opencode`
+  `OPENCODE_BINARY=/Applications/Alcode.app/Contents/Resources/opencode-cli/opencode`
   when `~/.opencode/bin/opencode` lags the version the repo needs.
 - **Dev server:** from the repo root, after the env is clean,
-  `OPENCHAMBER_DATA_DIR=<scratch>/oc-data OPENCHAMBER_HMR_UI_PORT=5391 OPENCHAMBER_HMR_API_PORT=3991 bun run dev`
+  `ALCODE_DATA_DIR=<scratch>/oc-data ALCODE_HMR_UI_PORT=5391 ALCODE_HMR_API_PORT=3991 bun run dev`
   in the background; the UI is at `http://127.0.0.1:5391/`. It runs React
   StrictMode, which detaches and reattaches ref callbacks right after mount.
-- **Packaged-UI Electron** (the `openchamber-ui://` origin, host windows,
+- **Packaged-UI Electron** (the `alcode-ui://` origin, host windows,
   shared localStorage): `bun run --cwd packages/electron build:web-assets`,
   then from `packages/electron`, in the background,
-  `env -i … OPENCHAMBER_ELECTRON_DEV=1 OPENCHAMBER_ELECTRON_USE_BUNDLED_UI=1 OPENCHAMBER_DISABLE_PWA_DEV=1 OPENCHAMBER_DATA_DIR=<scratch>/oc-data OPENCHAMBER_DESKTOP_USER_DATA_DIR=<scratch>/electron-userdata bun x electron ./entry.mjs --remote-debugging-port=9339`.
+  `env -i … ALCODE_ELECTRON_DEV=1 ALCODE_ELECTRON_USE_BUNDLED_UI=1 ALCODE_DISABLE_PWA_DEV=1 ALCODE_DATA_DIR=<scratch>/oc-data ALCODE_DESKTOP_USER_DATA_DIR=<scratch>/electron-userdata bun x electron ./entry.mjs --remote-debugging-port=9339`.
   The userData override avoids the installed app's single-instance lock; the
   window does appear on screen, and its logs mix into
-  `~/Library/Logs/OpenChamber/main.log`.
+  `~/Library/Logs/Alcode/main.log`.
 - **Probes:** drive pages through `cdp.mjs` (`http://127.0.0.1:<port>/json/list`).
   Wait about 10 s after load before clicking, or navigation is ignored. Keep
   probe scripts in the gitignored `tmp/`. For chat scrolling, sample
@@ -193,7 +193,7 @@ the components that keep re-rendering while nothing happens, and
 ## profile:session
 
 Creates a session, opens it in a browser, dispatches a prompt through the
-supported `openchamber session` CLI, and records until the session reports
+supported `alcode session` CLI, and records until the session reports
 itself idle. No input is synthesised; the prompt is the only stimulus.
 
 Streaming is judged by responsiveness, not totals, so the report leads with the
@@ -217,7 +217,7 @@ numbers. Streaming at 300 characters per second, the main thread is 17% busy
 while the renderer process uses 34% of a core, because the compositor thread,
 raster and garbage-collection workers, and the GPU process never appear in a
 main-thread profile. Every run reports CPU per process, of one core, for each
-Chrome process, the OpenChamber server, and the OpenCode instance it manages.
+Chrome process, the Alcode server, and the OpenCode instance it manages.
 
 The sampler and the trace run inside the renderer and inflate that figure
 (15% uninstrumented became 21-24% instrumented on the same scenario). Quote
@@ -356,17 +356,17 @@ warning, never as zero. Keep `--tail` at 1 s or more so the window is recorded.
 launching Chrome: the packaged desktop build started with
 `--remote-debugging-port=<port>`. The session opens in the app's own window on
 its own scheme, the window keeps the size the user gave it, and the report says
-it was attached. `--url` still names the OpenChamber server the CLI talks to,
+it was attached. `--url` still names the Alcode server the CLI talks to,
 which for the desktop is the port in `desktopLocalPort` of its settings; run the
-command with `OPENCHAMBER_DATA_DIR` pointing at that app's data directory so the
+command with `ALCODE_DATA_DIR` pointing at that app's data directory so the
 CLI reads the same settings. Electron's main process hosts the server, so the
 per-process table lists it once, as `chrome browser`, and the managed OpenCode as
 a server child.
 
 Launch the build in an isolated home the way `profile:startup` does
-(`HOME`, the `XDG_*` directories, `OPENCHAMBER_DATA_DIR` and
-`OPENCHAMBER_DESKTOP_USER_DATA_DIR` under one temporary directory, and
-`OPENCHAMBER_*` / `OPENCODE_*` / `ELECTRON_*` stripped from the environment),
+(`HOME`, the `XDG_*` directories, `ALCODE_DATA_DIR` and
+`ALCODE_DESKTOP_USER_DATA_DIR` under one temporary directory, and
+`ALCODE_*` / `OPENCODE_*` / `ELECTRON_*` stripped from the environment),
 seed its `settings.json` with the project to measure and a `desktopLocalPort`
 that the installed app does not use, and pass the fixture provider through
 `OPENCODE_CONFIG_CONTENT`. The installed app can keep running.
@@ -560,15 +560,15 @@ bun run profile:startup -- --url http://127.0.0.1:4599 --runs 10 --warmup 1 --ca
 ```bash
 bun run electron:build           # or the package steps with --dir; only the .app is needed
 bun run profile:startup -- --runs 5 --warmup 1 --window-at 1400,100
-bun run profile:startup -- --app dist-a/OpenChamber.app --compare dist-b/OpenChamber.app
+bun run profile:startup -- --app dist-a/Alcode.app --compare dist-b/Alcode.app
 ```
 
 The app runs in an isolated home (`--home`, default under the OS temp
 directory): its own settings, Electron profile, logs and OpenCode data, with
-`OPENCHAMBER_*`, `OPENCODE_*` and `ELECTRON_*` stripped from the environment.
+`ALCODE_*`, `OPENCODE_*` and `ELECTRON_*` stripped from the environment.
 It never touches the installed app, and the installed app can keep running.
 Electron on macOS resolves the home directory from the user record rather than
-`$HOME`, so the profile is moved through the `OPENCHAMBER_DESKTOP_USER_DATA_DIR`
+`$HOME`, so the profile is moved through the `ALCODE_DESKTOP_USER_DATA_DIR`
 hook the entry module honours; a build without that hook would hit the
 installed app's single-instance lock and exit at once.
 
@@ -579,7 +579,7 @@ load on the machine moves every figure by tens of percent between sessions.
 Gatekeeper scan and takes seconds. `--opencode cold` (default) lets the app
 start its own OpenCode on every launch, the way a user's login does;
 `--opencode warm` starts one from the bundled CLI before the runs and attaches
-every launch to it through `OPENCODE_PORT`, which isolates OpenChamber's own
+every launch to it through `OPENCODE_PORT`, which isolates Alcode's own
 startup from OpenCode's. `--fresh` wipes the home before every launch to
 measure the first launch after an install.
 

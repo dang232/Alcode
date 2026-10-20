@@ -21,8 +21,9 @@ jobs:
     if: |
       (github.event_name == 'pull_request_target' ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@alcode-bot review' || startsWith(github.event.comment.body, '@alcode-bot review '))) ||
-      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@alcode-bot review' || startsWith(github.event.comment.body, '@alcode-bot review '))))
-    # Missing bot secrets skip the steps below with a notice instead of failing red.
+      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@alcode-bot review' || startsWith(github.event.comment.body, '@alcode-bot review ')))) &&
+      secrets.OC_REVIEW_APP_ID != ''
+    # No bot app secret on this repo: skip instead of failing red.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -150,7 +151,7 @@ jobs:
           fi
 
           last_review_at="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
-            | jq -r '[.[] | select(.user.login == "openchamber-bot[bot]" and (.body | contains("<!-- oc-review-meta "))) | .created_at] | last // empty')"
+            | jq -r '[.[] | select(.user.login == "alcode-bot[bot]" and (.body | contains("<!-- oc-review-meta "))) | .created_at] | last // empty')"
 
           if [ -z "$last_review_at" ]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -192,8 +193,8 @@ jobs:
             /oc-review|/oc-review\ *)
               focus="${first_line#/oc-review}"
               ;;
-            "@openchamber-bot review"|"@openchamber-bot review "*)
-              focus="${first_line#@openchamber-bot review}"
+            "@alcode-bot review"|"@alcode-bot review "*)
+              focus="${first_line#@alcode-bot review}"
               ;;
             *)
               echo "Unsupported manual review command: $first_line" >&2
@@ -355,7 +356,8 @@ jobs:
           echo "Review model: ${review_model:-unknown}"
           echo "Review timeout: $REVIEW_TIMEOUT"
 
-          output="$RUNNER_TEMP/review.jsonl"
+          set +e
+          timeout --signal=TERM --kill-after=30s "$REVIEW_TIMEOUT" opencode run --agent pr-review-bot "A pull request in the Alcode repository needs one unified correctness, repository-guidance, contribution-quality, and evidence review.
 
           set +e
           timeout --signal=TERM --kill-after=30s "$REVIEW_TIMEOUT" opencode run --standalone --format json --agent pr-review-bot -m "$review_model" "A pull request in the OpenChamber repository needs one unified correctness, repository-guidance, contribution-quality, and evidence review. Its data is in .oc-context/.
@@ -463,10 +465,10 @@ jobs:
           review_json="$(gh api \
             "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --paginate \
-            | jq -s --arg started_at "$REVIEW_STARTED_AT" '[.[][] | select(.created_at >= $started_at and .user.login == "openchamber-bot[bot]" and (.body | contains("<h3>Code Review Summary</h3>")) and (.body | contains("<!-- oc-review-meta ")))] | last // empty')"
+            | jq -s --arg started_at "$REVIEW_STARTED_AT" '[.[][] | select(.created_at >= $started_at and .user.login == "alcode-bot[bot]" and (.body | contains("<h3>Code Review Summary</h3>")) and (.body | contains("<!-- oc-review-meta ")))] | last // empty')"
 
           if [ -z "$review_json" ]; then
-            fail_automation "Review completed without creating a new structured OpenChamber Bot PR comment."
+            fail_automation "Review completed without creating a new structured Alcode Bot PR comment."
           fi
 
           if ! metadata="$(printf '%s' "$review_json" | jq -er '.body | capture("<!-- oc-review-meta (?<json>\\{[^\\n]+\\}) -->").json | fromjson')"; then
@@ -532,7 +534,7 @@ jobs:
           fi
 
           {
-            echo "### OpenChamber review verdict"
+            echo "### Alcode review verdict"
             echo
             echo "- HEAD: \`$REVIEW_HEAD_SHA\`"
             echo "- Verdict: \`$verdict\`"

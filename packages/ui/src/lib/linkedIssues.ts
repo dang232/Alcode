@@ -1,6 +1,6 @@
 import type { Session } from '@/lib/opencode/model';
-import { isJsonValue, type JsonValue } from '@openchamber/sdk';
-import { getSessionMetadata } from './sessionReviewMetadata';
+import { isJsonValue, type JsonValue } from '@alcode/sdk';
+import { getSessionMetadata, type SessionMetadataRecord } from './sessionReviewMetadata';
 
 /**
  * Source-control issues and change requests, and tracker issues, a user has
@@ -276,11 +276,11 @@ export const buildLinkedLinearIssue = (input: {
 });
 
 export const getLinkedIssues = (session: Session | null | undefined): LinkedIssue[] => {
-  const openchamber = getSessionMetadata(session).openchamber;
-  if (!isRecord(openchamber) || !Array.isArray(openchamber.linked_issues)) return [];
+  const alcode = getSessionMetadata(session).alcode;
+  if (!isRecord(alcode) || !Array.isArray(alcode.linked_issues)) return [];
   // Malformed entries are dropped rather than rendered: a half-written link
   // has no row worth showing.
-  return openchamber.linked_issues.filter(isLinkedIssue);
+  return alcode.linked_issues.filter(isLinkedIssue);
 };
 
 export type LinkedGitHubPullRequest = {
@@ -465,4 +465,41 @@ export const getLinkedSidebarIssues = (session: Session | null | undefined): Lin
     }
     return [];
   });
+};
+
+const normalizedThreadUrl = (url: string): string => url.trim().replace(/\/+$/, '').toLowerCase();
+
+/**
+ * Whether two entries name the same thread. A repository entry stored before
+ * ids carried the host matches its new id by its address instead.
+ */
+const isSameLinkedEntry = (entry: LinkedIssue, issue: LinkedIssue): boolean => {
+  if (entry.id === issue.id) return true;
+  return (entry.kind === 'issue' || entry.kind === 'pull')
+    && entry.kind === issue.kind
+    && entry.number === issue.number
+    && normalizedThreadUrl(entry.url) === normalizedThreadUrl(issue.url);
+};
+
+export const withLinkedIssue = (
+  metadata: SessionMetadataRecord,
+  issue: LinkedIssue,
+  linked: boolean,
+): SessionMetadataRecord => {
+  const alcode = isRecord(metadata.alcode) ? metadata.alcode : {};
+  const current = Array.isArray(alcode.linked_issues)
+    ? alcode.linked_issues.filter(isLinkedIssue)
+    : [];
+  const withoutIssue = current.filter((entry) => !isSameLinkedEntry(entry, issue));
+  // Re-linking an existing entry replaces it, so a stale title can be refreshed
+  // by linking again.
+  const next = linked ? [...withoutIssue, issue] : withoutIssue;
+
+  return {
+    ...metadata,
+    alcode: {
+      ...alcode,
+      linked_issues: next,
+    },
+  };
 };

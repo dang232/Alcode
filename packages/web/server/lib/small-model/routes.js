@@ -1,3 +1,5 @@
+import { validateDelegateTaskCall } from './delegate-dispatch.bundle.js';
+
 export function registerSmallModelRoutes(app, { getSmallModelService }) {
   app.get('/api/small-model', async (req, res) => {
     try {
@@ -22,7 +24,21 @@ export function registerSmallModelRoutes(app, { getSmallModelService }) {
   app.post('/api/small-model/generate', async (req, res) => {
     try {
       const { generateSmallModelText } = await getSmallModelService();
-      const { prompt, system, maxOutputTokens, model, directory, preferredProviderID, preferredModelID } = req.body || {};
+      const { prompt, system, maxOutputTokens, model, directory, sessionID, preferredProviderID, preferredModelID, task, fallbackChain } = req.body || {};
+      // A delegated `task()` call self-corrects before anything dispatches:
+      // a malformed call answers the engine retry guidance (fix hint plus a
+      // corrected example) instead of spending a model on a doomed request.
+      if (task !== undefined) {
+        const checked = validateDelegateTaskCall(task);
+        if (!checked.ok) {
+          return res.status(400).json({
+            error: 'The delegated task call is malformed. Retry with the corrected call in guidance.',
+            code: 'delegate-task-malformed',
+            errorType: checked.errorType,
+            guidance: checked.guidance,
+          });
+        }
+      }
       const result = await generateSmallModelText({
         prompt,
         system,
@@ -31,6 +47,7 @@ export function registerSmallModelRoutes(app, { getSmallModelService }) {
         directory,
         preferredProviderID,
         preferredModelID,
+        fallbackChain,
       });
       res.json(result);
     } catch (error) {

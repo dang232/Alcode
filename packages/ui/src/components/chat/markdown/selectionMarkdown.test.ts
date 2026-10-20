@@ -74,7 +74,7 @@ test('tables, math, mermaid and file links read from what the renderer kept', ()
     + '<tbody><tr><td>a|b</td><td><code>1</code></td></tr></tbody></table></div></div>',
     '<p>Within <span class="katex"><span class="katex-mathml"><math><semantics><mrow></mrow>'
     + '<annotation encoding="application/x-tex">\\pm 5\\%</annotation></semantics></math></span>'
-    + '<span class="katex-html" aria-hidden="true">±5%</span></span> of <a href="#" data-openchamber-file-link="true">src/app.ts</a>.</p>',
+    + '<span class="katex-html" aria-hidden="true">±5%</span></span> of <a href="#" data-alcode-file-link="true">src/app.ts</a>.</p>',
     '<div data-markdown="mermaid-block" data-md-source="graph TD; A-->B"><div data-markdown="mermaid-scroll"><svg></svg></div>'
     + '<div data-markdown="mermaid-toolbar"><button>Copy</button></div></div>',
   ].join(''));

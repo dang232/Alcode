@@ -22,6 +22,25 @@ vi.mock('node:child_process', () => ({
 vi.mock('./startup-performance.js', () => ({
   recordStartupPerformance: recordStartupPerformanceMock,
 }));
+// Passthrough node:fs mock so one test can hide the checkout ulw-loop
+// dist: accessSync throws ENOENT for ulw-loop paths only while
+// OMO_ULW_LOOP_TEST_HIDE_DIST=1, every other call (and every other test)
+// uses the real filesystem.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    accessSync: (target, mode) => {
+      if (process.env.OMO_ULW_LOOP_TEST_HIDE_DIST === '1'
+        && String(target).includes('ulw-loop')) {
+        const error = new Error(`ENOENT: no such file or directory, access '${target}'`);
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return actual.accessSync(target, mode);
+    },
+  };
+});
 
 const { createOpenCodeLifecycleRuntime } = await import('./lifecycle.js');
 const { createServerDiagnosticJournal } = await import('../diagnostics/server-journal.js');
@@ -1039,7 +1058,7 @@ describe('OpenCode lifecycle', () => {
   it('strips AppImage ARGV0 from managed OpenCode launch env', async () => {
     delete process.env.OPENCODE_BINARY;
     const previousArgv0 = process.env.ARGV0;
-    process.env.ARGV0 = '/path/to/OpenChamber/OpenChamber-1.17.2-linux-x86_64.AppImage';
+    process.env.ARGV0 = '/path/to/Alcode/Alcode-1.17.2-linux-x86_64.AppImage';
     const child = createMockChild();
     spawnMock.mockImplementationOnce(() => {
       queueMicrotask(() => {
@@ -1070,7 +1089,7 @@ describe('OpenCode lifecycle', () => {
     }
   });
 
-  it('passes the user variables to OpenCode under the variables OpenChamber owns', async () => {
+  it('passes the user variables to OpenCode under the variables Alcode owns', async () => {
     const child = createMockChild();
     spawnMock.mockImplementationOnce(() => {
       queueMicrotask(() => {
@@ -1082,9 +1101,9 @@ describe('OpenCode lifecycle', () => {
       DATABASE_URL: 'postgres://db',
       PATH: '/opt/tools/bin',
       OPENCODE_PASSWORD: 'user-password',
-      OPENCHAMBER_AGENT_TOOL_TOKEN: 'user-token',
+      ALCODE_AGENT_TOOL_TOKEN: 'user-token',
     }));
-    const getManagedOpenCodeEnv = vi.fn(async () => ({ OPENCHAMBER_AGENT_TOOL_TOKEN: 'ephemeral' }));
+    const getManagedOpenCodeEnv = vi.fn(async () => ({ ALCODE_AGENT_TOOL_TOKEN: 'ephemeral' }));
 
     const runtime = createRuntime({ getUserEnvironment, getManagedOpenCodeEnv });
     const server = await runtime.startOpenCode();
@@ -1093,7 +1112,7 @@ describe('OpenCode lifecycle', () => {
     expect(options.env.DATABASE_URL).toBe('postgres://db');
     expect(options.env.PATH).toBe('/opt/tools/bin:/home/user/.bun/bin:/usr/local/bin:/usr/bin');
     expect(options.env.OPENCODE_PASSWORD).toBe('password');
-    expect(options.env.OPENCHAMBER_AGENT_TOOL_TOKEN).toBe('ephemeral');
+    expect(options.env.ALCODE_AGENT_TOOL_TOKEN).toBe('ephemeral');
     expect(runtime.getManagedOpenCodeProcessEnv().DATABASE_URL).toBe('postgres://db');
     // The replaced values are recorded as OpenChamber's; the user's are not.
     const injected = injectedEnvKeys(options.env);
@@ -1106,7 +1125,7 @@ describe('OpenCode lifecycle', () => {
     await server.close();
   });
 
-  it('adds managed OpenChamber tool environment without allowing it to replace launch invariants', async () => {
+  it('adds managed Alcode tool environment without allowing it to replace launch invariants', async () => {
     const child = createMockChild();
     spawnMock.mockImplementationOnce(() => {
       queueMicrotask(() => {
@@ -1116,7 +1135,7 @@ describe('OpenCode lifecycle', () => {
     });
     const getManagedOpenCodeEnv = vi.fn(async () => ({
       OPENCODE_CONFIG_CONTENT: '{"plugin":["file:///tool.js"]}',
-      OPENCHAMBER_AGENT_TOOL_TOKEN: 'ephemeral',
+      ALCODE_AGENT_TOOL_TOKEN: 'ephemeral',
       PATH: '/untrusted/path',
       OPENCODE_PASSWORD: 'untrusted-password',
       OPENCODE_SERVER_PASSWORD: 'untrusted-password',
@@ -1128,12 +1147,84 @@ describe('OpenCode lifecycle', () => {
 
     expect(getManagedOpenCodeEnv).toHaveBeenCalledOnce();
     expect(options.env.OPENCODE_CONFIG_CONTENT).toBe('{"plugin":["file:///tool.js"]}');
-    expect(options.env.OPENCHAMBER_AGENT_TOOL_TOKEN).toBe('ephemeral');
+    expect(options.env.ALCODE_AGENT_TOOL_TOKEN).toBe('ephemeral');
     expect(options.env.PATH).toBe('/home/user/.bun/bin:/usr/local/bin:/usr/bin');
     expect(options.env.OPENCODE_PASSWORD).toBe('password');
     expect(options.env.OPENCODE_SERVER_PASSWORD).toBe('password');
 
     await server.close();
+  });
+
+  it('defaults OMO_ULW_LOOP_CLI to the checkout internal CLI unless explicitly set', async () => {
+    const previousOverride = process.env.OMO_ULW_LOOP_CLI;
+    delete process.env.OMO_ULW_LOOP_CLI;
+    try {
+      const child = createMockChild();
+      spawnMock.mockImplementationOnce(() => {
+        queueMicrotask(() => {
+          child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+        });
+        return child;
+      });
+      const getManagedOpenCodeEnv = vi.fn(async () => ({}));
+      const runtime = createRuntime({ getManagedOpenCodeEnv });
+      const server = await runtime.startOpenCode();
+      const [, , options] = spawnMock.mock.calls[0];
+      expect(options.env.OMO_ULW_LOOP_CLI).toMatch(/dist[/\\]cli\.js$/);
+      // The default must be absolute: loop agents work in user repos, so a
+      // checkout-relative pointer would resolve against the wrong cwd.
+      expect(path.isAbsolute(options.env.OMO_ULW_LOOP_CLI)).toBe(true);
+      await server.close();
+    } finally {
+      if (previousOverride !== undefined) process.env.OMO_ULW_LOOP_CLI = previousOverride;
+    }
+  });
+
+  it('keeps an explicit OMO_ULW_LOOP_CLI over the checkout default', async () => {
+    const child = createMockChild();
+    spawnMock.mockImplementationOnce(() => {
+      queueMicrotask(() => {
+        child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+      });
+      return child;
+    });
+    const getManagedOpenCodeEnv = vi.fn(async () => ({ OMO_ULW_LOOP_CLI: '/staged/ulw-loop-cli/dist/cli.js' }));
+    const runtime = createRuntime({ getManagedOpenCodeEnv });
+    const server = await runtime.startOpenCode();
+    const [, , options] = spawnMock.mock.calls[0];
+    expect(options.env.OMO_ULW_LOOP_CLI).toBe('/staged/ulw-loop-cli/dist/cli.js');
+    await server.close();
+  });
+
+  it('warns actionably and sets no pointer when the checkout dist is missing', async () => {
+    const previousOverride = process.env.OMO_ULW_LOOP_CLI;
+    const previousHide = process.env.OMO_ULW_LOOP_TEST_HIDE_DIST;
+    delete process.env.OMO_ULW_LOOP_CLI;
+    process.env.OMO_ULW_LOOP_TEST_HIDE_DIST = '1';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const child = createMockChild();
+      spawnMock.mockImplementationOnce(() => {
+        queueMicrotask(() => {
+          child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+        });
+        return child;
+      });
+      const getManagedOpenCodeEnv = vi.fn(async () => ({}));
+      const runtime = createRuntime({ getManagedOpenCodeEnv });
+      const server = await runtime.startOpenCode();
+      const [, , options] = spawnMock.mock.calls[0];
+      expect(options.env.OMO_ULW_LOOP_CLI).toBeUndefined();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0][0]).toContain('ulw-loop CLI unavailable');
+      expect(warn.mock.calls[0][0]).toContain('prepare:ulw-loop-cli');
+      await server.close();
+    } finally {
+      if (previousOverride !== undefined) process.env.OMO_ULW_LOOP_CLI = previousOverride;
+      if (previousHide !== undefined) process.env.OMO_ULW_LOOP_TEST_HIDE_DIST = previousHide;
+      else delete process.env.OMO_ULW_LOOP_TEST_HIDE_DIST;
+      warn.mockRestore();
+    }
   });
 
   it('mirrors Google credential env aliases into the managed OpenCode environment', async () => {

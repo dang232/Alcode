@@ -89,7 +89,7 @@ const parseArgs = (argv) => {
     settle: 3,
     filler: 0,
     chrome: null,
-    profileDir: null,
+    profileDir: join(homedir(), ".alcode", "browser-profile-google-chrome"),
     headless: true,
     json: false,
   }

@@ -30,18 +30,45 @@ import { getRuntimeApiBaseUrl, getRuntimeKey, switchRuntimeEndpoint } from '@/li
 import { recordMobileConnectDebug } from './mobileConnectionDebug';
 import { fetchThroughRelayOnce, fetchThroughRelayWithRetry } from './mobileRelayFetch';
 
-const MOBILE_CONNECTIONS_STORAGE_KEY = 'openchamber.mobile.connections.v1';
-const MOBILE_SECURE_STORAGE_PREFIX = 'openchamber.mobile.';
-const MOBILE_DEVICE_ID_STORAGE_KEY = 'openchamber.mobile.deviceId';
+const MOBILE_CONNECTIONS_STORAGE_KEY = 'alcode.mobile.connections.v1';
+const MOBILE_SECURE_STORAGE_PREFIX = 'alcode.mobile.';
+const MOBILE_DEVICE_ID_STORAGE_KEY = 'alcode.mobile.deviceId';
+// Pre-rename twins: copied forward on read (never deleted) so installs that
+// paired under `openchamber.mobile.*` keep their connections, tokens, and
+// device identity. See `readNewOrLegacyLocalStorage`.
+const LEGACY_MOBILE_CONNECTIONS_STORAGE_KEY = 'openchamber.mobile.connections.v1';
+const LEGACY_MOBILE_SECURE_STORAGE_PREFIX = 'openchamber.mobile.';
+const LEGACY_MOBILE_DEVICE_ID_STORAGE_KEY = 'openchamber.mobile.deviceId';
+
+/**
+ * Backward-compat localStorage read mirroring `readNewOrLegacy` in
+ * `@/lib/persistence` (kept local to avoid a store-heavy import here): the new
+ * `alcode.*` value wins; when the key is absent the pre-rename
+ * `openchamber.*` twin is copied forward and returned. Null when neither exists.
+ */
+const readNewOrLegacyLocalStorage = (newKey: string, legacyKey: string): string | null => {
+  const current = window.localStorage.getItem(newKey);
+  if (current !== null) return current;
+  const legacy = window.localStorage.getItem(legacyKey);
+  if (legacy === null) return null;
+  try {
+    window.localStorage.setItem(newKey, legacy);
+  } catch {
+    // Restricted storage: the caller still gets the legacy value for this read.
+  }
+  return legacy;
+};
 
 // Stable per-install identifier for this phone, persisted in localStorage. Used
 // as the client dedupe key so every way this device authenticates to a given
 // server (pairing redeem OR password re-login) collapses to ONE device record
 // instead of piling up a new row each time a token is minted. Different phones
 // get different ids; browsers never mint device tokens at all.
-const getMobileDeviceId = (): string => {
+// Exported for tests: the pre-rename `openchamber.mobile.deviceId` twin is
+// adopted (copied forward, never deleted) instead of minting a new identity.
+export const getMobileDeviceId = (): string => {
   try {
-    const existing = window.localStorage.getItem(MOBILE_DEVICE_ID_STORAGE_KEY);
+    const existing = readNewOrLegacyLocalStorage(MOBILE_DEVICE_ID_STORAGE_KEY, LEGACY_MOBILE_DEVICE_ID_STORAGE_KEY);
     if (existing && existing.trim()) return existing.trim();
     const generated = crypto.randomUUID();
     window.localStorage.setItem(MOBILE_DEVICE_ID_STORAGE_KEY, generated);
@@ -600,7 +627,9 @@ const readConnections = (): MobileSavedConnection[] => {
   if (typeof window === 'undefined') return [];
   let parsed: unknown;
   try {
-    parsed = JSON.parse(window.localStorage.getItem(MOBILE_CONNECTIONS_STORAGE_KEY) || '[]');
+    // Null (absent) migrates the pre-rename list forward; an explicit '[]'
+    // means the user removed every connection and must not resurrect legacy.
+    parsed = JSON.parse(readNewOrLegacyLocalStorage(MOBILE_CONNECTIONS_STORAGE_KEY, LEGACY_MOBILE_CONNECTIONS_STORAGE_KEY) || '[]');
   } catch {
     return [];
   }
@@ -711,6 +740,11 @@ const KEYCHAIN_ACCESS_WHEN_UNLOCKED = 0; // KeychainAccess.whenUnlocked
 const prefixedTokenKey = (key: string): string =>
   `${MOBILE_SECURE_STORAGE_PREFIX}token.${encodeURIComponent(key)}`;
 
+// Pre-rename twin of `prefixedTokenKey`: tokens minted before the rename live
+// here. Copied forward on read, never deleted.
+const prefixedLegacyTokenKey = (key: string): string =>
+  `${LEGACY_MOBILE_SECURE_STORAGE_PREFIX}token.${encodeURIComponent(key)}`;
+
 const withTimeout = async <T,>(operation: Promise<T>, fallback: T): Promise<T> => {
   let timeoutId: number | undefined;
   const timeout = new Promise<T>((resolve) => {
@@ -742,7 +776,20 @@ const readSecureToken = async (key: string): Promise<string | undefined> => {
     async () => (await nativeSecure.internalGetItem({ prefixedKey: prefixedTokenKey(key), sync: false })).data,
     null,
   );
-  const token = typeof value === 'string' && value.trim() ? value : undefined;
+  let token = typeof value === 'string' && value.trim() ? value : undefined;
+  if (!token) {
+    // Pre-rename installs minted this device's token under the legacy prefix.
+    // Copy it forward so the user is not logged out by the rename.
+    const legacyValue = await boundedSecure(
+      'secure:read-legacy',
+      async () => (await nativeSecure.internalGetItem({ prefixedKey: prefixedLegacyTokenKey(key), sync: false })).data,
+      null,
+    );
+    if (typeof legacyValue === 'string' && legacyValue.trim()) {
+      token = legacyValue;
+      await writeSecureToken(key, legacyValue);
+    }
+  }
   logStorage('secure:read', { key, hasToken: Boolean(token) });
   return token;
 };
@@ -1639,9 +1686,9 @@ export const useMobileConnection = (onConnected: () => void): UseMobileConnectio
       const redeemBody = JSON.stringify({
         pairingId: payload.pairingId,
         secret: payload.secret,
-        clientLabel: 'OpenChamber Mobile',
+        clientLabel: 'Alcode Mobile',
         clientKind: 'mobile',
-        deviceName: 'OpenChamber Mobile',
+        deviceName: 'Alcode Mobile',
         devicePlatform: mobileDevicePlatform(),
         // Re-pairing this same phone reuses its one device record instead of
         // adding a duplicate row on the server.
@@ -1735,7 +1782,7 @@ export const useMobileConnection = (onConnected: () => void): UseMobileConnectio
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         // Same dedupe key as pairing: re-authenticating after a token expires
         // reuses this phone's existing device record instead of duplicating it.
-        body: JSON.stringify({ password, trustDevice: true, issueClientToken: true, clientLabel: 'OpenChamber Mobile', clientKind: 'mobile', devicePlatform: mobileDevicePlatform(), dedupeKey: mobileClientDedupeKey() }),
+        body: JSON.stringify({ password, trustDevice: true, issueClientToken: true, clientLabel: 'Alcode Mobile', clientKind: 'mobile', devicePlatform: mobileDevicePlatform(), dedupeKey: mobileClientDedupeKey() }),
       };
       logConnect('password:start', { transport: chosen.kind });
       const login = chosen.kind === 'relay'

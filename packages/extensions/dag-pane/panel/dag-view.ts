@@ -11,7 +11,7 @@
 // strings, `Object(value) === value` for records): no `typeof` operators,
 // no `unknown` parameters, every input typed as the SDK's `JsonValue`
 // owner contract. No DOM here: unit-tested in bun:test without a browser.
-import type { JsonValue } from '@openchamber/sdk';
+import type { JsonValue } from '@alcode/sdk';
 
 export const DAG_SNAPSHOT_SCHEMA_VERSION = 1;
 

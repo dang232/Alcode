@@ -3,7 +3,6 @@ import { redactGitText } from '../git/redaction.js';
 import { resolveByteRange } from './byte-range.js';
 import { injectPreviewBridge } from './preview-bridge.js';
 import { createWorkspaceFileNameIndex } from './workspace-file-names.js';
-import { createGitCheckIgnoreTimeoutMs } from './search.js';
 import {
   CONTENT_SEARCH_DEFAULT_LIMIT,
   CONTENT_SEARCH_MAX_LIMIT,
@@ -81,6 +80,31 @@ const sendOsPermissionDenied = (res, message) => (
   res.status(403).json({ error: message, reason: 'os-permission' })
 );
 
+// Windows keeps directory locks briefly after files close (indexer, antivirus,
+// or the app's own watcher), so a recursive rm can fail with EBUSY/EPERM even
+// though a retry milliseconds later succeeds. Retry those transient failures a
+// few times with backoff before reporting the path as locked. The whole loop
+// is awaited by the caller inside its try/catch, so a persistent lock still
+// answers the request and never escapes as an unhandled rejection.
+const removePathResiliently = async (fsPromises, targetPath) => {
+  const attempts = 4;
+  const baseDelayMs = 25;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      await fsPromises.rm(targetPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      const retryable = error && typeof error === 'object'
+        && (error.code === 'EBUSY' || error.code === 'EPERM');
+      if (!retryable || attempt === attempts - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (attempt + 1)));
+    }
+  }
+  throw lastError;
+};
+
 export const mintOutsideFileGrant = async (targetPath, {
   scopes = ['stat', 'read', 'raw'],
   fsPromises = nodeFsPromises,
@@ -123,7 +147,7 @@ export const mintOutsideFileGrant = async (targetPath, {
 };
 
 const createCommandTimeoutMs = () => {
-  const raw = Number(process.env.OPENCHAMBER_FS_EXEC_TIMEOUT_MS);
+  const raw = Number(process.env.ALCODE_FS_EXEC_TIMEOUT_MS);
   if (Number.isFinite(raw) && raw > 0) return raw;
   return 5 * 60 * 1000;
 };
@@ -133,13 +157,18 @@ const createCommandTimeoutMs = () => {
 // absorbs the burst of identical lookups a fresh client (e.g. right after a
 // page reload) fires for every project. Set to 0 to disable caching.
 const createGitReadCacheTtlMs = () => {
-  const raw = Number(process.env.OPENCHAMBER_GIT_READ_CACHE_TTL_MS);
+  const raw = Number(process.env.ALCODE_GIT_READ_CACHE_TTL_MS);
   if (Number.isFinite(raw) && raw >= 0) return raw;
   return 30 * 1000;
 };
 
+const createGitCheckIgnoreTimeoutMs = () => {
+  const raw = Number(process.env.ALCODE_GIT_CHECK_IGNORE_TIMEOUT_MS);
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+  return 2500;
+};
 const createUploadMaxBytes = () => {
-  const raw = Number(process.env.OPENCHAMBER_FS_UPLOAD_MAX_BYTES);
+  const raw = Number(process.env.ALCODE_FS_UPLOAD_MAX_BYTES);
   if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
   return 100 * 1024 * 1024;
 };
@@ -614,7 +643,7 @@ export const registerFsRoutes = (app, dependencies) => {
     resolveGitBinaryForSpawn,
     // Content search needs ripgrep; without a resolver the route answers 501.
     resolveRipgrepBinary = async () => null,
-    openchamberUserConfigRoot,
+    alcodeUserConfigRoot,
     managedChatsRoot,
     cloneRepository,
     environmentRuntime = null,
@@ -623,10 +652,10 @@ export const registerFsRoutes = (app, dependencies) => {
   // roots stay valid filesystem targets.
   const chatsRoot = typeof managedChatsRoot === 'string' && managedChatsRoot.trim()
     ? path.resolve(managedChatsRoot.trim())
-    : path.join(openchamberUserConfigRoot, 'chats');
-  const managedRoots = [path.resolve(openchamberUserConfigRoot), chatsRoot];
+    : path.join(alcodeUserConfigRoot, 'chats');
+  const managedRoots = [path.resolve(alcodeUserConfigRoot), chatsRoot];
   // A relocated chats root keeps the chats created under the config root valid.
-  const chatsRoots = [...new Set([chatsRoot, path.join(openchamberUserConfigRoot, 'chats')])];
+  const chatsRoots = [...new Set([chatsRoot, path.join(alcodeUserConfigRoot, 'chats')])];
   const previewGrants = createPreviewGrants({ crypto });
   const realpathCache = createRealpathCache({
     realpath: fsPromises.realpath.bind(fsPromises),
@@ -813,7 +842,7 @@ export const registerFsRoutes = (app, dependencies) => {
       }
       const [canonicalChatsRoot, canonicalLegacyChatsRoot] = await Promise.all([
         canonicalDirectoryPath(chatsRoot, fsPromises, path),
-        canonicalDirectoryPath(path.join(home, '.config', 'openchamber', 'chats'), fsPromises, path).catch((error) => {
+        canonicalDirectoryPath(path.join(home, '.config', 'alcode', 'chats'), fsPromises, path).catch((error) => {
           // A relocated root must remain usable if the old root is inaccessible.
           // Omit only this optional alias; clients retain exact legacy matching.
           console.warn('Failed to resolve legacy chats root:', error);
@@ -1626,6 +1655,7 @@ export const registerFsRoutes = (app, dependencies) => {
       return res.status(400).json({ error: 'Path is required' });
     }
 
+    let resolvedPath = null;
     try {
       const resolved = await resolveWorkspacePathFromContext({
         fsPromises,
@@ -1641,13 +1671,21 @@ export const registerFsRoutes = (app, dependencies) => {
       if (!resolved.ok) {
         return res.status(400).json({ error: resolved.error });
       }
+      resolvedPath = resolved.resolved;
 
-      await fsPromises.rm(resolved.resolved, { recursive: true, force: true });
+      await removePathResiliently(fsPromises, resolved.resolved);
       return res.json({ success: true, path: resolved.resolved });
     } catch (error) {
       const err = error;
       if (err && typeof err === 'object' && err.code === 'ENOENT') {
         return res.status(404).json({ error: 'File or directory not found' });
+      }
+      if (err && typeof err === 'object' && err.code === 'EBUSY') {
+        return res.status(409).json({
+          error: 'Path is locked by another process and could not be deleted',
+          reason: 'locked',
+          path: resolvedPath ?? targetPath,
+        });
       }
       if (isOsPermissionError(err)) {
         return sendOsPermissionDenied(res, 'Access denied');

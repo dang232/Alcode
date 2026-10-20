@@ -1,11 +1,13 @@
 ---
 title: Встановлення
 description: Встановіть OpenChamber на десктоп, у веб, у VS Code або на телефон.
+description: Встановіть Alcode для десктопа, вебу або VS Code.
 ---
 
 # Встановлення
 
 Оберіть застосунок під свій спосіб роботи:
+Є три способи запустити Alcode:
 
 - десктоп-застосунок для macOS, Windows і Linux
 - вебзастосунок на базі CLI, який можна встановити як застосунок на телефоні (PWA)
@@ -17,17 +19,18 @@ description: Встановіть OpenChamber на десктоп, у веб, у
 Завантажте найновішу збірку зі [сторінки завантаження](https://openchamber.dev/download/) або з [GitHub Releases](https://github.com/openchamber/openchamber/releases/latest) і відкрийте її. Для Linux є `.deb`, `.rpm` і AppImage.
 
 Десктоп-застосунок має власну копію [OpenCode](https://opencode.ai) (ШІ-агента для коду, на якому працює OpenChamber), тож більше нічого встановлювати не треба.
+Спершу встановіть [OpenCode](https://opencode.ai) — Alcode працює поверх нього.
 
 ## Веб + PWA
 
 Для вебзастосунку на машині, де він працює, потрібні [OpenCode](https://opencode.ai) і Node.js 24.14 або новіший.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openchamber/openchamber/main/scripts/install.sh | bash
-openchamber --ui-password be-creative-here
+curl -fsSL https://raw.githubusercontent.com/dang232/Alcode/main/scripts/install.sh | bash
+alcode --ui-password be-creative-here
 ```
 
-Відкрийте URL, який вивів CLI (зазвичай `http://localhost:3000`). Ви маєте побачити список сесій OpenChamber. Щоб він був під рукою, скористайтеся опцією «Install» в адресному рядку браузера й додайте його як застосунок.
+Відкрийте URL, який вивів CLI (зазвичай `http://localhost:3000`). Ви маєте побачити список сесій Alcode. Щоб він був під рукою, скористайтеся опцією «Install» в адресному рядку браузера й додайте його як застосунок.
 
 ## VS Code
 
@@ -36,3 +39,6 @@ openchamber --ui-password be-creative-here
 ## Мобільні застосунки
 
 Встановіть застосунок для iPhone через TestFlight або застосунок для Android з останнього релізу, а потім з’єднайте його з комп’ютером. Сторінка [Мобільні застосунки та PWA](/uk/mobile/) описує обидва кроки.
+## Десктоп
+Завантажте найновішу десктопну збірку зі сторінки релізів на GitHub або зі сторінки завантаження Alcode. Відкрийте її та увійдіть у свій звичний робочий процес OpenCode.
+Встановіть із VS Code Marketplace і увійдіть у свій звичний робочий процес OpenCode. Після цього вікно Alcode відкриється на бічній панелі.

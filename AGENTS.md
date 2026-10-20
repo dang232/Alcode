@@ -1,8 +1,8 @@
-# OpenChamber Agent Guide
+# Alcode Agent Guide
 
 ## Purpose
 
-OpenChamber provides shared web, desktop, VS Code, hosted-mobile, and native-mobile UI surfaces for OpenCode.
+Alcode provides shared web, desktop, VS Code, hosted-mobile, and native-mobile UI surfaces for OpenCode.
 
 This file contains only always-on repository rules and routing. Detailed workflows belong to project skills and module documentation.
 
@@ -24,17 +24,17 @@ Do not start editing before every matching skill and required reference is read.
 ## Runtime Boundaries
 
 - `packages/ui`: shared React UI, state, sync, and runtime contracts.
-- `packages/web`: web surfaces, OpenChamber server, managed/external OpenCode lifecycle, and CLI.
+- `packages/web`: web surfaces, Alcode server, managed/external OpenCode lifecycle, and CLI.
 - `packages/electron`: native desktop shell and privileged Electron boundary.
 - `packages/vscode`: extension host, webview, and runtime bridge.
-- `packages/mobile`: Capacitor iOS/Android shell; bundles the mobile web surface and connects to an existing OpenChamber server.
+- `packages/mobile`: Capacitor iOS/Android shell; bundles the mobile web surface and connects to an existing Alcode server.
 - `packages/docs`: product documentation; not a Bun workspace.
 - `packages/sdk`: guest contract for third-party panels. Manifest parse, iframe envelope, `connectHost`. Host and guest import from here; do not copy these types into `packages/ui`.
 - `packages/extensions`: app-owned SDK extensions and their build registry, not a Bun workspace. See its `DOCUMENTATION.md` for trust, packaging, and migration rules.
 
-Shared UI calls official OpenCode APIs through `@opencode/client` (OpenCode 2.x) via `opencodeClient`; wire shapes stay inside `packages/ui/src/lib/opencode/`. OpenChamber-owned capabilities use `RuntimeAPIs`, `runtimeFetch`, and shared browser/realtime transport helpers. Server-side upstream integrations may use their owning runtime modules.
+Shared UI calls official OpenCode APIs through `@opencode/client` (OpenCode 2.x) via `opencodeClient`; wire shapes stay inside `packages/ui/src/lib/opencode/`. Alcode-owned capabilities use `RuntimeAPIs`, `runtimeFetch`, and shared browser/realtime transport helpers. Server-side upstream integrations may use their owning runtime modules.
 
-Electron starts the OpenChamber backend in-process, never as a sidecar. Development may load loopback/HMR UI; packaged builds load staged assets through `openchamber-ui://` while the loopback server remains the API backend. Keep domain backends in web/runtime modules unless behavior is inherently native.
+Electron starts the Alcode backend in-process, never as a sidecar. Development may load loopback/HMR UI; packaged builds load staged assets through `alcode-ui://` while the loopback server remains the API backend. Keep domain backends in web/runtime modules unless behavior is inherently native.
 
 Shared contracts must define intentional behavior for every applicable runtime: web, desktop, VS Code, hosted mobile, and Capacitor mobile.
 
@@ -68,10 +68,59 @@ Load the `communication-style` skill once, at the start of the session, before y
 
 ## Project Skills
 
-Project skills live in `.agents/skills/*/SKILL.md`, and each skill's `description`
-says when it applies. If your tool does not list skill descriptions, read them in
-those files before you start. Pure code-reading or explanation needs no
-implementation skills unless a specialized subsystem has to be interpreted.
+Project skills live under `.agents/skills/*/SKILL.md`. You **MUST** load every
+skill matching the character of the change before editing; multiple skills may
+apply, including companion skills required by another skill. Read every
+task-required reference named by those skills. Skills are canonical for their
+detailed workflows and checklists. Treating this table as optional advice is a
+process violation.
+
+
+| Trigger | Required skill |
+|---|---|
+| Source/dependency changes, exports or package contracts, build/generated assets, or module ownership | `alcode-change-discipline` |
+| CLI commands, prompts, terminal output, non-TTY, `--quiet`, or `--json` behavior | `clack-cli-patterns` |
+| Shared UI data access, OpenCode SDK or server routes, `RuntimeAPIs`, runtime auth/URLs, bridges, or runtime switching | `ui-api-decoupling` |
+| Electron main/preload, IPC, native UI, updater, deep links, SSH/tunnels, packaging, or child processes | `desktop-shell` |
+| Session sync, bootstrap/reconnect, reducers, polling, optimistic state, queues, live status, reconciliation, or directory-scoped caches | `sync-state-invariants` |
+| Isolated-space trust boundaries: hardening, networks and gatekeeper policy, exec and lifecycle, grants and credentials, code transfer and apply, dispatcher isolation, preview content, or protection tests | `isolated-space-boundary` |
+| Conversation content leaving for a destination other than the session's provider, a new way into this machine (listener, tunnel, relay, pairing, share link), provider/key/endpoint entry, usage reporting, or enterprise mode and its policy file | `enterprise-boundary` |
+| Render/store/event hot paths, large lists, caches/indexes, or reported lag, freezes, CPU/memory, startup, or performance regressions | `performance-engineering` |
+| WebSocket, SSE, streaming transport, runtime transport internals, or private relay | `relay-transport` |
+| UI components, styling, colors, buttons, or icons | `theme-system` |
+| User-facing or accessible UI text, labels, aria, toasts, dialogs, or navigation copy | `locale-ui-patterns` |
+| Settings UI, settings dialogs, configuration surfaces, or settings search | `settings-ui-patterns` |
+| Sortable or drag-to-reorder behavior, especially `@dnd-kit` and touch/wrapping layouts | `drag-to-reorder` |
+| iOS Simulator build, launch, preview, gestures, or `serve-sim` control | `serve-sim` |
+| The maintainer explicitly asks to update the changelog (main app or VS Code extension) — the only time `changelog/unreleased.md` is edited | `update-changelog` |
+| Creating or editing skills, `AGENTS.md`, or docs reached through agent instructions/context pointers | `writing-for-agents` |
+| OpenCode routes, events, message/session shapes, plugins, the pinned OpenCode version, "what's new in OpenCode 2.0.x", or a bug that looks like OpenCode behaving unexpectedly | `opencode-v2` |
+| Reviewing a single pull request or drafting a PR verdict/close/review comment | `pr-review` |
+| Triaging, cleaning up, or batch-processing the open PR queue | `triage-prs` |
+| Triaging, cleaning up, or batch-processing the issue backlog | `triage-issues` |
+
+Pure code-reading or explanation does not require implementation skills unless needed to interpret a specialized subsystem.
+
+### Skill Ownership
+
+Keep each cross-cutting rule with one canonical owner; companion skills add only domain-specific consequences and a pointer to that owner.
+
+| Concern | Canonical skill |
+|---|---|
+| Change scope, abstraction discipline, and validation risk | `alcode-change-discipline` |
+| State authority, reconciliation, optimistic state, and lifecycle correctness | `sync-state-invariants` |
+| Isolated-space trust boundaries and the evidence that each one holds | `isolated-space-boundary` |
+| Enterprise mode: what counts as egress or exposure, how it is gated, and administrator knobs | `enterprise-boundary` |
+| Measurement, hot-path cost, caching performance, and optimization evidence | `performance-engineering` |
+| Shared UI API and runtime boundaries | `ui-api-decoupling` |
+| WebSocket/SSE and private relay mechanics | `relay-transport` |
+| Electron native ownership and privilege boundary | `desktop-shell` |
+| UI tokens, primitives, icons, and animation styling | `theme-system` |
+| Settings composition and search behavior | `settings-ui-patterns` |
+| User-facing text and localization | `locale-ui-patterns` |
+| Agent-facing document structure and context pointers | `writing-for-agents` |
+
+Before adding guidance to a skill, identify its canonical owner. If another skill owns the rule, add a precise companion pointer and only the local consequence; do not copy the rule.
 
 ## Validation
 

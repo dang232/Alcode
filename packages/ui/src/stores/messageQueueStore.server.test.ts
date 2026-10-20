@@ -69,7 +69,7 @@ const serverItem = (id: string, content: string, extra: Partial<OrdinaryServerIt
   ...extra,
 })
 
-const issueMetadata = { openchamberContext: { kind: "repository-issue" as const, number: 3, title: "Bug", url: "https://x/issues/3" } }
+const issueMetadata = { alcodeContext: { kind: "repository-issue" as const, number: 3, title: "Bug", url: "https://x/issues/3" } }
 
 const session = (items: ServerItem[], sendingId: string | null = null): ServerSession => ({
   sessionId: "session-1",
@@ -79,7 +79,7 @@ const session = (items: ServerItem[], sendingId: string | null = null): ServerSe
 })
 
 const updated = (revision: number, updatedSession: ServerSession): MessageQueueUpdatedEvent => ({
-  type: "openchamber:message-queue.updated",
+  type: "alcode:message-queue.updated",
   properties: { revision, session: updatedSession },
 })
 
@@ -398,7 +398,7 @@ describe("server-owned message queue", () => {
     respond = () => new Response(JSON.stringify({
       revision: 8,
       session: session([]),
-      item: { ...serverItem("srv-1", "x"), context: [{ kind: "context", text: "x", metadata: { openchamberContext: { kind: "nope" } } }] },
+      item: { ...serverItem("srv-1", "x"), context: [{ kind: "context", text: "x", metadata: { alcodeContext: { kind: "nope" } } }] },
     }), { status: 200 })
     await expect(useMessageQueueStore.getState().takeForSend(target, "srv-1")).rejects.toThrow()
   })

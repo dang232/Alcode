@@ -1,9 +1,9 @@
 /**
- * Canonical OpenCode 2.x config shapes for every OpenChamber entity surface.
+ * Canonical OpenCode 2.x config shapes for every Alcode entity surface.
  *
- * OpenChamber reads user-authored OpenCode config, so it must accept the v1
+ * Alcode reads user-authored OpenCode config, so it must accept the v1
  * spellings OpenCode 2 still decodes (section key `agent`, permission maps,
- * `npm`/`api` providers, plugin tuples, ...). Everything OpenChamber WRITES is
+ * `npm`/`api` providers, plugin tuples, ...). Everything Alcode WRITES is
  * native v2. These conversions are pure so the web server and the VS Code
  * extension host cannot drift: `packages/vscode/src/opencode-config-v2.ts`
  * re-exports this module.
@@ -13,11 +13,27 @@
  */
 import { isRecord } from '../shared/guards.js';
 
+// omo.json keys are owned by the engine core (`@oh-my-opencode/omo-config-core`:
+// schema + loader + atomic writer). This module keeps the OpenCode opencode.json
+// entity helpers and delegates every omo.json read/validate/write to the
+// committed bundle (`omo-config.bundle.js`, regen with
+// `bun ./omo-config.regen.js`), so the two config surfaces cannot drift into
+// parallel schemas and the packaged server never imports engine `.ts`.
+import {
+  OmoConfigLayerSchema,
+  OmoConfigSchema,
+  OmoConfigWriteError,
+  readOmoConfig,
+  validateOmoConfig,
+  validateOmoConfigLayer,
+  writeOmoConfig,
+} from './omo-config.bundle.js';
+
 // ============== SECTIONS ==============
 
 /**
- * Config section keys per entity. `v2` is what OpenChamber writes; `v1` is the
- * legacy key OpenCode still decodes and OpenChamber still reads.
+ * Config section keys per entity. `v2` is what Alcode writes; `v1` is the
+ * legacy key OpenCode still decodes and Alcode still reads.
  */
 
 const SECTIONS = {
@@ -248,7 +264,7 @@ const AGENT_COLOR_FALLBACK = '#aaaaaa';
  * v2 accepts only a six-digit hex color (`schema/src/config/agent.ts`). v1
  * also allowed theme names (`primary`, ...); OpenCode's own migration
  * (`core/src/v1/config/migrate.ts`) turns those into `#aaaaaa`, so a record
- * OpenChamber rewrites stays decodable instead of being skipped.
+ * Alcode rewrites stays decodable instead of being skipped.
  */
 function toAgentColor(value) {
   if (typeof value !== 'string') return undefined;
@@ -322,7 +338,7 @@ function fromAgentEntity(entity) {
   return { fields, system: typeof system === 'string' ? system : '' };
 }
 
-/** True when frontmatter uses a v1-only agent key and OpenChamber must rewrite it. */
+/** True when frontmatter uses a v1-only agent key and Alcode must rewrite it. */
 function isLegacyAgentFrontmatter(frontmatter) {
   if (!isRecord(frontmatter)) return false;
   return Object.keys(frontmatter).some((key) => key !== 'variant' && !AGENT_NATIVE_KEYS.has(key));
@@ -406,7 +422,7 @@ function toMcpOAuth(value) {
     ['scope', trimmedString(value.scope)],
     ['callback_port', positiveInt(value.callback_port ?? value.callbackPort)],
     ['redirect_uri', trimmedString(value.redirect_uri ?? value.redirectUri)],
-    // OpenCode 2.0.8 addition. OpenChamber has no UI for it; it is carried
+    // OpenCode 2.0.8 addition. Alcode has no UI for it; it is carried
     // through so a hand-written value survives an edit made here.
     ['auth_server_metadata_url', trimmedString(value.auth_server_metadata_url)],
   ]);
@@ -433,7 +449,7 @@ function toMcpEntity(raw) {
     ['disabled', disabled],
     ['codemode', typeof source.codemode === 'boolean' ? source.codemode : undefined],
     ['timeout', toMcpTimeout(source.timeout)],
-    // OpenCode 2.0.8 addition, on both local and remote entries. No OpenChamber
+    // OpenCode 2.0.8 addition, on both local and remote entries. No Alcode
     // UI for it yet; carried through so a hand-written value is not dropped.
     ['protocol', toMcpProtocol(source.protocol)],
   ]);
@@ -737,7 +753,7 @@ function readPluginList(config) {
 
 /**
  * The `websearch` key: `false` turns search off, `{ provider }` names a
- * provider id or `"random"`. OpenChamber takes the choice flat (`false`, a
+ * provider id or `"random"`. Alcode takes the choice flat (`false`, a
  * string, or `null` to remove the key so OpenCode falls back to the answer
  * given in chat, asking only when there is none).
  * Returns `undefined` for anything else.
@@ -855,4 +871,11 @@ export {
   findWebSearchProjectOverride,
   writeWarmingEnabled,
   writeWarmingDuration,
+  OmoConfigLayerSchema,
+  OmoConfigSchema,
+  OmoConfigWriteError,
+  readOmoConfig,
+  validateOmoConfig,
+  validateOmoConfigLayer,
+  writeOmoConfig,
 };

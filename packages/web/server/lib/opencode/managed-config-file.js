@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-import { buildNativeAgentConfigMap, getNativeAgentModelGaps, NATIVE_AGENT_MODEL_CHAINS } from '../agents/omo-native-catalog.bundle.js';
+import { buildNativeAgentConfigMap, getNativeAgentModelGaps, NATIVE_AGENT_MODEL_CHAINS, OMO_NATIVE_AGENT_CONFIG } from '../agents/omo-native-catalog.bundle.js';
 import { isRecord, toMcpEntity } from './config-v2.js';
 import { appendManagedMcpServer, appendManagedPlugin, mergeManagedAgents } from './managed-plugin-config.js';
 
@@ -10,12 +10,12 @@ export const MANAGED_CONFIG_FILE_NAME = 'opencode.managed.json';
 export const ULW_MCP_SERVER_NAME = 'ulw';
 
 /**
- * Built-in OpenCode plugins OpenChamber switches off for its managed child.
+ * Built-in OpenCode plugins Alcode switches off for its managed child.
  *
  * `opencode.browser` only works when OpenCode's own desktop app attaches a
- * browser to the session; OpenChamber does not implement that protocol, so its
+ * browser to the session; Alcode does not implement that protocol, so its
  * tools always fail with `browser.disconnected` and agents conclude browsing is
- * unavailable instead of using `openchamber_web`. A project config that lists
+ * unavailable instead of using `alcode_web`. A project config that lists
  * `opencode.browser` still re-enables it, because that layer sits above ours.
  */
 const DISABLED_BUILTIN_PLUGINS = ['-opencode.browser'];
@@ -25,22 +25,27 @@ const DISABLED_BUILTIN_PLUGINS = ['-opencode.browser'];
  *
  * OpenCode 2 watches every config source it reads, including the file named by
  * the `OPENCODE_CONFIG` environment variable, and reloads its plugin list when
- * that file changes. Writing OpenChamber's own plugin entries into a file we
+ * that file changes. Writing Alcode's own plugin entries into a file we
  * own therefore makes toggling a managed tool take effect in the running
  * process — where `OPENCODE_CONFIG_CONTENT` (an environment variable) could
  * only ever change across a restart.
  *
- * The file is OpenChamber-owned and holds `plugins` (the built-in plugins
- * OpenChamber disables, then its own plugin directories), the default
- * `mcp.servers` entries, and the `agent` map (static OmO-native entries
- * overlaid with the user's own global `.md` agents, user wins). It sits above
+ * The file is Alcode-owned and holds `plugins`, the default `mcp.servers`
+ * entries, and the static OmO-native `agent` map: the built-in plugins
+ * Alcode disables, then its own plugin directories, then the bundled ULW
+ * MCP server, then the 12 ungated native agents. It sits above
  * the user's global `opencode.json` and below their project config, so it never
  * shadows a project-level choice.
  *
+ * The `agent` map also carries the user's own global `.md` agents (user
+ * wins on collision): a config-level `agent` map replaces the user's
+ * global agent files in the running child, so without the merge a custom
+ * agent would vanish from the runtime while Settings still shows it.
+ *
  * When the user's own environment already sets `OPENCODE_CONFIG`, that file is
- * theirs: OpenChamber does not hijack it and falls back to merging its plugins
- * into `OPENCODE_CONFIG_CONTENT`, which keeps the old restart requirement for
- * managed-tool toggles.
+ * theirs: Alcode does not hijack it and falls back to merging its plugins
+ * and default MCP servers into `OPENCODE_CONFIG_CONTENT`, which keeps the old
+ * restart requirement for managed-tool toggles.
  *
  * @param {object} dependencies
  * @param {typeof import('node:fs/promises')} dependencies.fsPromises
@@ -49,6 +54,9 @@ const DISABLED_BUILTIN_PLUGINS = ['-opencode.browser'];
  * @param {NodeJS.ProcessEnv} [dependencies.env] environment the managed child inherits
  * @param {object} [dependencies.versions] host version map (`process.versions`); Electron hosts set `versions.electron`
  * @param {object|null} [dependencies.agentToolRuntime]
+ * @param {object|null} [dependencies.omoNativeRuntime] native OmO platform
+ *   plugin runtime (`server/lib/omo-native/runtime.js`); always materialized
+ *   when present, never gated on tool toggles
  * @param {() => Promise<object|null>} dependencies.readSettings
  * @param {() => boolean} dependencies.isAgentMemoryAvailable
  * @param {() => Array<{name: string, entry: object}>} [dependencies.listUserCustomAgents]
@@ -68,6 +76,7 @@ export const createManagedConfigRuntime = ({
   env = process.env,
   versions = process.versions,
   agentToolRuntime = null,
+  omoNativeRuntime = null,
   readSettings,
   isAgentMemoryAvailable,
   listUserCustomAgents = () => [],
@@ -194,6 +203,12 @@ export const createManagedConfigRuntime = ({
     const codeMode = settings?.agentToolsCodeMode === true;
 
     const directories = [];
+    // The native OmO plugin is the platform, not an optional tool: every
+    // managed child loads it, so it materializes unconditionally and leads
+    // the list. Only the tool plugin below answers to settings toggles.
+    if (omoNativeRuntime) {
+      directories.push(await omoNativeRuntime.materializePlugin());
+    }
     if (agentToolRuntime && (includeControl || includeSchedule || includeWeb || includeMemory || includeKnowledge || includeNotify || includeRender)) {
       directories.push(await agentToolRuntime.materializePlugin({ includeControl, includeSchedule, includeWeb, includeMemory, includeKnowledge, includeNotify, includeRender, codeMode }));
     }

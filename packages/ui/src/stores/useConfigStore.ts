@@ -34,7 +34,7 @@ import { getRuntimeKey, subscribeRuntimeEndpointChanged } from "@/lib/runtime-sw
 import { readCachedCatalog, shouldHoldFirstLoadAgainstCache, writeCachedCatalogWhenSettled, type CachedCatalog } from "./configCatalogCache";
 
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
-const MODELS_DEV_PROXY_URL = "/api/openchamber/models-metadata";
+const MODELS_DEV_PROXY_URL = "/api/alcode/models-metadata";
 
 const FALLBACK_PROVIDER_ID = "opencode";
 const FALLBACK_MODEL_ID = "big-pickle";
@@ -48,7 +48,7 @@ const PROVIDER_CONFIG_REFRESH_CONCURRENCY = 4;
 const PROVIDERS_RETRY_SOURCE = "loadProviders:retryAfterFailure";
 const PROVIDERS_RETRY_DELAY_MS = 3000;
 
-interface OpenChamberDefaults {
+interface AlcodeDefaults {
     defaultModel?: string;
     defaultVariant?: string;
     defaultAgent?: string;
@@ -65,10 +65,10 @@ interface OpenChamberDefaults {
     sttLanguage?: string;
 }
 
-// Directory activation re-reads the OpenChamber defaults, which are global,
+// Directory activation re-reads the Alcode defaults, which are global,
 // not per directory: one request serves the switches that land inside this
 // window, and concurrent activations share the in-flight one.
-const OPENCHAMBER_DEFAULTS_FRESH_MS = 15_000;
+const ALCODE_DEFAULTS_FRESH_MS = 15_000;
 type ConfigRuntimeContext = { runtimeKey: string; generation: number };
 
 let configRuntimeGeneration = 0;
@@ -86,47 +86,47 @@ const isSameConfigRuntimeContext = (left: ConfigRuntimeContext, right: ConfigRun
     left.runtimeKey === right.runtimeKey && left.generation === right.generation
 );
 
-let openChamberDefaultsCache: {
+let alcodeDefaultsCache: {
     at: number;
     context: ConfigRuntimeContext;
-    request: Promise<OpenChamberDefaults | null>;
+    request: Promise<AlcodeDefaults | null>;
 } | null = null;
-let openChamberDefaultsUserRevision = 0;
+let alcodeDefaultsUserRevision = 0;
 
-const invalidateOpenChamberDefaultsCache = (): void => {
-    openChamberDefaultsCache = null;
+const invalidateAlcodeDefaultsCache = (): void => {
+    alcodeDefaultsCache = null;
 };
 
-const recordOpenChamberDefaultsChange = (): void => {
-    openChamberDefaultsUserRevision += 1;
-    invalidateOpenChamberDefaultsCache();
+const recordAlcodeDefaultsChange = (): void => {
+    alcodeDefaultsUserRevision += 1;
+    invalidateAlcodeDefaultsCache();
 };
 
-const fetchOpenChamberDefaults = (context: ConfigRuntimeContext): Promise<OpenChamberDefaults | null> => {
+const fetchAlcodeDefaults = (context: ConfigRuntimeContext): Promise<AlcodeDefaults | null> => {
     const now = Date.now();
     if (
-        openChamberDefaultsCache
-        && isSameConfigRuntimeContext(openChamberDefaultsCache.context, context)
-        && now - openChamberDefaultsCache.at < OPENCHAMBER_DEFAULTS_FRESH_MS
+        alcodeDefaultsCache
+        && isSameConfigRuntimeContext(alcodeDefaultsCache.context, context)
+        && now - alcodeDefaultsCache.at < ALCODE_DEFAULTS_FRESH_MS
     ) {
-        return openChamberDefaultsCache.request;
+        return alcodeDefaultsCache.request;
     }
-    const request = requestOpenChamberDefaults(context);
+    const request = requestAlcodeDefaults(context);
     const cacheEntry = { at: now, context, request };
-    openChamberDefaultsCache = cacheEntry;
+    alcodeDefaultsCache = cacheEntry;
     void request.then((result) => {
         // A failed settings read must not become a 15-second authoritative
         // empty result. The next directory activation should retry it.
-        if (result === null && openChamberDefaultsCache === cacheEntry) {
-            openChamberDefaultsCache = null;
+        if (result === null && alcodeDefaultsCache === cacheEntry) {
+            alcodeDefaultsCache = null;
         }
     }).catch(() => {
-        if (openChamberDefaultsCache === cacheEntry) openChamberDefaultsCache = null;
+        if (alcodeDefaultsCache === cacheEntry) alcodeDefaultsCache = null;
     });
     return request;
 };
 
-const toOpenChamberDefaults = (data: DesktopSettings): OpenChamberDefaults => {
+const toAlcodeDefaults = (data: DesktopSettings): AlcodeDefaults => {
     const defaultModel = data.defaultModel?.trim() ?? '';
     const defaultVariant = data.defaultVariant?.trim() ?? '';
     const defaultAgent = data.defaultAgent?.trim() ?? '';
@@ -150,10 +150,10 @@ const toOpenChamberDefaults = (data: DesktopSettings): OpenChamberDefaults => {
     };
 };
 
-const requestOpenChamberDefaults = async (context: ConfigRuntimeContext): Promise<OpenChamberDefaults | null> => {
+const requestAlcodeDefaults = async (context: ConfigRuntimeContext): Promise<AlcodeDefaults | null> => {
     markStartupTrace('config.defaults:start');
     const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const finish = (source: string, result: OpenChamberDefaults | null) => {
+    const finish = (source: string, result: AlcodeDefaults | null) => {
         const ended = typeof performance !== 'undefined' ? performance.now() : Date.now();
         markStartupTrace('config.defaults:end', {
             source,
@@ -172,7 +172,7 @@ const requestOpenChamberDefaults = async (context: ConfigRuntimeContext): Promis
             return finish('settings-unavailable', null);
         }
 
-        return finish('settings', toOpenChamberDefaults(data));
+        return finish('settings', toAlcodeDefaults(data));
     } catch (error) {
         markStartupTrace('config.defaults:error', { error: error instanceof Error ? error.message : String(error) });
         return finish('error', null);
@@ -239,7 +239,7 @@ const hasProviderModel = (
 };
 
 /**
- * An `openchamber/auto` selection that this server cannot honour. Auto is a
+ * An `alcode/auto` selection that this server cannot honour. Auto is a
  * valid choice only while the server says routing is available and ready;
  * a selection saved under another build (or before the token was removed)
  * must not be kept, or the sentinel would be sent to OpenCode as a model.
@@ -1183,7 +1183,7 @@ const clearProjectConfigError = (directoryKey: string): void => {
 
 subscribeRuntimeEndpointChanged((detail) => {
     configRuntimeGeneration += 1;
-    invalidateOpenChamberDefaultsCache();
+    invalidateAlcodeDefaultsCache();
     _providersLoadedAt.clear();
     _agentsLoadedAt.clear();
     _providersStaleAt.clear();
@@ -1360,7 +1360,7 @@ type SelectionField = typeof SELECTION_FIELDS[number];
  * Whether writing `next` would leave both the top-level selection and the
  * active directory's snapshot as they are. The persist middleware writes the
  * whole store after every `set()`, even one whose updater returns the same
- * state, and VS Code delivers each `config-store` write to every OpenChamber
+ * state, and VS Code delivers each `config-store` write to every Alcode
  * webview in every window. So a setter makes this check before it calls
  * `set()`. A missing snapshot is a change: the write would create it.
  */
@@ -1477,7 +1477,7 @@ interface ConfigStore {
     projectConfigErrors: Record<string, ProjectConfigError>;
     isInitialized: boolean;
     modelsMetadata: Map<string, ModelMetadata>;
-    // OpenChamber settings-based defaults (take precedence over agent preferences)
+    // Alcode settings-based defaults (take precedence over agent preferences)
     settingsDefaultModel: string | undefined; // format: "provider/model"
     settingsDefaultsLoaded: boolean;
     settingsDefaultVariant: string | undefined;
@@ -1586,7 +1586,7 @@ interface ConfigStore {
      */
     setAgent: (agentName: string | undefined, options?: { keepModel?: boolean }) => void;
     applyDefaultModelAgentSelection: (options?: { projectDefaultAgent?: string; projectDefaultModel?: string; projectDefaultVariant?: string }) => void;
-    /** Replaces an `openchamber/auto` selection this server cannot honour with the default model. */
+    /** Replaces an `alcode/auto` selection this server cannot honour with the default model. */
     dropStaleAutoSelection: () => void;
     applyOpenCodeConfigDefaults: (directory?: string | null, source?: string, config?: Config) => void;
     setSelectedProvider: (providerId: string) => void;
@@ -2765,12 +2765,12 @@ export const useConfigStore = create<ConfigStore>()(
 
                 loadSessionDefaults: async () => {
                     const runtimeContext = captureConfigRuntimeContext();
-                    const revision = openChamberDefaultsUserRevision;
-                    const defaults = await fetchOpenChamberDefaults(runtimeContext);
+                    const revision = alcodeDefaultsUserRevision;
+                    const defaults = await fetchAlcodeDefaults(runtimeContext);
                     if (!isConfigRuntimeContextCurrent(runtimeContext) || !defaults) return false;
 
                     set((state) => {
-                        const edited = revision !== openChamberDefaultsUserRevision;
+                        const edited = revision !== alcodeDefaultsUserRevision;
                         const next: Partial<ConfigStore> = {
                             configRuntimeKey: runtimeContext.runtimeKey,
                             settingsDefaultsLoaded: true,
@@ -2858,7 +2858,7 @@ export const useConfigStore = create<ConfigStore>()(
 
                     for (let attempt = 0; attempt < 3; attempt++) {
                         try {
-                            // Fetch agents and OpenChamber settings in parallel. OpenCode config
+                            // Fetch agents and Alcode settings in parallel. OpenCode config
                             // comes from sync state if it is already available; it must not block
                             // the agent refresh path.
                             const configDirectoryPath = fromDirectoryKey(directoryKey);
@@ -3302,10 +3302,10 @@ export const useConfigStore = create<ConfigStore>()(
                             selState.saveSessionAgentSelection(currentSessionId, agentName);
                         }
 
-                        if (currentSessionId && useSessionUIStore.getState().isOpenChamberCreatedSession(currentSessionId)) {
+                        if (currentSessionId && useSessionUIStore.getState().isAlcodeCreatedSession(currentSessionId)) {
                             const existingAgentModel = selState.getAgentModelForSession(currentSessionId, agentName);
                             if (!existingAgentModel) {
-                                useSessionUIStore.getState().initializeNewOpenChamberSession(currentSessionId, agents);
+                                useSessionUIStore.getState().initializeNewAlcodeSession(currentSessionId, agents);
                             }
                         }
                     }
@@ -3801,19 +3801,19 @@ export const useConfigStore = create<ConfigStore>()(
                 },
 
                  setSettingsDefaultModel: (model: string | undefined) => {
-                     recordOpenChamberDefaultsChange();
+                     recordAlcodeDefaultsChange();
                      set({ settingsDefaultModel: model });
                      if (!useSessionUIStore.getState().currentSessionId) get().applyDefaultModelAgentSelection();
                  },
 
                  setSettingsDefaultVariant: (variant: string | undefined) => {
-                     recordOpenChamberDefaultsChange();
+                     recordAlcodeDefaultsChange();
                      set({ settingsDefaultVariant: variant });
                      if (!useSessionUIStore.getState().currentSessionId) get().applyDefaultModelAgentSelection();
                  },
  
                  setSettingsDefaultAgent: (agent: string | undefined) => {
-                     recordOpenChamberDefaultsChange();
+                     recordAlcodeDefaultsChange();
                      set({ settingsDefaultAgent: agent });
                      if (!useSessionUIStore.getState().currentSessionId) get().applyDefaultModelAgentSelection();
                  },
@@ -4174,7 +4174,7 @@ export const useConfigStore = create<ConfigStore>()(
                             const debug = streamDebugEnabled();
                             if (debug) console.log("Starting app initialization...");
 
-                            // OpenChamber preferences do not depend on OpenCode health
+                            // Alcode preferences do not depend on OpenCode health
                             // or project discovery. Publish a known choice immediately.
                             void get().loadSessionDefaults();
                             const isConnected = await get().checkConnection();
@@ -4383,7 +4383,7 @@ export const useConfigStore = create<ConfigStore>()(
                     return hydrateActiveDirectorySnapshot(merged);
                 },
                 // Selections only. The provider and agent catalogs are not
-                // persisted: VS Code gives every OpenChamber webview one origin,
+                // persisted: VS Code gives every Alcode webview one origin,
                 // so each write reaches every webview in every window as a
                 // StorageEvent carrying the old and the new value, and with the
                 // catalogs a write was tens of megabytes. On a cold start the

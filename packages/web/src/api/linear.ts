@@ -28,8 +28,8 @@ import type {
   LinearWorkflowState,
   LinearUserSummary,
   LinearWorkspaceSummary,
-} from '@openchamber/ui/lib/api/types';
-import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
+} from '@alcode/ui/lib/api/types';
+import { runtimeFetch } from '@alcode/ui/lib/runtime-fetch';
 
 
 type LinearJson = {

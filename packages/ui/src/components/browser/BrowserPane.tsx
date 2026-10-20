@@ -92,7 +92,7 @@ const isDocumentVisible = (): boolean => document.visibilityState === 'visible';
  * page but cannot inspect one, rather than pretending otherwise.
  */
 const isChromiumHost = (): boolean => (
-  typeof window !== 'undefined' && Boolean(window.__OPENCHAMBER_ELECTRON__)
+  typeof window !== 'undefined' && Boolean(window.__ALCODE_ELECTRON__)
 );
 
 /** Chromium's zoom is exponential: factor = 1.2 ^ level. */
@@ -794,8 +794,8 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory: tab
       else if (action === 'zoom-out') applyZoom(zoomLevelRef.current - ZOOM_STEP);
       else if (action === 'zoom-reset') applyZoom(0);
     };
-    window.addEventListener('openchamber:zoom', handleZoom);
-    return () => window.removeEventListener('openchamber:zoom', handleZoom);
+    window.addEventListener('alcode:zoom', handleZoom);
+    return () => window.removeEventListener('alcode:zoom', handleZoom);
   }, [applyZoom]);
 
   const clearBrowsingData = React.useCallback((what: 'cookies' | 'cache') => {

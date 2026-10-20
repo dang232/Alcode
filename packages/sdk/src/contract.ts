@@ -1,5 +1,5 @@
 
-import { OPENCHAMBER_SDK_API_VERSION, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_CHANNEL, type SdkChannel } from './api-version.ts';
 import type { FileEditorChange, FileEditorDocument, FileSnapshotRequest, FileSnapshotResultPayload } from './file-editor.ts';
 import type { GuestRunningShellsSnapshot, GuestShellOutputRequest, GuestShellOutputResult, GuestShellStopResult, GuestShellsSubscription } from './shells.ts';
 import type { GuestSessionWorktree, GuestStorageRequest, GuestStorageResult, GuestWorkspaceQuery, GuestWorkspaceSnapshot, GuestWorkspaceSubscription, GuestWorkspaceUpdate, GuestWorktree } from './workspace.ts';
@@ -610,18 +610,51 @@ export const isGuestRequestPath = (value: string): boolean => {
   return !segments.some((segment) => segment === '.' || segment === '..');
 };
 
+/** What a guest service reads from its process env to join the host loopback. */
+export type ServiceEnv = {
+  port: number;
+  token: string;
+};
+
+/**
+ * Read the host loopback coordinates from the service env. `ALCODE_*` wins
+ * and the legacy `OPENCHAMBER_*` names still work. `null` when the port or
+ * the token is missing or unusable. Pass `process.env` from a service entry.
+ */
+export const readServiceEnv = (
+  env: Record<string, string | undefined>,
+): ServiceEnv | null => {
+  const port = Number(env.ALCODE_SERVICE_PORT ?? env.OPENCHAMBER_SERVICE_PORT ?? '');
+  const token = env.ALCODE_SERVICE_TOKEN ?? env.OPENCHAMBER_SERVICE_TOKEN ?? '';
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535 || token.length === 0) return null;
+  return { port, token };
+};
+
 // Wire messages. The zod schemas in `protocol.ts` are the host's parse of an
 // untrusted guest; these types are the shared contract and protocol.ts asserts
 // the two agree at compile time.
 
 type Envelope = {
-  channel: typeof OPENCHAMBER_SDK_CHANNEL;
-  v: typeof OPENCHAMBER_SDK_API_VERSION;
+  channel: SdkChannel;
+  v: typeof ALCODE_SDK_API_VERSION;
 };
+
+/** Wire channels the guest accepts from its host frame, old spelling included. */
+export const isSdkChannel = (value: unknown): value is SdkChannel => (
+  value === ALCODE_SDK_CHANNEL || value === OPENCHAMBER_SDK_CHANNEL
+);
 
 export type HostReadyMessage = Envelope & { type: 'ready'; payload: HostReadyContext };
 export type HostDirectoryMessage = Envelope & { type: 'directory'; payload: { directory: string | null } };
 export type HostSessionMessage = Envelope & { type: 'session'; payload: { session: SessionSnapshot | null } };
+/**
+ * The active conversation's DAG run, shaped as the bridge snapshot document
+ * the DAG panel parses (`schemaVersion`/`dag`/`tasks`). `snapshot: null`
+ * clears the live view (the conversation has no run). `conversationId` is
+ * the engine session the model was built for, so a stale post can never
+ * paint a foreign conversation's graph.
+ */
+export type HostRunModelMessage = Envelope & { type: 'run-model'; payload: { conversationId: string; snapshot: JsonValue | null } };
 export type HostConnectionMessage = Envelope & { type: 'connection'; payload: { connection: GuestConnection } };
 export type HostSettingsMessage = Envelope & { type: 'settings'; payload: { settings: GuestSettings } };
 export type HostSessionLifecycleMessage = Envelope & { type: 'session-lifecycle'; payload: SessionLifecycleEvent };
@@ -652,6 +685,7 @@ export type HostMessage =
   | HostReadyMessage
   | HostDirectoryMessage
   | HostSessionMessage
+  | HostRunModelMessage
   | HostConnectionMessage
   | HostSettingsMessage
   | HostSessionLifecycleMessage
@@ -801,7 +835,7 @@ export const isGenerateResult = (
 const HOST_PUSH_TYPES: ReadonlySet<string> = new Set([
   'workspace',
   'shells',
-  'ready', 'directory', 'session', 'connection', 'settings', 'session-lifecycle', 'item', 'resolve', 'action',
+  'ready', 'directory', 'session', 'run-model', 'connection', 'settings', 'session-lifecycle', 'item', 'resolve', 'action',
   'status-control-event', 'popover-closed',
   'file-open', 'file-snapshot', 'file-saved',
   'generate-late',
@@ -831,8 +865,8 @@ const readResultMessage = (wire: WireRecord): HostResultMessage | null => {
   if (!isNonEmptyString(wire.id)) return null;
   if (wire.ok === true) {
     const message: HostResultMessage = {
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'result',
       id: wire.id,
       ok: true,
@@ -847,8 +881,8 @@ const readResultMessage = (wire: WireRecord): HostResultMessage | null => {
   }
   if (wire.ok === false && isNonEmptyString(wire.error)) {
     return {
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'result',
       id: wire.id,
       ok: false,
@@ -864,11 +898,11 @@ const readResultMessage = (wire: WireRecord): HostResultMessage | null => {
  * (the client only listens to `event.source === parent`), so this checks the
  * envelope and the discriminant rather than every field, and the guest bundle
  * carries no schema library for it. The host side parses guest input with
- * `guestMessageSchema` in `@openchamber/sdk/schemas`.
+ * `guestMessageSchema` in `@alcode/sdk/schemas`.
  */
 export const readHostMessage = (data: MessageEvent['data']): HostMessage | null => {
   const wire = asWireRecord(data);
-  if (!wire || wire.channel !== OPENCHAMBER_SDK_CHANNEL || wire.v !== OPENCHAMBER_SDK_API_VERSION) return null;
+  if (!wire || !isSdkChannel(wire.channel) || wire.v !== ALCODE_SDK_API_VERSION) return null;
   if (wire.type === 'result') return readResultMessage(wire);
   if (!HOST_PUSH_TYPES.has(String(wire.type)) || Object(wire.payload) !== wire.payload) return null;
   // SAFETY: envelope and discriminant verified above and the sender is the

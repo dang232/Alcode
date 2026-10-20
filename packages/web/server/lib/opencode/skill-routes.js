@@ -1,4 +1,5 @@
 import { OpenCode } from '@opencode/client';
+import { ENGINE_CATALOG_SOURCE_ID } from '../skills-catalog/engine-skills.js';
 import { buildAppliedResponse } from './config-mutation-response.js';
 import { OPENCODE_CONFIG_DIR } from './shared.js';
 import { asNonEmptyString } from '../shared/guards.js';
@@ -53,6 +54,8 @@ export const registerSkillRoutes = (app, dependencies) => {
     createHttpsCredentialReference,
     resolveSourceControlAccount,
     credentialResolver,
+    engineSkillCatalog = null,
+
   } = dependencies;
 
   const resolveCatalogGitIdentity = async (identityId, source) => {
@@ -114,6 +117,26 @@ export const registerSkillRoutes = (app, dependencies) => {
     }
 
     return { ok: false, error: { kind: 'authRequired', message: 'Selected Git identity is unavailable' } };
+  };
+
+  // Engine catalog additions stay additive: OpenCode-config discovery
+  // (fetchOpenCodeDiscoveredSkills + discoverSkills) is never replaced,
+  // only merged with for installed flags, exactly like repo sources.
+  const attachEngineInstalledFlags = async (items, workingDirectory) => {
+    const resolvedDiscovered = mergeDiscoveredSkills(
+      (await fetchOpenCodeDiscoveredSkills(workingDirectory)) ?? [],
+      discoverSkills(workingDirectory),
+    );
+    const installedByName = new Map(resolvedDiscovered.map((s) => [s.name, s]));
+    return (items || []).map((item) => {
+      const installed = installedByName.get(item.skillName);
+      return {
+        ...item,
+        installed: installed
+          ? { isInstalled: true, scope: installed.scope, source: installed.source }
+          : { isInstalled: false },
+      };
+    });
   };
 
   const findWorktreeRootForSkills = (workingDirectory) => {
@@ -360,7 +383,7 @@ export const registerSkillRoutes = (app, dependencies) => {
 
   app.get('/api/config/skills/catalog', async (req, res) => {
     try {
-      const { error } = await resolveOptionalProjectDirectory(req);
+      const { directory: catalogDirectory, error } = await resolveOptionalProjectDirectory(req);
       if (error) {
         return res.status(400).json({ error });
       }
@@ -379,6 +402,26 @@ export const registerSkillRoutes = (app, dependencies) => {
       }));
 
       const sources = [...curatedSources, ...customSources];
+      if (engineSkillCatalog) {
+        sources.push(engineSkillCatalog.source);
+      }
+
+      // Engine skills list inline: the loader-backed catalog has no git
+      // repo to scan, so its items ship with the catalog itself (and feed
+      // the client's catalog/source fallback for this source id).
+      const itemsBySource = {};
+      let engineSkillsUnavailable = false;
+      if (engineSkillCatalog) {
+        const engineListed = await engineSkillCatalog.listItems();
+        if (engineListed.ok) {
+          itemsBySource[ENGINE_CATALOG_SOURCE_ID] = await attachEngineInstalledFlags(
+            engineListed.items,
+            catalogDirectory,
+          );
+        } else {
+          engineSkillsUnavailable = true;
+        }
+      }
 
       const githubRepos = sources
         .map((src) => parseSkillRepoSource(src.source))
@@ -398,7 +441,14 @@ export const registerSkillRoutes = (app, dependencies) => {
         };
       });
 
-      res.json({ ok: true, sources: sourcesForUi, itemsBySource: {} });
+      const catalogBody = { ok: true, sources: sourcesForUi, itemsBySource };
+      // A failed engine read is not an empty engine catalog: the client
+      // must not treat the missing items as complete (same contract as
+      // openCodeSkillsUnavailable on the skills list).
+      if (engineSkillsUnavailable) {
+        catalogBody.engineSkillsUnavailable = true;
+      }
+      res.json(catalogBody);
     } catch (error) {
       console.error('Failed to load skills catalog:', error);
       res.status(500).json({ ok: false, error: { kind: 'unknown', message: error.message || 'Failed to load catalog' } });
@@ -431,6 +481,17 @@ export const registerSkillRoutes = (app, dependencies) => {
         defaultSubpath: entry.subpath,
         gitIdentityId: entry.gitIdentityId,
       }));
+
+      // Engine-backed source: no git repo to parse or scan. Installed
+      // flags merge with the same OpenCode-config discovery as the list.
+      if (sourceId === ENGINE_CATALOG_SOURCE_ID && engineSkillCatalog) {
+        const engineListed = await engineSkillCatalog.listItems();
+        if (!engineListed.ok) {
+          return res.status(500).json({ ok: false, error: { kind: 'engine_unavailable', message: engineListed.error?.message || 'Engine skills unavailable' } });
+        }
+        const items = await attachEngineInstalledFlags(engineListed.items, directory);
+        return res.json({ ok: true, items });
+      }
 
       const sources = [...curatedSources, ...customSources];
       const src = sources.find((entry) => entry.id === sourceId);
@@ -657,6 +718,66 @@ export const registerSkillRoutes = (app, dependencies) => {
     } catch (error) {
       console.error('Failed to install skills:', error);
       res.status(500).json({ ok: false, error: { kind: 'unknown', message: error.message || 'Failed to install skills' } });
+    }
+  });
+
+  // Installs one engine skill by name (loader `matchSkillByName` contract:
+  // exact wins, unique short name resolves, ambiguous refuses). The
+  // SKILL.md lands under a managed root so existing discovery lists it;
+  // nothing here re-resolves OpenCode-config skills.
+  app.post('/api/config/skills/install-engine', async (req, res) => {
+    try {
+      if (!engineSkillCatalog) {
+        return res.status(500).json({
+          ok: false,
+          error: { kind: 'engine_unavailable', message: 'Engine skill catalog is not wired.' },
+        });
+      }
+      const { skillName, variant, scope } = req.body || {};
+
+      let workingDirectory = null;
+      if (scope === 'project') {
+        const resolved = await resolveProjectDirectory(req);
+        if (!resolved.directory) {
+          return res.status(400).json({
+            ok: false,
+            error: { kind: 'invalidSource', message: resolved.error || 'Project installs require a directory parameter' },
+          });
+        }
+        workingDirectory = resolved.directory;
+      }
+
+      const result = await engineSkillCatalog.install({
+        skillName,
+        variant: variant?.trim?.() ?? null,
+        scope,
+        workingDirectory,
+      });
+
+      if (!result.ok) {
+        if (result.error?.kind === 'already_installed') {
+          return res.status(409).json({ ok: false, error: result.error });
+        }
+        if (result.error?.kind === 'engine_unavailable' || result.error?.kind === 'unknown') {
+          return res.status(500).json({ ok: false, error: result.error });
+        }
+        return res.status(400).json({ ok: false, error: result.error });
+      }
+
+      const installed = result.installed || [];
+      res.json({
+        ok: true,
+        installed,
+        skipped: result.skipped || [],
+        ...buildAppliedResponse(
+          installed.length > 0
+            ? `Engine skill ${installed[0].skillName} installed successfully.`
+            : 'No engine skills were installed',
+        ),
+      });
+    } catch (error) {
+      console.error('Failed to install engine skill:', error);
+      res.status(500).json({ ok: false, error: { kind: 'unknown', message: error.message || 'Failed to install engine skill' } });
     }
   });
 

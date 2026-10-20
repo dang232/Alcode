@@ -207,7 +207,7 @@ export const createTunnelHost = ({ connectionId, getLocalPort, sendFrame, getBuf
       if (/[\r\n]/.test(name) || /[\r\n]/.test(value)) continue;
       headers[lower] = value;
     }
-    headers['x-openchamber-relay-connection'] = connectionId;
+    headers['x-alcode-relay-connection'] = connectionId;
     // Loopback fetch would decode a gzipped body anyway; asking for identity
     // spares the server compressing what this host decompresses. Bodies are
     // compressed once, for the tunnel, when the client accepts it.
@@ -508,7 +508,7 @@ export const createTunnelHost = ({ connectionId, getLocalPort, sendFrame, getBuf
     // otherwise — a no-origin upgrade is rejected 403. The request itself is still
     // authenticated by the tunneled oc_url_token, not by this origin.
     const dialHeaders = {
-      'x-openchamber-relay-connection': connectionId,
+      'x-alcode-relay-connection': connectionId,
       origin: `http://127.0.0.1:${getLocalPort()}`,
     };
     let socket;

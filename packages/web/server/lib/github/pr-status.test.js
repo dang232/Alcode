@@ -12,7 +12,7 @@ const listMock = mock(async () => ({ data: [] }));
 const isAncestorMock = mock(async () => false);
 
 const octokitFor = (token, accountId) => ({
-  openChamberCacheIdentity: getOctokitCacheIdentity(createOctokit(token, accountId)),
+  alcodeCacheIdentity: getOctokitCacheIdentity(createOctokit(token, accountId)),
   rest: { pulls: { list: listMock } },
 });
 
@@ -335,7 +335,7 @@ describe('resolveGitHubPrStatus for a contributor fork checkout', () => {
     head: { ref: 'fix/thing', label: 'contrib:fix/thing', user: { login: 'contrib' }, repo: { owner: { login: 'contrib' }, name: 'app' } },
   };
   const octokit = () => ({
-    openChamberCacheIdentity: getOctokitCacheIdentity(createOctokit('fork-token', 'fork-account')),
+    alcodeCacheIdentity: getOctokitCacheIdentity(createOctokit('fork-token', 'fork-account')),
     rest: {
       repos: {
         get: async ({ owner, repo }) => ({

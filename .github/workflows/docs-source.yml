@@ -61,12 +61,12 @@ jobs:
       - name: Trigger openchamber-website docs sync (optional)
         if: ${{ github.event_name == 'push' || github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
         env:
-          WEBSITE_REPO: openchamber/openchamber-website
-          WEBSITE_TOKEN: ${{ secrets.OPENCHAMBER_WEBSITE_REPO_TOKEN }}
+          WEBSITE_REPO: dang232/Alcode-website
+          WEBSITE_TOKEN: ${{ secrets.ALCODE_WEBSITE_REPO_TOKEN }}
           SOURCE_REF: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
         run: |
           if [ -z "$WEBSITE_TOKEN" ]; then
-            echo "OPENCHAMBER_WEBSITE_REPO_TOKEN not set; skip dispatch."
+            echo "ALCODE_WEBSITE_REPO_TOKEN not set; skip dispatch."
             exit 0
           fi
 

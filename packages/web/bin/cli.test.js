@@ -29,36 +29,33 @@ import {
   TUNNEL_PROVIDER_NGROK,
 } from '../server/lib/tunnels/types.js';
 import {
-  assertAuthenticatedNetworkExposure,
   commands,
-  discoverOpenChamberInstanceOnPort,
+  discoverAlcodeInstanceOnPort,
   discoverLifecycleInstances,
   discoverRunningInstances,
   discoverUnconfirmedRegistryInstanceOnPort,
   ensureTunnelProfilesMigrated,
   EXIT_CODE,
-  generateUiPassword,
   getInstanceFilePath,
   getPidFilePath,
-  isOpenchamberCmdline,
-  isOpenchamberProcessRunning,
+  isAlcodeCmdline,
+  isAlcodeProcessRunning,
   parseArgs,
   resolveServeHost,
-  resolveServeUiPassword,
 } from './cli.js';
 import { buildWindowsStartupTaskCommand } from './lib/cli-startup.js';
 
-async function withTempOpenChamberDataDir(fn) {
-  const previous = process.env.OPENCHAMBER_DATA_DIR;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-cli-test-'));
-  process.env.OPENCHAMBER_DATA_DIR = dir;
+async function withTempAlcodeDataDir(fn) {
+  const previous = process.env.ALCODE_DATA_DIR;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-cli-test-'));
+  process.env.ALCODE_DATA_DIR = dir;
   try {
     return await fn(dir);
   } finally {
     if (typeof previous === 'string') {
-      process.env.OPENCHAMBER_DATA_DIR = previous;
+      process.env.ALCODE_DATA_DIR = previous;
     } else {
-      delete process.env.OPENCHAMBER_DATA_DIR;
+      delete process.env.ALCODE_DATA_DIR;
     }
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -88,7 +85,7 @@ async function captureStdout(fn) {
   }
 }
 
-async function startMockOpenChamberServer(options = {}) {
+async function startMockAlcodeServer(options = {}) {
   const runtime = options.runtime || 'web';
   const pid = Number.isFinite(options.pid) ? options.pid : null;
   let shutdownRequested = false;
@@ -176,11 +173,11 @@ async function waitForTcpPort(port, timeoutMs = 3000) {
   return false;
 }
 
-function spawnOpenChamberLikeIdleProcess() {
-  return spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'openchamber-idle'], { stdio: 'ignore' });
+function spawnAlcodeLikeIdleProcess() {
+  return spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'alcode-idle'], { stdio: 'ignore' });
 }
 
-function spawnOpenChamberLikeHungServer(port) {
+function spawnAlcodeLikeHungServer(port) {
   const script = `
     const net = require('net');
     const sockets = new Set();
@@ -191,7 +188,7 @@ function spawnOpenChamberLikeHungServer(port) {
     server.listen(${port}, '127.0.0.1');
     setInterval(() => {}, 1000);
   `;
-  return spawn(process.execPath, ['-e', script, 'openchamber-hung-server'], { stdio: 'ignore' });
+  return spawn(process.execPath, ['-e', script, 'alcode-hung-server'], { stdio: 'ignore' });
 }
 
 describe('cli args', () => {
@@ -229,10 +226,10 @@ describe('cli args', () => {
   });
 
   it('parses explicit connect-url server overrides', () => {
-    const parsed = parseArgs(['connect-url', '--server', 'https://openchamber.example.com', '--port', '3002']);
+    const parsed = parseArgs(['connect-url', '--server', 'https://alcode.example.com', '--port', '3002']);
 
     expect(parsed.command).toBe('connect-url');
-    expect(parsed.options.server).toBe('https://openchamber.example.com');
+    expect(parsed.options.server).toBe('https://alcode.example.com');
     expect(parsed.options.port).toBe(3002);
   });
 
@@ -339,7 +336,7 @@ describe('cli args', () => {
       '--worktree',
       'side-task',
       '--branch',
-      'openchamber/side-task',
+      'alcode/side-task',
       '--base',
       'main',
       '--no-upstream',
@@ -352,7 +349,7 @@ describe('cli args', () => {
     expect(parsed.options.prompt).toBe('Investigate cache invalidation');
     expect(parsed.options.model).toBe('openai/gpt-5.5');
     expect(parsed.options.worktree).toBe('side-task');
-    expect(parsed.options.branch).toBe('openchamber/side-task');
+    expect(parsed.options.branch).toBe('alcode/side-task');
     expect(parsed.options.startRef).toBe('main');
     expect(parsed.options.setUpstream).toBe(false);
   });
@@ -371,7 +368,7 @@ describe('cli args', () => {
       model: 'openai/gpt-5.5',
       agent: 'build',
       worktree: 'side-task',
-      branch: 'openchamber/side-task',
+      branch: 'alcode/side-task',
       startRef: 'main',
       setUpstream: true,
     })).toEqual({
@@ -379,7 +376,7 @@ describe('cli args', () => {
       title: 'Side task',
       worktree: {
         name: 'side-task',
-        branchName: 'openchamber/side-task',
+        branchName: 'alcode/side-task',
         startRef: 'main',
       },
       prompt: 'Investigate cache invalidation',
@@ -577,9 +574,9 @@ describe('cli args', () => {
   it('formats projects compactly', () => {
     expect(formatProjectLine({
       id: 'path_repo',
-      label: 'Openchamber',
-      path: '/repo/openchamber',
-    })).toBe('- `Openchamber` — `path_repo` — `/repo/openchamber`');
+      label: 'Alcode',
+      path: '/repo/alcode',
+    })).toBe('- `Alcode` — `path_repo` — `/repo/alcode`');
   });
 
   it('formats model defaults and favorites compactly', () => {
@@ -613,14 +610,13 @@ describe('cli args', () => {
   });
 
   it('parses tunnel auto-start server options', () => {
-    const parsed = parseArgs(['tunnel', 'start', '--port', '3002', '--api-only', '--lan', '--ui-password', 'secret']);
+    const parsed = parseArgs(['tunnel', 'start', '--port', '3002', '--api-only', '--lan']);
 
     expect(parsed.command).toBe('tunnel');
     expect(parsed.subcommand).toBe('start');
     expect(parsed.options.port).toBe(3002);
     expect(parsed.options.apiOnly).toBe(true);
     expect(parsed.options.host).toBe('0.0.0.0');
-    expect(parsed.options.uiPassword).toBe('secret');
   });
 
   it('maps --lan to wildcard bind host', () => {
@@ -684,119 +680,46 @@ describe('cli API target resolution', () => {
       discoverDesktopInstance: async () => null,
       discoverLifecycleInstances: async () => [{ port: 3001 }, { port: 3002 }],
       isServerHealthReady: async () => false,
-    })).rejects.toThrow('Multiple OpenChamber instances are running');
+    })).rejects.toThrow('Multiple Alcode instances are running');
   });
 });
 
-describe('network-exposed auth validation', () => {
-  it('allows loopback without a UI password', () => {
-    expect(() => assertAuthenticatedNetworkExposure({ host: '127.0.0.1' })).not.toThrow();
-    expect(() => assertAuthenticatedNetworkExposure({ host: 'localhost' })).not.toThrow();
-    expect(() => assertAuthenticatedNetworkExposure({ host: '::1' })).not.toThrow();
-  });
-
-  it('requires a UI password for LAN and wildcard bind hosts', () => {
-    expect(() => assertAuthenticatedNetworkExposure({ host: '0.0.0.0' })).toThrow(/refuses to bind/);
-    expect(() => assertAuthenticatedNetworkExposure({ host: '192.168.1.10' })).toThrow(/refuses to bind/);
-  });
-
-  it('allows network-exposed bind hosts with a UI password', () => {
-    expect(() => assertAuthenticatedNetworkExposure({ host: '0.0.0.0', uiPassword: 'secret' })).not.toThrow();
-  });
-
-  it('allows explicit unsafe LAN override from process env only', () => {
-    const previous = process.env.OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN;
-    process.env.OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN = 'true';
-    try {
-      expect(() => assertAuthenticatedNetworkExposure({ host: '0.0.0.0' })).not.toThrow();
-    } finally {
-      if (typeof previous === 'string') {
-        process.env.OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN = previous;
-      } else {
-        delete process.env.OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN;
-      }
-    }
-  });
-});
-
-describe('serve UI password resolution', () => {
-  it('keeps a configured password untouched', () => {
-    expect(resolveServeUiPassword({ uiPassword: 'secret', explicitUiPassword: true }))
-      .toEqual({ password: 'secret', generated: false });
-  });
-
-  it('generates a password for an explicit --ui-password flag without a value', () => {
-    const resolved = resolveServeUiPassword({ uiPassword: '', explicitUiPassword: true });
-    expect(resolved.generated).toBe(true);
-    expect(typeof resolved.password).toBe('string');
-    expect(resolved.password.length).toBe(16);
-  });
-
-  it('does not generate a password when the flag is absent', () => {
-    expect(resolveServeUiPassword({ uiPassword: undefined, explicitUiPassword: false }))
-      .toEqual({ password: undefined, generated: false });
-  });
-
-  it('generates passwords from an ambiguity-free charset', () => {
-    const resolved = resolveServeUiPassword({ uiPassword: '', explicitUiPassword: true });
-    expect(resolved.password).toMatch(/^[A-HJ-NP-Za-km-z2-9]{16}$/);
-    expect(resolved.password).not.toMatch(/[0O1Il]/);
-  });
-
-  it('generates distinct passwords on repeated calls', () => {
-    const a = generateUiPassword();
-    const b = generateUiPassword();
-    expect(a).not.toBe(b);
-  });
-
-  it('parses --ui-password without a value as explicit but empty', () => {
-    const parsed = parseArgs(['serve', '--ui-password']);
-    expect(parsed.options.explicitUiPassword).toBe(true);
-    expect(parsed.options.uiPassword).toBe('');
+describe('removed --ui-password flag', () => {
+  it('rejects --ui-password with a pointer to Alcore login', () => {
+    expect(parseArgs(['serve', '--ui-password']).removedFlagErrors).toEqual([
+      '`--ui-password` was removed. Browser auth now uses Alcore login.',
+    ]);
+    expect(parseArgs(['tunnel', 'start', '--ui-password', 'secret']).removedFlagErrors).toEqual([
+      '`--ui-password` was removed. Browser auth now uses Alcore login.',
+    ]);
   });
 });
 
 describe('serve host resolution', () => {
-  it('uses OPENCHAMBER_HOST when --host is not provided', () => {
-    const previous = { OPENCHAMBER_HOST: process.env.OPENCHAMBER_HOST, [INJECTED_ENV_KEY]: process.env[INJECTED_ENV_KEY] };
-    delete process.env[INJECTED_ENV_KEY];
-    process.env.OPENCHAMBER_HOST = '192.0.2.20';
+  it('uses ALCODE_HOST when --host is not provided', () => {
+    const previous = process.env.ALCODE_HOST;
+    process.env.ALCODE_HOST = '192.0.2.20';
     try {
       expect(resolveServeHost(undefined)).toBe('192.0.2.20');
     } finally {
-      for (const [key, value] of Object.entries(previous)) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
+      if (typeof previous === 'string') {
+        process.env.ALCODE_HOST = previous;
+      } else {
+        delete process.env.ALCODE_HOST;
       }
     }
   });
 
-  it('ignores an OPENCHAMBER_HOST that OpenChamber put into the shell', () => {
-    const previous = { OPENCHAMBER_HOST: process.env.OPENCHAMBER_HOST, [INJECTED_ENV_KEY]: process.env[INJECTED_ENV_KEY] };
-    delete process.env[INJECTED_ENV_KEY];
-    delete process.env.OPENCHAMBER_HOST;
-    assignInjectedEnv(process.env, { OPENCHAMBER_HOST: '0.0.0.0' });
-    try {
-      expect(resolveServeHost(undefined)).toBe('127.0.0.1');
-      expect(resolveServeHost('192.0.2.21')).toBe('192.0.2.21');
-    } finally {
-      for (const [key, value] of Object.entries(previous)) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
-    }
-  });
-
-  it('prefers explicit --host over OPENCHAMBER_HOST', () => {
-    const previous = process.env.OPENCHAMBER_HOST;
-    process.env.OPENCHAMBER_HOST = '192.0.2.20';
+  it('prefers explicit --host over ALCODE_HOST', () => {
+    const previous = process.env.ALCODE_HOST;
+    process.env.ALCODE_HOST = '192.0.2.20';
     try {
       expect(resolveServeHost('192.0.2.21')).toBe('192.0.2.21');
     } finally {
       if (typeof previous === 'string') {
-        process.env.OPENCHAMBER_HOST = previous;
+        process.env.ALCODE_HOST = previous;
       } else {
-        delete process.env.OPENCHAMBER_HOST;
+        delete process.env.ALCODE_HOST;
       }
     }
   });
@@ -804,7 +727,7 @@ describe('serve host resolution', () => {
 
 describe('compatibility exports', () => {
   it('allows tunnel profile migration before command options are initialized', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const store = ensureTunnelProfilesMigrated();
 
       expect(store).toEqual({ version: 1, profiles: [] });
@@ -812,7 +735,7 @@ describe('compatibility exports', () => {
   });
 
   it('includes ngrok in fallback tunnel providers when no server is reachable', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = await allocateLoopbackPort();
       const output = await captureStdout(async () => {
         await commands.tunnel({ json: true, explicitPort: true, port }, 'providers');
@@ -825,7 +748,7 @@ describe('compatibility exports', () => {
   });
 
   it('supports ngrok quick dry-run with an explicit port', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const output = await captureStdout(async () => {
         await commands.tunnel({
           json: true,
@@ -852,7 +775,7 @@ describe('CLI HTTP helpers', () => {
   it('sends one typed request to the shared control endpoint', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (url, options = {}) => {
-      expect(new URL(String(url)).pathname).toBe('/api/openchamber/control');
+      expect(new URL(String(url)).pathname).toBe('/api/alcode/control');
       expect(options.method).toBe('POST');
       expect(JSON.parse(options.body)).toEqual({
         action: 'session.status',
@@ -886,25 +809,13 @@ describe('CLI HTTP helpers', () => {
     }
   });
 
-  it.each(['oc_ui_session', 'oc_ui_session_3000'])('retries UI-authenticated API requests with the %s cookie', async (cookieName) => {
-    await withTempOpenChamberDataDir(async () => {
+  it('passes a 401 through without a password-cookie retry', async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45678;
-      fs.writeFileSync(await getInstanceFilePath(port), JSON.stringify({ port, uiPassword: 'secret' }, null, 2));
       const originalFetch = globalThis.fetch;
       const calls = [];
       globalThis.fetch = async (url, options = {}) => {
         calls.push({ url: String(url), options });
-        if (String(url).endsWith('/auth/session')) {
-          expect(JSON.parse(options.body)).toEqual({ password: 'secret' });
-          return {
-            ok: true,
-            headers: { get: (name) => name.toLowerCase() === 'set-cookie' ? `${cookieName}=session-token; Path=/; HttpOnly` : null },
-            json: async () => ({ authenticated: true }),
-          };
-        }
-        if (options.headers?.Cookie === `${cookieName}=session-token`) {
-          return createMockJsonResponse({ ok: true });
-        }
         return {
           ok: false,
           status: 401,
@@ -913,18 +824,16 @@ describe('CLI HTTP helpers', () => {
       };
 
       try {
-        const { response, body } = await requestJson(port, '/api/openchamber/tunnel/start', {
+        const { response, body } = await requestJson(port, '/api/alcode/tunnel/start', {
           method: 'POST',
           body: JSON.stringify({ provider: 'ngrok', mode: 'quick' }),
         });
 
-        expect(response.ok).toBe(true);
-        expect(body).toEqual({ ok: true });
-        expect(calls.at(-1).options.headers.Cookie).toBe(`${cookieName}=session-token`);
+        expect(response.status).toBe(401);
+        expect(body).toEqual({ error: 'UI authentication required', locked: true });
+        // No password exists anymore: the CLI must not call /auth/session.
         expect(calls.map((call) => new URL(call.url).pathname)).toEqual([
-          '/api/openchamber/tunnel/start',
-          '/auth/session',
-          '/api/openchamber/tunnel/start',
+          '/api/alcode/tunnel/start',
         ]);
       } finally {
         globalThis.fetch = originalFetch;
@@ -932,46 +841,8 @@ describe('CLI HTTP helpers', () => {
     });
   });
 
-  it.each(['oc_ui_session', 'oc_ui_session_3000'])('uses the stored password and getSetCookie for %s', async (cookieName) => {
-    await withTempOpenChamberDataDir(async () => {
-      const port = 45679;
-      fs.writeFileSync(await getInstanceFilePath(port), JSON.stringify({ port, uiPassword: 'stored-secret' }, null, 2));
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = async (url, options = {}) => {
-        if (String(url).endsWith('/auth/session')) {
-          expect(JSON.parse(options.body)).toEqual({ password: 'stored-secret' });
-          return {
-            ok: true,
-            headers: { getSetCookie: () => [`${cookieName}=session-token; Path=/; HttpOnly`] },
-            json: async () => ({ authenticated: true }),
-          };
-        }
-        if (options.headers?.Cookie === `${cookieName}=session-token`) {
-          return createMockJsonResponse({ ok: true });
-        }
-        return {
-          ok: false,
-          status: 401,
-          json: async () => ({ error: 'UI authentication required', locked: true }),
-        };
-      };
-
-      try {
-        const { response, body } = await requestJson(port, '/api/openchamber/scheduled-tasks/status', {
-          uiPassword: 'stale-env-secret',
-          explicitUiPassword: false,
-        });
-
-        expect(response.ok).toBe(true);
-        expect(body).toEqual({ ok: true });
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    });
-  });
-
   it('authenticates desktop-local API requests with the stored client token', async () => {
-    await withTempOpenChamberDataDir(async (dir) => {
+    await withTempAlcodeDataDir(async (dir) => {
       const port = 57123;
       fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
         desktopLocalPort: port,
@@ -990,7 +861,7 @@ describe('CLI HTTP helpers', () => {
       };
 
       try {
-        const { response, body } = await requestJson(port, '/api/openchamber/scheduled-tasks/status');
+        const { response, body } = await requestJson(port, '/api/alcode/scheduled-tasks/status');
 
         expect(response.ok).toBe(true);
         expect(body).toEqual({ ok: true });
@@ -1002,11 +873,11 @@ describe('CLI HTTP helpers', () => {
 });
 
 describe('cli entry detection', () => {
-  const modulePath = '/tmp/openchamber/bin/cli.js';
+  const modulePath = '/tmp/alcode/bin/cli.js';
   const moduleUrl = pathToFileURL(modulePath).href;
 
   it('resolves symlinked entry paths before comparing', () => {
-    const symlinkPath = '/usr/local/bin/openchamber';
+    const symlinkPath = '/usr/local/bin/alcode';
     const realpath = (filePath) => {
       if (filePath === path.resolve(symlinkPath)) {
         return modulePath;
@@ -1038,8 +909,8 @@ describe('cli entry detection', () => {
   });
 
   it('accepts wrapper binary name fallback when requested', () => {
-    const wrapperPath = '/home/user/.local/bin/openchamber';
-    expect(isModuleCliExecution(wrapperPath, moduleUrl, undefined, 'openchamber')).toBe(true);
+    const wrapperPath = '/home/user/.local/bin/alcode';
+    expect(isModuleCliExecution(wrapperPath, moduleUrl, undefined, 'alcode')).toBe(true);
   });
 
   it('normalizes direct paths when realpath fails', () => {
@@ -1052,36 +923,41 @@ describe('cli entry detection', () => {
   });
 });
 
-describe('isOpenchamberCmdline', () => {
-  it('accepts OpenChamber CLI and daemon cmdlines', () => {
-    expect(isOpenchamberCmdline('node /x/@openchamber/web/bin/cli.js serve')).toBe(true);
-    expect(isOpenchamberCmdline('node /x/@openchamber/web/server/index.js --port 9090')).toBe(true);
-    expect(isOpenchamberCmdline('bun /home/u/projects/openchamber/packages/web/server/index.js --port 3001')).toBe(true);
+describe('isAlcodeCmdline', () => {
+  it('accepts Alcode CLI and daemon cmdlines', () => {
+    expect(isAlcodeCmdline('node /x/@alcode/web/bin/cli.js serve')).toBe(true);
+    expect(isAlcodeCmdline('node /x/@alcode/web/server/index.js --port 9090')).toBe(true);
+    expect(isAlcodeCmdline('bun /home/u/projects/alcode/packages/web/server/index.js --port 3001')).toBe(true);
+  });
+
+  it('accepts pre-rename openchamber cmdlines', () => {
+    expect(isAlcodeCmdline('node /x/@openchamber/web/bin/cli.js serve')).toBe(true);
+    expect(isAlcodeCmdline('bun /home/u/projects/openchamber/packages/web/server/index.js --port 3001')).toBe(true);
   });
 
   it('rejects recycled and unrelated processes (issue #1721)', () => {
-    expect(isOpenchamberCmdline('node /home/herjarsa/npm-global/bin/agentmemory')).toBe(false);
-    expect(isOpenchamberCmdline('node /usr/lib/node_modules/npm/bin/npm-cli.js install')).toBe(false);
-    expect(isOpenchamberCmdline('')).toBe(false);
-    expect(isOpenchamberCmdline(null)).toBe(false);
+    expect(isAlcodeCmdline('node /home/herjarsa/npm-global/bin/agentmemory')).toBe(false);
+    expect(isAlcodeCmdline('node /usr/lib/node_modules/npm/bin/npm-cli.js install')).toBe(false);
+    expect(isAlcodeCmdline('')).toBe(false);
+    expect(isAlcodeCmdline(null)).toBe(false);
   });
 });
 
-describe('isOpenchamberProcessRunning', () => {
+describe('isAlcodeProcessRunning', () => {
   it('returns false for a dead PID', () => {
-    expect(isOpenchamberProcessRunning(2147483646)).toBe(false);
+    expect(isAlcodeProcessRunning(2147483646)).toBe(false);
   });
 
   // Identity verification is available on Linux (/proc) and macOS (ps); on those
   // platforms a live but unrelated process (a recycled stale PID) must read as
   // not-running so it can't trip the "already running" guard (issue #1721).
   it.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
-    'returns false for a live non-OpenChamber PID',
+    'returns false for a live non-Alcode PID',
     async () => {
       const child = spawn('sleep', ['30'], { stdio: 'ignore' });
       try {
         await new Promise((resolve) => setTimeout(resolve, 150));
-        expect(isOpenchamberProcessRunning(child.pid)).toBe(false);
+        expect(isAlcodeProcessRunning(child.pid)).toBe(false);
       } finally {
         child.kill('SIGKILL');
       }
@@ -1091,10 +967,10 @@ describe('isOpenchamberProcessRunning', () => {
 
 describe('lifecycle instance discovery', () => {
   it('does not attribute a desktop runtime response to a different explicit port', async () => {
-    await withTempOpenChamberDataDir(async (dir) => {
+    await withTempAlcodeDataDir(async (dir) => {
       fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ desktopLocalPort: 57123 }, null, 2));
 
-      const instance = await discoverOpenChamberInstanceOnPort(3003, {
+      const instance = await discoverAlcodeInstanceOnPort(3003, {
         fetchImpl: async () => createMockJsonResponse({ runtime: 'desktop', pid: 934 }),
       });
 
@@ -1103,10 +979,10 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('attributes a desktop runtime response to its configured desktop port', async () => {
-    await withTempOpenChamberDataDir(async (dir) => {
+    await withTempAlcodeDataDir(async (dir) => {
       fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ desktopLocalPort: 57123 }, null, 2));
 
-      const instance = await discoverOpenChamberInstanceOnPort(57123, {
+      const instance = await discoverAlcodeInstanceOnPort(57123, {
         fetchImpl: async () => createMockJsonResponse({ runtime: 'desktop', pid: 934 }),
       });
 
@@ -1119,7 +995,7 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('does not mark tunnel attachability as desktop for a different explicit port', async () => {
-    await withTempOpenChamberDataDir(async (dir) => {
+    await withTempAlcodeDataDir(async (dir) => {
       fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ desktopLocalPort: 57123 }, null, 2));
       const originalFetch = globalThis.fetch;
       globalThis.fetch = async () => createMockJsonResponse({ runtime: 'desktop', pid: 934 });
@@ -1134,7 +1010,7 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('keeps pid and instance files when live port probe confirms a cmdline mismatch', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45123;
       const pid = 12345;
       const pidFile = await getPidFilePath(port);
@@ -1144,7 +1020,7 @@ describe('lifecycle instance discovery', () => {
 
       const instances = await discoverRunningInstances({
         fetchImpl: async () => createMockJsonResponse({ runtime: 'web', pid }),
-        getOpenchamberProcessState: () => 'mismatched',
+        getAlcodeProcessState: () => 'mismatched',
       });
 
       expect(instances).toEqual([
@@ -1156,7 +1032,7 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('removes stale pid and instance files when a cmdline mismatch is not confirmed by live probe', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45124;
       const pid = 12346;
       const pidFile = await getPidFilePath(port);
@@ -1166,7 +1042,7 @@ describe('lifecycle instance discovery', () => {
 
       const instances = await discoverRunningInstances({
         fetchImpl: async () => createMockJsonResponse(null, false),
-        getOpenchamberProcessState: () => 'mismatched',
+        getAlcodeProcessState: () => 'mismatched',
       });
 
       expect(instances).toEqual([]);
@@ -1176,7 +1052,7 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('preserves matched pid and instance files when the recorded port probe is inconclusive', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45126;
       const pid = 12347;
       const pidFile = await getPidFilePath(port);
@@ -1186,7 +1062,7 @@ describe('lifecycle instance discovery', () => {
 
       const instances = await discoverRunningInstances({
         fetchImpl: async () => createMockJsonResponse(null, false),
-        getOpenchamberProcessState: () => 'matched',
+        getAlcodeProcessState: () => 'matched',
       });
 
       expect(instances).toEqual([]);
@@ -1196,7 +1072,7 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('preserves unknown-identity pid and instance files when the recorded port probe is inconclusive', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45129;
       const pid = 12350;
       const pidFile = await getPidFilePath(port);
@@ -1206,7 +1082,7 @@ describe('lifecycle instance discovery', () => {
 
       const instances = await discoverRunningInstances({
         fetchImpl: async () => createMockJsonResponse(null, false),
-        getOpenchamberProcessState: () => 'unknown',
+        getAlcodeProcessState: () => 'unknown',
       });
 
       expect(instances).toEqual([]);
@@ -1215,8 +1091,8 @@ describe('lifecycle instance discovery', () => {
     });
   });
 
-  it('uses the live system-info pid instead of a stale OpenChamber-looking pid-file pid', async () => {
-    await withTempOpenChamberDataDir(async () => {
+  it('uses the live system-info pid instead of a stale Alcode-looking pid-file pid', async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45127;
       const stalePid = 12348;
       const livePid = 54321;
@@ -1227,7 +1103,7 @@ describe('lifecycle instance discovery', () => {
 
       const instances = await discoverRunningInstances({
         fetchImpl: async () => createMockJsonResponse({ runtime: 'web', pid: livePid }),
-        getOpenchamberProcessState: () => 'matched',
+        getAlcodeProcessState: () => 'matched',
       });
 
       expect(instances).toEqual([
@@ -1237,7 +1113,7 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('uses the explicit host when probing a pid-file entry without a stored host', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45128;
       const pid = 12349;
       const host = '192.0.2.10';
@@ -1252,7 +1128,7 @@ describe('lifecycle instance discovery', () => {
             urls.push(String(url));
             return createMockJsonResponse({ runtime: 'web', pid });
           },
-          getOpenchamberProcessState: () => 'matched',
+          getAlcodeProcessState: () => 'matched',
         },
       );
 
@@ -1264,7 +1140,7 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('tries loopback before treating an explicit-host pid-file probe as inconclusive', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45130;
       const pid = 12351;
       const host = '192.0.2.11';
@@ -1281,7 +1157,7 @@ describe('lifecycle instance discovery', () => {
               ? createMockJsonResponse({ runtime: 'web', pid })
               : createMockJsonResponse(null, false);
           },
-          getOpenchamberProcessState: () => 'matched',
+          getAlcodeProcessState: () => 'matched',
         },
       );
 
@@ -1294,7 +1170,7 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('does not accept a fallback loopback probe with a different pid for a concrete host registry', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45131;
       const pid = 12352;
       const otherPid = 54322;
@@ -1312,7 +1188,7 @@ describe('lifecycle instance discovery', () => {
               ? createMockJsonResponse({ runtime: 'web', pid: otherPid })
               : createMockJsonResponse(null, false);
           },
-          getOpenchamberProcessState: () => 'matched',
+          getAlcodeProcessState: () => 'matched',
         },
       );
 
@@ -1322,8 +1198,8 @@ describe('lifecycle instance discovery', () => {
     });
   });
 
-  it('discovers an explicit live OpenChamber port without a pid-file registry entry', async () => {
-    await withTempOpenChamberDataDir(async () => {
+  it('discovers an explicit live Alcode port without a pid-file registry entry', async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = 45125;
       const instances = await discoverLifecycleInstances(
         { explicitPort: true, port },
@@ -1337,9 +1213,9 @@ describe('lifecycle instance discovery', () => {
   });
 
   it('cleans a matched pid-file entry without stopping it when the recorded port is free', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = await allocateLoopbackPort();
-      const child = spawnOpenChamberLikeIdleProcess();
+      const child = spawnAlcodeLikeIdleProcess();
       const pidFile = await getPidFilePath(port);
       const instanceFile = await getInstanceFilePath(port);
       try {
@@ -1361,9 +1237,9 @@ describe('lifecycle instance discovery', () => {
 });
 
 describe('lifecycle commands with unmanaged explicit ports', () => {
-  it('serve refuses to start on a live OpenChamber port without requiring pid files', async () => {
-    await withTempOpenChamberDataDir(async () => {
-      const server = await startMockOpenChamberServer();
+  it('serve refuses to start on a live Alcode port without requiring pid files', async () => {
+    await withTempAlcodeDataDir(async () => {
+      const server = await startMockAlcodeServer();
       try {
         await expect(commands.serve({ explicitPort: true, port: server.port, quiet: true })).rejects.toThrow(
           /already running on port/
@@ -1375,8 +1251,8 @@ describe('lifecycle commands with unmanaged explicit ports', () => {
   });
 
   it('status --port reports a live unmanaged server when the registry is empty', async () => {
-    await withTempOpenChamberDataDir(async () => {
-      const server = await startMockOpenChamberServer();
+    await withTempAlcodeDataDir(async () => {
+      const server = await startMockAlcodeServer();
       try {
         const output = await captureStdout(() => commands.status({ explicitPort: true, port: server.port, json: true }));
         const payload = JSON.parse(output);
@@ -1392,9 +1268,9 @@ describe('lifecycle commands with unmanaged explicit ports', () => {
   });
 
   it('status --json reports the address a registered server was asked to bind', async () => {
-    await withTempOpenChamberDataDir(async () => {
-      const server = await startMockOpenChamberServer();
-      const child = spawnOpenChamberLikeIdleProcess();
+    await withTempAlcodeDataDir(async () => {
+      const server = await startMockAlcodeServer();
+      const child = spawnAlcodeLikeIdleProcess();
       try {
         await new Promise((resolve) => setTimeout(resolve, 150));
         fs.writeFileSync(await getPidFilePath(server.port), String(child.pid));
@@ -1414,8 +1290,8 @@ describe('lifecycle commands with unmanaged explicit ports', () => {
   });
 
   it('stop --port reaches unmanaged shutdown when the registry is empty', async () => {
-    await withTempOpenChamberDataDir(async () => {
-      const server = await startMockOpenChamberServer();
+    await withTempAlcodeDataDir(async () => {
+      const server = await startMockAlcodeServer();
       try {
         await commands.stop({ explicitPort: true, port: server.port, quiet: true, suppressQuietOutput: true });
         expect(server.shutdownRequested).toBe(true);
@@ -1426,9 +1302,9 @@ describe('lifecycle commands with unmanaged explicit ports', () => {
   });
 
   it('stop --port can recover a matched pid-file instance whose HTTP endpoint is unresponsive', async () => {
-    await withTempOpenChamberDataDir(async () => {
+    await withTempAlcodeDataDir(async () => {
       const port = await allocateLoopbackPort();
-      const child = spawnOpenChamberLikeHungServer(port);
+      const child = spawnAlcodeLikeHungServer(port);
       const pidFile = await getPidFilePath(port);
       const instanceFile = await getInstanceFilePath(port);
       try {
@@ -1448,8 +1324,8 @@ describe('lifecycle commands with unmanaged explicit ports', () => {
   });
 
   it('plain stop ignores a stale CLI registry entry that resolves to desktop runtime', async () => {
-    await withTempOpenChamberDataDir(async () => {
-      const server = await startMockOpenChamberServer({ runtime: 'desktop' });
+    await withTempAlcodeDataDir(async () => {
+      const server = await startMockAlcodeServer({ runtime: 'desktop' });
       const child = spawn('sleep', ['30'], { stdio: 'ignore' });
       const pidFile = await getPidFilePath(server.port);
       const instanceFile = await getInstanceFilePath(server.port);
@@ -1471,8 +1347,8 @@ describe('lifecycle commands with unmanaged explicit ports', () => {
   });
 
   it('restart --port restarts a live unmanaged server through the shared explicit-port discovery path', async () => {
-    await withTempOpenChamberDataDir(async () => {
-      const server = await startMockOpenChamberServer();
+    await withTempAlcodeDataDir(async () => {
+      const server = await startMockAlcodeServer();
       const calls = [];
       const host = '127.0.0.1';
       try {
@@ -1505,19 +1381,19 @@ describe('lifecycle commands with unmanaged explicit ports', () => {
 describe('Windows startup task command builder', () => {
   it('default-path length stays under 200 chars', () => {
     const cmd = buildWindowsStartupTaskCommand(
-      'C:\\Users\\test\\.config\\openchamber\\bin\\OpenChamber.ps1'
+      'C:\\Users\\test\\.config\\alcode\\bin\\Alcode.ps1'
     );
     expect(cmd).toMatch(/^powershell\.exe -NoProfile -ExecutionPolicy Bypass -File /);
     expect(cmd.length).toBeLessThan(200);
   });
 
   it('worst-case long path stays under 261-char Task Scheduler ceiling', () => {
-    // Build a wrapper path >= 180 chars (simulates long OPENCHAMBER_DATA_DIR)
+    // Build a wrapper path >= 180 chars (simulates long ALCODE_DATA_DIR)
     // Overhead = 57 chars (prefix + closing quote), so max wrapper for <261 total is 203
     const longPath =
       'C:\\Users\\' +
-      'a'.repeat(139) +
-      '\\.config\\openchamber\\bin\\OpenChamber.ps1';
+      'a'.repeat(141) +
+      '\\.config\\alcode\\bin\\Alcode.ps1';
     expect(longPath.length).toBeGreaterThanOrEqual(180);
 
     const cmd = buildWindowsStartupTaskCommand(longPath);

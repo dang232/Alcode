@@ -27,8 +27,8 @@ describe('settings search', () => {
       }
     }
   });
-  test('finds the Claude Code integration by name and package, never in VS Code or enterprise mode', () => {
-    for (const query of ['claude', '@openchamber/opencode-claude']) {
+  test('finds the Claude Code integration by name and package, never in VS Code', () => {
+    for (const query of ['claude', '@alcode/opencode-claude']) {
       for (const isVSCode of [false, true]) {
         for (const enterpriseMode of [false, true]) {
           const results = buildSettingsSearchResults({

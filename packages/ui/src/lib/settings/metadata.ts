@@ -31,7 +31,8 @@ export type SettingsPageSlug =
   | 'isolated-spaces'
   | 'about'
   | 'integrations'
-  | 'extensions';
+  | 'extensions'
+  | 'engine';
 
 type SettingsPageGroup =
   | 'general'
@@ -44,7 +45,7 @@ export interface SettingsRuntimeContext {
   isWeb: boolean;
   isDesktop: boolean;
   isMobile: boolean;
-  /** Whether this runtime has Jev routing, which needs the OpenChamber server. */
+  /** Whether this runtime has Jev routing, which needs the Alcode server. */
   routingAvailable: boolean;
   /** The server runs in enterprise mode: pages for what it refuses are hidden. */
   enterpriseMode: boolean;
@@ -247,6 +248,14 @@ export const SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
     keywords: ['extension', 'extensions', 'guest', 'panel', 'rail', 'folder', 'zip', 'git', 'url'],
     isAvailable: (ctx) => !ctx.isVSCode && !ctx.isMobile,
   },
+  {
+    slug: 'engine',
+    title: 'Engine',
+    group: 'general',
+    kind: 'single',
+    keywords: ['engine', 'omo', 'background runs', 'model routing', 'alcore models', 'wrapper'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
 ] as const;
 
 const LEGACY_SIDEBAR_SECTION_TO_SETTINGS_SLUG: Record<SidebarSection, SettingsPageSlug> = {
@@ -339,7 +348,9 @@ export function getSettingsNavIcon(slug: SettingsPageSlug): IconName | null {
     case 'integrations':
       return 'plug';
     case 'extensions':
-      return 'puzzle';
+      return 'apps';
+    case 'engine':
+      return 'robot-2';
 
     case 'usage':
       return 'bar-chart-2';

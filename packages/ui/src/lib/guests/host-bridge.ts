@@ -12,8 +12,8 @@ import {
   type GuestShellStopResult,
   GUEST_SESSION_AGENT_MAX,
   GUEST_SESSION_MODEL_MAX,
-  OPENCHAMBER_SDK_API_VERSION,
-  OPENCHAMBER_SDK_CHANNEL,
+  ALCODE_SDK_API_VERSION,
+  ALCODE_SDK_CHANNEL,
   type AttachIssueRequest,
   type GuestItem,
   type GuestPopoverRequest,
@@ -25,6 +25,7 @@ import {
   type GenerateRequest,
   type GuestConnection,
   type GuestMessage,
+  type JsonValue,
   type GuestRequest,
   type GuestSettings,
   type HostMessage,
@@ -36,7 +37,7 @@ import {
   type SessionSnapshot,
   type StartSessionResult,
   type ToastRequest,
-} from '@openchamber/sdk';
+} from '@alcode/sdk';
 
 import type { GuestFileProxyResult, GuestFileRequest } from '@/lib/guests/files';
 import type { GuestGenerateProxyResult } from '@/lib/guests/generate';
@@ -83,7 +84,7 @@ type HostBridgeEffects = {
   request: (request: GuestRequest) => Promise<GuestRequestProxyResult>;
   serviceRequest: (request: GuestRequest) => Promise<GuestRequestProxyResult>;
   serviceStatus: () => Promise<
-    | { ok: true; result: { status: import('@openchamber/sdk').ServiceStatus } }
+    | { ok: true; result: { status: import('@alcode/sdk').ServiceStatus } }
     | { ok: false; code: HostRequestErrorCode; message: string }
   >;
   /** One handler for read, write, list, and stat; the pane checks scope and grant, the server does the rest. */
@@ -104,50 +105,50 @@ type HostBridgeEffects = {
 };
 
 export const buildReadyMessage = (payload: HostReadyContext): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'ready',
   payload,
 });
 
 export const buildDirectoryMessage = (directory: string | null): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'directory',
   payload: { directory },
 });
 
 export const buildSessionMessage = (session: SessionSnapshot | null): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'session',
   payload: { session },
 });
 
 export const buildConnectionMessage = (connection: GuestConnection): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'connection',
   payload: { connection },
 });
 
 export const buildSettingsMessage = (settings: GuestSettings): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'settings',
   payload: { settings },
 });
 
 export const buildItemMessage = (item: GuestItem | null): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'item',
   payload: { item },
 });
 
 export const buildResolveMessage = (id: string, command: string, args: string): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'resolve',
   id,
   payload: { command, args },
@@ -161,10 +162,17 @@ export const buildGenerateLateMessage = (result: LateGenerateResult): HostMessag
 });
 
 export const buildSessionLifecycleMessage = (event: SessionLifecycleEvent): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'session-lifecycle',
   payload: event,
+});
+
+export const buildRunModelMessage = (conversationId: string, snapshot: JsonValue | null): HostMessage => ({
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
+  type: 'run-model',
+  payload: { conversationId, snapshot },
 });
 
 export const guestSessionLifecyclePhase = (
@@ -219,8 +227,8 @@ export const toGuestSessionSnapshot = (
 const okResult = (id: string, payload?: HostResultPayload): HostMessage => {
   if (payload) {
     return {
-      channel: OPENCHAMBER_SDK_CHANNEL,
-      v: OPENCHAMBER_SDK_API_VERSION,
+      channel: ALCODE_SDK_CHANNEL,
+      v: ALCODE_SDK_API_VERSION,
       type: 'result',
       id,
       ok: true,
@@ -228,8 +236,8 @@ const okResult = (id: string, payload?: HostResultPayload): HostMessage => {
     };
   }
   return {
-    channel: OPENCHAMBER_SDK_CHANNEL,
-    v: OPENCHAMBER_SDK_API_VERSION,
+    channel: ALCODE_SDK_CHANNEL,
+    v: ALCODE_SDK_API_VERSION,
     type: 'result',
     id,
     ok: true,
@@ -237,8 +245,8 @@ const okResult = (id: string, payload?: HostResultPayload): HostMessage => {
 };
 
 const errorResult = (id: string, error: string, code: HostRequestErrorCode = 'HOST_REJECTED'): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'result',
   id,
   ok: false,

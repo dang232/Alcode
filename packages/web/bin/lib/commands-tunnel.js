@@ -34,7 +34,7 @@ import {
   resolveTunnelTtlOverrides,
 } from './cli-tunnel-utils.js';
 import { DEFAULT_TUNNEL_PROVIDER_CAPABILITIES } from './cli-tunnel-capabilities.js';
-import { assertSafeBrowserPort, buildLocalUrl, generateUiPassword, hasUiPasswordConfigured, isUnsafeBrowserPort } from './cli-network.js';
+import { assertSafeBrowserPort, buildLocalUrl, isUnsafeBrowserPort } from './cli-network.js';
 import {
   readLastManagedLocalConfigPath,
   writeLastManagedLocalConfigPath,
@@ -142,7 +142,7 @@ async function resolveTargetInstance({
 
   if (options.all && requireAll) {
     if (running.length === 0) {
-      throw new Error('No running OpenChamber instance found. Start one with `openchamber serve`.');
+      throw new Error('No running Alcode instance found. Start one with `alcode serve`.');
     }
     return running;
   }
@@ -155,11 +155,11 @@ async function resolveTargetInstance({
         if (!attachability.attachable) {
           if (attachability.reason === 'desktop') {
             throw new Error(
-              `Port ${options.port} is used by OpenChamber Desktop app. Tunnel attach requires a CLI instance from \`openchamber serve\`.`
+              `Port ${options.port} is used by Alcode Desktop app. Tunnel attach requires a CLI instance from \`alcode serve\`.`
             );
           }
           throw new Error(
-            `Port ${options.port} is not an attachable OpenChamber tunnel instance. Ensure it is healthy and running OpenChamber CLI runtime.`
+            `Port ${options.port} is not an attachable Alcode tunnel instance. Ensure it is healthy and running Alcode CLI runtime.`
           );
         }
       }
@@ -170,7 +170,7 @@ async function resolveTargetInstance({
       const systemInfo = await fetchSystemInfoFromPort(options.port, globalThis.fetch, options.host);
       if (isDesktopRuntimeForPort(systemInfo, options.port)) {
         throw new Error(
-          `Port ${options.port} is used by OpenChamber Desktop app. Tunnel attach requires a CLI instance from \`openchamber serve\`.`
+          `Port ${options.port} is used by Alcode Desktop app. Tunnel attach requires a CLI instance from \`alcode serve\`.`
         );
       }
     }
@@ -180,17 +180,15 @@ async function resolveTargetInstance({
         port: options.port,
         explicitPort: true,
         host: options.host,
-        uiPassword: options.uiPassword,
         apiOnly: options.apiOnly,
         suppressUnsafePortWarning: true,
-        suppressUiPasswordWarning: true,
         suppressStartupSummary: true,
       });
       running = await discoverRunningInstances();
       const started = running.find((entry) => entry.port === options.port);
       if (started) return { ...started, autoStarted: true };
     }
-    throw new Error(`No running OpenChamber instance found on port ${options.port}.`);
+    throw new Error(`No running Alcode instance found on port ${options.port}.`);
   }
 
   if (rejectDesktopRuntime) {
@@ -212,7 +210,7 @@ async function resolveTargetInstance({
 
     if (attachableEntries.length > 1) {
       const ports = attachableEntries.map((entry) => entry.port).join(', ');
-      throw new Error(`Multiple attachable OpenChamber instances found: ${ports}. Use --port <port> or --all.`);
+      throw new Error(`Multiple attachable Alcode instances found: ${ports}. Use --port <port> or --all.`);
     }
 
     if (allowAutoStart) {
@@ -220,7 +218,6 @@ async function resolveTargetInstance({
         ...options,
         explicitPort: false,
         suppressUnsafePortWarning: true,
-        suppressUiPasswordWarning: true,
         suppressStartupSummary: true,
       });
       running = await discoverRunningInstances();
@@ -229,10 +226,10 @@ async function resolveTargetInstance({
     }
 
     if (sawDesktop) {
-      throw new Error('Only OpenChamber Desktop instance(s) detected. Tunnel attach requires a CLI instance from `openchamber serve`.');
+      throw new Error('Only Alcode Desktop instance(s) detected. Tunnel attach requires a CLI instance from `alcode serve`.');
     }
 
-    throw new Error('No attachable OpenChamber instance found. Start one with `openchamber serve`.');
+    throw new Error('No attachable Alcode instance found. Start one with `alcode serve`.');
   }
 
   if (running.length === 1) {
@@ -245,17 +242,16 @@ async function resolveTargetInstance({
         ...options,
         explicitPort: false,
         suppressUnsafePortWarning: true,
-        suppressUiPasswordWarning: true,
       });
       running = await discoverRunningInstances();
       const started = running.find((entry) => entry.port === startedPort) || getLatestInstance(running);
       if (started) return { ...started, autoStarted: true };
     }
-    throw new Error('No running OpenChamber instance found. Start one with `openchamber serve`.');
+    throw new Error('No running Alcode instance found. Start one with `alcode serve`.');
   }
 
   const ports = running.map((entry) => entry.port).join(', ');
-  throw new Error(`Multiple OpenChamber instances found: ${ports}. Use --port <port> or --all.`);
+  throw new Error(`Multiple Alcode instances found: ${ports}. Use --port <port> or --all.`);
 }
 
 async function resolveTunnelReadEntries(options) {
@@ -264,13 +260,13 @@ async function resolveTunnelReadEntries(options) {
   if (options.explicitPort) {
     const found = running.find((entry) => entry.port === options.port);
     if (!found) {
-      throw new Error(`No running OpenChamber instance found on port ${options.port}.`);
+      throw new Error(`No running Alcode instance found on port ${options.port}.`);
     }
     return [found];
   }
 
   if (running.length === 0) {
-    throw new Error('No running OpenChamber instance found. Start one with `openchamber serve`.');
+    throw new Error('No running Alcode instance found. Start one with `alcode serve`.');
   }
 
   return running;
@@ -329,10 +325,10 @@ async function handleTunnelProfileSubcommand(options, action, { boldText, ensure
     if (!isQuietMode(options)) {
       clackIntro('Tunnel Profile');
       logStatus('info', 'Available subcommands', 'list, show, add, remove');
-      clackLog.step('List profiles: `openchamber tunnel profile list`');
-      clackLog.step('Show one profile: `openchamber tunnel profile show --name <name>`');
-      clackLog.step('Add profile: `openchamber tunnel profile add --provider cloudflare --mode managed-remote --name <name> --hostname <host> --token <token>`');
-      clackLog.step('Remove profile: `openchamber tunnel profile remove --name <name>`');
+      clackLog.step('List profiles: `alcode tunnel profile list`');
+      clackLog.step('Show one profile: `alcode tunnel profile show --name <name>`');
+      clackLog.step('Add profile: `alcode tunnel profile add --provider cloudflare --mode managed-remote --name <name> --hostname <host> --token <token>`');
+      clackLog.step('Remove profile: `alcode tunnel profile remove --name <name>`');
       clackOutro('Choose a subcommand');
     }
     return;
@@ -575,7 +571,7 @@ async function handleTunnelProfileSubcommand(options, action, { boldText, ensure
     clackIntro(boldText('Tunnel Profile Saved'));
     logStatus('success', `${added.name} (${added.provider}/${added.mode})`, `${added.hostname} ${formatProfileTokenStatus(added, options.showSecrets)}`);
     clackOutro('save complete');
-    logStatus('info', '[START_PROFILE]', `openchamber tunnel start --profile ${added.name}`);
+    logStatus('info', '[START_PROFILE]', `alcode tunnel start --profile ${added.name}`);
     clackOutro('');
     return;
   }
@@ -615,7 +611,7 @@ async function handleTunnelProfileSubcommand(options, action, { boldText, ensure
   const suggestion = findClosestMatch(sub, knownProfileActions);
   const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
   throw new TunnelCliError(
-    `Unknown tunnel profile subcommand '${sub}'.${hint} Use 'openchamber tunnel help'.`,
+    `Unknown tunnel profile subcommand '${sub}'.${hint} Use 'alcode tunnel help'.`,
     EXIT_CODE.USAGE_ERROR
   );
 }
@@ -676,7 +672,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
         const results = [];
         for (const entry of entries) {
           try {
-            const { response, body } = await requestJson(entry.port, `/api/openchamber/tunnel/check?provider=${encodeURIComponent(provider)}`);
+            const { response, body } = await requestJson(entry.port, `/api/alcode/tunnel/check?provider=${encodeURIComponent(provider)}`);
             if (!response.ok) {
               results.push({ port: entry.port, error: body?.error || `check ${response.status}` });
               continue;
@@ -732,7 +728,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
         const results = [];
         for (const entry of entries) {
           try {
-            const { response, body } = await requestJson(entry.port, '/api/openchamber/tunnel/status');
+            const { response, body } = await requestJson(entry.port, '/api/alcode/tunnel/status');
             if (!response.ok) {
               results.push({ port: entry.port, error: body?.error || `status ${response.status}` });
               continue;
@@ -866,7 +862,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
               }
               const { response, body } = await requestJson(
                 diagnosticsEntry.port,
-                `/api/openchamber/tunnel/doctor?${query.toString()}`,
+                `/api/alcode/tunnel/doctor?${query.toString()}`,
                 doctorFetchOptions,
               );
               if (response.ok && body?.ok && isValidTunnelDoctorResponse(body)) {
@@ -971,16 +967,16 @@ async function tunnelCommand(options, subcommand, action, deps) {
           logStatus('error', `port ${entry.port} — No running instance`);
         }
         if (desktopUnavailablePorts.length > 0) {
-          clackLog.message('Only CLI instances (openchamber serve) support tunneling.');
+          clackLog.message('Only CLI instances (alcode serve) support tunneling.');
         }
 
         if (cliPorts.length === 0 && unavailablePorts.length === 0) {
-          logStatus('warning', 'No running instances found', 'Start one with `openchamber serve`.');
+          logStatus('warning', 'No running instances found', 'Start one with `alcode serve`.');
           clackOutro('No ports available');
           return;
         }
         if (cliPorts.length === 0) {
-          logStatus('warning', 'No CLI instances available for tunneling', 'Start one with `openchamber serve`.');
+          logStatus('warning', 'No CLI instances available for tunneling', 'Start one with `alcode serve`.');
           clackOutro('No CLI ports available');
           return;
         }
@@ -1081,9 +1077,9 @@ async function tunnelCommand(options, subcommand, action, deps) {
                 key: 'managed-remote-port',
                 code: '[PORT_MISMATCH]',
                 lines: [
-                  'Cloudflare target must match the active OpenChamber CLI port.',
+                  'Cloudflare target must match the active Alcode CLI port.',
                   'Example: `http://127.0.0.1:<port>`',
-                  'If CLI picked a different port, update Cloudflare or run `openchamber serve --port <port>`.',
+                  'If CLI picked a different port, update Cloudflare or run `alcode serve --port <port>`.',
                 ],
               });
             }
@@ -1436,7 +1432,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
             const safeInstances = runningInstances.filter((entry) => !isUnsafeBrowserPort(entry.port));
             if (safeInstances.length === 0) {
               throw new TunnelCliError(
-                'All discovered OpenChamber instance ports are browser-unsafe. Start or target a safe port (3000, 5173, 8080, or high ephemeral).',
+                'All discovered Alcode instance ports are browser-unsafe. Start or target a safe port (3000, 5173, 8080, or high ephemeral).',
                 EXIT_CODE.USAGE_ERROR,
               );
             }
@@ -1453,13 +1449,13 @@ async function tunnelCommand(options, subcommand, action, deps) {
 
             if (attachableSafeInstances.length === 0) {
               throw new TunnelCliError(
-                'No attachable OpenChamber CLI instances found on safe ports. Start one with `openchamber serve --port 3000`.',
+                'No attachable Alcode CLI instances found on safe ports. Start one with `alcode serve --port 3000`.',
                 EXIT_CODE.USAGE_ERROR,
               );
             }
 
             const selectedPort = await clackSelect({
-              message: 'Select OpenChamber instance port',
+              message: 'Select Alcode instance port',
               options: attachableSafeInstances.map((entry) => ({
                 value: entry.port,
                 label: `port ${entry.port}`,
@@ -1474,21 +1470,12 @@ async function tunnelCommand(options, subcommand, action, deps) {
           }
         }
 
-        // A public tunnel refuses an instance without a UI password, so an
-        // instance started for it gets one; a generated one is shown once below.
-        let generatedUiPassword = null;
-        const serveProtected = (serveOptions) => {
-          if (hasUiPasswordConfigured(serveOptions.uiPassword)) return serveCommand(serveOptions);
-          generatedUiPassword = generateUiPassword();
-          options.uiPassword = generatedUiPassword;
-          return serveCommand({ ...serveOptions, uiPassword: generatedUiPassword });
-        };
-        const instance = await resolveTargetInstance({ options, serveCommand: serveProtected, allowAutoStart: true, rejectDesktopRuntime: true });
+        const instance = await resolveTargetInstance({ options, serveCommand, allowAutoStart: true, rejectDesktopRuntime: true });
         if (instance?.autoStarted && shouldRenderHumanOutput(options)) {
           logStatus(
             'info',
             `Using auto-started instance on port ${instance.port}`,
-            `logs: openchamber logs -p ${instance.port}`,
+            `logs: alcode logs -p ${instance.port}`,
           );
         }
 
@@ -1503,7 +1490,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
 
         if (instance?.autoStarted) {
           const healthProgress = await createProgress(options, { max: 60 });
-          healthProgress?.start(`Waiting for OpenChamber on port ${instance.port} to become healthy (up to 60s)...`);
+          healthProgress?.start(`Waiting for Alcode on port ${instance.port} to become healthy (up to 60s)...`);
           let progressedSeconds = 0;
           const healthy = await waitForServerHealth(instance.port, {
             timeoutMs: 60000,
@@ -1515,7 +1502,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
               if (delta > 0) {
                 healthProgress.advance(delta);
                 progressedSeconds = elapsedSeconds;
-                healthProgress.message(`Waiting for OpenChamber health (${progressedSeconds}s / 60s)...`);
+                healthProgress.message(`Waiting for Alcode health (${progressedSeconds}s / 60s)...`);
               }
               if (complete && progressedSeconds < 60) {
                 const remaining = 60 - progressedSeconds;
@@ -1527,12 +1514,12 @@ async function tunnelCommand(options, subcommand, action, deps) {
             },
           });
           if (!healthy) {
-            healthProgress?.stop('OpenChamber is still starting');
+            healthProgress?.stop('Alcode is still starting');
             throw new Error(
-              `OpenChamber on port ${instance.port} is still starting after 60s. Startup time can vary by machine performance. ` +
+              `Alcode on port ${instance.port} is still starting after 60s. Startup time can vary by machine performance. ` +
               `Wait another minute, then check health with \`curl -fsS ${buildLocalUrl(instance.port, '/health')}\`. ` +
-              `If health is OK, retry tunnel start with \`openchamber tunnel start --port ${instance.port}\`. ` +
-              `For diagnostics run \`openchamber logs -p ${instance.port}\`.`
+              `If health is OK, retry tunnel start with \`alcode tunnel start --port ${instance.port}\`. ` +
+              `For diagnostics run \`alcode logs -p ${instance.port}\`.`
             );
           }
           healthProgress?.stop(`Instance ${instance.port} is healthy`);
@@ -1545,7 +1532,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
             managedRemoteTunnelHostname: hostname,
             managedRemoteTunnelToken: token,
           };
-          const { response: presetResponse, body: presetBody } = await requestJson(instance.port, '/api/openchamber/tunnel/managed-remote-token', {
+          const { response: presetResponse, body: presetBody } = await requestJson(instance.port, '/api/alcode/tunnel/managed-remote-token', {
             method: 'PUT',
             body: JSON.stringify(tokenSyncPayload),
           });
@@ -1575,40 +1562,31 @@ async function tunnelCommand(options, subcommand, action, deps) {
         let response;
         let body;
         try {
-          ({ response, body } = await requestJson(instance.port, '/api/openchamber/tunnel/start', {
+          ({ response, body } = await requestJson(instance.port, '/api/alcode/tunnel/start', {
             method: 'POST',
             body: JSON.stringify(payload),
             timeoutMs: 60000,
           }));
         } catch (error) {
-          if (error instanceof Error && /\/api\/openchamber\/tunnel\/start/.test(error.message) && /timed out/.test(error.message)) {
+          if (error instanceof Error && /\/api\/alcode\/tunnel\/start/.test(error.message) && /timed out/.test(error.message)) {
             spin?.error('Tunnel start timed out');
             throw new Error(
-              `Tunnel start timed out after 60s. cloudflared may still be starting; check with \`openchamber tunnel status --port ${instance.port}\`. Run \`openchamber logs -p ${instance.port}\` for details.`
+              `Tunnel start timed out after 60s. cloudflared may still be starting; check with \`alcode tunnel status --port ${instance.port}\`. Run \`alcode logs -p ${instance.port}\` for details.`
             );
           }
           spin?.error('Tunnel start failed');
           const message = error instanceof Error ? error.message : String(error);
-          throw new Error(`${message} Run \`openchamber logs -p ${instance.port}\` for details.`);
+          throw new Error(`${message} Run \`alcode logs -p ${instance.port}\` for details.`);
         }
 
         if (!response.ok || !body?.ok) {
           spin?.error('Tunnel start failed');
-          if (body?.code === 'ui_password_required') {
-            // Only an instance this command did not start can lack a password;
-            // `--ui-password` here cannot change a server that is already running.
-            throw new Error(
-              `OpenChamber on port ${instance.port} runs without a UI password, which a public tunnel requires. `
-              + `Stop it with \`openchamber stop -p ${instance.port}\`, then run tunnel start again: `
-              + 'the instance it starts gets a UI password.'
-            );
-          }
           const baseError = body?.error || `Tunnel start failed (${response.status})`;
           const isCloudflareTimeout = /context deadline exceeded|Client\.Timeout exceeded while awaiting headers|failed to request quick Tunnel/i.test(baseError);
           const userError = isCloudflareTimeout
             ? `Cloudflare quick tunnel request timed out. ${baseError}`
             : baseError;
-          throw new Error(`${userError} Run \`openchamber logs -p ${instance.port}\` for details.`);
+          throw new Error(`${userError} Run \`alcode logs -p ${instance.port}\` for details.`);
         }
 
         // Avoid duplicate "Tunnel started" lines: spinner completion is implied by
@@ -1632,19 +1610,15 @@ async function tunnelCommand(options, subcommand, action, deps) {
         });
 
         if (isJsonMode(options)) {
-          printJson({ port: instance.port, replayCommand, ...body, ...(generatedUiPassword ? { password: generatedUiPassword } : {}) });
+          printJson({ port: instance.port, replayCommand, ...body });
         } else if (isQuietMode(options)) {
           const quietUrl = body.connectUrl || body.url || 'n/a';
-          process.stdout.write(`port ${instance.port} ${quietUrl}${generatedUiPassword ? ` pass:${generatedUiPassword}` : ''}\n`);
+          process.stdout.write(`port ${instance.port} ${quietUrl}\n`);
         } else {
           console.log('');
           clackIntro(boldText('Tunnel Started'));
           logStatus('success', `port ${instance.port} ${clackFormatProviderWithIcon(body.provider)}/${body.mode}`);
           logStatus('success', body.connectUrl || body.url || 'n/a');
-          if (generatedUiPassword) {
-            logStatus('success', 'UI password', generatedUiPassword);
-            logStatus('warning', 'save this password', 'it is not shown again');
-          }
           if (body.replacedTunnel) {
             const revokedBootstrapCount = Number.isFinite(body.revokedBootstrapCount) ? body.revokedBootstrapCount : 0;
             const invalidatedSessionCount = Number.isFinite(body.invalidatedSessionCount) ? body.invalidatedSessionCount : 0;
@@ -1658,15 +1632,15 @@ async function tunnelCommand(options, subcommand, action, deps) {
           clackOutro('');
 
           const optionalTips = [
-            { line: 'Check status', detail: 'openchamber tunnel status' },
-            { line: 'Stop tunnel', detail: 'openchamber tunnel stop' },
+            { line: 'Check status', detail: 'alcode tunnel status' },
+            { line: 'Stop tunnel', detail: 'alcode tunnel stop' },
             { line: 'If needed, repeat with same settings', detail: replayCommand },
           ];
 
           if (!selectedProfile && mode === 'managed-remote' && typeof hostname === 'string' && hostname.trim().length > 0) {
             const profileSaveCommand = buildTunnelProfileAddCommand({ provider, hostname });
             optionalTips.push({ line: 'Optional: save reusable profile (stores hostname + token locally)', detail: profileSaveCommand });
-            optionalTips.push({ line: 'Start from saved profile', detail: 'openchamber tunnel start --profile <name>' });
+            optionalTips.push({ line: 'Start from saved profile', detail: 'alcode tunnel start --profile <name>' });
           }
 
           console.log('');
@@ -1709,7 +1683,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
           const tunnelStopSpin = shouldRenderHumanOutput(options) ? createSpinner(options) : null;
           tunnelStopSpin?.start(`Stopping tunnel on port ${entry.port}...`);
           try {
-            const { response, body } = await requestJson(entry.port, '/api/openchamber/tunnel/stop', {
+            const { response, body } = await requestJson(entry.port, '/api/alcode/tunnel/stop', {
               method: 'POST',
             });
             if (!response.ok) {
@@ -1769,7 +1743,7 @@ async function tunnelCommand(options, subcommand, action, deps) {
         const suggestion = findClosestMatch(subcommand, knownTunnelSubcommands);
         const hint = suggestion ? ` Did you mean '${suggestion}'?` : '';
         throw new TunnelCliError(
-          `Unknown tunnel subcommand '${subcommand}'.${hint} Use 'openchamber tunnel help'.`,
+          `Unknown tunnel subcommand '${subcommand}'.${hint} Use 'alcode tunnel help'.`,
           EXIT_CODE.USAGE_ERROR
         );
       }

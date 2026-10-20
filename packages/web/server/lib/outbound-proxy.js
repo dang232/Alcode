@@ -41,9 +41,14 @@ export const applyOutboundProxyFromEnv = ({ env = process.env, httpModule = http
   env.NO_PROXY = proxyEnv.NO_PROXY;
   env.no_proxy = proxyEnv.NO_PROXY;
   // Node 24 and Electron's Node apply this to fetch and http(s); Bun's fetch
-  // reads the variables directly.
+  // reads the variables directly. Older Node runtimes have no such API:
+  // report false instead of claiming a proxy that was never applied.
+  if (typeof httpModule.setGlobalProxyFromEnv !== 'function') {
+    console.warn('Outbound proxy requested but this Node runtime cannot apply it; want Node 24 or newer.');
+    return false;
+  }
   try {
-    httpModule.setGlobalProxyFromEnv?.(proxyEnv);
+    httpModule.setGlobalProxyFromEnv(proxyEnv);
   } catch (error) {
     console.warn('Could not apply the proxy from HTTP_PROXY/HTTPS_PROXY:', error?.message || error);
     return false;

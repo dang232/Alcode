@@ -250,7 +250,7 @@ feature is rewritten to an always-true or never-true query and re-evaluated
 when the theme changes.
 
 An agent can ask for a file to be shown (`file.open` on the managed
-`openchamber` tool). The server broadcasts `openchamber:file-open-request`;
+`alcode` tool). The server broadcasts `alcode:file-open-request`;
 `ContextPanel` answers it with `openContextFile`, `MobileApp` additionally
 opens the files drawer. VS Code has no shared file viewer and no managed
 tool, so the event never reaches it.
@@ -324,7 +324,7 @@ editor with the new bytes, unless it has unsaved changes.
 ## Excalidraw drawings
 
 `.excalidraw` and Obsidian `.excalidraw.md` files open in the Excalidraw
-extension (`github.com/openchamber/openchamber-excalidraw`), offered on the
+extension (`github.com/dang232/Alcode-excalidraw`), offered on the
 Integrations page (`components/sections/integrations/CatalogExtensionsSection.tsx`).
 Without it, where the runtime loads extensions, the file shows its text under
 a one-line notice whose Install button opens that card. `isExcalidrawFile`

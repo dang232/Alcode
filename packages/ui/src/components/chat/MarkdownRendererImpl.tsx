@@ -152,9 +152,9 @@ export interface MarkdownRendererProps {
   enableFileReferences?: boolean;
 }
 
-const BLOCK_PATH_TOKEN_ATTR = 'data-openchamber-block-path-token';
+const BLOCK_PATH_TOKEN_ATTR = 'data-alcode-block-path-token';
 const BLOCK_PATH_TOKEN_SELECTOR = `[${BLOCK_PATH_TOKEN_ATTR}]`;
-const CODE_BLOCK_PATH_SCANNED_ATTR = 'data-openchamber-block-paths-scanned';
+const CODE_BLOCK_PATH_SCANNED_ATTR = 'data-alcode-block-paths-scanned';
 // Matches `path[:line[:col]]` or `path:start-end` inside shell/grep-style
 // output. The regex is defined in `./fileReferenceParser`; the inline-code
 // pipeline reads full text content rather than using this regex.
@@ -277,9 +277,22 @@ const extractHrefFileReferenceCandidate = (anchor: HTMLAnchorElement): string | 
   return isLikelyFilePath(href) ? href : null;
 };
 
-// A path-like token (`path[:line[:col]]`) inside a `<pre><code>` block, by
-// its offsets in the block's code text.
-type BlockCodePathToken = { start: number; end: number; raw: string };
+// Walks text nodes inside `<pre><code>` subtrees and wraps any substring that
+// looks like a `path[:line[:col]]` reference in a span carrying
+// `data-alcode-block-path-token`. `annotateFileLinks` then promotes those
+// spans into clickable file links via the same existing pipeline used for
+// inline code (parseFileReference → fileReferenceExists → openFileReference).
+//
+// Idempotent: each `<code>` node is marked with
+// `data-alcode-block-paths-scanned` once processed so the walk is not
+// repeated on the same element. When the renderer replaces the `<code>` subtree
+// (e.g. on content change during streaming), the new element lacks the marker and
+// will be rescanned on the next mutation-observer callback.
+const wrapBlockCodePathTokens = (container: HTMLElement): void => {
+  const codeBlocks = container.querySelectorAll<HTMLElement>('pre code');
+  if (codeBlocks.length === 0) {
+    return;
+  }
 
 // The path-like tokens of each code block not scanned yet. Reads text only:
 // code is full of things shaped like paths (`console.log`, `this.state`),
@@ -400,9 +413,9 @@ const useFileReferenceInteractions = ({
     const fileReferencesEnabled = enabled && !isMobileSurfaceRuntime();
 
     const clearFileLinkAttributes = (candidate: HTMLElement) => {
-      candidate.removeAttribute('data-openchamber-file-link');
-      candidate.removeAttribute('data-openchamber-file-ref');
-      candidate.removeAttribute('data-openchamber-file-path');
+      candidate.removeAttribute('data-alcode-file-link');
+      candidate.removeAttribute('data-alcode-file-ref');
+      candidate.removeAttribute('data-alcode-file-path');
       if (candidate.getAttribute('title') === 'Open file') {
         candidate.removeAttribute('title');
       }
@@ -421,14 +434,14 @@ const useFileReferenceInteractions = ({
     };
 
     const openFileReference = async (sourceElement: HTMLElement, options?: { external: boolean }) => {
-      const raw = sourceElement.getAttribute('data-openchamber-file-ref') || extractPathCandidateFromElement(sourceElement);
+      const raw = sourceElement.getAttribute('data-alcode-file-ref') || extractPathCandidateFromElement(sourceElement);
       const parsedReference = getResolvedReference(raw, effectiveDirectory);
       if (!parsedReference) {
         return;
       }
       // Annotation stored where the file really is, which differs from the
       // written path when a bare name was found elsewhere in the workspace.
-      const storedPath = sourceElement.getAttribute('data-openchamber-file-path');
+      const storedPath = sourceElement.getAttribute('data-alcode-file-path');
       const resolved = storedPath ? { ...parsedReference, resolvedPath: storedPath } : parsedReference;
 
       // Cmd/Ctrl-click hands the file to the OS, which opens it with the app
@@ -593,11 +606,20 @@ const useFileReferenceInteractions = ({
             if (targetPath) markFileLink(candidate, latestRaw, targetPath);
             else clearFileLinkAttributes(candidate);
           }
-          for (const { codeBlock, tokens } of blockResults) {
-            if (!container.contains(codeBlock) || codeBlock.hasAttribute(CODE_BLOCK_PATH_SCANNED_ATTR)) continue;
-            wrapBlockCodePathTokens(codeBlock, tokens.flatMap(({ start, end, raw, targetPath }) => (
-              targetPath ? [{ start, end, raw, decorate: (span: HTMLElement) => markFileLink(span, raw, targetPath) }] : []
-            )));
+
+          const latestRawCandidate = extractPathCandidateFromElement(candidate);
+          const latestResolved = getResolvedReference(latestRawCandidate, effectiveDirectory);
+          if (!latestResolved || latestResolved.resolvedPath !== resolved.resolvedPath) {
+            return;
+          }
+
+          candidate.setAttribute('data-alcode-file-link', 'true');
+          candidate.setAttribute('data-alcode-file-ref', latestRawCandidate);
+          candidate.setAttribute('data-alcode-file-path', targetPath);
+          candidate.setAttribute('title', 'Open file');
+          if (candidate.tagName.toLowerCase() !== 'a') {
+            candidate.setAttribute('role', 'button');
+            candidate.setAttribute('tabindex', '0');
           }
         });
       });
@@ -609,7 +631,7 @@ const useFileReferenceInteractions = ({
       }
 
       const target = event.target;
-      if (!(target instanceof HTMLElement) || target.getAttribute('data-openchamber-file-link') !== 'true') {
+      if (!(target instanceof HTMLElement) || target.getAttribute('data-alcode-file-link') !== 'true') {
         return;
       }
 

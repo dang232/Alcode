@@ -107,12 +107,7 @@ const renderMarkdownImageLabel = ({
   const label = getMarkdownImageFilename(href ?? '', text);
   const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
   const remote = isRemoteMarkdownImageSource(href ?? '');
-  // A local or embedded image outside a link keeps its source, so the chat
-  // can draw it in place once the message settles (inlineMarkdownImages.ts).
-  const sourceAttr = !remote && markdownLinkDepth === 0 && isSupportedMarkdownImageSource(href ?? '')
-    ? ` data-openchamber-markdown-image-source="${escapeAttr(href)}"`
-    : '';
-  const span = `<span${titleAttr} class="inline-flex items-center gap-1 align-text-bottom text-muted-foreground" data-openchamber-markdown-image-label="true"${sourceAttr}>${escapeAttr(label)}</span>`;
+  const span = `<span${titleAttr} class="inline-flex items-center gap-1 align-text-bottom text-muted-foreground" data-alcode-markdown-image-label="true">${escapeAttr(label)}</span>`;
   // A remote image becomes a link to itself, unless it already sits inside
   // one (a badge): a link cannot hold another.
   if (!remote || markdownLinkDepth > 0) return span;
@@ -530,7 +525,7 @@ const renderMathPlaceholders = (html: string): string => html.replace(
 // No `start` hint: marked's inline text rule already stops before every
 // backslash, so a hint could not end a text run any earlier, and searching the
 // rest of the paragraph for `\(` at every inline token costs the square of its
-// length (openchamber/openchamber#4204).
+// length (dang232/Alcode#4204).
 const createInlineMathExtension = (render: MathRender) => ({
   name: 'inlineMath',
   level: 'inline' as const,
@@ -570,7 +565,7 @@ export const __scanStatsForTests = () => ({ ...scanStats });
 // holds only spaces (a tab-only line does not end it), so the search stops
 // there. Searching the whole rest made every block rescan the message, which
 // cost seconds on messages of thousands of short paragraphs
-// (openchamber/openchamber#4204). A hint beyond that line only flagged the
+// (dang232/Alcode#4204). A hint beyond that line only flagged the
 // paragraph as cut, which let marked glue a following stray line such as an
 // empty `1. ` onto it; that no longer depends on text further down. User
 // messages turn every newline into "  \n", so their empty lines hold two
@@ -677,17 +672,17 @@ const detailsExtension: TokenizerAndRendererExtension = {
 // marked-linkify-it searches all the remaining inline text at every inline
 // token, so one long paragraph costs the square of its length: a 250 KB data
 // dump without blank lines froze the window for most of a minute
-// (openchamber/openchamber#4204). While more than LINKIFY_SOURCE_LIMIT
+// (dang232/Alcode#4204). While more than LINKIFY_SOURCE_LIMIT
 // characters of inline text remain, it steps aside and marked's own GFM
 // autolink, which is linear, links bare URLs without the CJK boundary.
 export const LINKIFY_SOURCE_LIMIT = 5_000;
 
-// A pasted session or message link (`openchamber://session/<id>?message=<id>`)
-// becomes a link too; other `openchamber:` routes stay text.
-const OPENCHAMBER_SESSION_LINK_TAIL = /^\/\/session\/[A-Za-z0-9_-]{1,128}(?:\?message=[A-Za-z0-9_-]{1,128})?/;
-const OPENCHAMBER_SESSION_LINK_SCHEMA = {
-  // Length of the link after `openchamber:` at `pos`, or 0 when it is not one.
-  validate: (text: string, pos: number): number => OPENCHAMBER_SESSION_LINK_TAIL.exec(text.slice(pos))?.[0].length ?? 0,
+// A pasted session or message link (`alcode://session/<id>?message=<id>`)
+// becomes a link too; other `alcode:` routes stay text.
+const ALCODE_SESSION_LINK_TAIL = /^\/\/session\/[A-Za-z0-9_-]{1,128}(?:\?message=[A-Za-z0-9_-]{1,128})?/;
+const ALCODE_SESSION_LINK_SCHEMA = {
+  // Length of the link after `alcode:` at `pos`, or 0 when it is not one.
+  validate: (text: string, pos: number): number => ALCODE_SESSION_LINK_TAIL.exec(text.slice(pos))?.[0].length ?? 0,
 };
 
 // Streamed prose with many bold or emphasis tokens made linkify search the rest
@@ -699,7 +694,7 @@ const OPENCHAMBER_SESSION_LINK_SCHEMA = {
 const LINK_MARKER = /[:/@]/;
 
 const boundedLinkify = (): MarkedExtension => ({
-  extensions: (markedLinkifyIt({ fuzzyLink: false, schemas: { 'openchamber:': OPENCHAMBER_SESSION_LINK_SCHEMA } }).extensions ?? []).map((extension) => {
+  extensions: (markedLinkifyIt({ fuzzyLink: false, schemas: { 'alcode:': ALCODE_SESSION_LINK_SCHEMA } }).extensions ?? []).map((extension) => {
     if (!('tokenizer' in extension)) return extension;
     const { start, tokenizer } = extension;
     return {
@@ -747,7 +742,7 @@ const createParser = (imageMode: MarkdownImageMode, rawHtml: MarkdownRawHtmlMode
           const target = href ?? '';
           const agentName = parseAgentHref(target);
           if (agentName) {
-            return `<a href="${escapeAttr(buildAgentMentionUrl(agentName))}" data-openchamber-agent-mention="true" class="text-primary hover:underline" target="_blank" rel="noopener noreferrer">${text}</a>`;
+            return `<a href="${escapeAttr(buildAgentMentionUrl(agentName))}" data-alcode-agent-mention="true" class="text-primary hover:underline" target="_blank" rel="noopener noreferrer">${text}</a>`;
           }
           // An attachment citation is a label, not a link: the file-type icon
           // is added by the decoration pass (`decorateAttachmentCitations`).
@@ -952,7 +947,7 @@ const installAnchorHooks = (purifier: DOMPurifyInstance): void => {
     // DOMPurify's default URI policy strips custom application schemes
     // (obsidian://, vscode://, ...). Keep them for anchors; dangerous schemes
     // stay excluded via isAppLinkUrl and clicks go through confirmation.
-    // OpenChamber's own scheme is kept only for session links, which the chat
+    // Alcode's own scheme is kept only for session links, which the chat
     // opens in place; pairing and other privileged routes stay stripped. VS
     // Code keeps them as text: its sessions live on its own OpenCode.
     const keepSessionLink = isSessionDeepLink(data.attrValue) && !isVSCodeRuntime();
@@ -1057,7 +1052,7 @@ const parseMarkdown = (text: string, imageMode: MarkdownImageMode, rawHtml: Mark
 // instance id. `SimpleMarkdownRenderer` historically used a shared
 // `simple:${variant}` key, so every same-variant instance fought over one cache
 // slot and re-highlighted unchanged content on every pass
-// (openchamber/openchamber#2769). Content addressing makes identical blocks
+// (dang232/Alcode#2769). Content addressing makes identical blocks
 // share one entry and stops that thrash. Bounds are high enough for long
 // sessions; byte cap keeps memory bounded.
 //

@@ -552,6 +552,37 @@ interface FilePart {
   source?: Record<string, unknown>;
 }
 
+const GITHUB_ISSUE_LINK_MIME = 'application/vnd.github.issue-link';
+const GITLAB_ISSUE_LINK_MIME = 'application/vnd.alcode.gitlab-issue-link';
+const GITHUB_PR_LINK_MIME = 'application/vnd.github.pull-request-link';
+const LINEAR_ISSUE_LINK_MIME = 'application/vnd.alcode.linear-issue-link';
+const GUEST_ISSUE_LINK_MIME = 'application/vnd.alcode.guest-issue-link';
+const GUEST_PR_LINK_MIME = 'application/vnd.alcode.guest-pr-link';
+
+type IssueLinkKind = 'github-issue' | 'gitlab-issue' | 'github-pr' | 'linear-issue' | 'guest-issue' | 'guest-pr';
+
+const getIssueLinkKind = (file: FilePart): IssueLinkKind | null => {
+  if (file.mime === GITHUB_ISSUE_LINK_MIME) {
+    return 'github-issue';
+  }
+  if (file.mime === GITLAB_ISSUE_LINK_MIME) {
+    return 'gitlab-issue';
+  }
+  if (file.mime === GITHUB_PR_LINK_MIME) {
+    return 'github-pr';
+  }
+  if (file.mime === LINEAR_ISSUE_LINK_MIME) {
+    return 'linear-issue';
+  }
+  if (file.mime === GUEST_ISSUE_LINK_MIME) {
+    return 'guest-issue';
+  }
+  if (file.mime === GUEST_PR_LINK_MIME) {
+    return 'guest-pr';
+  }
+  return null;
+};
+
 const issueLinkIcon = (kind: IssueLinkKind): 'github' | 'gitlab' | 'git-pull-request' | 'linear' | 'attachment-2' => {
   if (kind === 'github-pr' || kind === 'guest-pr') return 'git-pull-request';
   if (kind === 'gitlab-issue') return 'gitlab';

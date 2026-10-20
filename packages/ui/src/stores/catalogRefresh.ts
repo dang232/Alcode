@@ -2,7 +2,7 @@
  * Re-reads the Settings-facing lists after OpenCode rebuilt a catalog.
  *
  * OpenCode v2 watches its own config files and publishes what it rebuilt, so a
- * file written by OpenChamber, by the user's editor, or by another client all
+ * file written by Alcode, by the user's editor, or by another client all
  * arrive the same way. The sync layer refreshes its own slices; this module
  * refreshes the stores the Settings pages and the composer read, so an agent
  * added on disk shows up in the list without anyone pressing a button.
@@ -145,16 +145,18 @@ export function catalogRefreshTasks(
     // `provider.updated` and `model.updated` (2.0.8) are OpenCode's own
     // deduplicated announcements that the provider list, or the model list it
     // materialises, changed. Both are answered by re-reading the provider list,
-    // which is where the composer's models come from.
+    // which is where the composer's models come from. They are also the
+    // announcement that a cold location finished warming: an agent list read
+    // in the cold window answers empty or partial and nothing later corrects
+    // it, so the named (already running) directories re-read agents too.
     case "provider":
     case "model":
-      return [refreshProviders];
-    // A web search key is a credential too, and a switch of provider accounts
-    // changes which account the usage trackers report on.
+      return [refreshProviders, () => refreshAgents(eventDirectories)];
+    // A web search key is a credential too.
     case "credential":
       return [refreshProvidersAfterCredentialChange, refreshWebSearchIfLoaded, refreshUsageAfterCredentialChange];
     // A config file can carry any of them (a provider declared in
-    // opencode.json included), and OpenChamber's own plugin injection lives
+    // opencode.json included), and Alcode's own plugin injection lives
     // in one, so the whole set is re-read.
     case "config":
       return [() => refreshAgents(eventDirectories), refreshCommands, refreshSkills, refreshMcp, refreshPlugins, refreshProviders, refreshWebSearchIfLoaded];

@@ -45,6 +45,7 @@ import { useDraftSpaceTarget } from '@/lib/spaces/useDraftSpaceTarget';
 import { panelContentDirectory } from '@/lib/spaces/space-creation-requests';
 import { SessionSwitcherDropdown } from '@/components/session/SessionSwitcherDropdown';
 import { SessionTabsStrip, type SessionTabMenuArgs } from './SessionTabsStrip';
+import { AccountProfile } from './AccountProfile';
 import { SessionMenuItemHint } from '@/components/session/SessionMenuItemHint';
 import { MoveChatToProjectDialog } from '@/components/session/MoveChatToProjectDialog';
 import { HeaderSessionArchiveMenuItem } from './HeaderSessionArchiveMenuItem';
@@ -170,7 +171,7 @@ export const Header: React.FC = () => {
       return null;
     }
 
-    const injected = (window as unknown as { __OPENCHAMBER_MACOS_MAJOR__?: unknown }).__OPENCHAMBER_MACOS_MAJOR__;
+    const injected = (window as unknown as { __ALCODE_MACOS_MAJOR__?: unknown }).__ALCODE_MACOS_MAJOR__;
     if (typeof injected === 'number' && Number.isFinite(injected) && injected > 0) {
       return injected;
     }
@@ -224,6 +225,135 @@ export const Header: React.FC = () => {
     }
     setWorkStatusPanelEnabled(!workStatusPanelEnabled);
   }, [setWorkStatusOverlayOpen, setWorkStatusPanelEnabled, workStatusOverlayOpen, workStatusPanelEnabled, workStatusPanelFits]);
+  const showDesktopHeaderContextUsage = !isVSCode
+    && !workStatusPanelVisible
+    && !!stableDesktopContextUsage;
+
+  const refreshCurrentInstanceLabel = React.useCallback(async () => {
+    if (typeof window === 'undefined' || !isDesktopApp) {
+      return;
+    }
+
+    try {
+      if (isDesktopLocalOriginActive()) {
+        setCurrentInstanceLabel('Local');
+        setCurrentInstanceIsLocal(true);
+        return;
+      }
+      setCurrentInstanceIsLocal(false);
+
+      // Same resolution the host switcher's own header uses, so the button and
+      // the panel it opens can never disagree about which instance this is.
+      const cfg = await desktopHostsGet();
+      const localOrigin = getLocalDesktopOrigin();
+      const resolved = resolveCurrentDesktopHost([buildLocalDesktopHost(localOrigin), ...cfg.hosts]);
+
+      if (resolved.id === LOCAL_HOST_ID) {
+        setCurrentInstanceLabel('Local');
+        setCurrentInstanceIsLocal(true);
+        return;
+      }
+
+      setCurrentInstanceLabel(redactSensitiveUrl(resolved.label.trim() || 'Instance'));
+    } catch {
+      setCurrentInstanceLabel('Local');
+      setCurrentInstanceIsLocal(true);
+    }
+  }, [isDesktopApp]);
+
+  useEffect(() => {
+    void refreshCurrentInstanceLabel();
+    // Switching instances does not remount the header, so without this the
+    // button would keep naming the instance the window left behind.
+    return subscribeRuntimeEndpointChanged(() => {
+      void refreshCurrentInstanceLabel();
+    });
+  }, [refreshCurrentInstanceLabel]);
+
+  const checkRemoteInstanceUpdate = React.useCallback(async () => {
+    if (currentInstanceIsLocal) {
+      setRemoteUpdateInfo(null);
+      setRemoteUpdateError(null);
+      return;
+    }
+
+    setRemoteUpdateChecking(true);
+    setRemoteUpdateError(null);
+    try {
+      // Status-only poll: must not count as usage on the remote server's install id.
+      const params = new URLSearchParams({ appType: 'web', instanceMode: 'remote', reportUsage: 'false' });
+      const response = await runtimeFetch(`/api/alcode/update-check?${params.toString()}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
+      }
+      const data = await response.json();
+      setRemoteUpdateInfo({
+        available: data.available ?? false,
+        version: data.version,
+        currentVersion: data.currentVersion ?? 'unknown',
+        body: data.body,
+        nextSuggestedCheckInSec: typeof data.nextSuggestedCheckInSec === 'number' ? data.nextSuggestedCheckInSec : undefined,
+        packageManager: data.packageManager,
+        updateCommand: data.updateCommand,
+      });
+    } catch (error) {
+      setRemoteUpdateInfo(null);
+      setRemoteUpdateError(error instanceof Error ? error.message : t('header.services.remoteUpdate.error'));
+    } finally {
+      setRemoteUpdateChecking(false);
+    }
+  }, [currentInstanceIsLocal, t]);
+
+  React.useEffect(() => {
+    setRemoteUpdateInfo(null);
+    setRemoteUpdateError(null);
+    setRemoteUpdateDialogOpen(false);
+  }, [currentInstanceIsLocal, currentInstanceLabel]);
+
+  React.useEffect(() => {
+    if (!isDesktopApp || currentInstanceIsLocal) {
+      return;
+    }
+
+    const initialDelayMs = 3000;
+    const intervalMs = 60 * 60 * 1000;
+    let disposed = false;
+    let timer: number | null = null;
+
+    const schedule = (delayMs: number) => {
+      timer = window.setTimeout(() => {
+        if (disposed || (typeof document !== 'undefined' && document.visibilityState !== 'visible')) {
+          schedule(intervalMs);
+          return;
+        }
+        void checkRemoteInstanceUpdate().finally(() => {
+          if (!disposed) {
+            schedule(intervalMs);
+          }
+        });
+      }, delayMs);
+    };
+
+    schedule(initialDelayMs);
+
+    return () => {
+      disposed = true;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [checkRemoteInstanceUpdate, currentInstanceIsLocal, currentInstanceLabel, isDesktopApp]);
+
+  const openRemoteInstanceUpdate = React.useCallback(() => {
+    if (remoteUpdateInfo?.available) {
+      setRemoteUpdateDialogOpen(true);
+      return;
+    }
+    void checkRemoteInstanceUpdate();
+  }, [checkRemoteInstanceUpdate, remoteUpdateInfo?.available]);
 
   useQuotaAutoRefresh();
 
@@ -395,7 +525,7 @@ export const Header: React.FC = () => {
 
   const currentSessionTitle = React.useMemo(() => {
     if (!currentSessionId) {
-      return activeProjectLabel ?? 'OpenChamber';
+      return activeProjectLabel ?? 'Alcode';
     }
     const trimmedTitle = currentSession?.title?.trim();
     return trimmedTitle && trimmedTitle.length > 0 ? trimmedTitle : 'Untitled Session';
@@ -765,11 +895,11 @@ export const Header: React.FC = () => {
     };
 
     void syncFullscreenState();
-    window.addEventListener('openchamber:window-resized', onResize);
+    window.addEventListener('alcode:window-resized', onResize);
 
     return () => {
       disposed = true;
-      window.removeEventListener('openchamber:window-resized', onResize);
+      window.removeEventListener('alcode:window-resized', onResize);
     };
   }, [isDesktopApp, isMacPlatform]);
 
@@ -1341,7 +1471,8 @@ export const Header: React.FC = () => {
           ) : null}
 
           {desktopSidebarActions}
-          <WindowsWindowControls visible={endEdgeOwnedByInWindowControls} position={windowControlsSide} />
+          <AccountProfile />
+          <WindowsWindowControls visible={usesFramelessChrome && windowControlsSide === 'right'} position="right" />
         </div>
       </div>
     </div>

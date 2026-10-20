@@ -92,7 +92,7 @@ describe('createSpaceEventSources', () => {
     expect(await until(() => streams[ID].length === 1)).toBe(true);
     expect(requests[0]).toMatchObject({ spaceId: ID, path: '/api/event', headers: expect.objectContaining({ Accept: 'text/event-stream' }) });
     expect(await until(() => received.length >= 3)).toBe(true);
-    expect(received[0].payload).toMatchObject({ type: 'openchamber:space-stream', properties: { spaceId: ID, status: 'connected', wasReady: false } });
+    expect(received[0].payload).toMatchObject({ type: 'alcode:space-stream', properties: { spaceId: ID, status: 'connected', wasReady: false } });
     expect(received.slice(1).map((event) => [event.payload.type, event.payload.data.sessionID, event.payload.data.status.type])).toEqual([
       ['session.status', 'busy1', 'busy'],
       ['session.status', 'idle1', 'idle'],
@@ -126,7 +126,7 @@ describe('createSpaceEventSources', () => {
     start();
     sources.sync([ID, OTHER]);
     expect(await until(() => streams[ID].length === 1 && streams[OTHER].length === 1)).toBe(true);
-    expect(await until(() => received.filter((event) => event.payload.type === 'openchamber:space-stream').length === 2)).toBe(true);
+    expect(await until(() => received.filter((event) => event.payload.type === 'alcode:space-stream').length === 2)).toBe(true);
     streams[ID][0].end();
     expect(await until(() => received.some((event) => event.payload.properties?.status === 'disconnected' && event.payload.properties?.spaceId === ID))).toBe(true);
     // The first attempt after the gap waits a second, so it is not there at once.

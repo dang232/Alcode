@@ -1,11 +1,13 @@
 ---
 title: インストール
 description: デスクトップ、Web、VS Code、スマートフォンに OpenChamber をインストールします。
+description: デスクトップ、Web、VS Code 向けに Alcode をインストールします。
 ---
 
 # インストール
 
 作業スタイルに合ったアプリを選んでください。
+Alcode を実行する方法は 3 つあります。
 
 - macOS、Windows、Linux 用のデスクトップアプリ
 - CLI が動かす Web アプリ。スマートフォンアプリのようにインストールできます（PWA）
@@ -17,14 +19,15 @@ description: デスクトップ、Web、VS Code、スマートフォンに OpenC
 [ダウンロードページ](https://openchamber.dev/download/)または [GitHub Releases](https://github.com/openchamber/openchamber/releases/latest) から最新版をダウンロードして開きます。Linux 向けには `.deb`、`.rpm`、AppImage があります。
 
 デスクトップアプリには [OpenCode](https://opencode.ai)（OpenChamber の土台になっている AI コーディングエージェント）が同梱されているので、ほかに何もインストールする必要はありません。
+先に [OpenCode](https://opencode.ai) をインストールしてください。Alcode はその上で動作します。
 
 ## Web + PWA
 
 Web アプリを動かすマシンには [OpenCode](https://opencode.ai) と Node.js 24.14 以降が必要です。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/openchamber/openchamber/main/scripts/install.sh | bash
-openchamber --ui-password be-creative-here
+curl -fsSL https://raw.githubusercontent.com/dang232/Alcode/main/scripts/install.sh | bash
+alcode --ui-password be-creative-here
 ```
 
 CLI が表示した URL（通常は `http://localhost:3000`）を開きます。OpenChamber のセッション一覧が表示されれば準備完了です。すぐ開けるようにするには、ブラウザのアドレスバーにある「インストール」からアプリとして追加します。
@@ -36,3 +39,7 @@ CLI が表示した URL（通常は `http://localhost:3000`）を開きます。
 ## モバイル
 
 iPhone アプリは TestFlight から、Android アプリは最新リリースからインストールし、コンピューターとペアリングします。手順は [モバイルアプリと PWA](/ja/mobile/) にあります。
+CLI が表示する URL（通常は `http://localhost:3000`）を開きます。Alcode のセッション一覧が表示されるはずです。すぐ使えるようにしておくには、ブラウザのアドレスバーにある「インストール」オプションでアプリとして追加します。
+## デスクトップ
+GitHub releases ページまたは Alcode ダウンロードページから最新のデスクトップビルドをダウンロードします。開いたら、普段の OpenCode ワークフローにサインインします。
+VS Code Marketplace からインストールし、普段の OpenCode ワークフローにサインインします。その後、Alcode ビューがサイドバーに開きます。

@@ -22,21 +22,11 @@
       "node"
     ],
     "paths": {
-      "@openchamber/sdk": [
-        "../sdk/src/index.ts"
-      ],
-      "@openchamber/sdk/schemas": [
-        "../sdk/src/schemas.ts"
-      ],
-      "@/*": [
-        "../ui/src/*"
-      ],
-      "@vscode/*": [
-        "./webview/*"
-      ],
-      "@openchamber/ui/*": [
-        "../ui/src/*"
-      ]
+      "@alcode/sdk": ["../sdk/src/index.ts"],
+      "@alcode/sdk/schemas": ["../sdk/src/schemas.ts"],
+      "@/*": ["../ui/src/*"],
+      "@vscode/*": ["./webview/*"],
+      "@alcode/ui/*": ["../ui/src/*"]
     }
   },
   "include": [

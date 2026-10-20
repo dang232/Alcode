@@ -25,7 +25,7 @@ const SESSION_CACHE_FALLBACK_LIMITS = [PERSISTED_SESSION_LIMIT, 25, 10, 5, 1] as
  * byte-rate limit, and a session list changes on every streamed step.
  */
 const SESSION_PERSIST_THROTTLE_MS = 2_000
-const MANAGED_CHATS_CACHE_SCOPE = "openchamber:managed-chats"
+const MANAGED_CHATS_CACHE_SCOPE = "alcode:managed-chats"
 /** Most recent sessions the global snapshot keeps, then smaller fallbacks. */
 const GLOBAL_SNAPSHOT_LIMITS = [200, 100, 50, 25, 10] as const
 /** Serialized size the global snapshot must fit before it is written. */
@@ -299,7 +299,7 @@ export type PersistedDirCache = {
 /** Read all cached metadata for a directory */
 /**
  * The fields the stores dereference before bootstrap replaces a cached list.
- * localStorage is shared by every OpenChamber build that ran on this origin,
+ * localStorage is shared by every Alcode build that ran on this origin,
  * so a record written by another version is data, not a `Session`: a record
  * missing any of these is dropped instead of crashing the first render.
  */

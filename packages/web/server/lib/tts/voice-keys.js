@@ -26,9 +26,9 @@ const patchSchema = z.object({
   stt: patchValue.optional(),
 }).strict();
 
-const resolveDataDir = () => (process.env.OPENCHAMBER_DATA_DIR
-  ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-  : path.join(os.homedir(), '.config', 'openchamber'));
+const resolveDataDir = () => (process.env.ALCODE_DATA_DIR
+  ? path.resolve(process.env.ALCODE_DATA_DIR)
+  : path.join(os.homedir(), '.config', 'alcode'));
 
 const voiceKeysPath = () => path.join(resolveDataDir(), 'voice-keys.json');
 

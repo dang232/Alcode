@@ -32,7 +32,7 @@ function createUpdateCommand({ importFromFilePath, packageManagerPath, serveComm
     const currentVersion = getCurrentVersion();
 
     if (showOutput) {
-      clackIntro('OpenChamber Update');
+      clackIntro('Alcode Update');
     }
 
     if (showOutput && !updateSpin) {
@@ -112,9 +112,7 @@ function createUpdateCommand({ importFromFilePath, packageManagerPath, serveComm
           port: storedOptions.port || instance.port,
           host: storedOptions.host,
           explicitPort: true,
-          uiPassword: storedOptions.uiPassword,
           suppressStartupSummary: true,
-          suppressUiPasswordWarning: true,
           quiet: true,
         });
       }

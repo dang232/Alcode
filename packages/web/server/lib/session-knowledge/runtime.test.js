@@ -54,8 +54,8 @@ const createMetadataStub = (initial = {}) => {
     readSessionMetadata: async (sessionId) => state[sessionId] ?? {},
     persistSessionMetadata: async (sessionId, directory, patch) => {
       patches.push({ sessionId, directory, patch });
-      const openchamber = { ...(state[sessionId]?.openchamber ?? {}), ...(patch.openchamber ?? {}) };
-      state[sessionId] = { ...(state[sessionId] ?? {}), openchamber };
+      const alcode = { ...(state[sessionId]?.alcode ?? {}), ...(patch.alcode ?? {}) };
+      state[sessionId] = { ...(state[sessionId] ?? {}), alcode };
     },
   };
 };
@@ -395,17 +395,17 @@ describe('pins', () => {
     const runtime = createRuntime();
 
     expect(runtime.readPins({
-      metadata: { openchamber: { project_context_pins: { notes: ['n1'], plans: [] } } },
+      metadata: { alcode: { project_context_pins: { notes: ['n1'], plans: [] } } },
     })).toEqual({ notes: ['n1'], plans: [] });
     expect(runtime.readPins({
-      metadata: { openchamber: { project_context_pins: { notes: [], plans: ['p1'] } } },
+      metadata: { alcode: { project_context_pins: { notes: [], plans: ['p1'] } } },
     })).toEqual({ notes: [], plans: ['p1'] });
     expect(runtime.readPins({})).toEqual({ notes: [], plans: [] });
   });
 
-  test('pins into OpenChamber\'s own store as a merge patch', async () => {
+  test('pins into Alcode\'s own store and invalidates the delivered signature', async () => {
     const store = createMetadataStub({
-      ses_a: { openchamber: { project_context_pins: { notes: [], plans: [] } } },
+      ses_a: { alcode: { project_context_pins: { notes: [], plans: [] }, knowledge_context_delivered: 'old' } },
     });
     const runtime = createRuntime(store);
 
@@ -414,21 +414,56 @@ describe('pins', () => {
     expect(store.patches).toEqual([{
       sessionId: 'ses_a',
       directory: DIRECTORY,
-      patch: { openchamber: { project_context_pins: { notes: ['n1'], plans: [] } } },
+      patch: {
+        alcode: {
+          project_context_pins: { notes: ['n1'], plans: [] },
+          knowledge_context_delivered: '',
+        },
+      },
     }]);
   });
 
   test('unpins the same way', async () => {
     const store = createMetadataStub({
-      ses_a: { openchamber: { project_context_pins: { notes: ['n1', 'n2'], plans: [] } } },
+      ses_a: { alcode: { project_context_pins: { notes: ['n1', 'n2'], plans: [] } } },
     });
     const runtime = createRuntime(store);
 
     await expect(runtime.setPin('ses_a', DIRECTORY, 'note', 'n1', false)).resolves.toEqual({ notes: ['n2'], plans: [] });
   });
 
+  test('records delivery as a merge patch, leaving neighbouring state alone', async () => {
+    const store = createMetadataStub();
+    const runtime = createRuntime(store);
+
+    await runtime.recordDelivered('ses_a', DIRECTORY, 'sig-1');
+
+    expect(store.patches).toEqual([{
+      sessionId: 'ses_a',
+      directory: DIRECTORY,
+      patch: { alcode: { knowledge_context_delivered: 'sig-1' } },
+    }]);
+  });
+
   test('says so plainly when no metadata store is wired', async () => {
-    await expect(createRuntime().setPin('ses_a', DIRECTORY, 'note', 'n1', true)).rejects.toThrow(/session metadata store/);
+    const runtime = createRuntime();
+    await expect(runtime.setPin('ses_a', DIRECTORY, 'note', 'n1', true)).rejects.toThrow(/session metadata store/);
+    await expect(runtime.recordDelivered('ses_a', DIRECTORY, 'sig')).rejects.toThrow(/session metadata store/);
+  });
+
+  test('finds the signature stored on the session', () => {
+    const runtime = createRuntime();
+
+    expect(runtime.readDeliveredSignature({
+      metadata: { alcode: { knowledge_context_delivered: 'sig' } },
+    })).toBe('sig');
+  });
+
+  test('a session with no metadata has been told nothing', () => {
+    const runtime = createRuntime();
+
+    expect(runtime.readDeliveredSignature({})).toBe('');
+    expect(runtime.readDeliveredSignature(null)).toBe('');
   });
 });
 

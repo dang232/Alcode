@@ -14,6 +14,7 @@ import { enableMainProcessCompileCache } from './compile-cache.mjs';
 import { shouldIgnoreLoopbackConnectionLimit } from './startup-url-selection.mjs';
 import {
   APP_USER_MODEL_ID,
+  LEGACY_UI_PROTOCOL,
   UI_PROTOCOL,
   createEarlyWindow,
   deferAppEventsUntilMainLoads,
@@ -27,9 +28,9 @@ import {
 recordEarlyStartupMark('electron.entry');
 
 // Set the product name early so electron-log derives its log directory as
-// ~/Library/Logs/OpenChamber/ (not ~/Library/Logs/@openchamber/electron/).
+// ~/Library/Logs/Alcode/ (not ~/Library/Logs/@alcode/electron/).
 const versionBeforeRename = app.getVersion();
-app.setName('OpenChamber');
+app.setName('Alcode');
 // An unpackaged run on Linux reports version "0.0" after the rename, and
 // electron-updater refuses a version that is not semver, so the dev app quit
 // before its first window. Restoring the version from before the rename gives
@@ -42,13 +43,15 @@ if (process.platform === 'linux') {
   app.setDesktopName('openchamber.desktop');
 }
 if (isDev) {
-  app.setPath('userData', path.join(app.getPath('appData'), 'OpenChamber Dev'));
+  app.setPath('userData', path.join(app.getPath('appData'), 'Alcode Dev'));
 }
 // Test hook for scripts/profile-startup.mjs: a packaged launch that must not
 // share the single-instance lock or the Chromium profile with the installed
 // app. macOS resolves the home directory from the user record, not $HOME, so
 // an environment-only isolation cannot move these.
-const userDataOverride = String(process.env.OPENCHAMBER_DESKTOP_USER_DATA_DIR || '').trim();
+// New override first, pre-rename name as a fallback so existing profile
+// isolation setups keep working. The default location is unchanged.
+const userDataOverride = String(process.env.ALCODE_DESKTOP_USER_DATA_DIR || process.env.OPENCHAMBER_DESKTOP_USER_DATA_DIR || '').trim();
 if (userDataOverride) {
   app.setPath('userData', userDataOverride);
 }
@@ -65,7 +68,7 @@ app.commandLine.appendSwitch('proxy-bypass-list', '<-loopback>;openchamber-previ
 // browser panel's forwarded previews.
 if (shouldIgnoreLoopbackConnectionLimit({
   development: isDev,
-  packagedUi: process.env.OPENCHAMBER_ELECTRON_USE_BUNDLED_UI === '1',
+  packagedUi: process.env.ALCODE_ELECTRON_USE_BUNDLED_UI === '1',
 })) {
   app.commandLine.appendSwitch('ignore-connections-limit', '127.0.0.1');
 }
@@ -75,9 +78,11 @@ const devRemoteDebuggingPort = String(process.env.OPENCHAMBER_ELECTRON_REMOTE_DE
 if (isDev && /^\d+$/.test(devRemoteDebuggingPort)) {
   app.commandLine.appendSwitch('remote-debugging-port', devRemoteDebuggingPort);
 }
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: UI_PROTOCOL,
+// Both UI origins stay privileged so packaged pages served from the
+// pre-rename scheme keep the same fetch/CORS/code-cache behavior.
+protocol.registerSchemesAsPrivileged(
+  [UI_PROTOCOL, LEGACY_UI_PROTOCOL].map((scheme) => ({
+    scheme,
     privileges: {
       standard: true,
       secure: true,
@@ -86,8 +91,8 @@ protocol.registerSchemesAsPrivileged([
       // Keep V8 bytecode for the packaged renderer bundle between launches.
       codeCache: true,
     },
-  },
-]);
+  })),
+);
 
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);

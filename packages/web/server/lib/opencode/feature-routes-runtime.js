@@ -2,6 +2,8 @@ import { registerFsRoutes } from '../fs/routes.js';
 import { createRipgrepResolver } from '../fs/ripgrep.js';
 import { registerEnvironmentRoutes } from '../environment/routes.js';
 import { registerQuotaRoutes } from '../quota/routes.js';
+import { createTokenpanelQuotaRuntime } from '../tokenpanel/tokenpanel-quota.js';
+import { sharedUserTokenStore } from '../user-tokens/user-token-store.js';
 import { registerSmallModelRoutes } from '../small-model/routes.js';
 import { registerWalkthroughRoutes } from '../walkthrough/routes.js';
 import { registerSessionGoalRoutes } from '../session-goal/routes.js';
@@ -33,8 +35,8 @@ import { createProviderReadCache } from '../provider-read-cache/index.js';
 import { createTrackedItemReaders } from '../tracked-items/readers.js';
 import { createTrackedItemsPersistence } from '../tracked-items/persistence.js';
 import { registerTrackedItemsRoutes } from '../tracked-items/routes.js';
-import { registerOpenChamberSessionRoutes } from '../openchamber-sessions/routes.js';
-import { registerOpenChamberControlRoutes } from '../openchamber-control/routes.js';
+import { registerAlcodeSessionRoutes } from '../alcode-sessions/routes.js';
+import { registerAlcodeControlRoutes } from '../alcode-control/routes.js';
 import { registerMarkdownImageGrantRoutes } from '../markdown-image-grants/routes.js';
 import { registerSkillRoutes } from './skill-routes.js';
 import { registerPluginRoutes } from './plugin-routes.js';
@@ -59,9 +61,11 @@ import {
   encodePluginId,
   decodePluginId,
 } from './plugins.js';
-import { SKILL_DIR, SKILL_SCOPE, readSkillSupportingFile, writeSkillSupportingFile, deleteSkillSupportingFile } from './shared.js';
+import { SKILL_DIR, SKILL_SCOPE, readSkillSupportingFile, writeSkillSupportingFile, deleteSkillSupportingFile, writeMdFile } from './shared.js';
 import { getSkillSources, discoverSkills, mergeDiscoveredSkills, createSkill, updateSkill, deleteSkill, renameSkill, isManagedSkillPath } from './skills.js';
 import { getCuratedSkillsSources } from '../skills-catalog/curated-sources.js';
+import { createEngineSkillCatalog } from '../skills-catalog/engine-skills.js';
+import { createOmoSkillCatalog } from '../skills-catalog/omo-skills.js';
 import { getCacheKey, scanWithCache } from '../skills-catalog/cache.js';
 import { parseSkillRepoSource } from '../skills-catalog/source.js';
 import { scanSkillsRepository } from '../skills-catalog/scan.js';
@@ -91,7 +95,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
   } = dependencies;
   const gitRuntimeIdentity = Object.freeze({
     id: `server_${crypto.randomUUID()}`,
-    platform: process.env.OPENCHAMBER_RUNTIME === 'desktop' ? 'desktop' : 'web',
+    platform: process.env.ALCODE_RUNTIME === 'desktop' ? 'desktop' : 'web',
   });
 
   let quotaProviders = null;
@@ -202,6 +206,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
 
   const registerRoutes = async (app, routeDependencies) => {
     const {
+      uiAuthController,
       messageSearchRuntime,
       sessionWarmingRuntime,
       crypto,
@@ -212,10 +217,10 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       spawn,
       resolveGitBinaryForSpawn,
       createFsSearchRuntime,
-      openchamberDataDir,
+      alcodeDataDir,
       onGuestDeactivated,
       surfaceViewerHeaders,
-      openchamberUserConfigRoot,
+      alcodeUserConfigRoot,
       managedChatsRoot,
       normalizeDirectoryPath,
       resolveProjectDirectory,
@@ -225,6 +230,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       saveImportedTheme,
       deleteImportedTheme,
       refreshOpenCodeAfterConfigChange,
+      refreshManagedAgentsForChild,
       getOpenCodeResolutionSnapshot,
       getOpenCodeUpgradeCapability,
       upgradeOpenCodeCli,
@@ -253,10 +259,10 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       sessionKnowledgeRuntime,
       scheduledTasksRuntime,
       scheduledTaskService,
-      openChamberSessionService,
-      openChamberControlService,
+      alcodeSessionService,
+      alcodeControlService,
       waitForOpenCodeReady,
-      getOpenChamberEventClients,
+      getAlcodeEventClients,
       writeSseEvent,
       emitSessionCreatedEvent,
       permissionAutoAcceptRuntime,
@@ -264,7 +270,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       messageQueueRuntime,
       routingRuntime,
       globalEventHub,
-      openchamberVersion,
+      alcodeVersion,
     } = routeDependencies;
 
     registerSettingsUtilityRoutes(app, {
@@ -278,7 +284,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     registerPermissionAutoAcceptRoutes(app, permissionAutoAcceptRuntime);
     registerMessageQueueRoutes(app, messageQueueRuntime);
     registerRoutingRoutes(app, routingRuntime);
-    // Before the generic OpenCode proxy: swallows the `openchamber/auto` model
+    // Before the generic OpenCode proxy: swallows the `alcode/auto` model
     // switch and routes the sends that follow it.
     registerRoutingPromptRewrite(app, routingRuntime);
 
@@ -306,7 +312,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       fsPromises,
       path,
       crypto,
-      openchamberDataDir,
+      alcodeDataDir,
       sanitizeProjects,
       readSettingsFromDiskMigrated,
       persistSettings,
@@ -321,11 +327,11 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       projectConfigRuntime,
       scheduledTasksRuntime,
       scheduledTaskService,
-      getOpenChamberEventClients,
+      getAlcodeEventClients,
       writeSseEvent,
     });
 
-    registerOpenChamberSessionRoutes(app, {
+    registerAlcodeSessionRoutes(app, {
       readSettingsFromDiskMigrated,
       sanitizeProjects,
       validateDirectoryPath,
@@ -333,10 +339,10 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       getOpenCodeAuthHeaders,
       waitForOpenCodeReady,
       emitSessionCreatedEvent,
-      sessionService: openChamberSessionService,
+      sessionService: alcodeSessionService,
     });
 
-    registerOpenChamberControlRoutes(app, { controlService: openChamberControlService });
+    registerAlcodeControlRoutes(app, { controlService: alcodeControlService });
 
     registerMarkdownImageGrantRoutes(app, {
       fsPromises,
@@ -351,6 +357,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       resolveProjectDirectory,
       resolveOptionalProjectDirectory,
       refreshOpenCodeAfterConfigChange,
+      refreshManagedAgentsForChild,
       clientReloadDelayMs,
       getAgentSources,
       getAgentConfig,
@@ -400,18 +407,69 @@ export const createFeatureRoutesRuntime = (dependencies) => {
 
     const { getProfiles, getProfile, getGlobalIdentity, resolveRepositoryGitPaths } = await import('../git/index.js');
 
+    registerSkillRoutes(app, {
+      fs,
+      path,
+      os,
+      resolveProjectDirectory,
+      resolveOptionalProjectDirectory,
+      readSettingsFromDisk,
+      sanitizeSkillCatalogs,
+      isUnsafeSkillRelativePath,
+      refreshOpenCodeAfterConfigChange,
+      clientReloadDelayMs,
+      buildOpenCodeUrl,
+      getOpenCodeAuthHeaders,
+      getOpenCodePort,
+      getSkillSources,
+      discoverSkills,
+      mergeDiscoveredSkills,
+      createSkill,
+      updateSkill,
+      deleteSkill,
+      renameSkill,
+      isManagedSkillPath,
+      readSkillSupportingFile,
+      writeSkillSupportingFile,
+      deleteSkillSupportingFile,
+      SKILL_SCOPE,
+      SKILL_DIR,
+      getCuratedSkillsSources,
+      getCacheKey,
+      scanWithCache,
+      parseSkillRepoSource,
+      scanSkillsRepository,
+      installSkillsFromRepository,
+      fetchGitHubRepoMetas,
+      getProfiles,
+      getProfile,
+      // Engine skills catalog (T7): loader-backed list + SKILL.md
+      // install into managed roots. Additive: OpenCode-config discovery
+      // and bridge/pane resolution are untouched.
+      engineSkillCatalog: createEngineSkillCatalog({ userSkillDir: SKILL_DIR, writeSkillFile: writeMdFile }),
+      omoSkillCatalog: createOmoSkillCatalog({ userSkillDir: SKILL_DIR, writeSkillFile: writeMdFile }),
+    });
+
     registerQuotaRoutes(app, { getQuotaProviders });
+    // Behind the /api session gate (registered in bootstrap) and before the
+    // generic OpenCode proxy: the account panel's live TokenPanel quota read.
+    // The store is the desktop-login singleton (capture and presentation
+    // share one keychain); the subject resolver binds reads to the caller.
+    createTokenpanelQuotaRuntime({
+      userTokenStore: sharedUserTokenStore(),
+      resolveSubject: (req) => uiAuthController?.resolveRequestAlcoreSub?.(req) ?? '',
+    }).registerRoutes(app);
     registerSmallModelRoutes(app, { getSmallModelService });
     registerSessionGoalRoutes(app);
     const gitBinary = resolveGitBinaryForSpawn();
     const gitlabAuthStore = createSourceControlAuthStore({
-      filePath: path.join(openchamberDataDir, 'source-control-auth.json'),
+      filePath: path.join(alcodeDataDir, 'source-control-auth.json'),
       // GitLab OAuth tokens live two hours; the store renews them before they lapse.
       refreshOAuthToken: async ({ origin, refreshToken }) => refreshGitLabAccessToken({
         origin, refreshToken, clientId: await resolveGitLabClientId(origin, readSettingsFromDisk),
       }),
     });
-    // A GitHub account is either one OpenChamber stores or the gh CLI login
+    // A GitHub account is either one Alcode stores or the gh CLI login
     // the user switched to; reads already accept both, so Git transport
     // (fork PR worktrees, clones) must too.
     const resolveSourceControlAccount = async ({ provider, instance, accountId, credentialRevision }) => {
@@ -423,28 +481,28 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       getTransportRevision: (directory) => readEffectiveGitTransportRevision(directory, { gitBinary }),
     });
     const contributorProvenance = createContributorProvenanceStore({
-      filePath: path.join(openchamberDataDir, 'git-contributor-provenance.json'),
+      filePath: path.join(alcodeDataDir, 'git-contributor-provenance.json'),
       resolveRepositoryIdentity: resolveTransportRepository,
       resolveGitPaths: resolveRepositoryGitPaths,
       fsImpl: fsPromises,
     });
     const sourceControlAuditStore = createSourceControlAuditStore({
-      filePath: path.join(openchamberDataDir, 'source-control-audit.json'),
+      filePath: path.join(alcodeDataDir, 'source-control-audit.json'),
       fsImpl: fsPromises,
     });
     const sshCredentialStore = createManagedSshCredentialStore({
-      filePath: path.join(openchamberDataDir, 'git-ssh-credentials.json'),
+      filePath: path.join(alcodeDataDir, 'git-ssh-credentials.json'),
       fsImpl: fsPromises,
     });
     const managedSshInventory = createManagedSshInventory({
       store: sshCredentialStore,
-      snapshotRoot: path.join(openchamberDataDir, 'git-ssh-operation-keys'),
+      snapshotRoot: path.join(alcodeDataDir, 'git-ssh-operation-keys'),
       discoveryRoot: path.join(os.homedir(), '.ssh'),
-      managedKeyRoot: path.join(openchamberDataDir, 'git-ssh-private-keys'),
+      managedKeyRoot: path.join(alcodeDataDir, 'git-ssh-private-keys'),
       fsImpl: fsPromises,
     });
     // What a repository's own `.git/config` names for pushing and pulling
-    // follows its grants: OpenChamber's credential helper for an account, the
+    // follows its grants: Alcode's credential helper for an account, the
     // SSH wrapper with the key for a managed key, nothing for System Git.
     const syncRepositoryTransport = async (directory, read) => {
       if (typeof directory !== 'string' || !directory.trim() || !gitRepositoryCredentialRuntime) return;
@@ -470,7 +528,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       onRepositoryTransportChanged: syncRepositoryTransport,
       validateManagedSshCredential: managedSshInventory.assertAvailable,
       readManagedSshCredentialPresentation: managedSshInventory.presentation,
-      configRoot: openchamberDataDir,
+      configRoot: alcodeDataDir,
       resolveTransportRepository,
       auditStore: sourceControlAuditStore,
       runtimeIdentity: gitRuntimeIdentity,
@@ -488,7 +546,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
         readContributorProvenance: contributorProvenance.read,
       },
       gitlab: {
-        configRoot: openchamberDataDir,
+        configRoot: alcodeDataDir,
         store: gitlabAuthStore,
         readSettings: readSettingsFromDisk,
       },
@@ -500,14 +558,14 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     // Live state of the linked pull requests, merge requests and issues the
     // clients show, refreshed here and pushed over the event stream.
     const findEventClient = (connectionId) => {
-      for (const client of getOpenChamberEventClients()) {
-        if (client.openchamberConnectionId === connectionId) return client;
+      for (const client of getAlcodeEventClients()) {
+        if (client.alcodeConnectionId === connectionId) return client;
       }
       return null;
     };
     const trackedItemsService = createTrackedItemsService({
       readers: createTrackedItemReaders({ readGitLabLiveSummaries: walkthroughBindingService.readGitLabLiveSummaries }),
-      persistence: createTrackedItemsPersistence({ dataDir: openchamberDataDir }),
+      persistence: createTrackedItemsPersistence({ dataDir: alcodeDataDir }),
       isConnectionOpen: (connectionId) => findEventClient(connectionId) !== null,
       send: (connectionId, event) => {
         const client = findEventClient(connectionId);
@@ -516,7 +574,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
           writeSseEvent(client, event);
           return true;
         } catch {
-          getOpenChamberEventClients().delete(client);
+          getAlcodeEventClients().delete(client);
           return false;
         }
       },
@@ -531,10 +589,10 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       if (settlingDirectories.has(directory)) return;
       settlingDirectories.set(directory, setTimeout(() => {
         settlingDirectories.delete(directory);
-        const clients = getOpenChamberEventClients();
+        const clients = getAlcodeEventClients();
         for (const client of clients) {
           try {
-            writeSseEvent(client, { type: 'openchamber:source-control.activity', properties: { directory } });
+            writeSseEvent(client, { type: 'alcode:source-control.activity', properties: { directory } });
           } catch {
             clients.delete(client);
           }
@@ -567,7 +625,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       return profile;
     };
     const networkOperationStore = createGitNetworkOperationStore({
-      filePath: path.join(openchamberDataDir, 'git-network-operations.json'),
+      filePath: path.join(alcodeDataDir, 'git-network-operations.json'),
       fsImpl: fsPromises,
     });
     const gitCredentialResolver = createGitCredentialResolver({
@@ -579,7 +637,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       }),
       lookupManagedSshKey: sshCredentialStore.lookup,
       fsImpl: fsPromises,
-      snapshotRoot: path.join(openchamberDataDir, 'git-ssh-operation-keys'),
+      snapshotRoot: path.join(alcodeDataDir, 'git-ssh-operation-keys'),
     });
     registerSkillRoutes(app, {
       fs,
@@ -624,7 +682,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     gitRepositoryCredentialRuntime = createGitRepositoryCredentialRuntime({
       readBinding: (directory) => walkthroughBindingService.get(directory),
       credentialResolver: gitCredentialResolver,
-      dataDir: openchamberDataDir,
+      dataDir: alcodeDataDir,
       fsPromises,
       getActivePort: routeDependencies.getActivePort ?? (() => null),
       getActiveHost: routeDependencies.getActiveHost ?? (() => null),
@@ -653,8 +711,8 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       resolveGitIdentity,
       trustedDirectoriesConfig: createTrustedDirectoriesConfig({ gitBinary }),
     });
-    await registerBuiltInGuests({ persistPath: extensionsPersistPath(openchamberDataDir), root: routeDependencies.builtInExtensionsDir });
-    registerGuestRoutes(app, { openchamberDataDir, openchamberVersion, resolveGitBinaryForSpawn, resolveOptionalProjectDirectory, getSmallModelService, onGuestDeactivated, surfaceViewerHeaders });
+    await registerBuiltInGuests({ persistPath: extensionsPersistPath(alcodeDataDir), root: routeDependencies.builtInExtensionsDir });
+    registerGuestRoutes(app, { alcodeDataDir, alcodeVersion, resolveGitBinaryForSpawn, resolveOptionalProjectDirectory, getSmallModelService, onGuestDeactivated, surfaceViewerHeaders });
     gitWorktreeCreation = registerGitRoutes(app, {
       // Identities for accounts connected before identities carried one are
       // made the first time identities are listed: a moment someone asked for,
@@ -668,16 +726,16 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       createHttpsCredentialReference,
       getSourceControlBinding: walkthroughBindingService.get,
       resolveSourceControlAccount,
-      errorRedactionSecrets: [openchamberDataDir],
+      errorRedactionSecrets: [alcodeDataDir],
       worktreeBootstrapStore,
       buildOpenCodeUrl,
       getOpenCodeAuthHeaders,
       emitWorktreeChanged: ({ directories, at }) => {
-        const clients = getOpenChamberEventClients();
+        const clients = getAlcodeEventClients();
         for (const client of clients) {
           try {
             writeSseEvent(client, {
-              type: 'openchamber:worktree-changed',
+              type: 'alcode:worktree-changed',
               properties: { directories, at },
             });
           } catch {
@@ -691,7 +749,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     registerMagicPromptRoutes(app, {
       fsPromises,
       path,
-      openchamberDataDir,
+      alcodeDataDir,
     });
     registerProjectContextRoutes(app, { projectContextRuntime });
     registerProjectDirectoryRoutes(app, {
@@ -714,11 +772,11 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     registerSessionFoldersRoutes(app, {
       fsPromises,
       path,
-      openchamberDataDir,
+      alcodeDataDir,
       // Folders are shared by every client of this server; each one reads
       // them again when told they changed.
       onChanged: (updatedAt) => {
-        const clients = getOpenChamberEventClients();
+        const clients = getAlcodeEventClients();
         for (const client of clients) {
           try {
             writeSseEvent(client, { type: 'openchamber:session-folders-changed', properties: { updatedAt } });
@@ -743,6 +801,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       resolveGitBinaryForSpawn,
       resolveRipgrepBinary,
       openchamberUserConfigRoot,
+      alcodeUserConfigRoot,
       cloneRepository: networkOperations.cloneRepository,
       managedChatsRoot,
       environmentRuntime,

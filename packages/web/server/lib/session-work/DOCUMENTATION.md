@@ -14,14 +14,16 @@ Small Model is worth waking.
 
 - `questions.js` — the turn-end Jev questions (measured wording, see
   "Measurement"), the thresholds, and the decisions taken from the answers.
-- `state.js` — `metadata.openchamber.work` and the merge patches that change
+- `state.js` — `metadata.alcode.work` and the merge patches that change
+- `questions.js` — the Jev questions (measured wording, see "Measurement"),
+  the thresholds, and the decisions taken from the answers.
   it. Every patch is decided against the record at write time.
 - `runtime.js` — `createSessionWorkRuntime`: `processPayload` (a sent message,
   a turn start), `evaluateTurnEnd` (called by session assist), `stop`.
 
 ## State
 
-`metadata.openchamber.work`:
+`metadata.alcode.work`:
 
 - `state`: `open` | `done`
 - `openedAt`, `openedBy` (`auto` for a sent message, `user` for Track; `jev`
@@ -52,11 +54,11 @@ also exists in VS Code.
   queue). A late Jev answer about a turn the user already moved past writes
   nothing.
 - A turn writes at most one hint: looks done wins over the review offer.
-- A hint is current while its time `>= session.time.idle` (the assist's
-  freshness rule). This runtime also deletes a hint it wrote when the next
-  turn starts; the rule covers hints written by another process.
+- The done hint is current while `suggestDoneAt >= session.time.idle` (the
+  assist's freshness rule). This runtime also deletes a hint it wrote when the
+  next turn starts; the rule covers hints written by another process.
 - Only top-level, unarchived project sessions that are not review sessions,
-  `/btw` side questions or scheduled task runs (`openchamber.kind` `review` /
+  `/btw` side questions or scheduled task runs (`alcode.kind` `review` /
   `btw` / `scheduled`) open or are asked about. A run's marker is set when
   the scheduled-tasks runtime creates the session; a user fork drops it
   (`fork-inheritance.js`, `sessionForkInheritance.ts`), so the fork counts. Managed Chats (under the
@@ -126,9 +128,8 @@ group and folders: In work is an extra view of it, not a move.
 
 - Web, desktop, hosted mobile, Capacitor: all of it; the server opens
   sessions and owns Jev.
-- VS Code: no OpenChamber server, so sessions do not open on their own and
-  there is no done hint and no review offer. The block and Track / Done work
-  through the extension's metadata bridge.
+- VS Code: no Alcode server, so no Jev and no done hint. The block and
+  Track / Done work through the extension's metadata bridge.
 
 ## Tests
 
@@ -139,4 +140,6 @@ call, the review offer with and without In work and looks done winning over
 it, a late answer after the next turn started, never closing, failure as
 unknown), plus the gate cases in
 `../session-assist/runtime.test.js`, and `updateSessionMetadata` in
-`../openchamber-sessions/session-metadata-store.test.js`.
+`../alcode-sessions/session-metadata-store.test.js`.
+`../session-assist/runtime.test.js`, `loadSettledTurns` in
+`../session-assist/context.test.js`, and `updateSessionMetadata` in

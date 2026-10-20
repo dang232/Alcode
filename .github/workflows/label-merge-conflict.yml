@@ -11,9 +11,8 @@ permissions: {}
 
 jobs:
   label:
-    # The bot secret check lives in a step below: secrets are not allowed
-    # in a job-level `if`, so the job filters on the repository only.
-    if: ${{ github.repository == 'dang232/Alcode' }}
+    # No bot app secret on this repo: skip instead of failing red.
+    if: ${{ github.repository == 'dang232/Alcode' && secrets.OC_REVIEW_APP_ID != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

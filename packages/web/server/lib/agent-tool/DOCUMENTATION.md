@@ -1,24 +1,17 @@
-# Managed OpenChamber Agent Tool
+# Managed Alcode Agent Tool
 
 ## Purpose
 
-This module exposes OpenChamber to agents as typed OpenCode custom tools. There
+This module exposes Alcode to agents as typed OpenCode custom tools. There
 are two, because controlling sessions and driving a page are separate intents
 the user can want independently:
 
-- `openchamber` — projects, sessions, worktrees, and showing a file to the
-  user (`file.open`). Enabled while the persisted `agentControlToolEnabled`
-  setting is not `false`.
-- `openchamber_schedule` — the `schedule.*` actions of the same control
-  service, for scheduled tasks. Enabled while `agentScheduleToolEnabled` is not
-  `false`. It used to be part of `openchamber`; reading settings sets it to
-  `false` once for someone who had switched the control tool off
-  (`settings-runtime.js`), so the split hands nobody a tool they turned off.
-  Like the control tool, a stale plugin is not refused: the CLI runs the same
-  actions, so the service cannot tell an agent call from a CLI one.
-- `openchamber_web` — looking at and interacting with the page in OpenChamber's
+- `alcode` — projects, sessions, worktrees, scheduled tasks, and showing
+  a file to the user (`file.open`). Enabled while the persisted
+  `agentControlToolEnabled` setting is not `false`.
+- `alcode_web` — looking at and interacting with the page in Alcode's
   browser panel. Enabled while `agentWebToolEnabled` is not `false`.
-- `openchamber_notify` — `notify.send`, a notification to the user through
+- `alcode_notify` — `notify.send`, a notification to the user through
   `lib/notifications/emit-route.js` (same limits and rate window as
   `POST /api/notifications/emit`). Off by default: enabled only while
   `agentNotifyToolEnabled` is `true`, and the control service refuses the
@@ -67,15 +60,15 @@ the user can want independently:
   waiting call, which returns `{ answered: false, reason: "chat" }`, and the
   agent reads the message next.
 
-Both default to on, are toggled in Settings → General → OpenChamber Tools, and take
-effect in the running OpenCode within a couple of seconds — OpenChamber rewrites
+Both default to on, are toggled in Settings → General → Alcode Tools, and take
+effect in the running OpenCode within a couple of seconds — Alcode rewrites
 the managed config file OpenCode watches (see
 `lib/opencode/managed-config-file.js`). Installs where the user's own
 environment sets `OPENCODE_CONFIG` fall back to `OPENCODE_CONFIG_CONTENT` and
 still need a restart for a toggle. Each tool carries only its own actions and
 only the parameters those actions use, so turning one off removes its inputs
 from the schema rather than leaving them visible. The plugin is injected only
-when OpenChamber launches and owns the OpenCode process, and not at all when
+when Alcode launches and owns the OpenCode process, and not at all when
 both settings are `false`.
 
 - Every tool is registered with `options: { codemode: false }`, so it is a
@@ -116,7 +109,7 @@ all tools are on, and the flattened calls already work through
 
 ## Runtime flow
 
-1. The OpenChamber HTTP listener binds and publishes its authoritative port.
+1. The Alcode HTTP listener binds and publishes its authoritative port.
 2. `materializePlugin()` writes the plugin under
    `<instance-dir>/agent-tool/` and returns its directory; the managed
    config layer lists that directory in `<instance-dir>/opencode.managed.json` and
@@ -130,11 +123,11 @@ all tools are on, and the flattened calls already work through
    points at loopback, except when the listener is bound to one concrete
    address (`--host <ip>`): that socket does not answer on loopback, so the URL
    uses the bound address instead.
-4. The plugin calls `POST /api/openchamber/agent-tool` with its typed input and
-   the session id OpenCode gives the tool; OpenChamber resolves the session's
+4. The plugin calls `POST /api/alcode/agent-tool` with its typed input and
+   the session id OpenCode gives the tool; Alcode resolves the session's
    directory on its own side.
 5. The route delegates the fixed action allowlist directly to the shared
-   OpenChamber control service. The CLI uses the same service through its
+   Alcode control service. The CLI uses the same service through its
    authenticated HTTP adapter, so Goal Mode ordering, CLI wait behavior,
    result delivery, partial-failure reporting, and scheduled-task contracts
    have one owner.
@@ -202,7 +195,7 @@ default and when to set it. Field names and JSON types carry the rest.
   answer for itself, `session.*` when the user asks for a separate session
   they will follow and talk to.
 - The tool exposes only agent-relevant actions
-  (`OPENCHAMBER_AGENT_TOOL_ACTIONS`): `schedule.status` stays CLI-only because
+  (`ALCODE_AGENT_TOOL_ACTIONS`): `schedule.status` stays CLI-only because
   `schedule.list` already returns scheduler status, and enable/disable are one
   `schedule.toggle` action driven by the `disabled` boolean.
 - The tool description frames intent: created sessions and scheduled tasks are
@@ -319,7 +312,7 @@ error state.
 
 - Web and Desktop managed OpenCode: injected automatically.
 - External OpenCode selected with `OPENCODE_HOST` or skip-start: not injected,
-  because OpenChamber does not control that process environment.
+  because Alcode does not control that process environment.
 - VS Code: not injected; the extension owns a separate OpenCode lifecycle.
 - Hosted and Capacitor mobile clients use the server's managed OpenCode tool
   when connected to such a server; no tool runs in the client runtime.
@@ -327,7 +320,7 @@ error state.
 ## The calling tool is part of the request
 
 Each generated tool sends its own name with every callback. Models routinely
-drop the namespace their tool's name appears to supply — `openchamber_memory`
+drop the namespace their tool's name appears to supply — `alcode_memory`
 asked for `memory.read` gets called as `read` — and resolving the bare name
 inside the calling tool's action set makes that unambiguous even where it is not
 globally (`delete` belongs to both schedule and memory).

@@ -1,8 +1,8 @@
 export const MENU_LOCALE_DICTIONARIES = {
   en: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'Connecting to {host}…',
-    'about': 'About OpenChamber',
+    'about': 'About Alcode',
     'checkForUpdates': 'Check for Updates',
     'settings': 'Settings',
     'reloadWebview': 'Reload Webview',
@@ -128,9 +128,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'إنهاء',
   },
   de: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'Verbindung zu {host} wird hergestellt…',
-    'about': 'Über OpenChamber',
+    'about': 'Über Alcode',
     'checkForUpdates': 'Nach Updates suchen',
     'settings': 'Einstellungen',
     'reloadWebview': 'Webview neu laden',
@@ -192,9 +192,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Beenden',
   },
   es: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'Conectando a {host}…',
-    'about': 'Acerca de OpenChamber',
+    'about': 'Acerca de Alcode',
     'checkForUpdates': 'Buscar actualizaciones',
     'settings': 'Ajustes',
     'reloadWebview': 'Recargar vista web',
@@ -256,9 +256,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Salir',
   },
   fr: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'Connexion à {host}…',
-    'about': 'À propos d\'OpenChamber',
+    'about': 'À propos d\'Alcode',
     'checkForUpdates': 'Rechercher des mises à jour',
     'settings': 'Réglages',
     'reloadWebview': 'Recharger la vue web',
@@ -384,9 +384,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'יציאה',
   },
   ja: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': '{host} に接続中…',
-    'about': 'OpenChamber について',
+    'about': 'Alcode について',
     'checkForUpdates': 'アップデートを確認',
     'settings': '設定',
     'reloadWebview': 'Webview を再読み込み',
@@ -448,9 +448,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': '終了',
   },
   ko: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': '{host}에 연결 중…',
-    'about': 'OpenChamber에 관하여',
+    'about': 'Alcode에 관하여',
     'checkForUpdates': '업데이트 확인',
     'settings': '설정',
     'reloadWebview': '웹뷰 새로고침',
@@ -512,9 +512,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': '종료',
   },
   nl: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'Verbinden met {host}…',
-    'about': 'Over OpenChamber',
+    'about': 'Over Alcode',
     'checkForUpdates': 'Zoek naar updates',
     'settings': 'Instellingen',
     'reloadWebview': 'Webview opnieuw laden',
@@ -576,9 +576,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Stoppen',
   },
   pl: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'Łączenie z {host}…',
-    'about': 'O programie OpenChamber',
+    'about': 'O programie Alcode',
     'checkForUpdates': 'Sprawdź aktualizacje',
     'settings': 'Ustawienia',
     'reloadWebview': 'Wczytaj ponownie widok WWW',
@@ -640,9 +640,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Zakończ',
   },
   'pt-BR': {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'Conectando a {host}…',
-    'about': 'Sobre o OpenChamber',
+    'about': 'Sobre o Alcode',
     'checkForUpdates': 'Verificar atualizações',
     'settings': 'Configurações',
     'reloadWebview': 'Recarregar Webview',
@@ -704,9 +704,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Sair',
   },
   tr: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': '{host} adresine bağlanılıyor…',
-    'about': 'OpenChamber Hakkında',
+    'about': 'Alcode Hakkında',
     'checkForUpdates': 'Güncellemeleri Denetle',
     'settings': 'Ayarlar',
     'reloadWebview': 'Web Görünümünü Yeniden Yükle',
@@ -768,9 +768,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Çık',
   },
   uk: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'Підключення до {host}…',
-    'about': 'Про OpenChamber',
+    'about': 'Про Alcode',
     'checkForUpdates': 'Перевірити оновлення',
     'settings': 'Налаштування',
     'reloadWebview': 'Перезавантажити вебперегляд',
@@ -832,9 +832,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Вийти',
   },
   'zh-CN': {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': '正在连接到 {host}…',
-    'about': '关于 OpenChamber',
+    'about': '关于 Alcode',
     'checkForUpdates': '检查更新',
     'settings': '设置',
     'reloadWebview': '重新加载界面',
@@ -896,9 +896,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': '退出',
   },
   'zh-TW': {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': '正在連線到 {host}…',
-    'about': '關於 OpenChamber',
+    'about': '關於 Alcode',
     'checkForUpdates': '檢查更新',
     'settings': '設定',
     'reloadWebview': '重新載入介面',
@@ -1272,8 +1272,8 @@ export const menuLabel = (locale, key) => (
   MENU_LOCALE_DICTIONARIES[normalizeMenuLocale(locale)][key] ?? key
 );
 
-// Role items keep Electron's own platform labels in English ("Hide OpenChamber",
-// "Quit OpenChamber", "Close Window", "Exit" on Windows); a translated locale
+// Role items keep Electron's own platform labels in English ("Hide Alcode",
+// "Quit Alcode", "Close Window", "Exit" on Windows); a translated locale
 // replaces them with its own label.
 export const roleMenuItem = (locale, role, key) => (
   normalizeMenuLocale(locale) === 'en' ? { role } : { role, label: menuLabel(locale, key) }

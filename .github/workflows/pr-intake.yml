@@ -22,7 +22,7 @@ permissions:
 jobs:
   collect:
     name: Collect pull requests
-    if: ${{ github.repository == 'openchamber/openchamber' }}
+    if: ${{ github.repository == 'dang232/Alcode' }}
     runs-on: ubuntu-latest
     outputs:
       targets: ${{ steps.collect.outputs.targets }}
@@ -63,9 +63,8 @@ jobs:
   intake:
     name: Label PR ${{ matrix.target.number }}
     needs: collect
-    # The bot secret check lives in a step below: secrets are not allowed
-    # in a job-level `if`, so the job filters on the matrix input only.
-    if: ${{ needs.collect.outputs.targets != '[]' }}
+    # No bot app secret on this repo: skip instead of failing red.
+    if: ${{ needs.collect.outputs.targets != '[]' && secrets.OC_REVIEW_APP_ID != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -210,7 +209,7 @@ jobs:
 
             // Parking rule: XL or bigger, no Ideas discussion linked, author without
             // write access. The team agrees on product decisions off GitHub.
-            const discussionLink = /github\.com\/openchamber\/openchamber\/discussions\/\d+/i;
+            const discussionLink = /github\.com\/alcode\/alcode\/discussions\/\d+/i;
             const isLarge = sizeLabel === "size:XL" || sizeLabel === "size:XXL";
             const hasDiscussion = discussionLink.test(pr.body ?? "");
             const parkingExempt = ["pinned", "help wanted", "security"];

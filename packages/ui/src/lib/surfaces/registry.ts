@@ -213,9 +213,13 @@ type VisibleRailSurfacesOptions = {
       shortcuts, which share this filter). */
   hiddenSurfaces?: readonly string[];
   isVSCode: boolean;
-  /** Undefined keeps the previous behavior for callers that do not know
+  /** True inside the Electron desktop shell (see `@/lib/desktop`).
+      Undefined keeps the previous behavior for callers that do not know
       their shell: desktop-only guest surfaces stay hidden. */
   isDesktopShell?: boolean;
+  /** Undefined hides the plan surface for callers that do not know
+      whether plan mode is enabled. */
+  planModeEnabled?: boolean;
   screenWidth: number;
   tabs: readonly { mode: ContextPanelMode; targetPath?: string | null }[];
   /** The Tracker rail icon stays off until a GitHub or GitLab account is
@@ -247,12 +251,15 @@ export const getVisibleContextRailSurfaces = (options: VisibleRailSurfacesOption
     if (!options.isDesktopShell && DESKTOP_ONLY_PLUGIN_SURFACE_IDS.includes(surface.id)) {
       return false;
     }
+    if (surface.id === 'plan' && !options.planModeEnabled) {
+      return false;
+    }
     // The walkthrough needs room for a stop list beside real code, and its
-    // diffs come from OpenChamber's Git routes, which VS Code does not serve.
+    // diffs come from Alcode's Git routes, which VS Code does not serve.
     if (surface.id === 'walkthrough' && (options.isVSCode || options.screenWidth < WALKTHROUGH_MIN_WIDTH)) {
       return false;
     }
-    // VS Code already is an editor with a browser next to it. What OpenChamber
+    // VS Code already is an editor with a browser next to it. What Alcode
     // could add there is a bare frame: no annotation, no agent control, no
     // remote dev servers — all of which need a Chromium host the extension does
     // not have. Offering the surface anyway would promise the panel people see

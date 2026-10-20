@@ -17,7 +17,7 @@ type ProbeResult = {
   summary: string;
 };
 
-type OpenChamberHealthSnapshot = {
+type AlcodeHealthSnapshot = {
   openCodePort?: unknown;
   openCodeRunning?: unknown;
   openCodeSecureConnection?: unknown;
@@ -36,7 +36,7 @@ type OpenChamberHealthSnapshot = {
   bunBinaryResolved?: unknown;
 };
 
-type OpenChamberOpencodeResolution = {
+type AlcodeOpencodeResolution = {
   configured?: unknown;
   resolved?: unknown;
   resolvedDir?: unknown;
@@ -174,7 +174,7 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
   const apiBase = urls.api('/api/');
 
 
-  const openChamberHealth: OpenChamberHealthSnapshot | null = await (async () => {
+  const alcodeHealth: AlcodeHealthSnapshot | null = await (async () => {
     if (!healthUrl) return null;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -187,7 +187,7 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
       if (!resp.ok) return null;
       const json = (await resp.json().catch(() => null)) as unknown;
       if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
-      return json as OpenChamberHealthSnapshot;
+      return json as AlcodeHealthSnapshot;
     } catch {
       return null;
     } finally {
@@ -195,8 +195,8 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
     }
   })();
 
-  const openChamberOpencodeResolutionResult: {
-    data: OpenChamberOpencodeResolution | null;
+  const alcodeOpencodeResolutionResult: {
+    data: AlcodeOpencodeResolution | null;
     status: number | null;
     error: string | null;
   } = await (async () => {
@@ -228,7 +228,7 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
       if (!json || typeof json !== 'object' || Array.isArray(json)) {
         return { data: null, status: resp.status, error: `invalid json-shape content-type=${contentType}` };
       }
-      return { data: json as OpenChamberOpencodeResolution, status: resp.status, error: null };
+      return { data: json as AlcodeOpencodeResolution, status: resp.status, error: null };
     } catch (error) {
       return {
         data: null,
@@ -286,31 +286,31 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
 
   const lines: string[] = [];
   lines.push(`Time: ${now.toISOString()}`);
-  lines.push(`OpenChamber version: ${appVersion}`);
+  lines.push(`Alcode version: ${appVersion}`);
   lines.push(`Runtime: ${origin || '(unknown)'} (api=${apiBase || '(unknown)'})`);
   lines.push(`OpenCode SDK base: ${opencodeClient.getBaseUrl()}`);
   lines.push(`Event stream: ${eventStreamStatus}`);
   lines.push(`Directory: ${directory || '(none)'}`);
   lines.push(`Platform: ${platform}`);
 
-  const runtimeOpenCodePort = normalizePort(openChamberHealth?.openCodePort);
+  const runtimeOpenCodePort = normalizePort(alcodeHealth?.openCodePort);
   lines.push(`OpenCode runtime port: ${runtimeOpenCodePort ?? '(unknown)'}`);
-  if (typeof openChamberHealth?.openCodeRunning === 'boolean') {
-    lines.push(`OpenCode runtime running: ${openChamberHealth.openCodeRunning ? 'yes' : 'no'}`);
+  if (typeof alcodeHealth?.openCodeRunning === 'boolean') {
+    lines.push(`OpenCode runtime running: ${alcodeHealth.openCodeRunning ? 'yes' : 'no'}`);
   }
-  if (typeof openChamberHealth?.openCodeSecureConnection === 'boolean') {
-    lines.push(`Secure OpenCode connection: ${openChamberHealth.openCodeSecureConnection ? 'true' : 'false'}`);
+  if (typeof alcodeHealth?.openCodeSecureConnection === 'boolean') {
+    lines.push(`Secure OpenCode connection: ${alcodeHealth.openCodeSecureConnection ? 'true' : 'false'}`);
   }
-  if (typeof openChamberHealth?.openCodeAuthSource === 'string' && openChamberHealth.openCodeAuthSource.trim()) {
-    lines.push(`OpenCode auth source: ${openChamberHealth.openCodeAuthSource}`);
+  if (typeof alcodeHealth?.openCodeAuthSource === 'string' && alcodeHealth.openCodeAuthSource.trim()) {
+    lines.push(`OpenCode auth source: ${alcodeHealth.openCodeAuthSource}`);
   }
 
   // What the managed OpenCode process last said for itself. A turn that stops
   // with nothing on screen usually left its reason here or in the session
   // errors below, not in the UI.
-  const lastOpenCodeError = formatUnknown(openChamberHealth?.lastOpenCodeError, '');
-  const managedProcess = isRecord(openChamberHealth?.lastManagedOpenCodeProcess)
-    ? openChamberHealth.lastManagedOpenCodeProcess
+  const lastOpenCodeError = formatUnknown(alcodeHealth?.lastOpenCodeError, '');
+  const managedProcess = isRecord(alcodeHealth?.lastManagedOpenCodeProcess)
+    ? alcodeHealth.lastManagedOpenCodeProcess
     : null;
   const stderrTail = managedProcess && typeof managedProcess.stderrTail === 'string'
     ? managedProcess.stderrTail.trim()
@@ -349,21 +349,21 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
   // do not find it under AppData); the desktop app writes the server console,
   // including OpenCode lifecycle lines, through electron-log.
   const isWindows = /Windows NT/.test(platform);
-  const isDesktop = origin.startsWith('openchamber-ui://');
+  const isDesktop = origin.startsWith('alcode-ui://');
   lines.push('');
   lines.push('Log files:');
   lines.push(`- OpenCode: ${opencodeHome ? joinPath(opencodeHome, '.local/share/opencode/log', isWindows) : '<home>/.local/share/opencode/log'} (or $XDG_DATA_HOME/opencode/log when set)`);
   if (isDesktop) {
     const isMacDesktop = /Mac OS X|Macintosh/.test(platform);
-    lines.push(`- OpenChamber desktop: ${isWindows
-      ? '%APPDATA%\\OpenChamber\\logs\\main.log'
+    lines.push(`- Alcode desktop: ${isWindows
+      ? '%APPDATA%\\Alcode\\logs\\main.log'
       : isMacDesktop
-        ? '~/Library/Logs/OpenChamber/main.log'
-        : '~/.config/OpenChamber/logs/main.log'}`);
+        ? '~/Library/Logs/Alcode/main.log'
+        : '~/.config/Alcode/logs/main.log'}`);
   }
 
   if (typeof window !== 'undefined') {
-    const injected = (window as unknown as { __OPENCHAMBER_MACOS_MAJOR__?: unknown }).__OPENCHAMBER_MACOS_MAJOR__;
+    const injected = (window as unknown as { __ALCODE_MACOS_MAJOR__?: unknown }).__ALCODE_MACOS_MAJOR__;
     if (typeof injected === 'number' && Number.isFinite(injected) && injected > 0) {
       lines.push(`macOS major: ${injected}`);
     }
@@ -374,58 +374,58 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
     lines.push('');
     lines.push('OpenCode CLI resolution:');
 
-    const launchDiagnostics = isRecord(openChamberHealth?.lastOpenCodeLaunchDiagnostics)
-      ? openChamberHealth.lastOpenCodeLaunchDiagnostics
+    const launchDiagnostics = isRecord(alcodeHealth?.lastOpenCodeLaunchDiagnostics)
+      ? alcodeHealth.lastOpenCodeLaunchDiagnostics
       : null;
     const actualLaunchArgs = launchDiagnostics && Array.isArray(launchDiagnostics.args)
       ? launchDiagnostics.args.filter((value): value is string => typeof value === 'string')
       : [];
-    const openChamberOpencodeResolution = openChamberOpencodeResolutionResult.data;
+    const alcodeOpencodeResolution = alcodeOpencodeResolutionResult.data;
     const configured =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.configured === 'string'
-        ? openChamberOpencodeResolution.configured
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.configured === 'string'
+        ? alcodeOpencodeResolution.configured
         : null;
     const resolved =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.resolved === 'string'
-        ? openChamberOpencodeResolution.resolved
-        : (openChamberHealth && typeof openChamberHealth.opencodeBinaryResolved === 'string' ? openChamberHealth.opencodeBinaryResolved : '');
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.resolved === 'string'
+        ? alcodeOpencodeResolution.resolved
+        : (alcodeHealth && typeof alcodeHealth.opencodeBinaryResolved === 'string' ? alcodeHealth.opencodeBinaryResolved : '');
     const resolvedDir =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.resolvedDir === 'string'
-        ? openChamberOpencodeResolution.resolvedDir
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.resolvedDir === 'string'
+        ? alcodeOpencodeResolution.resolvedDir
         : '';
     const source =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.source === 'string'
-        ? openChamberOpencodeResolution.source
-        : (openChamberHealth && typeof openChamberHealth.opencodeBinarySource === 'string' ? openChamberHealth.opencodeBinarySource : '');
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.source === 'string'
+        ? alcodeOpencodeResolution.source
+        : (alcodeHealth && typeof alcodeHealth.opencodeBinarySource === 'string' ? alcodeHealth.opencodeBinarySource : '');
     const configuredLaunchBinary =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.launchBinary === 'string'
-        ? openChamberOpencodeResolution.launchBinary
-        : (openChamberHealth && typeof openChamberHealth.opencodeLaunchBinary === 'string' ? openChamberHealth.opencodeLaunchBinary : '');
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.launchBinary === 'string'
+        ? alcodeOpencodeResolution.launchBinary
+        : (alcodeHealth && typeof alcodeHealth.opencodeLaunchBinary === 'string' ? alcodeHealth.opencodeLaunchBinary : '');
     const configuredLaunchWrapperType =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.launchWrapperType === 'string'
-        ? openChamberOpencodeResolution.launchWrapperType
-        : (openChamberHealth && typeof openChamberHealth.opencodeLaunchWrapperType === 'string' ? openChamberHealth.opencodeLaunchWrapperType : '');
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.launchWrapperType === 'string'
+        ? alcodeOpencodeResolution.launchWrapperType
+        : (alcodeHealth && typeof alcodeHealth.opencodeLaunchWrapperType === 'string' ? alcodeHealth.opencodeLaunchWrapperType : '');
     const configuredLaunchArgs =
-      openChamberOpencodeResolution && Array.isArray(openChamberOpencodeResolution.launchArgs)
-        ? openChamberOpencodeResolution.launchArgs.filter((value): value is string => typeof value === 'string')
-        : (openChamberHealth && Array.isArray(openChamberHealth.opencodeLaunchArgs)
-          ? openChamberHealth.opencodeLaunchArgs.filter((value): value is string => typeof value === 'string')
+      alcodeOpencodeResolution && Array.isArray(alcodeOpencodeResolution.launchArgs)
+        ? alcodeOpencodeResolution.launchArgs.filter((value): value is string => typeof value === 'string')
+        : (alcodeHealth && Array.isArray(alcodeHealth.opencodeLaunchArgs)
+          ? alcodeHealth.opencodeLaunchArgs.filter((value): value is string => typeof value === 'string')
           : []);
     const node =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.node === 'string'
-        ? openChamberOpencodeResolution.node
-        : (openChamberHealth && typeof openChamberHealth.nodeBinaryResolved === 'string' ? openChamberHealth.nodeBinaryResolved : '');
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.node === 'string'
+        ? alcodeOpencodeResolution.node
+        : (alcodeHealth && typeof alcodeHealth.nodeBinaryResolved === 'string' ? alcodeHealth.nodeBinaryResolved : '');
     const bun =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.bun === 'string'
-        ? openChamberOpencodeResolution.bun
-        : (openChamberHealth && typeof openChamberHealth.bunBinaryResolved === 'string' ? openChamberHealth.bunBinaryResolved : '');
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.bun === 'string'
+        ? alcodeOpencodeResolution.bun
+        : (alcodeHealth && typeof alcodeHealth.bunBinaryResolved === 'string' ? alcodeHealth.bunBinaryResolved : '');
     const detectedNow =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.detectedNow === 'string'
-        ? openChamberOpencodeResolution.detectedNow
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.detectedNow === 'string'
+        ? alcodeOpencodeResolution.detectedNow
         : '';
     const detectedSourceNow =
-      openChamberOpencodeResolution && typeof openChamberOpencodeResolution.detectedSourceNow === 'string'
-        ? openChamberOpencodeResolution.detectedSourceNow
+      alcodeOpencodeResolution && typeof alcodeOpencodeResolution.detectedSourceNow === 'string'
+        ? alcodeOpencodeResolution.detectedSourceNow
         : '';
 
     if (configured !== null) {
@@ -458,8 +458,8 @@ export const buildOpenCodeStatusReport = async (): Promise<string> => {
       lines.push(`- launch-args: ${configuredLaunchArgs.length ? configuredLaunchArgs.join(' ') : '(none)'}`);
       lines.push(`- runtime: ${formatLaunchRuntime(configuredLaunchWrapperType || '', node, bun)}`);
     }
-    if (!openChamberOpencodeResolution && openChamberOpencodeResolutionResult.error) {
-      lines.push(`- resolution-endpoint: ${openChamberOpencodeResolutionResult.error}`);
+    if (!alcodeOpencodeResolution && alcodeOpencodeResolutionResult.error) {
+      lines.push(`- resolution-endpoint: ${alcodeOpencodeResolutionResult.error}`);
     }
   }
 

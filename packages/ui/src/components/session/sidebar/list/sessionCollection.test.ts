@@ -139,8 +139,25 @@ describe('projectSidebarCollection', () => {
     expect(after.map((entry) => entry.id)).toEqual(['a', 'b']);
   });
 
-  test('keeps managed Chats in a dedicated projection and out of project ownership', () => {
-    const managed = session('managed', '/home/.config/openchamber/chats/2026-08-24/session-managed');
+  test('keeps project membership independent from Recent active membership', () => {
+    const input = {
+      globalActiveSessions: [session('old-root', '/workspace/a')],
+      liveSessions: [],
+      knownDirectories: new Set(['/workspace/a']),
+      isVSCode: false,
+    };
+    const projectBefore = projectSidebarCollection(input);
+    const recentBefore = deriveRecentSessions(projectBefore, new Set(), 200_000_000);
+    const projectAfter = projectSidebarCollection(input);
+    const recentAfter = deriveRecentSessions(projectAfter, new Set(['old-root']), 200_000_000);
+
+    expect(projectAfter).toEqual(projectBefore);
+    expect(recentBefore).toEqual([]);
+    expect(recentAfter.map((entry) => entry.id)).toEqual(['old-root']);
+  });
+
+  test('keeps managed Chats in a dedicated projection and out of project and Recent ownership', () => {
+    const managed = session('managed', '/home/.config/alcode/chats/2026-08-24/session-managed');
     const project = session('project', '/workspace/a');
     const projects = projectSidebarCollection({
       globalActiveSessions: [managed, project],
@@ -154,7 +171,7 @@ describe('projectSidebarCollection', () => {
   });
 
   test('keeps managed Chats out of the VS Code sidebar', () => {
-    const managed = session('managed', '/home/.config/openchamber/chats/2026-08-24/session-managed');
+    const managed = session('managed', '/home/.config/alcode/chats/2026-08-24/session-managed');
 
     expect(partitionSidebarSessions([managed], true)).toEqual({ projectSessions: [], chatSessions: [] });
     expect(projectSidebarCollection({
@@ -166,7 +183,7 @@ describe('projectSidebarCollection', () => {
   });
 
   test('keeps a canonical managed chat visible when the server root uses different home casing', () => {
-    const managed = session('canonical-chat', '/HOME/.config/openchamber/chats/day/session-a');
+    const managed = session('canonical-chat', '/HOME/.config/alcode/chats/day/session-a');
     const project = session('project', '/workspace/a');
     const projection = buildSidebarSessionProjection({
       globalActiveSessions: [managed, project], liveSessions: [],
@@ -180,8 +197,8 @@ describe('projectSidebarCollection', () => {
 
   test('excludes a /btw fork before project ownership and restores it when the marker is removed', () => {
     const fork = {
-      ...session('fork', '/home/.config/openchamber/chats/2026-08-24/session-fork'),
-      metadata: { openchamber: { kind: 'btw', originalSessionID: 'parent' } },
+      ...session('fork', '/home/.config/alcode/chats/2026-08-24/session-fork'),
+      metadata: { alcode: { kind: 'btw', originalSessionID: 'parent' } },
     };
     const project = session('project', '/workspace/a');
     const input = {
@@ -195,15 +212,15 @@ describe('projectSidebarCollection', () => {
 
     const promoted = {
       ...fork,
-      metadata: { openchamber: {} },
+      metadata: { alcode: {} },
     };
     expect(partitionSidebarSessions([promoted], false).chatSessions.map((entry) => entry.id)).toEqual(['fork']);
   });
 
   test('keeps a ranked managed root and its active child in the Chats hierarchy', () => {
-    const managedRoot = { ...session('managed-root', '/home/.config/openchamber/chats/2026-08-24/session-root'), time: { created: 1, updated: 1 } };
+    const managedRoot = { ...session('managed-root', '/home/.config/alcode/chats/2026-08-24/session-root'), time: { created: 1, updated: 1 } };
     const managedChild = {
-      ...session('managed-child', '/home/.config/openchamber/chats/2026-08-24/session-root'),
+      ...session('managed-child', '/home/.config/alcode/chats/2026-08-24/session-root'),
       parentID: 'managed-root',
       time: { created: 2, updated: 2 },
     };
@@ -307,8 +324,8 @@ describe('buildActiveSessionNode', () => {
 const originalHomeInfo = opencodeClient.getFilesystemHomeInfo;
 opencodeClient.getFilesystemHomeInfo = async () => ({
   home: '/home',
-  canonicalChatsRoot: '/HOME/.config/openchamber/chats',
-  canonicalLegacyChatsRoot: '/HOME/.config/openchamber/chats',
+  canonicalChatsRoot: '/HOME/.config/alcode/chats',
+  canonicalLegacyChatsRoot: '/HOME/.config/alcode/chats',
 });
 await ensureChatsRootDirectory();
 opencodeClient.getFilesystemHomeInfo = originalHomeInfo;

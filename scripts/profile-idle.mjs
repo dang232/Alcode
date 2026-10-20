@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Fully automated idle CPU/memory capture for OpenChamber.
+ * Fully automated idle CPU/memory capture for Alcode.
  *
  * Unlike `profile:browser`, this command needs no human in the loop: it loads
  * the app, lets it settle, then records a window during which no input is
@@ -37,10 +37,10 @@ import { growthPerSecond, metricMap, round } from "./perf/metrics.mjs"
 
 const HELP = `Usage: bun run profile:idle -- [options]
 
-Records what OpenChamber does while nobody is interacting with it.
+Records what Alcode does while nobody is interacting with it.
 
 Options:
-  --url <url>              OpenChamber URL (default: http://localhost:3000)
+  --url <url>              Alcode URL (default: http://localhost:3000)
   --session <id>           Open this session before recording (deep link)
   --tab <name>             Open this main tab before recording
   --then-tab <name>        After settling, navigate to this tab without a
@@ -105,7 +105,7 @@ const parseArgs = (argv) => {
     output: null,
     label: null,
     chrome: null,
-    profileDir: null,
+    profileDir: join(homedir(), ".alcode", "browser-profile-google-chrome"),
     headless: true,
     samplingInterval: 200,
     injectScript: null,

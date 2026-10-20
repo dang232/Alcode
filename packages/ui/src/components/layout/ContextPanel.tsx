@@ -32,17 +32,22 @@ import { useSessionTurnActivity } from '@/sync/global-session-status';
 import { SessionActivityIndicator } from '@/components/session/SessionActivityIndicator';
 import { ContextPanelContent } from './ContextSidebarTab';
 import { browserUrlLabel } from '@/lib/browser/url';
+import { registerBrowserOpener, registerSleepingBrowserTab, setShownBrowserTab } from '@/lib/browser/controlClient';
+import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { Icon } from "@/components/icon/Icon";
 import type { IconName } from "@/components/icon/icons";
 import { GuestIcon } from './GuestRailIcon';
 import { useGuestsStore } from '@/lib/guests/store';
 import { FALLBACK_GUEST_ICON } from '@/lib/guests/icon';
-import { isPluginContextPanelMode, pluginIdFromMode } from '@/lib/surfaces/modes';
-import { CONTEXT_SURFACE_WIDTHS, getContextSurfaceDefaultWidth } from '@/lib/surfaces/registry';
+import { isPluginContextPanelMode, pluginIdFromMode, type PluginContextPanelMode } from '@/lib/surfaces/modes';
+import { CONTEXT_SURFACE_WIDTHS, getContextSurfaceDefaultWidth, getContextSurfaceWidthFraction } from '@/lib/surfaces/registry';
 import { beginLayoutAnimation, cancelWhenLayoutSettled, LAYOUT_ANIMATION_EASING, runWhenLayoutSettled } from '@/lib/layoutAnimation';
 import { useLayoutAnimationMs } from '@/hooks/useLayoutAnimationMs';
 import { WORK_STATUS_COLUMN_WIDTH } from '@/components/chat/work-status/useWorkStatusVisibility';
 import { setWorkStatusHost, useRightSlotStore } from './rightSlot';
+import { GUEST_SURFACE_DOCK_SIZE_MIN } from '@alcode/sdk';
+import { isEditorEventTarget } from '@/lib/editorFocus';
+import { isTerminalEventTarget } from '@/lib/terminalFocus';
 import { changeRequestCopy } from '@/lib/source-control/changeRequestCopy';
 import { ContextPanelHeaderSlotProvider } from './contextPanelHeaderSlot';
 import { CLOSED_ZONE_VIEW, getZoneView, isZoneShown, resolveZoneActiveTab, type ContextZone } from '@/lib/workspace/zones';
@@ -417,6 +422,41 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
   const setContextPanelWidth = useUIStore((state) => state.setContextPanelWidth);
   const setContextPanelHeight = useUIStore((state) => state.setContextPanelHeight);
   const setActiveContextPanelTab = useUIStore((state) => state.setActiveContextPanelTab);
+  const openAgentBrowserTab = useUIStore((state) => state.openAgentBrowserTab);
+
+  // A browser tab loads its page only once it is needed: shown in the open
+  // panel, opened by the agent, or woken by an agent action. Tabs restored
+  // from a previous run otherwise stay asleep, since every loaded tab costs a
+  // Chromium process. Once loaded, a tab stays loaded until it is closed.
+  const [wokenBrowserTabIds, setWokenBrowserTabIds] = React.useState<ReadonlySet<string>>(() => new Set());
+  const wakeBrowserTab = React.useCallback((tabId: string) => {
+    setWokenBrowserTabIds((current) => (current.has(tabId) ? current : new Set(current).add(tabId)));
+  }, []);
+
+  // Lets an agent's browser.open create its own tab; the id goes back to the
+  // agent so it keeps working there. Registered from the panel because opening a tab is panel state, not
+  // something the browser view itself can do before it exists. Background on
+  // purpose: an agent working a page must not pop the panel open or steal the
+  // active tab while the user reads something else, and that includes taking
+  // a screenshot of it. The tab appears in the strip.
+  React.useEffect(() => {
+    if (!effectiveDirectory) return;
+    return registerBrowserOpener((url) => {
+      const tabId = openAgentBrowserTab(effectiveDirectory, url);
+      if (tabId) wakeBrowserTab(tabId);
+      return tabId;
+    });
+  }, [effectiveDirectory, openAgentBrowserTab, wakeBrowserTab]);
+  // The agent asked for a file to be shown. It opens in front of whatever tab
+  // the user had, on purpose: the agent is pointing at a result, and the prior
+  // tab is one click away.
+  const openContextFile = useUIStore((state) => state.openContextFile);
+  React.useEffect(() => subscribeAlcodeEvents((event) => {
+    if (event.type !== 'file-open-request') return;
+    const directory = event.directory ?? effectiveDirectory;
+    if (!directory) return;
+    openContextFile(directory, event.path);
+  }), [effectiveDirectory, openContextFile]);
   const reorderContextPanelTabs = useUIStore((state) => state.reorderContextPanelTabs);
   const contextEditorTreeVisible = useUIStore((state) => state.contextEditorTreeVisible);
   const contextEditorTreeWidth = useUIStore((state) => state.contextEditorTreeWidth);
@@ -798,8 +838,77 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
                     )
                     : <PullRequestView />)
             : activeTab?.mode === 'notes'
-                ? <ContextPanelHeaderSlotProvider value={headerSlotEl}><ProjectContextPanel visible={isOpen} /></ContextPanelHeaderSlotProvider>
-        : null;
+                ? <ProjectContextPanel />
+        : activeTab?.mode === 'plan'
+            ? <React.Suspense fallback={null}><PlanView
+                targetPath={activeTab.targetPath}
+                savedProjectPlan={activeTab.projectPlanId && activeTab.projectPlanRef
+                  ? { projectRef: activeTab.projectPlanRef, planId: activeTab.projectPlanId }
+                  : null}
+              /></React.Suspense>
+            : null;
+
+  const browserTabs = React.useMemo(
+    () => tabs.filter((tab) => tab.mode === 'browser'),
+    [tabs],
+  );
+  const visibleBrowserTabId = isOpen && activeTab?.mode === 'browser' ? activeTab.id : null;
+  React.useEffect(() => {
+    if (visibleBrowserTabId) wakeBrowserTab(visibleBrowserTabId);
+  }, [visibleBrowserTabId, wakeBrowserTab]);
+  const loadedBrowserTabs = React.useMemo(
+    () => browserTabs.filter((tab) => tab.id === visibleBrowserTabId || wokenBrowserTabIds.has(tab.id)),
+    [browserTabs, visibleBrowserTabId, wokenBrowserTabIds],
+  );
+  React.useEffect(() => {
+    // Only a Chromium host mounts views that agents can drive, so only it may
+    // offer to wake a tab; anywhere else a claimed action could never run.
+    if (!window.__ALCODE_ELECTRON__) return;
+    const unregister = browserTabs
+      .filter((tab) => !loadedBrowserTabs.includes(tab))
+      .map((tab) => registerSleepingBrowserTab({
+        tabId: tab.id,
+        describe: () => ({ title: '', url: tab.targetPath ?? '' }),
+        wake: () => wakeBrowserTab(tab.id),
+      }));
+    return () => unregister.forEach((release) => release());
+  }, [browserTabs, loadedBrowserTabs, wakeBrowserTab]);
+  const diffTabs = React.useMemo(
+    () => tabs.filter((tab) => tab.mode === 'diff'),
+    [tabs],
+  );
+  const terminalTab = React.useMemo(
+    () => tabs.find((tab) => tab.mode === 'terminal') ?? null,
+    [tabs],
+  );
+  // Keep-alive: the walkthrough holds reading progress and scroll position that
+  // a remount would silently throw away.
+  const hasWalkthroughTab = React.useMemo(
+    () => tabs.some((tab) => tab.mode === 'walkthrough'),
+    [tabs],
+  );
+  const pluginTabs = React.useMemo(
+    () => tabs.filter((tab) => isPluginContextPanelMode(tab.mode)),
+    [tabs],
+  );
+  const guests = useGuestsStore((state) => state.guests);
+  const surfaceGuestIds = React.useMemo(
+    () => new Set(guests.filter(guestHasSharedSurface).map((guest) => guest.id)),
+    [guests],
+  );
+  // Surface extensions that also ship a page: it is docked to one edge of the picture.
+  const surfaceDockings = React.useMemo(() => {
+    const dockings = new Map<string, GuestSurfaceDocking>();
+    for (const guest of guests) {
+      const docking = guestSurfaceDocking(guest);
+      if (docking) dockings.set(guest.id, docking);
+    }
+    return dockings;
+  }, [guests]);
+  const hasFileTabs = React.useMemo(
+    () => tabs.some((tab) => tab.mode === 'file'),
+    [tabs],
+  );
 
   const isFileTabActive = activeTab?.mode === 'file';
 

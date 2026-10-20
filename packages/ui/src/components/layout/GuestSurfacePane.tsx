@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SurfaceInputEvent, SurfaceModifiers } from '@openchamber/sdk';
+import type { SurfaceInputEvent, SurfaceModifiers } from '@alcode/sdk';
 
 import { Button } from '@/components/ui/button';
 import { copyTextToClipboard } from '@/lib/clipboard';

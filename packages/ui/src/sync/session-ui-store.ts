@@ -15,7 +15,8 @@
 import type { ContextPartMetadata } from "@/lib/messages/contextParts"
 import { create } from "zustand"
 import { isSameModelRef, toModelRef, type Metadata, type ModelRef, type Part, type Session, type TextPart } from "@/lib/opencode/model"
-import type { AttachedFile, SessionWorktreeAttachment } from "@/stores/types/sessionTypes"
+import type { AttachedFile, SessionContextUsage, SessionWorktreeAttachment } from "@/stores/types/sessionTypes"
+import { buildSessionContextUsage } from "@/stores/utils/tokenUtils"
 import { permissionModeForNewSession, type PermissionMode } from "@/stores/utils/permissionAutoAccept"
 import type { WorktreeMetadata } from "@/types/worktree"
 import { opencodeClient, type SkillMentions } from "@/lib/opencode/client"
@@ -36,7 +37,7 @@ import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
 import { prepareUserMessageResume } from "./user-message-resume"
 import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
-import { ULW_COMMAND_NAME, startUlwNativeRun } from "@/lib/ulwNativeRun"
+import { ULW_COMMAND_NAME, ulwWorkflowInstruction } from "@/lib/ulwWorkflow"
 import { dagRouteSample, recordDagRouteDecision, type DagRouteDecision, type DagRouteReport } from "@/lib/dagRouteLog"
 import { normalizePath } from "@/lib/pathNormalization"
 import { CHAT_DRAFT_PROJECT_ID, createChatDirectory, deleteChatDirectory, getChatsRootFromDirectory, isChatDirectoryPath, warmChatsRootDirectory } from "@/lib/chatDirectories"
@@ -47,7 +48,7 @@ import { composeForkSessionMessage } from "@/lib/messages/executionMeta"
 import { findLatestUserModelChoice } from "@/lib/messages/userModelChoice"
 import { noteDraftSendWaiting, waitForPendingDraftWorktreeRequest } from "@/lib/worktrees/pendingDraftWorktree"
 import { waitForWorktreeBootstrap } from "@/lib/worktrees/worktreeBootstrap"
-import { getWorktreeSetupWaitEnabled } from "@/lib/openchamberConfig"
+import { getWorktreeSetupWaitEnabled } from "@/lib/alcodeConfig"
 import { resolveCreatedWorktreeStartDirectory, resolveStartDirectory, resolveWorktreeStartDirectory } from "@/lib/worktrees/worktreeStartDirectory"
 import { resolveProjectForSessionDirectory } from "@/lib/projectResolution"
 import {
@@ -227,10 +228,15 @@ export async function routeMessage(params: {
       directory: requestDirectory,
       command: params.content,
     })
+    void recordDagRouteDecision({ decision: 'shell', sample: dagRouteSample(params.content), sessionId: params.sessionId })
     return 'shell'
   }
 
   let skills = params.skills
+  // Unresolved /ulw keeps the send alive as a prompt: the workflow appendix
+  // below carries the definition nothing resolved, so the model runs the
+  // loop instead of reporting it missing. Set only on that path.
+  let ulwFallbackArgs: string | null = null
   // A leading word-bound `ulw` takes the /ulw command route, so the bare
   // trigger runs the same template, context, and skill plumbing as the slash
   // form. Mid-sentence mentions stay plain chat; shell input diverted above.
@@ -257,8 +263,9 @@ export async function routeMessage(params: {
     const [head, ...tail] = content.split(" ")
     // A bare `ulw: ...` send rewrites to `/ulw: ...`, so the head carries
     // the separator: strip trailing command punctuation before matching,
-    // or the name never equals a command/skill and the send falls through
-    // to the native run branch below instead of the command route.
+    // or the name never equals a command/skill and the send degrades to a
+    // plain prompt with no workflow instruction (live: model picked the
+    // external orca CLI instead of the managed loop).
     const cmdName = head.slice(1).replace(/[:;,.!?]+$/, '')
 
     // Commands and skills are resolved for the session's own directory. A
@@ -297,34 +304,11 @@ export async function routeMessage(params: {
 
     if (!matchedCommand && !matchedSkill && cmdName === ULW_COMMAND_NAME) {
       // The session directory defines no /ulw template (the normal case
-      // outside this checkout) and no ulw skill: start the run natively
-      // instead of appending the old CLI appendix. Commands and skills keep
-      // precedence — this branch only runs when neither resolved. A failed
-      // creation throws, so the send fails loudly instead of degrading
-      // into a silent plain prompt.
-      const nativeArgs = tail.join(" ")
-      await startUlwNativeRun({
-        runtimeKey: params.runtimeKey,
-        directory: requestDirectory,
-        // The send flow already created this session (draft or existing
-        // conversation): the run adopts it so one prompt yields exactly
-        // one parent conversation, never a blank draft plus a run copy.
-        sessionId: params.sessionId,
-        content: params.content,
-        args: nativeArgs,
-        providerID: params.providerID,
-        modelID: params.modelID,
-        variant: params.variant,
-        agent: params.agent,
-        agentMentionName: params.agentMentionName,
-        files: sendFiles,
-        context: contextItems,
-        skills,
-        delivery: params.delivery,
-        appendSubmissions: params.appendSubmissions,
-      })
-      reportRoute(cmdName, nativeArgs)
-      return 'command'
+      // outside this checkout), and Alcode sends never pass the Codex
+      // hook pipeline that would append the workflow. Fall through to the
+      // normal prompt with the bundled definition attached as context —
+      // the same channel the command route uses for skill instructions.
+      ulwFallbackArgs = tail.join(" ")
     }
 
     if (matchedCommand) {
@@ -376,8 +360,9 @@ export async function routeMessage(params: {
     content: params.content,
     directory: requestDirectory,
     files: sendFiles,
-    context: contextItems,
-    ready: params.knowledgeSync,
+    context: ulwFallbackArgs === null
+      ? contextItems
+      : [...contextItems, { text: ulwWorkflowInstruction(params.sessionId) }],
     appendSubmissions: params.appendSubmissions,
     send: (messageID, context) => opencodeClient.sendMessage({
       runtimeKey: params.runtimeKey,
@@ -395,7 +380,11 @@ export async function routeMessage(params: {
       skills,
     }).then(() => {}),
   })
-  reportRoute()
+  if (ulwFallbackArgs === null) {
+    reportRoute()
+  } else {
+    reportRoute(ULW_COMMAND_NAME, ulwFallbackArgs)
+  }
   return 'prompt'
 }
 
@@ -527,11 +516,11 @@ export type SessionUIState = {
   /** Arms "press Esc again to stop" for `sessionId`, the selected session by default. */
   armAbortPrompt: (durationMs?: number, sessionId?: string) => number | null
   clearError: () => void
-  markSessionAsOpenChamberCreated: (sessionId: string) => void
-  isOpenChamberCreatedSession: (sessionId: string) => boolean
-  initializeNewOpenChamberSession: (sessionId: string, agents: unknown[]) => void
-  /** `cwd` is where the session runs inside the checkout; it defaults to the worktree root. */
-  setWorktreeMetadata: (sessionId: string, metadata: WorktreeMetadata | null, cwd?: string) => void
+  markSessionAsAlcodeCreated: (sessionId: string) => void
+  isAlcodeCreatedSession: (sessionId: string) => boolean
+  getContextUsage: (contextLimit: number, outputLimit: number) => SessionContextUsage | null
+  initializeNewAlcodeSession: (sessionId: string, agents: unknown[]) => void
+  setWorktreeMetadata: (sessionId: string, metadata: WorktreeMetadata | null) => void
   overrideNewSessionDraftTarget: (options: Record<string, unknown>) => void
   resolvePendingDraftWorktreeTarget: (requestId: string, directory: string | null, options?: Record<string, unknown>) => void
   setDraftBootstrapPendingDirectory: (directory: string | null) => void
@@ -1152,7 +1141,7 @@ export async function materializeOpenDraftSession(selection: {
     draft.title,
     draftDirectoryOverride,
     draftPins.notes.length > 0 || draftPins.plans.length > 0
-      ? { openchamber: { project_context_pins: draftPins } }
+      ? { alcode: { project_context_pins: draftPins } }
       : undefined,
     "submitted-draft",
     {
@@ -1214,7 +1203,7 @@ export async function materializeOpenDraftSession(selection: {
     useSelectionStore.getState().saveAgentModelVariantForSession(created.id, effectiveDraftAgent, selection.providerID, selection.modelID, variantOverride)
   }
 
-  store.initializeNewOpenChamberSession(created.id, configState.agents ?? [])
+  store.initializeNewAlcodeSession(created.id, configState.agents ?? [])
 
   const permissionMode = permissionModeForNewSession(
     draftPermissionMode,
@@ -1783,16 +1772,24 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
 
   clearError: () => set({ error: null }),
 
-  markSessionAsOpenChamberCreated: (sessionId) =>
+  markSessionAsAlcodeCreated: (sessionId) =>
     set((s) => {
       const next = new Set(s.webUICreatedSessions)
       next.add(sessionId)
       return { webUICreatedSessions: next }
     }),
 
-  isOpenChamberCreatedSession: (sessionId) => get().webUICreatedSessions.has(sessionId),
+  isAlcodeCreatedSession: (sessionId) => get().webUICreatedSessions.has(sessionId),
 
-  initializeNewOpenChamberSession: () => {
+  getContextUsage: (contextLimit: number, outputLimit: number) => {
+    if (get().newSessionDraft?.open) return null
+    const sessionId = get().currentSessionId
+    if (!sessionId) return null
+
+    return buildSessionContextUsage(getSyncMessages(sessionId), contextLimit, outputLimit)
+  },
+
+  initializeNewAlcodeSession: () => {
     // Stub — was a no-op in old store
   },
 
@@ -1955,6 +1952,11 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         }, options?.draftSnapshot)
         if (!createdDraftSession) throw new Error("Failed to create session")
 
+      const draftKnowledge = await fetchSessionKnowledge(
+        createdDraftSession.directory,
+        createdDraftSession.sessionId,
+      )
+
         const draftParts: Array<{ text: string; attachments?: AttachedFile[]; synthetic?: boolean; metadata?: ContextPartMetadata }> | undefined = createdDraftSession.syntheticParts?.length
           ? [...(additionalParts || []), ...createdDraftSession.syntheticParts]
           : additionalParts
@@ -1992,7 +1994,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         // routeMessage, which resolves only when the turn completes — the
         // pane then opened minutes late and read as never opening.
         revealDagPaneForUlvStart(content, createdDraftSession.directory, { inputMode })
-        await routeMessage({
+        const messageRoute = await routeMessage({
           sessionId: createdDraftSession.sessionId,
           directory: createdDraftSession.directory,
           content,
@@ -2019,6 +2021,15 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
             })),
           })),
         })
+        // Recorded only after the send resolves: a failed send must carry the
+        // pinned context again rather than assume the agent already saw it.
+        if (draftKnowledge.text && messageRoute !== 'shell') {
+          void reportSessionKnowledgeDelivered(
+            createdDraftSession.directory,
+            createdDraftSession.sessionId,
+            draftKnowledge.signature,
+          )
+        }
         return
       }
 
@@ -2320,12 +2331,12 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         sourceDirectory,
       )
       if (!project?.path) {
-        throw new Error("Project is not registered in OpenChamber")
+        throw new Error("Project is not registered in Alcode")
       }
 
       const [branchNameModule, configModule, trustModule, createModule] = await Promise.all([
         import("@/lib/git/branchNameGenerator"),
-        import("@/lib/openchamberConfig"),
+        import("@/lib/alcodeConfig"),
         import("@/lib/sharedTrustConfirmation"),
         import("@/lib/worktrees/worktreeCreate"),
       ])

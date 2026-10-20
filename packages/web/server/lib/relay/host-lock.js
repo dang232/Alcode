@@ -1,7 +1,7 @@
-// Relay-host claim shared through the data dir. Every OpenChamber instance that
-// uses a data dir shares the same relay signing key / serverId, so if two
-// processes run a relay host at once they fight over the single host slot at
-// the relay worker (each new connection closes the previous one with
+// Per-machine relay-host claim. Every Alcode instance on a machine shares
+// the same data dir and therefore the same relay signing key / serverId, so if
+// two processes run a relay host at once they fight over the single host slot
+// at the relay worker (each new connection closes the previous one with
 // "4001: Control replaced") and paired devices land on whichever instance won
 // last — often a dev/worktree instance running different code.
 //

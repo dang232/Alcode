@@ -36,7 +36,7 @@
  * another session's tab are refused, never closed.
  */
 import { runtimeFetch } from '@/lib/runtime-fetch';
-import { subscribeOpenchamberEvents, type BrowserControlRequestContext } from '@/lib/openchamberEvents';
+import { subscribeAlcodeEvents, type BrowserControlRequestContext } from '@/lib/alcodeEvents';
 import { normalizeContextPanelDirectoryKey } from '@/stores/useUIStore';
 import { canDriveBrowserPage } from './hostCapability';
 
@@ -575,7 +575,7 @@ const runAction = async (
 
 const ensureSubscribed = (): void => {
   if (unsubscribe) return;
-  unsubscribe = subscribeOpenchamberEvents((event) => {
+  unsubscribe = subscribeAlcodeEvents((event) => {
     if (event.type !== 'browser-control-request') return;
     void handleRequest({
       requestId: event.requestId,

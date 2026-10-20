@@ -4,7 +4,7 @@ import { CHAT_DRAFT_PROJECT_ID } from '@/lib/chatDirectories';
 import { resolveProjectContextOwner } from './useProjectContextOwner';
 
 const projects = [
-  { id: 'openchamber', path: '/workspace/openchamber', label: 'OpenChamber' },
+  { id: 'alcode', path: '/workspace/alcode', label: 'Alcode' },
 ];
 
 describe('resolveProjectContextOwner', () => {
@@ -12,8 +12,8 @@ describe('resolveProjectContextOwner', () => {
     const owner = resolveProjectContextOwner({
       projects,
       worktreesByProject: new Map(),
-      directory: '/Users/test/.config/openchamber/chats/2026-08-27/session-a',
-      activeProjectId: 'openchamber',
+      directory: '/Users/test/.config/alcode/chats/2026-08-27/session-a',
+      activeProjectId: 'alcode',
       chatDraftOpen: false,
       chatDraftTarget: 'project',
       chatsRoot: '/Users/test/.config/openchamber/chats',
@@ -21,7 +21,7 @@ describe('resolveProjectContextOwner', () => {
 
     expect(owner).toEqual({
       id: CHAT_DRAFT_PROJECT_ID,
-      path: '/Users/test/.config/openchamber/chats',
+      path: '/Users/test/.config/alcode/chats',
     });
   });
 
@@ -29,21 +29,21 @@ describe('resolveProjectContextOwner', () => {
     const owner = resolveProjectContextOwner({
       projects,
       worktreesByProject: new Map([
-        ['/workspace/openchamber', [{
-          path: '/workspace/openchamber-feature',
-          projectDirectory: '/workspace/openchamber',
+        ['/workspace/alcode', [{
+          path: '/workspace/alcode-feature',
+          projectDirectory: '/workspace/alcode',
           branch: 'feature',
           label: 'feature',
         }]],
       ]),
-      directory: '/workspace/openchamber-feature',
+      directory: '/workspace/alcode-feature',
       activeProjectId: null,
       chatDraftOpen: false,
       chatDraftTarget: 'project',
       chatsRoot: '/Users/test/.config/openchamber/chats',
     });
 
-    expect(owner).toEqual({ id: 'openchamber', path: '/workspace/openchamber' });
+    expect(owner).toEqual({ id: 'alcode', path: '/workspace/alcode' });
   });
 
   test('returns null for a recognized directory that owns nothing, instead of borrowing the active project', () => {
@@ -51,7 +51,7 @@ describe('resolveProjectContextOwner', () => {
       projects,
       worktreesByProject: new Map(),
       directory: '/some/other/project',
-      activeProjectId: 'openchamber',
+      activeProjectId: 'alcode',
       chatDraftOpen: false,
       chatDraftTarget: 'project',
       chatsRoot: '/Users/test/.config/openchamber/chats',
@@ -65,13 +65,13 @@ describe('resolveProjectContextOwner', () => {
       projects,
       worktreesByProject: new Map(),
       directory: null,
-      activeProjectId: 'openchamber',
+      activeProjectId: 'alcode',
       chatDraftOpen: false,
       chatDraftTarget: 'project',
       chatsRoot: '/Users/test/.config/openchamber/chats',
     });
 
-    expect(owner).toEqual({ id: 'openchamber', path: '/workspace/openchamber' });
+    expect(owner).toEqual({ id: 'alcode', path: '/workspace/alcode' });
   });
 
   test('never falls back to the first project when the active project is unknown', () => {

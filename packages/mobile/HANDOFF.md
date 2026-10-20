@@ -1,4 +1,4 @@
-# OpenChamber Mobile Handoff
+# Alcode Mobile Handoff
 
 Status and process reference for the native iOS/Android apps. Written so work can continue after
 merge — either by finishing CI/release automation, or by adding features as follow-up fixes. The
@@ -11,22 +11,9 @@ renderer), not the desktop shell. The native app is a WKWebView (iOS) / Android 
 bundled copy of the web build; native capabilities are added via Capacitor plugins and two iOS app
 extensions.
 
-- App id / package: `com.openchamber.app`; app name `OpenChamber`.
-- Capacitor config: `capacitor.config.json`. It is JSON because the Capacitor CLI reads a
-  `capacitor.config.ts` through the TypeScript JS API (`transpileModule`), which TypeScript 7 no
-  longer ships. Why its values are what they are:
-  - `android.allowMixedContent: true`: the Android WebView serves the app from an `https://`
-    origin, so fetch and WebSocket calls to plain-http LAN servers (`http://192.168.x.x`) are
-    blocked as mixed content even with cleartext allowed in the manifest. LAN transport is a core
-    feature; iOS (`capacitor://`) has no such issue, and relay and tunnel traffic is TLS anyway.
-  - Keyboard `resize: 'none'`: the WebView keeps its full height and the UI follows the keyboard
-    through the `--oc-keyboard-inset` CSS variable driven by `keyboardWillShow`
-    (`useNativeMobileChrome`). The built-in `native` resize lands only after the keyboard
-    animation ends, which looked like a ~1.5s lag.
-  - StatusBar `overlaysWebView: true`.
-  - PushNotifications `presentationOptions: []`: iOS never shows an alert while the app is in
-    the foreground. The server always sends (no racy visibility gate); background pushes show as
-    usual.
+- App id / package: `com.openchamber.app`; app name `Alcode`.
+- Capacitor config: `capacitor.config.ts` (Keyboard `resize: 'none'`, StatusBar overlay, Push
+  `presentationOptions: []`).
 - Renderer: the web build's `mobile.html` entry (`MobileApp`), copied into `dist/` and served by
   Capacitor. Mobile-only surfaces (connection onboarding, `Instances`, QR pairing, widgets) exist
   only in the Capacitor shell — hosted `mobile.html` in a plain browser does not expose them.
@@ -99,7 +86,7 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
   without Google Play Services. iOS uses the plugin's native scanner. CAMERA permission +
   `NSCameraUsageDescription` declared.
 - **Secure storage** — `@aparajita/capacitor-secure-storage` for connection tokens.
-- **Deep links** — `openchamber://` URL scheme; a reusable intent vocabulary (`apps/deepLinks.ts`)
+- **Deep links** — `alcode://` URL scheme; a reusable intent vocabulary (`apps/deepLinks.ts`)
   used by notification taps, widgets, and Control Center. Cold-launch intents are stashed.
 - **Push notifications** — iOS APNs + Android FCM (see below). Presence-aware routing suppresses a
   device's push when an interactive (desktop/web) client is visible.
@@ -131,13 +118,13 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - Extensions: `OpenChamberWidget` (WidgetKit, deployment 17.0) and `OpenChamberNotificationService`
   (NSE, 15.5), both hand-wired into `App.xcodeproj/project.pbxproj` and embedded via a copy phase.
 - App Group `group.com.openchamber.app` in all three targets' entitlements (app + widget + NSE).
-- `Info.plist`: `CFBundleURLTypes` scheme `openchamber`, `NSCameraUsageDescription`.
+- `Info.plist`: `CFBundleURLTypes` scheme `alcode`, `NSCameraUsageDescription`.
 - Push entitlement (aps-environment) required.
 - APNs `mutable-content: 1` (set server/relay side) wakes the NSE to refresh widgets.
 
 ### Android (`android/app`)
 
-- `google-services.json` (committed; Firebase project `openchamber-8bf7e`). The Google Services
+- `google-services.json` (committed; Firebase project `alcode-8bf7e`). The Google Services
   Gradle plugin is applied conditionally when the file exists; `@capacitor/push-notifications`
   brings `firebase-messaging`.
 - Manifest: permissions `INTERNET`, `CAMERA` (+ optional camera feature), `POST_NOTIFICATIONS`
@@ -175,8 +162,8 @@ iOS Simulator helpers: `mobile:sim:{boot,install,launch,run,serve,list,kill}` (s
 - **`embedded.mobileprovision` decodes as `.isoLatin1`.** It is a binary CMS envelope around a plist;
   `.ascii`/`.utf8` return nil and the APNs environment silently falls back. APNs delivery is grouped
   per token by the environment it registered with (Xcode build → sandbox, TestFlight/App Store →
-  production); `OPENCHAMBER_APNS_ENVIRONMENT` is only a global override. For "no push on the phone",
-  check `~/.config/openchamber/apns-tokens.json` and remember the phone talks to the installed
+  production); `ALCODE_APNS_ENVIRONMENT` is only a global override. For "no push on the phone",
+  check `~/.config/alcode/apns-tokens.json` and remember the phone talks to the installed
   desktop app's server, which runs its own (possibly older) code.
 - **Native HTTP always sends the WebView's cookies**, whatever `credentials` says, so a leftover
   `oc_ui_session` rides along with every request. That is why `/auth/session` lets an explicit

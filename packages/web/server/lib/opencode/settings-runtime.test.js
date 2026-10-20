@@ -182,12 +182,12 @@ describe('settings runtime', () => {
     }
   });
 
-  it('uses OpenChamber themes when a new install has no theme preferences', async () => {
+  it('uses Alcode themes when a new install has no theme preferences', async () => {
     const { runtime, cleanup } = await createRuntime();
     try {
       await expect(runtime.readSettingsFromDiskMigrated()).resolves.toMatchObject({
-        lightThemeId: 'openchamber-light',
-        darkThemeId: 'openchamber-dark',
+        lightThemeId: 'alcode-light',
+        darkThemeId: 'alcode-dark',
       });
     } finally {
       await cleanup();
@@ -235,7 +235,7 @@ describe('settings runtime', () => {
   it.skipIf(process.platform === 'win32')('writes settings with restrictive directory and file permissions', async () => {
     const { runtime, settingsFilePath, tempRoot, cleanup } = await createRuntime();
     try {
-      await runtime.writeSettingsToDisk({ desktopUiPassword: 'secret' });
+      await runtime.writeSettingsToDisk({ managedRemoteTunnelToken: 'secret' });
 
       expect((await fsPromises.stat(tempRoot)).mode & 0o777).toBe(0o700);
       expect((await fsPromises.stat(settingsFilePath)).mode & 0o777).toBe(0o600);
@@ -543,7 +543,7 @@ describe('settings runtime: preferences.json split', () => {
   it('seeds preferences.json from the profile keys of an existing settings.json and leaves that file intact', async () => {
     const { runtime, settingsFilePath, tempRoot, cleanup } = await createRuntime();
     try {
-      const legacy = { projects: [], fontSize: 110, themeId: 'openchamber-dark', desktopLanAccessEnabled: true };
+      const legacy = { projects: [], fontSize: 110, themeId: 'alcode-dark', desktopLanAccessEnabled: true };
       await fsPromises.writeFile(settingsFilePath, JSON.stringify(legacy));
 
       const merged = await runtime.readSettingsFromDisk();

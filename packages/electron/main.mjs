@@ -13,7 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import updaterPkg from 'electron-updater';
 import { ElectronSshManager } from './ssh-manager.mjs';
-import { collectLocalFileDiagnostics, collectSshBufferDiagnostics } from '@openchamber/web/server/lib/diagnostics/local-files.js';
+import { collectLocalFileDiagnostics, collectSshBufferDiagnostics } from '@alcode/web/server/lib/diagnostics/local-files.js';
 import { replaceFileWithRetry } from './windows-file-replace.mjs';
 import { createTrayController } from './tray.mjs';
 import { applyDevDockIdentity, applyDockBadge } from './dev-dock-identity.mjs';
@@ -26,6 +26,8 @@ import { parseExternalUrl } from './external-url-policy.mjs';
 import {
   BACKGROUND_START_ARG,
   DEEP_LINK_PROTOCOL,
+  LEGACY_DEEP_LINK_PROTOCOL,
+  LEGACY_UI_PROTOCOL,
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
   UI_PROTOCOL,
@@ -114,11 +116,12 @@ import { createRelayDevTunnelBridge } from './relay-dev-tunnel.mjs';
 import { parsePairingDeepLink } from './pairing-deep-link.mjs';
 import { attachRendererRecovery, takeSafeStart } from './renderer-recovery.mjs';
 import { createLoadFailureWarningFilter } from './load-failure-warnings.mjs';
-import { mintOutsideFileGrant } from '@openchamber/web/server/lib/fs/routes.js';
-import { fetchUpdateNotes } from '@openchamber/web/server/lib/changelog/update-notes.js';
-import { applyConnectAttemptTimeout } from '@openchamber/web/server/lib/network-defaults.js';
-import { isNetworkAccessBlocked } from '@openchamber/web/server/lib/enterprise-mode.js';
-import { assignInjectedEnv } from '@openchamber/web/server/lib/injected-env.js';
+import { mintOutsideFileGrant } from '@alcode/web/server/lib/fs/routes.js';
+import { fetchUpdateNotes } from '@alcode/web/server/lib/changelog/update-notes.js';
+import { applyConnectAttemptTimeout } from '@alcode/web/server/lib/network-defaults.js';
+import { isNetworkAccessBlocked } from '@alcode/web/server/lib/enterprise-mode.js';
+import { isUnsafeUnauthenticatedLanAllowed } from '@alcode/web/server/lib/security/bind-host.js';
+import { assignInjectedEnv } from '@alcode/web/server/lib/injected-env.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -142,7 +145,7 @@ log.transports.console.level = isDev ? 'debug' : 'warn';
 
 // The in-process web server runs in this same Node process and uses plain
 // `console.log/warn/error`. Without piping console through electron-log,
-// that output never lands in ~/Library/Logs/OpenChamber/main.log and we
+// that output never lands in ~/Library/Logs/Alcode/main.log and we
 // can't diagnose issues (e.g. OpenCode lifecycle, SSE disconnects) after
 // the fact. Route all console calls through electron-log so server-side
 // diagnostics are persisted.
@@ -177,7 +180,7 @@ const ELECTRON_STARTUP_PERF_PHASES = new Set([
 ]);
 const ELECTRON_STARTUP_DOCUMENT_CLASSES = new Set(['splash', 'application']);
 const logElectronStartupEvent = ({ phase, at, totalDurationMs, durationMs, documentClass }) => {
-  const enabled = STARTUP_PERF_ENABLED_VALUES.has(String(process.env.OPENCHAMBER_STARTUP_PERF ?? '').toLowerCase());
+  const enabled = STARTUP_PERF_ENABLED_VALUES.has(String(process.env.ALCODE_STARTUP_PERF ?? '').toLowerCase());
   if (!enabled || !ELECTRON_STARTUP_PERF_PHASES.has(phase)) return;
   const event = { phase, at, totalDurationMs };
   if (Number.isFinite(durationMs) && durationMs >= 0) event.durationMs = durationMs;
@@ -217,13 +220,17 @@ try {
 } catch {
 }
 
-try {
-  if (!app.isDefaultProtocolClient(DEEP_LINK_PROTOCOL)) {
-    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL);
+// Both deep-link schemes stay registered so links issued before the rename
+// (openchamber://) keep opening the app alongside the current alcode:// ones.
+for (const deepLinkProtocol of [DEEP_LINK_PROTOCOL, LEGACY_DEEP_LINK_PROTOCOL]) {
+  try {
+    if (!app.isDefaultProtocolClient(deepLinkProtocol)) {
+      app.setAsDefaultProtocolClient(deepLinkProtocol);
+    }
+  } catch (error) {
+    // log.* not yet initialized at this point; fall back to console.
+    console.warn('[electron] failed to register deep-link protocol:', error);
   }
-} catch (error) {
-  // log.* not yet initialized at this point; fall back to console.
-  console.warn('[electron] failed to register deep-link protocol:', error);
 }
 
 const readAppMetadata = () => {
@@ -236,19 +243,22 @@ const readAppMetadata = () => {
     try {
       const raw = fs.readFileSync(candidate, 'utf8');
       const parsed = JSON.parse(raw);
-      if (parsed?.name === '@openchamber/electron' && typeof parsed.version === 'string') {
+      if (parsed?.name === '@alcode/electron' && typeof parsed.version === 'string') {
         return { name: parsed.name, version: parsed.version };
       }
     } catch {
     }
   }
-  return { name: '@openchamber/electron', version: app.getVersion() };
+  return { name: '@alcode/electron', version: app.getVersion() };
 };
 
 const APP_METADATA = readAppMetadata();
 const APP_VERSION = APP_METADATA.version;
 
-const DEFAULT_DESKTOP_PORT = 57123;
+// Fixed loopback port for the desktop server: the registered Google callback URL
+// (http://127.0.0.1:57123/auth/desktop-google/callback) depends on it, so there is
+// no fallback. Occupied → loud startup failure in spawnLocalServer.
+const DESKTOP_PORT = 57123;
 const LOOPBACK_BIND_HOST = '127.0.0.1';
 const LAN_BIND_HOST = '0.0.0.0';
 const MINI_CHAT_WINDOW_WIDTH = 520;
@@ -395,7 +405,7 @@ const quitConfirmationMessage = () => {
   if (reasons.length === 0) {
     return 'Background processes (sidecar, SSH sessions) will be stopped.';
   }
-  return `OpenChamber detected ${reasons.join(', ')}. Quitting now will stop sidecar/background processes and may interrupt pending work.`;
+  return `Alcode detected ${reasons.join(', ')}. Quitting now will stop sidecar/background processes and may interrupt pending work.`;
 };
 
 const shutdownBackgroundServices = () => {
@@ -571,8 +581,8 @@ const requestQuitWithConfirmation = async () => {
   try {
     const result = await dialog.showMessageBox({
       type: 'warning',
-      title: 'Quit OpenChamber?',
-      message: 'Quit OpenChamber?',
+      title: 'Quit Alcode?',
+      message: 'Quit Alcode?',
       detail: quitConfirmationMessage(),
       buttons: ['Quit', 'Cancel'],
       defaultId: 1,
@@ -610,8 +620,8 @@ const refreshQuitRiskFlags = async () => {
   const base = typeof state.sidecarUrl === 'string' ? state.sidecarUrl.trim().replace(/\/$/, '') : '';
   if (!base) return;
 
-  const scheduledUrl = `${base}/api/openchamber/scheduled-tasks/status`;
-  const tunnelUrl = `${base}/api/openchamber/tunnel/status`;
+  const scheduledUrl = `${base}/api/alcode/scheduled-tasks/status`;
+  const tunnelUrl = `${base}/api/alcode/tunnel/status`;
 
   const fetchJson = async (url) => {
     try {
@@ -687,7 +697,7 @@ const writeSettingsRoot = async (root) => writeJsonFile(settingsFilePath(), root
 
 // Stable per-install identifier for this desktop, persisted in settings. Used as
 // the client dedupe key on remote hosts so re-authenticating (e.g. after a login
-// session expires) reuses the same "OpenChamber Desktop" record instead of
+// session expires) reuses the same "Alcode Desktop" record instead of
 // piling up a new one each time. Different desktops get different ids.
 // Display-only device metadata shown in a server's device list ("macOS",
 // app version). Never used for auth decisions.
@@ -1002,19 +1012,6 @@ const waitForHealth = async (url, timeoutMs = 20_000, initialPollMs = 250, maxPo
   return false;
 };
 
-const pickUnusedPort = async (host = '127.0.0.1') => {
-  const net = await import('node:net');
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.listen(0, host, () => {
-      const address = server.address();
-      const port = typeof address === 'object' && address ? address.port : 0;
-      server.close(() => resolve(port));
-    });
-    server.on('error', reject);
-  });
-};
-
 const isPortFree = async (port, host = '127.0.0.1') => {
   if (!Number.isFinite(port) || port <= 0) return false;
   const net = await import('node:net');
@@ -1082,7 +1079,7 @@ const runtimeConfigGate = createRuntimeConfigGate();
 const buildRuntimeConfigScript = () => {
   const apiBaseUrl = state.apiBaseUrl || state.sidecarUrl || '';
   const localOrigin = state.localOrigin || state.sidecarUrl || '';
-  return `if(window.__OPENCHAMBER_LOCAL_ORIGIN__===undefined){window.__OPENCHAMBER_LOCAL_ORIGIN__=${JSON.stringify(localOrigin)};}if(window.__OPENCHAMBER_API_BASE_URL__===undefined){window.__OPENCHAMBER_API_BASE_URL__=${JSON.stringify(apiBaseUrl)};}if(window.__OPENCHAMBER_CLIENT_TOKEN__===undefined&&${JSON.stringify(state.clientToken || '')}){window.__OPENCHAMBER_CLIENT_TOKEN__=${JSON.stringify(state.clientToken || '')};}`;
+  return `if(window.__ALCODE_LOCAL_ORIGIN__===undefined){window.__ALCODE_LOCAL_ORIGIN__=${JSON.stringify(localOrigin)};}if(window.__OPENCHAMBER_LOCAL_ORIGIN__===undefined){window.__OPENCHAMBER_LOCAL_ORIGIN__=${JSON.stringify(localOrigin)};}if(window.__ALCODE_API_BASE_URL__===undefined){window.__ALCODE_API_BASE_URL__=${JSON.stringify(apiBaseUrl)};}if(window.__OPENCHAMBER_API_BASE_URL__===undefined){window.__OPENCHAMBER_API_BASE_URL__=${JSON.stringify(apiBaseUrl)};}if(window.__ALCODE_CLIENT_TOKEN__===undefined&&${JSON.stringify(state.clientToken || '')}){window.__ALCODE_CLIENT_TOKEN__=${JSON.stringify(state.clientToken || '')};}if(window.__OPENCHAMBER_CLIENT_TOKEN__===undefined&&${JSON.stringify(state.clientToken || '')}){window.__OPENCHAMBER_CLIENT_TOKEN__=${JSON.stringify(state.clientToken || '')};}`;
 };
 
 const injectRuntimeConfigIntoHtml = (html) => {
@@ -1093,11 +1090,14 @@ const injectRuntimeConfigIntoHtml = (html) => {
 };
 
 /**
- * The browser panel's own session, kept separate from OpenChamber's.
+ * The browser panel's own session, kept separate from Alcode's.
  *
  * Every page the user opens in the panel shares this partition, which is what
  * lets a dev-server login persist between sessions without touching the app's
  * own storage.
+ *
+ * The pre-rename name is kept deliberately: renaming the partition would orphan
+ * the stored sessions/cookies of existing installs, wiping panel logins.
  */
 const BROWSER_PANEL_PARTITION = 'persist:openchamber-browser';
 
@@ -1321,7 +1321,7 @@ const registerPackagedUiProtocol = () => {
       // forwarding credentials to the wrong host.
       return Response.json(
         { error: { code: 'runtime_unavailable' } },
-        { status: 503, headers: { 'x-openchamber-error': 'runtime-unavailable' } },
+        { status: 503, headers: { 'x-alcode-error': 'runtime-unavailable' } },
       );
     }
 
@@ -1464,7 +1464,7 @@ const maybeShowNativeNotification = (rawInput) => {
 
   const title = typeof payload.title === 'string' && payload.title.trim()
     ? payload.title.trim()
-    : 'OpenChamber';
+    : 'Alcode';
   const body = typeof payload.body === 'string' ? payload.body : '';
   const sessionId = typeof payload.sessionId === 'string' && payload.sessionId.trim()
     ? payload.sessionId.trim()
@@ -1499,7 +1499,7 @@ const maybeShowNativeNotification = (rawInput) => {
       // cross-instance clicks to the owning instance's window.
       const openSessionPayload = { sessionId, directory };
       if (runtimeKey) openSessionPayload.runtimeKey = runtimeKey;
-      emitToPrimaryWindow('openchamber:open-session', openSessionPayload);
+      emitToPrimaryWindow('alcode:open-session', openSessionPayload);
     }
     release();
   });
@@ -1514,8 +1514,8 @@ const mapUpdaterProgressEvent = (payload) => ({
   data: payload.data,
 });
 
-import { pathLooksUserConfigured, mergePathValues } from '@openchamber/web/server/lib/opencode/path-utils.js';
-import { provideLoginShellEnvSnapshot } from '@openchamber/web/server/lib/opencode/login-shell-env.js';
+import { pathLooksUserConfigured, mergePathValues } from '@alcode/web/server/lib/opencode/path-utils.js';
+import { provideLoginShellEnvSnapshot } from '@alcode/web/server/lib/opencode/login-shell-env.js';
 
 // Merge the user's login-shell env (PATH, etc.) into this process before we
 // import/start the server in-process. The server and its children (opencode
@@ -1549,7 +1549,7 @@ const inheritUserShellEnv = async () => {
 
 const shouldSkipLocalServer = async () => {
   await inheritUserShellEnv();
-  return process.env.OPENCHAMBER_SKIP_LOCAL_SERVER === '1';
+  return process.env.ALCODE_SKIP_LOCAL_SERVER === '1';
 };
 
 const spawnLocalServer = async () => {
@@ -1558,84 +1558,93 @@ const spawnLocalServer = async () => {
   await inheritUserShellEnv();
 
   const settings = readSettingsRoot();
-  const storedPort = Number.isFinite(settings.desktopLocalPort) ? settings.desktopLocalPort : null;
+  // The desktop Google callback URL is registered once (console) against this port,
+  // against this port, so the local server always binds exactly here: no
+  // stored-port or random-port fallback. A second instance fails loudly below.
   // When the user enables "Desktop Network Access" we bind on all interfaces
   // so phones/tablets on the same Wi-Fi can reach the app. UI shows a clear
   // warning and persists the flag via /api/config/settings.
   const lanAccessEnabled = settings.desktopLanAccessEnabled === true;
   setDesktopKeepAwakeActive(settings.desktopKeepAwakeEnabled === true);
-  const desktopUiPassword = typeof settings.desktopUiPassword === 'string' ? settings.desktopUiPassword.trim() : '';
   // Enterprise mode keeps the app on this machine unless the administrator
   // allowed network access (the server refuses a network bind as well).
   const lanAccessBlockedByEnterprise = lanAccessEnabled && isNetworkAccessBlocked();
-  const lanAccessBlockedByMissingPassword = lanAccessEnabled && !lanAccessBlockedByEnterprise && !desktopUiPassword;
-  const effectiveLanAccessEnabled = lanAccessEnabled && !lanAccessBlockedByEnterprise && !lanAccessBlockedByMissingPassword;
+  // The server refuses a network bind without its Alcore secret, so LAN
+  // access without one would fail startup: stay on loopback instead.
+  const lanAccessSecret = [process.env.ALCORE_JWT_SECRET, process.env.JWT_SECRET]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find((value) => value) || '';
+  const lanAccessBlockedByMissingSecret = lanAccessEnabled && !lanAccessBlockedByEnterprise
+    && !lanAccessSecret && !isUnsafeUnauthenticatedLanAllowed(process.env);
+  const effectiveLanAccessEnabled = lanAccessEnabled && !lanAccessBlockedByEnterprise && !lanAccessBlockedByMissingSecret;
   const bindHost = effectiveLanAccessEnabled ? LAN_BIND_HOST : LOOPBACK_BIND_HOST;
   if (lanAccessBlockedByEnterprise) {
     log.warn('[desktop] LAN access is turned off by enterprise mode; starting on loopback only.');
-  } else if (lanAccessBlockedByMissingPassword) {
-    log.warn('[desktop] LAN access was requested without a desktop UI password; starting on loopback only.');
+  } else if (lanAccessBlockedByMissingSecret) {
+    log.warn('[desktop] LAN access was requested without an Alcore secret; starting on loopback only.');
   }
 
   // Probe before starting the server — main() in the server module sets up a
   // lot of global state before binding, and calling it twice after a listen
-  // failure would double-wire runtimes. Pick a known-free port in one shot.
-  const candidates = [storedPort, DEFAULT_DESKTOP_PORT].filter((v) => Number.isFinite(v) && v > 0);
-  let chosenPort = 0;
-  for (const candidate of candidates) {
-    if (await isPortFree(candidate, bindHost)) {
-      chosenPort = candidate;
-      break;
-    }
+  // failure would double-wire runtimes. The port is fixed (see above), so an
+  // occupied port is a loud startup failure, not a silent re-pick.
+  if (!(await isPortFree(DESKTOP_PORT, bindHost))) {
+    throw new Error(
+      `Desktop server port ${DESKTOP_PORT} is occupied (${bindHost}). Close the other app using it, then start Alcode again.`,
+    );
   }
-  if (chosenPort === 0) {
-    chosenPort = await pickUnusedPort(bindHost);
-  }
+  const chosenPort = DESKTOP_PORT;
 
-  // The server module reads ENV_DESKTOP_NOTIFY / OPENCHAMBER_DIST_DIR /
-  // OPENCHAMBER_RUNTIME at import time (top-level const), so these must be
+  // The server module reads ENV_DESKTOP_NOTIFY / ALCODE_DIST_DIR /
+  // ALCODE_RUNTIME at import time (top-level const), so these must be
   // set before the first import. After this point, the same env is used by
   // both the Electron main and the server running inside it.
-  // They are recorded as injected, so a shell opened from this app (the
-  // integrated terminal, an agent) can tell them from the user's own exports.
-  if (!lanAccessBlockedByEnterprise && !lanAccessBlockedByMissingPassword) {
-    delete process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
+  process.env.ALCODE_HOST = bindHost;
+  process.env.ALCODE_DESKTOP_LAN_ACCESS_ACTIVE = effectiveLanAccessEnabled ? 'true' : 'false';
+  if (lanAccessBlockedByEnterprise) {
+    process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'enterprise-mode';
+  } else if (lanAccessBlockedByMissingSecret) {
+    process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'missing-alcore-secret';
+  } else {
+    delete process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
   }
-  if (!desktopUiPassword) {
-    delete process.env.OPENCHAMBER_UI_PASSWORD;
+  process.env.ALCODE_DIST_DIR = resolveWebDistDir();
+  process.env.ALCODE_RUNTIME = 'desktop';
+  // Staged internal ulw-loop CLI (prepare:ulw-loop-cli): loop agents spawned
+  // under the app inherit this and resolve internal-first via the skill doc's
+  // OMO_ULW_LOOP_CLI override — no download, no PATH, no drive search.
+  // Guarded: without staging, the managed lifecycle defaults to the checkout
+  // dist (dev parity) and the repo-local candidate in the skill doc covers
+  // the rest.
+  const stagedUlwLoopCli = path.join(resourceRoot(), 'ulw-loop-cli', 'dist', 'cli.js');
+  if (fs.existsSync(stagedUlwLoopCli)) {
+    process.env.OMO_ULW_LOOP_CLI = stagedUlwLoopCli;
   }
-  assignInjectedEnv(process.env, {
-    OPENCHAMBER_HOST: bindHost,
-    OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE: effectiveLanAccessEnabled ? 'true' : 'false',
-    OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON: lanAccessBlockedByEnterprise
-      ? 'enterprise-mode'
-      : lanAccessBlockedByMissingPassword ? 'missing-password' : undefined,
-    OPENCHAMBER_DIST_DIR: resolveWebDistDir(),
-    OPENCHAMBER_RUNTIME: 'desktop',
-    // OpenCode uses process cwd as a fallback directory; app userData would make
-    // packaged desktop look like a separate empty workspace.
-    OPENCHAMBER_OPENCODE_CWD: resolveManagedOpenCodeCwd({
-      env: process.env,
-      homedir: () => os.homedir(),
-    }),
-    OPENCHAMBER_DESKTOP_NOTIFY: 'true',
-    OPENCHAMBER_UI_PASSWORD: desktopUiPassword || undefined,
-    OPENCHAMBER_SKIP_API_COMPRESSION: process.env.OPENCHAMBER_SKIP_API_COMPRESSION || 'true',
-    NO_PROXY: process.env.NO_PROXY || 'localhost,127.0.0.1',
-    no_proxy: process.env.no_proxy || 'localhost,127.0.0.1',
+  const stagedUlwLoopResolver = path.join(resourceRoot(), 'ulw-loop-cli', 'resolve-ulw-loop-cli.mjs');
+  if (fs.existsSync(stagedUlwLoopResolver)) {
+    process.env.OMO_ULW_LOOP_RESOLVER = stagedUlwLoopResolver;
+  }
+  // OpenCode uses process cwd as a fallback directory; app userData would make
+  // packaged desktop look like a separate empty workspace.
+  process.env.ALCODE_OPENCODE_CWD = resolveManagedOpenCodeCwd({
+    env: process.env,
+    homedir: () => os.homedir(),
   });
+  process.env.ALCODE_DESKTOP_NOTIFY = 'true';
+  process.env.ALCODE_SKIP_API_COMPRESSION = process.env.ALCODE_SKIP_API_COMPRESSION || 'true';
+  process.env.NO_PROXY = process.env.NO_PROXY || 'localhost,127.0.0.1';
+  process.env.no_proxy = process.env.no_proxy || 'localhost,127.0.0.1';
 
-  const { startWebUiServer } = await import('@openchamber/web/server/index.js');
+  const { startWebUiServer } = await import('@alcode/web/server/index.js');
 
   const handle = await startWebUiServer({
     port: chosenPort,
     host: bindHost,
-    uiPassword: desktopUiPassword || null,
     attachSignals: false,
     exitOnShutdown: false,
     apiOnly: false,
     builtInExtensionsDir: app.isPackaged
-      ? path.join(app.getAppPath().endsWith('.asar') ? `${app.getAppPath()}.unpacked` : app.getAppPath(), 'node_modules/@openchamber/web/server/built-in-extensions')
+      ? path.join(app.getAppPath().endsWith('.asar') ? `${app.getAppPath()}.unpacked` : app.getAppPath(), 'node_modules/@alcode/web/server/built-in-extensions')
       : undefined,
     // The in-process server's notifications belong to the local instance.
     onDesktopNotification: (payload) => maybeShowNativeNotification({ ...payload, runtimeKey: 'local' }),
@@ -1752,7 +1761,7 @@ Stop-ProcessTree $targetPid $true
     'if [ "$pid" -gt 0 ] 2>/dev/null; then kill -KILL "-$pid" 2>/dev/null; kill -KILL "$pid" 2>/dev/null; fi',
     'if [ "$port" -gt 0 ] 2>/dev/null && command -v lsof >/dev/null 2>&1; then for target in $(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null; lsof -ti ":$port" 2>/dev/null); do [ "$target" = "$$" ] || kill -KILL "$target" 2>/dev/null; done; fi',
   ].join('; ');
-  const child = spawn('/bin/sh', ['-c', script, 'openchamber-opencode-killer', normalizedPid, normalizedPort, String(OPENCODE_SHUTDOWN_GRACE_MS / 1000)], {
+  const child = spawn('/bin/sh', ['-c', script, 'alcode-opencode-killer', normalizedPid, normalizedPort, String(OPENCODE_SHUTDOWN_GRACE_MS / 1000)], {
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
@@ -1779,12 +1788,13 @@ const buildInitScript = (localOrigin, bootOutcome, apiBaseUrl = '', clientToken 
   const token = JSON.stringify(clientToken || '');
   const headers = JSON.stringify(sanitizeRuntimeRequestHeaders(requestHeaders));
   const packagedOrigin = JSON.stringify(packagedUiOrigin());
+  const legacyPackagedOrigin = JSON.stringify(`${LEGACY_UI_PROTOCOL}://app`);
   const macVersion = macosMajorVersion();
   const outcome = JSON.stringify(bootOutcome ?? null);
   const sshForwardedApiUrl = JSON.stringify(sshManager.isForwardedApiUrl(apiBaseUrl) ? apiBaseUrl : '');
   return [
     '(function(){',
-    `try{var __oc_local=${local};var __oc_api=${apiBase};var __oc_headers=${headers};var __oc_packaged=${packagedOrigin};var __oc_origin=window.location&&window.location.origin||'';var __oc_is_packaged=__oc_origin===__oc_packaged;var __oc_is_local=__oc_local&&__oc_origin===new URL(__oc_local).origin;window.__OPENCHAMBER_MACOS_MAJOR__=${macVersion};window.__OPENCHAMBER_LOCAL_ORIGIN__=__oc_local;window.__OPENCHAMBER_API_BASE_URL__=__oc_api;window.__OPENCHAMBER_SSH_FORWARD_API_URL__=${sshForwardedApiUrl};if(__oc_is_local||__oc_is_packaged){window.__OPENCHAMBER_HOME__=${home};window.__OPENCHAMBER_RUNTIME_HEADERS__=__oc_headers;}if((__oc_is_local||__oc_is_packaged)&&${token}){window.__OPENCHAMBER_CLIENT_TOKEN__=${token};}var __oc_bo=${outcome};if(__oc_bo){window.__OPENCHAMBER_DESKTOP_BOOT_OUTCOME__=__oc_bo;}}catch(_e){}`,
+    `try{var __oc_local=${local};var __oc_api=${apiBase};var __oc_headers=${headers};var __oc_packaged=${packagedOrigin};var __oc_legacy_packaged=${legacyPackagedOrigin};var __oc_origin=window.location&&window.location.origin||'';var __oc_is_packaged=__oc_origin===__oc_packaged||__oc_origin===__oc_legacy_packaged;var __oc_is_local=__oc_local&&__oc_origin===new URL(__oc_local).origin;window.__ALCODE_MACOS_MAJOR__=${macVersion};window.__OPENCHAMBER_MACOS_MAJOR__=${macVersion};window.__ALCODE_LOCAL_ORIGIN__=__oc_local;window.__OPENCHAMBER_LOCAL_ORIGIN__=__oc_local;window.__ALCODE_API_BASE_URL__=__oc_api;window.__OPENCHAMBER_API_BASE_URL__=__oc_api;if(__oc_is_local||__oc_is_packaged){window.__ALCODE_HOME__=${home};window.__OPENCHAMBER_HOME__=${home};window.__ALCODE_RUNTIME_HEADERS__=__oc_headers;window.__OPENCHAMBER_RUNTIME_HEADERS__=__oc_headers;}if((__oc_is_local||__oc_is_packaged)&&${token}){window.__ALCODE_CLIENT_TOKEN__=${token};window.__OPENCHAMBER_CLIENT_TOKEN__=${token};}var __oc_bo=${outcome};if(__oc_bo){window.__ALCODE_DESKTOP_BOOT_OUTCOME__=__oc_bo;window.__OPENCHAMBER_DESKTOP_BOOT_OUTCOME__=__oc_bo;}}catch(_e){}`,
     '}())',
   ].join('');
 };
@@ -1882,93 +1892,9 @@ const navigateWindow = async (browserWindow, url, { allowAbort = false } = {}) =
   }
 };
 
-const extractCookieHeader = (response) => {
-  const getSetCookie = typeof response.headers?.getSetCookie === 'function'
-    ? response.headers.getSetCookie.bind(response.headers)
-    : null;
-  const cookies = getSetCookie ? getSetCookie() : [];
-  const rawCookies = cookies.length > 0
-    ? cookies
-    : String(response.headers?.get?.('set-cookie') || '').split(/,(?=\s*[^;,=]+=[^;,]+)/);
-  return rawCookies
-    .map((cookie) => String(cookie || '').split(';')[0].trim())
-    .filter(Boolean)
-    .join('; ');
-};
-
-const loginRemoteAndIssueClientToken = async ({ url, password, trustDevice, requestHeaders }) => {
-  const baseUrl = normalizeHostUrl(String(url || ''));
-  const candidatePassword = typeof password === 'string' ? password : '';
-  const safeRequestHeaders = sanitizeRuntimeRequestHeaders(requestHeaders || {});
-  if (!baseUrl) throw new Error('Invalid URL');
-  if (!candidatePassword) throw new Error('Password is required');
-
-  // Stable client identity so re-login reuses the same device record. Local
-  // uses the fixed desktop-local identity; remote uses this install's id with a
-  // regular 'desktop' kind.
-  const clientIdentity = isLocalRuntimeUrl(baseUrl)
-    ? { clientKind: LOCAL_DESKTOP_CLIENT_KIND, dedupeKey: LOCAL_DESKTOP_CLIENT_DEDUPE_KEY, ...desktopDeviceMetadata() }
-    : { clientKind: REMOTE_DESKTOP_CLIENT_KIND, dedupeKey: `desktop:${await getOrCreateDesktopInstallId()}`, ...desktopDeviceMetadata() };
-
-  // Keep a sub-path prefix (https://host/openchamber); new URL('/auth/session', base) would drop it.
-  const loginUrl = new URL(baseUrl);
-  loginUrl.pathname = `${loginUrl.pathname.replace(/\/+$/, '')}/auth/session`;
-  loginUrl.search = '';
-  const loginResponse = await fetch(loginUrl.toString(), {
-    method: 'POST',
-    signal: AbortSignal.timeout(10_000),
-    headers: {
-      ...safeRequestHeaders,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      password: candidatePassword,
-      trustDevice: trustDevice === true,
-      issueClientToken: true,
-      clientLabel: 'OpenChamber Desktop',
-      ...clientIdentity,
-    }),
-  });
-  if (!loginResponse.ok) {
-    return { ok: false, status: loginResponse.status };
-  }
-
-  const loginPayload = await loginResponse.json().catch(() => null);
-  if (typeof loginPayload?.clientToken === 'string' && loginPayload.clientToken.trim()) {
-    return { ok: true, token: loginPayload.clientToken.trim() };
-  }
-
-  const cookie = extractCookieHeader(loginResponse);
-  if (!cookie) {
-    return { ok: false, status: 401 };
-  }
-
-  const tokenResponse = await fetch(new URL('/api/client-auth/clients', `${baseUrl}/`).toString(), {
-    method: 'POST',
-    signal: AbortSignal.timeout(10_000),
-    headers: {
-      ...safeRequestHeaders,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Cookie: cookie,
-    },
-    body: JSON.stringify({
-      label: 'OpenChamber Desktop',
-      ...clientIdentity,
-    }),
-  });
-  if (!tokenResponse.ok) {
-    return { ok: false, status: tokenResponse.status };
-  }
-  const tokenPayload = await tokenResponse.json().catch(() => null);
-  const token = typeof tokenPayload?.token === 'string' ? tokenPayload.token.trim() : '';
-  return token ? { ok: true, token } : { ok: false, status: 500 };
-};
-
 const emitToWindow = (browserWindow, event, detail) => {
   if (!browserWindow || browserWindow.isDestroyed()) return;
-  browserWindow.webContents.send('openchamber:emit', { event, detail });
+  browserWindow.webContents.send('alcode:emit', { event, detail });
 };
 
 const emitToAllWindows = (event, detail) => {
@@ -2015,13 +1941,22 @@ const takePendingSessionDeepLinks = () => {
   return taken;
 };
 
+// Deep links are accepted on both the current and pre-rename schemes; the
+// parsed result is identical either way, so downstream dispatch is shared.
+const isDeepLinkProtocol = (protocol) =>
+  protocol === `${DEEP_LINK_PROTOCOL}:` || protocol === `${LEGACY_DEEP_LINK_PROTOCOL}:`;
+
+const isDeepLinkUrl = (raw) =>
+  typeof raw === 'string'
+  && (raw.startsWith(`${DEEP_LINK_PROTOCOL}://`) || raw.startsWith(`${LEGACY_DEEP_LINK_PROTOCOL}://`));
+
 const parseDeepLink = (raw) => {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
   try {
     const url = new URL(trimmed);
-    if (url.protocol !== `${DEEP_LINK_PROTOCOL}:`) return null;
+    if (!isDeepLinkProtocol(url.protocol)) return null;
     const type = url.hostname;
     if (!type) return null;
     const segments = url.pathname.split('/').filter(Boolean);
@@ -2055,6 +1990,125 @@ const pendingHostActions = [];
 const queueHostAction = (action) => {
   pendingHostActions.push(action);
   emitToWindow(state.mainWindow, 'openchamber:host-actions-ready');
+};
+
+const parseConnectPairingDeepLinkPayload = (raw) => {
+  if (typeof raw !== 'string') return null;
+  try {
+    const url = new URL(raw.trim());
+    if (!isDeepLinkProtocol(url.protocol) || url.hostname !== 'connect') return null;
+    if (url.searchParams.get('v') !== '2') return null;
+    const payload = decodeBase64UrlJson(url.searchParams.get('p') || '');
+    if (!payload || payload.v !== 2 || typeof payload !== 'object') return null;
+    const pairingId = typeof payload.pairingId === 'string' ? payload.pairingId.trim() : '';
+    const secret = typeof payload.secret === 'string' ? payload.secret.trim() : '';
+    if (!pairingId || !secret) return null;
+    const candidates = Array.isArray(payload.candidates)
+      ? payload.candidates.flatMap((candidate) => {
+        if (!candidate || typeof candidate !== 'object') return [];
+        const type = candidate.type === 'lan' || candidate.type === 'tunnel' || candidate.type === 'relay'
+          ? candidate.type
+          : null;
+        const candidateUrl = normalizeHostUrl(candidate.url || '');
+        if (!type || !candidateUrl) return [];
+        const priority = Number.isFinite(candidate.priority) ? candidate.priority : 100;
+        return [{ type, url: candidateUrl, priority }];
+      })
+      : [];
+    if (candidates.length === 0) return null;
+    const expiresAt = typeof payload.expiresAt === 'string' ? payload.expiresAt.trim() : '';
+    if (expiresAt) {
+      const expiresTime = Date.parse(expiresAt);
+      if (!Number.isFinite(expiresTime) || expiresTime <= Date.now()) return null;
+    }
+    return {
+      pairingId,
+      secret,
+      label: typeof payload.label === 'string' && payload.label.trim() ? payload.label.trim() : 'Alcode',
+      fingerprint: typeof payload.fingerprint === 'string' && payload.fingerprint.trim() ? payload.fingerprint.trim() : '',
+      expiresAt: expiresAt || null,
+      candidates: candidates.sort((left, right) => left.priority - right.priority),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const importConnectDeepLink = async (payload) => {
+  if (!payload?.serverUrl || !payload?.token) return null;
+  const serverUrl = normalizeHostUrl(payload.serverUrl);
+  if (!serverUrl) return null;
+  const config = readDesktopHostsConfig();
+  const existing = config.hosts.find((host) => {
+    const hostUrl = normalizeHostUrl(host?.url || '');
+    const apiUrl = normalizeHostUrl(host?.apiUrl || host?.url || '');
+    return serverUrl === hostUrl || serverUrl === apiUrl;
+  });
+
+  const id = existing?.id || `host-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const importedHost = {
+    ...(existing || {}),
+    id,
+    label: payload.label || existing?.label || serverUrl,
+    url: serverUrl,
+    apiUrl: serverUrl,
+    clientToken: payload.token,
+  };
+  const hosts = existing
+    ? config.hosts.map((host) => (host.id === existing.id ? importedHost : host))
+    : [importedHost, ...config.hosts];
+  await writeDesktopHostsConfig({
+    ...config,
+    hosts,
+    defaultHostId: config.defaultHostId || id,
+    initialHostChoiceCompleted: true,
+  });
+  return id;
+};
+
+const requestJsonWithTimeout = async (url, init = {}, timeoutMs = 8000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const data = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, data };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const selectPairingCandidateUrl = async (payload) => {
+  for (const candidate of payload.candidates || []) {
+    try {
+      const health = await requestJsonWithTimeout(`${candidate.url.replace(/\/+$/g, '')}/health`, { method: 'GET' }, 3500);
+      if (health.ok) return candidate.url.replace(/\/+$/g, '');
+    } catch {
+    }
+  }
+  return null;
+};
+
+const redeemConnectPairingDeepLink = async (payload, serverUrl) => {
+  const response = await requestJsonWithTimeout(`${serverUrl.replace(/\/+$/g, '')}/api/client-auth/pairing/redeem`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      pairingId: payload.pairingId,
+      secret: payload.secret,
+      clientLabel: 'Alcode Desktop',
+      clientKind: 'desktop',
+      deviceName: 'Alcode Desktop',
+      ...desktopDeviceMetadata(),
+      dedupeKey: `desktop:${await getOrCreateDesktopInstallId()}`,
+    }),
+  });
+  if (!response.ok || !response.data || typeof response.data.clientToken !== 'string') return null;
+  return {
+    serverUrl,
+    token: sanitizeClientTokenForStorage(response.data.clientToken),
+    label: payload.label || response.data?.server?.label || serverUrl,
+  };
 };
 
 const switchToHostById = async (rawId) => {
@@ -2111,7 +2165,7 @@ const confirmConnectDeepLink = async (payload) => {
   }
   const options = {
     type: 'warning',
-    title: 'Connect to OpenChamber server?',
+    title: 'Connect to Alcode server?',
     message: `Connect to "${payload.label}"?`,
     detail:
       `This will add ${payload.serverUrl} as a remote instance and route this app's activity ` +
@@ -2165,15 +2219,15 @@ const dispatchDeepLink = (link) => {
       target.show();
       target.focus();
     }
-    emitToAllWindows('openchamber:deep-link-focus', { reason: link.value || null });
+    emitToAllWindows('alcode:deep-link-focus', { reason: link.value || null });
     return;
   }
 
   if (link.type === 'session' && link.value) {
-    // A message link (`openchamber://session/<id>?message=<id>`) also names
+    // A message link (`alcode://session/<id>?message=<id>`) also names
     // the message to show; the renderer validates both IDs.
     const messageId = readDeepLinkQueryParam(link.raw, 'message');
-    emitToPrimaryWindow('openchamber:open-session', messageId
+    emitToPrimaryWindow('alcode:open-session', messageId
       ? { sessionId: link.value, messageId }
       : { sessionId: link.value });
     return;
@@ -2220,7 +2274,7 @@ const handleDeepLinks = (urls) => {
 };
 
 const extractInitialDeepLinks = () =>
-  process.argv.filter((arg) => typeof arg === 'string' && arg.startsWith(`${DEEP_LINK_PROTOCOL}://`));
+  process.argv.filter(isDeepLinkUrl);
 
 const dispatchDomEventToWindow = (browserWindow, event, detail) => {
   if (!browserWindow || browserWindow.isDestroyed()) return;
@@ -2243,7 +2297,7 @@ const closeTabOrWindow = () => {
   const target = BrowserWindow.getFocusedWindow();
   if (!target || target.isDestroyed()) return;
   if (closeTabTargets.has(target.webContents)) {
-    dispatchDomEventToWindow(target, 'openchamber:close-tab');
+    dispatchDomEventToWindow(target, 'alcode:close-tab');
     return;
   }
   target.close();
@@ -2260,22 +2314,26 @@ const getMenuTargetWindow = () => {
 const dispatchMenuAction = (action) => {
   const target = getMenuTargetWindow();
   if (action === 'zoom-in' || action === 'zoom-out' || action === 'zoom-reset') {
-    dispatchDomEventToWindow(target, 'openchamber:zoom', action);
+    dispatchDomEventToWindow(target, 'alcode:zoom', action);
     return;
   }
-  // Preload already fans IPC events into both its listeners and the DOM.
-  // Deliver menu actions through one path so a shortcut runs only once.
-  dispatchDomEventToWindow(target, 'openchamber:menu-action', action);
+  emitToWindow(target, 'alcode:menu-action', action);
+  dispatchDomEventToWindow(target, 'alcode:menu-action', action);
 };
 
-const dispatchAddSelectionToChat = () => dispatchMenuAction('add-selection-to-chat');
+// Append-style menu actions must reach the renderer exactly once. Dual IPC+DOM
+// delivery (dispatchMenuAction) would insert the selection twice.
+const dispatchAddSelectionToChat = () => {
+  const target = getMenuTargetWindow();
+  if (target) emitToWindow(target, 'alcode:menu-action', 'add-selection-to-chat');
+};
 
 // Mini-chat draft windows are not deduplicated, so this must reach the renderer
 // exactly once — emitToWindow alone (no DOM-event double dispatch). The renderer
 // resolves the active directory/project and opens the window.
 const dispatchOpenMiniChat = (browserWindow) => {
   const target = browserWindow && !browserWindow.isDestroyed() ? browserWindow : getMenuTargetWindow();
-  if (target) emitToWindow(target, 'openchamber:open-mini-chat');
+  if (target) emitToWindow(target, 'alcode:open-mini-chat');
 };
 
 // Mini Chat global shortcut. The combo is stored in settings.json under
@@ -2652,16 +2710,16 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
 
   browserWindow.on('resize', () => {
     if (process.platform === 'darwin') {
-      emitToWindow(browserWindow, 'openchamber:window-resized');
+      emitToWindow(browserWindow, 'alcode:window-resized');
     }
     debounceWindowStatePersist(browserWindow, false);
   });
   browserWindow.on('maximize', () => {
-    emitToWindow(browserWindow, 'openchamber:window-maximized-changed', { maximized: true });
+    emitToWindow(browserWindow, 'alcode:window-maximized-changed', { maximized: true });
     debounceWindowStatePersist(browserWindow, false);
   });
   browserWindow.on('unmaximize', () => {
-    emitToWindow(browserWindow, 'openchamber:window-maximized-changed', { maximized: false });
+    emitToWindow(browserWindow, 'alcode:window-maximized-changed', { maximized: false });
     debounceWindowStatePersist(browserWindow, false);
   });
   browserWindow.on('move', () => {
@@ -2726,7 +2784,7 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
     try {
       const url = new URL(raw);
       if (url.protocol === 'devtools:') return true;
-      if (url.protocol === `${UI_PROTOCOL}:`) return true;
+      if (url.protocol === `${UI_PROTOCOL}:` || url.protocol === `${LEGACY_UI_PROTOCOL}:`) return true;
       if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
       // In development the renderer is served by Vite while state.localOrigin
       // remains the separate local API server. Permit same-origin reloads from
@@ -2776,7 +2834,7 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
     // a session here moves this window to it; any other app page stays put.
     if (isAllowedNavigationUrl(url, { includeHosts: false })) {
       const route = sessionRouteFromUrl(url);
-      if (route) emitToWindow(browserWindow, 'openchamber:open-session', route);
+      if (route) emitToWindow(browserWindow, 'alcode:open-session', route);
       return { action: 'deny' };
     }
     void shell.openExternal(url).catch(() => {});
@@ -3075,7 +3133,7 @@ const openHostWindow = async (host, route = null, { reuseOpenWindow = false } = 
       await navigateWindow(existing, withSessionRoute(existing.__ocHostWindowBaseUrl, route), { allowAbort: true });
       return;
     }
-    emitToWindow(existing, 'openchamber:open-session', route);
+    emitToWindow(existing, 'alcode:open-session', route);
     return;
   }
 
@@ -3191,7 +3249,7 @@ const createMiniChatWindow = async ({ mode, sessionId = '', directory = '', proj
   const desktopClientToken = effectiveRuntimeConfig.clientToken || '';
   const desktopRequestHeaders = effectiveRuntimeConfig.requestHeaders || {};
   const browserWindow = new BrowserWindow({
-    title: 'OpenChamber Mini Chat',
+    title: 'Alcode Mini Chat',
     width: MINI_CHAT_WINDOW_WIDTH,
     height: MINI_CHAT_WINDOW_HEIGHT,
     minWidth: MINI_CHAT_MIN_WINDOW_WIDTH,
@@ -3386,8 +3444,8 @@ const isPlainLocalBoot = () => {
 };
 
 const resolveInitialUrl = async ({ onPlainLocalBoot = null } = {}) => {
-  const hmrApiPort = process.env.OPENCHAMBER_HMR_API_PORT || '3901';
-  const hmrUiPort = process.env.OPENCHAMBER_HMR_UI_PORT || '5173';
+  const hmrApiPort = process.env.ALCODE_HMR_API_PORT || process.env.OPENCHAMBER_HMR_API_PORT || '3901';
+  const hmrUiPort = process.env.ALCODE_HMR_UI_PORT || process.env.OPENCHAMBER_HMR_UI_PORT || '5173';
   const hmrApiUrl = `http://127.0.0.1:${hmrApiPort}`;
   const hmrUiUrl = `http://127.0.0.1:${hmrUiPort}`;
   const usePackagedUi = shouldUsePackagedUi();
@@ -3439,7 +3497,7 @@ const resolveInitialUrl = async ({ onPlainLocalBoot = null } = {}) => {
   let requestHeaders = {};
   let remoteProbe = null;
 
-  const envTarget = normalizeHostUrl(process.env.OPENCHAMBER_SERVER_URL || '');
+  const envTarget = normalizeHostUrl(process.env.ALCODE_SERVER_URL || '');
   let config = readDesktopHostsConfig();
   // A default SSH instance is reachable only through its tunnel: open it
   // before the probe, and boot Local when it cannot be opened.
@@ -3517,7 +3575,7 @@ const resolveInitialUrl = async ({ onPlainLocalBoot = null } = {}) => {
   }
   if (!initialUrl) {
     throw new Error(
-      'OPENCHAMBER_SKIP_LOCAL_SERVER=1 requires bundled UI, a running desktop HMR UI, or a reachable remote instance.',
+      'ALCODE_SKIP_LOCAL_SERVER=1 requires bundled UI, a running desktop HMR UI, or a reachable remote instance.',
     );
   }
 
@@ -3555,8 +3613,8 @@ const setupAutoUpdater = () => {
   autoUpdater.disableWebInstaller = false;
   autoUpdater.logger = log;
 
-  const testBuild = typeof __OPENCHAMBER_UPDATER_E2E_BUILD__ !== 'undefined'
-    && __OPENCHAMBER_UPDATER_E2E_BUILD__ === true;
+  const testBuild = typeof __ALCODE_UPDATER_E2E_BUILD__ !== 'undefined'
+    && __ALCODE_UPDATER_E2E_BUILD__ === true;
   const feed = resolveUpdaterFeed({ testBuild });
   const updaterChannel = feed.provider === 'github'
     ? resolveUpdaterChannel({ platform: process.platform, architecture: process.arch })
@@ -3575,7 +3633,7 @@ const setupAutoUpdater = () => {
     const total = Number(progress.total || 0);
     const transferred = Number(progress.transferred || 0);
     setTaskbarProgress(total > 0 ? Math.max(0, Math.min(1, transferred / total)) : 0.01);
-    emitToAllWindows('openchamber:update-progress', mapUpdaterProgressEvent({
+    emitToAllWindows('alcode:update-progress', mapUpdaterProgressEvent({
       event: 'Progress',
       data: {
         chunkLength: Math.max(0, Math.round(progress.bytesPerSecond || 0)),
@@ -3758,7 +3816,7 @@ const isAppBundleInstalled = async (appName) => Boolean(await resolveAppBundlePa
 const iconToDataUrl = async (iconPath, appName) => {
   if (!iconPath || !(await pathExists(iconPath))) return null;
   const safeName = String(appName || 'app').replace(/[^a-z0-9]/gi, '_');
-  const tempPath = path.join(os.tmpdir(), `openchamber-icon-${safeName}-${Date.now()}.png`);
+  const tempPath = path.join(os.tmpdir(), `alcode-icon-${safeName}-${Date.now()}.png`);
   try {
     await execFileAsync('sips', ['-s', 'format', 'png', '-Z', '32', iconPath, '--out', tempPath], { stdio: 'ignore' });
   } catch {
@@ -4347,7 +4405,7 @@ const relayDevTunnelBridge = createRelayDevTunnelBridge({
 });
 const getDevTunnelClient = async () => {
   if (!devTunnelClientPromise) {
-    devTunnelClientPromise = import('@openchamber/web/server/lib/dev-tunnel/client.js')
+    devTunnelClientPromise = import('@alcode/web/server/lib/dev-tunnel/client.js')
       .then(({ createDevTunnelClient }) => createDevTunnelClient({ logger: log }))
       .catch((error) => {
         devTunnelClientPromise = null;
@@ -4571,7 +4629,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
     }
 
     // Dev-server tunnels: bind a loopback port here and pipe it to a dev server
-    // on the remote OpenChamber host, so the browser panel loads a real origin
+    // on the remote Alcode host, so the browser panel loads a real origin
     // instead of a rewritten page. Deliberately absent from
     // COMMANDS_SAFE_FOR_REMOTE — a remote page must never open local listeners.
     // A space's dev server comes through the same tunnel, under the space's
@@ -4634,7 +4692,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
     /**
      * Forces prefers-color-scheme for one previewed page.
      *
-     * nativeTheme.themeSource is app-wide and would drag OpenChamber's own
+     * nativeTheme.themeSource is app-wide and would drag Alcode's own
      * appearance along with it, so this goes through the page's own emulation
      * instead. The debugger session has to stay attached: emulation is part of
      * that session and resets the moment it detaches.
@@ -4699,7 +4757,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
      * Done here, in the panel's own session, rather than by the renderer: the
      * icon often sits behind the same login as the page, and letting the app's
      * own origin request it would both fail on those and quietly send traffic
-     * to third-party hosts from OpenChamber itself. The bytes come back as a
+     * to third-party hosts from Alcode itself. The bytes come back as a
      * data URL so nothing else has to fetch anything.
      */
     case 'desktop_browser_fetch_favicon': {
@@ -4739,7 +4797,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
     }
 
     // Scoped to the browser panel's own partition, so clearing it can never
-    // touch OpenChamber's session or any other window's storage.
+    // touch Alcode's session or any other window's storage.
     case 'desktop_browser_clear_data': {
       // Exact names only: the panel's own partition, or a space's, whose shape
       // is checked whole. A prefix would also accept a partition that merely
@@ -4837,7 +4895,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       if (!underHome && !underTmp) {
         throw new Error('File is outside the allowed workspace');
       }
-      const DENIED_SEGMENTS = ['.ssh', '.aws', '.gnupg', '.gpg', '.config/gh', '.config/openchamber/credentials'];
+      const DENIED_SEGMENTS = ['.ssh', '.aws', '.gnupg', '.gpg', '.config/gh', '.config/alcode/credentials'];
       const relFromHome = underHome ? filePath.slice(home.length + 1) : '';
       const relNormalized = relFromHome.split(path.sep).join('/');
       if (DENIED_SEGMENTS.some((segment) => relNormalized === segment || relNormalized.startsWith(`${segment}/`))) {
@@ -5103,7 +5161,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         const apps = await buildPlatformInstalledApps(Array.isArray(args.apps) ? args.apps : []);
         await fsp.mkdir(path.dirname(cachePath), { recursive: true });
         await fsp.writeFile(cachePath, JSON.stringify({ version: INSTALLED_APPS_CACHE_VERSION, updatedAt: now, apps }, null, 2));
-        emitToAllWindows('openchamber:installed-apps-updated', apps);
+        emitToAllWindows('alcode:installed-apps-updated', apps);
       };
       if (process.platform !== 'darwin' && process.platform !== 'win32' && process.platform !== 'linux') {
         return { apps: [], hasCache: false, isCacheStale: false, supported: false };
@@ -5129,7 +5187,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       const nextConfigInput = args.input || args.config || {};
       await writeDesktopHostsConfig(nextConfigInput);
       const updatedConfig = readDesktopHostsConfig();
-      const envTarget = normalizeHostUrl(process.env.OPENCHAMBER_SERVER_URL || '');
+      const envTarget = normalizeHostUrl(process.env.ALCODE_SERVER_URL || '');
       if (Object.prototype.hasOwnProperty.call(nextConfigInput, 'localClientToken') && isLocalRuntimeUrl(state.apiBaseUrl || state.sidecarUrl || state.localOrigin || '')) {
         state.clientToken = readDesktopLocalClientToken();
       }
@@ -5196,6 +5254,39 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         trustDevice: args.trustDevice === true,
         requestHeaders: args.requestHeaders || {},
       });
+
+    case 'desktop_start_google_login': {
+      // Narrow by construction: the only URL this channel ever opens is the
+      // Google OAuth authorize URL our own local server just built (loopback
+      // redirect back to this machine, PKCE + state minted server-side) —
+      // never renderer input and never a JavaScript-origin page. The system
+      // browser (not an app window) opens it so the user's Google session
+      // and its consent UI behave exactly like the web flow.
+      const localBase = typeof state.sidecarUrl === 'string' ? state.sidecarUrl.trim().replace(/\/$/, '') : '';
+      if (!localBase) throw new Error('Local server is not running');
+      const startResponse = await fetch(`${localBase}/api/auth/desktop/google/start`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(10_000),
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (!startResponse.ok) throw new Error(`Google login could not start (status ${startResponse.status})`);
+      const payload = await startResponse.json().catch(() => null);
+      const requestId = typeof payload?.requestId === 'string' ? payload.requestId : '';
+      const googleUrl = typeof payload?.googleUrl === 'string' ? payload.googleUrl : '';
+      if (!requestId || !googleUrl) throw new Error('Google login could not start');
+      let parsedGoogleUrl = null;
+      try {
+        parsedGoogleUrl = new URL(googleUrl);
+      } catch {
+        throw new Error('Google login could not start');
+      }
+      if (parsedGoogleUrl.protocol !== 'https:' || parsedGoogleUrl.hostname !== 'accounts.google.com') {
+        throw new Error('Google login could not start');
+      }
+      await shell.openExternal(parsedGoogleUrl.toString());
+      return { requestId };
+    }
 
     case 'desktop_set_window_theme': {
       const mode = typeof args.themeMode === 'string' ? args.themeMode : '';
@@ -5274,7 +5365,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         throw new Error('No pending update');
       }
       setTaskbarProgress(0.01);
-      emitToAllWindows('openchamber:update-progress', mapUpdaterProgressEvent({
+      emitToAllWindows('alcode:update-progress', mapUpdaterProgressEvent({
         event: 'Started',
         data: {
           contentLength: null,
@@ -5319,7 +5410,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         // payload, so record the payload as ready here too; otherwise restart
         // would relaunch without installing anything.
         state.pendingUpdate.downloaded = true;
-        emitToAllWindows('openchamber:update-progress', mapUpdaterProgressEvent({
+        emitToAllWindows('alcode:update-progress', mapUpdaterProgressEvent({
           event: 'Finished',
           data: {},
         }));
@@ -5335,7 +5426,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       if (applyUpdate && process.platform === 'darwin' && typeof app.isInApplicationsFolder === 'function') {
         try {
           if (!app.isInApplicationsFolder()) {
-            throw new Error('Desktop update requires OpenChamber.app to be installed in /Applications');
+            throw new Error('Desktop update requires Alcode.app to be installed in /Applications');
           }
         } catch (error) {
           log.warn('[electron] desktop_restart blocked', error);
@@ -5503,9 +5594,9 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       state.mainWindow.show();
       state.mainWindow.focus();
       if (sessionId) {
-        emitToWindow(state.mainWindow, 'openchamber:open-session', { sessionId, directory });
+        emitToWindow(state.mainWindow, 'alcode:open-session', { sessionId, directory });
       } else if (mode === 'draft') {
-        emitToWindow(state.mainWindow, 'openchamber:open-draft-session', { directory, projectId });
+        emitToWindow(state.mainWindow, 'alcode:open-draft-session', { directory, projectId });
       }
       return { focused: true };
     }
@@ -5964,7 +6055,7 @@ const isLocalSender = (webContents) => {
     if (url.protocol === `${UI_PROTOCOL}:` && url.hostname === 'app') return true;
     // Electron dev renders from Vite while the local API is served on a
     // separate port. This exact loopback HMR origin is trusted only in dev.
-    if (isDev && url.origin === `http://127.0.0.1:${process.env.OPENCHAMBER_HMR_UI_PORT || '5173'}`) return true;
+    if (isDev && url.origin === `http://127.0.0.1:${process.env.ALCODE_HMR_UI_PORT || '5173'}`) return true;
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
     if (state.localOrigin) {
       try {
@@ -6010,7 +6101,10 @@ const COMMANDS_SAFE_FOR_REMOTE = new Set([
   'desktop_clear_session_notifications',
 ]);
 
-ipcMain.handle('openchamber:invoke', async (event, command, args) => {
+// Privileged IPC is served on both the current alcode:* channels and their
+// pre-rename openchamber:* twins. The aliases share one handler (and the
+// same local-origin gate), so renderers from either side of the rename work.
+const handleInvokeRequest = async (event, command, args) => {
   if (!isLocalSender(event.sender) && !COMMANDS_SAFE_FOR_REMOTE.has(command)) {
     log.warn(`[ipc] rejected ${command} from non-local origin: ${event.sender?.getURL?.() || '(unknown)'}`);
     throw new Error('IPC not available for this origin');
@@ -6019,7 +6113,10 @@ ipcMain.handle('openchamber:invoke', async (event, command, args) => {
   const browserWindow = BrowserWindow.fromWebContents(event.sender);
   const result = await handleInvoke(browserWindow, command, args);
   return !local && command === 'desktop_hosts_get' ? redactHostsConfigForRemote(result) : result;
-});
+};
+for (const channel of ['alcode:invoke', 'openchamber:invoke']) {
+  ipcMain.handle(channel, handleInvokeRequest);
+}
 
 // Sync, because preload must know before the page's scripts restore their
 // layout. The answer is about the asking page only, so any origin may ask.
@@ -6027,7 +6124,7 @@ ipcMain.on('openchamber:take-safe-start', (event) => {
   event.returnValue = takeSafeStart(event.sender);
 });
 
-ipcMain.handle('openchamber:dialog:open', async (event, options) => {
+const handleDialogOpenRequest = async (event, options) => {
   // Native file dialogs expose absolute local paths; never grant to remote.
   if (!isLocalSender(event.sender)) {
     log.warn(`[ipc] rejected dialog:open from non-local origin: ${event.sender?.getURL?.() || '(unknown)'}`);
@@ -6074,9 +6171,12 @@ ipcMain.handle('openchamber:dialog:open', async (event, options) => {
   }
   if (options?.multiple) return result.filePaths;
   return result.filePaths[0] || null;
-});
+};
+for (const channel of ['alcode:dialog:open', 'openchamber:dialog:open']) {
+  ipcMain.handle(channel, handleDialogOpenRequest);
+}
 
-ipcMain.handle('openchamber:file:grant-existing', async (event, filePath) => {
+const handleGrantExistingRequest = async (event, filePath) => {
   if (!isLocalSender(event.sender)) {
     log.warn(`[ipc] rejected file:grant-existing from non-local origin: ${event.sender?.getURL?.() || '(unknown)'}`);
     throw new Error('IPC not available for this origin');
@@ -6093,7 +6193,10 @@ ipcMain.handle('openchamber:file:grant-existing', async (event, filePath) => {
     outsideFileGrant: grant.outsideFileGrant,
     expiresAt: grant.expiresAt,
   };
-});
+};
+for (const channel of ['alcode:file:grant-existing', 'openchamber:file:grant-existing']) {
+  ipcMain.handle(channel, handleGrantExistingRequest);
+}
 
 // --- Native tray / menu bar ---------------------------------------------------
 // Tray lives on macOS, Windows, and Linux. The renderer streams a compact state
@@ -6213,7 +6316,7 @@ const focusMainWindowWithSession = async (sessionId, directory) => {
     state.mainWindow.show();
     state.mainWindow.focus();
     if (sessionId) {
-      emitToWindow(state.mainWindow, 'openchamber:open-session', { sessionId, directory: directory || '' });
+      emitToWindow(state.mainWindow, 'alcode:open-session', { sessionId, directory: directory || '' });
     }
     return;
   }
@@ -6258,7 +6361,7 @@ const dispatchTrayAction = async (action) => {
     const target = (state.mainWindow && !state.mainWindow.isDestroyed())
       ? state.mainWindow
       : await revealMainWindow();
-    emitToWindow(target, 'openchamber:tray-action', action);
+    emitToWindow(target, 'alcode:tray-action', action);
     return;
   }
 
@@ -6280,7 +6383,7 @@ const dispatchTrayAction = async (action) => {
       if (surface.isMinimized()) surface.restore();
       surface.show();
       surface.focus();
-      emitToWindow(surface, 'openchamber:open-session', {
+      emitToWindow(surface, 'alcode:open-session', {
         sessionId: action.sessionId,
         directory: action.directory || '',
       });
@@ -6294,7 +6397,7 @@ const dispatchTrayAction = async (action) => {
   if (!target || target.isDestroyed()) return;
 
   if (action.type === 'new-session') {
-    emitToWindow(target, 'openchamber:open-draft-session', { directory: '', projectId: '' });
+    emitToWindow(target, 'alcode:open-draft-session', { directory: '', projectId: '' });
   }
   // show-main-window: revealing the window above is the whole action.
 };
@@ -6341,7 +6444,7 @@ app.on('before-quit', (event) => {
 
 const handleSecondInstance = (argv) => {
   const urls = Array.isArray(argv)
-    ? argv.filter((arg) => typeof arg === 'string' && arg.startsWith(`${DEEP_LINK_PROTOCOL}://`))
+    ? argv.filter(isDeepLinkUrl)
     : [];
   if (urls.length > 0) handleDeepLinks(urls);
   if (BrowserWindow.getAllWindows().length > 0) {
@@ -6498,7 +6601,7 @@ app.whenReady().then(async () => {
   // Notify renderer on OS wake-from-sleep so the SSE event pipeline can
   // reconnect immediately instead of waiting for the heartbeat watchdog.
   powerMonitor.on('resume', () => {
-    emitToAllWindows('openchamber:system-resume', { timestamp: Date.now() });
+    emitToAllWindows('alcode:system-resume', { timestamp: Date.now() });
   });
 }).catch((error) => {
   if (state.quitInProgress) return;

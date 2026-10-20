@@ -18,7 +18,7 @@ const folders = [];
 const servers = [];
 const hosts = [];
 const temporary = () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-spaces-host-test-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-spaces-host-test-'));
   folders.push(folder);
   return folder;
 };
@@ -163,7 +163,7 @@ const until = async (check, timeoutMs = 3_000) => {
 /** One space's server: the sessions it lists, in pages of two, an event stream, and an echo socket. */
 const startSpaceServer = async ({ sessions, status = {} }) => {
   const { createUiAuth } = await import('../ui-auth/ui-auth.js');
-  const auth = createUiAuth({ password: TOKEN, readSettingsFromDiskMigrated: async () => ({}) });
+  const auth = createUiAuth({ alcoreSecret: TOKEN, readSettingsFromDiskMigrated: async () => ({}) });
   // `heldLists`, when set, holds every first-page list request until the test releases it with 'ok' or 'fail'.
   const state = { eventStreams: [], sessions, listRequests: 0, heldLists: null };
   const app = express();

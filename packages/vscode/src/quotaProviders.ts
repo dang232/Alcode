@@ -4129,7 +4129,7 @@ export const fetchXaiQuota = async ({ readAuth = readOpenCodeCredentials, fetchI
         'Content-Type': 'application/grpc-web+proto',
         'x-grpc-web': '1',
         'x-user-agent': 'connect-es/2.1.1',
-        'User-Agent': 'OpenChamber',
+        'User-Agent': 'Alcode',
       },
       body: new Uint8Array([0, 0, 0, 0, 0]),
       signal: AbortSignal.timeout(15_000),

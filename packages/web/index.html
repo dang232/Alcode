@@ -18,12 +18,12 @@
     <!-- Web app manifest (endpoint-first with data URL fallback) -->
     <script>
       const baseUrl = location.origin;
-      const defaultAppName = 'OpenChamber';
-      const defaultShortName = 'OpenChamber';
-      const pwaNameStorageKey = 'openchamber.pwaName';
-      const pwaOrientationStorageKey = 'openchamber.pwaOrientation';
-      const mobileKeyboardModeStorageKey = 'openchamber.mobileKeyboardMode';
-      const pwaRecentSessionsStorageKey = 'openchamber.pwaRecentSessions';
+      const defaultAppName = 'Alcode';
+      const defaultShortName = 'Alcode';
+      const pwaNameStorageKey = 'alcode.pwaName';
+      const pwaOrientationStorageKey = 'alcode.pwaOrientation';
+      const mobileKeyboardModeStorageKey = 'alcode.mobileKeyboardMode';
+      const pwaRecentSessionsStorageKey = 'alcode.pwaRecentSessions';
       const viewportBaseContent = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
 
       const normalizePwaName = (value, fallback) => {
@@ -353,20 +353,26 @@
       const initialInstallNameOverride = getQueryInstallNameOverride();
       void updateManifest(initialInstallNameOverride);
 
-      window.__OPENCHAMBER_GET_PWA_INSTALL_NAME__ = () => getStoredInstallName();
-      window.__OPENCHAMBER_SET_PWA_INSTALL_NAME__ = (value) => {
+      window.__ALCODE_GET_PWA_INSTALL_NAME__ = () => getStoredInstallName();
+      window.__ALCODE_SET_PWA_INSTALL_NAME__ = (value) => {
         const resolvedName = setStoredInstallName(value);
         void updateManifest(resolvedName);
         return resolvedName;
       };
-      window.__OPENCHAMBER_SET_PWA_ORIENTATION__ = (value) => {
+      window.__ALCODE_SET_PWA_ORIENTATION__ = (value) => {
         const resolvedOrientation = setStoredOrientation(value);
         void updateManifest(null, resolvedOrientation);
         return resolvedOrientation;
       };
-      window.__OPENCHAMBER_UPDATE_PWA_MANIFEST__ = () => {
+      window.__ALCODE_UPDATE_PWA_MANIFEST__ = () => {
         refreshManifestFromStorage();
       };
+      // Pre-rename twins for UI bundles cached from before the rename. They
+      // alias the same functions; new code must use the __ALCODE_* names.
+      window.__OPENCHAMBER_GET_PWA_INSTALL_NAME__ = window.__ALCODE_GET_PWA_INSTALL_NAME__;
+      window.__OPENCHAMBER_SET_PWA_INSTALL_NAME__ = window.__ALCODE_SET_PWA_INSTALL_NAME__;
+      window.__OPENCHAMBER_SET_PWA_ORIENTATION__ = window.__ALCODE_SET_PWA_ORIENTATION__;
+      window.__OPENCHAMBER_UPDATE_PWA_MANIFEST__ = window.__ALCODE_UPDATE_PWA_MANIFEST__;
     </script>
 
     <script>
@@ -422,12 +428,12 @@
     <!-- iOS Safari PWA styling -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="OpenChamber" />
+    <meta name="apple-mobile-web-app-title" content="Alcode" />
 
-    <title>OpenChamber - AI Coding Assistant</title>
+    <title>Alcode - AI Coding Assistant</title>
     <meta name="description" content="Web interface companion for OpenCode AI coding agent" />
-    <meta name="application-name" content="OpenChamber" />
-    <meta name="apple-mobile-web-app-title" content="OpenChamber" />
+    <meta name="application-name" content="Alcode" />
+    <meta name="apple-mobile-web-app-title" content="Alcode" />
 
     <!-- Inline CSS for the loading screen (before Tailwind loads). Terminal
          prompt symbols come from the bundled Symbols Nerd Font (lib/ghostty),
@@ -498,7 +504,7 @@
       <!-- Loading fallback while React initializes -->
       <div id="initial-loading">
         <div style="display: flex; align-items: center; justify-content: center;">
-          <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenChamber loading icon">
+          <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alcode loading icon">
             <!-- Isometric cube: edge=48, centerY=50 -->
             <!-- Points: top(50,2), left(8.432,26), right(91.568,26), center(50,50), bottomLeft(8.432,74), bottomRight(91.568,74), bottom(50,98) -->
 
@@ -567,8 +573,8 @@
       setTimeout(function() {
         if (window.__OPENCHAMBER_ELECTRON__) {
           return;
-        }
-        if (typeof window.__OPENCHAMBER_LOCAL_ORIGIN__ === 'string' && window.__OPENCHAMBER_LOCAL_ORIGIN__.length > 0) {
+        // New hook first; pre-rename desktop shells inject the legacy twin.
+        var localOrigin = window.__ALCODE_LOCAL_ORIGIN__ ?? window.__OPENCHAMBER_LOCAL_ORIGIN__;
           return;
         }
         var loading = document.getElementById('initial-loading');

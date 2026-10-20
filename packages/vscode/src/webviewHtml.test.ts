@@ -24,3 +24,10 @@ describe('VS Code webview content security policy', () => {
     assert.ok(bootstrap >= 0 && bootstrap < options && options < application);
   });
 });
+
+describe('pre-rename backward compat', () => {
+  test('bootstrap locale reads the new key and host global first, legacy second', () => {
+    assert.match(source, /getItem\('alcode\.i18n\.v1'\) \|\| window\.localStorage\.getItem\('openchamber\.i18n\.v1'\)/);
+    assert.match(source, /__ALCODE_HOST_LANGUAGE__ \|\| window\.__OPENCHAMBER_HOST_LANGUAGE__/);
+  });
+});

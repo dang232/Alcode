@@ -6,13 +6,13 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { withSourceControlFileLock } from '../source-control/file-lock.js';
 
-const OPENCHAMBER_DATA_DIR = process.env.OPENCHAMBER_DATA_DIR
-  ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-  : path.join(os.homedir(), '.config', 'openchamber');
+const ALCODE_DATA_DIR = process.env.ALCODE_DATA_DIR
+  ? path.resolve(process.env.ALCODE_DATA_DIR)
+  : path.join(os.homedir(), '.config', 'alcode');
 
-const STORAGE_DIR = OPENCHAMBER_DATA_DIR;
+const STORAGE_DIR = ALCODE_DATA_DIR;
 const STORAGE_FILE = path.join(STORAGE_DIR, 'github-auth.json');
-const SETTINGS_FILE = path.join(OPENCHAMBER_DATA_DIR, 'settings.json');
+const SETTINGS_FILE = path.join(ALCODE_DATA_DIR, 'settings.json');
 const AUTH_VERSION = 2;
 
 const DEFAULT_GITHUB_CLIENT_ID = 'Ov23lizomPOC3eFYo56r';
@@ -324,7 +324,7 @@ export const markGitHubAuthAccountInvalid = (credentialId, reason = 'unauthorize
 export const removeGitHubAuthAccount = (credentialId) => authStore.removeAccount(credentialId);
 
 export function getGitHubClientId() {
-  const raw = process.env.OPENCHAMBER_GITHUB_CLIENT_ID;
+  const raw = process.env.ALCODE_GITHUB_CLIENT_ID;
   const clientId = isString(raw) ? raw.trim() : '';
   if (clientId) return clientId;
   const stored = readSettingsFile()?.githubClientId;
@@ -332,7 +332,7 @@ export function getGitHubClientId() {
 }
 
 export function getGitHubScopes() {
-  const raw = process.env.OPENCHAMBER_GITHUB_SCOPES;
+  const raw = process.env.ALCODE_GITHUB_SCOPES;
   const fromEnv = isString(raw) ? raw.trim() : '';
   if (fromEnv) return fromEnv;
   const stored = readSettingsFile()?.githubScopes;

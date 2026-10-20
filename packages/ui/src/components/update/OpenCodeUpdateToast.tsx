@@ -161,12 +161,12 @@ export const OpenCodeUpdateToast: React.FC = () => {
       }
     });
 
-    window.addEventListener('openchamber:opencode-update-available', onUpdateAvailable);
+    window.addEventListener('alcode:opencode-update-available', onUpdateAvailable);
     return () => {
       cancelled = true;
       for (const timeoutId of timeoutIds) clearTimeout(timeoutId);
       unsubscribeRuntime();
-      window.removeEventListener('openchamber:opencode-update-available', onUpdateAvailable);
+      window.removeEventListener('alcode:opencode-update-available', onUpdateAvailable);
     };
   }, [runUpgrade, showOpenCodeUpdateNotifications, t]);
 

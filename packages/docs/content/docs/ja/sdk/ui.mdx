@@ -1,18 +1,18 @@
 ---
 title: UI キット
-description: "@openchamber/sdk/ui のボタン、入力欄、ドロップダウン、タブ、リストなどの部品で、拡張機能を OpenChamber の他の部分と同じ見た目にする。"
+description: "@alcode/sdk/ui のボタン、入力欄、ドロップダウン、タブ、リストなどの部品で、拡張機能を Alcode の他の部分と同じ見た目にする。"
 ---
 
 # UI キット
 
-`@openchamber/sdk/ui` は、アプリの色、フォント、余白を使う既製のコントロール一式です。スタイルをコピーしなくても、拡張機能が OpenChamber の他の部分と同じ見た目になります。各コントロールは関数です。あなたが所有する要素と設定を渡すと、そこに自身を描画して `{ update, dispose }` を返します。コントロールを組み合わせて画面を作り、データはあなたが持ちます。キットがプロバイダーや OpenChamber を呼ぶことはありません。`host.request`、`host.attach` などは引き続きあなたが呼びます。キットにないものは自分で HTML と CSS を書けますが、まずキットを使ってください。キットのコントロールはユーザーのテーマ、余白、キーボード操作の習慣に自動で従うので、それで組んだパネルは中に埋め込まれたウェブサイトではなく、OpenChamber の一部のように感じられます。
+`@alcode/sdk/ui` は、アプリの色、フォント、余白を使う既製のコントロール一式です。スタイルをコピーしなくても、拡張機能が Alcode の他の部分と同じ見た目になります。各コントロールは関数です。あなたが所有する要素と設定を渡すと、そこに自身を描画して `{ update, dispose }` を返します。コントロールを組み合わせて画面を作り、データはあなたが持ちます。キットがプロバイダーや Alcode を呼ぶことはありません。`host.request`、`host.attach` などは引き続きあなたが呼びます。キットにないものは自分で HTML と CSS を書けますが、まずキットを使ってください。キットのコントロールはユーザーのテーマ、余白、キーボード操作の習慣に自動で従うので、それで組んだパネルは中に埋め込まれたウェブサイトではなく、Alcode の一部のように感じられます。
 
 ## まず `applyHostReady` を呼ぶ
 
 コントロールは、`applyHostReady` がページに書き込む CSS 変数から色を読みます。アプリのフォントと文字色もページのルートに設定するので、自分で追加した素の HTML も正しく見えます。最初のマウントの前に `host.onReady` の中で呼んでください。そうすると、ユーザーがテーマを切り替えたときに色がアプリに追従します。
 
 ```ts
-import { applyHostReady } from "@openchamber/sdk/ui";
+import { applyHostReady } from "@alcode/sdk/ui";
 
 let mounted = false;
 host.onReady((ctx) => {
@@ -40,7 +40,7 @@ host.onReady((ctx) => {
 パネルの既存の `root` に一度だけマウントします。
 
 ```ts
-import { mountSelect, mountTabs } from "@openchamber/sdk/ui";
+import { mountSelect, mountTabs } from "@alcode/sdk/ui";
 
 let activeId = "convert";
 const tabs = mountTabs(root, {
@@ -91,7 +91,7 @@ const select = mountSelect(root, {
 ## 検索付きのリスト
 
 ```ts
-import { applyHostReady, mountEmpty, mountList, mountSearchField } from "@openchamber/sdk/ui";
+import { applyHostReady, mountEmpty, mountList, mountSearchField } from "@alcode/sdk/ui";
 
 let mounted = false;
 host.onReady((ctx) => {
@@ -142,10 +142,10 @@ host.onReady((ctx) => {
 
 ## プロバイダーのテキスト内のリンク
 
-ページはサンドボックスで動き、自力で新しいタブを開けません。`mountText` を使うときは `onOpenUrl` を渡して、リンクを OpenChamber に委ねてください。
+ページはサンドボックスで動き、自力で新しいタブを開けません。`mountText` を使うときは `onOpenUrl` を渡して、リンクを Alcode に委ねてください。
 
 ```ts
-import { mountText } from "@openchamber/sdk/ui";
+import { mountText } from "@alcode/sdk/ui";
 
 mountText(root, {
   text: comment.body,

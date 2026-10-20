@@ -3,6 +3,11 @@ import { isCapacitorApp } from '@/lib/platform';
 
 export type HostedSurface = 'desktop' | 'mobile';
 
+declare global {
+  interface Window {
+    __ALCODE_SURFACE__?: HostedSurface;
+  }
+}
 const MOBILE_SURFACE_MAX_WIDTH = 768;
 const SURFACE_SWITCH_DEBOUNCE_MS = 800;
 
@@ -43,7 +48,7 @@ const isPhoneViewport = (): boolean => {
 const detectHostedSurface = (): HostedSurface => {
   if (typeof window === 'undefined') return 'desktop';
 
-  const explicitSurface = window.__OPENCHAMBER_SURFACE__;
+  const explicitSurface = window.__ALCODE_SURFACE__;
   if (explicitSurface === 'mobile' || explicitSurface === 'desktop') {
     return explicitSurface;
   }
@@ -67,7 +72,7 @@ const detectHostedSurface = (): HostedSurface => {
 export const resolveHostedSurface = (): HostedSurface => {
   const surface = detectHostedSurface();
   if (typeof window !== 'undefined') {
-    window.__OPENCHAMBER_SURFACE__ = surface;
+    window.__ALCODE_SURFACE__ = surface;
   }
   return surface;
 };
@@ -94,10 +99,10 @@ export const watchHostedSurfaceViewport = (): (() => void) => {
     if (timeout) clearTimeout(timeout);
     timeout = setTimeout(() => {
       timeout = null;
-      const stamped = window.__OPENCHAMBER_SURFACE__;
+      const stamped = window.__ALCODE_SURFACE__;
       const desired: HostedSurface = isPhoneViewport() ? 'mobile' : 'desktop';
       if (stamped && stamped !== desired) {
-        window.__OPENCHAMBER_SURFACE__ = undefined;
+        window.__ALCODE_SURFACE__ = undefined;
         window.location.reload();
       }
     }, SURFACE_SWITCH_DEBOUNCE_MS);

@@ -3,6 +3,14 @@ import { Icon } from '@/components/icon/Icon';
 import { Input } from '@/components/ui/input';
 import { COLOR_PRESETS, isHexColor } from '@/lib/colorPresets';
 import { cn } from '@/lib/utils';
+import { isAgentHexColor } from './isAgentHexColor';
+
+/**
+ * Preset agent colours. These are user data written into the agent's config,
+ * not interface styling: the config holds hex only, so presets cannot follow
+ * the theme. One distinct mid-tone per hue, readable on dark and light themes.
+ */
+const AGENT_COLOR_PRESETS = ['#e5484d', '#f76b15', '#d6a312', '#30a46c', '#12a594', '#3e63dd', '#8e4ec6', '#d6409f'] as const;
 
 const SWATCH_CLASS = 'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const SELECTED_CLASS = 'ring-2 ring-foreground ring-offset-2 ring-offset-background';
@@ -21,6 +29,9 @@ type SettingsColorFieldLabels = {
  * `legacy` is a stored value the field cannot express as hex (a project
  * colour saved by an older build as a theme key); it shows as a selected
  * swatch painted with `legacyCss` until the user picks something else.
+ * Colour picker for an agent's `color` config: automatic (Alcode picks a
+ * theme colour), one of the presets, or a custom colour from the system picker
+ * with its hex editable next to it. An empty value means automatic.
  */
 export const SettingsColorField: React.FC<{
   value: string;

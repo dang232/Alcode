@@ -1,8 +1,8 @@
-const STORAGE_KEY = "openchamber_sync_perf"
+const STORAGE_KEY = "alcode_sync_perf"
 
 declare global {
   interface Window {
-    __openchamberSyncPerformance?: {
+    __alcodeSyncPerformance?: {
       getSnapshot: () => SyncPerformanceCounters | null
       reset: () => void
     }
@@ -139,7 +139,7 @@ export function countSyncPersistenceStorageWrite(): void {
 }
 
 if (typeof window !== "undefined") {
-  window.__openchamberSyncPerformance = {
+  window.__alcodeSyncPerformance = {
     getSnapshot: getSyncPerformanceDiagnostics,
     reset: resetSyncPerformanceDiagnostics,
   }

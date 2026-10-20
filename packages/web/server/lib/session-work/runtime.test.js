@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mergeMetadataPatch } from '../openchamber-sessions/session-metadata-store.js';
-import { decideAssist } from './questions.js';
+import { mergeMetadataPatch } from '../alcode-sessions/session-metadata-store.js';
+import { decideAssist, decideOpen } from './questions.js';
 import { createSessionWorkRuntime } from './runtime.js';
 import { createSessionLineage } from '../session-lineage.js';
 
@@ -51,7 +51,7 @@ const makeRuntime = ({ metadata = {}, answers = {}, askError = null, settings = 
     jev,
     readMetadata: async (id) => records.get(id) ?? {},
     updateMetadata,
-    chatRoots: ['/home/me/.config/openchamber/chats'],
+    chatRoots: ['/home/me/.config/alcode/chats'],
     lineage,
     now: () => time++,
   });
@@ -86,10 +86,13 @@ describe('session work runtime: a message was sent', () => {
     const { runtime, jev, records } = makeRuntime();
 
     runtime.processPayload(sent());
-    await settle(() => records.get('ses_1').openchamber);
+    await settle(() => records.get('ses_1').alcode);
 
-    expect(jev.ask).not.toHaveBeenCalled();
-    expect(records.get('ses_1')).toMatchObject({ openchamber: { work: { state: 'open', openedBy: 'auto' } } });
+    const [request] = jev.ask.mock.calls[0];
+    expect(request.state.request).toBe('Now fix the header');
+    expect(request.state.history.map((entry) => entry.role)).toEqual(['user', 'assistant']);
+    expect(Object.keys(request.questions)).toEqual(['change', 'toward_change']);
+    expect(records.get('ses_1')).toMatchObject({ alcode: { work: { state: 'open', openedBy: 'jev' } } });
   });
 
   it('opens the session on a message with only an attachment or attached context', async () => {
@@ -97,9 +100,9 @@ describe('session work runtime: a message was sent', () => {
     const { runtime, records } = makeRuntime();
 
     runtime.processPayload(sent('msg_files', ''));
-    await settle(() => records.get('ses_1').openchamber);
+    await settle(() => records.get('ses_1').alcode);
 
-    expect(records.get('ses_1')).toMatchObject({ openchamber: { work: { state: 'open', openedBy: 'auto' } } });
+    expect(records.get('ses_1')).toMatchObject({ alcode: { work: { state: 'open', openedBy: 'auto' } } });
   });
 
   it('opens the session on a shell command the user ran', async () => {
@@ -107,28 +110,28 @@ describe('session work runtime: a message was sent', () => {
     const { runtime, records } = makeRuntime();
 
     runtime.processPayload({ type: 'session.shell.started', id: 'evt_shell', created: 50, properties: { sessionID: 'ses_1' } });
-    await settle(() => records.get('ses_1').openchamber);
+    await settle(() => records.get('ses_1').alcode);
 
-    expect(records.get('ses_1')).toMatchObject({ openchamber: { work: { state: 'open', openedBy: 'auto' } } });
+    expect(records.get('ses_1')).toMatchObject({ alcode: { work: { state: 'open', openedBy: 'auto' } } });
   });
 
   it('reopens a session closed before the message was sent, and keeps one closed after it', async () => {
     stubOpenCode();
     // `sent()` is created at 50.
-    const reopened = makeRuntime({ metadata: { openchamber: { work: { state: 'done', doneAt: 40 } } } });
+    const reopened = makeRuntime({ metadata: { alcode: { work: { state: 'done', doneAt: 40 } } } });
     reopened.runtime.processPayload(sent());
-    await settle(() => reopened.records.get('ses_1').openchamber.work.state === 'open');
-    expect(reopened.records.get('ses_1').openchamber.work.state).toBe('open');
+    await settle(() => reopened.records.get('ses_1').alcode.work.state === 'open');
+    expect(reopened.records.get('ses_1').alcode.work.state).toBe('open');
 
-    const kept = makeRuntime({ metadata: { openchamber: { work: { state: 'done', doneAt: 60 } } } });
+    const kept = makeRuntime({ metadata: { alcode: { work: { state: 'done', doneAt: 60 } } } });
     kept.runtime.processPayload(sent());
     await settle(() => kept.updateMetadata.mock.calls.length > 0);
-    expect(kept.records.get('ses_1').openchamber.work.state).toBe('done');
+    expect(kept.records.get('ses_1').alcode.work.state).toBe('done');
   });
 
   it('reads nothing for a session already in work, and handles a message once', async () => {
     const fetchMock = stubOpenCode();
-    const open = makeRuntime({ metadata: { openchamber: { work: { state: 'open' } } } });
+    const open = makeRuntime({ metadata: { alcode: { work: { state: 'open' } } } });
     open.runtime.processPayload(sent());
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(fetchMock).not.toHaveBeenCalled();
@@ -165,10 +168,11 @@ describe('session work runtime: a message was sent', () => {
     for (const setup of [
       { runtime: { settings: { enabled: false } } },
       { session: { parentID: 'ses_parent' } },
+      { session: { metadata: { alcode: { kind: 'review', originalSessionID: 'ses_0' } } } },
       { session: { metadata: { openchamber: { kind: 'review', originalSessionID: 'ses_0' } } } },
       { session: { metadata: { openchamber: { kind: 'btw', originalSessionID: 'ses_0' } } } },
       { session: { metadata: { openchamber: { kind: 'scheduled' } } } },
-      { session: { location: { directory: '/home/me/.config/openchamber/chats/2026-09-27/hello' } } },
+      { session: { location: { directory: '/home/me/.config/alcode/chats/2026-09-27/hello' } } },
     ]) {
       stubOpenCode({ session: setup.session });
       const { runtime, updateMetadata } = makeRuntime(setup.runtime);
@@ -193,13 +197,13 @@ describe('session work runtime: a turn ended', () => {
     expect(Object.keys(jev.ask.mock.calls[0][0].questions).sort()).toEqual(['next_step', 'recap', 'review_ready']);
     expect(jev.ask.mock.calls[0][0].state).toMatchObject({ request: 'Implement it', answer: 'Done, try it.' });
     expect(gate).toEqual({ recap: true, suggestion: false });
-    expect(records.get('ses_1')).toEqual({});
+    expect(records.get('ses_1')).toMatchObject({ alcode: { work: { state: 'open' } } });
   });
 
   it('asks only about the end of the work and a review in a session already in work, and a new turn retires the hint', async () => {
     stubOpenCode();
     const { runtime, jev, records, updateMetadata } = makeRuntime({
-      metadata: { openchamber: { work: { state: 'open', openedAt: 1 } } },
+      metadata: { alcode: { work: { state: 'open', openedAt: 1 } } },
       answers: { wrap_up: { noul: 0.93 } },
     });
 
@@ -207,13 +211,13 @@ describe('session work runtime: a turn ended', () => {
 
     expect(Object.keys(jev.ask.mock.calls[0][0].questions)).toEqual(['wrap_up', 'review_ready']);
     expect(gate).toBeNull();
-    expect(records.get('ses_1').openchamber.work.suggestDoneAt).toBeTypeOf('number');
+    expect(records.get('ses_1').alcode.work.suggestDoneAt).toBeTypeOf('number');
 
     const busy = { type: 'session.status', properties: { sessionID: 'ses_1', status: { type: 'busy' } } };
     runtime.processPayload(busy);
     runtime.processPayload(busy);
-    await settle(() => records.get('ses_1').openchamber.work.suggestDoneAt === undefined);
-    expect(records.get('ses_1').openchamber.work).not.toHaveProperty('suggestDoneAt');
+    await settle(() => records.get('ses_1').alcode.work.suggestDoneAt === undefined);
+    expect(records.get('ses_1').alcode.work).not.toHaveProperty('suggestDoneAt');
     // One write for the hint, one to retire it: the second busy found nothing to retire.
     expect(updateMetadata).toHaveBeenCalledTimes(2);
   });
@@ -250,7 +254,7 @@ describe('session work runtime: a turn ended', () => {
   it('drops a late done answer once the next turn started', async () => {
     stubOpenCode();
     const { runtime, jev, records } = makeRuntime({
-      metadata: { openchamber: { work: { state: 'open', openedAt: 1 } } },
+      metadata: { alcode: { work: { state: 'open', openedAt: 1 } } },
     });
     let answer;
     jev.ask.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
@@ -266,7 +270,7 @@ describe('session work runtime: a turn ended', () => {
       runtime.processPayload(busy);
       answer({ answers: { wrap_up: { noul: 0.99 } }, ms: 5 });
       await pending;
-      expect(records.get('ses_1').openchamber.work).not.toHaveProperty('suggestDoneAt');
+      expect(records.get('ses_1').alcode.work).not.toHaveProperty('suggestDoneAt');
     }
 
     // A check nobody overtook still writes its hint.
@@ -275,17 +279,18 @@ describe('session work runtime: a turn ended', () => {
     await settle(() => answer !== undefined);
     answer({ answers: { wrap_up: { noul: 0.99 } }, ms: 5 });
     await current;
-    expect(records.get('ses_1').openchamber.work.suggestDoneAt).toBeTypeOf('number');
+    expect(records.get('ses_1').alcode.work.suggestDoneAt).toBeTypeOf('number');
   });
 
   it('never closes: a closing turn in a session in work only hints', async () => {
     stubOpenCode();
     const { runtime, records } = makeRuntime({
-      metadata: { openchamber: { work: { state: 'open', openedAt: 1 } } },
+      metadata: { alcode: { work: { state: 'open', openedAt: 1 } } },
       answers: { wrap_up: { noul: 0.99 } },
+      answers: { wrap_up: { noul: 0.99 }, change: { noul: 0 } },
     });
     await runtime.evaluateTurnEnd({ sessionId: 'ses_1', directory: '/repo', assist: { recap: false, suggestion: false } });
-    expect(records.get('ses_1').openchamber.work.state).toBe('open');
+    expect(records.get('ses_1').alcode.work.state).toBe('open');
   });
 
   it('answers unknown on a Jev failure and changes nothing', async () => {

@@ -10,15 +10,15 @@
 // Styling follows the host theme: kit primitives plus `var(--oc-*)`
 // tokens, no literal colors. Strings come from the package dictionaries
 // keyed by `ready.locale`.
-import { connectHost, type HostClient, type JsonValue } from '@openchamber/sdk';
-import { applyHostReady } from '@openchamber/sdk/ui';
-import { mountBadge } from '@openchamber/sdk/ui';
-import { mountBanner } from '@openchamber/sdk/ui';
-import { mountButton } from '@openchamber/sdk/ui';
-import { mountEmpty } from '@openchamber/sdk/ui';
+import { connectHost, type HostClient, type JsonValue } from '@alcode/sdk';
+import { applyHostReady } from '@alcode/sdk/ui';
+import { mountBadge } from '@alcode/sdk/ui';
+import { mountBanner } from '@alcode/sdk/ui';
+import { mountButton } from '@alcode/sdk/ui';
+import { mountEmpty } from '@alcode/sdk/ui';
 
-import { mountSpinner } from '@openchamber/sdk/ui';
-import { mountTextField } from '@openchamber/sdk/ui';
+import { mountSpinner } from '@alcode/sdk/ui';
+import { mountTextField } from '@alcode/sdk/ui';
 
 import { isWireRecord, keepStoredRunModel, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave } from './dag-view.ts';
 import { stringsFor, type DagPaneStrings } from './strings.ts';

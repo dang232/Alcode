@@ -5,8 +5,9 @@
 // gatekeeper channel, code in and code out; the routes in `routes.js` only translate HTTP.
 //
 // A creation runs in the background: the request comes back at once with the space's id, and the
-// steps are announced as `openchamber:space-progress` events on the host's hub, so the group in
+// steps are announced as `alcode:space-progress` events on the host's hub, so the group in
 // the sidebar can say what is happening now (journey step 2). A creation that fails
+// the sidebar can say what is happening now (DESIGN.md, journey step 2). A creation that fails
 // after the containers exist removes them again, and its failure stays listed until the user
 // dismisses it, so an error is never silent.
 //
@@ -27,6 +28,7 @@
 // that stopped that way as such, and stops the gatekeeper it finds running beside a stopped space,
 // which is what an idle stop leaves while OpenChamber is closed. The permission mode a new chat
 // starts in travels the same way, see `space-permission-default.js`.
+// which is what an idle stop leaves while Alcode is closed.
 //
 // Setup commands, since 5d-4 (see "Setup commands" in DOCUMENTATION.md): the project's worktree setup commands
 // run inside the space once its code arrived, in the background, and again when the user asks.
@@ -74,7 +76,7 @@ const withUpperDrive = (directory) => directory.replace(/^[a-z]:/, (drive) => dr
 
 const CREATE_REFUSALS = {
   placeId: ['place_not_found', 'A space is made on one of the configured places.'],
-  projectDirectory: ['project_not_registered', 'A space is made for a project this OpenChamber knows. Add the project first, then create the space.'],
+  projectDirectory: ['project_not_registered', 'A space is made for a project this Alcode knows. Add the project first, then create the space.'],
   name: ['invalid_space_name', 'A space needs a name.'],
   start: ['invalid_snapshot_mode', 'A space starts from a clean commit or with the uncommitted changes.'],
   network: ['invalid_network', 'The network of a space is allowlist or open, with a list of domain names for the allowlist.'],
@@ -218,7 +220,7 @@ export function createSpaceJourney({
   const setup = createSpaceSetup({
     exec: manager.exec,
     records,
-    announce: (spaceId) => announce(spaceId, { type: 'openchamber:space-setup', properties: { spaceId, timestamp: now().getTime() } }),
+    announce: (spaceId) => announce(spaceId, { type: 'alcode:space-setup', properties: { spaceId, timestamp: now().getTime() } }),
     logger,
     now,
   });
@@ -281,7 +283,7 @@ export function createSpaceJourney({
     entry.step = step;
     entry.state = step === 'failed' ? 'failed' : step === 'ready' ? 'running' : 'preparing';
     entry.failure = failure;
-    announce(entry.id, { type: 'openchamber:space-progress', properties: { spaceId: entry.id, step, failure, timestamp: now().getTime() } });
+    announce(entry.id, { type: 'alcode:space-progress', properties: { spaceId: entry.id, step, failure, timestamp: now().getTime() } });
   };
 
   /** Removes the space and everything the host kept for it, and says what did not go. */
@@ -963,7 +965,7 @@ export function createSpaceJourney({
       const source = asked.secret.kind === 'typed' ? { kind: 'typed' } : { kind: 'env', name: asked.secret.name };
       const secret = asked.secret.kind === 'typed' ? asked.secret.value : readHostSecret(asked.secret.name);
       if (typeof secret !== 'string' || secret === '') {
-        throw new SpaceError('secret_source_missing', `The environment variable ${asked.secret.name} is not set for OpenChamber, so there is no key to give.`);
+        throw new SpaceError('secret_source_missing', `The environment variable ${asked.secret.name} is not set for Alcode, so there is no key to give.`);
       }
       grant = { kind: 'model', id: asked.provider, provider: asked.provider, upstream: asked.upstream, header: HEADER_BY_PROVIDER.get(asked.provider), source };
       window = { upstream: grant.upstream, header: grant.header, secret };
@@ -1218,7 +1220,7 @@ export function createSpaceJourney({
   const readDisk = async (placeId) => requirePlace(placeId).readDisk();
 
   /**
-   * Removes what OpenChamber can make again on a place, see `places/docker-disk.js`; Docker keeps
+   * Removes what Alcode can make again on a place, see `places/docker-disk.js`; Docker keeps
    * whatever is in use. Refused while a space is being made, which pulls the image and fills the
    * tools before any container holds them. Answers what was freed, what Docker kept, and the disk after.
    */

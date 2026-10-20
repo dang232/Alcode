@@ -1,5 +1,5 @@
 // The dispatcher: a thin layer in front of the host's routes that forwards a request addressed
-// to a space to the OpenChamber server inside that space, over the place's `connect` channel.
+// to a space to the Alcode server inside that space, over the place's `connect` channel.
 //
 // The client addresses the space. A request goes to a space when it names a directory under
 // `/spaces/<id>` in its query or its directory header, or when its path starts with
@@ -17,6 +17,7 @@
 // Everything that comes back from a space is untrusted. A response cannot set a cookie on the
 // app's origin, and nothing from a space renders as a page under it.
 
+import crypto from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
 import { pipeline } from 'node:stream';
@@ -25,6 +26,7 @@ import { writeSseChunkWithBackpressure } from '../opencode/proxy.js';
 import { SpaceError } from './errors.js';
 import { isSpaceId } from './labels.js';
 import { SPACE_SERVER_HOST, SPACE_SERVER_PORT, spaceWorkPath } from './layout.js';
+import { readAlcoreIssuer } from '../ui-auth/ui-auth.js';
 
 const SPACE_ROUTE_PREFIX = '/api/spaces/';
 const SPACES_ROOT = '/spaces';
@@ -72,7 +74,7 @@ const HOST_ONLY_ROUTES = Object.freeze([
   '/api/system',
   '/api/push',
   '/api/notifications',
-  '/api/openchamber/tunnel',
+  '/api/alcode/tunnel',
 ]);
 
 // Route families refused across the boundary: they would move something between the host and
@@ -393,6 +395,25 @@ export function createSpaceDispatcher({ transport, now = Date.now, logger = cons
   });
 
   /** Logs in to the server inside with the space's token, once per space at a time. */
+  /**
+   * Space-channel credential (Wave 1): the space token is the per-space
+   * Alcore secret. The dispatcher mints a short-lived space JWT for it and
+   * exchanges it at /auth/session — the same Alcore validation as the
+   * browser gate, keyed per space, so host-to-space auth keeps working with
+   * no shared password. Issuer follows the host's Alcore configuration, so
+   * the inside server (same machine, same environment) expects the same one.
+   */
+  const SPACE_LOGIN_TTL_SECONDS = 5 * 60;
+  const spaceB64url = (value) => Buffer.from(value, 'utf8').toString('base64url');
+  const mintSpaceLoginToken = (token, spaceId) => {
+    const header = { alg: 'HS256', typ: 'JWT' };
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      sub: 'space-host', sid: spaceId, iss: readAlcoreIssuer(), aud: 'auth', intent: 'session', exp: now + SPACE_LOGIN_TTL_SECONDS,
+    };
+    const data = `${spaceB64url(JSON.stringify(header))}.${spaceB64url(JSON.stringify(payload))}`;
+    return `${data}.${crypto.createHmac('sha256', token).update(data).digest().toString('base64url')}`;
+  };
   /** One login attempt with the token as it is remembered or freshly read. Null when refused. */
   const attemptLogin = async (spaceId, fresh) => {
     const token = await tokenFor(spaceId, fresh);
@@ -400,7 +421,7 @@ export function createSpaceDispatcher({ transport, now = Date.now, logger = cons
       method: 'POST',
       path: '/auth/session',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ password: token }),
+      body: JSON.stringify({ alcoreToken: mintSpaceLoginToken(token, spaceId) }),
     });
     const session = response.status === 200 ? parseSetCookie(response.headers['set-cookie']) : null;
     return session ? { session, status: response.status } : { session: null, status: response.status };

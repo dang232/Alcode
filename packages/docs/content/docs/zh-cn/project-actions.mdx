@@ -24,15 +24,16 @@ description: 保存你经常运行的命令，一键启动它们。
 按 ⌘P 或 Ctrl+P 打开命令面板，输入"运行"或操作名称，就能找到 **运行：dev** 和 **停止：dev** 这样的条目。面板中的 **项目操作** 会打开对话框。
 
 每个操作都在会话文件夹的终端中运行：会话位于 worktree 时就是该 worktree，设置为在主检出目录运行的操作则在主检出目录运行。终端会打开，方便你查看输出。项目操作可在桌面端和 Web 应用中使用。VS Code、手机以及 Chats 中的会话没有项目操作。
+操作位于应用标题栏的一个菜单中。点击其中一个，Alcode 就会在你项目文件夹的终端中运行它，并将你切换到终端视图，让你可以观察输出。从同一菜单可以停止它。
 
 ## 自动打开开发服务器
 
-为一个启动服务器的操作开启 **auto-open URL**。OpenChamber 会监视输出中的本地地址并提议打开它 — 参阅 [预览与开发服务器](/zh-cn/preview/)。在桌面端，你还可以通过 SSH 端口转发来路由它。
+为一个启动服务器的操作开启 **auto-open URL**。Alcode 会监视输出中的本地地址并提议打开它 — 参阅 [预览与开发服务器](/zh-cn/preview/)。在桌面端，你还可以通过 SSH 端口转发来路由它。
 
-如果服务器有固定地址，把它填入操作的 URL 字段。`{worktree}` 和 `{branch}` 会替换为操作运行所在的检出目录，因此一个操作可以用于每个 worktree。配合 [portless](https://github.com/vercel-labs/portless)，`https://{worktree}.myapp.localhost` 在 `feature/auth` 分支的 worktree 中打开 `https://auth.myapp.localhost`，在主检出目录中打开 `https://myapp.localhost`。你可能根本不需要这个字段：portless 打印出地址后，OpenChamber 会打开该地址，而不是它背后的端口。在连接到远程实例的桌面端，它会改为打开端口，因为只有回环端口会通过隧道到达远程机器。
+如果服务器有固定地址，把它填入操作的 URL 字段。`{worktree}` 和 `{branch}` 会替换为操作运行所在的检出目录，因此一个操作可以用于每个 worktree。配合 [portless](https://github.com/vercel-labs/portless)，`https://{worktree}.myapp.localhost` 在 `feature/auth` 分支的 worktree 中打开 `https://auth.myapp.localhost`，在主检出目录中打开 `https://myapp.localhost`。你可能根本不需要这个字段：portless 打印出地址后，Alcode 会打开该地址，而不是它背后的端口。在连接到远程实例的桌面端，它会改为打开端口，因为只有回环端口会通过隧道到达远程机器。
 
 ## 相关内容
 
 - [仓库配置](/repository-config/) — 把操作和设置命令放进仓库，供整个团队使用
 
-- [预览与开发服务器](/zh-cn/preview/) — 在 OpenChamber 内部打开正在运行的开发服务器
+- [预览与开发服务器](/zh-cn/preview/) — 在 Alcode 内部打开正在运行的开发服务器

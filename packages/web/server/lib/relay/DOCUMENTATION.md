@@ -2,11 +2,11 @@
 
 ## Purpose
 
-The private relay lets an OpenChamber client (mobile app, browser, or another desktop) reach a user's OpenChamber instance through OpenChamber-hosted infrastructure when the instance is not directly reachable (behind NAT, no public URL, no tunnel). The instance dials **outbound** to the relay; nothing needs to be exposed inbound.
+The private relay lets an Alcode client (mobile app, browser, or another desktop) reach a user's Alcode instance through Alcode-hosted infrastructure when the instance is not directly reachable (behind NAT, no public URL, no tunnel). The instance dials **outbound** to the relay; nothing needs to be exposed inbound.
 
 Traffic is **end-to-end encrypted between the two endpoints** (client and host instance). The relay infrastructure forwards opaque ciphertext and cannot read application traffic — it is an untrusted transport, not a trusted middlebox.
 
-This module (`packages/web/server/lib/relay/`) is the **host side**: it runs inside the OpenChamber web server (so it works for Electron desktop, headless server, and CLI installs alike). The **client side** lives in `packages/ui/src/lib/relay/`. The **relay service itself** is a separate Cloudflare Worker in the `openchamber-website` repo and only brokers connections.
+This module (`packages/web/server/lib/relay/`) is the **host side**: it runs inside the Alcode web server (so it works for Electron desktop, headless server, and CLI installs alike). The **client side** lives in `packages/ui/src/lib/relay/`. The **relay service itself** is a separate Cloudflare Worker in the `openchamber-website` repo and only brokers connections.
 
 ## The three layers
 
@@ -14,12 +14,12 @@ Traffic is modeled as three stacked layers. The relay understands only Layer 1; 
 
 1. **Relay routing (Layer 1)** — outbound WebSocket connections to the relay, connection brokering, and host authentication to the relay. The relay routes each client to the correct host and forwards frames verbatim.
 2. **End-to-end encryption (Layer 2)** — an authenticated encrypted channel established directly between client and host, keyed so the relay cannot participate. Built on standard WebCrypto primitives (ECDH key agreement + AEAD framing). The host's encryption public key is distributed to the client out-of-band via the pairing payload and is the client's trust anchor.
-3. **Tunnel multiplexing (Layer 3)** — because an OpenChamber client speaks many concurrent HTTP requests, an event stream (SSE), and WebSockets to one origin, the encrypted channel carries a small multiplexing protocol. It frames HTTP request/response (including streamed bodies) and WebSocket sub-streams so the whole app works over one encrypted connection.
+3. **Tunnel multiplexing (Layer 3)** — because an Alcode client speaks many concurrent HTTP requests, an event stream (SSE), and WebSockets to one origin, the encrypted channel carries a small multiplexing protocol. It frames HTTP request/response (including streamed bodies) and WebSocket sub-streams so the whole app works over one encrypted connection.
 
 ## Entrypoints and structure
 
 Host side (`packages/web/server/lib/relay/`):
-- `service.js` — thin entrypoint: relay config (enabled flag + relay URL), the management routes (`GET/POST /api/openchamber/relay/{status,enable,disable,reset-identity}`), a `getPairingCandidate()` accessor (the relay transport candidate folded into pairing-v2 links when enabled, consumed by the pairing-session route in `core-routes.js`), and lifecycle wiring. Started from `packages/web/server/index.js` only when the user has explicitly enabled the relay. The relay endpoint defaults to the OpenChamber-hosted relay but can be pinned to a self-hosted relay (`pinnedRelayUrl`: `relayUrl` in the machine policy file, else the `OPENCHAMBER_RELAY_URL` env var; see `../enterprise-mode.js`; must be `ws://`/`wss://`, an invalid value pins nothing); when set it overrides the stored setting for the host connection, the pairing candidate, and status, so paired clients inherit the endpoint automatically. In enterprise mode (`../enterprise-mode.js`) the relay runs only with that pin (`relayBlockedByEnterprise`): `start()` refuses otherwise (every path in passes through it), `enable` answers 403, `getPairingCandidate()` is null, `ensureEnabledForPairing()` throws (the pairing route drops the candidate and direct pairing still works), status carries `blockedByEnterprise`, and `resolvePairingTransports` in `index.js` reports `relayAvailable: false`.
+- `service.js` — thin entrypoint: relay config (enabled flag + relay URL), the management routes (`GET/POST /api/alcode/relay/{status,enable,disable,reset-identity}`), a `getPairingCandidate()` accessor (the relay transport candidate folded into pairing-v2 links when enabled, consumed by the pairing-session route in `core-routes.js`), and lifecycle wiring. Started from `packages/web/server/index.js` only when the user has explicitly enabled the relay. The relay endpoint defaults to the Alcode-hosted relay but can be pinned to a self-hosted relay (`pinnedRelayUrl`: `relayUrl` in the machine policy file, else the `ALCODE_RELAY_URL` env var; see `../enterprise-mode.js`; must be `ws://`/`wss://`, an invalid value pins nothing); when set it overrides the stored setting for the host connection, the pairing candidate, and status, so paired clients inherit the endpoint automatically. In enterprise mode (`../enterprise-mode.js`) the relay runs only with that pin (`relayBlockedByEnterprise`): `start()` refuses otherwise (every path in passes through it), `enable` answers 403, `getPairingCandidate()` is null, `ensureEnabledForPairing()` throws (the pairing route drops the candidate and direct pairing still works), status carries `blockedByEnterprise`, and `resolvePairingTransports` in `index.js` reports `relayAvailable: false`.
 - `identity.js` — the host's stable identity: the long-lived signing keypair (shared with the push relay, defines the routing id) plus a long-lived encryption keypair (the E2EE trust anchor). Reused across restarts; never rotated implicitly. The only rotation is the user's: Settings shows a notice while the host reports `identityConflict` (two `4001` evictions within 10 minutes, so another copy of the data dir, usually on another machine, keeps taking the slot), and its button calls `reset-identity`. That drops both keypairs through `key-store.js`, restarts the host if it was running, and leaves the other copy with the old identity: devices paired through the relay keep reaching it until they are paired here again, and devices paired for the home network only are unaffected. Callers that cache derived keys (this runtime and the push relay's) compare the store's `generation()`, so the reset reaches both without a restart.
 - `signing-key.js` — the signing keypair and the routing id derivation, shared with the notifications runtime.
 - `key-store.js` — where both keypairs live: `<data-dir>/relay-identity.json` (`0600`), never `settings.json`, so the private keys do not travel with every copy of the settings file. Installs that kept them in `settings.json` (`relaySigningKey` / `relayEncryptionKey`) have them moved on first load, unchanged so `serverId` and the trust anchor survive, then stripped from settings; an older build sharing the data dir then mints its own identity. A key is minted only when neither file holds it, and both are read strictly so a corrupt or unreadable file fails instead of reading as first run. `index.js` builds one store for the push relay and the private relay, so their concurrent first loads mint one key.
@@ -40,7 +40,7 @@ Relay is not a separate link format: it is one transport candidate inside the un
 
 ## What travels the tunnel
 
-Everything a client normally sends to the single OpenChamber origin:
+Everything a client normally sends to the single Alcode origin:
 - **HTTP** — REST endpoints and proxied OpenCode SDK calls under `/api/*`, plus `/auth/*` and `/health`.
 - **SSE** — long-lived streamed responses (the event stream and notifications). These are just HTTP responses whose body streams; the tunnel needs no special SSE handling.
 - **WebSocket** — the endpoints that use a real socket (the global event stream on platforms that support WS, terminal I/O, dictation, and desktop dev-server previews).
@@ -125,11 +125,11 @@ It does not replace a physical iOS/LTE check.
 ### Self-reported app diagnostics
 
 Host-control, host-data and client upgrades include optional `appId`,
-`appVersion` and `platform` query parameters. OpenChamber sends `openchamber`,
+`appVersion` and `platform` query parameters. Alcode sends `alcode`,
 the local package version and the local runtime. Client platforms use the
 existing presence values: `desktop` for Electron, `vscode`, `ios`, `android`
 and `web` for browsers, including hosted mobile. Hosts use
-`OPENCHAMBER_RUNTIME`, defaulting to `web`, so SSH hosts report `ssh-remote`.
+`ALCODE_RUNTIME`, defaulting to `web`, so SSH hosts report `ssh-remote`.
 These labels describe the connecting process, not its remote target.
 
 These fields are diagnostics only, outside the signed auth payload. Older
@@ -142,7 +142,7 @@ No credentials, device names or application contents are added to diagnostics.
 
 ### Access checks
 
-- The tunnel is **transport only**. The OpenChamber server still authenticates every tunneled request exactly as it authenticates a direct remote client. The relay path grants reachability, not authorization.
+- The tunnel is **transport only**. The Alcode server still authenticates every tunneled request exactly as it authenticates a direct remote client. The relay path grants reachability, not authorization.
 - Clients carry their normal credential. HTTP and SSE requests authenticate with the client's bearer token (a header). **WebSocket upgrades cannot send headers**, so they authenticate with a short-lived URL-scoped token minted beforehand and passed as a query parameter. This asymmetry is important when adding new WebSocket features (see the skill).
 - The host authenticates itself to the relay with a signed handshake using its long-lived signing key.
 - Enabling the relay is explicit opt-in and disabled by default; disabling it severs all relay reachability immediately.

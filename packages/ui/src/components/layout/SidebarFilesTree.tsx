@@ -443,10 +443,9 @@ const FileRow: React.FC<FileRowProps> = ({
     recordFileTreeDragStart(e);
     const path = getRelativePath(root, node.path);
     if (!path || path === '.') return;
-    e.dataTransfer.setData(INTERNAL_FILE_PATH_TYPE, path);
-    e.dataTransfer.effectAllowed = canMove ? 'copyMove' : 'copy';
-    if (canMove) onMoveDragChange({ path: node.path, type: node.type });
-  }, [canMove, node.path, node.type, onMoveDragChange, root]);
+    e.dataTransfer.setData('application/x-alcode-file-path', path);
+    e.dataTransfer.effectAllowed = 'copy';
+  }, [node.path, root]);
 
   const handleDragEnd = React.useCallback((e: React.DragEvent) => {
     if (canMove) onMoveDragChange(null);
@@ -1794,7 +1793,7 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean; currentDirectory: st
                       setFileTreeDragSource(null);
                       const path = node.relativePath || getRelativePath(root ?? '', node.path);
                       if (!path || path === '.') return;
-                      e.dataTransfer.setData(INTERNAL_FILE_PATH_TYPE, path);
+                      e.dataTransfer.setData('application/x-alcode-file-path', path);
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={(e) => {

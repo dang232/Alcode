@@ -128,8 +128,8 @@ export const fetchOpenCodeGoUsage = async (apiKey, fetchImpl = fetch, { consoleK
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${apiKey}`,
-      'x-opencode-session': 'openchamber-usage',
-      'User-Agent': 'OpenChamber quota provider',
+      'x-opencode-session': 'alcode-usage',
+      'User-Agent': 'Alcode quota provider',
     },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });

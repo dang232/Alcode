@@ -282,7 +282,7 @@ const readCapped = (response, cap, timeoutMs) => new Promise((resolve, reject) =
 });
 
 // Every tool of every agent refused in an archived chat, by OpenCode itself. The chat lives in the
-// host's OpenCode, which VS Code, the OpenCode CLI and any other client reach without OpenChamber's
+// host's OpenCode, which VS Code, the OpenCode CLI and any other client reach without Alcode's
 // server; a turn someone starts there anyway runs no tool on the host. OpenCode takes the last
 // rule that matches, and a session's rules come after the agent's.
 const ARCHIVED_CHAT_PERMISSIONS = Object.freeze([Object.freeze({ action: '*', resource: '*', effect: 'deny' })]);

@@ -2,7 +2,7 @@ import React from 'react';
 
 import { Icon } from '@/components/icon/Icon';
 import { Button } from '@/components/ui/button';
-import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
+import { AlcodeLogo } from '@/components/ui/AlcodeLogo';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { useWaitingBlink } from '@/hooks/useDurationTicker';
@@ -51,10 +51,11 @@ export const MobileConnectionWelcome: React.FC<{
     void conn.connect({ url: serverUrl, clientToken, label: connectionName });
   }, [clientToken, conn, connectionName, serverUrl]);
 
-  // Accept a pasted pairing link (openchamber://connect?...) in the URL field and
-  // split it back into the server URL + token.
+  // Accept a pasted pairing link (alcode://connect?... or its pre-rename
+  // openchamber:// twin) in the URL field and split it back into the
+  // server URL + token.
   const handleUrlChange = React.useCallback((value: string) => {
-    if (/^openchamber:\/\//i.test(value.trim())) {
+    if (/^(?:alcode|openchamber):\/\//i.test(value.trim())) {
       const payload = parseConnectionPayload(value);
       if (payload) {
         if ('pairing' in payload) {
@@ -140,7 +141,7 @@ export const MobileConnectionWelcome: React.FC<{
       <div className="m-auto flex w-full max-w-[360px] shrink-0 flex-col items-center gap-9 py-8">
         <div className="flex flex-col items-center gap-5 text-center">
           <span {...debugLongPress} className="select-none" style={{ touchAction: 'manipulation' }}>
-            <OpenChamberLogo width={72} height={72} className="size-[72px]" />
+            <AlcodeLogo width={72} height={72} className="size-[72px]" />
           </span>
           <h1 className="typography-h2 text-foreground">{t('mobile.connect.welcome.title')}</h1>
         </div>

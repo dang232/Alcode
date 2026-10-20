@@ -2,8 +2,8 @@ import fs from 'node:fs';
 
 export const PRODUCTION_UPDATER_FEED = Object.freeze({
   provider: 'github',
-  owner: 'openchamber',
-  repo: 'openchamber',
+  owner: 'dang232',
+  repo: 'Alcode',
 });
 
 const isLoopbackHostname = (hostname) => {
@@ -36,12 +36,12 @@ export const resolveUpdaterFeed = ({
   environment = process.env,
   testBuild = false,
 } = {}) => {
-  if (environment.OPENCHAMBER_E2E !== '1'
+  if (environment.ALCODE_E2E !== '1'
     || testBuild !== true) {
     return PRODUCTION_UPDATER_FEED;
   }
 
-  const url = parseLoopbackUpdaterUrl(environment.OPENCHAMBER_UPDATER_E2E_URL);
+  const url = parseLoopbackUpdaterUrl(environment.ALCODE_UPDATER_E2E_URL);
   if (!url) return PRODUCTION_UPDATER_FEED;
   return { provider: 'generic', url };
 };

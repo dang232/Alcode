@@ -244,9 +244,16 @@ const treeRowLeft = (depth: number): number => MOBILE_TREE_BASE_PADDING_PX + dep
 const treeTextLeft = (depth: number): number => treeRowLeft(depth) + 20;
 /** Expansion keys of the "Pinned" and "In work" sections, alongside project ids. */
 const PINNED_SECTION_ID = 'openchamber:pinned';
-const WORK_SECTION_ID = 'openchamber:work';
+const WORK_SECTION_ID = 'alcode:work';
 const TIME_LIST_SECTION_ID = 'openchamber:time-list';
 // Chats are flat rows in both views, aligned with the timeline rows' text.
+// Left padding for session rows so the title's first letter aligns with its
+// parent label. Root/project-level sessions align with the project label;
+// worktree sessions sit one level deeper. SessionRow adds 16px (dot + gap) on top.
+const PROJECT_SESSION_INDENT = 40;
+/** Expansion key of the optional Recent section in the grouped view. */
+const RECENT_SECTION_ID = 'alcode:recent';
+// Timeline chats align with the timeline rows' text, which has no gutter.
 const TIMELINE_CHAT_INDENT = 12;
 
 const pathBelongsToRoot = (path: string, root: string): boolean => {
@@ -1060,7 +1067,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     [childrenBySessionId],
   );
 
-  // Managed Chats (sessions under ~/.config/openchamber/chats) are not owned
+  // Managed Chats (sessions under ~/.config/alcode/chats) are not owned
   // by any registered project; they get their own section above the project
   // tree, the same split the desktop sidebar makes. Temporary /btw forks are
   // dropped here as well.

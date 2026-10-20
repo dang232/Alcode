@@ -12,8 +12,8 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "paths": {
-      "@openchamber/ui/*": ["./packages/ui/src/*"],
-      "@openchamber/web/*": ["./packages/web/src/*"]
+      "@alcode/ui/*": ["./packages/ui/src/*"],
+      "@alcode/web/*": ["./packages/web/src/*"]
     }
   }
 }

@@ -1017,7 +1017,7 @@ ends or the message unmounts.
 Voice: the comment shell mounts its own `ComposerDictation` whose insert
 callbacks target the comment draft (insert-and-send attaches; it never sends).
 While it is mounted, the composer's wrapper-level dictation engine is not —
-two engines would both answer the global `openchamber:dictation-toggle`
+two engines would both answer the global `alcode:dictation-toggle`
 event, and a transcript meant for one editor must not reach the other. A
 recording in flight when comment mode opens is discarded by that swap.
 

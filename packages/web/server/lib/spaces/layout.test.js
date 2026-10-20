@@ -4,7 +4,7 @@ import { projectFolderName, spaceHistoryPath, spaceProjectPath } from './layout.
 
 describe('projectFolderName', () => {
   it.each([
-    ['/home/me/openchamber', 'openchamber'],
+    ['/home/me/alcode', 'alcode'],
     ['/home/me/my app/', 'my-app'],
     ['C:\\Users\\me\\Projects\\web_site.v2', 'web_site.v2'],
     ['/home/me/.dotfiles', 'dotfiles'],
@@ -22,9 +22,9 @@ describe('projectFolderName', () => {
   });
 
   it('puts the project and the history side repository in the space, where they cannot collide', () => {
-    expect(spaceProjectPath('a1b2c3d4e5f6', '/home/me/openchamber')).toBe('/spaces/a1b2c3d4e5f6/openchamber');
-    expect(spaceHistoryPath('a1b2c3d4e5f6')).toBe('/spaces/a1b2c3d4e5f6/.openchamber-history.git');
-    expect(spaceProjectPath('a1b2c3d4e5f6', '/home/me/.openchamber-history.git')).toBe('/spaces/a1b2c3d4e5f6/openchamber-history.git');
-    expect(() => spaceProjectPath('../etc', '/home/me/openchamber')).toThrow();
+    expect(spaceProjectPath('a1b2c3d4e5f6', '/home/me/alcode')).toBe('/spaces/a1b2c3d4e5f6/alcode');
+    expect(spaceHistoryPath('a1b2c3d4e5f6')).toBe('/spaces/a1b2c3d4e5f6/.alcode-history.git');
+    expect(spaceProjectPath('a1b2c3d4e5f6', '/home/me/.alcode-history.git')).toBe('/spaces/a1b2c3d4e5f6/alcode-history.git');
+    expect(() => spaceProjectPath('../etc', '/home/me/alcode')).toThrow();
   });
 });

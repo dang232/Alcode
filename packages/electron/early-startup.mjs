@@ -26,13 +26,18 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createShellEnvironmentLoader } from './shell-environment.mjs';
 import { isSplashColor } from './remote-page-policy.mjs';
-import { clearAppImageArgv0FromProcessEnv } from '@openchamber/web/server/lib/inherited-env.js';
+import { clearAppImageArgv0FromProcessEnv } from '@alcode/web/server/lib/inherited-env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const isDev = process.env.OPENCHAMBER_ELECTRON_DEV === '1' || !app.isPackaged;
+export const isDev = process.env.ALCODE_ELECTRON_DEV === '1' || !app.isPackaged;
 
-export const DEEP_LINK_PROTOCOL = 'openchamber';
-export const UI_PROTOCOL = 'openchamber-ui';
+export const DEEP_LINK_PROTOCOL = 'alcode';
+export const UI_PROTOCOL = 'alcode-ui';
+// Pre-rename schemes, kept as backward-compat aliases: links and installs
+// created before the rename still target these, so both schemes stay
+// registered (entry.mjs privileged origins, main.mjs protocol clients).
+export const LEGACY_DEEP_LINK_PROTOCOL = 'openchamber';
+export const LEGACY_UI_PROTOCOL = 'openchamber-ui';
 const PACKAGED_APP_USER_MODEL_ID = 'dev.openchamber.desktop';
 const DEV_APP_USER_MODEL_ID = 'dev.openchamber.desktop.dev';
 export const APP_USER_MODEL_ID = app.isPackaged ? PACKAGED_APP_USER_MODEL_ID : DEV_APP_USER_MODEL_ID;
@@ -98,10 +103,10 @@ const DEFAULT_WINDOW_WIDTH = 1280;
 const DEFAULT_WINDOW_HEIGHT = 800;
 
 export const settingsFilePath = () => {
-  if (typeof process.env.OPENCHAMBER_DATA_DIR === 'string' && process.env.OPENCHAMBER_DATA_DIR.trim()) {
-    return path.join(process.env.OPENCHAMBER_DATA_DIR.trim(), 'settings.json');
+  if (typeof process.env.ALCODE_DATA_DIR === 'string' && process.env.ALCODE_DATA_DIR.trim()) {
+    return path.join(process.env.ALCODE_DATA_DIR.trim(), 'settings.json');
   }
-  return path.join(os.homedir(), '.config', 'openchamber', 'settings.json');
+  return path.join(os.homedir(), '.config', 'alcode', 'settings.json');
 };
 
 const readJsonFile = (filePath) => {
@@ -316,7 +321,7 @@ const buildStartupSplashHtml = () => {
   </head>
   <body>
     <div class="stack">
-      <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenChamber loading icon">
+      <svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alcode loading icon">
         <path d="M50 50 L8.432 26 L8.432 74 L50 98 Z" fill="var(--splash-face-fill)" stroke="var(--splash-stroke)" stroke-width="2" stroke-linejoin="round"/>
         <path d="M50 50 L39.608 44 L39.608 56 L50 62 Z" fill="var(--splash-cell-fill)" opacity="0.2"/>
         <path d="M39.608 44 L29.216 38 L29.216 50 L39.608 56 Z" fill="var(--splash-cell-fill)" opacity="0.45"/>
@@ -408,6 +413,18 @@ export const buildRendererAdditionalArguments = ({
   trayEnabled = isMacMenuBarEnabled(),
   nativeFrame = usesLinuxNativeFrame(),
 } = {}) => [
+  `--alcode-local-origin=${localOrigin}`,
+  `--alcode-api-base-url=${apiBaseUrl}`,
+  `--alcode-client-token=${clientToken}`,
+  `--alcode-runtime-headers=${JSON.stringify(requestHeaders)}`,
+  `--alcode-home=${os.homedir() || ''}`,
+  `--alcode-macos-major=${String(macosMajorVersion())}`,
+  `--alcode-tray-enabled=${trayEnabled ? '1' : '0'}`,
+  `--alcode-boot-outcome=${JSON.stringify(bootOutcome)}`,
+  `--alcode-relay-host-id=${relayHostId}`,
+  `--alcode-native-frame=${nativeFrame ? '1' : '0'}`,
+  // Legacy mirrors for pre-rename preloads, which read --openchamber-*.
+  // The current preload prefers --alcode-* and falls back to these.
   `--openchamber-local-origin=${localOrigin}`,
   `--openchamber-api-base-url=${apiBaseUrl}`,
   `--openchamber-client-token=${clientToken}`,
@@ -435,7 +452,7 @@ export const buildMainWindowOptions = ({ bounds, backgroundColor, additionalArgu
   const frameless = usesFramelessChrome();
   const usesCustomTitleBar = process.platform === 'darwin' || frameless;
   const options = {
-    title: 'OpenChamber',
+    title: 'Alcode',
     width: bounds?.width ?? DEFAULT_WINDOW_WIDTH,
     height: bounds?.height ?? DEFAULT_WINDOW_HEIGHT,
     minWidth: MIN_WINDOW_WIDTH,
@@ -473,8 +490,8 @@ export const buildMainWindowOptions = ({ bounds, backgroundColor, additionalArgu
 };
 
 export const shouldUsePackagedUi = () => {
-  if (process.env.OPENCHAMBER_ELECTRON_LOAD_SERVER_UI === '1') return false;
-  if (process.env.OPENCHAMBER_ELECTRON_USE_BUNDLED_UI === '1') return true;
+  if (process.env.ALCODE_ELECTRON_LOAD_SERVER_UI === '1') return false;
+  if (process.env.ALCODE_ELECTRON_USE_BUNDLED_UI === '1') return true;
   return app.isPackaged;
 };
 
@@ -495,7 +512,9 @@ let packagedUiSchemeRegistered = false;
 const registerPackagedUiScheme = () => {
   if (packagedUiSchemeRegistered) return;
   packagedUiSchemeRegistered = true;
-  protocol.handle(UI_PROTOCOL, (request) => {
+  // The legacy UI scheme serves the same handler: stored openchamber-ui://
+  // URLs from pre-rename installs keep resolving to the packaged app.
+  const dispatch = (request) => {
     if (new URL(request.url).pathname === SPLASH_PATHNAME) {
       return new Response(buildStartupSplashHtml(), {
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
@@ -503,7 +522,9 @@ const registerPackagedUiScheme = () => {
     }
     if (!packagedUiRequestHandler) return new Response('', { status: 503 });
     return packagedUiRequestHandler(request);
-  });
+  };
+  protocol.handle(UI_PROTOCOL, dispatch);
+  protocol.handle(LEGACY_UI_PROTOCOL, dispatch);
 };
 
 export const installPackagedUiRequestHandler = (handler) => {

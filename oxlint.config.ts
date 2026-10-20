@@ -23,6 +23,16 @@ export default defineConfig({
     "**/dist/**",
     "**/ios/**",
     "**/android/**",
+    ".agents/**",
+    ".claude/**",
+    ".conductor/**",
+    ".opencode/**",
+    ".alcode/**",
+    ".openchamber/**",
+    ".tmp/**",
+    "patches/**",
+    "bun-patches/**",
+    "tools/oxlint/anti-slop/**",
   ],
   overrides: [
     {

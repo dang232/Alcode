@@ -1,3 +1,4 @@
+import '../../server/lib/alcode-env-compat.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -14,10 +15,10 @@ import { discoverRunningInstances } from './cli-lifecycle.js';
 import { getInstanceFilePath, readInstanceOptions } from './cli-process.js';
 import { createRemoteClientAuthRuntime } from '../../server/lib/client-auth/remote-clients.js';
 import { createClientPairingRuntime } from '../../server/lib/client-auth/pairing.js';
+import { encodePairingConnectUrl } from '../../server/lib/client-auth/pairing-url.js';
 import { createRelayIdentityRuntime } from '../../server/lib/relay/identity.js';
 import { createRelayKeyStore } from '../../server/lib/relay/key-store.js';
 import { DEFAULT_RELAY_URL, pinnedRelayUrl } from '../../server/lib/relay/service.js';
-import { bytesToBase64Url } from '../../server/lib/relay/e2ee.js';
 import { createSettingsAccessors as createSettingsAccessorsModule } from './cli-settings-accessors.js';
 import {
   intro as clackIntro,
@@ -43,7 +44,7 @@ function isValidRelayUrl(value) {
 }
 
 // Resolve the relay endpoint the same way the running host does (service.js):
-// the administrator's pinned relay (policy file, then OPENCHAMBER_RELAY_URL),
+// the administrator's pinned relay (policy file, then ALCODE_RELAY_URL),
 // then the stored setting, then the default — so the pairing link points at
 // the same relay the host connects out to.
 function resolveRelayUrl(settings) {
@@ -66,7 +67,7 @@ function createSettingsAccessors() {
   return createSettingsAccessorsModule({
     fsPromises: fs.promises,
     path,
-    dataDir: getOpenChamberDataDir(),
+    dataDir: getAlcodeDataDir(),
     settingsFileName: 'settings.json',
   });
 }
@@ -107,7 +108,7 @@ async function buildRelayPairingCandidate() {
 // session created here is redeemable by the live server. createPairingSession
 // only writes the store (no server needed to mint); redeem is served by the host.
 function createCliPairingRuntime() {
-  const dataDir = getOpenChamberDataDir();
+  const dataDir = getAlcodeDataDir();
   const remoteClientAuthRuntime = createRemoteClientAuthRuntime({
     fsPromises: fs.promises,
     path,
@@ -123,13 +124,8 @@ function createCliPairingRuntime() {
   });
 }
 
-// Mirror of encodePairingConnectionPayload in @openchamber/ui (the bin cannot
-// import the UI package). Keep in sync: v2 payload → base64url(JSON) in the URL
-// query, so the one-time secret rides the link, never the network.
-function encodePairingConnectUrl(payload) {
-  const encoded = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
-  return `openchamber://connect?v=2&p=${encoded}`;
-}
+// Pairing link codec lives in server/lib/client-auth/pairing-url.js (shared
+// with the server); the @alcode/ui package mirrors the same wire form.
 
 function buildPairingPayload({ pairing, label, candidates }) {
   return {
@@ -145,7 +141,7 @@ function buildPairingPayload({ pairing, label, candidates }) {
 
 async function resolveConnectUrlServerUrl(options) {
   let hostOverride = options.host;
-  if (typeof hostOverride !== 'string' && !process.env.OPENCHAMBER_HOST) {
+  if (typeof hostOverride !== 'string' && !process.env.ALCODE_HOST) {
     const storedOptions = readInstanceOptions(await getInstanceFilePath(options.port));
     if (typeof storedOptions?.host === 'string' && storedOptions.host.trim()) {
       hostOverride = storedOptions.host.trim();
@@ -212,10 +208,10 @@ function normalizeServerUrlForConnection(value) {
   }
 }
 
-function getOpenChamberDataDir() {
-  return process.env.OPENCHAMBER_DATA_DIR
-    ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-    : path.join(os.homedir(), '.config', 'openchamber');
+function getAlcodeDataDir() {
+  return process.env.ALCODE_DATA_DIR
+    ? path.resolve(process.env.ALCODE_DATA_DIR)
+    : path.join(os.homedir(), '.config', 'alcode');
 }
 
 async function displayTunnelQrCode(url) {
@@ -231,7 +227,7 @@ async function displayTunnelQrCode(url) {
 
 function createConnectUrlCommand({ serveCommand }) {
   return async function connectUrlCommand(options = {}) {
-    assertSafeBrowserPort(options.port, { context: 'OpenChamber connect-url' });
+    assertSafeBrowserPort(options.port, { context: 'Alcode connect-url' });
     const explicitServerUrl = options.server ? normalizeServerUrlForConnection(options.server) : null;
     if (options.server && !explicitServerUrl) {
       throw new TunnelCliError('Invalid --server URL. Use an http:// or https:// URL.', EXIT_CODE.USAGE_ERROR);
@@ -245,10 +241,8 @@ function createConnectUrlCommand({ serveCommand }) {
             port: options.port,
             explicitPort: true,
             host: options.host,
-            uiPassword: options.uiPassword,
             apiOnly: options.apiOnly,
             suppressUnsafePortWarning: true,
-            suppressUiPasswordWarning: true,
             suppressStartupSummary: true,
             suppressQuietOutput: true,
           });
@@ -296,9 +290,9 @@ function createConnectUrlCommand({ serveCommand }) {
       return;
     }
 
-    clackIntro('OpenChamber pairing link');
+    clackIntro('Alcode pairing link');
     if (serverState.autoStarted) {
-      logStatus('success', `started OpenChamber on port ${options.port}`);
+      logStatus('success', `started Alcode on port ${options.port}`);
     }
     logStatus('success', connectUrl);
     clackLog.info(`Server URL: ${serverUrl}`);
@@ -312,15 +306,15 @@ function createConnectUrlCommand({ serveCommand }) {
       clackLog.info(`Fingerprint: ${pairing.fingerprint}`);
     }
     if (resolvedServerUrl.source === 'lan-detected') {
-      clackLog.info('Detected a LAN address because OpenChamber is bound to all interfaces. Use --server to override it.');
+      clackLog.info('Detected a LAN address because Alcode is bound to all interfaces. Use --server to override it.');
     } else if (resolvedServerUrl.source === 'loopback-fallback') {
-      clackLog.warn('OpenChamber is bound to all interfaces, but no LAN address was detected. Use --server to provide a reachable URL.');
+      clackLog.warn('Alcode is bound to all interfaces, but no LAN address was detected. Use --server to provide a reachable URL.');
     } else if (isLoopbackServerUrl(serverUrl)) {
       // The advertised address does not establish how the server is bound.
       // Localhost can also be intentional, including Windows-to-WSL forwarding.
       logStatus('info', '[LOOPBACK_URL]', 'This link uses localhost for direct connections. For another device, use --server with a reachable address or include --relay.');
     }
-    clackLog.info('Scan or paste this link into another OpenChamber client. It is single-use and expires.');
+    clackLog.info('Scan or paste this link into another Alcode client. It is single-use and expires.');
     if (options.qr === true) {
       await displayTunnelQrCode(connectUrl);
     }

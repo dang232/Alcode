@@ -1353,7 +1353,7 @@ export function registerGitHubRoutes(app, options = {}) {
       const clientId = getGitHubClientId();
       if (!clientId) {
         return res.status(400).json({
-          error: 'GitHub OAuth client not configured. Set OPENCHAMBER_GITHUB_CLIENT_ID.',
+          error: 'GitHub OAuth client not configured. Set ALCODE_GITHUB_CLIENT_ID.',
         });
       }
 

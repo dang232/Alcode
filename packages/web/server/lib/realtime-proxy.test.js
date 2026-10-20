@@ -1,10 +1,23 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import crypto from 'node:crypto';
 import express from 'express';
 import http from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import { attachRealtimeProxy, buildRealtimeProxySseUrl, buildRealtimeProxyWsUrl } from './realtime-proxy.js';
 import { createUiAuth } from './ui-auth/ui-auth.js';
+
+const ALCORE_TEST_SECRET = 'realtime-proxy-test-secret-0123456789abcdef';
+const ALCORE_TEST_ISSUER = 'https://auth.alcore.test';
+
+const mintAlcoreToken = () => {
+  const b64url = (value) => Buffer.from(value, 'utf8').toString('base64url');
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = { sub: 'user-1', sid: 'sess-1', iss: ALCORE_TEST_ISSUER, aud: 'auth', intent: 'session', exp: now + 900 };
+  const data = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
+  return `${data}.${crypto.createHmac('sha256', ALCORE_TEST_SECRET).update(data).digest().toString('base64url')}`;
+};
 
 const servers = [];
 
@@ -87,7 +100,7 @@ describe('realtime proxy URL builders', () => {
     const url = new URL(buildRealtimeProxySseUrl('http://127.0.0.1:57123', 'https://remote.example/api/global/event?x=1'));
 
     expect(url.origin).toBe('http://127.0.0.1:57123');
-    expect(url.pathname).toBe('/api/openchamber/realtime-proxy/sse');
+    expect(url.pathname).toBe('/api/alcode/realtime-proxy/sse');
     expect(url.searchParams.get('url')).toBe('https://remote.example/api/global/event?x=1');
   });
 
@@ -96,7 +109,7 @@ describe('realtime proxy URL builders', () => {
 
     expect(url.protocol).toBe('wss:');
     expect(url.host).toBe('127.0.0.1:57123');
-    expect(url.pathname).toBe('/api/openchamber/realtime-proxy/ws');
+    expect(url.pathname).toBe('/api/alcode/realtime-proxy/ws');
     expect(url.searchParams.get('url')).toBe('wss://remote.example/api/global/event/ws');
   });
 });
@@ -111,7 +124,7 @@ describe('realtime proxy', () => {
         headers: {
           Accept: 'text/event-stream',
           'Last-Event-ID': 'evt-42',
-          Origin: 'openchamber-ui://app',
+          Origin: 'alcode-ui://app',
         },
       });
 
@@ -132,7 +145,7 @@ describe('realtime proxy', () => {
 
     try {
       const response = await fetch(buildRealtimeProxySseUrl(origin, `${upstream.origin}/api/global/event`), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app' },
       });
 
       expect(response.status).toBe(401);
@@ -164,7 +177,7 @@ describe('realtime proxy', () => {
 
     try {
       const response = await fetch(buildRealtimeProxySseUrl(origin, `${upstream.origin}/api/global/event`), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app' },
       });
 
       expect(response.status).toBe(404);
@@ -180,7 +193,7 @@ describe('realtime proxy', () => {
 
     try {
       const response = await fetch(buildRealtimeProxySseUrl(origin, `${upstream.origin}/api/config/settings`), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app' },
       });
 
       expect(response.status).toBe(404);
@@ -206,7 +219,7 @@ describe('realtime proxy', () => {
     try {
       const target = `${upstreamOrigin.replace(/^http:/, 'ws:')}/api/global/event/ws?lastEventId=evt-1`;
       const client = new WebSocket(buildRealtimeProxyWsUrl(origin, target), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app' },
       });
       await new Promise((resolve, reject) => {
         client.once('open', resolve);
@@ -239,7 +252,7 @@ describe('realtime proxy', () => {
     const upstreamOrigin = await listen(upstreamServer);
     const { origin, runtime } = await startProxyServer({ apiBaseUrl: upstreamOrigin });
     const attempt = (path) => new Promise((resolve, reject) => {
-      const client = new WebSocket(buildRealtimeProxyWsUrl(origin, `${upstreamOrigin.replace(/^http:/, 'ws:')}${path}`), { headers: { Origin: 'openchamber-ui://app' } });
+      const client = new WebSocket(buildRealtimeProxyWsUrl(origin, `${upstreamOrigin.replace(/^http:/, 'ws:')}${path}`), { headers: { Origin: 'alcode-ui://app' } });
       client.once('message', (data) => { client.close(); resolve({ message: data.toString() }); });
       client.once('close', (code) => resolve({ code }));
       client.once('error', reject);
@@ -257,20 +270,20 @@ describe('realtime proxy', () => {
     }
   });
 
-  it('allows first passwordless WebSocket proxy upgrade without an existing cookie', async () => {
+  it('allows an Alcore-authenticated WebSocket proxy upgrade without an existing cookie', async () => {
     const upstreamServer = http.createServer();
     const upstreamWs = new WebSocketServer({ server: upstreamServer });
     upstreamWs.on('connection', (socket) => {
       socket.send('ready');
     });
     const upstreamOrigin = await listen(upstreamServer);
-    const uiAuthController = createUiAuth({ password: '' });
+    const uiAuthController = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
     const { origin, runtime } = await startProxyServerWithAuthController({ apiBaseUrl: upstreamOrigin, uiAuthController });
 
     try {
       const target = `${upstreamOrigin.replace(/^http:/, 'ws:')}/api/global/event/ws`;
       const client = new WebSocket(buildRealtimeProxyWsUrl(origin, target), {
-        headers: { Origin: 'openchamber-ui://app' },
+        headers: { Origin: 'alcode-ui://app', Authorization: `Bearer ${mintAlcoreToken()}` },
       });
       const message = await new Promise((resolve, reject) => {
         client.once('message', (data) => resolve(data.toString()));

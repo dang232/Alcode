@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { createClientPairingRuntime } from './pairing.js';
 
 const makeRuntime = async (options = {}) => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'openchamber-pairing-test-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'alcode-pairing-test-'));
   const createdClients = [];
   const remoteClientAuthRuntime = options.remoteClientAuthRuntime || {
     createClient: vi.fn(async (input) => {
@@ -142,5 +142,32 @@ describe('client auth pairing runtime', () => {
     const ids = store.sessions.map((session) => session.id);
     expect(ids).not.toContain(expired.pairing.id);
     expect(ids).toHaveLength(1);
+  });
+});
+
+describe('pairing connection link codec', () => {
+  const payload = {
+    v: 2,
+    pairingId: 'pair_abc123',
+    secret: 'one-time-secret',
+    candidates: [{ type: 'lan', url: 'http://192.168.1.20:3000', priority: 10 }],
+  };
+
+  it('round-trips a minted link and accepts the pre-rename scheme', async () => {
+    const { encodePairingConnectUrl, decodePairingConnectUrl } = await import('./pairing-url.js');
+    const link = encodePairingConnectUrl(payload);
+    expect(link.startsWith('alcode://connect?v=2&p=')).toBe(true);
+    expect(decodePairingConnectUrl(link)).toEqual(payload);
+    // A link minted before the rename decodes to the same payload.
+    expect(decodePairingConnectUrl(link.replace('alcode://', 'openchamber://'))).toEqual(payload);
+  });
+
+  it('rejects links that are not well-formed v2 pairing links', async () => {
+    const { decodePairingConnectUrl } = await import('./pairing-url.js');
+    expect(decodePairingConnectUrl('')).toBeNull();
+    expect(decodePairingConnectUrl('https://example.test/connect?v=2&p=e30')).toBeNull();
+    expect(decodePairingConnectUrl('alcode://connect?v=2&p=not-json')).toBeNull();
+    expect(decodePairingConnectUrl('alcode://connect?v=1&p=e30')).toBeNull();
+    expect(decodePairingConnectUrl('alcode://session/ses_a')).toBeNull();
   });
 });

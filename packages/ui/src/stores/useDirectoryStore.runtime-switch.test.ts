@@ -28,7 +28,7 @@ const testLocalStorage = {
 } satisfies Storage;
 
 interface TestWindow {
-  __OPENCHAMBER_HOME__: string;
+  __ALCODE_HOME__: string;
   localStorage: Storage;
   matchMedia: () => { matches: boolean };
   addEventListener: () => void;
@@ -117,7 +117,7 @@ describe('directory store after the desktop switches to another host', () => {
 
   test('home and directory stay unknown until that host names its home, then both are its own', async () => {
     setTestWindow({
-      __OPENCHAMBER_HOME__: MAC_HOME,
+      __ALCODE_HOME__: MAC_HOME,
       localStorage: testLocalStorage,
       matchMedia: () => ({ matches: false }),
       addEventListener: () => undefined,

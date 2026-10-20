@@ -32,6 +32,7 @@ let listedAgents: ListedAgent[] = [];
 let listGate: Promise<void> | null = null;
 let listRequests = 0;
 let agentConfigResponses = new Map<string, unknown>();
+let catalogResponse: unknown = undefined;
 const consumedConfigLookups: string[] = [];
 
 const pathnameOf = (url: string): string => {
@@ -45,6 +46,12 @@ const pathnameOf = (url: string): string => {
 const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
   const url = String(input instanceof Request ? input.url : input);
   const path = pathnameOf(url);
+  if (path === '/api/config/agents/catalog') {
+    if (catalogResponse === undefined) {
+      return Response.json({ error: 'no mocked catalog response' }, { status: 500 });
+    }
+    return Response.json(catalogResponse);
+  }
   if (path.startsWith('/api/config/agents/')) {
     const name = decodeURIComponent(path.slice('/api/config/agents/'.length));
     const payload = agentConfigResponses.get(name);
@@ -92,7 +99,8 @@ beforeEach(() => {
   listGate = null;
   listRequests = 0;
   invalidateAgentsLoadCache(DIRECTORY);
-  useAgentsStore.setState({ agents: [], agentsByDirectory: {}, isLoading: false });
+  useAgentsStore.setState({ agents: [], agentsByDirectory: {}, isLoading: false, omoCatalog: [], omoCatalogStatus: 'idle' });
+  catalogResponse = undefined;
 });
 
 afterAll(() => {
@@ -238,5 +246,36 @@ describe('useAgentsStore load generations', () => {
     await Promise.all([first, second]);
     expect(listRequests).toBe(1);
     expect(agentNames()).toEqual(['build']);
+  });
+});
+
+describe('useAgentsStore OmO catalog', () => {
+  test('a catalog response populates the catalog once', async () => {
+    catalogResponse = {
+      version: 1,
+      items: [
+        { id: 'explore', kind: 'agent', description: 'Search', source: 'omo-compatible', edition: 'senpi' },
+        { id: 'quick', kind: 'category', description: 'Fast lane', source: 'omo-compatible', edition: 'senpi' },
+      ],
+    };
+
+    expect(await useAgentsStore.getState().loadOmoCatalog()).toBe(true);
+    const state = useAgentsStore.getState();
+    expect(state.omoCatalogStatus).toBe('loaded');
+    expect(state.omoCatalog.map((item) => item.id)).toEqual(['explore', 'quick']);
+    // A second call joins the loaded state without refetching.
+    expect(await useAgentsStore.getState().loadOmoCatalog()).toBe(true);
+  });
+
+  test('a failed catalog read keeps the previous list', async () => {
+    useAgentsStore.setState({
+      omoCatalog: [{ id: 'explore', kind: 'agent', description: 'Search', source: 'omo-compatible', edition: 'senpi' }],
+      omoCatalogStatus: 'idle',
+    });
+
+    expect(await useAgentsStore.getState().loadOmoCatalog()).toBe(false);
+    const state = useAgentsStore.getState();
+    expect(state.omoCatalogStatus).toBe('failed');
+    expect(state.omoCatalog.map((item) => item.id)).toEqual(['explore']);
   });
 });

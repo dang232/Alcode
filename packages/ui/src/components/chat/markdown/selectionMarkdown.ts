@@ -30,7 +30,7 @@ const SKIP_SELECTOR = [
   '[data-md-code-actions]',
   '[data-markdown="mermaid-toolbar"]',
   '[data-md-disclosure-icon]',
-  '[data-openchamber-markdown-image-label-icon]',
+  '[data-alcode-markdown-image-label-icon]',
   '[data-md-table-measure]',
   `[${MESSAGE_IMAGE_EXPORT_EXCLUDE_ATTRIBUTE}]`,
   '.katex-mathml',
@@ -236,7 +236,7 @@ const serializeInlineElement = (element: Element, format: RenderedCopyFormat): s
       const text = content();
       const href = element.getAttribute('href') ?? '';
       // File references were plain paths in the source; keep them as text.
-      if (plain || !href || element.getAttribute('data-openchamber-file-link') === 'true') return text;
+      if (plain || !href || element.getAttribute('data-alcode-file-link') === 'true') return text;
       if (text.trim() === href) return href;
       return `[${text}](${href})`;
     }

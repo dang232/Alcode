@@ -20,16 +20,16 @@
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
-      "@openchamber/sdk": [
+      "@alcode/sdk": [
         "../sdk/src/index.ts"
       ],
-      "@openchamber/sdk/schemas": [
+      "@alcode/sdk/schemas": [
         "../sdk/src/schemas.ts"
       ],
       "@/*": [
         "./src/*"
       ],
-      "@openchamber/ui/*": [
+      "@alcode/ui/*": [
         "./src/*"
       ]
     }

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { JsonValue } from '@openchamber/sdk';
+import type { JsonValue } from '@alcode/sdk';
 import { buildDagRunModel, dagRunModelToSnapshotDoc, type DagRunModel } from '@/lib/dagRunModel';
 import { useDirectorySync } from '@/sync/sync-context';
 import type { State } from '@/sync/types';
@@ -10,26 +10,13 @@ const sameModel = (left: DagRunModel | null, right: DagRunModel | null): boolean
   return left.updatedAt === right.updatedAt
     && left.state === right.state
     && left.label === right.label
-    && left.source === right.source
-    && left.runId === right.runId
-    && left.phase === right.phase
-    && left.progress.total === right.progress.total
-    && left.progress.settled === right.progress.settled
-    && left.missingGoalIds.join(',') === right.missingGoalIds.join(',')
-    && left.bookkeepingToolCallIds.length === right.bookkeepingToolCallIds.length
     && left.children.length === right.children.length
     && left.children.every((child, index) => {
       const other = right.children[index];
       return other !== undefined
         && child.sessionId === other.sessionId
         && child.state === other.state
-        && child.label === other.label
-        && child.goalId === other.goalId
-        && child.output === other.output
-        && child.error === other.error
-        && child.resultRef === other.resultRef
-        && child.toolCalls.length === other.toolCalls.length
-        && child.artifacts.join(',') === other.artifacts.join(',');
+        && child.label === other.label;
     })
     && left.synthesis.state === right.synthesis.state
     && left.synthesis.text === right.synthesis.text;
@@ -37,9 +24,7 @@ const sameModel = (left: DagRunModel | null, right: DagRunModel | null): boolean
 
 /**
  * The active conversation's DAG run model, stable across unrelated store
- * updates. `null` when the conversation holds no delegation evidence and
- * no native run id. Native workers contribute their own messages, so the
- * full message index travels alongside the parent slices.
+ * updates. `null` when the conversation holds no delegation evidence.
  */
 export const useDagRunModel = (
   conversationId: string | null,
@@ -60,7 +45,6 @@ export const useDagRunModel = (
         statuses: state.session_status ?? {},
         messages,
         parts: state.part ?? {},
-        allMessages: state.message ?? {},
       });
       if (sameModel(previous, next)) return previous;
       previous = next;

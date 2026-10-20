@@ -198,8 +198,8 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
        ]
      },
 
-    openchamber: {
-      displayName: 'OpenChamber',
+    alcode: {
+      displayName: 'Alcode',
       category: 'system',
       outputLanguage: 'json',
       inputFields: []
@@ -212,15 +212,15 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
       inputFields: []
     },
 
-    openchamber_web: {
-      displayName: 'OpenChamber Web',
+    alcode_web: {
+      displayName: 'Alcode Web',
       category: 'system',
       outputLanguage: 'json',
       inputFields: []
     },
 
-    openchamber_memory: {
-      displayName: 'OpenChamber Memory',
+    alcode_memory: {
+      displayName: 'Alcode Memory',
       category: 'system',
       outputLanguage: 'json',
       inputFields: []
@@ -233,8 +233,8 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
       inputFields: []
     },
 
-    openchamber_notify: {
-      displayName: 'OpenChamber Notify',
+    alcode_notify: {
+      displayName: 'Alcode Notify',
       category: 'system',
       outputLanguage: 'json',
       inputFields: []

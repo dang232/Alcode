@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useSettingsDirectory } from '@/hooks/useSettingsDirectory';
-import { selectAgentsForDirectory, selectDisabledAgentsForDirectory, useAgentsStore, isAgentBuiltIn, isAgentHidden, isAgentManageable, type AgentScope, type AgentWithExtras } from '@/stores/useAgentsStore';
+import { selectAgentsForDirectory, selectDisabledAgentsForDirectory, useAgentsStore, isAgentBuiltIn, isAgentHidden, isAgentManageable, type AgentScope, type AgentWithExtras, type OmoCatalogItem } from '@/stores/useAgentsStore';
 import { isPrimaryMode } from '@/components/chat/mobileControlsUtils';
 import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/lib/utils';
@@ -56,6 +56,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
     loadDisabledAgents,
     updateAgent,
     fetchAgentEntity,
+    loadOmoCatalog,
   } = useAgentsStore(useShallow((s) => ({
     selectedAgentName: s.selectedAgentName,
     setSelectedAgent: s.setSelectedAgent,
@@ -66,6 +67,7 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
     loadDisabledAgents: s.loadDisabledAgents,
     updateAgent: s.updateAgent,
     fetchAgentEntity: s.fetchAgentEntity,
+    loadOmoCatalog: s.loadOmoCatalog,
   })));
 
   // Settings browses whichever project its own selector points at; the app
@@ -79,7 +81,31 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
   React.useEffect(() => {
     void loadAgents(settingsDirectory);
     void loadDisabledAgents(settingsDirectory);
-  }, [loadAgents, loadDisabledAgents, settingsDirectory]);
+    void loadOmoCatalog();
+  }, [loadAgents, loadDisabledAgents, loadOmoCatalog, settingsDirectory]);
+  const omoCatalog = useAgentsStore((state) => state.omoCatalog);
+
+  // A bundled catalog entry becomes a workspace agent: a new user-scope file
+  // seeded from the entry's own description and instructions. Only agent
+  // entries clone; categories are routing entries, not agents.
+  const handleCloneCatalogItem = (item: OmoCatalogItem) => {
+    const baseName = item.id;
+    let copyNumber = 1;
+    let newName = `${baseName}-copy`;
+    while (agents.some((a) => a.name === newName)) {
+      copyNumber++;
+      newName = `${baseName}-copy-${copyNumber}`;
+    }
+    setAgentDraft({
+      name: newName,
+      scope: 'user',
+      description: item.description,
+      system: item.prompt ?? undefined,
+      mode: 'subagent',
+    });
+    setSelectedAgent(newName);
+    onItemSelect?.();
+  };
 
   // Disabling keeps the agent's file; OpenCode just stops loading it. The last
   // agent a chat can run as is never offered, so the composer keeps one.
@@ -356,6 +382,28 @@ export const AgentsSidebar: React.FC<AgentsSidebarProps> = ({ onItemSelect }) =>
               </>
             )}
 
+            {omoCatalog.length > 0 && (
+              <>
+                <div className="px-2 pb-1.5 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('settings.agents.sidebar.section.omoCompatible')}
+                </div>
+                {omoCatalog
+                  .filter((item) => matchesRankQuery([item.id, item.description], query))
+                  .map((item) => (
+                    <OmoCatalogRow
+                      key={item.id}
+                      item={item}
+                      isSelected={selectedAgentName === item.id}
+                      onSelect={() => {
+                        setSelectedAgent(item.id);
+                        onItemSelect?.();
+                      }}
+                      onClone={item.kind === 'agent' ? () => handleCloneCatalogItem(item) : undefined}
+                    />
+                  ))}
+              </>
+            )}
+
             {customAgents.length > 0 && (
               <>
                 <div className="px-2 pb-1.5 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -618,5 +666,58 @@ const AgentListItem: React.FC<AgentListItemProps> = ({
         {renderMenuItems(ContextMenuItem)}
       </ContextMenuContent>
     </ContextMenu>
+  );
+};
+
+interface OmoCatalogRowProps {
+  item: OmoCatalogItem;
+  isSelected: boolean;
+  onSelect: () => void;
+  onClone?: () => void;
+}
+
+const OmoCatalogRow: React.FC<OmoCatalogRowProps> = ({ item, isSelected, onSelect, onClone }) => {
+  const { t } = useI18n();
+  const requirements = [...(item.requiresModels ?? []), ...(item.requiresCapabilities ?? [])];
+  return (
+    <div className={cn('group relative flex items-center rounded-md px-1.5 py-1 transition-all duration-200 select-none', isSelected ? 'bg-interactive-selection' : 'hover:bg-interactive-hover')}>
+      <button
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 flex-col gap-0 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        tabIndex={0}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="typography-ui-label font-normal truncate text-foreground">
+            {item.id}
+          </span>
+          <span className="typography-micro text-muted-foreground bg-muted px-1 rounded flex-shrink-0 leading-none pb-px border border-border/50">
+            {t('settings.agents.sidebar.badge.omo')}
+          </span>
+          <span className="typography-micro text-muted-foreground/70 flex-shrink-0 leading-none">
+            {item.kind === 'category' ? item.id : item.edition}
+          </span>
+        </div>
+        {item.description ? (
+          <div className="typography-micro text-muted-foreground/60 truncate leading-tight">
+            {item.description}
+          </div>
+        ) : null}
+        {requirements.length > 0 ? (
+          <div className="typography-micro text-muted-foreground/60 truncate leading-tight">
+            {t('settings.agents.sidebar.item.requires', { list: requirements.join(', ') })}
+          </div>
+        ) : null}
+      </button>
+      {onClone ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClone(); }}
+          className="flex-shrink-0 rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-interactive-hover focus-visible:opacity-100"
+          aria-label={t('settings.common.actions.duplicate')}
+          title={t('settings.common.actions.duplicate')}
+        >
+          <Icon name="file-copy" className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+    </div>
   );
 };

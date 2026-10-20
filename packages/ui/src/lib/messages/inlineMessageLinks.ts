@@ -1,7 +1,7 @@
-const SKILL_LINK_PREFIX = '#openchamber-skill:';
-const AGENT_LINK_PREFIX = '#openchamber-agent:';
-const ATTACHMENT_LINK_PREFIX = '#openchamber-attachment:';
-const OPENABLE_ATTACHMENT_LINK_PREFIX = '#openchamber-attachment-open:';
+const SKILL_LINK_PREFIX = '#alcode-skill:';
+const AGENT_LINK_PREFIX = '#alcode-agent:';
+const ATTACHMENT_LINK_PREFIX = '#alcode-attachment:';
+const OPENABLE_ATTACHMENT_LINK_PREFIX = '#alcode-attachment-open:';
 
 /** encodeURIComponent leaves `(`, `)` and `'` alone, and `)` would end a Markdown link target. */
 const encodeHrefPart = (value: string): string =>

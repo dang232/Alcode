@@ -121,7 +121,7 @@ describe('settings helpers', () => {
     expect(helpers.formatSettingsResponse(next).workStatusHiddenSectionsExplicit).toBe(true);
     expect(helpers.sanitizeSettingsUpdate({ workStatusHiddenSectionsExplicit: 'true' }).workStatusHiddenSectionsExplicit).toBeUndefined();
   });
-  it('imports from the packed @openchamber/web tarball without escaping the published package', async () => {
+  it('imports from the packed @alcode/web tarball without escaping the published package', async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'settings-helpers-pack-'));
     const packDir = join(tempRoot, 'pack');
     const extractDir = join(tempRoot, 'extract');
@@ -480,15 +480,11 @@ describe('settings helpers', () => {
     expect(helpers.sanitizeSettingsUpdate({ permissionDefaultMode: 'always' })).toEqual({});
   });
 
-  it('accepts desktopUiPassword as a persisted shared setting', () => {
+  it('drops the removed desktopUiPassword setting', () => {
     const helpers = createTestHelpers();
 
-    expect(helpers.sanitizeSettingsUpdate({ desktopUiPassword: ' secret ' })).toEqual({
-      desktopUiPassword: 'secret',
-    });
-    expect(helpers.sanitizeSettingsUpdate({ desktopUiPassword: '' })).toEqual({
-      desktopUiPassword: '',
-    });
+    expect(helpers.sanitizeSettingsUpdate({ desktopUiPassword: ' secret ' })).toEqual({});
+    expect(helpers.sanitizeSettingsUpdate({ desktopUiPassword: '' })).toEqual({});
   });
 
   it('accepts mobileKeyboardMode as a persisted shared setting', () => {
@@ -617,24 +613,24 @@ describe('settings helpers', () => {
 
   it('includes transient desktop LAN access runtime status in desktop settings response', () => {
     const helpers = createTestHelpers();
-    const previousRuntime = process.env.OPENCHAMBER_RUNTIME;
-    const previousActive = process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE;
-    const previousReason = process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
+    const previousRuntime = process.env.ALCODE_RUNTIME;
+    const previousActive = process.env.ALCODE_DESKTOP_LAN_ACCESS_ACTIVE;
+    const previousReason = process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
     try {
-      process.env.OPENCHAMBER_RUNTIME = 'desktop';
-      process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE = 'false';
-      process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'missing-password';
+      process.env.ALCODE_RUNTIME = 'desktop';
+      process.env.ALCODE_DESKTOP_LAN_ACCESS_ACTIVE = 'false';
+      process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'missing-alcore-secret';
 
       const response = helpers.formatSettingsResponse({ desktopLanAccessEnabled: true });
       expect(response.desktopLanAccessActive).toBe(false);
-      expect(response.desktopLanAccessBlockedReason).toBe('missing-password');
+      expect(response.desktopLanAccessBlockedReason).toBe('missing-alcore-secret');
     } finally {
-      if (typeof previousRuntime === 'string') process.env.OPENCHAMBER_RUNTIME = previousRuntime;
-      else delete process.env.OPENCHAMBER_RUNTIME;
-      if (typeof previousActive === 'string') process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE = previousActive;
-      else delete process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE;
-      if (typeof previousReason === 'string') process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = previousReason;
-      else delete process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
+      if (typeof previousRuntime === 'string') process.env.ALCODE_RUNTIME = previousRuntime;
+      else delete process.env.ALCODE_RUNTIME;
+      if (typeof previousActive === 'string') process.env.ALCODE_DESKTOP_LAN_ACCESS_ACTIVE = previousActive;
+      else delete process.env.ALCODE_DESKTOP_LAN_ACCESS_ACTIVE;
+      if (typeof previousReason === 'string') process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON = previousReason;
+      else delete process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
     }
   });
 
@@ -828,7 +824,7 @@ describe('settings registry gate', () => {
   // stops accepting a key the registry still lists — that is the drift the
   // registry exists to end.
   const validValues = {
-    themeId: 'openchamber-dark', locale: 'zh-CN', useSystemTheme: true, themeVariant: 'dark', lightThemeId: 'openchamber-light', darkThemeId: 'openchamber-dark',
+    themeId: 'alcode-dark', locale: 'zh-CN', useSystemTheme: true, themeVariant: 'dark', lightThemeId: 'alcode-light', darkThemeId: 'alcode-dark',
     splashBgLight: '#fff', splashFgLight: '#000', splashBgDark: '#000', splashFgDark: '#fff',
     lastDirectory: '/home/testuser/project', homeDirectory: '/home/testuser', opencodeBinary: '/usr/local/bin/opencode',
     projects: [{ id: 'p', path: '/home/testuser/project' }], activeProjectId: 'p',
@@ -867,7 +863,7 @@ describe('settings registry gate', () => {
     usageDisplayMode: 'usage', usageDropdownProviders: ['anthropic'], usageSelectedModels: { anthropic: ['claude'] }, usageCollapsedFamilies: { anthropic: ['f'] },
     usageExpandedFamilies: { anthropic: ['f'] }, usageModelGroups: { anthropic: { customGroups: [{ id: 'g', label: 'G', models: ['claude'], order: 0 }] } },
     globalBehaviorPrompt: 'Be brief.', responseStyleEnabled: true, responseStylePreset: 'concise', responseStyleCustomInstructions: 'x',
-    pwaAppName: 'OpenChamber', pwaOrientation: 'portrait', mobileKeyboardMode: 'native', desktopWindowControlsPosition: 'left', desktopWindowControlsStyle: 'classic',
+    pwaAppName: 'Alcode', pwaOrientation: 'portrait', mobileKeyboardMode: 'native', desktopWindowControlsPosition: 'left', desktopWindowControlsStyle: 'classic',
     inputBarOffset: 10,
     customProviderIcons: { 'campus-llm': 'cloud' },
   };
@@ -924,11 +920,9 @@ describe('settings registry gate', () => {
     const helpers = createTestHelpers();
     const secretKeys = Object.entries(registry.fields).filter(([, field]) => field.secret).map(([key]) => key);
     expect(secretKeys).toContain('managedRemoteTunnelToken');
-    expect(secretKeys).toContain('desktopUiPassword');
     expect(secretKeys).toContain('managedRemoteTunnelPresetTokens');
     const response = helpers.formatSettingsResponse({
       managedRemoteTunnelToken: 'token',
-      desktopUiPassword: 'pw',
       managedRemoteTunnelPresetTokens: { a: 'tok' },
       themeId: 'x',
     });
@@ -936,8 +930,6 @@ describe('settings registry gate', () => {
       expect(response).not.toHaveProperty(key);
     }
     expect(response.hasManagedRemoteTunnelToken).toBe(true);
-    expect(response.hasDesktopUiPassword).toBe(true);
-    expect(helpers.formatSettingsResponse({ desktopUiPassword: '' }).hasDesktopUiPassword).toBe(false);
   });
 
   it('accepts the newly shared profile fields', () => {

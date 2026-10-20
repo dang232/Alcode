@@ -69,7 +69,7 @@ describe('opencodeConfig JSONC parse safety (issue #2923)', () => {
   let previousOpenCodeConfig: string | undefined;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-vscode-config-parse-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-vscode-config-parse-'));
     previousOpenCodeConfig = process.env.OPENCODE_CONFIG;
   });
 
@@ -164,7 +164,7 @@ describe('opencodeConfig comment-preserving config writes (issue #3587)', () => 
   let previousOpenCodeConfig: string | undefined;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-vscode-config-write-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alcode-vscode-config-write-'));
     previousOpenCodeConfig = process.env.OPENCODE_CONFIG;
   });
 

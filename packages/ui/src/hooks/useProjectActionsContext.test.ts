@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { resolveProjectActionsOwner } from './useProjectActionsContext';
 
 const projects = [
-  { id: 'openchamber', path: '/workspace/openchamber', label: 'OpenChamber' },
+  { id: 'alcode', path: '/workspace/alcode', label: 'Alcode' },
 ];
 
 describe('resolveProjectActionsOwner', () => {
@@ -11,14 +11,14 @@ describe('resolveProjectActionsOwner', () => {
     const owner = resolveProjectActionsOwner({
       projects,
       worktreesByProject: new Map([
-        ['/workspace/openchamber', [{
-          path: '/workspace/openchamber-feature',
-          projectDirectory: '/workspace/openchamber',
+        ['/workspace/alcode', [{
+          path: '/workspace/alcode-feature',
+          projectDirectory: '/workspace/alcode',
           branch: 'feature',
           label: 'feature',
         }]],
       ]),
-      directory: '/workspace/openchamber-feature',
+      directory: '/workspace/alcode-feature',
       activeProjectId: null,
     });
 
@@ -29,7 +29,7 @@ describe('resolveProjectActionsOwner', () => {
     const owner = resolveProjectActionsOwner({
       projects,
       worktreesByProject: new Map(),
-      directory: '/workspace/openchamber/packages/ui',
+      directory: '/workspace/alcode/packages/ui',
       activeProjectId: null,
     });
 
@@ -41,7 +41,7 @@ describe('resolveProjectActionsOwner', () => {
       projects,
       worktreesByProject: new Map(),
       directory: '/some/other/project',
-      activeProjectId: 'openchamber',
+      activeProjectId: 'alcode',
     });
 
     expect(owner).toEqual(projects[0]);
@@ -52,14 +52,14 @@ describe('resolveProjectActionsOwner', () => {
       projects,
       worktreesByProject: new Map(),
       directory: '',
-      activeProjectId: 'openchamber',
+      activeProjectId: 'alcode',
     })).toEqual(projects[0]);
 
     expect(resolveProjectActionsOwner({
       projects,
       worktreesByProject: new Map(),
       directory: null,
-      activeProjectId: 'openchamber',
+      activeProjectId: 'alcode',
     })).toEqual(projects[0]);
   });
 

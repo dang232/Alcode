@@ -2,9 +2,9 @@
   "extends": "../tsconfig.webview.json",
   "compilerOptions": {
     "paths": {
-      "@/*": ["../../ui/src/*"],
-      "@vscode/*": ["./*"],
-      "@openchamber/ui/*": ["../../ui/src/*"]
+      "@/*": ["../ui/src/*"],
+      "@vscode/*": ["./webview/*"],
+      "@alcode/ui/*": ["../ui/src/*"]
     }
   },
   "include": ["**/*"]

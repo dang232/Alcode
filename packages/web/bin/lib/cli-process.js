@@ -4,11 +4,11 @@ import { spawnSync } from 'child_process';
 import { getRunDir } from './cli-paths.js';
 
 async function getPidFilePath(port) {
-  return path.join(getRunDir(), `openchamber-${port}.pid`);
+  return path.join(getRunDir(), `alcode-${port}.pid`);
 }
 
 async function getInstanceFilePath(port) {
-  return path.join(getRunDir(), `openchamber-${port}.json`);
+  return path.join(getRunDir(), `alcode-${port}.json`);
 }
 
 function readPidFile(pidFilePath) {
@@ -57,8 +57,6 @@ function writeInstanceOptions(instanceFilePath, options, onNotice) {
       port: options.port,
       host: typeof options.host === 'string' && options.host.length > 0 ? options.host : undefined,
       launchMode: options.launchMode === 'foreground' ? 'foreground' : 'daemon',
-      uiPassword: typeof options.uiPassword === 'string' ? options.uiPassword : undefined,
-      hasUiPassword: typeof options.uiPassword === 'string',
       apiOnly: options.apiOnly === true,
       startedAt: Number.isFinite(options.startedAt) ? options.startedAt : Date.now(),
     };
@@ -86,7 +84,7 @@ function removeInstanceFile(instanceFilePath) {
 // PID is known to be ours (a child we just spawned, or a process we are
 // stopping). Do NOT use it to validate a PID read from a pid file: after an
 // ungraceful shutdown the pid file is stale and the kernel may have recycled
-// that PID to an unrelated process — see isOpenchamberProcessRunning.
+// that PID to an unrelated process — see isAlcodeProcessRunning.
 function isProcessRunning(pid) {
   try {
     process.kill(pid, 0);
@@ -123,19 +121,21 @@ function readProcessCmdline(pid) {
   return null;
 }
 
-function isOpenchamberCmdline(cmdline) {
+function isAlcodeCmdline(cmdline) {
   if (typeof cmdline !== 'string' || cmdline.length === 0) {
     return false;
   }
-  // Every install path contains the "openchamber" segment — the npm package
-  // (@openchamber/web) and the source checkout both do, for the foreground
+  // Every install path contains the "alcode" segment — the npm package
+  // (@alcode/web) and the source checkout both do, for the foreground
   // (bin/cli.js) and daemon (server/index.js) entrypoints alike. Matching the
   // path segment (not a generic "cli.js") keeps a recycled stranger such as
-  // "npm-cli.js" or "agentmemory" from being mistaken for us.
-  return cmdline.toLowerCase().includes('openchamber');
+  // "npm-cli.js" or "agentmemory" from being mistaken for us. Pre-rename
+  // installs match the "openchamber" segment instead.
+  const lowered = cmdline.toLowerCase();
+  return lowered.includes('alcode') || lowered.includes('openchamber');
 }
 
-// Liveness + identity — "is the OpenChamber instance recorded in a pid file
+// Liveness + identity — "is the Alcode instance recorded in a pid file
 // still the process running under this PID". Use this (not isProcessRunning)
 // when validating a PID read from a pid file. After an ungraceful shutdown
 // removePidFile never runs, so the stale PID can be recycled to an unrelated
@@ -143,12 +143,12 @@ function isOpenchamberCmdline(cmdline) {
 // startup, which loops forever under systemd Restart=always (issue #1721).
 // Where identity can't be determined (Windows, unreadable /proc or ps), we fall
 // back to liveness so there are no false negatives on those platforms.
-function isOpenchamberProcessRunning(pid) {
-  const state = getOpenchamberProcessState(pid);
+function isAlcodeProcessRunning(pid) {
+  const state = getAlcodeProcessState(pid);
   return state === 'matched' || state === 'unknown';
 }
 
-function getOpenchamberProcessState(pid, options = {}) {
+function getAlcodeProcessState(pid, options = {}) {
   const checkProcessRunning = typeof options.isProcessRunning === 'function'
     ? options.isProcessRunning
     : isProcessRunning;
@@ -163,10 +163,10 @@ function getOpenchamberProcessState(pid, options = {}) {
   if (cmdline === null) {
     return 'unknown';
   }
-  return isOpenchamberCmdline(cmdline) ? 'matched' : 'mismatched';
+  return isAlcodeCmdline(cmdline) ? 'matched' : 'mismatched';
 }
 
-function hasOpenchamberRuntimeInfo(info) {
+function hasAlcodeRuntimeInfo(info) {
   return Boolean(info && typeof info.runtime === 'string' && info.runtime.length > 0);
 }
 
@@ -283,10 +283,10 @@ export {
   writeInstanceOptions,
   removeInstanceFile,
   isProcessRunning,
-  isOpenchamberCmdline,
-  isOpenchamberProcessRunning,
-  getOpenchamberProcessState,
-  hasOpenchamberRuntimeInfo,
+  isAlcodeCmdline,
+  isAlcodeProcessRunning,
+  getAlcodeProcessState,
+  hasAlcodeRuntimeInfo,
   terminateProcessTree,
   stopInstanceProcess,
 };

@@ -12,6 +12,12 @@ import {
   listModelInfos,
   listProviderInfos,
 } from './client.js';
+import {
+  advanceThroughDelegateCandidates,
+  delegateDowngradeRefs,
+  isDelegateDispatchRetryable,
+  resolveDelegateModel,
+} from './delegate-dispatch.bundle.js';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -43,17 +49,20 @@ export const setUnavailableRetryDelaysForTest = (delays = UNAVAILABLE_RETRY_DELA
   unavailableRetryDelaysMs = delays;
 };
 
-const OPENCHAMBER_SETTINGS_FILE = path.join(
-  process.env.OPENCHAMBER_DATA_DIR
-    ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-    : path.join(os.homedir(), '.config', 'openchamber'),
-  'settings.json',
-);
+// Resolved per call, not at module load: freezing it at import would pin
+// whichever ALCODE_DATA_DIR the first importing test file set, and
+// sibling suites could never isolate their settings.
 
-// OpenChamber's own settings: when the user unchecks "use default small model"
+// Alcode's own settings: when the user unchecks "use default small model"
 // their explicit override outranks the model OpenCode would pick.
 const readSmallModelSettingsOverride = () => {
-  const settings = readMergedSettingsSync({ fs, path, settingsFilePath: OPENCHAMBER_SETTINGS_FILE });
+  const settingsFilePath = path.join(
+    process.env.ALCODE_DATA_DIR
+      ? path.resolve(process.env.ALCODE_DATA_DIR)
+      : path.join(os.homedir(), '.config', 'alcode'),
+    'settings.json',
+  );
+  const settings = readMergedSettingsSync({ fs, path, settingsFilePath });
   if (settings.smallModelUseDefault !== false) return null;
   const override = typeof settings.smallModelOverride === 'string' ? settings.smallModelOverride.trim() : '';
   return override || null;
@@ -176,7 +185,7 @@ const pickSmallModel = (models, accept) => {
  * Which model this call runs on, in order:
  *
  * 1. An explicit request model.
- * 2. OpenChamber's settings override (Settings → Sessions → Small Model).
+ * 2. Alcode's settings override (Settings → Sessions → Small Model).
  * 3. The small model configured for OpenCode itself: the `title` agent's
  *    model (`agents.title.model`, or v1 `small_model`) — `config`.
  * 4. The small model of the caller's provider — the session's, or the one
@@ -287,10 +296,56 @@ const requestOptions = ({ timeoutMs, promptChars, signal }) => {
 };
 
 /**
+ * Order the downgrade refs for a failed dispatch: the delegate fallback
+ * chain in entry-major order, with the engine `resolveDelegateModel` pick
+ * first when the catalog is visible and it names an untried chain entry.
+ * Falls back to pure chain order when the catalog cannot be read.
+ */
+const orderDelegateDowngradeRefs = async ({ client, directory, primaryRef, attempted, fallbackChain }) => {
+  const refs = delegateDowngradeRefs({ resolvedRef: primaryRef, attempted, fallbackChain });
+  if (refs.length === 0) return refs;
+  try {
+    const models = await listModelInfos(client, directory);
+    const availableModels = new Set();
+    for (const entry of models ?? []) {
+      if (entry?.providerID?.trim?.() === undefined || !entry.providerID) continue;
+      if (entry?.id?.trim?.() !== undefined && entry.id) availableModels.add(`${entry.providerID}/${entry.id}`);
+      if (entry?.modelID?.trim?.() !== undefined && entry.modelID && entry.modelID !== entry.id) {
+        availableModels.add(`${entry.providerID}/${entry.modelID}`);
+      }
+    }
+    const connected = await listAuthenticatedProviders().catch(() => []);
+    const connectedProviders = Array.isArray(connected) ? connected : null;
+    const pick = resolveDelegateModel(
+      { fallbackChain, availableModels },
+      {
+        connectedProviders,
+        hasProviderModelsCache: availableModels.size > 0,
+        hasConnectedProvidersCache: connectedProviders !== null && connectedProviders.length > 0,
+      },
+    );
+    const picked = pick && !pick.skipped ? pick.model : null;
+    if (picked?.trim?.() !== undefined && picked !== primaryRef && !attempted.includes(picked) && refs.includes(picked)) {
+      return [picked, ...refs.filter((ref) => ref !== picked)];
+    }
+  } catch {
+    // The catalog is invisible: keep chain order.
+  }
+  return refs;
+};
+
+/**
  * Generates text with the user's small model through the running OpenCode.
  * Credentials stay inside OpenCode; this server only sends a prompt.
+ *
+ * `fallbackChain` carries the delegate fallback chain for this dispatch
+ * (per-entry `{ providers, model, variant? }`, see `delegate-dispatch.js`).
+ * Without one the call keeps its single-model shape; with one a model that
+ * fails with a retryable error yields to the next chain entry instead of
+ * failing the call, and the result names the trail (`downgradedFrom`,
+ * `downgradeAttempted`).
  */
-export async function generateSmallModelText({ prompt, system, maxOutputTokens, model, directory, preferredProviderID, preferredModelID, responseSchema, timeoutMs, signal, onOverflow = 'truncate' }) {
+export async function generateSmallModelText({ prompt, system, maxOutputTokens, model, directory, preferredProviderID, preferredModelID, responseSchema, timeoutMs, signal, onOverflow = 'truncate', fallbackChain } = {}) {
   if (typeof prompt !== 'string' || !prompt.trim()) {
     throw Object.assign(new Error('prompt is required'), { statusCode: 400 });
   }
@@ -298,115 +353,147 @@ export async function generateSmallModelText({ prompt, system, maxOutputTokens, 
   const client = getSmallModelClient(directory);
   if (!client) throw noClientError();
 
-  const resolved = await resolveSmallModel({
-    client,
-    directory,
-    model,
-    preferredProviderID,
-    preferredModelID,
-  });
+  // The delegate fallback chain for this dispatch. Empty by default —
+  // without one the call keeps its historical single-model shape.
+  const chain = Array.isArray(fallbackChain)
+    ? fallbackChain.filter((entry) => entry?.model?.trim?.() !== undefined && Array.isArray(entry?.providers))
+    : [];
 
-  if (!resolved) {
-    throw Object.assign(
-      new Error(preferredProviderID
-        ? 'No small model available within the session provider'
-        : 'No small model available — OpenCode reports no default model'),
-      { statusCode: 404 },
-    );
-  }
+  // The primary ref for the downgrade skip set: the explicit model when the
+  // caller named one, else whatever the bridge resolves on the first attempt.
+  let primaryRef = model?.trim?.() ? model.trim() : null;
 
-  const models = await listModelInfos(client, directory);
-  const modelInfo = findModelInfo(models, resolved.providerID, resolved.modelID);
+  const attemptWithModel = async (modelOverride, capturePrimaryRef = false) => {
+    const resolved = await resolveSmallModel({
+      client,
+      directory,
+      model: modelOverride,
+      preferredProviderID,
+      preferredModelID,
+    });
 
-  const outputTokens = resolveOutputTokens({ modelInfo, maxOutputTokens });
-
-  const clamped = clampPromptToModelLimit({
-    prompt: prompt.trim(),
-    modelInfo,
-    providerID: resolved.providerID,
-    modelID: resolved.modelID,
-    onOverflow,
-    outputReserveTokens: outputTokens,
-  });
-
-  // `/api/experimental/generate` takes a single prompt, so the system instructions lead it.
-  const sections = [];
-  if (typeof system === 'string' && system.trim()) sections.push(system.trim());
-  sections.push(clamped.prompt);
-  if (responseSchema) sections.push(buildSchemaInstruction(responseSchema));
-  const fullPrompt = sections.join('\n\n');
-
-  const generationOptions = requestOptions({ timeoutMs, promptChars: fullPrompt.length, signal });
-  const unavailableMessage = `Model unavailable: ${resolved.providerID}/${resolved.modelID}`;
-
-  // A blown deadline is a budget problem the user can act on (shorter diff,
-  // faster model), not a bad model choice, so it gets its own code and message.
-  // Detection reads the deadline signal itself: its reason is always the
-  // timeout, while the composed signal's reason propagation varies by runtime.
-  const deadlineError = (cause) => Object.assign(
-    new Error(`${resolved.providerID}/${resolved.modelID} did not finish within the ${Math.round(generationOptions.budgetMs / 1000)}s budget for this prompt size`, { cause }),
-    { statusCode: 504, code: 'generation-timeout', providerID: resolved.providerID, modelID: resolved.modelID },
-  );
-
-  const send = async () => {
-    const result = await client.generate.text(
-      { prompt: fullPrompt, model: { id: resolved.modelID, providerID: resolved.providerID } },
-      generationOptions,
-    );
-    return typeof result?.text === 'string' ? result.text : '';
-  };
-
-  const sendWithCatalogRetry = async () => {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        return await send();
-      } catch (error) {
-        if (generationOptions.deadline.aborted) throw deadlineError(error);
-        if (error?._tag !== 'InvalidRequestError' || error.message !== unavailableMessage) throw error;
-        // OpenCode 2 can resolve a cold catalog before its models arrive.
-        // This rejection precedes provider dispatch; other failures must not retry.
-        if (attempt < unavailableRetryDelaysMs.length) {
-          await delay(unavailableRetryDelaysMs[attempt], undefined, { signal: generationOptions.signal })
-            .catch((delayError) => {
-              throw generationOptions.deadline.aborted ? deadlineError(delayError) : delayError;
-            });
-          continue;
-        }
-        throw Object.assign(new Error(unavailableMessage), {
-          statusCode: 503,
-          code: 'small-model-unavailable',
-        });
-      }
-    }
-  };
-
-  let text = await sendWithCatalogRetry();
-
-  if (responseSchema) {
-    // One retry: a model that ignored the shape once often honours it on a
-    // second pass, and the alternative is failing a walkthrough over a stray
-    // sentence of preamble.
-    let json = extractJsonText(text);
-    if (json === null) {
-      text = await sendWithCatalogRetry();
-      json = extractJsonText(text);
-    }
-    if (json === null) {
+    if (!resolved) {
       throw Object.assign(
-        new Error(`${resolved.providerID}/${resolved.modelID} did not return JSON matching the requested schema`),
-        { statusCode: 422, code: 'structured-output-unsupported', providerID: resolved.providerID, modelID: resolved.modelID },
+        new Error(preferredProviderID
+          ? 'No small model available within the session provider'
+          : 'No small model available — OpenCode reports no default model'),
+        { statusCode: 404 },
       );
     }
-    text = json;
-  }
+    if (capturePrimaryRef) primaryRef = `${resolved.providerID}/${resolved.modelID}`;
 
-  return {
-    text: text.trim(),
-    providerID: resolved.providerID,
-    modelID: resolved.modelID,
-    source: resolved.source,
-    ...(clamped.truncated ? { inputTruncated: true } : {}),
+    const models = await listModelInfos(client, directory);
+    const modelInfo = findModelInfo(models, resolved.providerID, resolved.modelID);
+
+    const outputTokens = resolveOutputTokens({ modelInfo, maxOutputTokens });
+
+    const clamped = clampPromptToModelLimit({
+      prompt: prompt.trim(),
+      modelInfo,
+      providerID: resolved.providerID,
+      modelID: resolved.modelID,
+      onOverflow,
+      outputReserveTokens: outputTokens,
+    });
+
+    // `/api/experimental/generate` takes a single prompt, so the system instructions lead it.
+    const sections = [];
+    if (typeof system === 'string' && system.trim()) sections.push(system.trim());
+    sections.push(clamped.prompt);
+    if (responseSchema) sections.push(buildSchemaInstruction(responseSchema));
+    const fullPrompt = sections.join('\n\n');
+
+    const generationOptions = requestOptions({ timeoutMs, signal });
+    const unavailableMessage = `Model unavailable: ${resolved.providerID}/${resolved.modelID}`;
+    const send = async () => {
+      const result = await client.generate.text(
+        { prompt: fullPrompt, model: { id: resolved.modelID, providerID: resolved.providerID } },
+        generationOptions,
+      );
+      return typeof result?.text === 'string' ? result.text : '';
+    };
+
+    const sendWithCatalogRetry = async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          return await send();
+        } catch (error) {
+          if (error?._tag !== 'InvalidRequestError' || error.message !== unavailableMessage) throw error;
+          // OpenCode 2 can resolve a cold catalog before its models arrive.
+          // This rejection precedes provider dispatch; other failures must not retry.
+          if (attempt < unavailableRetryDelaysMs.length) {
+            await delay(unavailableRetryDelaysMs[attempt], undefined, { signal: generationOptions.signal });
+            continue;
+          }
+          throw Object.assign(new Error(unavailableMessage), {
+            statusCode: 503,
+            code: 'small-model-unavailable',
+          });
+        }
+      }
+    };
+
+    let text = await sendWithCatalogRetry();
+
+    if (responseSchema) {
+      // One retry: a model that ignored the shape once often honours it on a
+      // second pass, and the alternative is failing a walkthrough over a stray
+      // sentence of preamble.
+      let json = extractJsonText(text);
+      if (json === null) {
+        text = await sendWithCatalogRetry();
+        json = extractJsonText(text);
+      }
+      if (json === null) {
+        throw Object.assign(
+          new Error(`${resolved.providerID}/${resolved.modelID} did not return JSON matching the requested schema`),
+          { statusCode: 422, code: 'structured-output-unsupported', providerID: resolved.providerID, modelID: resolved.modelID },
+        );
+      }
+      text = json;
+    }
+
+    return {
+      text: text.trim(),
+      providerID: resolved.providerID,
+      modelID: resolved.modelID,
+      source: resolved.source,
+      ...(clamped.truncated ? { inputTruncated: true } : {}),
+    };
   };
+
+  // Without a chain the call keeps its single-model shape.
+  if (chain.length === 0) return attemptWithModel(model);
+
+  // A model that fails with a retryable error yields to the next chain entry
+  // instead of failing the call; anything else rethrows at once.
+  try {
+    return await attemptWithModel(model, true);
+  } catch (error) {
+    if (!isDelegateDispatchRetryable(error)) throw error;
+    const refs = await orderDelegateDowngradeRefs({
+      client,
+      directory,
+      primaryRef,
+      attempted: [],
+      fallbackChain: chain,
+    });
+    if (refs.length === 0) throw error;
+    try {
+      const advanced = await advanceThroughDelegateCandidates({ refs, attempt: (ref) => attemptWithModel(ref) });
+      return {
+        ...advanced.result,
+        downgradedFrom: primaryRef,
+        downgradeAttempted: [...(primaryRef ? [primaryRef] : []), ...advanced.attempted],
+      };
+    } catch (downgradeError) {
+      if (primaryRef && Array.isArray(downgradeError?.downgradeAttempted)
+        && !downgradeError.downgradeAttempted.includes(primaryRef)) {
+        downgradeError.downgradeAttempted.unshift(primaryRef);
+      }
+      throw downgradeError;
+    }
+  }
 }
 
 /**

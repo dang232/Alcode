@@ -13,13 +13,13 @@ const loadWebAuthn = () => {
 
 const DEFAULT_STORE_VERSION = 1;
 const DEFAULT_CHALLENGE_TTL_MS = 5 * 60 * 1000;
-const DEFAULT_RP_NAME = 'OpenChamber';
+const DEFAULT_RP_NAME = 'Alcode';
 
-const OPENCHAMBER_DATA_DIR = process.env.OPENCHAMBER_DATA_DIR
-  ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-  : path.join(os.homedir(), '.config', 'openchamber');
+const ALCODE_DATA_DIR = process.env.ALCODE_DATA_DIR
+  ? path.resolve(process.env.ALCODE_DATA_DIR)
+  : path.join(os.homedir(), '.config', 'alcode');
 
-const PASSKEY_STORE_FILE = path.join(OPENCHAMBER_DATA_DIR, 'ui-passkeys.json');
+const PASSKEY_STORE_FILE = path.join(ALCODE_DATA_DIR, 'ui-passkeys.json');
 
 const createUserId = () => crypto.randomBytes(32).toString('base64url');
 
@@ -216,7 +216,7 @@ export const createUiPasskeys = ({
 
   const assertEnabled = () => {
     if (!passwordBinding) {
-      const error = new Error('Passkeys require UI password protection to be enabled');
+      const error = new Error('Passkeys require Alcore login to be enabled');
       error.statusCode = 400;
       throw error;
     }
@@ -387,8 +387,8 @@ export const createUiPasskeys = ({
       rpName,
       rpID,
       userID,
-      userName: 'openchamber-ui',
-      userDisplayName: 'OpenChamber UI',
+      userName: 'alcode-ui',
+      userDisplayName: 'Alcode UI',
       attestationType: 'none',
       excludeCredentials: getPasskeysForRpId(store, rpID).map((passkey) => ({
         id: passkey.id,
@@ -528,7 +528,7 @@ export const createUiPasskeys = ({
     const passkey = store.passkeys.find((item) => item.id === response?.id);
 
     if (!passkey) {
-      const error = new Error('That passkey is not registered for this OpenChamber instance');
+      const error = new Error('That passkey is not registered for this Alcode instance');
       error.statusCode = 404;
       throw error;
     }

@@ -1,11 +1,14 @@
 ---
 title: Agenten-Steuerungswerkzeug
 description: Lass einen Agenten OpenChamber-Sitzungen, Worktrees und geplante Aufgaben direkt aus dem Chat verwalten.
+title: Agent-Steuerungswerkzeug
+description: Lass einen Agenten Alcode-Sitzungen, Worktrees und geplante Aufgaben direkt aus dem Chat verwalten.
 ---
 
 # Agenten-Steuerungswerkzeug
 
 Mit dem Agentenwerkzeug `openchamber` verwaltest du die Arbeit in der App direkt aus dem Chat, und `openchamber_schedule` ist für geplante Aufgaben da. Beide sind standardmäßig aktiv, wenn OpenChamber seinen eigenen lokalen OpenCode-Server ausführt; du musst nichts installieren und keinen Shell-Befehl ausführen.
+Verwende das Agentenwerkzeug `alcode`, um Arbeit in der App direkt aus dem Chat zu verwalten. Es ist standardmäßig aktiviert, wenn Alcode seinen eigenen lokalen OpenCode-Server ausführt; du musst kein separates Werkzeug installieren und keinen Shell-Befehl ausführen.
 
 ## Was du anfragen kannst
 
@@ -26,6 +29,16 @@ Das Steuerungswerkzeug listet Projekte und Modelleinstellungen auf, durchsucht d
 - Ein separater Worktree entsteht nur, wenn du danach fragst. Nicht committete Änderungen aus deinem aktuellen Worktree werden nicht dorthin kopiert.
 - Wenn der Checkout beschäftigt wirkt, etwa weil eine andere Sitzung auf demselben Branch arbeitet, kann der Agent anbieten, seine eigene Sitzung in einen neuen Worktree zu verschieben. Er verschiebt sie erst nach deiner Zustimmung und nimmt nur die Dateien mit, die er selbst geändert hat.
 - Die Werkzeuge können keine Sitzungen oder Worktrees löschen, keine Projektpfade registrieren, keine beliebigen Shell-Befehle ausführen und keine beliebigen URLs aufrufen.
+- "Erstelle in diesem Projekt eine neue Alcode-Sitzung, verwende das Modell `openai/gpt-5.6-sol` und sende ihr diese Aufforderung: überprüfe den Authentifizierungsfluss."
+- "Erstelle für diese Aufgabe eine neue Alcode-Sitzung in einem separaten Worktree und bitte sie, Tests für den Login-Fluss hinzuzufügen."
+- "Verwende Alcode, um meine 10 neuesten Sitzungen aufzulisten und ihren aktuellen Status anzuzeigen."
+- "Erstelle eine geplante Alcode-Aufgabe mit dem Namen Weekday review, die diese Aufforderung werktags um 09:00 sendet: review changes since the last run."
+- "Führe die geplante Alcode-Aufgabe mit dem Namen Weekday review jetzt aus."
+- "Prüfe die Alcode-Sitzung mit dem Namen Authentication review und zeige mir die neueste Antwort des Assistenten."
+Das Werkzeug kann Projekte und Modelleinstellungen auflisten, Sitzungen erstellen und weiterführen, eine Sitzung forken, isolierte Worktree-Sitzungen erstellen und geplante Aufgaben verwalten. Auf diese Weise gestartete Sitzungen erscheinen in Alcode wie jede andere Sitzung auch, sodass du sie öffnen und die Arbeit selbst fortsetzen kannst.
+- Neue Sitzungsaufforderungen kehren standardmäßig sofort zurück. Verfolge die Sitzung in Alcode oder bitte den Agenten, sie später noch einmal zu prüfen.
+- Ein separater Worktree wird nur erstellt, wenn du ausdrücklich danach fragst. Nicht-committete Änderungen aus deinem aktuellen Worktree werden nicht dorthin kopiert.
+- Das Werkzeug kann keine Sitzungen oder Worktrees löschen, keine Projektpfade registrieren, keine beliebigen Shell-Befehle ausführen und keine beliebigen URLs aufrufen.
 
 ## Werkzeuge ein- oder ausschalten
 
@@ -40,3 +53,9 @@ Die Werkzeuge sind nicht verfügbar, wenn OpenChamber über `OPENCODE_HOST` oder
 - [Sitzungsziele](/de/session-goals/)
 - [Browser-Panel](/de/desktop-browser/): das OpenChamber-Web-Werkzeug, um eine Seite anzusehen und zu bedienen
 - [Projektnotizen, Todos & Pläne](/de/notes-todos-plans/): das Projektwissen-Werkzeug, für Notizen, Todos und Pläne im Tab Kontext
+Öffne **Einstellungen → Allgemein → Alcode-Werkzeuge** und ändere **Agent control tool**. Die Einstellung gilt, sobald der verwaltete OpenCode-Server neu startet — Alcode bietet das als **Apply & Restart** an.
+Das Werkzeug ist nicht verfügbar, wenn Alcode über `OPENCODE_HOST` oder skip-start mit einem externen OpenCode-Server verbunden ist oder innerhalb der VS-Code-Erweiterung läuft. Desktop- und Web-Installationen, die den verwalteten OpenCode-Server von Alcode verwenden, unterstützen es automatisch.
+- [Geplante Aufgaben](/scheduled-tasks/)
+- [Worktree-Sitzungen](/worktrees/)
+- [Sitzungsziele](/session-goals/)
+- [Browser-Panel](/desktop-browser/) — das Alcode-Web-Werkzeug, um eine Seite anzusehen und zu bedienen

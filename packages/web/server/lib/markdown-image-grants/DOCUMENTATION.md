@@ -8,10 +8,13 @@ the UI is on a different machine.
 
 ## Contract
 
+- Chat Markdown rendering is independent: assistant image syntax renders as an
+  icon and filename, while the gallery only reads finalized Markdown to collect
+  image candidates.
+- `POST /api/alcode/sessions/:sessionId/markdown-image-grants` prepares up to 12
 - Assistant image syntax renders as an icon and filename. Once a text part
   settles, the chat replaces each label with the picture
   (`packages/ui/src/components/chat/markdown/inlineMarkdownImages.ts`).
-- `POST /api/openchamber/sessions/:sessionId/markdown-image-grants` prepares up to 12
   local images in one message-level request. The server fetches the assistant
   message once and verifies every exact image source before reading files.
 - Authorization recognizes the same common inline and reference-style image
@@ -42,7 +45,7 @@ the UI is on a different machine.
   storage layer. Missing files return per-source results, so only those images
   keep their label.
 
-The routes are OpenChamber-owned and must be registered before the generic
+The routes are Alcode-owned and must be registered before the generic
 OpenCode proxy. Web, Electron, hosted mobile, and Capacitor use the shared
 server implementation. VS Code does not call this route for workspace images;
 those use its local filesystem bridge. If called, the grant route returns an

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { Session } from '@/lib/opencode/model';
-import { buildLinkedGuestIssue, buildLinkedIssue, buildLinkedIssueId, buildLinkedLinearIssue, getDistinctLinkedIssues, getGitLabThreadRef, getLinkedGitHubPullRequests, getLinkedGitLabThreads, getLinkedIssues, getLinkedSidebarChanges, getLinkedSidebarIssues, type LinkedIssue } from './linkedIssues';
+import { buildLinkedGuestIssue, buildLinkedIssue, buildLinkedIssueId, buildLinkedLinearIssue, getDistinctLinkedIssues, getGitLabThreadRef, getLinkedGitHubPullRequests, getLinkedGitLabThreads, getLinkedIssues, getLinkedSidebarChanges, getLinkedSidebarIssues, withLinkedIssue, type LinkedIssue } from './linkedIssues';
+import type { SessionMetadataRecord } from './sessionReviewMetadata';
 
 type LinkedRepositoryIssue = Extract<LinkedIssue, { kind: 'issue' | 'pull' }>;
 
@@ -16,7 +17,7 @@ const issue = (overrides: Partial<LinkedRepositoryIssue> = {}): LinkedRepository
 });
 
 const sessionWith = (linked: unknown): Session =>
-  ({ metadata: { openchamber: { linked_issues: linked } } } as unknown as Session);
+  ({ metadata: { alcode: { linked_issues: linked } } } as unknown as Session);
 
 describe('buildLinkedIssueId', () => {
   test('is stable per repository and number', () => {
@@ -68,8 +69,17 @@ describe('buildLinkedIssue', () => {
     const github = buildLinkedIssue({ url: 'https://github.com/team/repo/issues/12', number: 12, title: 'A', kind: 'issue', linkedAt: 1 });
     const gitlab = buildLinkedIssue({ url: 'https://gitlab.com/team/repo/-/issues/12', number: 12, title: 'B', kind: 'issue', linkedAt: 2 });
     const selfManaged = buildLinkedIssue({ url: 'https://git.example.com/team/repo/-/issues/12', number: 12, title: 'C', kind: 'issue', linkedAt: 3 });
-    const metadata = { openchamber: { linked_issues: [github, gitlab, selfManaged] } };
-    expect(metadata.openchamber.linked_issues.map((entry) => entry.title)).toEqual(['A', 'B', 'C']);
+    const metadata = [github, gitlab, selfManaged].reduce<SessionMetadataRecord>((current, issue) => withLinkedIssue(current, issue, true), {});
+    // SAFETY: withLinkedIssue always writes alcode.linked_issues as a LinkedIssue array.
+    expect((metadata.alcode as { linked_issues: LinkedIssue[] }).linked_issues.map((entry) => entry.title)).toEqual(['A', 'B', 'C']);
+  });
+
+  test('re-linking a GitLab thread stored before ids carried the host replaces it', () => {
+    const legacy = { ...buildLinkedIssue({ url: 'https://gitlab.com/team/repo/-/issues/12', number: 12, title: 'Old', kind: 'issue', linkedAt: 1 }), id: 'team/repo#12' };
+    const fresh = buildLinkedIssue({ url: 'https://gitlab.com/team/repo/-/issues/12', number: 12, title: 'New', kind: 'issue', linkedAt: 2 });
+    const metadata = withLinkedIssue({ alcode: { linked_issues: [legacy] } }, fresh, true);
+    // SAFETY: withLinkedIssue always writes alcode.linked_issues as a LinkedIssue array.
+    expect((metadata.alcode as { linked_issues: LinkedIssue[] }).linked_issues.map((entry) => entry.title)).toEqual(['New']);
   });
 
   test('keeps GitLab merge requests distinct from issues with the same number', () => {
@@ -124,7 +134,7 @@ describe('buildLinkedLinearIssue', () => {
     const built = buildLinkedLinearIssue({
       identifier: 'ENG-12',
       title: 'Broken login',
-      url: 'https://linear.app/openchamber/issue/ENG-12',
+      url: 'https://linear.app/alcode/issue/ENG-12',
       author: { login: 'Ada', avatarUrl: 'https://avatars/1' },
       linkedAt: 5,
     });
@@ -132,7 +142,7 @@ describe('buildLinkedLinearIssue', () => {
       id: 'linear:ENG-12',
       identifier: 'ENG-12',
       title: 'Broken login',
-      url: 'https://linear.app/openchamber/issue/ENG-12',
+      url: 'https://linear.app/alcode/issue/ENG-12',
       kind: 'linear',
       author: 'Ada',
       authorAvatarUrl: 'https://avatars/1',
@@ -230,7 +240,7 @@ describe('getLinkedIssues', () => {
     const linear = buildLinkedLinearIssue({
       identifier: 'ENG-12',
       title: 'Broken login',
-      url: 'https://linear.app/openchamber/issue/ENG-12',
+      url: 'https://linear.app/alcode/issue/ENG-12',
       linkedAt: 2,
     });
     expect(getLinkedIssues(sessionWith([github, linear]))).toEqual([github, linear]);
@@ -238,6 +248,62 @@ describe('getLinkedIssues', () => {
 
   test('survives a non-array payload', () => {
     expect(getLinkedIssues(sessionWith({ nope: true }))).toEqual([]);
+  });
+});
+
+describe('withLinkedIssue', () => {
+  test('adds a link and preserves unrelated metadata', () => {
+    const next = withLinkedIssue(
+      { alcode: { kind: 'review' }, other: 1 },
+      issue(),
+      true,
+    );
+    expect(next.other).toBe(1);
+    expect((next.alcode as Record<string, unknown>).kind).toBe('review');
+    expect((next.alcode as { linked_issues: LinkedIssue[] }).linked_issues).toEqual([issue()]);
+  });
+
+  test('re-linking replaces the entry rather than duplicating it', () => {
+    // Linking again is how a drifted title gets refreshed.
+    const first = withLinkedIssue({}, issue({ title: 'Old' }), true);
+    const second = withLinkedIssue(first, issue({ title: 'New' }), true);
+    const stored = (second.alcode as { linked_issues: LinkedIssue[] }).linked_issues;
+    expect(stored).toHaveLength(1);
+    expect(stored[0].title).toBe('New');
+  });
+
+  test('unlinking removes only the matching id', () => {
+    const other = issue({ id: 'owner/repo#99', number: 99 });
+    const both = withLinkedIssue(withLinkedIssue({}, issue(), true), other, true);
+    const next = withLinkedIssue(both, issue(), false);
+    const stored = (next.alcode as { linked_issues: LinkedIssue[] }).linked_issues;
+    expect(stored).toEqual([other]);
+  });
+
+  test('unlinking something absent is a no-op, not an error', () => {
+    const next = withLinkedIssue({}, issue(), false);
+    expect((next.alcode as { linked_issues: LinkedIssue[] }).linked_issues).toEqual([]);
+  });
+
+  test('does not carry malformed stored entries forward', () => {
+    const next = withLinkedIssue(
+      { alcode: { linked_issues: [{ id: 'broken' }] } },
+      issue(),
+      true,
+    );
+    expect((next.alcode as { linked_issues: LinkedIssue[] }).linked_issues).toEqual([issue()]);
+  });
+});
+
+describe('canOpenLinearIssueOnBoard', () => {
+  test('opens the board when Linear is connected and the shell has one', () => {
+    expect(canOpenLinearIssueOnBoard({ linearAvailable: true, linearConnected: true, boardAvailable: true })).toBe(true);
+  });
+
+  test('falls back when Linear is missing or disconnected, or there is no board', () => {
+    expect(canOpenLinearIssueOnBoard({ linearAvailable: false, linearConnected: true, boardAvailable: true })).toBe(false);
+    expect(canOpenLinearIssueOnBoard({ linearAvailable: true, linearConnected: false, boardAvailable: true })).toBe(false);
+    expect(canOpenLinearIssueOnBoard({ linearAvailable: true, linearConnected: true, boardAvailable: false })).toBe(false);
   });
 });
 

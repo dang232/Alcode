@@ -35,7 +35,7 @@ import { OMO_NATIVE_AGENT_CONFIG } from '../agents/omo-native-catalog.bundle.js'
 // ============== AGENT SCOPE HELPERS ==============
 //
 // OpenCode 2 discovers agents from `agent/`, `agents/`, `mode/` and `modes/`.
-// OpenChamber reads every one of those and WRITES only to `agents/`. An agent
+// Alcode reads every one of those and WRITES only to `agents/`. An agent
 // that already lives in a v1 directory is rewritten in place (v2 fields, same
 // path) so no file silently moves out from under the user.
 
@@ -449,6 +449,11 @@ function applyAgentUpdates(entity, updates) {
   }
   for (const [field, value] of Object.entries(isRecord(updates) ? updates : {})) {
     if (field === 'scope' || value === undefined) continue;
+    // An empty string means "no change", not "clear": settings forms
+    // submit every field, so untouched inputs arrive as "". Letting them
+    // overwrite would gut seeded catalog values (description, system)
+    // into unusable stubs. Explicit clearing uses null (delete below).
+    if (value === '') continue;
     if (value === null) {
       deleteAgentField(next, field);
       continue;

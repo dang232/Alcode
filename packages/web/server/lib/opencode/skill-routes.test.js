@@ -720,3 +720,198 @@ describe('skill-routes delete location', () => {
     expect(response.status).toBe(400);
   });
 });
+
+describe('skill-routes engine catalog', () => {
+  /** @type {string | null} */
+  let projectRoot = null;
+  /** @type {{ close: () => Promise<void> } | null} */
+  let appHandle = null;
+
+  afterEach(async () => {
+    if (appHandle) {
+      await appHandle.close();
+      appHandle = null;
+    }
+    if (projectRoot) {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  const engineItem = (overrides = {}) => ({
+    sourceId: 'engine',
+    repoSource: 'engine',
+    skillDir: 'git-master',
+    skillName: 'git-master',
+    frontmatterName: 'git-master',
+    description: 'Git engine skill',
+    installable: true,
+    warnings: [],
+    invokeAtRuntime: 'in',
+    invokeReason: 'active-in-loader',
+    variant: 'git-master',
+    ...overrides,
+  });
+
+  const stubEngineCatalog = ({ listResult, installResult } = {}) => ({
+    source: {
+      id: 'engine',
+      label: 'Engine skills',
+      description: 'Stub engine source',
+      source: 'engine',
+      sourceType: 'engine',
+    },
+    listItems: async () => listResult ?? { ok: true, items: [engineItem()] },
+    install: async () => installResult ?? {
+      ok: true,
+      installed: [{ skillName: 'git-master', scope: 'project', source: 'engine', path: 'stub' }],
+      skipped: [],
+    },
+  });
+
+  it('lists the engine source with inline items in the catalog', async () => {
+    projectRoot = createTempProject();
+    appHandle = startSkillsApp({
+      projectRoot,
+      overrides: { engineSkillCatalog: stubEngineCatalog() },
+    });
+
+    const response = await fetch(`${appHandle.baseUrl}/api/config/skills/catalog`);
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.sources.map((source) => source.id)).toContain('engine');
+    expect(payload.engineSkillsUnavailable).toBeUndefined();
+    const items = payload.itemsBySource.engine;
+    expect(items.map((item) => item.skillName)).toContain('git-master');
+    expect(items.find((item) => item.skillName === 'git-master').installed).toEqual({ isInstalled: false });
+  });
+
+  it('flags the catalog when the engine list fails instead of an empty engine section', async () => {
+    projectRoot = createTempProject();
+    appHandle = startSkillsApp({
+      projectRoot,
+      overrides: {
+        engineSkillCatalog: stubEngineCatalog({
+          listResult: { ok: false, error: { kind: 'engine_unavailable', message: 'no engine' } },
+        }),
+      },
+    });
+
+    const payload = await (await fetch(`${appHandle.baseUrl}/api/config/skills/catalog`)).json();
+    expect(payload.ok).toBe(true);
+    expect(payload.engineSkillsUnavailable).toBe(true);
+    expect(payload.itemsBySource.engine).toBeUndefined();
+  });
+
+  it('serves engine items with installed flags from the catalog source endpoint', async () => {
+    projectRoot = createTempProject();
+    const skillDir = path.join(projectRoot, '.opencode', 'skills', 'git-master');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDir, 'SKILL.md'),
+      '---\nname: git-master\ndescription: Installed on disk\n---\nBody\n',
+    );
+    appHandle = startSkillsApp({
+      projectRoot,
+      overrides: { engineSkillCatalog: stubEngineCatalog() },
+    });
+
+    const response = await fetch(
+      `${appHandle.baseUrl}/api/config/skills/catalog/source?sourceId=engine&directory=${encodeURIComponent(projectRoot)}`,
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.ok).toBe(true);
+    const item = payload.items.find((entry) => entry.skillName === 'git-master');
+    expect(item.installed).toEqual({ isInstalled: true, scope: 'project', source: 'opencode' });
+  });
+
+  it('keeps unknown catalog sources a 404 with the engine wired', async () => {
+    projectRoot = createTempProject();
+    appHandle = startSkillsApp({
+      projectRoot,
+      overrides: { engineSkillCatalog: stubEngineCatalog() },
+    });
+
+    const response = await fetch(
+      `${appHandle.baseUrl}/api/config/skills/catalog/source?sourceId=nope&directory=${encodeURIComponent(projectRoot)}`,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('installs an engine skill into the project managed root with the real catalog', async () => {
+    projectRoot = createTempProject();
+    const { createEngineSkillCatalog } = await import('../skills-catalog/engine-skills.js');
+    appHandle = startSkillsApp({
+      projectRoot,
+      overrides: {
+        engineSkillCatalog: createEngineSkillCatalog({ userSkillDir: path.join(projectRoot, 'user-skills') }),
+      },
+    });
+
+    const response = await fetch(`${appHandle.baseUrl}/api/config/skills/install-engine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skillName: 'git-master', scope: 'project' }),
+    });
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.installed[0].skillName).toBe('git-master');
+    const target = path.join(projectRoot, '.opencode', 'skills', 'git-master', 'SKILL.md');
+    expect(payload.installed[0].path).toBe(target);
+    expect(fs.existsSync(target)).toBe(true);
+
+    const listPayload = await (
+      await fetch(`${appHandle.baseUrl}/api/config/skills?directory=${encodeURIComponent(projectRoot)}`)
+    ).json();
+    expect(listPayload.skills.map((skill) => skill.name)).toContain('git-master');
+  });
+
+  it('maps engine install refusals to status codes without crashing', async () => {
+    projectRoot = createTempProject();
+    const cases = [
+      [{ kind: 'ambiguous_skill', message: 'ambiguous' }, 400],
+      [{ kind: 'missing_skill', message: 'missing' }, 400],
+      [{ kind: 'invalid_skill_name', message: 'invalid' }, 400],
+      [{ kind: 'already_installed', message: 'exists' }, 409],
+      [{ kind: 'engine_unavailable', message: 'no engine' }, 500],
+    ];
+    for (const [error, status] of cases) {
+      if (appHandle) {
+        await appHandle.close();
+        appHandle = null;
+      }
+      appHandle = startSkillsApp({
+        projectRoot,
+        overrides: { engineSkillCatalog: stubEngineCatalog({ installResult: { ok: false, error } }) },
+      });
+      const response = await fetch(`${appHandle.baseUrl}/api/config/skills/install-engine`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skillName: 'git-master', scope: 'user' }),
+      });
+      expect(response.status).toBe(status);
+      const payload = await response.json();
+      expect(payload.ok).toBe(false);
+      expect(payload.error.kind).toBe(error.kind);
+    }
+  });
+
+  it('answers engine_unavailable when the catalog is not wired', async () => {
+    projectRoot = createTempProject();
+    appHandle = startSkillsApp({ projectRoot });
+
+    const installResponse = await fetch(`${appHandle.baseUrl}/api/config/skills/install-engine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skillName: 'git-master', scope: 'user' }),
+    });
+    expect(installResponse.status).toBe(500);
+    expect((await installResponse.json()).error.kind).toBe('engine_unavailable');
+
+    const catalogPayload = await (await fetch(`${appHandle.baseUrl}/api/config/skills/catalog`)).json();
+    expect(catalogPayload.sources.map((source) => source.id)).not.toContain('engine');
+  });
+});
