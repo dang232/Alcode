@@ -1662,15 +1662,10 @@ export const TunnelSettings: React.FC = () => {
                   {t('settings.alcode.tunnel.tooltip.tokensSavedPath')}
                 </SettingsInfoHint>
               </div>
-            ) : (
-              <p className="typography-meta text-muted-foreground/70">{t('settings.openchamber.tunnel.empty.noManagedRemoteTunnels')}</p>
-            )}
 
               {!selectedPreset && managedRemoteValidationError && (
                 <p className="typography-meta text-[var(--status-error)]">{managedRemoteValidationError}</p>
               )}
-            </div>
-          )}
 
           {tunnelMode === 'managed-local' && (
             <div data-settings-item="tunnel.managed-local-config" className="space-y-2 rounded-lg border border-[var(--interactive-border)] bg-[var(--surface-elevated)] p-3">
@@ -1845,7 +1840,6 @@ export const TunnelSettings: React.FC = () => {
           )}
 
         </section>
-      )}
 
       {isSelectedModeTunnelReady && tunnelInfo && (
         <section data-settings-item="tunnel.start" className="space-y-4 px-2 pb-2 pt-0">
@@ -1918,9 +1912,6 @@ export const TunnelSettings: React.FC = () => {
                   <p className="typography-meta text-muted-foreground">{t('settings.alcode.tunnel.note.scanQrToConnect')}</p>
                 </div>
               </>
-            )}
-          </div>
-        )}
 
         {tunnelMode === 'managed-local' && (
           <div data-settings-item="tunnel.managed-local-config" className="oc-tile space-y-2 rounded-lg p-3">

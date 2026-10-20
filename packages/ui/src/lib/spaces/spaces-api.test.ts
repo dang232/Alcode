@@ -183,7 +183,7 @@ describe('the disk of a place', () => {
     const posts = answer(202, JSON.stringify(pulling));
     expect(await pullSpaceImage('docker')).toEqual(pulling);
     expect(posts[0].method).toBe('POST');
-    expect(new URL(posts[0].url).pathname).toBe('/api/openchamber/spaces/places/docker/image');
+    expect(new URL(posts[0].url).pathname).toBe('/api/alcode/spaces/places/docker/image');
     const older = { imageBytes: disk.imageBytes, toolsBytes: disk.toolsBytes, spacesBytes: disk.spacesBytes, freeBytes: disk.freeBytes, freesImage: disk.freesImage };
     answer(200, JSON.stringify(older));
     expect(await readSpaceDisk('docker')).toEqual(disk);

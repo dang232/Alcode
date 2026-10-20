@@ -1,4 +1,4 @@
-import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_API_VERSION, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
 import { GUEST_STORAGE_KEY_MAX, GUEST_STORAGE_VALUE_BYTES, type GuestProjectsSnapshot, type GuestWorktreesSnapshot, type GuestSessionsSnapshot, type GuestWorkspaceQuery, type GuestWorkspaceSnapshot, type GuestStorageOptions, type GuestStorageRequest, type GuestStorageResult } from './workspace.ts';
 import type { GuestStatusControl, GuestStatusControlEvent } from './status-controls.ts';
 import { isGuestStatusControls } from './status-controls.ts';
