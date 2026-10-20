@@ -554,8 +554,13 @@ export function toolDescription(
       return describeExecute(executeToolCalls(metadata), parsed.code)
 
     // "A short 3-5 word label for the task, displayed to the user".
-    case OPENCODE_TOOLS.subagent:
+    // The agent rides along so the row says who ran it ("explore · map
+    // repo layout"); the name is a tool identifier, not chrome, so it
+    // stays literal.
+    case OPENCODE_TOOLS.subagent: {
+      if (parsed.agent && parsed.description) return text(`${parsed.agent} · ${parsed.description}`)
       return text(parsed.description) ?? text(parsed.agent)
+    }
 
     case OPENCODE_TOOLS.patch: {
       const reported = toolFileDiffs(metadata).map((file) => file.file)

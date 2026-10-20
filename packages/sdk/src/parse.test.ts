@@ -318,14 +318,14 @@ describe('parseManifest', () => {
     expect(result).toMatchObject({ ok: false, code: 'unsupported-api-version' });
   });
 
-  test('keeps engines.openchamber', () => {
+  test('keeps engines.alcode', () => {
     const result = parseManifest({
       ...validBlock,
-      engines: { openchamber: '>=1.22.0' },
+      engines: { alcode: '>=1.22.0' },
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.manifest.engines).toEqual({ openchamber: '>=1.22.0' });
+      expect(result.manifest.engines).toEqual({ alcode: '>=1.22.0' });
     }
   });
 

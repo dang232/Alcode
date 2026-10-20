@@ -101,9 +101,13 @@ describe("tool row description", () => {
     })
   })
 
-  test("subagent shows the 3-5 word label the model wrote", () => {
+  test("subagent names the agent ahead of the 3-5 word label the model wrote", () => {
     expect(toolDescription("subagent", { agent: "Explore", description: "Find the tool renderers" }, undefined))
+      .toEqual({ kind: "text", value: "Explore · Find the tool renderers" })
+    expect(toolDescription("subagent", { description: "Find the tool renderers" }, undefined))
       .toEqual({ kind: "text", value: "Find the tool renderers" })
+    expect(toolDescription("subagent", { agent: "Explore" }, undefined))
+      .toEqual({ kind: "text", value: "Explore" })
   })
 
   test("file tools show their path, patch shows its files", () => {

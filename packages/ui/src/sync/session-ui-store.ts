@@ -35,6 +35,9 @@ import { selectSkillsForDirectory, useSkillsStore } from "@/stores/useSkillsStor
 import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
 import { prepareUserMessageResume } from "./user-message-resume"
+import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
+import { ULW_COMMAND_NAME, startUlwNativeRun } from "@/lib/ulwNativeRun"
+import { dagRouteSample, recordDagRouteDecision, type DagRouteDecision, type DagRouteReport } from "@/lib/dagRouteLog"
 import { normalizePath } from "@/lib/pathNormalization"
 import { CHAT_DRAFT_PROJECT_ID, createChatDirectory, deleteChatDirectory, getChatsRootFromDirectory, isChatDirectoryPath, warmChatsRootDirectory } from "@/lib/chatDirectories"
 import { isSpaceArchiveDirectory } from "@/lib/spaces/space-archives"
@@ -228,10 +231,35 @@ export async function routeMessage(params: {
   }
 
   let skills = params.skills
+  // A leading word-bound `ulw` takes the /ulw command route, so the bare
+  // trigger runs the same template, context, and skill plumbing as the slash
+  // form. Mid-sentence mentions stay plain chat; shell input diverted above.
+  const bareUlwArguments = params.content.match(/^\s*ulw\b([\s\S]*)$/i)?.[1]
+  const content = bareUlwArguments === undefined ? params.content : `/ulw${bareUlwArguments}`
+  // The evaluated trigger for the flow trace: the bare capture, an explicit
+  // slash command, or a plain prompt. Reported at each return below with the
+  // resolved command once one matched.
+  const routeTrigger: DagRouteDecision = bareUlwArguments !== undefined
+    ? 'captured-to-/ulw'
+    : params.content.startsWith("/") ? 'slash-command' : 'plain-prompt'
+  const reportRoute = (command?: string | null, args?: string | null): void => {
+    const report: DagRouteReport = {
+      decision: routeTrigger,
+      sample: dagRouteSample(params.content),
+      sessionId: params.sessionId,
+    }
+    if (command != null) report.command = command
+    if (args != null) report.arguments = args
+    void recordDagRouteDecision(report)
+  }
   // Slash commands use the command route; skills attach to a normal prompt.
-  if (params.content.startsWith("/")) {
-    const [head, ...tail] = params.content.split(" ")
-    const cmdName = head.slice(1)
+  if (content.startsWith("/")) {
+    const [head, ...tail] = content.split(" ")
+    // A bare `ulw: ...` send rewrites to `/ulw: ...`, so the head carries
+    // the separator: strip trailing command punctuation before matching,
+    // or the name never equals a command/skill and the send falls through
+    // to the native run branch below instead of the command route.
+    const cmdName = head.slice(1).replace(/[:;,.!?]+$/, '')
 
     // Commands and skills are resolved for the session's own directory. A
     // project root and one of its worktrees can define different commands
@@ -267,6 +295,38 @@ export async function routeMessage(params: {
       }
     }
 
+    if (!matchedCommand && !matchedSkill && cmdName === ULW_COMMAND_NAME) {
+      // The session directory defines no /ulw template (the normal case
+      // outside this checkout) and no ulw skill: start the run natively
+      // instead of appending the old CLI appendix. Commands and skills keep
+      // precedence — this branch only runs when neither resolved. A failed
+      // creation throws, so the send fails loudly instead of degrading
+      // into a silent plain prompt.
+      const nativeArgs = tail.join(" ")
+      await startUlwNativeRun({
+        runtimeKey: params.runtimeKey,
+        directory: requestDirectory,
+        // The send flow already created this session (draft or existing
+        // conversation): the run adopts it so one prompt yields exactly
+        // one parent conversation, never a blank draft plus a run copy.
+        sessionId: params.sessionId,
+        content: params.content,
+        args: nativeArgs,
+        providerID: params.providerID,
+        modelID: params.modelID,
+        variant: params.variant,
+        agent: params.agent,
+        agentMentionName: params.agentMentionName,
+        files: sendFiles,
+        context: contextItems,
+        skills,
+        delivery: params.delivery,
+        appendSubmissions: params.appendSubmissions,
+      })
+      reportRoute(cmdName, nativeArgs)
+      return 'command'
+    }
+
     if (matchedCommand) {
       // The command route takes files only, so attached context (a quoted
       // selection, prepared conflict instructions) is
@@ -295,6 +355,7 @@ export async function routeMessage(params: {
         delivery: params.delivery,
         directory: requestDirectory,
       })
+      reportRoute(cmdName, tail.join(" "))
       return 'command'
     }
 
@@ -334,6 +395,7 @@ export async function routeMessage(params: {
       skills,
     }).then(() => {}),
   })
+  reportRoute()
   return 'prompt'
 }
 
@@ -1925,6 +1987,11 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         }))
 
         await applyArmedGoal(createdDraftSession.sessionId, createdDraftSession.directory)
+        // A ulw run starts with this send: reveal the DAG pane up front so
+        // the flow is visible while it runs. This used to sit after
+        // routeMessage, which resolves only when the turn completes — the
+        // pane then opened minutes late and read as never opening.
+        revealDagPaneForUlvStart(content, createdDraftSession.directory, { inputMode })
         await routeMessage({
           sessionId: createdDraftSession.sessionId,
           directory: createdDraftSession.directory,
@@ -2066,6 +2133,8 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
           })),
         })),
       })
+      // Same reveal as the draft path: this send starts the run.
+      revealDagPaneForUlvStart(content, currentSessionDirectory, { inputMode })
       // Keep restore failures outside the send promise and its retry path.
       void resumeAfterSend?.().catch(console.warn)
     })

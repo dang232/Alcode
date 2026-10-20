@@ -162,7 +162,7 @@ export const inspectGuestPackage = async (packageRoot, { openchamberVersion, ski
   if (!skipEngineCheck && !parsed.version) {
     return { ok: false, code: 'invalid-manifest' };
   }
-  const engine = parsed.manifest.engines?.openchamber;
+  const engine = parsed.manifest.engines?.alcode;
   if (engine && !skipEngineCheck) {
     const hostVersion = typeof openchamberVersion === 'string' ? openchamberVersion : '';
     if (!hostMeetsOpenChamberEngine(hostVersion, engine)) {

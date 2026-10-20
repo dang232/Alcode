@@ -7,6 +7,8 @@ import { useSessionWorktreeStore } from './session-worktree-store';
 import { expandSlashCommandGoalObjective, resolveSendSelection, routeMessage, useSessionUIStore } from './session-ui-store';
 import { ChildStoreManager } from './child-store';
 import { setSyncRefs } from './sync-refs';
+import { recordDagRouteDecision } from '@/lib/dagRouteLog';
+import { resolveUlwRunIntent, splitUlwResumeTarget, startUlwNativeRun } from '@/lib/ulwNativeRun';
 import { setActionRefs, setOptimisticRefs } from './session-actions';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { useSpaceArchivesStore } from '@/lib/spaces/space-archives';
@@ -20,6 +22,7 @@ import { CHAT_DRAFT_PROJECT_ID } from '@/lib/chatDirectories';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { createContextPart } from '@/lib/messages/contextParts';
+import { buildDagRunModel } from '@/lib/dagRunModel';
 
 /**
  * Unit tests for session worktree routing through the authoritative store.
@@ -350,6 +353,587 @@ describe('routeMessage inline skills', () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0].context.map((item) => item.text)).toEqual(['quoted code', 'use: deploy']);
+  });
+});
+
+describe('routeMessage bare ulw capture', () => {
+  // A leading word-bound `ulw` normalizes to the /ulw command route; every
+  // other shape keeps the path it already had.
+  const sendCommandCalls = [];
+  const sendMessageCalls = [];
+  const shellCalls = [];
+  const liveLookupCalls = [];
+  let originalSendCommand;
+  let originalSendMessage;
+  let originalListCommands;
+  let originalShellSession;
+  let originalLoadSkills;
+
+  beforeEach(() => {
+    sendCommandCalls.length = 0;
+    sendMessageCalls.length = 0;
+    shellCalls.length = 0;
+    liveLookupCalls.length = 0;
+
+    // Minimal optimistic + connection machinery so routeMessage can dispatch.
+    const childStore = {
+      getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
+      setState: () => {},
+    };
+    const childStores = {
+      children: new Map(),
+      ensureChild: () => childStore,
+      getChild: () => childStore,
+    };
+    setActionRefs(childStores, () => '/ulw/project');
+    setOptimisticRefs(() => {}, () => {});
+    useConfigStore.setState({ isConnected: true });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {} });
+
+    originalSendCommand = opencodeClient.sendCommand;
+    originalSendMessage = opencodeClient.sendMessage;
+    originalListCommands = opencodeClient.listCommands;
+    originalShellSession = opencodeClient.shellSession;
+    originalLoadSkills = useSkillsStore.getState().loadSkills;
+    useSkillsStore.setState({ loadSkills: async () => true });
+    opencodeClient.listCommands = async (directory) => {
+      liveLookupCalls.push(directory);
+      return [{ name: 'ulw' }];
+    };
+    opencodeClient.sendCommand = async (params) => {
+      sendCommandCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.sendMessage = async (params) => {
+      sendMessageCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.shellSession = async (params) => {
+      shellCalls.push(params);
+      return { info: {}, parts: [] };
+    };
+  });
+
+  afterEach(() => {
+    opencodeClient.sendCommand = originalSendCommand;
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.listCommands = originalListCommands;
+    opencodeClient.shellSession = originalShellSession;
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+  });
+
+  const send = (content, inputMode) => routeMessage({
+    sessionId: 'session-ulw',
+    directory: '/ulw/project',
+    content,
+    providerID: 'provider-a',
+    modelID: 'model-a',
+    inputMode,
+  });
+
+  test('routes leading ulw to the ulw command with trailing arguments', async () => {
+    const decision = await send('ulw test hello');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'test hello' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('routes ulw with a colon separator to the ulw command', async () => {
+    const decision = await send('ulw: test hello');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'test hello' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('routes bare ulw without arguments to the ulw command', async () => {
+    const decision = await send('ulw');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: '' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('routes leading ulw case-insensitively past leading whitespace', async () => {
+    const decision = await send('  ULW go');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'go' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('leaves soulwork as a plain prompt', async () => {
+    const decision = await send('soulwork');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('soulwork');
+  });
+
+  test('leaves ulwazi as a plain prompt', async () => {
+    const decision = await send('ulwazi');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('ulwazi');
+  });
+
+  test('leaves a mid-sentence ulw mention as a plain prompt', async () => {
+    const decision = await send('can you ulw this?');
+
+    expect(decision).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('can you ulw this?');
+  });
+
+  test('leaves empty and whitespace content as plain prompts', async () => {
+    expect(await send('')).toBe('prompt');
+    expect(await send('   ')).toBe('prompt');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(2);
+  });
+
+  test('keeps the slash /ulw path on the command route', async () => {
+    const decision = await send('/ulw test hello');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'test hello' });
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('keeps shell-mode ulw on the shell route', async () => {
+    const decision = await send('ulw x', 'shell');
+
+    expect(decision).toBe('shell');
+    expect(shellCalls).toHaveLength(1);
+    expect(shellCalls[0].command).toBe('ulw x');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+});
+
+describe('routeMessage native ulw run', () => {
+  // The session directory defines no /ulw template and no ulw skill (the
+  // normal case outside this checkout): the send deterministically creates a
+  // native run session and opens it with the brief — no CLI appendix rides
+  // along. Commands and skills keep precedence; failures are loud.
+  const sendCommandCalls = [];
+  const createSessionCalls = [];
+  const sendMessageCalls = [];
+  const shellCalls = [];
+  let originalSendCommand;
+  let originalCreateSession;
+  let originalSendMessage;
+  let originalListCommands;
+  let originalShellSession;
+  let originalLoadSkills;
+
+  beforeEach(() => {
+    sendCommandCalls.length = 0;
+    createSessionCalls.length = 0;
+    sendMessageCalls.length = 0;
+    shellCalls.length = 0;
+
+    const childStore = {
+      getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
+      setState: () => {},
+    };
+    const childStores = {
+      children: new Map(),
+      ensureChild: () => childStore,
+      getChild: () => childStore,
+    };
+    setActionRefs(childStores, () => '/elsewhere/project');
+    setOptimisticRefs(() => {}, () => {});
+    useConfigStore.setState({ isConnected: true });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {} });
+
+    originalSendCommand = opencodeClient.sendCommand;
+    originalCreateSession = opencodeClient.createSession;
+    originalSendMessage = opencodeClient.sendMessage;
+    originalListCommands = opencodeClient.listCommands;
+    originalShellSession = opencodeClient.shellSession;
+    originalLoadSkills = useSkillsStore.getState().loadSkills;
+    useSkillsStore.setState({ loadSkills: async () => true });
+    opencodeClient.listCommands = async () => [];
+    opencodeClient.createSession = async (params, directory) => {
+      createSessionCalls.push({ params, directory });
+      return { id: 'session-run-1', directory: '/elsewhere/project' };
+    };
+    opencodeClient.sendCommand = async (params) => {
+      sendCommandCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.sendMessage = async (params) => {
+      sendMessageCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.shellSession = async (params) => {
+      shellCalls.push(params);
+      return { info: {}, parts: [] };
+    };
+  });
+
+  afterEach(() => {
+    opencodeClient.sendCommand = originalSendCommand;
+    opencodeClient.createSession = originalCreateSession;
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.listCommands = originalListCommands;
+    opencodeClient.shellSession = originalShellSession;
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+  });
+
+  const send = (content, inputMode) => routeMessage({
+    sessionId: 'session-elsewhere',
+    directory: '/elsewhere/project',
+    content,
+    providerID: 'provider-a',
+    modelID: 'model-a',
+    inputMode,
+  });
+
+  test('bare ulw adopts the send session and opens it with the brief', async () => {
+    const decision = await send('ulw analyze this repo');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(0);
+    // Exactly one conversation: the send flow's session is adopted, so no
+    // second session is created and no blank draft is left behind.
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-elsewhere');
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    expect(sendMessageCalls[0].directory).toBe('/elsewhere/project');
+    // The run carries its native loop procedure: goals are registered
+    // through tools, so the DAG cannot stick at 0/0.
+    const contextTexts = (sendMessageCalls[0].context ?? []).map((part) => part.text).join('\n');
+    expect(contextTexts).toContain('ulw_goal_create');
+    expect(contextTexts).toContain('ulw_dispatch');
+    expect(contextTexts).toContain('ulw_evidence');
+    expect(contextTexts).toContain('ulw_complete');
+    expect(contextTexts).toContain('session-elsewhere');
+  });
+
+  test('/ulw with args passes the arguments as the brief', async () => {
+    const decision = await send('/ulw analyze this repo');
+
+    expect(decision).toBe('command');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-elsewhere');
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+  });
+
+  test('bare ulw without args still adopts, keeping the trigger as the brief', async () => {
+    const decision = await send('ulw');
+
+    expect(decision).toBe('command');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-elsewhere');
+    expect(sendMessageCalls[0].text).toBe('ulw');
+  });
+
+  test('bare ulw with a colon separator strips to the goal text', async () => {
+    const decision = await send('ulw: analyze this repo');
+
+    expect(decision).toBe('command');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+  });
+
+  test('without a send session the run creates exactly one session with metadata', async () => {
+    const result = await startUlwNativeRun({
+      directory: '/elsewhere/project',
+      content: 'ulw analyze this repo',
+      args: 'analyze this repo',
+      providerID: 'provider-a',
+      modelID: 'model-a',
+    });
+
+    expect(createSessionCalls).toHaveLength(1);
+    expect(createSessionCalls[0].params.metadata?.alcode?.ulwRunId).toMatch(/^ulw-/);
+    expect(result.sessionId).toBe('session-run-1');
+    expect(result.runId).toMatch(/^ulw-/);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-run-1');
+  });
+
+  test('a mid-sentence ulw mention stays a plain prompt in the current session', async () => {
+    const decision = await send('can you ulw this?');
+
+    expect(decision).toBe('prompt');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-elsewhere');
+    expect(sendMessageCalls[0].text).toBe('can you ulw this?');
+    expect(sendMessageCalls[0].context).toBeUndefined();
+  });
+
+  test('shell-mode ulw stays on the shell route', async () => {
+    const decision = await send('ulw analyze this repo', 'shell');
+
+    expect(decision).toBe('shell');
+    expect(shellCalls).toHaveLength(1);
+    expect(shellCalls[0].command).toBe('ulw analyze this repo');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('a run creation failure fails the send loudly instead of a silent prompt', async () => {
+    opencodeClient.createSession = async () => {
+      throw new Error('offline');
+    };
+
+    // The send session is adopted, so creation is only attempted when no
+    // session exists yet: the loud failure lives on that path.
+    await expect(startUlwNativeRun({
+      directory: '/elsewhere/project',
+      content: 'ulw analyze this repo',
+      args: 'analyze this repo',
+      providerID: 'provider-a',
+      modelID: 'model-a',
+    })).rejects.toThrow('Failed to create ulw run');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('a resume flag sends into the named session without creating', async () => {
+    const decision = await send('ulw --resume session-old do more');
+
+    expect(decision).toBe('command');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-old');
+    expect(sendMessageCalls[0].text).toBe('do more');
+  });
+
+  test('a real /ulw template keeps precedence over the native path', async () => {
+    opencodeClient.listCommands = async () => [{ name: 'ulw' }];
+
+    const decision = await send('ulw test hello');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(1);
+    expect(sendCommandCalls[0]).toMatchObject({ command: 'ulw', arguments: 'test hello' });
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  test('a ulw skill keeps precedence over the native path', async () => {
+    useSkillsStore.setState({ skillsByDirectory: { '/elsewhere/project': [{ name: 'ulw' }] } });
+
+    const decision = await send('ulw test hello');
+
+    expect(decision).toBe('prompt');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-elsewhere');
+    expect(sendMessageCalls[0].text).toBe('ulw test hello');
+  });
+
+  test('an unresolved non-ulw command stays a plain prompt without creating', async () => {
+    const decision = await send('/nope test');
+
+    expect(decision).toBe('prompt');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('/nope test');
+  });
+
+  test('a failed skills load still fails the ulw send instead of guessing', async () => {
+    useSkillsStore.setState({ loadSkills: async () => false });
+    await expect(send('/ulw go')).rejects.toThrow();
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+});
+
+describe('resolveUlwRunIntent parity with the old fallback', () => {
+  // The resolver must accept exactly the sends the fallback attached its
+  // appendix to: leading word-bound `ulw` or `/ulw`, nothing else.
+  const cases = [
+    ['ulw analyze this repo', 'analyze this repo'],
+    ['/ulw analyze this repo', 'analyze this repo'],
+    ['ulw: analyze this repo', 'analyze this repo'],
+    ['ulw', ''],
+    ['  ULW go', 'go'],
+    ['can you ulw this?', null],
+    ['soulwork', null],
+    ['ulwazi', null],
+    ['ulw-blah', null],
+    ['/nope test', null],
+    ['hello there', null],
+    ['', null],
+    ['   ', null],
+  ];
+
+  for (const [content, args] of cases) {
+    test(`resolves ${JSON.stringify(content)}`, () => {
+      expect(resolveUlwRunIntent(content)?.args ?? null).toBe(args);
+    });
+  }
+
+  test('shell input never resolves', () => {
+    expect(resolveUlwRunIntent('ulw analyze this repo', 'shell')).toBeNull();
+    expect(resolveUlwRunIntent('/ulw go', 'shell')).toBeNull();
+  });
+
+  test('resume flags split the target off the brief', () => {
+    expect(splitUlwResumeTarget('--resume session-old do more')).toEqual({
+      sessionId: 'session-old',
+      rest: 'do more',
+    });
+    expect(splitUlwResumeTarget('--session-id=session-old do more')).toEqual({
+      sessionId: 'session-old',
+      rest: 'do more',
+    });
+    expect(splitUlwResumeTarget('analyze this repo')).toBeNull();
+  });
+});
+
+describe('routeMessage dag route log', () => {
+  // Every send reports its evaluated trigger for the DAG flow trace: a
+  // console.debug line (emitted synchronously, asserted through
+  // routeMessage) plus one proxied service POST (asserted through the
+  // helper). Both carry the decision and the 60-char sample.
+  const debugLines = [];
+  const fetchCalls = [];
+  let originalDebug;
+  let originalFetch;
+  let originalSendCommand;
+  let originalSendMessage;
+  let originalListCommands;
+  let originalLoadSkills;
+
+  beforeEach(() => {
+    debugLines.length = 0;
+    fetchCalls.length = 0;
+    const childStore = {
+      getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
+      setState: () => {},
+    };
+    const childStores = {
+      children: new Map(),
+      ensureChild: () => childStore,
+      getChild: () => childStore,
+    };
+    setActionRefs(childStores, () => '/ulw/project');
+    setOptimisticRefs(() => {}, () => {});
+    useConfigStore.setState({ isConnected: true });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {} });
+
+    originalDebug = console.debug;
+    console.debug = (...args) => {
+      debugLines.push(args);
+    };
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options) => {
+      fetchCalls.push({ url: String(url), options });
+      return new Response('{}', { status: 200 });
+    };
+    originalSendCommand = opencodeClient.sendCommand;
+    originalSendMessage = opencodeClient.sendMessage;
+    originalListCommands = opencodeClient.listCommands;
+    originalLoadSkills = useSkillsStore.getState().loadSkills;
+    useSkillsStore.setState({ loadSkills: async () => true });
+    opencodeClient.listCommands = async () => [{ name: 'ulw' }];
+    opencodeClient.sendCommand = async () => 'msg';
+    opencodeClient.sendMessage = async () => 'msg';
+  });
+
+  afterEach(() => {
+    console.debug = originalDebug;
+    globalThis.fetch = originalFetch;
+    opencodeClient.sendCommand = originalSendCommand;
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.listCommands = originalListCommands;
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+  });
+
+  const send = (content, inputMode) => routeMessage({
+    sessionId: 'session-ulw',
+    directory: '/ulw/project',
+    content,
+    providerID: 'provider-a',
+    modelID: 'model-a',
+    inputMode,
+  });
+
+  test('logs captured-to-/ulw with the content sample for a bare trigger', async () => {
+    expect(await send('ulw test hello')).toBe('command');
+    expect(debugLines).toHaveLength(1);
+    expect(debugLines[0][0]).toBe('[dag] route decision:');
+    expect(debugLines[0][1]).toBe('captured-to-/ulw');
+    expect(debugLines[0][2]).toBe('"ulw test hello"');
+  });
+
+  test('logs plain-prompt with the content sample for ordinary chat', async () => {
+    expect(await send('soulwork')).toBe('prompt');
+    expect(debugLines).toHaveLength(1);
+    expect(debugLines[0][0]).toBe('[dag] route decision:');
+    expect(debugLines[0][1]).toBe('plain-prompt');
+    expect(debugLines[0][2]).toBe('"soulwork"');
+  });
+
+  test('truncates the sample to the first 60 chars', async () => {
+    const long = `ulw ${'x'.repeat(100)}`;
+    expect(await send(long)).toBe('command');
+    expect(debugLines).toHaveLength(1);
+    expect(debugLines[0][2]).toBe(JSON.stringify(long.slice(0, 60)));
+  });
+
+  test('posts the decision and resolved command to the pane service route', async () => {
+    await recordDagRouteDecision({
+      decision: 'captured-to-/ulw',
+      sample: 'ulw test hello',
+      sessionId: 'session-ulw',
+      command: 'ulw',
+      arguments: 'test hello',
+    });
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0].url).toBe('/api/guests/alcode-builtin-dag-pane/service/request');
+    const outer = JSON.parse(fetchCalls[0].options.body);
+    expect(outer.method).toBe('POST');
+    expect(outer.path).toBe('/debug/route');
+    expect(JSON.parse(outer.body)).toEqual({
+      decision: 'captured-to-/ulw',
+      sample: 'ulw test hello',
+      sessionId: 'session-ulw',
+      command: 'ulw',
+      arguments: 'test hello',
+    });
+  });
+
+  test('a failed post never rejects the report', async () => {
+    globalThis.fetch = async () => {
+      throw new Error('offline');
+    };
+    await recordDagRouteDecision({ decision: 'plain-prompt', sample: 'hi', sessionId: 'session-ulw' });
+    expect(debugLines).toHaveLength(1);
+    expect(debugLines[0][1]).toBe('plain-prompt');
   });
 });
 
@@ -2254,5 +2838,291 @@ describe('send does not wait for session knowledge before showing the message', 
     expect(sendCalls).toHaveLength(1);
     expect(sendCalls[0].messageId).toBe(added[0].id);
     expect(sendCalls[0].context).toBeUndefined();
+  });
+});
+describe('routeMessage native ulw parent-run regression (gaps)', () => {
+  // Gap cover for the native ULW route: one prompt adopts its send session
+  // (no second conversation), chat + run record + DAG agree on the parent
+  // id, reconnect/reopen never redispatch, and ordinary sends still work.
+  // Each case below asserts only what the existing native-ulw block does not.
+  const PARENT = 'session-ulw-parent';
+  const CHILD = 'session-ulw-child-1';
+  const DIRECTORY = '/elsewhere/project';
+  const sendCommandCalls = [];
+  const createSessionCalls = [];
+  const sendMessageCalls = [];
+  const shellCalls = [];
+  const routePosts = [];
+  let originalSendCommand;
+  let originalCreateSession;
+  let originalSendMessage;
+  let originalListCommands;
+  let originalShellSession;
+  let originalLoadSkills;
+  let originalFetch;
+  let originalProjects;
+  let originalActiveProjectId;
+
+  const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } };
+
+  const parentRunInput = () => {
+    const assistant = {
+      id: 'm-ulw-parent-1',
+      sessionID: PARENT,
+      role: 'assistant',
+      time: { created: 1500, completed: 1600 },
+      agent: 'explore',
+      providerID: 'provider-a',
+      modelID: 'model-a',
+    };
+    const call = {
+      id: 't-ulw-parent-1',
+      sessionID: PARENT,
+      messageID: 'm-ulw-parent-1',
+      type: 'tool',
+      callID: 'call_t-ulw-parent-1',
+      tool: 'subagent',
+      state: {
+        status: 'completed',
+        input: { description: 'Analyze auth' },
+        output: '',
+        metadata: { sessionID: CHILD },
+        time: { start: 2000, end: 8000 },
+      },
+    };
+    return {
+      conversationId: PARENT,
+      conversationTitle: 'ULW parent run',
+      sessions: [
+        { id: PARENT, projectID: 'proj_1', directory: DIRECTORY, title: 'ULW parent run', cost: 0, tokens, time: { created: 1000, updated: 9000 } },
+        { id: CHILD, parentID: PARENT, projectID: 'proj_1', directory: DIRECTORY, title: 'Analyze auth', agent: 'explore', cost: 0.001, tokens, time: { created: 2000, updated: 8000 } },
+      ],
+      statuses: {},
+      messages: [assistant],
+      parts: { 'm-ulw-parent-1': [call] },
+    };
+  };
+
+  beforeEach(() => {
+    sendCommandCalls.length = 0;
+    createSessionCalls.length = 0;
+    sendMessageCalls.length = 0;
+    shellCalls.length = 0;
+    routePosts.length = 0;
+
+    const childStore = {
+      getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
+      setState: () => {},
+    };
+    const childStores = {
+      children: new Map(),
+      ensureChild: () => childStore,
+      getChild: () => childStore,
+    };
+    setActionRefs(childStores, () => DIRECTORY);
+    setOptimisticRefs(() => {}, () => {});
+    useConfigStore.setState({ isConnected: true });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {} });
+
+    originalSendCommand = opencodeClient.sendCommand;
+    originalCreateSession = opencodeClient.createSession;
+    originalSendMessage = opencodeClient.sendMessage;
+    originalListCommands = opencodeClient.listCommands;
+    originalShellSession = opencodeClient.shellSession;
+    originalLoadSkills = useSkillsStore.getState().loadSkills;
+    originalFetch = globalThis.fetch;
+    originalProjects = useProjectsStore.getState().projects;
+    originalActiveProjectId = useProjectsStore.getState().activeProjectId;
+    useSkillsStore.setState({ loadSkills: async () => true });
+    opencodeClient.listCommands = async () => [];
+    opencodeClient.createSession = async (params, directory) => {
+      createSessionCalls.push({ params, directory });
+      return { id: 'session-run-1', directory: directory ?? DIRECTORY };
+    };
+    opencodeClient.sendCommand = async (params) => {
+      sendCommandCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.sendMessage = async (params) => {
+      sendMessageCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.shellSession = async (params) => {
+      shellCalls.push(params);
+      return { info: {}, parts: [] };
+    };
+    globalThis.fetch = async (url, options) => {
+      try {
+        const outer = JSON.parse(options?.body ?? '');
+        if (outer?.path === '/debug/route') routePosts.push(JSON.parse(outer.body));
+      } catch {
+        // Non-JSON traffic is not a route report; ignore it.
+      }
+      return new Response('{}', { status: 200 });
+    };
+    useProjectsStore.setState({ projects: [], activeProjectId: null });
+    useSessionUIStore.setState({
+      currentSessionId: null,
+      currentSessionDirectory: null,
+      materializedDraftSessionId: null,
+      worktreeMetadata: new Map(),
+      newSessionDraft: { open: false, directoryOverride: null, parentID: null },
+    });
+  });
+
+  afterEach(() => {
+    opencodeClient.sendCommand = originalSendCommand;
+    opencodeClient.createSession = originalCreateSession;
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.listCommands = originalListCommands;
+    opencodeClient.shellSession = originalShellSession;
+    globalThis.fetch = originalFetch;
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useProjectsStore.setState({ projects: originalProjects, activeProjectId: originalActiveProjectId });
+    useSessionUIStore.setState({
+      currentSessionId: null,
+      currentSessionDirectory: null,
+      worktreeMetadata: new Map(),
+      newSessionDraft: { open: false, directoryOverride: null, parentID: null },
+    });
+  });
+
+  const send = (content, inputMode) => routeMessage({
+    sessionId: PARENT,
+    directory: DIRECTORY,
+    content,
+    providerID: 'provider-a',
+    modelID: 'model-a',
+    inputMode,
+  });
+
+  const procedureTextOf = (call) => (call.context ?? []).map((part) => part.text).join('\n');
+
+  const waitForRoutePost = async () => {
+    for (let index = 0; index < 10 && routePosts.length === 0; index += 1) {
+      await Bun.sleep(0);
+    }
+  };
+
+  test('(1) a second ULW prompt reuses the one parent run instead of creating again', async () => {
+    expect(await send('ulw analyze this repo')).toBe('command');
+    expect(await send('ulw: check the auth flow')).toBe('command');
+
+    // One prompt, one parent conversation: no second session is ever created.
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(2);
+    expect(sendMessageCalls[0].id).toBe(PARENT);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    expect(sendMessageCalls[1].id).toBe(PARENT);
+    expect(sendMessageCalls[1].text).toBe('check the auth flow');
+    // Both turns drive the same run: the native procedure names the parent id.
+    for (const call of sendMessageCalls) {
+      expect(procedureTextOf(call)).toContain(`ULW run ${PARENT}`);
+    }
+  });
+
+  test('(2) chat, run record, and DAG share the one parent session id', async () => {
+    expect(await send('ulw analyze this repo')).toBe('command');
+
+    // Chat: the brief lands in the parent conversation.
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe(PARENT);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    // Run record: the procedure the DAG reads is bound to the parent id.
+    expect(procedureTextOf(sendMessageCalls[0])).toContain(`ULW run ${PARENT}`);
+    // DAG trace: the route report names the same parent session.
+    await waitForRoutePost();
+    expect(routePosts).toHaveLength(1);
+    expect(routePosts[0]).toMatchObject({
+      decision: 'captured-to-/ulw',
+      sessionId: PARENT,
+      command: 'ulw',
+      arguments: 'analyze this repo',
+    });
+    // DAG model: one run under the parent id, with the delegated child settled.
+    const model = buildDagRunModel(parentRunInput());
+    expect(model?.conversationId).toBe(PARENT);
+    expect(model?.parentSessionId).toBe(PARENT);
+    expect(model?.runId).toBe(PARENT);
+    expect(model?.progress).toEqual({ total: 1, settled: 1 });
+    expect(model?.children.map((child) => child.sessionId)).toEqual([CHILD]);
+  });
+
+  test('(3) reconnect rehydration creates no second session and no duplicate run', async () => {
+    await send('ulw analyze this repo');
+    const before = buildDagRunModel(parentRunInput());
+    expect(before?.children).toHaveLength(1);
+
+    useSessionUIStore.getState().setCurrentSession(PARENT, DIRECTORY);
+    useSessionUIStore.getState().prepareForRuntimeSwitch('host:ulw-reconnect');
+    // The live selection drops the way a disconnect does; the reconnect restores it.
+    useSessionUIStore.setState({ currentSessionId: null, currentSessionDirectory: null });
+    useSessionUIStore.getState().restoreForRuntimeSwitch('host:ulw-reconnect');
+
+    expect(useSessionUIStore.getState().currentSessionId).toBe(PARENT);
+    expect(useSessionUIStore.getState().currentSessionDirectory).toBe(DIRECTORY);
+    const after = buildDagRunModel(parentRunInput());
+    expect(after?.parentSessionId).toBe(before?.parentSessionId);
+    expect(after?.runId).toBe(before?.runId);
+    expect(after?.children.map((child) => child.sessionId)).toEqual(
+      before?.children.map((child) => child.sessionId),
+    );
+    expect(after?.children).toHaveLength(1);
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(shellCalls).toHaveLength(0);
+  });
+
+  test('(9) reopening the parent restores it without redispatching the run', async () => {
+    await send('ulw analyze this repo');
+    const before = buildDagRunModel(parentRunInput());
+
+    useSessionUIStore.getState().setCurrentSession(PARENT, DIRECTORY);
+    useSessionUIStore.getState().setCurrentSession('session-other', DIRECTORY);
+    expect(useSessionUIStore.getState().currentSessionId).toBe('session-other');
+    useSessionUIStore.getState().setCurrentSession(PARENT, DIRECTORY);
+    await Bun.sleep(0);
+    await Bun.sleep(0);
+
+    expect(useSessionUIStore.getState().currentSessionId).toBe(PARENT);
+    expect(useSessionUIStore.getState().currentSessionDirectory).toBe(DIRECTORY);
+    const after = buildDagRunModel(parentRunInput());
+    expect(after?.runId).toBe(before?.runId);
+    expect(after?.children).toHaveLength(1);
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(shellCalls).toHaveLength(0);
+  });
+
+  test('(10) ordinary prompts and new-session creation still work without the native path', async () => {
+    const decision = await send('hello there');
+
+    expect(decision).toBe('prompt');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(shellCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe(PARENT);
+    expect(sendMessageCalls[0].text).toBe('hello there');
+    expect(sendMessageCalls[0].context).toBeUndefined();
+
+    opencodeClient.createSession = async (params, directory) => {
+      createSessionCalls.push({ params, directory });
+      return { id: 'session-ordinary-1', directory };
+    };
+    useSessionUIStore.setState({
+      newSessionDraft: { open: true, directoryOverride: DIRECTORY, parentID: null, title: 'Ordinary title' },
+    });
+    const created = await useSessionUIStore.getState().createSession('Ordinary title', DIRECTORY);
+
+    expect(createSessionCalls).toHaveLength(1);
+    expect(createSessionCalls[0].directory).toBe(DIRECTORY);
+    expect(created?.id).toBe('session-ordinary-1');
+    expect(useSessionUIStore.getState().newSessionDraft.open).toBe(false);
   });
 });

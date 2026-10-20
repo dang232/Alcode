@@ -105,8 +105,15 @@ const attachObjectSchema = z.object({
 
 const attachSchema = z.union([z.boolean(), attachModeSchema, attachObjectSchema]);
 
+/** Legacy built-in panel ids parse and write back with the new prefix. */
+const OPENCHAMBER_BUILTIN_PREFIX = 'openchamber-builtin-';
+const ALCODE_BUILTIN_PREFIX = 'alcode-builtin-';
+const normalizeBuiltinPanelId = (id: string): string => (
+  id.startsWith(OPENCHAMBER_BUILTIN_PREFIX) ? `${ALCODE_BUILTIN_PREFIX}${id.slice(OPENCHAMBER_BUILTIN_PREFIX.length)}` : id
+);
+
 const panelSchema = z.object({
-  id: z.string().trim().regex(PANEL_ID),
+  id: z.string().trim().regex(PANEL_ID).transform(normalizeBuiltinPanelId),
   name: z.string().trim().min(1),
   icon: z.string().trim().refine(isPanelIcon),
   entry: z.string().trim().refine(isSafeAssetPath).optional(),
@@ -338,8 +345,18 @@ const runtimeContributions = (contributes: z.output<typeof contributesSchema>): 
 export const openChamberManifestSchema = z.object({
   apiVersion: z.literal(OPENCHAMBER_SDK_MANIFEST_API_VERSIONS[0]),
   engines: z.object({
-    openchamber: z.string().trim().regex(OPENCHAMBER_ENGINE_PATTERN),
-  }).strict().optional(),
+    alcode: z.string().trim().regex(OPENCHAMBER_ENGINE_PATTERN).optional(),
+    openchamber: z.string().trim().regex(OPENCHAMBER_ENGINE_PATTERN).optional(),
+  }).strict().optional().transform((engines, ctx) => {
+    // Legacy `engines.openchamber` parses and writes back as `engines.alcode`.
+    if (!engines) return undefined;
+    const floor = engines.alcode ?? engines.openchamber;
+    if (floor === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'engines.alcode must be a version like 1.22.0 or >=1.22.0.' });
+      return z.NEVER;
+    }
+    return { alcode: floor };
+  }),
   contributes: contributesSchema.superRefine((contributes, ctx) => {
     // Docking only means something for a page beside a shared surface.
     const docked = contributes.panel.dock !== undefined || contributes.panel.size !== undefined;

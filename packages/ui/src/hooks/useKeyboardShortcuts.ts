@@ -13,7 +13,7 @@ import { useCurrentSessionActivity } from '@/hooks/useSessionActivity';
 import { useKeybinds } from '@/hooks/useKeybind';
 import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
 import { useConfigStore } from '@/stores/useConfigStore';
-import { canUseElectronDesktopIPC, getMiniChatRuntimeArgs, invokeDesktop, isVSCodeRuntime } from '@/lib/desktop';
+import { canUseElectronDesktopIPC, getMiniChatRuntimeArgs, invokeDesktop, isDesktopShell, isVSCodeRuntime } from '@/lib/desktop';
 import {
   eventMatchesShortcut,
   eventMatchesShortcutPrefix,
@@ -563,6 +563,7 @@ export const useKeyboardShortcuts = () => {
             railOrder: state.contextRailOrder,
             hiddenSurfaces: state.contextRailHiddenSurfaces,
             isVSCode: isVSCodeRuntime(),
+            isDesktopShell: isDesktopShell(),
             screenWidth: window.innerWidth,
             tabs: panel?.tabs ?? [],
             sourceControlConnected: Object.values(useSourceControlAuthStore.getState().entries).some((entry) => entry.status?.status === 'connected'),

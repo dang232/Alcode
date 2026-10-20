@@ -1052,8 +1052,17 @@ under a running child.
   stay on disk on purpose: an older OpenChamber running on the same data dir
   still reads and writes them, so deleting them as stale breaks that server's
   agent tools.
-  The file contains only `plugins`: `-opencode.browser` first, then the absolute
-  directory of every OpenChamber plugin currently switched on. OpenCode's
+  The file contains `plugins`, the default `mcp.servers` entries, and the
+  `agent` map: the static OmO-native entries overlaid with the user's own
+  global `.md` agents (user wins on collision). The overlay is required
+  because a config-level `agent` map replaces the user's global agent
+  files in the running child — shipping only the statics would hide every
+  custom agent from the runtime while Settings still shows it.
+  Static entries with no eligible model for the connected providers are
+  dropped from the map (never shipped model-less); the missing capability
+  is reported through the model gaps so the failure is loud, not silent.
+  `-opencode.browser` first, then the absolute
+  directory of every Alcode plugin currently switched on. OpenCode's
   built-in browser tools need OpenCode's own desktop app to attach a browser;
   OpenChamber does not, so they would always fail with `browser.disconnected`
   and steer agents away from `openchamber_web`. A project config listing

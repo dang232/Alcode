@@ -117,6 +117,12 @@ keep the full height). The chat is always the centre and cannot move.
    `attach`. New Worktree also opens that window for dialog guests. The guest
    still owns the list and HTTP. VS Code and mobile omit the row. Do not add
    a built-in mode for that guest.
+3. Desktop-only guest: list its `plugin:<id>` surface id in
+   `DESKTOP_ONLY_PLUGIN_SURFACE_IDS` in `registry.ts` when the guest can
+   only work in the Electron shell (project-ide todo 13: the DAG side
+   pane's engine bridge is desktop-local). The visibility filter then
+   hides it on web, VS Code, and mobile, and both callers pass
+   `isDesktopShell()` from `@/lib/desktop`.
 
 ## Tracker
 

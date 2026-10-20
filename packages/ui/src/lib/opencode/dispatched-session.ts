@@ -5,8 +5,10 @@
  * When the dispatched session's turn ends, the OpenChamber server
  * (`web/server/lib/dispatch-results`) appends one synthetic message to the
  * session that dispatched it and wakes that session. Its metadata names the
- * dispatched session (`source: "openchamber-session"`) and its text wraps the
- * answer in an `<openchamber-session …>` envelope, the way OpenCode reports a
+ * dispatched session (`source: "openchamber-session"`, legacy Alcode
+ * records use `"alcode-session"`) and its text wraps the
+ * answer in an `<openchamber-session …>` envelope (legacy: `<alcode-session …>`),
+ * the way OpenCode reports a
  * background subagent (see `./subagent-run`).
  */
 
@@ -26,13 +28,13 @@ export type DispatchedSessionResult = {
 }
 
 const metadataSchema = z.object({
-  source: z.literal("openchamber-session"),
+  source: z.union([z.literal("openchamber-session"), z.literal("alcode-session")]),
   sessionID: z.string().min(1),
   state: z.enum(["completed", "error", "cancelled"]),
   title: z.string().optional(),
 })
 
-const ENVELOPE = /^\s*<openchamber-session\b[^>]*>\n?([\s\S]*?)\n?<\/openchamber-session>\s*$/
+const ENVELOPE = /^\s*<(?:openchamber|alcode)-session\b[^>]*>\n?([\s\S]*?)\n?<\/(?:openchamber|alcode)-session>\s*$/
 
 /** The dispatched session a message reports the result of, or undefined for any other message. */
 export function readDispatchedSessionResult(message: Message): DispatchedSessionResult | undefined {

@@ -26,7 +26,7 @@ import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useDraftSpaceTarget } from '@/lib/spaces/useDraftSpaceTarget';
 import { panelContentDirectory } from '@/lib/spaces/space-creation-requests';
 import { useDeviceInfo } from '@/lib/device';
-import { isVSCodeRuntime } from '@/lib/desktop';
+import { isDesktopShell, isVSCodeRuntime } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
 import {
   getVisibleContextRailSurfaces,
@@ -340,6 +340,7 @@ export const ContextPanelRail: React.FC = () => {
       railOrder: contextRailOrder,
       hiddenSurfaces: contextRailHiddenSurfaces,
       isVSCode: isVSCodeRuntime(),
+      isDesktopShell: isDesktopShell(),
       screenWidth,
       tabs,
       sourceControlConnected,

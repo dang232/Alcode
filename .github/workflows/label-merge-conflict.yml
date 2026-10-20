@@ -11,20 +11,42 @@ permissions: {}
 
 jobs:
   label:
-    if: ${{ github.repository == 'openchamber/openchamber' }}
+    # The bot secret check lives in a step below: secrets are not allowed
+    # in a job-level `if`, so the job filters on the repository only.
+    if: ${{ github.repository == 'dang232/Alcode' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
+      - name: Check bot secrets
+        id: guard
+        run: |
+          missing=""
+          [ -z "${{ secrets.OC_REVIEW_APP_ID }}" ] && missing="$missing OC_REVIEW_APP_ID"
+          [ -z "${{ secrets.OC_REVIEW_APP_PRIVATE_KEY }}" ] && missing="$missing OC_REVIEW_APP_PRIVATE_KEY"
+          if [ -z "$missing" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "missing=${missing# }" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notice skipped bot labeling
+        if: steps.guard.outputs.enabled != 'true'
+        run: |
+          echo "Merge-conflict labeling skipped - missing secrets ${{ steps.guard.outputs.missing }}. Core checks are unaffected."
+
       - name: Generate bot app token
         id: app-token
+        if: steps.guard.outputs.enabled == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.OC_REVIEW_APP_ID }}
           private-key: ${{ secrets.OC_REVIEW_APP_PRIVATE_KEY }}
 
       - name: Label pull requests with merge conflicts
+        if: steps.guard.outputs.enabled == 'true'
         uses: eps1lon/actions-label-merge-conflict@0273be72a0bbd58fcd71d0d6c02c209b50d1e5e1 # v3.1.0
         with:
           dirtyLabel: "merge-conflict:true"

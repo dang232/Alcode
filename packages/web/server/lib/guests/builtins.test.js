@@ -12,7 +12,7 @@ import { getServiceStatus, stopAllGuestServices } from './service.js';
 
 const roots = [];
 const releases = [];
-const id = 'openchamber-builtin-fixture';
+const id = 'alcode-builtin-fixture';
 afterEach(async () => {
   await stopAllGuestServices();
   for (const release of releases.splice(0)) release();

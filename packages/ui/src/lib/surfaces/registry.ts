@@ -56,6 +56,16 @@ export const CONTEXT_SURFACE_WIDTHS = {
 
 type ContextSurfaceWidth = keyof typeof CONTEXT_SURFACE_WIDTHS;
 
+/**
+ * Third-party guest surfaces the Electron desktop shell hosts alone
+ * (project-ide todo 13: the DAG side pane). The pane's engine bridge is a
+ * desktop-local service, so offering the rail icon on web, VS Code, or
+ * mobile would promise a panel that cannot work there. Listed by surface
+ * id (`plugin:<guest-id>`); guests outside this list keep the existing
+ * desktop/web behavior.
+ */
+export const DESKTOP_ONLY_PLUGIN_SURFACE_IDS: readonly string[] = ['plugin:alcode-builtin-dag-pane'];
+
 export const CONTEXT_SURFACES: readonly ContextSurfaceDescriptor[] = [
   {
     id: 'context',
@@ -203,6 +213,9 @@ type VisibleRailSurfacesOptions = {
       shortcuts, which share this filter). */
   hiddenSurfaces?: readonly string[];
   isVSCode: boolean;
+  /** Undefined keeps the previous behavior for callers that do not know
+      their shell: desktop-only guest surfaces stay hidden. */
+  isDesktopShell?: boolean;
   screenWidth: number;
   tabs: readonly { mode: ContextPanelMode; targetPath?: string | null }[];
   /** The Tracker rail icon stays off until a GitHub or GitLab account is
@@ -229,6 +242,9 @@ export const getVisibleContextRailSurfaces = (options: VisibleRailSurfacesOption
       return false;
     }
     if (isPluginContextPanelMode(surface.mode) && options.isVSCode) {
+      return false;
+    }
+    if (!options.isDesktopShell && DESKTOP_ONLY_PLUGIN_SURFACE_IDS.includes(surface.id)) {
       return false;
     }
     // The walkthrough needs room for a stop list beside real code, and its

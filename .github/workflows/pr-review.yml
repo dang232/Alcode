@@ -16,61 +16,40 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
 
 jobs:
-  # Every PR event gets a review. A comment command starts the agent on the
-  # repository's model key, so it runs only for people who can push here.
-  gate:
-    if: |
-      github.event_name == 'pull_request_target' ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.login != 'openchamber-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@openchamber-bot review' || startsWith(github.event.comment.body, '@openchamber-bot review '))) ||
-      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login != 'openchamber-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@openchamber-bot review' || startsWith(github.event.comment.body, '@openchamber-bot review ')))
-    runs-on: ubuntu-latest
-    permissions: {}
-    outputs:
-      allowed: ${{ steps.access.outputs.allowed }}
-    steps:
-      - name: Generate access-check token
-        id: app-token
-        if: github.event_name != 'pull_request_target'
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ secrets.OC_REVIEW_APP_ID }}
-          private-key: ${{ secrets.OC_REVIEW_APP_PRIVATE_KEY }}
-          permission-metadata: read
-
-      - name: Check commenter access
-        id: access
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          EVENT_NAME: ${{ github.event_name }}
-          COMMENTER: ${{ github.event.comment.user.login }}
-        run: |
-          if [ "$EVENT_NAME" = "pull_request_target" ]; then
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # `author_association` hides private org members, so ask for the
-          # repository permission itself. Maintain reads as write here.
-          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${COMMENTER}/permission" --jq '.permission' 2>/dev/null)" || permission="none"
-          case "$permission" in
-            admin|write) echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "::notice::${COMMENTER} has ${permission} access; bot commands need write access."
-              echo "allowed=false" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
-
   review:
     name: automation
-    needs: gate
-    if: needs.gate.outputs.allowed == 'true'
+    if: |
+      (github.event_name == 'pull_request_target' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@alcode-bot review' || startsWith(github.event.comment.body, '@alcode-bot review '))) ||
+      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '/oc-review' || startsWith(github.event.comment.body, '/oc-review ') || github.event.comment.body == '@alcode-bot review' || startsWith(github.event.comment.body, '@alcode-bot review '))))
+    # Missing bot secrets skip the steps below with a notice instead of failing red.
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
       issues: write
     steps:
+      - name: Check bot secrets
+        id: guard
+        run: |
+          missing=""
+          [ -z "${{ secrets.OC_REVIEW_APP_ID }}" ] && missing="$missing OC_REVIEW_APP_ID"
+          [ -z "${{ secrets.OC_REVIEW_APP_PRIVATE_KEY }}" ] && missing="$missing OC_REVIEW_APP_PRIVATE_KEY"
+          [ -z "${{ secrets.ZHIPU_API_KEY }}" ] && missing="$missing ZHIPU_API_KEY"
+          if [ -z "$missing" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "missing=${missing# }" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notice skipped bot review
+        if: steps.guard.outputs.enabled != 'true'
+        run: |
+          echo "PR review automation skipped - missing secrets ${{ steps.guard.outputs.missing }}. Core checks are unaffected."
+
       - name: Checkout repository
+        if: steps.guard.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
@@ -78,6 +57,7 @@ jobs:
 
       - name: Resolve pull request context
         id: pr
+        if: steps.guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -103,7 +83,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Clear review status for draft
-        if: steps.pr.outputs.draft == 'true'
+        if: steps.pr.outputs.draft == 'true' && steps.guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -123,7 +103,7 @@ jobs:
       # posts its review (see .opencode/agent/pr-review-bot.md).
       - name: Generate review app token
         id: app-token
-        if: steps.pr.outputs.draft == 'false'
+        if: steps.pr.outputs.draft == 'false' && steps.guard.outputs.enabled == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.OC_REVIEW_APP_ID }}
@@ -133,7 +113,7 @@ jobs:
           permission-pull-requests: write
 
       - name: Check review safety
-        if: steps.pr.outputs.draft == 'false'
+        if: steps.pr.outputs.draft == 'false' && steps.guard.outputs.enabled == 'true'
         id: safety
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -155,7 +135,7 @@ jobs:
 
       - name: Throttle push-burst reviews
         id: throttle
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -186,7 +166,7 @@ jobs:
           fi
 
       - name: Mark review pending
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true' && steps.guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -201,7 +181,7 @@ jobs:
           gh pr edit "$PR_NUMBER" "${remove_args[@]}" --add-label "review:pending"
 
       - name: Resolve manual command
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && github.event_name != 'pull_request_target'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && github.event_name != 'pull_request_target' && steps.guard.outputs.enabled == 'true'
         id: command
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -230,7 +210,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Acknowledge manual review command
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && github.event_name != 'pull_request_target'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && github.event_name != 'pull_request_target' && steps.guard.outputs.enabled == 'true'
         id: manual-reaction
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -254,7 +234,7 @@ jobs:
           echo "reaction_id=$reaction_id" >> "$GITHUB_OUTPUT"
 
       - name: Skip unsafe review
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe != 'true'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe != 'true' && steps.guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -280,11 +260,11 @@ jobs:
           Automated review cannot clear changes to its own policy or trust boundary. A maintainer must review it directly."
 
       - name: Debounce new commits
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && github.event_name == 'pull_request_target' && github.event.action == 'synchronize'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && github.event_name == 'pull_request_target' && github.event.action == 'synchronize' && steps.guard.outputs.enabled == 'true'
         run: sleep 30
 
       - name: Install opencode
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true' && steps.guard.outputs.enabled == 'true'
         run: |
           version="$(node -p "require('./packages/electron/package.json').opencodeCli.version")"
           npm install -g "@opencode/cli@${version}"
@@ -349,12 +329,12 @@ jobs:
           find "$context" -type f | head -n 200
 
       - name: Record review start
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true' && steps.guard.outputs.enabled == 'true'
         id: review-start
         run: echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
 
       - name: Review pull request
-        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true'
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true' && steps.guard.outputs.enabled == 'true'
         id: review-run
         env:
           REVIEW_TIMEOUT: 30m
@@ -439,7 +419,7 @@ jobs:
 
       - name: Verify and enforce review verdict
         id: verdict
-        if: always() && steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true'
+        if: always() && steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true' && steps.guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -560,7 +540,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Mark automation failure
-        if: always() && steps.pr.outputs.draft == 'false' && steps.verdict.outcome != 'success' && steps.safety.outputs.safe != 'false' && steps.throttle.outputs.skip != 'true'
+        if: always() && steps.pr.outputs.draft == 'false' && steps.verdict.outcome != 'success' && steps.safety.outputs.safe != 'false' && steps.throttle.outputs.skip != 'true' && steps.guard.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}

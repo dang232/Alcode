@@ -517,7 +517,9 @@ export const clampStatusSectionHeight = (height: number): number => {
 };
 
 export type OpenChamberEngines = {
-  openchamber: string;
+  openchamber?: string;
+  /** Normalized spelling: `engines.openchamber` parses and writes back as `engines.alcode`. */
+  alcode?: string;
 };
 
 export type OpenChamberManifest = {

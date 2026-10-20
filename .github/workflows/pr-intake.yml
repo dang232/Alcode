@@ -63,6 +63,8 @@ jobs:
   intake:
     name: Label PR ${{ matrix.target.number }}
     needs: collect
+    # The bot secret check lives in a step below: secrets are not allowed
+    # in a job-level `if`, so the job filters on the matrix input only.
     if: ${{ needs.collect.outputs.targets != '[]' }}
     runs-on: ubuntu-latest
     permissions:
@@ -77,8 +79,27 @@ jobs:
       matrix:
         target: ${{ fromJson(needs.collect.outputs.targets) }}
     steps:
+      - name: Check bot secrets
+        id: guard
+        run: |
+          missing=""
+          [ -z "${{ secrets.OC_REVIEW_APP_ID }}" ] && missing="$missing OC_REVIEW_APP_ID"
+          [ -z "${{ secrets.OC_REVIEW_APP_PRIVATE_KEY }}" ] && missing="$missing OC_REVIEW_APP_PRIVATE_KEY"
+          if [ -z "$missing" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "missing=${missing# }" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notice skipped bot intake
+        if: steps.guard.outputs.enabled != 'true'
+        run: |
+          echo "PR intake labeling skipped - missing secrets ${{ steps.guard.outputs.missing }}. Core checks are unaffected."
+
       - name: Generate bot app token
         id: app-token
+        if: steps.guard.outputs.enabled == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.OC_REVIEW_APP_ID }}
@@ -92,6 +113,7 @@ jobs:
           fetch-depth: 0
 
       - name: Sync labels and parking comment
+        if: steps.guard.outputs.enabled == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PR_NUMBER: ${{ matrix.target.number }}

@@ -82,7 +82,7 @@ import { runOpenCodeCliUpgrade } from './lib/opencode/cli-upgrade.js';
 import { resolveOpenCodeUpgradeCapability } from './lib/opencode/upgrade-capability.js';
 import { createBootstrapRuntime } from './lib/opencode/bootstrap-runtime.js';
 import { createSessionRuntime } from './lib/opencode/session-runtime.js';
-import { configureOpenCodeRuntimeProviders, resetOpenCodeRuntimeProviders } from './lib/small-model/client.js';
+import { configureOpenCodeRuntimeProviders, getSmallModelClient, listModelInfos, resetOpenCodeRuntimeProviders } from './lib/small-model/client.js';
 import { configureOpenCodeCredentials, openCodeCredentialSource } from './lib/opencode/auth.js';
 import { configureProjectStartCommandSource, openCodeProjectStartCommandSource } from './lib/opencode/project-start-command.js';
 import { createOpenCodeWatcherRuntime } from './lib/opencode/watcher.js';
@@ -138,7 +138,8 @@ import { configureGitEnvironment, getCheckedOutBranch, resolvePrimaryWorktreeRoo
 import { createEnvironmentStore } from './lib/environment/store.js';
 import { createEnvironmentRuntime } from './lib/environment/runtime.js';
 import { readOpenCodeServiceEnv } from './lib/environment/opencode-service-env.js';
-import { OPENCODE_CONFIG_DIR } from './lib/opencode/shared.js';
+import { OPENCODE_CONFIG_DIR, readConfigLayers } from './lib/opencode/shared.js';
+import { listUserCustomAgents } from './lib/opencode/agents.js';
 import { createWorktreeBootstrapStore } from './lib/git/worktree-bootstrap-storage.js';
 import { createRemoteClientAuthRuntime } from './lib/client-auth/remote-clients.js';
 import { createClientPairingRuntime } from './lib/client-auth/pairing.js';
@@ -153,6 +154,7 @@ import { createDevServerScanner } from './lib/dev-servers/routes.js';
 import { createDevTunnelRuntime } from './lib/dev-tunnel/runtime.js';
 import { registerBrowserControlRoutes } from './lib/browser-control/routes.js';
 import { createManagedConfigRuntime } from './lib/opencode/managed-config-file.js';
+import { createOmoNativeRuntime } from './lib/omo-native/runtime.js';
 import { prepareInstanceDir } from './lib/opencode/instance-dir.js';
 import { createOpenChamberSessionService } from './lib/openchamber-sessions/routes.js';
 import { createSessionMetadataStore, createOpenCodeSessionMetadata } from './lib/openchamber-sessions/session-metadata-store.js';
@@ -348,6 +350,7 @@ const deleteImportedTheme = (...args) => themeRuntime.deleteImportedTheme(...arg
 let notificationTemplateRuntime = null;
 let agentToolRuntime = null;
 let managedConfigRuntime = null;
+let omoNativeRuntime = null;
 
 const createTimeoutSignal = (...args) => notificationTemplateRuntime.createTimeoutSignal(...args);
 const formatProjectLabel = (...args) => notificationTemplateRuntime.formatProjectLabel(...args);
@@ -2030,14 +2033,53 @@ async function main(options = {}) {
     // A pipe listener reports a string here, which has no address to bind back to.
     getActiveHost: () => server?.address?.()?.address ?? null,
   });
+  omoNativeRuntime = createOmoNativeRuntime({
+    fsPromises,
+    path,
+    dataDir: OPENCHAMBER_DATA_DIR,
+  });
   managedConfigRuntime = createManagedConfigRuntime({
     fsPromises,
     path,
     instanceDir,
     env: process.env,
     agentToolRuntime,
+    omoNativeRuntime,
     readSettings: () => readSettingsFromDiskMigrated(),
     isAgentMemoryAvailable: isAgentMemoryFeatureAvailable,
+    listUserCustomAgents,
+    listConnectedProviders: async () => {
+      try {
+        const client = getSmallModelClient();
+        if (!client) return null;
+        const models = await listModelInfos(client);
+        if (!Array.isArray(models)) return null;
+        return [...new Set(models
+          .filter((model) => model?.enabled !== false && typeof model?.providerID === 'string' && model.providerID)
+          .map((model) => model.providerID))];
+      } catch {
+        return null;
+      }
+    },
+    readUserAgentModels: async () => {
+      try {
+        const { userConfig, userOverrideConfig } = readConfigLayers(null);
+        const out = {};
+        for (const layer of [userConfig, userOverrideConfig]) {
+          for (const section of [layer?.agent, layer?.agents]) {
+            if (!section || typeof section !== 'object') continue;
+            for (const [key, entry] of Object.entries(section)) {
+              if (typeof entry?.model === 'string' && entry.model.includes('/')) {
+                out[String(key).toLowerCase()] = entry.model.trim();
+              }
+            }
+          }
+        }
+        return out;
+      } catch {
+        return {};
+      }
+    },
   });
   await ensureChatsDir({ fsPromises, chatsDir: OPENCHAMBER_CHATS_DIR, warn: (message) => console.warn(`[data-dir] ${message}`) });
 
@@ -2436,6 +2478,21 @@ async function main(options = {}) {
     agentToolRuntime,
     desktopUpdater,
     skipBodyParsing: (req) => spacesHost?.skipsBodyParsing(req) === true,
+    // Alcore badge flip (task 48): the provider runtime stores the caller's
+    // own keychained Bearer as the OpenCode `alcore` credential on login
+    // and removes it on sign-out. Read per call — port/password move.
+    // Task 55 passes the managed/external flag the same way: an external
+    // server never sees this process's config write, so the readiness gate
+    // reports `needs_restart` instead of polling a surface that cannot
+    // change. Read per call — the flag flips when the OpenCode target does.
+    buildOpenCodeUrl,
+    getOpenCodeAuthHeaders,
+    isExternalOpenCode: () => isExternalOpenCode,
+    omoNativeRuntime,
+    getSmallModelClient,
+    listModelInfos,
+    resetOpenCodeRuntimeProviders,
+    getMessageStreamHub: () => globalMessageStreamHub ?? null,
   });
   uiAuthController = bootstrapResult.uiAuthController;
   // After the API auth gate, before every route that reads a directory, before the OpenCode proxy.
