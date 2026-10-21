@@ -71,6 +71,18 @@ describe("native ulw run records", () => {
     expect(store.getRun(RUN_ID)?.status).toBe("complete")
   })
 
+  test("#given a terminal run #when its status moves #then the move is refused", () => {
+    // given
+    const store = storeFor()
+    activeRun(store)
+    store.setRunStatus(RUN_ID, "failed")
+
+    // when / then
+    expect(() => store.setRunStatus(RUN_ID, "complete")).toThrow(UlwUsageError)
+    expect(() => store.setRunStatus(RUN_ID, "blocked")).toThrow(UlwUsageError)
+    expect(store.getRun(RUN_ID)?.status).toBe("failed")
+  })
+
   test("#given an unknown run #when read or moved #then lookup refuses and reads stay empty", () => {
     // given
     const store = storeFor()
@@ -176,6 +188,38 @@ describe("native ulw child-result receipts", () => {
       store.recordChildResult(RUN_ID, "G009", { childSessionId: "ses_worker_a" }),
     ).toThrow(UlwUsageError)
     expect(store.receiptFor(RUN_ID, "G009")).toBeUndefined()
+  })
+
+  test("#given a dispatched goal #when a stranger session reports #then the receipt is refused", () => {
+    // given
+    const store = storeFor()
+    activeRun(store)
+    store.dispatchGoal(RUN_ID, "G001", "ses_worker_a")
+
+    // when / then
+    expect(() =>
+      store.recordChildResult(RUN_ID, "G001", { childSessionId: "ses_spoof" }),
+    ).toThrow(UlwUsageError)
+    expect(store.receiptFor(RUN_ID, "G001")).toBeUndefined()
+    expect(store.missingReceipts(RUN_ID)).toEqual(["G001"])
+  })
+
+  test("#given a redispatched goal #when each session reports #then only rostered sessions settle", () => {
+    // given
+    const store = storeFor()
+    activeRun(store)
+    store.dispatchGoal(RUN_ID, "G001", "ses_worker_a")
+    store.dispatchGoal(RUN_ID, "G001", "ses_worker_b")
+
+    // when
+    const receipt = store.recordChildResult(RUN_ID, "G001", { childSessionId: "ses_worker_b" })
+
+    // then
+    expect(receipt.childSessionId).toBe("ses_worker_b")
+    expect(() =>
+      store.recordChildResult(RUN_ID, "G001", { childSessionId: "ses_worker_c" }),
+    ).toThrow(UlwUsageError)
+    expect(store.receiptFor(RUN_ID, "G001")?.childSessionId).toBe("ses_worker_b")
   })
 
   test("#given partial receipts #when missing receipts are listed #then only dispatched-but-unrecorded goals are returned", () => {

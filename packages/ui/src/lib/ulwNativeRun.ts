@@ -119,6 +119,12 @@ export type UlwNativeRunInput = {
   skills?: SkillMentions
   delivery?: 'steer'
   appendSubmissions?: () => void
+  /**
+   * Work the request waits for (the session's project knowledge being
+   * written into it). Must not reject. The run's opening send waits on it
+   * the way a normal prompt does.
+   */
+  ready?: Promise<void>
 }
 
 export type UlwNativeRunResult = {
@@ -205,6 +211,7 @@ export const startUlwNativeRun = async (input: UlwNativeRunInput): Promise<UlwNa
     directory: input.directory,
     files: input.files,
     context: briefContext,
+    ready: input.ready,
     appendSubmissions: input.appendSubmissions,
     send: (messageID, context) => opencodeClient.sendMessage({
       runtimeKey: input.runtimeKey,

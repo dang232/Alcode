@@ -15,6 +15,7 @@ export type UlwUsageErrorCode =
   | "RUN_NOT_FOUND"
   | "RUN_NOT_ACTIVE"
   | "GOAL_NOT_DISPATCHED"
+  | "GOAL_SESSION_MISMATCH"
   | "DISPATCHED_CHILDREN_PENDING"
 
 function describeMissing(missing: UlwMissingReceipts): string {
@@ -77,6 +78,15 @@ export function goalNotDispatchedError(runId: string, goalId: string): UlwUsageE
   return new UlwUsageError(
     `ULW run '${runId}' has no dispatch for goal '${goalId}': dispatch the goal before recording its child result.`,
     "GOAL_NOT_DISPATCHED",
+    runId,
+  )
+}
+
+/** Rejects a child result from a session the goal was never dispatched to. */
+export function goalSessionMismatchError(runId: string, goalId: string, childSessionId: string): UlwUsageError {
+  return new UlwUsageError(
+    `ULW run '${runId}' never dispatched goal '${goalId}' to session '${childSessionId}': record results only from dispatched worker sessions.`,
+    "GOAL_SESSION_MISMATCH",
     runId,
   )
 }

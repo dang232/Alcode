@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto"
 
 import {
   goalNotDispatchedError,
+  goalSessionMismatchError,
   invalidInputError,
   runNotActiveError,
   runNotFoundError,
@@ -112,9 +113,9 @@ export class UlwStore {
     return [...this.runs.values()].map((state) => state.record)
   }
 
-  /** Moves a run to a new status and returns the updated record. */
+  /** Moves a run to a new status and returns the updated record. Refuses transitions once the run has left `active`: terminal states are terminal. */
   setRunStatus(runId: string, status: UlwRunStatus, now?: () => number): UlwRunRecord {
-    const state = this.requireState(runId)
+    const state = this.requireActiveState(runId)
     const at = isoNow(now ?? this.now)
     state.record = { ...state.record, status, updatedAt: at }
     return state.record
@@ -154,7 +155,9 @@ export class UlwStore {
   /**
    * Records a dispatched child's result under its goal id. The latest
    * recording wins. Throws `GOAL_NOT_DISPATCHED` when the goal was never
-   * dispatched: a receipt must always settle a real dispatch.
+   * dispatched, and `GOAL_SESSION_MISMATCH` when the reporting session is
+   * not one of the goal's dispatched workers: a receipt must always settle
+   * a real dispatch, never a stranger session.
    */
   recordChildResult(
     runId: string,
@@ -167,6 +170,10 @@ export class UlwStore {
       throw goalNotDispatchedError(runId, goal)
     }
     const childSessionId = requireText(input.childSessionId, "childSessionId", runId)
+    const dispatched = state.roster.get(goal) ?? []
+    if (!dispatched.includes(childSessionId)) {
+      throw goalSessionMismatchError(runId, goal, childSessionId)
+    }
     const receipt = finishReceipt(
       {
         goalId: goal,

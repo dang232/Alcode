@@ -20,6 +20,18 @@ describe("agent toolkit dispatch operations", () => {
 			expect(dispatched.result.handoffs).toHaveLength(2);
 			const first = dispatched.result.handoffs[0];
 			if (first === undefined) throw new Error("expected handoff");
+			const listed = await toolkit.criteria({ goalId: first.goalId });
+			expect(listed.ok).toBe(true);
+			if (!listed.ok) return;
+			for (const criterion of listed.result.criteria) {
+				const proof = await toolkit.recordEvidence({
+					goalId: first.goalId,
+					criterionId: criterion.id,
+					status: "pass",
+					evidence: "sdk round-trip proof",
+				});
+				expect(proof.ok).toBe(true);
+			}
 			const recorded = await toolkit.recordChildResult({
 				goalId: first.goalId,
 				childId: "ses_child1",

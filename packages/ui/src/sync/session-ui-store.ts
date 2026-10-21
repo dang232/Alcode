@@ -37,7 +37,7 @@ import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
 import { prepareUserMessageResume } from "./user-message-resume"
 import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
-import { ULW_COMMAND_NAME, ulwWorkflowInstruction } from "@/lib/ulwWorkflow"
+import { ULW_COMMAND_NAME, startUlwNativeRun } from "@/lib/ulwNativeRun"
 import { dagRouteSample, recordDagRouteDecision, type DagRouteDecision, type DagRouteReport } from "@/lib/dagRouteLog"
 import { normalizePath } from "@/lib/pathNormalization"
 import { CHAT_DRAFT_PROJECT_ID, createChatDirectory, deleteChatDirectory, getChatsRootFromDirectory, isChatDirectoryPath, warmChatsRootDirectory } from "@/lib/chatDirectories"
@@ -233,10 +233,6 @@ export async function routeMessage(params: {
   }
 
   let skills = params.skills
-  // Unresolved /ulw keeps the send alive as a prompt: the workflow appendix
-  // below carries the definition nothing resolved, so the model runs the
-  // loop instead of reporting it missing. Set only on that path.
-  let ulwFallbackArgs: string | null = null
   // A leading word-bound `ulw` takes the /ulw command route, so the bare
   // trigger runs the same template, context, and skill plumbing as the slash
   // form. Mid-sentence mentions stay plain chat; shell input diverted above.
@@ -304,11 +300,30 @@ export async function routeMessage(params: {
 
     if (!matchedCommand && !matchedSkill && cmdName === ULW_COMMAND_NAME) {
       // The session directory defines no /ulw template (the normal case
-      // outside this checkout), and Alcode sends never pass the Codex
-      // hook pipeline that would append the workflow. Fall through to the
-      // normal prompt with the bundled definition attached as context —
-      // the same channel the command route uses for skill instructions.
-      ulwFallbackArgs = tail.join(" ")
+      // outside this checkout). Start the native run on the send session
+      // instead of degrading into a plain prompt: a run that cannot start
+      // throws, so a broken loop is a send failure, never a silent chat.
+      const args = tail.join(" ")
+      await startUlwNativeRun({
+        runtimeKey: params.runtimeKey,
+        directory: requestDirectory,
+        sessionId: params.sessionId,
+        content: params.content,
+        args,
+        providerID: params.providerID,
+        modelID: params.modelID,
+        variant: params.variant ?? undefined,
+        agent: params.agent,
+        agentMentionName: params.agentMentionName,
+        files: sendFiles,
+        context: [...contextItems, ...skillInstructionContext()],
+        skills,
+        delivery: params.delivery,
+        appendSubmissions: params.appendSubmissions,
+        ready: params.knowledgeSync,
+      })
+      reportRoute(ULW_COMMAND_NAME, args)
+      return 'command'
     }
 
     if (matchedCommand) {
@@ -362,9 +377,7 @@ export async function routeMessage(params: {
     files: sendFiles,
     // The prompt waits for the knowledge write; the bubble above did not.
     ready: params.knowledgeSync,
-    context: ulwFallbackArgs === null
-      ? contextItems
-      : [...contextItems, { text: ulwWorkflowInstruction(params.sessionId) }],
+    context: contextItems,
     appendSubmissions: params.appendSubmissions,
     send: (messageID, context) => opencodeClient.sendMessage({
       runtimeKey: params.runtimeKey,
@@ -382,11 +395,7 @@ export async function routeMessage(params: {
       skills,
     }).then(() => {}),
   })
-  if (ulwFallbackArgs === null) {
-    reportRoute()
-  } else {
-    reportRoute(ULW_COMMAND_NAME, ulwFallbackArgs)
-  }
+  reportRoute()
   return 'prompt'
 }
 

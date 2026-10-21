@@ -262,7 +262,7 @@ describe("lifecycle (7) provider failure ends failed, never false-success", () =
   // `Error: tool executed instead of refusing` instead of resolving a
   // RUN_NOT_ACTIVE refusal. Fixer: refuse ulw_complete once the run has
   // left active, then drop `.failing` here.
-  test.failing("#FAIL given a failed run #when completed #then the false success is refused", async () => {
+  test("#given a failed run #when completed #then the false success is refused", async () => {
     // given
     const store = testStore()
     const fake = createFakeHostClient({ createErrorMessage: "boom" })

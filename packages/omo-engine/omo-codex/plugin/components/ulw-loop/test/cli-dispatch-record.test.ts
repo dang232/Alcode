@@ -53,6 +53,21 @@ function makePlan(goals: UlwLoopItem[]): UlwLoopPlan {
 	};
 }
 
+function makePassGoal(): UlwLoopItem {
+	return makeGoal({
+		successCriteria: [
+			{
+				id: "C001",
+				scenario: "child result collected",
+				userModel: "happy",
+				expectedEvidence: "result ref recorded",
+				capturedEvidence: "fixture proof",
+				status: "pass",
+			},
+		],
+	});
+}
+
 describe("recordGoalDispatched", () => {
 	describe("#given a pending goal #when dispatched #then it opens an attempt and records the event", () => {
 		it("marks in_progress with attempt and ledger entry", async () => {
@@ -98,7 +113,7 @@ describe("recordChildCompleted", () => {
 	describe("#given a dispatched goal #when its child completes #then the goal completes with the result ref", () => {
 		it("marks complete and records child_completed", async () => {
 			// given
-			const repo = await bootstrapRepo(makePlan([makeGoal()]));
+			const repo = await bootstrapRepo(makePlan([makePassGoal()]));
 			await recordGoalDispatched(repo, { goalId: "G001" });
 			// when
 			const { goal } = await recordChildCompleted(repo, {
@@ -209,7 +224,7 @@ describe("dispatched child identity", () => {
 	describe("#given an explore dispatch #when the explore child reports #then it completes with the worker session", () => {
 		it("stores workerSessionId and names the role in the ledger", async () => {
 			// given
-			const repo = await bootstrapRepo(makePlan([makeGoal()]));
+			const repo = await bootstrapRepo(makePlan([makePassGoal()]));
 			await recordGoalDispatched(repo, { goalId: "G001", childRole: "explore" });
 			// when
 			const { goal, ledgerEntry } = await recordChildCompleted(repo, {

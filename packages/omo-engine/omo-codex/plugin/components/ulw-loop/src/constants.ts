@@ -66,6 +66,7 @@ export const ULW_LOOP_LEDGER_EVENT_KINDS = [
 	"steering_rejected",
 	"final_review_failed",
 	"goal_review_blocked",
+	"blocker_recorded",
 	"evidence_captured",
 	"criterion_failed",
 	"criterion_blocked",

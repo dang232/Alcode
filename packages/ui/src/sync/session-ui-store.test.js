@@ -522,21 +522,24 @@ describe('routeMessage bare ulw capture', () => {
   });
 });
 
-describe('routeMessage unresolved ulw fallback', () => {
+describe('routeMessage unresolved ulw starts the native run', () => {
   // The session directory defines no /ulw template (the normal case outside
-  // this checkout): the send stays a prompt, but the bundled workflow
-  // definition rides along as context so the model runs the loop instead
-  // of reporting it missing.
+  // this checkout): the send session is adopted as the run parent — one
+  // conversation, no second session, the brief stripped of its trigger.
+  // A run that cannot start throws instead of degrading into a prompt.
   const sendCommandCalls = [];
   const sendMessageCalls = [];
+  const createSessionCalls = [];
   let originalSendCommand;
   let originalSendMessage;
+  let originalCreateSession;
   let originalListCommands;
   let originalLoadSkills;
 
   beforeEach(() => {
     sendCommandCalls.length = 0;
     sendMessageCalls.length = 0;
+    createSessionCalls.length = 0;
 
     const childStore = {
       getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
@@ -555,6 +558,7 @@ describe('routeMessage unresolved ulw fallback', () => {
 
     originalSendCommand = opencodeClient.sendCommand;
     originalSendMessage = opencodeClient.sendMessage;
+    originalCreateSession = opencodeClient.createSession;
     originalListCommands = opencodeClient.listCommands;
     originalLoadSkills = useSkillsStore.getState().loadSkills;
     useSkillsStore.setState({ loadSkills: async () => true });
@@ -567,11 +571,16 @@ describe('routeMessage unresolved ulw fallback', () => {
       sendMessageCalls.push(params);
       return 'msg';
     };
+    opencodeClient.createSession = async (params, directory) => {
+      createSessionCalls.push({ params, directory });
+      return { id: 'session-should-not-exist', directory };
+    };
   });
 
   afterEach(() => {
     opencodeClient.sendCommand = originalSendCommand;
     opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.createSession = originalCreateSession;
     opencodeClient.listCommands = originalListCommands;
     useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
     useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
@@ -585,68 +594,73 @@ describe('routeMessage unresolved ulw fallback', () => {
     modelID: 'model-a',
   });
 
-  // Machine-consumed contract tokens the engine CLI reads — not prose.
-  const appendixOf = () => {
+  // Machine-consumed contract: the native procedure names the parent run id.
+  const procedureOf = () => {
     expect(sendMessageCalls).toHaveLength(1);
     const context = sendMessageCalls[0].context ?? [];
     return context.map((item) => item.text).join('\n');
   };
 
-  test('unresolved /ulw sends a prompt driving the engine CLI', async () => {
+  test('unresolved /ulw starts the native run on the send session', async () => {
     const decision = await send('/ulw analyze this repo');
 
-    expect(decision).toBe('prompt');
+    expect(decision).toBe('command');
     expect(sendCommandCalls).toHaveLength(0);
-    expect(sendMessageCalls[0].text).toBe('/ulw analyze this repo');
-    const appendix = appendixOf();
-    expect(appendix).toContain('omo-agent-toolkit');
-    expect(appendix).toContain('create-goals');
-    expect(appendix).toContain('--session-id "session-elsewhere"');
-    expect(appendix).toContain('status --json');
-    expect(appendix).toContain('complete-goals');
-    expect(appendix).toContain('hand-write');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls[0].id).toBe('session-elsewhere');
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    const procedure = procedureOf();
+    expect(procedure).toContain('ULW run session-elsewhere');
+    expect(procedure).not.toContain('${sessionId}');
+    expect(procedure).not.toContain('omo-agent-toolkit');
   });
 
-  test('bare ulw without a template gets the same appendix', async () => {
+  test('bare ulw without a template starts the same native run', async () => {
     const decision = await send('ulw analyze this repo');
 
-    expect(decision).toBe('prompt');
+    expect(decision).toBe('command');
     expect(sendCommandCalls).toHaveLength(0);
-    const appendix = appendixOf();
-    expect(appendix).toContain('omo-agent-toolkit');
-    expect(appendix).toContain('--session-id "session-elsewhere"');
-    expect(appendix).toContain('checkpoint');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    expect(procedureOf()).toContain('ULW run session-elsewhere');
   });
 
-  test('bare ulw with a colon separator gets the same appendix', async () => {
+  test('bare ulw with a colon separator starts the same native run', async () => {
     const decision = await send('ulw: analyze this repo');
 
-    expect(decision).toBe('prompt');
+    expect(decision).toBe('command');
     expect(sendCommandCalls).toHaveLength(0);
-    const appendix = appendixOf();
-    expect(appendix).toContain('omo-agent-toolkit');
-    expect(appendix).toContain('--session-id "session-elsewhere"');
-    expect(appendix).toContain('checkpoint');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    expect(procedureOf()).toContain('ULW run session-elsewhere');
   });
 
-  test('plain prompts carry no appendix', async () => {
+  test('a failed native send fails instead of degrading to a prompt', async () => {
+    opencodeClient.sendMessage = async () => {
+      throw new Error('transport down');
+    };
+    await expect(send('ulw analyze this repo')).rejects.toThrow('transport down');
+    expect(sendCommandCalls).toHaveLength(0);
+  });
+
+  test('plain prompts carry no procedure', async () => {
     const decision = await send('hello there');
 
     expect(decision).toBe('prompt');
     expect(sendMessageCalls).toHaveLength(1);
     expect(sendMessageCalls[0].text).toBe('hello there');
     const context = sendMessageCalls[0].context ?? [];
-    expect(context.map((item) => item.text).join('\n')).not.toContain('omo-agent-toolkit');
+    expect(context.map((item) => item.text).join('\n')).not.toContain('ULW run');
   });
 
-  test('an unresolved non-ulw command still sends raw without appendix', async () => {
+  test('an unresolved non-ulw command still sends raw without procedure', async () => {
     const decision = await send('/nope test');
 
     expect(decision).toBe('prompt');
     expect(sendCommandCalls).toHaveLength(0);
     expect(sendMessageCalls[0].text).toBe('/nope test');
     const context = sendMessageCalls[0].context ?? [];
-    expect(context.map((item) => item.text).join('\n')).not.toContain('omo-agent-toolkit');
+    expect(context.map((item) => item.text).join('\n')).not.toContain('ULW run');
   });
 
   test('a failed skills load still fails the ulw send instead of guessing', async () => {

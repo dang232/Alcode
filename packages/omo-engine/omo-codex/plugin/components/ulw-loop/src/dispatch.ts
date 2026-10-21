@@ -1,6 +1,8 @@
 import type { UlwLoopScope } from "./paths.js";
 import { commit } from "./plan-commit.js";
 import { readUlwLoopPlan, withUlwLoopMutationLock } from "./plan-io.js";
+import { requireAllCriteriaPass } from "./evidence.js";
+import { clearGoalBlockerFields } from "./quality-gate-blockers.js";
 import { DEFAULT_FANOUT_LIMIT } from "./spawn-guard.js";
 import type { UlwLoopItem, UlwLoopLedgerEntry, UlwLoopPlan } from "./types.js";
 import { iso, UlwLoopError } from "./types.js";
@@ -115,12 +117,17 @@ export async function recordChildCompleted(
 			"Child result reference is required.",
 			"ULW_LOOP_CHILD_RESULT_REQUIRED",
 		);
+		requireAllCriteriaPass(goal);
 		const now = iso();
 		goal.status = "complete";
 		goal.completedAt = now;
 		goal.updatedAt = now;
 		goal.workerSessionId = childId;
 		goal.evidence = resultRef;
+		delete goal.failedAt;
+		delete goal.failureReason;
+		delete goal.nonRetriable;
+		clearGoalBlockerFields(goal);
 		const entry: UlwLoopLedgerEntry = {
 			at: now,
 			kind: "child_completed",
