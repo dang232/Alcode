@@ -20,7 +20,7 @@
 
 import { z } from "zod"
 
-import type { Metadata, ToolInput } from "./model"
+import type { JsonValue, Metadata, ToolInput, ToolState } from "./model"
 
 /** Built-in tool names as the server reports them. */
 export const OPENCODE_TOOLS = {
@@ -78,6 +78,11 @@ export const isSkillTool = is(OPENCODE_TOOLS.skill)
 export const isEditTool = is(OPENCODE_TOOLS.edit)
 export const isWriteTool = is(OPENCODE_TOOLS.write)
 export const isPatchTool = is(OPENCODE_TOOLS.patch)
+
+// Tools whose transcript row opens the read file or skill in the app and never
+// shows the call's result.
+const NAVIGATION_TOOLS = new Set<string>([OPENCODE_TOOLS.read, OPENCODE_TOOLS.skill])
+export const isNavigationTool = (toolName: ToolName): boolean => NAVIGATION_TOOLS.has(normalizeToolName(toolName))
 
 const FILE_CHANGE_TOOLS = new Set<string>([OPENCODE_TOOLS.edit, OPENCODE_TOOLS.write, OPENCODE_TOOLS.patch])
 const EXPLORATION_TOOLS = new Set<string>([
@@ -179,6 +184,8 @@ const metadataSchema = z
     files: z.array(fileDiffSchema.nullable().catch(null)).optional().catch(undefined),
     sessionID: optionalText,
     sessionId: optionalText,
+    shellID: optionalText,
+    status: optionalText,
     name: optionalText,
     toolCalls: z.array(executeToolCallSchema.nullable().catch(null)).optional().catch(undefined),
     truncated: z.boolean().optional().catch(undefined),
@@ -189,6 +196,34 @@ const metadataSchema = z
 type ParsedInput = z.infer<typeof inputSchema>
 
 const readInput = (input: ToolInput | undefined): ParsedInput => inputSchema.parse(input ?? {})
+
+const renderPageFields = z.object({
+  html: z.string().optional().catch(undefined),
+  title: optionalText,
+  awaitAnswer: z.boolean().optional().catch(undefined),
+})
+
+// The plugin accepts the inputs inside `parameters` or beside `action`, and an
+// explicit `parameters` object wins, so the page is read the same way.
+const renderPageInputSchema = renderPageFields
+  .extend({ parameters: renderPageFields.optional().catch(undefined) })
+  .catch({})
+
+// What the user answered on a page that waited (render.page with
+// awaitAnswer), as the plugin records it in the call's metadata.
+const pageAnswerSchema = z.union([
+  z.object({ answered: z.literal(true), summary: z.string(), data: z.json().catch(null) }),
+  z.object({ answered: z.literal(false) }),
+])
+
+const openChamberResultSchema = z
+  .object({
+    openchamber: z.object({
+      ok: z.boolean().optional().catch(undefined),
+      answer: pageAnswerSchema.optional().catch(undefined),
+    }).optional().catch(undefined),
+  })
+  .catch({})
 
 /** One entry of a tool's `metadata.files` (`FileDiff.Info` on the wire). */
 export type ToolFileDiff = z.infer<typeof fileDiffSchema> & { file: string }
@@ -222,6 +257,16 @@ export type ExecuteToolCall = {
 }
 
 const MAX_EXECUTE_CALL_INPUT_LENGTH = 160
+
+/** Blocking work in a running `execute`, including progress forwarded by its child tool. */
+export function executeHasBackgroundableWork(metadata: Metadata | undefined): boolean {
+  const parsed = metadataSchema.parse(metadata ?? {})
+  // Child progress replaces Code Mode's call list while shell/subagent waits.
+  if (parsed.shellID || (parsed.status === "running" && (parsed.sessionID || parsed.sessionId))) return true
+  return (parsed.toolCalls ?? []).some((call) => (
+    call?.status === "running" && (isShellTool(call.tool) || isSubagentTool(call.tool))
+  ))
+}
 
 /**
  * The tools an `execute` script called, in order. Entries without a tool name
@@ -276,6 +321,64 @@ export function executeScript(input: ToolInput | undefined): string | undefined 
 }
 
 /** The agent a `subagent` call runs (`input.agent`). */
+const isRenderTool = (toolName: ToolName): boolean => toolName === OPENCHAMBER_RENDER_TOOL
+
+/** Where a page stands on the user's answer. */
+export type RenderedPageAsk =
+  | { kind: "show" }
+  | { kind: "waiting" }
+  | { kind: "answered"; summary: string; data: JsonValue }
+  | { kind: "answered-in-chat" }
+  | { kind: "unanswered" }
+
+// A page sent without a title is named after its own <title>, else its first
+// h1 to h3: the server accepts such a call and names it with the same rule
+// (renderPageTitleFromHtml in
+// packages/web/server/lib/alcode-control/render-page.js); change both
+// together. The server's last resort, "Page", is the chat's own localized word.
+const TITLE_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", "#39": "'", apos: "'", nbsp: " " } as const
+const RENDER_PAGE_MAX_TITLE_LENGTH = 120
+const elementText = (html: string, pattern: RegExp): string => (pattern.exec(html)?.[1] ?? "")
+  .replace(/<[^>]*>/g, " ")
+  .replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, entity: keyof typeof TITLE_ENTITIES) => TITLE_ENTITIES[entity])
+  .replace(/\s+/g, " ")
+  .trim()
+const pageTitleFromHtml = (html: string): string => (
+  elementText(html, /<title\b[^>]*>([\s\S]*?)<\/title>/i)
+  || elementText(html, /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/i)
+).slice(0, RENDER_PAGE_MAX_TITLE_LENGTH).trim()
+
+/**
+ * The page an `openchamber_render` call showed: present once OpenChamber
+ * accepted the call, so a refused or unfinished call keeps its tool row. A
+ * page that waits for the user's answer shows while its call runs, since the
+ * call runs until the user answers, and after a call that failed while waiting.
+ */
+export function renderedPage(
+  toolName: ToolName,
+  state: ToolState,
+): { html: string; title: string; ask: RenderedPageAsk } | null {
+  if (!isRenderTool(toolName)) return null
+  const parsed = renderPageInputSchema.parse(state.input ?? {})
+  const html = parsed.parameters?.html ?? parsed.html
+  if (!html?.trim()) return null
+  // Empty when neither the call nor the page names it; the chat shows its own word then.
+  const title = (parsed.parameters?.title ?? parsed.title)?.trim() || pageTitleFromHtml(html)
+  // A page that waited stays in the chat when its call ends without an
+  // answer (the user stopped the turn), so the question it asked is still there.
+  if ((parsed.parameters?.awaitAnswer ?? parsed.awaitAnswer) === true) {
+    if (state.status === "running") return { html, title, ask: { kind: "waiting" } }
+    if (state.status === "error") return { html, title, ask: { kind: "unanswered" } }
+  }
+  if (state.status !== "completed") return null
+  const result = openChamberResultSchema.parse(state.metadata ?? {}).openchamber
+  if (result?.ok !== true) return null
+  const answer = result.answer
+  if (answer?.answered === true) return { html, title, ask: { kind: "answered", summary: answer.summary, data: answer.data } }
+  if (answer?.answered === false) return { html, title, ask: { kind: "answered-in-chat" } }
+  return { html, title, ask: { kind: "show" } }
+}
+
 export function subagentAgent(input: ToolInput | undefined): string | undefined {
   return readInput(input).agent
 }
@@ -319,6 +422,10 @@ const MAX_COMMAND_LENGTH = 100
 const MAX_DESCRIBED_TOOL_CALLS = 4
 const MAX_TEXT_LENGTH = 120
 
+const OPENCHAMBER_RENDER_TOOL = "openchamber_render"
+
+/** The control, schedule, browser, memory, knowledge, notify and render tools OpenChamber gives every session. */
+const OPENCHAMBER_TOOLS = new Set(["openchamber", "openchamber_schedule", "openchamber_web", "openchamber_memory", "openchamber_knowledge", "openchamber_notify", OPENCHAMBER_RENDER_TOOL])
 /** The control, browser, memory and notify tools Alcode gives every session. */
 const ALCODE_TOOLS = new Set(["alcode", "alcode_web", "alcode_memory", "alcode_notify"])
 
@@ -449,8 +556,13 @@ export function toolDescription(
       return describeExecute(executeToolCalls(metadata), parsed.code)
 
     // "A short 3-5 word label for the task, displayed to the user".
-    case OPENCODE_TOOLS.subagent:
+    // The agent rides along so the row says who ran it ("explore · map
+    // repo layout"); the name is a tool identifier, not chrome, so it
+    // stays literal.
+    case OPENCODE_TOOLS.subagent: {
+      if (parsed.agent && parsed.description) return text(`${parsed.agent} · ${parsed.description}`)
       return text(parsed.description) ?? text(parsed.agent)
+    }
 
     case OPENCODE_TOOLS.patch: {
       const reported = toolFileDiffs(metadata).map((file) => file.file)

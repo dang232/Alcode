@@ -1,34 +1,34 @@
 import React from 'react';
+import { toast } from 'sonner';
 import { useI18n } from '@/lib/i18n';
 import { Icon } from '@/components/icon/Icon';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { useMcpStore } from '@/stores/useMcpStore';
 import { useSession } from '@/sync/sync-context';
-import { getDistinctLinkedIssues, getLinkedGitHubPullRequests, getLinkedGitLabThreads, getLinkedSidebarIssues, canOpenLinearIssueOnBoard, getGitHubThreadRef, getGitLabThreadRef, isLinkedChange } from '@/lib/linkedIssues';
-import type { PrVisualSummary } from '@/stores/useGitHubPrStatusStore';
+import { getDistinctLinkedIssues, getLinkedGitHubPullRequests, getLinkedGitLabThreads, getLinkedSidebarIssues, getGitHubThreadRef, getGitLabThreadRef, isLinkedChange, type LinkedIssue } from '@/lib/linkedIssues';
+import { useFreshestSourceControlVisualSummaryForBranch, type PrVisualSummary } from '@/stores/useGitHubPrStatusStore';
+import { useEffectiveGitDirectory, useGitStore } from '@/stores/useGitStore';
 import { useTrackedIssueStates, useTrackedLinearStates, useTrackedPullVisualSummaries } from '@/stores/useTrackedItemsStore';
 import { useTrackedItems } from '@/lib/trackedItems/interest';
 import { githubThread, gitlabThread, linearIssue } from '@/lib/trackedItems/fromLinks';
 import { getPrStatusLabel } from '@/components/session/sidebar/prStatusLabel';
 import { getIssueStateLook, getLinearIssueStateLook } from '@/components/session/sidebar/sessions/sessionPrSummaries';
 import { fetchSessionKnowledgeSummary, setSessionProjectContextPin, type SessionKnowledgeSummary } from '@/lib/sessionKnowledgeApi';
+import * as sessionActions from '@/sync/session-actions';
 import { useProjectContextStore } from '@/stores/useProjectContextStore';
 import { useAgentMemoryStore } from '@/stores/useAgentMemoryStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { resolveProjectForSessionDirectory } from '@/lib/projectResolution';
 import { resolveProjectContextId } from '@/lib/projectContextApi';
-import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
-import { useMobileAppActions } from '@/apps/mobileAppContext';
-import { useLinearAuthStore } from '@/stores/useLinearAuthStore';
 import { useConfigStore } from '@/stores/useConfigStore';
-import { useUIStore } from '@/stores/useUIStore';
-import { useSourceBoardStore } from '@/stores/useSourceBoardStore';
-import { isVSCodeRuntime } from '@/lib/desktop';
+import { useOpenTrackerItem } from '@/components/sourceBoard/openTrackerItem';
 import { WorkStatusCollapsibleSection, WorkStatusRow, WorkStatusValue } from './WorkStatusPrimitives';
 import { useReportWorkStatusPresence } from './presenceContext';
 import { resolveDraftPinnedKnowledge } from './draftKnowledge';
 import { changeRequestCopy } from '@/lib/source-control/changeRequestCopy';
+import { refTintStyle } from '@/lib/source-control/prVisualState';
+import { cn } from '@/lib/utils';
 
 
 type Props = {
@@ -47,9 +47,6 @@ type Props = {
  */
 export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory }) => {
   const { t } = useI18n();
-  const { linear } = useRuntimeAPIs();
-  const linearConnected = useLinearAuthStore((state) => state.status?.connected === true);
-  const mobileActions = useMobileAppActions();
 
   const session = useSession(sessionId ?? '', directory ?? undefined);
   const newSessionDraft = useSessionUIStore((state) => state.newSessionDraft);
@@ -158,6 +155,18 @@ export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory
     });
   }, [directory, isDraft, sessionId, setDraftProjectContextPin]);
 
+  // Removing a linked thread, like unpinning: the panel that says what the
+  // session carries is the one that can take it back off, or an agent's link
+  // would be permanent unless metadata were edited by hand. The write is the
+  // same metadata patch the attach flows use, so the row leaves when the
+  // session's stored list loses the entry.
+  const unlinkLinkedThread = React.useCallback((issue: LinkedIssue) => {
+    if (!directory || !sessionId) return;
+    void sessionActions.setLinkedIssue(sessionId, directory, issue, false).catch(() => {
+      toast.error(t('chat.workStatus.linkedIssues.unlinkFailed'));
+    });
+  }, [directory, sessionId, t]);
+
   const memoryCount = visibleKnowledge.memory.global + visibleKnowledge.memory.project;
   const pinnedCount = visibleKnowledge.notes.length + visibleKnowledge.plans.length;
 
@@ -208,15 +217,25 @@ export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory
   const linkedLinearStates = useTrackedLinearStates(linkedLinearItems);
   const gitlabChangeSummaries = useTrackedPullVisualSummaries(linkedGitLabChanges);
   const gitlabIssueStates = useTrackedIssueStates(linkedGitLabIssueItems);
+  // The pull request of the branch checked out here, read-only as in the
+  // repository readout. When it is also linked, its row shows this state, as
+  // the sidebar row does: a full status read carries more than a live summary,
+  // and the linked item's own state may not have arrived yet.
+  const gitDirectory = useEffectiveGitDirectory(directory);
+  const branch = useGitStore(React.useCallback(
+    (state) => (gitDirectory ? state.directories.get(gitDirectory)?.status?.current?.trim() || null : null),
+    [gitDirectory],
+  ));
+  const branchPrSummary = useFreshestSourceControlVisualSummaryForBranch(gitDirectory, branch);
   // Entry id (`owner/repo#number`, lowercased) -> the coloured status line.
   const liveLookById = React.useMemo(() => {
     const looks = new Map<string, { color: string; text: string }>();
-    for (const summary of linkedPrSummaries) {
+    const changeLook = (summary: PrVisualSummary, reference: string) => {
       const label = getPrStatusLabel(summary, t);
-      looks.set(`${summary.repo?.owner ?? ''}/${summary.repo?.repo ?? ''}#${summary.number}`.toLowerCase(), {
-        color: `var(--pr-${summary.visualState})`,
-        text: label ? `#${summary.number} · ${label}` : `#${summary.number}`,
-      });
+      return { color: `var(--pr-${summary.visualState})`, text: label ? `${reference} · ${label}` : reference };
+    };
+    for (const summary of linkedPrSummaries) {
+      looks.set(`${summary.repo?.owner ?? ''}/${summary.repo?.repo ?? ''}#${summary.number}`.toLowerCase(), changeLook(summary, `#${summary.number}`));
     }
     linkedIssueRefs.forEach((ref, index) => {
       const state = linkedIssueStates[index];
@@ -238,13 +257,23 @@ export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory
     });
     linkedGitLabChanges.forEach(({ ref }, index) => {
       const summary = gitlabChangeSummaries[index];
-      if (!summary) return;
-      const label = getPrStatusLabel(summary, t);
-      looks.set(ref.key, {
-        color: `var(--pr-${summary.visualState})`,
-        text: label ? `!${ref.number} · ${label}` : `!${ref.number}`,
-      });
+      if (summary) looks.set(ref.key, changeLook(summary, `!${ref.number}`));
     });
+    if (branchPrSummary?.repo) {
+      const owner = branchPrSummary.repo.owner.toLowerCase();
+      const repo = branchPrSummary.repo.repo.toLowerCase();
+      if (branchPrSummary.provider === 'gitlab') {
+        const match = linkedGitLabChanges.find(({ ref }) => (
+          ref.number === branchPrSummary.number && ref.owner.toLowerCase() === owner && ref.repo.toLowerCase() === repo
+        ));
+        if (match) looks.set(match.ref.key, changeLook(branchPrSummary, `!${match.ref.number}`));
+      } else {
+        const key = `${owner}/${repo}#${branchPrSummary.number}`;
+        if (linkedPrs.some((link) => `${link.owner}/${link.repo}#${link.number}`.toLowerCase() === key)) {
+          looks.set(key, changeLook(branchPrSummary, `#${branchPrSummary.number}`));
+        }
+      }
+    }
     linkedGitLabIssues.forEach((ref, index) => {
       const state = gitlabIssueStates[index];
       if (!state) return;
@@ -252,22 +281,8 @@ export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory
       looks.set(ref.key, { color: look.color, text: `#${ref.number} · ${t(look.statusKey)}` });
     });
     return looks;
-  }, [gitlabChangeSummaries, gitlabIssueStates, linkedGitLabChanges, linkedGitLabIssues, linkedIssueRefs, linkedIssueStates, linkedLinearIdentifiers, linkedLinearStates, linkedPrSummaries, t]);
-  const openLinkedIssue = React.useCallback((entry: (typeof linked)[number]) => {
-    if (
-      entry.kind === 'linear'
-      && canOpenLinearIssueOnBoard({
-        linearAvailable: Boolean(linear),
-        linearConnected,
-        boardAvailable: mobileActions == null && !isVSCodeRuntime(),
-      })
-    ) {
-      useSourceBoardStore.getState().focusLinearIssue(entry.identifier);
-      useUIStore.getState().setSourceBoardOpen(true);
-      return;
-    }
-    window.open(entry.url, '_blank', 'noopener,noreferrer');
-  }, [linear, linearConnected, mobileActions]);
+  }, [branchPrSummary, gitlabChangeSummaries, gitlabIssueStates, linkedGitLabChanges, linkedGitLabIssues, linkedIssueRefs, linkedIssueStates, linkedLinearIdentifiers, linkedLinearStates, linkedPrSummaries, linkedPrs, t]);
+  const openTrackerItem = useOpenTrackerItem();
   // Connected servers only. A disabled server contributes nothing to the
   // context, so counting it here contradicts the MCP section right above,
   // which shows the same servers switched off.
@@ -345,12 +360,26 @@ export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory
       : gitlab ? `${gitlab.thread === 'pull' ? '!' : '#'}${gitlab.number}`
         : entry.kind === 'linear' || entry.kind === 'guest' || entry.kind === 'external' ? entry.identifier : `#${entry.number}`;
   };
+  // The kind, never the author: an agent's link has no avatar, and a mix of
+  // faces and icons hid which row was a PR. An issue reads as an issue
+  // wherever it lives (GitHub, GitLab, an agent's or an extension's link) and
+  // wears its state's colour, muted, as on a sidebar row.
+  const renderLinkedIcon = (entry: (typeof linked)[number]) => {
+    const color = liveLookOf(entry)?.color;
+    return (
+      <Icon
+        name={isLinkedChange(entry) ? 'git-pull-request' : entry.kind === 'linear' ? 'linear' : 'record-circle'}
+        className={cn('size-3.5 shrink-0', color ? 'oc-ref-tint' : 'text-muted-foreground')}
+        style={color ? refTintStyle(color) : undefined}
+      />
+    );
+  };
   const renderLinkedLabel = (entry: (typeof linked)[number]) => {
     const look = liveLookOf(entry);
     const identifier = renderedIdentifier(entry);
     return (
       <>
-        <span className="tabular-nums" style={look ? { color: look.color } : undefined}>{look ? look.text : identifier}</span>
+        <span className={cn('tabular-nums', look && 'oc-ref-tint')} style={look ? refTintStyle(look.color) : undefined}>{look ? look.text : identifier}</span>
         {entry.title ? <> · {entry.title}</> : null}
       </>
     );
@@ -368,22 +397,31 @@ export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory
       {linked.map((entry) => (
         <WorkStatusRow
           key={entry.id}
-          // The kind, never the author: an agent's link has no avatar, and a
-          // mix of faces and icons hid which row was a PR.
-          // An issue reads as an issue wherever it lives — GitHub, GitLab, an
-          // agent's or an extension's link — as on a sidebar row.
-          icon={isLinkedChange(entry)
-            ? 'git-pull-request'
-            : entry.kind === 'linear'
-              ? 'linear'
-              : 'record-circle'}
-          // The state's colour on the icon too, as on a sidebar row.
-          iconColor={liveLookOf(entry)?.color}
+          leading={renderLinkedIcon(entry)}
           label={renderLinkedLabel(entry)}
+          // The title truncates in a narrow panel; the full one shows on hover.
+          tooltip={entry.title ? renderLinkedLabel(entry) : undefined}
           muted
-          // GitHub threads still live on github.com. A Linear issue opens in
-          // the right-hand panel when that rail exists; otherwise the Linear URL.
-          onClick={() => openLinkedIssue(entry)}
+          // In the Tracker, read through this session's project; Cmd or Ctrl,
+          // and anything the app cannot show, opens the link.
+          onClick={(event) => openTrackerItem(entry.url, directory, event)}
+          // The panel that shows what a session carries is the one that can
+          // take an item back off; a pinned row's control is the precedent.
+          // This sits in the trailing value slot, where row actions live.
+          value={(
+            <button
+              type="button"
+              disabled={!sessionId || !directory}
+              aria-label={t('chat.workStatus.linkedIssues.unlink')}
+              onClick={(event) => {
+                event.stopPropagation();
+                unlinkLinkedThread(entry);
+              }}
+              className="shrink-0 rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground/60"
+            >
+              <Icon name="close" className="size-3.5" />
+            </button>
+          )}
           ariaLabel={entry.kind === 'linear'
             ? t('chat.workStatus.linkedIssues.openLinear', { identifier: entry.identifier })
             : entry.kind === 'guest' || entry.kind === 'external'
@@ -411,7 +449,7 @@ export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory
                 event.stopPropagation();
                 unpinNote(note.id);
               }}
-              className="shrink-0 rounded p-0.5 transition-opacity hover:opacity-70 disabled:opacity-40"
+              className="-m-0.5 shrink-0 rounded p-0.5 opacity-70 transition-opacity hover:opacity-100 disabled:opacity-40"
             >
               <Icon name="pushpin-2-fill" className="size-3.5" style={{ color: 'var(--primary)' }} />
             </button>
@@ -433,7 +471,7 @@ export const WorkStatusContextSection: React.FC<Props> = ({ sessionId, directory
                 event.stopPropagation();
                 unpinPlan(plan.id);
               }}
-              className="shrink-0 rounded p-0.5 transition-opacity hover:opacity-70 disabled:opacity-40"
+              className="-m-0.5 shrink-0 rounded p-0.5 opacity-70 transition-opacity hover:opacity-100 disabled:opacity-40"
             >
               <Icon name="pushpin-2-fill" className="size-3.5" style={{ color: 'var(--primary)' }} />
             </button>

@@ -5,6 +5,7 @@ import { Icon } from '@/components/icon/Icon';
 import { useI18n } from '@/lib/i18n';
 import { formatDirectoryName, formatPathForDisplay } from '@/lib/utils';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { useProjectsInSidebarOrder } from '@/components/session/sidebar/list/useProjectsInSidebarOrder';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 
 /**
@@ -18,7 +19,7 @@ export const MoveChatToProjectDialog: React.FC<{
   onPick: (projectDirectory: string) => void;
 }> = ({ open, onOpenChange, onPick }) => {
   const { t } = useI18n();
-  const projects = useProjectsStore((state) => state.projects);
+  const projects = useProjectsInSidebarOrder(useProjectsStore((state) => state.projects), open);
   const homeDirectory = useDirectoryStore((state) => state.homeDirectory);
 
   return (
@@ -33,7 +34,7 @@ export const MoveChatToProjectDialog: React.FC<{
             <button
               key={project.id}
               type="button"
-              className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[var(--interactive-hover)] focus-visible:bg-[var(--interactive-hover)] focus-visible:outline-none"
+              className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start hover:bg-[var(--interactive-hover)] focus-visible:bg-[var(--interactive-hover)] focus-visible:outline-none"
               onClick={() => {
                 onOpenChange(false);
                 onPick(project.path);

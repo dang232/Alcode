@@ -6,6 +6,7 @@ import { subscribeRuntimeEndpointChanged } from './runtime-switch';
 import { isVSCodeRuntime } from './desktop';
 import { canDriveBrowserPage } from './browser/hostCapability';
 import { messageQueueUpdatedEventSchema, type MessageQueueUpdatedEvent } from '@/stores/messageQueueStore';
+import { sessionWarmingSnapshotSchema, type SessionWarmingSnapshot } from '@/stores/useSessionWarmingStore';
 import { z } from 'zod';
 import { trackedItemRecordsSchema } from './trackedItems/model';
 
@@ -49,7 +50,19 @@ type BrowserControlRequestEvent = {
   requestId: string;
   action: string;
   parameters: Record<string, unknown>;
+  context: BrowserControlRequestContext;
 };
+
+/**
+ * The session that called the browser tool and the project it works in, each
+ * null when unknown (an older server, or a caller with no session).
+ */
+const browserControlRequestContextSchema = z.object({
+  directory: z.string().min(1).nullable().catch(null),
+  sessionId: z.string().min(1).nullable().catch(null),
+});
+export type BrowserControlRequestContext = z.infer<typeof browserControlRequestContextSchema>;
+const UNKNOWN_BROWSER_CONTROL_CONTEXT: BrowserControlRequestContext = { directory: null, sessionId: null };
 
 /**
  * The agent asked for a file to be shown in the user's file panel. Every
@@ -63,6 +76,20 @@ const fileOpenRequestSchema = z.object({
 type FileOpenRequestEvent = { type: 'file-open-request' } & z.infer<typeof fileOpenRequestSchema>;
 
 /**
+ * The agent asked for a saved plan to be shown. `projectId` is the storage
+ * owner; `directory` is where the asking session works, so the window that
+ * shows that project opens the plan.
+ */
+const planOpenRequestSchema = z.object({
+  projectId: z.string().min(1),
+  planId: z.string().min(1),
+  title: z.string(),
+  directory: z.string().min(1).nullable(),
+  sessionId: z.string().min(1).nullable(),
+});
+type PlanOpenRequestEvent = { type: 'plan-open-request' } & z.infer<typeof planOpenRequestSchema>;
+
+/**
  * The agent changed what it remembers. Carries only which store moved, not the
  * entries: listeners re-read from the server, so the event cannot go stale
  * between being sent and being handled.
@@ -72,6 +99,13 @@ type AgentMemoryChangedEvent = {
   scope: 'global' | 'project';
   projectId?: string;
 };
+
+const projectContextChangedSchema = z.object({ projectId: z.string().min(1) });
+type ProjectContextChangedEvent = { type: 'project-context-changed' } & z.infer<typeof projectContextChangedSchema>;
+
+/** A client changed the chat folders; `updatedAt` is the stored revision, so a client already showing it skips the read. */
+const sessionFoldersChangedSchema = z.object({ updatedAt: z.number().finite() });
+type SessionFoldersChangedEvent = { type: 'session-folders-changed' } & z.infer<typeof sessionFoldersChangedSchema>;
 
 /**
  * The extension chosen as browser provider can no longer serve (paused,
@@ -133,6 +167,7 @@ type TrackedItemsChangedEvent = { type: 'tracked-items-changed'; records: z.infe
 
 const eventStreamReadySchema = z.object({ connectionId: z.string().min(1).optional() });
 const sourceControlActivitySchema = z.object({ directory: z.string().min(1) });
+const spaceQueueStreamSchema = z.object({ spaceId: z.string().regex(/^[0-9a-f]{12}$/), status: z.literal('connected') });
 
 const notificationPropertiesSchema = z.object({
   title: z.string().optional(),
@@ -157,12 +192,19 @@ type AlcodeEvent =
   | RoutingPermissionHeldEvent
   | RoutingSafetySkippedEvent
   | MessageQueueUpdatedEvent
+  /** Which sessions the server keeps warm, as a full snapshot. */
+  | { type: 'session-warming'; snapshot: SessionWarmingSnapshot }
+  /** The host follows this space's queue again; what changed in a gap is read from the space. */
+  | { type: 'space-queue-stream'; spaceId: string }
   | ScheduledTaskRanEvent
   | SessionCreatedEvent
   | WorktreeChangedEvent
   | BrowserControlRequestEvent
   | FileOpenRequestEvent
+  | PlanOpenRequestEvent
   | BrowserProviderResetEvent
+  | ProjectContextChangedEvent
+  | SessionFoldersChangedEvent
   | AgentMemoryChangedEvent;
 type Listener = (event: AlcodeEvent) => void;
 
@@ -362,7 +404,19 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
     return;
   }
 
-  if (envelope.type === 'alcode:heartbeat') {
+  if (envelope.type === 'openchamber:session-warming') {
+    const parsed = sessionWarmingSnapshotSchema.safeParse(envelope.properties);
+    if (parsed.success) for (const listener of listeners) listener({ type: 'session-warming', snapshot: parsed.data });
+    return;
+  }
+
+  if (envelope.type === 'openchamber:space-queue-stream') {
+    const parsed = spaceQueueStreamSchema.safeParse(envelope.properties);
+    if (parsed.success) for (const listener of listeners) listener({ type: 'space-queue-stream', spaceId: parsed.data.spaceId });
+    return;
+  }
+
+  if (envelope.type === 'openchamber:heartbeat' || envelope.type === 'alcode:heartbeat') {
     return;
   }
 
@@ -390,7 +444,13 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
     return;
   }
 
-  if (envelope.type === 'alcode:file-open-request') {
+  if (envelope.type === 'openchamber:plan-open-request') {
+    const parsed = planOpenRequestSchema.safeParse(envelope.properties);
+    if (parsed.success) for (const listener of listeners) listener({ type: 'plan-open-request', ...parsed.data });
+    return;
+  }
+
+  if (envelope.type === 'openchamber:file-open-request' || envelope.type === 'alcode:file-open-request') {
     const parsed = fileOpenRequestSchema.safeParse(envelope.properties);
     if (parsed.success) for (const listener of listeners) listener({ type: 'file-open-request', ...parsed.data });
     return;
@@ -402,7 +462,19 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
     return;
   }
 
-  if (envelope.type === 'alcode:agent-memory-changed') {
+  if (envelope.type === 'openchamber:project-context-changed') {
+    const parsed = projectContextChangedSchema.safeParse(envelope.properties);
+    if (parsed.success) for (const listener of listeners) listener({ type: 'project-context-changed', ...parsed.data });
+    return;
+  }
+
+  if (envelope.type === 'openchamber:session-folders-changed') {
+    const parsed = sessionFoldersChangedSchema.safeParse(envelope.properties);
+    if (parsed.success) for (const listener of listeners) listener({ type: 'session-folders-changed', ...parsed.data });
+    return;
+  }
+
+  if (envelope.type === 'openchamber:agent-memory-changed' || envelope.type === 'alcode:agent-memory-changed') {
     const properties = getEventProperties(envelope.properties);
     const scope = properties?.scope === 'project' ? 'project' : 'global';
     const nextEvent: AgentMemoryChangedEvent = {
@@ -471,6 +543,7 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
       parameters: rawParameters && typeof rawParameters === 'object' && !Array.isArray(rawParameters)
         ? rawParameters as Record<string, unknown>
         : {},
+      context: browserControlRequestContextSchema.safeParse(properties?.context).data ?? UNKNOWN_BROWSER_CONTROL_CONTEXT,
     };
     for (const listener of listeners) {
       listener(nextEvent);

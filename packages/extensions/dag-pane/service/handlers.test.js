@@ -541,6 +541,57 @@ describe('dag service handlers', () => {
     expect(escape.body.code).toBe('OMO_SESSION_ID_INVALID');
   });
 
+  test('loop projects dispatched workers under their goal', async () => {
+    const dir = makeSnapshotDir();
+    const repo = nodeFs.mkdtempSync(join(tmpdir(), 'dag-loop-workers-'));
+    scratchDirs.push(repo);
+    const loop = join(repo, '.omo', 'ulw-loop', 'ses_workers');
+    nodeFs.mkdirSync(loop, { recursive: true });
+    nodeFs.writeFileSync(join(loop, 'goals.json'), JSON.stringify({
+      brief: 'Analyze repo',
+      goals: [
+        { id: 'G001-analyze-repo', title: 'analyze repo', objective: 'analyze repo', status: 'complete', attempt: 1 },
+        { id: 'G002-docs', title: 'docs pass', objective: 'docs pass', status: 'in_progress', attempt: 1 },
+      ],
+    }), 'utf8');
+    nodeFs.writeFileSync(join(loop, 'ledger.jsonl'), [
+      JSON.stringify({ at: '2026-10-20T20:41:07.620Z', kind: 'goal_dispatched', goalId: 'G001-analyze-repo', status: 'in_progress', message: 'Dispatched as Analyze architecture stack: attempt 1' }),
+      JSON.stringify({ at: '2026-10-20T20:42:01.000Z', kind: 'child_completed', goalId: 'G001-analyze-repo', status: 'complete', message: 'Child st_arch (Analyze architecture stack) result: evidence/arch.md' }),
+      JSON.stringify({ at: '2026-10-20T20:42:02.000Z', kind: 'goal_dispatched', goalId: 'G001-analyze-repo', status: 'in_progress', message: 'Dispatched as Analyze DB config schemas: attempt 1' }),
+      JSON.stringify({ at: '2026-10-20T20:43:05.350Z', kind: 'child_failed', goalId: 'G001-analyze-repo', status: 'failed', message: 'Child st_db (Analyze DB config schemas) failed: timeout' }),
+      JSON.stringify({ at: '2026-10-20T20:44:00.000Z', kind: 'goal_dispatched', goalId: 'G002-docs', status: 'in_progress', message: 'Dispatched: attempt 1' }),
+      JSON.stringify({ at: '2026-10-20T20:44:01.000Z', kind: 'goal_started', goalId: 'G002-docs', status: 'in_progress', message: 'noise, not a worker record' }),
+      'not json at all',
+    ].join('\n') + '\n', 'utf8');
+    const { handleRequest } = handlersWith(dir, absentBridge);
+    const projected = await handleRequest({ method: 'GET', path: '/loop', query: { sessionId: 'ses_workers', directory: repo } });
+    expect(projected.status).toBe(200);
+    const run = projected.body.dag.runs[0];
+    const byId = Object.fromEntries(run.nodes.map((node) => [node.id, node]));
+    // Two settled workers under G001 plus one running worker under G002.
+    expect(byId['worker:G001-analyze-repo:1']).toMatchObject({
+      label: 'Analyze architecture stack', state: 'completed', depends_on: ['G001-analyze-repo'],
+    });
+    expect(byId['worker:G001-analyze-repo:1'].prompt).toContain('evidence/arch.md');
+    expect(byId['worker:G001-analyze-repo:2']).toMatchObject({
+      label: 'Analyze DB config schemas', state: 'failed', depends_on: ['G001-analyze-repo'],
+    });
+    expect(byId['worker:G002-docs:1']).toMatchObject({
+      label: 'Worker 1', state: 'running', depends_on: ['G002-docs'],
+    });
+    // Workers fan into synthesis through their goal; goals without workers
+    // keep the direct edge.
+    expect(run.edges).toContainEqual({ from: 'G001-analyze-repo', to: 'worker:G001-analyze-repo:1' });
+    expect(run.edges).toContainEqual({ from: 'worker:G001-analyze-repo:1', to: 'synthesis' });
+    expect(run.edges).not.toContainEqual({ from: 'G001-analyze-repo', to: 'synthesis' });
+    expect(run.edges).toContainEqual({ from: 'worker:G002-docs:1', to: 'synthesis' });
+    expect(run.waves[1].node_ids).toEqual(expect.arrayContaining(['worker:G001-analyze-repo:1', 'worker:G002-docs:1']));
+    const synthesis = byId.synthesis;
+    expect(synthesis.depends_on).toEqual(expect.arrayContaining(['worker:G001-analyze-repo:1', 'worker:G001-analyze-repo:2', 'worker:G002-docs:1']));
+    const parsed = parseSnapshotDoc(projected.body);
+    expect(parsed.ok).toBe(true);
+  });
+
   test('loop rows a route-only send as pending only while it is live', async () => {
     const liveBridge = () => ({
       probe: async () => ({ available: true, compatible: true, code: 'OMO_PROBE_OK' }),

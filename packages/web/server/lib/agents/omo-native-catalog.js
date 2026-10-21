@@ -33,6 +33,9 @@
 import { AGENT_DISPLAY_NAMES } from '../../../../omo-engine/omo-opencode/src/shared/agent-display-names.ts';
 import { BuiltinAgentNameSchema } from '../../../../omo-engine/omo-opencode/src/config/schema/agent-names.ts';
 import { AGENT_MODEL_REQUIREMENTS } from '../../../../omo-engine/model-core/src/agent-model-requirements.ts';
+import { resolveModelPipeline } from '../../../../omo-engine/model-core/src/model-resolution-pipeline.ts';
+import { fuzzyMatchModel } from '../../../../omo-engine/model-core/src/model-availability.ts';
+import { normalizeModel } from '../../../../omo-engine/model-core/src/model-normalization.ts';
 import { CATEGORY_MODEL_REQUIREMENTS } from '../../../../omo-engine/model-core/src/category-model-requirements.ts';
 import { GOOGLE_CATEGORIES } from '../../../../omo-engine/omo-opencode/src/tools/delegate-task/google-categories.ts';
 import { OPENAI_CATEGORIES } from '../../../../omo-engine/omo-opencode/src/tools/delegate-task/openai-categories.ts';
@@ -171,13 +174,91 @@ export const NATIVE_STATIC_AGENT_KEYS = [
   'omo-native-gate-reviewer',
 ];
 
-// Model head for a static entry. `plan` inherits the prometheus chain, same
-// as the demoted plan entry built by the assembly.
-const headModelForStaticEntry = (configKey) => {
-  const requirement = AGENT_MODEL_REQUIREMENTS[configKey === 'plan' ? 'prometheus' : configKey];
-  const head = requirement?.fallbackChain?.[0];
-  return head ? `${head.providers[0]}/${head.model}` : null;
+export const NATIVE_AGENT_MODEL_CHAINS = Object.fromEntries(
+  NATIVE_STATIC_AGENT_KEYS.map((configKey) => [
+    configKey,
+    AGENT_MODEL_REQUIREMENTS[configKey === 'plan' ? 'prometheus' : configKey]?.fallbackChain ?? [],
+  ]),
+);
+
+// Boundary parser: a user-supplied override ref is trimmed "provider/model"
+// text or absent. Anything else (wrong type, missing slash) is not an
+// override at all, so downstream code branches on the domain value.
+const modelOverrideAsRef = (value) => {
+  if (value?.constructor !== String) return undefined;
+  const trimmed = value.trim();
+  return trimmed.includes('/') ? trimmed : undefined;
 };
+
+// Boundary parser: model ref collections become a Set of strings.
+const modelRefSet = (value) => {
+  const out = new Set();
+  const items = value instanceof Set ? [...value] : Array.isArray(value) ? value : [];
+  for (const ref of items) {
+    if (ref?.constructor !== String) continue;
+    out.add(ref);
+  }
+  return out;
+};
+
+/**
+ * No-eligible-model sentinel: every resolution failure returns
+ * `{ noEligible: true, reason, configKey, ... }` instead of silent
+ * `undefined`, so callers can distinguish misconfiguration
+ * (`empty-chain`), a pinned override naming a dead provider/model
+ * (`override-provider-unavailable` / `override-model-unavailable`),
+ * and chain exhaustion (`chain-exhausted`, with the tried chain).
+ * `connectedProviders: null` means unknown (fail-open): an override is
+ * only rejected when providers are KNOWN and exclude it.
+ */
+export function getOverrideIneligibility(override, { connectedProviders = null, models = new Set() } = {}) {
+  const normalized = normalizeModel(override);
+  const [provider, ...rest] = String(normalized ?? override).split('/');
+  if (!provider || rest.length === 0) return 'malformed-override';
+  if (Array.isArray(connectedProviders) && !connectedProviders.includes(provider)) {
+    return 'override-provider-unavailable';
+  }
+  if (models instanceof Set && models.size > 0
+    && !fuzzyMatchModel(normalized ?? override, models, [provider])) {
+    return 'override-model-unavailable';
+  }
+  return undefined;
+}
+
+export function resolveStaticAgentModel(configKey, options = {}) {
+  const { connectedProviders = null, availableModels, modelOverride } = options ?? {};
+  const chain = NATIVE_AGENT_MODEL_CHAINS[configKey];
+  if (!chain || chain.length === 0) return { noEligible: true, reason: 'empty-chain', configKey };
+  const override = modelOverrideAsRef(modelOverride);
+  const models = modelRefSet(availableModels);
+  if (override) {
+    const ineligible = getOverrideIneligibility(override, { connectedProviders, models });
+    if (ineligible) return { noEligible: true, reason: ineligible, configKey, override };
+  }
+  const intent = {};
+  if (override) intent.userModel = override;
+  const constraints = { availableModels: models };
+  if (connectedProviders) constraints.connectedProviders = connectedProviders;
+  const picked = resolveModelPipeline({
+    intent,
+    constraints,
+    policy: { fallbackChain: chain },
+  });
+  if (!picked?.model) {
+    return {
+      noEligible: true,
+      reason: 'chain-exhausted',
+      configKey,
+      chain: chain.map((entry) => `${(entry?.providers ?? []).join('|')}/${entry?.model ?? ''}`),
+    };
+  }
+  const resolved = {
+    model: picked.variant ? `${picked.model}#${picked.variant}` : picked.model,
+    provenance: picked.provenance,
+  };
+  if (picked.variant) resolved.variant = picked.variant;
+  return resolved;
+}
 
 /**
  * Build the static `{ configKey: host-shaped entry }` agent map for the
@@ -197,7 +278,8 @@ const headModelForStaticEntry = (configKey) => {
  * Synchronous and side-effect-free (no filesystem, no network), so the
  * prebuilt `OMO_NATIVE_AGENT_CONFIG` below is safe to compute at import.
  */
-export function buildNativeAgentConfigMap() {
+export function buildNativeAgentConfigMap(resolution = {}) {
+  const { connectedProviders = null, availableModels, modelOverrides = {} } = resolution ?? {};
   const bundledTier = {};
   for (const parsed of BUNDLED_AGENT_DEFINITIONS.values()) {
     bundledTier[parsed.name] = {
@@ -236,15 +318,56 @@ export function buildNativeAgentConfigMap() {
     if (!entry) {
       throw new Error(`[omo-native-catalog] static agent entry missing for "${configKey}"`);
     }
-    const model = headModelForStaticEntry(configKey);
-    map[configKey] = { ...entry, ...(model ? { model } : {}) };
+    const resolved = resolveStaticAgentModel(configKey, {
+      connectedProviders,
+      availableModels,
+      modelOverride: modelOverrides?.[configKey],
+    });
+    // Model-less entries never ship once providers are KNOWN: a child
+    // would dispatch them onto a doomed model (or the wrong agent).
+    // Unknown providers (null) stay fail-open — discovery may simply not
+    // have run yet — so the entry ships unresolved as before. Known gaps
+    // surface separately through getNativeAgentModelGaps: loud, not silent.
+    if (resolved?.model || connectedProviders == null) {
+      const agentEntry = { ...entry };
+      if (resolved?.model) agentEntry.model = resolved.model;
+      map[configKey] = agentEntry;
+    }
   }
   return map;
 }
 
+/**
+ * Machine-readable model gaps for a resolution: one entry per static key
+ * with no eligible model (`{ configKey, reason, chain?, override? }`).
+ * Same loop as buildNativeAgentConfigMap; the map drops these keys while
+ * this reports them, so diagnostics and the pre-spawn gate see exactly
+ * what the child will not get.
+ */
+export function getNativeAgentModelGaps(resolution = {}) {
+  const { connectedProviders = null, availableModels, modelOverrides = {} } = resolution ?? {};
+  // Unknown providers: nothing is KNOWN missing (fail-open, as shipped).
+  if (connectedProviders == null) return [];
+  const gaps = [];
+  for (const configKey of NATIVE_STATIC_AGENT_KEYS) {
+    const resolved = resolveStaticAgentModel(configKey, {
+      connectedProviders,
+      availableModels,
+      modelOverride: modelOverrides?.[configKey],
+    });
+    if (!resolved?.model) {
+      const gap = { configKey, reason: resolved?.reason ?? 'unknown' };
+      if (resolved?.chain) gap.chain = resolved.chain;
+      if (resolved?.override) gap.override = resolved.override;
+      gaps.push(gap);
+    }
+  }
+  return gaps;
+}
+
 export const OMO_NATIVE_AGENT_CONFIG = buildNativeAgentConfigMap();
 
-// Version 2: the bump itself is the staleness signal. The senpi-sourced
-// bundle this replaces shipped version 1 with no way to tell a stale
-// copy from a fresh one; any consumer seeing 1 after this lands is stale.
-export const OMO_NATIVE_CATALOG_VERSION = 2;
+// Version 4: model-less static entries are dropped from the shipped map
+// (see getNativeAgentModelGaps) instead of riding along without a model.
+// Any consumer seeing 3 or earlier after this lands is stale.
+export const OMO_NATIVE_CATALOG_VERSION = 4;

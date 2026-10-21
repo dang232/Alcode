@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
-const BUILTIN_PREFIX = 'alcode-builtin-';
+const BUILTIN_PREFIXES = ['openchamber-builtin-', 'alcode-builtin-'];
 export const DEFAULT_BUILTIN_ROOT = fileURLToPath(new URL('../../built-in-extensions/', import.meta.url));
 export const builtInExtensionSchema = z.object({
   id: z.string().regex(/^alcode-builtin-[a-z][a-z0-9-]*$/),
@@ -24,7 +24,7 @@ export const builtInRegistrySchema = z.object({
   }
 });
 
-export const isReservedBuiltInId = (id) => id.startsWith(BUILTIN_PREFIX);
+export const isReservedBuiltInId = (id) => BUILTIN_PREFIXES.some((prefix) => id.startsWith(prefix));
 
 /** Only application startup supplies this root; manifests and HTTP input cannot select it. */
 export const readBuiltInRegistry = async (root = DEFAULT_BUILTIN_ROOT) => {

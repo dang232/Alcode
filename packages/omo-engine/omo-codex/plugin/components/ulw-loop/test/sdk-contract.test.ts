@@ -134,6 +134,15 @@ describe("agent toolkit SDK contract", () => {
 			if (!fanout.ok || fanout.operation !== "dispatch") throw new Error("fixture did not dispatch");
 			const extra = fanout.result.handoffs.find((handoff) => handoff.goalId !== goalId);
 			if (extra === undefined) throw new Error("fixture has no dispatched extra goal");
+			const extraPlan = await readUlwLoopPlan(cwd, { sessionId: context.sessionId });
+			const extraGoal = extraPlan.goals.find((candidate) => candidate.id === extra.goalId);
+			if (extraGoal === undefined) throw new Error("fixture has no extra goal");
+			for (const criterion of extraGoal.successCriteria) {
+				await request({
+					operation: "record-evidence",
+					args: { goalId: extra.goalId, criterionId: criterion.id, status: "pass", evidence: "fixture proof" },
+				});
+			}
 			await request({
 				operation: "record-child-result",
 				args: { goalId: extra.goalId, childId: "ses_fixture_child", resultRef: "a0/fixture.md" },
@@ -152,7 +161,7 @@ describe("agent toolkit SDK contract", () => {
 				args: { goalId: failing.goalId, childId: "ses_fixture_fail", reason: "fixture probe" },
 			});
 			const operationCount = hookOperations.length;
-			expect(operationCount).toBe(15);
+			expect(operationCount).toBe(15 + extraGoal.successCriteria.length);
 			expect(new Set(hookOperations)).toEqual(new Set(ULW_LOOP_OPERATIONS));
 		} finally {
 			await rm(cwd, { recursive: true, force: true });

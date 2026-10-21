@@ -4,6 +4,7 @@ import http from 'node:http';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { GUEST_GENERATE_PROMPT_MAX, GUEST_GENERATE_SYSTEM_MAX, GUEST_GENERATE_TIMEOUT_MS } from '@openchamber/sdk';
 
 // The settings override is read straight from disk, so without this the suite
 // would resolve whatever small model the developer running it has configured.
@@ -12,7 +13,7 @@ const TEMP_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'small-model-setting
 // time, so without this the last-imported file wins for the whole process.
 const PREV_DATA_DIR = process.env.ALCODE_DATA_DIR;
 
-const { generateSmallModelText, describeSmallModel, listAuthenticatedProviders, setUnavailableRetryDelaysForTest } = await import('./index.js');
+const { generateSmallModelText, describeSmallModel, listAuthenticatedProviders, setUnavailableRetryDelaysForTest, generationBudgetMs } = await import('./index.js');
 const { configureOpenCodeRuntimeProviders, resetOpenCodeRuntimeProviders } = await import('./client.js');
 
 // A real OpenCode stub over HTTP. The module talks to OpenCode through
@@ -29,6 +30,9 @@ const state = {
   generate: () => ({ text: 'generated' }),
   requests: [],
   generateErrors: [],
+  // Holds each /api/experimental/generate response open, so a client-side
+  // deadline can fire mid-request.
+  generateDelayMs: 0,
 };
 
 const MODEL = (overrides = {}) => ({
@@ -93,6 +97,7 @@ beforeAll(async () => {
         res.writeHead(400, { 'content-type': 'application/json' });
         return res.end(JSON.stringify(error));
       }
+      if (state.generateDelayMs) await new Promise((resolve) => setTimeout(resolve, state.generateDelayMs));
       return send({ location: LOCATION, data: state.generate(body) });
     }
     res.writeHead(404).end('{}');
@@ -117,6 +122,7 @@ beforeEach(() => {
   state.generate = () => ({ text: 'generated' });
   state.requests = [];
   state.generateErrors = [];
+  state.generateDelayMs = 0;
   configureOpenCodeRuntimeProviders({
     buildOpenCodeUrl: (requestPath) => `${baseUrl}${requestPath.startsWith('/') ? requestPath : `/${requestPath}`}`,
     getOpenCodeAuthHeaders: () => ({ Authorization: 'Basic test' }),
@@ -188,6 +194,18 @@ describe('generateSmallModelText', () => {
     state.generateErrors = [unavailable];
     await expect(generateSmallModelText({ ...options, timeoutMs: 100 })).rejects.toThrow();
     expect(state.requests.filter((entry) => entry.path === '/api/experimental/generate')).toHaveLength(1);
+  });
+
+  it('reports a blown deadline as a 504 generation-timeout naming the model and budget', async () => {
+    state.generateDelayMs = 2_500;
+    // The explicit timeoutMs also proves override: the derived budget for this
+    // small prompt would be ~60 s, so only the caller's 1 s deadline can fire.
+    await expect(generateSmallModelText({ prompt: 'hi', directory: '/proj', timeoutMs: 1_000 }))
+      .rejects.toMatchObject({
+        statusCode: 504,
+        code: 'generation-timeout',
+        message: expect.stringContaining('anthropic/claude-haiku-4-5 did not finish within the 1s budget for this prompt size'),
+      });
   });
 
   it('sends the prompt to /api/generate on the resolved model', async () => {
@@ -444,6 +462,36 @@ describe('oversized input', () => {
   });
 });
 
+describe('generationBudgetMs', () => {
+  it('keeps small prompts at the historical 60 s base', () => {
+    expect(generationBudgetMs(0)).toBe(60_000);
+    // A few hundred chars — a title, a commit message without diffs — sits
+    // within a breath of the old flat default.
+    expect(generationBudgetMs(400)).toBe(64_000);
+  });
+
+  it('covers the ~43 KB commit-message diff from issue #5017 (~11k tokens)', () => {
+    // ~490 s: well above the 1.5-2 min prefill the issue measured on 4 GB-VRAM
+    // local models, and far above the flat 60 s that always killed the request.
+    const budget = generationBudgetMs(43_000);
+    expect(budget).toBe(60_000 + 10_750 * 40);
+    expect(budget).toBeGreaterThan(120_000);
+  });
+
+  it('caps at the 900 s walkthrough ceiling', () => {
+    expect(generationBudgetMs(10_000_000)).toBe(900_000);
+  });
+
+  it('finishes before an extension stops waiting for the largest guest request', () => {
+    // The SDK's guest wait must outlast this deadline, or the guest gives up
+    // while the model still works and the answer is thrown away. Changing the
+    // formula here fails this test instead of silently breaking that order.
+    const budget = generationBudgetMs(GUEST_GENERATE_PROMPT_MAX + GUEST_GENERATE_SYSTEM_MAX);
+    expect(budget).toBe(780_000);
+    expect(budget).toBeLessThan(GUEST_GENERATE_TIMEOUT_MS);
+  });
+});
+
 describe('structured output', () => {
   const schema = { type: 'object', properties: { title: { type: 'string' } } };
 
@@ -589,6 +637,25 @@ describe('describeSmallModel', () => {
 
     expect(await describeSmallModel({ directory: '/proj' })).toBeNull();
   });
+
+  it.each([
+    ['http://127.0.0.1:8080/v1', true],
+    ['http://localhost:1234/v1', true],
+    ['http://[::1]:11434/v1', true],
+    ['http://192.168.1.20:8080/v1', true],
+    ['http://100.101.102.103:8080/v1', true],
+    ['http://gpu-box:8080/v1', true],
+    ['http://llm.home.arpa/v1', true],
+    ['https://api.example.com/v1', false],
+    ['http://8.8.8.8/v1', false],
+    [undefined, false],
+  ])('reports whether %s is a local endpoint', async (baseURL, local) => {
+    state.models = [MODEL({ id: 'qwen3', modelID: 'qwen3', providerID: 'llama', settings: baseURL ? { baseURL } : {} })];
+
+    const described = await describeSmallModel({ directory: '/proj', preferredProviderID: 'llama', preferredModelID: 'qwen3' });
+
+    expect(described).toMatchObject({ source: 'session-model', localEndpoint: local });
+  });
 });
 
 describe('listAuthenticatedProviders', () => {
@@ -616,10 +683,60 @@ describe('listAuthenticatedProviders', () => {
     expect(await listAuthenticatedProviders()).toContain('claude-code');
   });
 
+  // OpenCode 2 answers with an empty catalog while it starts; caching that
+  // kept the pickers empty after the models arrived.
+  it('offers a provider as soon as a cold catalog fills in', async () => {
+    state.models = [];
+    expect(await listAuthenticatedProviders()).toEqual([]);
+
+    state.models = [MODEL()];
+    expect(await listAuthenticatedProviders()).toEqual(['anthropic']);
+  });
+
   it('answers an empty list when OpenCode is not reachable', async () => {
     configureOpenCodeRuntimeProviders(null);
 
     expect(await listAuthenticatedProviders()).toEqual([]);
+  });
+
+  // The model list is directory-scoped, so an unscoped read answers for
+  // OpenCode's own working directory, which need not be where the user works.
+  it('scopes the model and provider reads to the requested directory', async () => {
+    configureOpenCodeRuntimeProviders({
+      buildOpenCodeUrl: (requestPath) => `${baseUrl}${requestPath.startsWith('/') ? requestPath : `/${requestPath}`}`,
+      getOpenCodeAuthHeaders: () => ({ Authorization: 'Basic test' }),
+      getDefaultDirectory: () => '/last/project',
+    });
+
+    await listAuthenticatedProviders('/proj/sub dir');
+
+    const reads = state.requests.filter((entry) => entry.path === '/api/model' || entry.path === '/api/provider');
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every((entry) => entry.headers['x-opencode-directory'] === encodeURIComponent('/proj/sub dir'))).toBe(true);
+  });
+});
+
+describe('small model routes', () => {
+  it('forwards the request directory to the provider list', async () => {
+    let getHandler;
+    const providerCalls = [];
+    registerSmallModelRoutes({
+      get(_path, handler) { getHandler = handler; },
+      post() {},
+    }, {
+      getSmallModelService: async () => ({
+        describeSmallModel: async () => null,
+        listAuthenticatedProviders: async (directory) => {
+          providerCalls.push(directory);
+          return ['anthropic'];
+        },
+      }),
+    });
+    const response = { json() {}, status() { return response; } };
+
+    await getHandler({ query: { directory: '/proj/sub dir' } }, response);
+
+    expect(providerCalls).toEqual(['/proj/sub dir']);
   });
 });
 
@@ -651,5 +768,44 @@ describe('small model failure response', () => {
       code: 'small-model-unavailable',
     });
     setUnavailableRetryDelaysForTest();
+  });
+
+  const registerWithFailure = (failure) => {
+    let generate;
+    registerSmallModelRoutes({
+      get() {},
+      post(_path, handler) { generate = handler; },
+    }, {
+      getSmallModelService: async () => ({ generateSmallModelText: () => Promise.reject(failure) }),
+    });
+    return generate;
+  };
+
+  const respond = () => {
+    let status;
+    let payload;
+    const response = {
+      status(value) { status = value; return response; },
+      json(value) { payload = value; },
+    };
+    return { response, read: () => ({ status, payload }) };
+  };
+
+  it('surfaces a generation-timeout as its own message with status 504', async () => {
+    const message = 'ollama/qwen2.5:latest did not finish within the 490s budget for this prompt size';
+    const generate = registerWithFailure(Object.assign(new Error(message), { statusCode: 504, code: 'generation-timeout' }));
+    const { response, read } = respond();
+    await generate({ body: { prompt: 'commit' } }, response);
+    expect(read()).toEqual({ status: 504, payload: { error: message, code: 'generation-timeout' } });
+  });
+
+  it('keeps the generic text for other 5xx failures', async () => {
+    const generate = registerWithFailure(Object.assign(new Error('boom'), { statusCode: 500 }));
+    const { response, read } = respond();
+    await generate({ body: { prompt: 'commit' } }, response);
+    expect(read()).toEqual({
+      status: 500,
+      payload: { error: 'The selected Small Model could not complete this action. Choose another model in Settings → Sessions → Small Model and try again.' },
+    });
   });
 });

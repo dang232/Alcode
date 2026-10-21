@@ -17,12 +17,14 @@ import { IsolatedSpacesSettings } from './IsolatedSpacesSettings';
 import { ISOLATED_SPACES_RELEASED } from '@/lib/spaces/release';
 import { AlcodeToolsSettings } from './AlcodeToolsSettings';
 import { DesktopNetworkSettings } from './DesktopNetworkSettings';
+import { DesktopAppSettings } from './DesktopAppSettings';
+import { GeneralWorkspaceSettings } from './GeneralWorkspaceSettings';
 import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings';
 import { SettingsPageLayout } from '@/components/sections/shared/SettingsPageLayout';
-import { useDeviceInfo } from '@/lib/device';
 import { isDesktopLocalOriginActive, isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
 import { isCapacitorApp } from '@/lib/platform';
 import { useI18n } from '@/lib/i18n';
+import { useDeviceInfo } from '@/lib/device';
 import { subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import type { AlcodeSection } from './types';
 
@@ -141,18 +143,21 @@ const ShortcutsSectionContent: React.FC = () => {
     return <KeyboardShortcutsSettings />;
 };
 
-// General section: app-level settings — startup/tray/network, access password,
-// passkeys, OpenCode CLI binary, message stream transport, privacy.
+// General: the desktop app and quick access, files/terminal/panels, network
+// access and sign-in, links, the OpenCode CLI and environment, agent tools,
+// then message transport and privacy.
 const GeneralSectionContent: React.FC = () => {
     const isVSCode = isVSCodeRuntime();
     const runtimeEndpointEpoch = useRuntimeEndpointEpoch();
-    const showDesktopNetworkSettings = isDesktopShell() && isDesktopLocalOriginActive();
+    const isLocalDesktop = isDesktopShell() && isDesktopLocalOriginActive();
     // Passkeys only work against the browser's WebAuthn UI on the web surface —
     // desktop shell, VS Code, and the Capacitor app never show the login screen.
     const showPasskeySettings = isWebRuntime() && !isDesktopShell() && !isVSCode && !isCapacitorApp();
     return (
         <>
-            {showDesktopNetworkSettings && <DesktopNetworkSettings />}
+            {isLocalDesktop && <DesktopAppSettings />}
+            <GeneralWorkspaceSettings firstSection={!isLocalDesktop} />
+            {isLocalDesktop && <DesktopNetworkSettings />}
             {showPasskeySettings && <PasskeySettings />}
             <AppLinkSecuritySettings />
             {!isVSCode && <OpenCodeCliSettings />}
@@ -265,9 +270,10 @@ const VoiceSectionContent: React.FC = () => {
 };
 
 // Isolated spaces: the switch, the idle stop, the places with their disk, and the spaces without a
-// project. Never in VS Code (decision 16), and nowhere until the feature is released.
+// project. Never in VS Code (decision 16); whether Settings offers the page at all is the page's
+// `isAvailable` in lib/settings/metadata.ts.
 const SpacesSectionContent: React.FC = () => {
-    if (isVSCodeRuntime() || !ISOLATED_SPACES_RELEASED) {
+    if (isVSCodeRuntime()) {
         return null;
     }
     return <IsolatedSpacesSettings />;

@@ -35,7 +35,10 @@ target button arms "the next prompt is the objective", and the run-as-goal
 flows (fork-from-answer dialog, plan implement dialog) arm the same way —
 the plan flow additionally supplies an objective OVERRIDE carrying the plan
 content, since "Implement this plan: X" alone gives the audit nothing to
-judge against. The armed send also attaches a synthetic system-reminder
+judge against. Queueing a message consumes the arm too: the goal travels on
+that queued item (`goal` in `../message-queue`) and starts when that item is
+delivered, by the server queue or by a send from the queue row, and a queued
+item without a goal never consumes the composer's arm. The armed send also attaches a synthetic system-reminder
 part telling the agent goal mode is active and that each turn should end
 with a factual done/verified/remaining statement for the independent audit.
 Freshness/stale-write protection is by `id`: every runtime write re-reads the
@@ -220,8 +223,8 @@ sees only that final turn, so the report is its evidence.
   execution.
 - `hooks/useSessionGoal.ts` — live goal state.
 - `components/chat/SessionGoalButton.tsx` — composer target button
-  (arm / status color / cancel confirm); `SessionGoalRow.tsx` — goal strip
-  above the composer; `SessionGoalDialog.tsx` — manage dialog
+  (arm / status color / cancel confirm); `SessionGoalRow.tsx` — goal row
+  among the composer's top rows; `SessionGoalDialog.tsx` — manage dialog
   (edit/pause/resume/complete/clear).
 - Sidebar glyph next to the date in `SessionNodeItem`.
 - `components/sections/alcode/SessionGoalCheckerField.tsx` — Settings →

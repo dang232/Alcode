@@ -36,5 +36,6 @@
   "Alcode: OpenCode is not ready": "Alcode : OpenCode n’est pas prêt",
   "Alcode: Commit message generation already in progress": "Alcode : génération du message de commit déjà en cours",
   "Alcode: Left your commit message unchanged": "Alcode : votre message de commit n'a pas été modifié",
-  "Alcode: Failed to generate commit message - {0}": "Alcode : impossible de générer le message de commit - {0}"
+  "Alcode: Failed to generate commit message - {0}": "Alcode : impossible de générer le message de commit - {0}",
+  "Open Session": "Ouvrir la session"
 }

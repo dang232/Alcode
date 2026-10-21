@@ -59,6 +59,7 @@ untouched.
   - `handlePasskeyAuthenticationVerify(req, res)`
   - `handlePasskeyList(req, res)`
   - `handlePasskeyRevoke(req, res)`
+  - `handlePasskeyRename(req, res)`
   - `handleResetAuth(req, res)`
   - `resolveRequestAlcoreSub(req)`
   - `ensureSessionToken(req, res)`
@@ -70,6 +71,7 @@ untouched.
   - `getStatus(req)`
   - `listPasskeys(req)`
   - `revokePasskey(req, passkeyId)`
+  - `renamePasskey(req, passkeyId, label)`
   - `clearAllPasskeys()`
   - `beginRegistration(req, { label })`
   - `finishRegistration(payload)`

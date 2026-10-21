@@ -36,5 +36,6 @@
   "Alcode: OpenCode is not ready": "Alcode: OpenCode hazır değil",
   "Alcode: Commit message generation already in progress": "Alcode: Commit mesajı oluşturma zaten devam ediyor",
   "Alcode: Left your commit message unchanged": "Alcode: Commit mesajınız değiştirilmedi",
-  "Alcode: Failed to generate commit message - {0}": "Alcode: Commit mesajı oluşturulamadı - {0}"
+  "Alcode: Failed to generate commit message - {0}": "Alcode: Commit mesajı oluşturulamadı - {0}",
+  "Open Session": "Oturumu Aç"
 }

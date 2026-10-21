@@ -1,7 +1,7 @@
 import { useSpacesStore } from '@/lib/spaces/spaces-store';
 import { useSpaceArchivesStore } from '@/lib/spaces/space-archives';
 import { resetSpaceModelAccess } from '@/lib/spaces/space-model-access';
-import { resetSpaceCreationRequests } from '@/lib/spaces/space-creation';
+import { resetSpaceCreationRequests } from '@/lib/spaces/space-creation-requests';
 import { useGuestsStore } from '@/lib/guests/store';
 import { useGuestOauthStore } from '@/lib/guests/oauth-store';
 import { opencodeClient } from '@/lib/opencode/client';
@@ -22,6 +22,7 @@ import { useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
 import { repositoryBindingOwner } from '@/lib/source-control/repository-binding';
 import { useChangeRequestContextStore } from '@/stores/useChangeRequestContextStore';
 import { useSessionFoldersStore } from '@/stores/useSessionFoldersStore';
+import { sessionEvents } from '@/lib/sessionEvents';
 import { useLinearAuthStore } from '@/stores/useLinearAuthStore';
 import { useQuotaStore } from '@/stores/useQuotaStore';
 import { useMcpStore } from '@/stores/useMcpStore';
@@ -37,6 +38,7 @@ import { useSessionUIStore } from '@/sync/session-ui-store';
 import { resetStreamingState } from '@/sync/streaming';
 import { replaceGlobalSessionStatusById } from '@/sync/global-session-status';
 import { resetGlobalBlockingRequests } from '@/sync/global-blocking-requests';
+import { resetPendingSessionAssists } from '@/sync/pending-session-assists';
 import { resetBackgroundShells } from '@/sync/background-shells';
 import { useMultiRunStore } from '@/stores/useMultiRunStore';
 import { resetSessionOrdering } from '@/sync/session-ordering';
@@ -91,6 +93,7 @@ export const resetAppForRuntimeEndpointChange = (detail: RuntimeEndpointChangedD
   useAgentsStore.getState().resetForRuntimeSwitch();
   replaceGlobalSessionStatusById(new Map());
   resetGlobalBlockingRequests();
+  resetPendingSessionAssists();
   resetBackgroundShells();
   resetSessionOrdering();
   // Turn timings belong to the previous instance's sessions, and the reset also
@@ -100,6 +103,7 @@ export const resetAppForRuntimeEndpointChange = (detail: RuntimeEndpointChangedD
   useMessageQueueStore.getState().resetForRuntimeSwitch(detail.previousRuntimeKey);
   useFileSearchStore.getState().resetForRuntimeSwitch();
   useGitStore.getState().resetForRuntimeSwitch(detail.runtimeKey);
+  sessionEvents.cancelPendingGitRefreshes();
   useGitIdentitiesStore.getState().resetForRuntimeSwitch(detail.runtimeKey);
   useSourceControlAuthStore.getState().resetForRuntimeSwitch();
   repositoryBindingOwner.reset();

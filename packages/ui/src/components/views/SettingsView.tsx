@@ -12,6 +12,8 @@ import { useAgentsStore } from '@/stores/useAgentsStore';
 import { useCommandsStore } from '@/stores/useCommandsStore';
 import { useMcpConfigStore } from '@/stores/useMcpConfigStore';
 import { useSnippetsStore } from '@/stores/useSnippetsStore';
+import { projectSettingsTabForSearchTarget, useProjectSettingsTabStore } from '@/components/sections/projects/projectSettingsTabs';
+import { chatSettingsTabForSearchTarget, useChatSettingsTabStore } from '@/components/sections/alcode/chatSettingsTabs';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { useSkillsCatalogStore } from '@/stores/useSkillsCatalogStore';
 import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip';
@@ -47,6 +49,7 @@ import type { AlcodeSection } from '@/components/sections/alcode/types';
 import { AlcodePage } from '@/components/sections/alcode/AlcodePage';
 import { AboutSettings } from '@/components/sections/alcode/AboutSettings';
 import { SettingsPageLayout } from '@/components/sections/shared/SettingsPageLayout';
+import { SettingsScrollbarTopClearanceContext } from '@/components/sections/shared/settingsScrollbarClearance';
 import {
   SETTINGS_SECTION_TITLE_CLASS,
 } from '@/components/sections/shared/SettingsSection';
@@ -68,7 +71,14 @@ import { buildSettingsSearchResults, type SettingsSearchResult } from '@/lib/set
 
 // UI Kit: fixed split-page sidebar width
 const SETTINGS_SPLIT_SIDEBAR_WIDTH = 280;
+// The desktop close button: top-1 offset plus its h-7 height.
+const SETTINGS_CLOSE_BUTTON_CLEARANCE = 32;
 const SETTINGS_DETAIL_HISTORY_KEY = '__alcodeSettingsDetail';
+/** The Chat page shows one tab at a time: open the one that holds the item. */
+const openChatSettingsTabFor = (itemId: string): void => {
+  const chatTab = chatSettingsTabForSearchTarget(itemId);
+  if (chatTab) useChatSettingsTabStore.getState().setTab(chatTab);
+};
 /** How long (in frames, ~0.5 s) a search result or a link waits for its item to render. */
 const PENDING_ITEM_MAX_FRAMES = 30;
 
@@ -475,6 +485,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       return 'plugins.spec';
     }
 
+    // The Git identity picker lives in the Add extension dialog; the add card opens it.
+    if (result.id === 'extensions.gitIdentity') {
+      return 'extensions.add';
+    }
+
+    const projectTab = projectSettingsTabForSearchTarget(result.id);
+    if (projectTab) {
+      useProjectSettingsTabStore.getState().setTab(projectTab);
+    }
+
+    openChatSettingsTabFor(result.id);
+
     return result.id;
   }, []);
 
@@ -575,6 +597,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       return;
     }
     useUIStore.getState().clearSettingsJumpRequest();
+    if (settingsJumpRequest.itemId) openChatSettingsTabFor(settingsJumpRequest.itemId);
     setPendingSearchItemId(settingsJumpRequest.itemId);
     openPage(resolveSettingsSlug(settingsJumpRequest.page));
     if (isMobile) {
@@ -871,7 +894,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <div className="px-4 pt-3">
-          <div className="oc-surface-elevated flex h-10 items-center gap-1.5 rounded-md border border-border bg-surface-elevated/70 px-2 text-muted-foreground focus-within:ring-2 focus-within:ring-ring sm:h-8">
+          <div className="oc-surface-elevated oc-raised oc-field flex h-10 items-center gap-1.5 rounded-md bg-surface-elevated/70 px-2 text-muted-foreground sm:h-8">
             <Icon name="search" className="h-4 w-4 shrink-0" />
             <input
               value={settingsSearchQuery}
@@ -879,6 +902,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
               onKeyDown={handleSettingsSearchKeyDown}
               placeholder={t('settings.view.search.placeholder')}
               aria-label={t('settings.view.search.aria')}
+              // The Settings window focuses this field when it opens.
+              data-settings-search=""
               className="typography-ui min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/70"
             />
             {hasSearchQuery && (
@@ -923,7 +948,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
                           }}
                           onClick={() => openSearchResult(result)}
                           className={cn(
-                            'flex w-full flex-col rounded-md px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            'flex w-full flex-col rounded-md px-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                             hasDescription ? 'min-h-11 py-1.5' : 'py-2',
                             active ? 'bg-interactive-selection' : 'hover:bg-interactive-hover'
                           )}
@@ -1064,22 +1089,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       return null;
     }
 
+    // The floating close button sits over the content's top-right corner, so
+    // the content scrollbar starts below it.
+    const scrollbarTopClearance = onClose ? SETTINGS_CLOSE_BUTTON_CLEARANCE : 0;
+    const content = (
+      <SettingsScrollbarTopClearanceContext.Provider value={scrollbarTopClearance}>
+        <ErrorBoundary>{renderPageContent(settingsSlug)}</ErrorBoundary>
+      </SettingsScrollbarTopClearanceContext.Provider>
+    );
+
     if (activePageMeta.kind === 'split') {
       return (
         <div className="flex h-full min-h-0 overflow-hidden">
-          <div className={cn('border-r', runtimeCtx.isVSCode ? 'bg-background' : 'bg-sidebar')} style={{ width: SETTINGS_SPLIT_SIDEBAR_WIDTH, minWidth: SETTINGS_SPLIT_SIDEBAR_WIDTH, borderColor: 'var(--interactive-border)' }}>
+          <div className={cn('border-e', runtimeCtx.isVSCode ? 'bg-background' : 'bg-sidebar')} style={{ width: SETTINGS_SPLIT_SIDEBAR_WIDTH, minWidth: SETTINGS_SPLIT_SIDEBAR_WIDTH, borderColor: 'var(--interactive-border)' }}>
             <ErrorBoundary>{renderPageSidebar(settingsSlug, {})}</ErrorBoundary>
           </div>
-          <ScrollableOverlay outerClassName="flex-1 min-h-0" className="bg-background" disableHorizontal>
-            <ErrorBoundary>{renderPageContent(settingsSlug)}</ErrorBoundary>
+          <ScrollableOverlay outerClassName="flex-1 min-h-0" className="bg-background" disableHorizontal verticalTrackStart={scrollbarTopClearance}>
+            {content}
           </ScrollableOverlay>
         </div>
       );
     }
 
     return (
-      <ScrollableOverlay outerClassName="h-full min-h-0" className="bg-background" disableHorizontal>
-        <ErrorBoundary>{renderPageContent(settingsSlug)}</ErrorBoundary>
+      <ScrollableOverlay outerClassName="h-full min-h-0" className="bg-background" disableHorizontal verticalTrackStart={scrollbarTopClearance}>
+        {content}
       </ScrollableOverlay>
     );
   };
@@ -1130,7 +1164,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       ) : (
         <>
           {showBackButton && (
-            <div className={cn('absolute left-3 z-50', isWindowed ? 'top-2' : 'top-3')}>
+            <div className={cn('absolute inset-s-3 z-50', isWindowed ? 'top-2' : 'top-3')}>
               <button
                 type="button"
                 onClick={handleBack}
@@ -1143,7 +1177,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
           )}
 
       {onClose && (
-        <div className={cn('absolute right-0.5 z-50', isWindowed ? 'top-0.5' : 'top-1')}>
+        <div className={cn('absolute inset-e-0.5 z-50', isWindowed ? 'top-0.5' : 'top-1')}>
           <button
             type="button"
             onClick={onClose}
@@ -1165,7 +1199,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
           <>
             <div
               className={cn(
-                'relative flex h-full min-h-0 w-36 min-w-36 flex-col overflow-hidden border-r sm:w-64 sm:min-w-64',
+                'relative flex h-full min-h-0 w-36 min-w-36 flex-col overflow-hidden border-e sm:w-64 sm:min-w-64',
                 isDesktopApp
                   ? 'bg-sidebar'
                   : runtimeCtx.isVSCode

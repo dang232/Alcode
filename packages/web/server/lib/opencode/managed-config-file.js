@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-import { OMO_NATIVE_AGENT_CONFIG } from '../agents/omo-native-catalog.bundle.js';
+import { buildNativeAgentConfigMap, getNativeAgentModelGaps, NATIVE_AGENT_MODEL_CHAINS, OMO_NATIVE_AGENT_CONFIG } from '../agents/omo-native-catalog.bundle.js';
 import { isRecord, toMcpEntity } from './config-v2.js';
 import { appendManagedMcpServer, appendManagedPlugin, mergeManagedAgents } from './managed-plugin-config.js';
 
@@ -50,7 +50,7 @@ const DISABLED_BUILTIN_PLUGINS = ['-opencode.browser'];
  * @param {object} dependencies
  * @param {typeof import('node:fs/promises')} dependencies.fsPromises
  * @param {typeof import('node:path')} dependencies.path
- * @param {string} dependencies.dataDir Alcode data directory
+ * @param {string} dependencies.instanceDir this server's own directory (`instance-dir.js`)
  * @param {NodeJS.ProcessEnv} [dependencies.env] environment the managed child inherits
  * @param {object} [dependencies.versions] host version map (`process.versions`); Electron hosts set `versions.electron`
  * @param {object|null} [dependencies.agentToolRuntime]
@@ -62,11 +62,17 @@ const DISABLED_BUILTIN_PLUGINS = ['-opencode.browser'];
  * @param {() => Array<{name: string, entry: object}>} [dependencies.listUserCustomAgents]
  *   user-global `.md` agents merged over the static map (user wins); defaults
  *   to none so unit tests without a home directory stay hermetic.
+ * @param {() => Promise<Array<string>|null>} [dependencies.listConnectedProviders]
+ *   provider ids the running OpenCode proves usable; null when unknown.
+ *   Defaults to null so unit tests without a runtime stay hermetic.
+ * @param {() => Promise<object>} [dependencies.readUserAgentModels]
+ *   explicit per-agent models from the user config layers, keyed by lowercase
+ *   config-key id; these outrank chain resolution. Defaults to none.
  */
 export const createManagedConfigRuntime = ({
   fsPromises,
   path,
-  dataDir,
+  instanceDir,
   env = process.env,
   versions = process.versions,
   agentToolRuntime = null,
@@ -74,8 +80,54 @@ export const createManagedConfigRuntime = ({
   readSettings,
   isAgentMemoryAvailable,
   listUserCustomAgents = () => [],
+  listConnectedProviders = async () => null,
+  readUserAgentModels = async () => ({}),
 }) => {
-  const filePath = path.join(dataDir, MANAGED_CONFIG_FILE_NAME);
+  const filePath = path.join(instanceDir, MANAGED_CONFIG_FILE_NAME);
+
+  const resolveNativeAgentMap = async () => {
+    const connectedProviders = await Promise.resolve()
+      .then(() => listConnectedProviders()).catch(() => null);
+    const modelOverrides = await Promise.resolve()
+      .then(() => readUserAgentModels()).catch(() => ({}));
+    const resolved = buildNativeAgentConfigMap({ connectedProviders, modelOverrides });
+    // Providers unknown: every native identity ships with its static
+    // entry, and chain-resolved entries win where a model resolved.
+    // Providers known: the chain map is the whole story, so uncovered
+    // agents stay dropped instead of leaking static models the child
+    // cannot run.
+    const map = {};
+    if (connectedProviders == null) {
+      Object.assign(map, OMO_NATIVE_AGENT_CONFIG);
+      for (const [key, entry] of Object.entries(resolved)) {
+        if (typeof entry?.model === 'string') map[key] = entry;
+      }
+    } else {
+      Object.assign(map, resolved);
+    }
+    // Known gaps are loud and exact: the agent is already dropped from the
+    // map, so this names the missing capability instead of shipping doom.
+    for (const gap of getNativeAgentModelGaps({ connectedProviders, modelOverrides })) {
+      console.error(`[managed-config] agent ${gap.configKey} has no eligible model (${gap.reason}${gap.override ? ` override ${gap.override}` : ''}${gap.chain ? ` chain ${gap.chain.join(', ')}` : ''}); dropped from the child until a provider or override covers it`);
+    }
+    for (const [key, entry] of Object.entries(map)) {
+      const model = entry?.model;
+      if (model?.constructor === String) {
+        console.log(`[managed-config] agent ${key} model ${model}`);
+      } else if (connectedProviders != null) {
+        // Unreachable by construction (known gaps are dropped above): a
+        // model-less entry here means the catalog and the map disagree.
+        throw new Error(`[managed-config] invariant: agent ${key} shipped without a model although providers are known`);
+      } else {
+        const chain = NATIVE_AGENT_MODEL_CHAINS[key] ?? [];
+        const wanted = chain
+          .map((item) => `${(item.providers ?? []).join('|')}/${item.model}`)
+          .join(', ');
+        console.warn(`[managed-config] agent ${key} has no eligible model yet (chain: ${wanted || 'none'}); providers unknown, shipping unresolved`);
+      }
+    }
+    return map;
+  };
 
   /** The user owns `OPENCODE_CONFIG` when their environment already set it. */
   const ownsConfigFile = () => (env.OPENCODE_CONFIG ?? '').trim().length === 0;
@@ -123,7 +175,7 @@ export const createManagedConfigRuntime = ({
   };
 
   const writeConfigFile = async (pluginDirectories) => {
-    await fsPromises.mkdir(dataDir, { recursive: true });
+    await fsPromises.mkdir(instanceDir, { recursive: true });
     // User-global `.md` agents ride along (user wins on collision): the
     // config-level map replaces those files in the child, so shipping only
     // the statics would hide every custom agent from the runtime.
@@ -134,7 +186,7 @@ export const createManagedConfigRuntime = ({
       // The V2 agent editor has no add(), so custom agents cannot register
       // via transform: they ship here as static entries keyed by lowercase
       // config-key ids (never display names).
-      agent: { ...OMO_NATIVE_AGENT_CONFIG, ...userAgents },
+      agent: { ...(await resolveNativeAgentMap()), ...userAgents },
     }, null, 2)}\n`;
     // Temp + rename: OpenCode reacts to the write immediately, and a partial
     // read would make it drop every managed plugin until the next change.
@@ -156,9 +208,12 @@ export const createManagedConfigRuntime = ({
   const materializeEnabledPlugins = async () => {
     const settings = await Promise.resolve(readSettings()).catch(() => null);
     const includeControl = settings?.agentControlToolEnabled !== false;
+    const includeSchedule = settings?.agentScheduleToolEnabled !== false;
     const includeWeb = settings?.agentWebToolEnabled !== false;
     const includeMemory = isAgentMemoryAvailable() && settings?.agentMemoryToolEnabled === true;
+    const includeKnowledge = settings?.agentKnowledgeToolEnabled !== false;
     const includeNotify = settings?.agentNotifyToolEnabled === true;
+    const includeRender = settings?.agentRenderToolEnabled !== false;
     const codeMode = settings?.agentToolsCodeMode === true;
 
     const directories = [];
@@ -168,8 +223,8 @@ export const createManagedConfigRuntime = ({
     if (omoNativeRuntime) {
       directories.push(await omoNativeRuntime.materializePlugin());
     }
-    if (agentToolRuntime && (includeControl || includeWeb || includeMemory || includeNotify)) {
-      directories.push(await agentToolRuntime.materializePlugin({ includeControl, includeWeb, includeMemory, includeNotify, codeMode }));
+    if (agentToolRuntime && (includeControl || includeSchedule || includeWeb || includeMemory || includeKnowledge || includeNotify || includeRender)) {
+      directories.push(await agentToolRuntime.materializePlugin({ includeControl, includeSchedule, includeWeb, includeMemory, includeKnowledge, includeNotify, includeRender, codeMode }));
     }
     return directories;
   };
@@ -191,7 +246,7 @@ export const createManagedConfigRuntime = ({
       content = appendManagedPlugin(content, directory, 'managed plugin');
     }
     content = appendManagedMcpServer(content, ULW_MCP_SERVER_NAME, resolveUlwMcpEntry(), 'managed MCP server');
-    content = mergeManagedAgents(content, { ...OMO_NATIVE_AGENT_CONFIG, ...(await readUserAgentMap()) }, 'managed agents');
+    content = mergeManagedAgents(content, { ...(await resolveNativeAgentMap()), ...(await readUserAgentMap()) }, 'managed agents');
     return { ...childEnv, OPENCODE_CONFIG_CONTENT: content };
   };
 

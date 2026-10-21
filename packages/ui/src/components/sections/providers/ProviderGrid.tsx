@@ -17,7 +17,7 @@ import {
   SettingsCardSearch,
   type SettingsCardTone,
 } from '@/components/sections/shared/SettingsCards';
-import { findIntegrationForProvider, getProviderCardStatus, readProviderApiKeySetting, type ProviderCardStatus } from './providerAuth';
+import { findIntegrationForProvider, getProviderCardStatus, readProviderApiKeySetting, usesMachineCredentials, type ProviderCardStatus } from './providerAuth';
 import { SETTINGS_CALLOUT_TITLE_CLASS, SettingsSection } from '@/components/sections/shared/SettingsSection';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -77,10 +77,10 @@ const EnterpriseProvidersNotice: React.FC<{ directory: string | null; integratio
   return (
     <div
       className={cn(
-        'mb-4 flex items-start gap-2 rounded-lg border p-3',
+        'mb-4 flex items-start gap-2 rounded-lg p-3',
         warning
-          ? 'border-[var(--status-warning)]/30 bg-[var(--status-warning)]/5'
-          : 'border-[var(--status-info-border)] bg-[var(--status-info-background)]/30',
+          ? 'bg-[var(--status-warning)]/10'
+          : 'bg-[var(--status-info-background)]/60',
       )}
     >
       <Icon
@@ -230,6 +230,7 @@ export const ProviderGrid: React.FC<ProviderGridProps> = ({ providers, integrati
       title={t('settings.page.providers.title')}
       description={t('settings.providers.grid.description')}
       headerEnd={<SettingsProjectSelector className="w-full min-w-0 @xl:w-56" />}
+      className="[&>section:first-of-type]:pt-8"
     >
       {locked ? <EnterpriseProvidersNotice directory={directory} integrations={integrations} /> : null}
       {providers.length > 0 ? (
@@ -257,6 +258,7 @@ export const ProviderGrid: React.FC<ProviderGridProps> = ({ providers, integrati
             integrations,
             providerId: provider.id,
             optionsApiKey: readProviderApiKeySetting(provider),
+            machineCredentials: usesMachineCredentials(provider),
           });
           return (
             <SettingsCard

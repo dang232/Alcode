@@ -11,7 +11,8 @@ import { resolveOmoAvailability } from '@/stores/omoAvailability';
 import { buildCatalogAgentConfig, canMaterializeCatalogAgent } from '@/lib/opencode/catalog-materialize';
 import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
-import { AgentColorField } from './AgentColorField';
+import { SettingsColorField } from '@/components/sections/shared/SettingsColorField';
+import { configuredAgentColor } from '@/lib/agentColors';
 import { isAgentHexColor } from './isAgentHexColor';
 import { useI18n } from '@/lib/i18n';
 import { formatModelSelection, parseModelIdentifier, parseModelSelection } from '@/lib/modelIdentifier';
@@ -30,7 +31,6 @@ import {
   SettingsFieldRow,
   SettingsStackedField,
   SettingsChipGroup,
-  SETTINGS_SELECT_SIZE,
   SETTINGS_NUMBER_INPUT_CLASS,
   SETTINGS_SELECT_ROW_TRIGGER_CLASS,
   SETTINGS_ICON_BUTTON_CLASS,
@@ -67,15 +67,8 @@ const getVariantOptionsForModel = (
   const model = findCatalogModel(provider?.models, parsedModel.modelId);
   return modelVariantNames(model);
 };
-/**
- * The colour the form shows for a stored value. #aaaaaa is what OpenCode's v1
- * migration writes for theme names it could not keep, so it reads as automatic,
- * matching the colour resolver.
- */
-const storedAgentColor = (stored: string | null | undefined): string => {
-  const value = stored?.trim().toLowerCase() ?? '';
-  return isAgentHexColor(value) && value !== '#aaaaaa' ? value : '';
-};
+/** The colour the form shows for a stored value; empty reads as automatic, as in the colour resolver. */
+const storedAgentColor = (stored: string | null | undefined): string => configuredAgentColor(stored)?.toLowerCase() ?? '';
 
 /** Everything the page writes into the agent's config file. */
 interface FormState {
@@ -457,7 +450,7 @@ export const AgentsPage: React.FC = () => {
       <div className="flex h-full items-center justify-center">
         <div className="text-center text-muted-foreground">
           <Icon name="robot-2" className="mx-auto mb-3 h-12 w-12 opacity-50" />
-          <p className="typography-body">{t('settings.agents.page.empty.title')}</p>
+          <p className="typography-ui-label">{t('settings.agents.page.empty.title')}</p>
           <p className="typography-meta mt-1 opacity-75">{t('settings.agents.page.empty.description')}</p>
         </div>
       </div>
@@ -539,7 +532,7 @@ export const AgentsPage: React.FC = () => {
             label={t('settings.agents.page.field.agentName')}
           >
             <div className="flex items-center">
-              <span className="typography-ui-label text-muted-foreground mr-1">@</span>
+              <span className="typography-ui-label text-muted-foreground me-1">@</span>
               <Input
                 value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
@@ -548,7 +541,7 @@ export const AgentsPage: React.FC = () => {
               />
             </div>
             <Select value={draftScope} onValueChange={(v) => setDraftScope(v as AgentScope)}>
-              <SelectTrigger size={SETTINGS_SELECT_SIZE} className="w-fit min-w-[100px]">
+              <SelectTrigger className="w-fit min-w-[100px]">
                 <SelectValue placeholder={t('settings.agents.page.field.scopePlaceholder')} />
               </SelectTrigger>
               <SelectContent align="end">
@@ -607,8 +600,14 @@ export const AgentsPage: React.FC = () => {
           label={t('settings.agents.page.field.color')}
           info={t('settings.agents.page.field.colorTooltip')}
         >
-          <AgentColorField
+          <SettingsColorField
             value={color}
+            labels={{
+              empty: t('settings.agents.page.field.colorAutomatic'),
+              swatch: (swatch) => t('settings.agents.page.field.colorSwatchAria', { color: swatch }),
+              custom: t('settings.agents.page.field.colorCustomAria'),
+              hex: t('settings.agents.page.field.colorHexAria'),
+            }}
             onChange={(next) => {
               setColor(next);
               requestSave();
@@ -659,7 +658,7 @@ export const AgentsPage: React.FC = () => {
                 requestSave();
               }}
             >
-              <SelectTrigger size={SETTINGS_SELECT_SIZE} className={SETTINGS_SELECT_ROW_TRIGGER_CLASS}>
+              <SelectTrigger className={SETTINGS_SELECT_ROW_TRIGGER_CLASS}>
                 <SelectValue placeholder={t('settings.agents.page.field.variantPlaceholder')}>
                   {(value) => value === '__default' ? t('chat.modelControls.default') : value}
                 </SelectValue>

@@ -205,6 +205,13 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
       inputFields: []
     },
 
+    openchamber_schedule: {
+      displayName: 'OpenChamber Schedule',
+      category: 'system',
+      outputLanguage: 'json',
+      inputFields: []
+    },
+
     alcode_web: {
       displayName: 'Alcode Web',
       category: 'system',
@@ -219,8 +226,22 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
       inputFields: []
     },
 
+    openchamber_knowledge: {
+      displayName: 'OpenChamber Knowledge',
+      category: 'system',
+      outputLanguage: 'json',
+      inputFields: []
+    },
+
     alcode_notify: {
       displayName: 'Alcode Notify',
+      category: 'system',
+      outputLanguage: 'json',
+      inputFields: []
+    },
+
+    openchamber_render: {
+      displayName: 'OpenChamber Render',
       category: 'system',
       outputLanguage: 'json',
       inputFields: []

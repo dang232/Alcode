@@ -206,6 +206,18 @@ describe("startNextUlwLoop", () => {
 		expect(result.resumed).toBe(true);
 	});
 
+	it("resuming opens no new attempt and dispatches nothing", async () => {
+		const repoRoot = await makeRepo();
+		const plan = await createUlwLoopPlan(repoRoot, { brief: "- First" });
+		const active = makeGoal({ ...plan.goals[0], status: "in_progress", attempt: 1 });
+		await writePlan(repoRoot, { ...plan, goals: [active], activeGoalId: active.id });
+
+		const result = scheduled(await startNextUlwLoop(repoRoot, {}));
+
+		expect(result.resumed).toBe(true);
+		expect(result.goal.attempt).toBe(1);
+	});
+
 	it("with retryFailed picks first failed (non-blocked) goal", async () => {
 		const repoRoot = await makeRepo();
 		const failed = makeGoal({ status: "failed", failureReason: "flake" });

@@ -1,3 +1,4 @@
+import { isPlainObject, isString } from '../shared/guards.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -18,6 +19,7 @@ const PROVIDER_OPERATIONS = new Set([
   'change-request-create', 'change-request-update', 'change-request-merge', 'change-request-ready',
   'change-request-comment', 'change-request-review', 'issue-comment', 'change-request-state', 'issue-state',
   'change-request-labels', 'issue-labels', 'change-request-reviewers',
+  'change-request-thread-reply', 'change-request-thread-resolve', 'change-request-thread-start',
 ]);
 // What a provider write acts on: `issue-*` names an issue, everything else a change request.
 const providerTargetKind = (operation) => (operation.startsWith('issue-') ? 'issue' : 'change-request');
@@ -30,10 +32,6 @@ const RESULT_STEPS = new Set([
 ]);
 
 const emptyState = () => ({ version: VERSION, records: {} });
-const isPlainObject = (value) => value === Object(value)
-  && !Array.isArray(value)
-  && Object.getPrototypeOf(value) === Object.prototype;
-const isString = (value) => Object.prototype.toString.call(value) === '[object String]';
 const hasExactKeys = (value, required, optional = []) => {
   const keys = Object.keys(value);
   return required.every((key) => keys.includes(key))

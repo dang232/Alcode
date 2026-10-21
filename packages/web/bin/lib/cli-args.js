@@ -1,4 +1,5 @@
 import { TunnelCliError, EXIT_CODE } from './cli-errors.js';
+import { injectedEnvKeys } from '../../server/lib/injected-env.js';
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_TAIL_LINES = 200;

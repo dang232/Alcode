@@ -25,7 +25,10 @@ describe('native agent editor base', () => {
       const found = getAgentConfig(name, root);
       expect(found.source).toBe('catalog');
       expect(typeof found.config.description).toBe('string');
-      expect(typeof found.config.model).toBe('string');
+      // No frozen model: the static map no longer pins the head of the
+      // fallback chain, so the hermetic seed carries no model and the
+      // runtime resolves one from the connected providers at build time.
+      expect(found.config.model).toBeUndefined();
       // plan ships description-only by design (no prompt); the rest seed a body.
       if (name === 'plan') expect(found.config.system).toBeUndefined();
       else expect(typeof found.config.system).toBe('string');

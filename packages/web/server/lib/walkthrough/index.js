@@ -1,3 +1,4 @@
+import { isString } from '../shared/guards.js';
 import { getRepositoryRoot } from '../git/service.js';
 import { generateSmallModelText } from '../small-model/index.js';
 import {
@@ -107,7 +108,6 @@ const jobs = new Map();
 const schemaRefusedBy = new Set();
 
 const modelKey = (model) => `${model.providerID}/${model.modelID}`;
-const isString = (value) => Object.prototype.toString.call(value) === '[object String]';
 const addReadContext = (result, readContext) => {
   if (readContext) result.readContext = readContext;
   return result;

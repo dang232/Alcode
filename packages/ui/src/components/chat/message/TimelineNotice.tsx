@@ -8,7 +8,8 @@
  * going through `ChatMessage`. So does a background subagent run, which v2
  * reports as a synthetic message (see `@/lib/opencode/subagent-run`), and the
  * result of a session the agent dispatched with `returnResult` (see
- * `@/lib/opencode/dispatched-session`).
+ * `@/lib/opencode/dispatched-session`), and a session notice that landed
+ * between turns (see `@/lib/opencode/session-notices`).
  */
 
 import React from 'react';
@@ -21,6 +22,8 @@ import ToolPart from './parts/ToolPart';
 import { OPENCODE_TOOLS } from '@/lib/opencode/tools';
 import { isRunningSubagentRunMessage, readSubagentRun, type SubagentRun } from '@/lib/opencode/subagent-run';
 import { readDispatchedSessionResult, type DispatchedSessionResult } from '@/lib/opencode/dispatched-session';
+import { readSessionNotice } from '@/lib/opencode/session-notices';
+import { SessionNoticeBlock } from './SessionNoticeBlock';
 import { openSessionLink } from '@/lib/router/openSessionFromRoute';
 import type { IconName } from '@/components/icon/icons';
 import { useUIStore } from '@/stores/useUIStore';
@@ -55,7 +58,6 @@ const CompactionNotice: React.FC<{ message: Extract<Message, { role: 'compaction
         <NoticeRow spacingClassName="pt-1">
             <ReasoningTimelineBlock
                 text={summary}
-                variant="thinking"
                 blockId={message.id}
                 isStreaming={running}
                 expandWhileStreaming={expandWhileStreaming}
@@ -74,7 +76,7 @@ const CompactionNotice: React.FC<{ message: Extract<Message, { role: 'compaction
                 }}
             />
             {!running && !summary ? (
-                <div className="flex items-center gap-1.5 py-1.5 pl-px typography-meta" style={{ color: 'var(--tools-title)' }}>
+                <div className="flex items-center gap-1.5 py-1.5 ps-px typography-meta" style={{ color: 'var(--tools-title)' }}>
                     <Icon
                         name={failed ? 'error-warning' : 'scissors'}
                         className={cn('h-3.5 w-3.5 shrink-0', failed && 'text-[var(--status-error)]')}
@@ -84,7 +86,7 @@ const CompactionNotice: React.FC<{ message: Extract<Message, { role: 'compaction
                 </div>
             ) : null}
             {message.error ? (
-                <div className="pl-5 typography-meta text-[var(--status-error)] break-words">{message.error.message}</div>
+                <div className="ps-5 typography-meta text-[var(--status-error)] break-words">{message.error.message}</div>
             ) : null}
         </NoticeRow>
     );
@@ -283,7 +285,6 @@ const DispatchedSessionNotice: React.FC<{ message: SyntheticMessage; result: Dis
         <NoticeRow>
             <ReasoningTimelineBlock
                 text={result.output}
-                variant="thinking"
                 blockId={message.id}
                 presentation={{
                     icon: DISPATCHED_SESSION_ICONS[result.state],
@@ -317,6 +318,14 @@ const SubagentNotice: React.FC<{ message: SyntheticMessage }> = ({ message }) =>
  * message itself.
  */
 export const TimelineNotice: React.FC<{ message: Message }> = ({ message }) => {
+    const notice = readSessionNotice(message);
+    if (notice) {
+        return (
+            <NoticeRow>
+                <SessionNoticeBlock notice={notice} blockId={`notice:${message.id}`} />
+            </NoticeRow>
+        );
+    }
     switch (message.role) {
         case 'synthetic':
             return <SubagentNotice message={message} />;

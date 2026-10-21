@@ -7,6 +7,9 @@ export class AlcodeControlError extends Error {
   }
 }
 
+/** Legacy alias: shared code still imports the pre-rename error name. */
+export const OpenChamberControlError = AlcodeControlError;
+
 export const asControlError = (error, fallbackMessage, fallbackStatus = 500) => {
   if (error instanceof AlcodeControlError) return error;
   const message = error instanceof Error ? error.message : fallbackMessage;

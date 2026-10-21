@@ -256,7 +256,7 @@ const AuthShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background text-foreground"
       style={{ fontFamily: '"Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif' }}
     >
-      <div className="app-region-drag fixed left-0 top-0 z-20" style={titlebarDragStyle} aria-hidden />
+      <div className="app-region-drag fixed inset-s-0 top-0 z-20" style={titlebarDragStyle} aria-hidden />
       <div
         className="pointer-events-none absolute inset-0 opacity-55"
         style={{

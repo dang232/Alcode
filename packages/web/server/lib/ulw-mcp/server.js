@@ -33,12 +33,13 @@ const resolveLoopCli = () => {
 // plan, which is the `steer` mutation entry: neither has a same-named
 // subcommand, so both ride the closest one.
 const TOOLS = [
-  { name: 'create-goals', subcommand: 'create-goals', description: 'Create ULW goals from a brief.' },
+  { name: 'create-goals', subcommand: 'create-goals', description: 'Create ULW goals from a brief. Pass taskKind readonly for surveys with no code changes.' },
   { name: 'status', subcommand: 'status', description: 'Report ULW plan and goal status.' },
   { name: 'complete', subcommand: 'complete-goals', description: 'Complete finished ULW goals.' },
   { name: 'dispatch', subcommand: 'dispatch', description: 'Dispatch pending ULW goals to workers.' },
   { name: 'record-child-result', subcommand: 'record-child-result', description: 'Record a ULW child completion.' },
   { name: 'record-child-failure', subcommand: 'record-child-failure', description: 'Record a ULW child failure.' },
+  { name: 'record-evidence', subcommand: 'record-evidence', description: 'Record evidence for a success criterion (pass, fail, or blocked).' },
   { name: 'checkpoint', subcommand: 'checkpoint', description: 'Write a ULW checkpoint.' },
   { name: 'inspect', subcommand: 'status', description: 'Read-only view of ULW plan state.' },
   { name: 'revise-goals', subcommand: 'steer', description: 'Revise ULW goals by steering the active plan.' },

@@ -12,6 +12,7 @@
  * runtime.
  */
 import path from 'node:path';
+import { builtinModules } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -56,7 +57,12 @@ const specifiers = new Set(
     (match) => match[1],
   ),
 );
-const leaked = [...specifiers].filter((spec) => !spec.startsWith('node:'));
+const leaked = [...specifiers].filter((spec) => {
+  if (spec.startsWith('node:')) return false;
+  // Bare core imports (`fs`, `os`, `path`, …) resolve in plain Node exactly
+  // like their `node:`-prefixed twins; only non-core specifiers leak.
+  return !builtinModules.includes(spec) && !builtinModules.includes(`node:${spec}`);
+});
 if (leaked.length > 0) {
   throw new Error(`[omo-native-catalog] bundle leaks non-node imports: ${leaked.join(', ')}`);
 }

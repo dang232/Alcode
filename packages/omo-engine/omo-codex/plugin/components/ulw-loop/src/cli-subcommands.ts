@@ -9,7 +9,13 @@ import {
 	readStdin,
 	readValue,
 } from "./cli-arg-parser.js";
-import { blockedDecisionHandoff, normalizeCodexGoalMode, printJson, printStatus } from "./cli-output.js";
+import {
+	blockedDecisionHandoff,
+	normalizeCodexGoalMode,
+	normalizeTaskKind,
+	printJson,
+	printStatus,
+} from "./cli-output.js";
 import { parseSteeringProposals, printSteerBatchResult, printSteerResult } from "./cli-steering.js";
 import { buildCodexGoalInstruction } from "./codex-goal-instruction.js";
 import { dispatchPendingGoals, recordChildCompleted, recordChildFailed } from "./dispatch.js";
@@ -45,6 +51,7 @@ export async function createGoals(
 		await toolkitFor(repoRoot, scope).createGoals({
 			brief,
 			codexGoalMode: normalizeCodexGoalMode(readValue(argv, "--codex-goal-mode")),
+			taskKind: normalizeTaskKind(readValue(argv, "--task-kind")),
 			force: hasFlag(argv, "--force"),
 			...(validationBatchesJson === undefined ? {} : { validationBatchesJson }),
 		}),
@@ -125,12 +132,14 @@ export async function reportChildResult(
 	json: boolean,
 	scope?: UlwLoopScope,
 ): Promise<number> {
+	const childRole = readValue(argv, "--child-role")?.trim() || undefined;
 	const result = await recordChildCompleted(
 		repoRoot,
 		{
 			goalId: required(argv, "--goal-id"),
 			childId: required(argv, "--child-id"),
 			resultRef: required(argv, "--result-ref"),
+			...(childRole === undefined ? {} : { childRole }),
 		},
 		scope,
 	);
@@ -154,6 +163,7 @@ export async function reportChildFailure(
 	json: boolean,
 	scope?: UlwLoopScope,
 ): Promise<number> {
+	const childRole = readValue(argv, "--child-role")?.trim() || undefined;
 	const result = await recordChildFailed(
 		repoRoot,
 		{
@@ -161,6 +171,7 @@ export async function reportChildFailure(
 			childId: required(argv, "--child-id"),
 			reason: required(argv, "--reason"),
 			...(hasFlag(argv, "--no-retry") ? { retryable: false } : {}),
+			...(childRole === undefined ? {} : { childRole }),
 		},
 		scope,
 	);

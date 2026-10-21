@@ -8,9 +8,10 @@ import {
   SettingsFieldRow,
   SettingsCheckboxRow,
   SettingsChipGroup,
-  SettingsInset,
   SETTINGS_ICON_BUTTON_CLASS,
   SETTINGS_NUMBER_INPUT_CLASS,
+  SETTINGS_NUMBER_STEPPER_ROW_CLASS,
+  SETTINGS_NUMBER_UNIT_CLASS,
 } from '@/components/sections/shared/SettingsSection';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
@@ -69,6 +70,14 @@ export const SessionRetentionSettings: React.FC = () => {
     }
   }, [runCleanup, t]);
 
+  const eligibleText = status === 'error'
+    ? t('sessions.sidebar.group.empty.loadFailed')
+    : status !== 'ready'
+    ? t('sessions.sidebar.group.empty.loadingSessions')
+    : action === 'archive'
+    ? t('settings.openchamber.sessionRetention.manualCleanup.eligibleArchiveNow', { count: pendingCount })
+    : t('settings.openchamber.sessionRetention.manualCleanup.eligibleDeleteNow', { count: pendingCount });
+
   return (
     <SettingsSection
       title={t('settings.alcode.sessionRetention.title')}
@@ -84,7 +93,9 @@ export const SessionRetentionSettings: React.FC = () => {
         ariaLabel={t('settings.alcode.sessionRetention.field.enableAutoCleanupAria')}
       />
 
-      <SettingsInset className="space-y-0">
+      {/* The period, the target and the action also drive "Run cleanup now",
+          so they stay editable while auto-cleanup is off. */}
+      <div>
         <SettingsCheckboxRow
           settingsItem="sessions.retention-only-archived"
           checked={onlyArchived}
@@ -136,7 +147,7 @@ export const SessionRetentionSettings: React.FC = () => {
             }))}
           />
         </SettingsFieldRow>
-      </SettingsInset>
+      </div>
 
       <div className="mt-1 py-1.5 space-y-1">
         <SettingsFieldRow
@@ -145,13 +156,16 @@ export const SessionRetentionSettings: React.FC = () => {
           <Button
             type="button"
             variant="outline"
-            size="xs"
+            size="sm"
             onClick={handleRunCleanup}
             disabled={isRunning}
             className="!font-normal"
           >
             {isRunning ? t('settings.alcode.sessionRetention.actions.cleaningUp') : t('settings.alcode.sessionRetention.actions.runCleanupNow')}
           </Button>
+          <span className="typography-meta truncate text-muted-foreground" aria-live="polite" title={eligibleText}>
+            {eligibleText}
+          </span>
         </SettingsFieldRow>
         <p className="typography-meta text-muted-foreground">
           {status === 'error'

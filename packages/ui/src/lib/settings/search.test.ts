@@ -30,14 +30,17 @@ describe('settings search', () => {
   test('finds the Claude Code integration by name and package, never in VS Code', () => {
     for (const query of ['claude', '@alcode/opencode-claude']) {
       for (const isVSCode of [false, true]) {
-        const results = buildSettingsSearchResults({
-          query,
-          runtimeCtx: { ...runtimeCtx, isVSCode },
-          t,
-          getPageTitle: (page) => page,
-        });
+        for (const enterpriseMode of [false, true]) {
+          const results = buildSettingsSearchResults({
+            query,
+            runtimeCtx: { ...runtimeCtx, isVSCode, enterpriseMode },
+            t,
+            getPageTitle: (page) => page,
+          });
 
-        expect(results.some((result) => result.id === 'integrations.third-party.opencode-claude')).toBe(!isVSCode);
+          expect(results.some((result) => result.id === 'integrations.third-party.opencode-claude'))
+            .toBe(!isVSCode && !enterpriseMode);
+        }
       }
     }
   });

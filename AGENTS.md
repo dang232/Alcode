@@ -11,14 +11,15 @@ This file contains only always-on repository rules and routing. Detailed workflo
 These steps are mandatory. Before editing, you **MUST**:
 
 1. Follow this root guide.
-2. Load every matching project skill and every task-required reference from
-   those skills.
-3. Read the nearest `DOCUMENTATION.md` and package `README.md` when present.
+2. Load every project skill whose `description` matches the change, and every
+   reference those skills require. Any source change starts with
+   `openchamber-change-discipline`.
+3. Read the nearest `DOCUMENTATION.md` (under `packages/**`) for each module you
+   change, and the package `README.md` for package-level work.
 4. Follow local code and test precedent.
 
 If these sources materially conflict, stop and resolve the conflict instead of silently choosing one.
-Do not start editing when a matching skill or required reference has not been
-read. Skill loading is a required part of the task, not optional guidance.
+Do not start editing before every matching skill and required reference is read.
 
 ## Runtime Boundaries
 
@@ -44,7 +45,7 @@ Shared contracts must define intentional behavior for every applicable runtime: 
 - Do not add dependencies unless explicitly requested.
 - Never add or log secrets, bearer tokens, pairing credentials, or sensitive user data.
 - Keep changes minimal and preserve unrelated worktree changes.
-- Release notes are the maintainer's release-time work: they get written once, as one story, in `changelog/unreleased.md` when the maintainer asks to update the changelog. Until that request, treat `changelog/` as read-only — a fix, feature, or merged PR lands without a changelog line. `packages/vscode/CHANGELOG.md` and `changelog/index.json` are generated from `changelog/*.md` by `oc-dev create-release`, and `CHANGELOG.md` is a legacy copy for older installs: never edit or regenerate any of them; an agent's only changelog output is `changelog/unreleased.md`.
+- `changelog/` is read-only, and a fix, feature, or merged PR lands without a changelog line. Release notes are written only when the maintainer asks to update the changelog, through the `update-changelog` skill.
 - Enforce security and correctness in core/runtime logic, not only UI visibility or prompts.
 - Keep entrypoints and bridges thin; place domain logic in focused owning modules.
 - Update owning documentation when module ownership, contracts, or invariants change.
@@ -61,24 +62,9 @@ Shared contracts must define intentional behavior for every applicable runtime: 
 
 ## Communication
 
-You and the maintainer are two people solving a problem together — talk like a trusted colleague, not a report generator. Plain words, short sentences, mechanisms explained through what the user experiences. Warm and direct, never familiar. A reply is something read in minutes, not a separate reading task: put the conclusion first and stand behind it. Answer in the language the maintainer addressed you in; code, comments, and docs stay in English.
+You and the person you work with are two people solving a problem together. Talk like a trusted colleague: plain words, short sentences, mechanisms explained through what the user experiences. Warm and direct, never familiar. A reply is read in minutes, so the conclusion comes first and you stand behind it. Answer in the language you were addressed in; code, comments, and docs stay in English.
 
-When writing or editing user-facing text — docs, UI copy, PR/issue comments, READMEs — load `.agents/skills/communication-style/SKILL.md` and apply its checklist.
-
-## Documentation Discovery
-
-Before changing a module, search for the nearest `DOCUMENTATION.md`; before package-level work, read its `README.md`. Discover docs dynamically under `packages/**/DOCUMENTATION.md` rather than relying on a static exhaustive map.
-
-High-value anchors:
-
-- Sync: `packages/ui/src/sync/DOCUMENTATION.md`
-- Stores: `packages/ui/src/stores/DOCUMENTATION.md`
-- CLI: `packages/web/bin/lib/DOCUMENTATION.md`
-- Performance measurement tooling: `scripts/perf/DOCUMENTATION.md`
-- VS Code runtime: `packages/vscode/src/DOCUMENTATION.md`
-- Electron: `packages/electron/README.md`
-- Mobile: `packages/mobile/README.md`
-- SDK: `packages/sdk/DOCUMENTATION.md`
+Load the `communication-style` skill once, at the start of the session, before your first reply. It stays in context for the rest of the session: every reply, in any language, and every text people read follows it. Later turns use it as loaded; they do not load it again.
 
 ## Project Skills
 
@@ -138,13 +124,8 @@ Before adding guidance to a skill, identify its canonical owner. If another skil
 
 ## Validation
 
-- Use `package.json` scripts as the command source of truth.
-- Prefer focused tests and package-scoped type-check/lint for executable source changes.
-- Use workspace-wide checks for cross-workspace contracts, root tooling, dependencies, or shared generated assets.
-- Run `bun run dead-code` when source files are added/deleted/renamed or exports, types, entrypoints, or import shape change; inspect its report because it is non-blocking.
-- Run `bunx oxlint <changed-paths>` on TypeScript/JavaScript files you created or substantially rewrote. This runs the vendored `anti-slop` plugin, which rejects low-evidence typing: unjustified type assertions, `unknown`/`object`/`Record<string, unknown>` contracts, ad hoc `typeof` narrowing, and module mocking. Fix findings in code you authored. Pre-existing findings elsewhere are a known backlog: do not mass-fix them, and never silence a rule, weaken severity, or launder types to make the check pass.
-- Do not assume TypeScript/lint covers server JS, CLI JS, Electron helpers, or native behavior; run focused tests, syntax checks, builds, or runtime validation for the touched surface.
-- For docs-only or isolated config changes, run the narrowest relevant validation.
+- Use `package.json` scripts as the command source of truth. Which checks a change needs is in `openchamber-change-discipline`.
+- Before every commit of source changes, `bun run check:changed` passes. It runs type-check, lint, and dead code (Knip, kept at zero findings), then an anti-slop ratchet: the vendored `anti-slop` oxlint plugin (low-evidence typing: unjustified type assertions, `unknown`/`object`/`Record<string, unknown>` contracts, ad hoc `typeof` narrowing, module mocking) may report no more findings per rule across the changed files than at the base. Fix the new findings; the pre-existing backlog stays out of scope unless the task is that cleanup. Never silence a rule, weaken severity, or launder types to make a check pass.
 - Report exactly what was and was not validated. Static checks alone do not prove runtime, relay, performance, or platform correctness.
 
 ## Pull Request Handoff

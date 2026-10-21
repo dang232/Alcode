@@ -27,8 +27,12 @@ import {
   WorkStatusValue,
 } from './WorkStatusPrimitives';
 import { useReportWorkStatusPresence } from './presenceContext';
+import { WorkStatusWarmingToggle } from './WorkStatusWarmingToggle';
 import { changeRequestCopy } from '@/lib/source-control/changeRequestCopy';
 import { formatChangeRequestReference } from '@/lib/source-control/identity';
+import { ProjectActionsButton } from '@/components/layout/ProjectActionsButton';
+import { OpenInAppButton } from '@/components/desktop/OpenInAppButton';
+import { useProjectActionsContext } from '@/hooks/useProjectActionsContext';
 
 type Props = {
   sessionId: string | null;
@@ -54,6 +58,7 @@ const UNKNOWN_PERCENT = '\u2014';
  */
 export const WorkStatusPrimaryGroup: React.FC<Props> = ({ sessionId, directory, goalRow, showSession, showRepository, children }) => {
   const { t } = useI18n();
+  const projectActionsContext = useProjectActionsContext();
   const { git } = useRuntimeAPIs();
   const ensureStatus = useGitStore((state) => state.ensureStatus);
   const fetchStatus = useGitStore((state) => state.fetchStatus);
@@ -166,10 +171,9 @@ export const WorkStatusPrimaryGroup: React.FC<Props> = ({ sessionId, directory, 
   const sessionMessages = useSessionMessages(sessionId ?? '', directory ?? undefined);
   const { context: contextLimit } = useContextWindowLimits(sessionId, directory ?? undefined);
 
-  // Computed from this session's own messages rather than through
-  // `useSessionUIStore.getContextUsage`, which reads the *current* directory's
-  // store and so loses the readout for any session held elsewhere. See
-  // `contextUsage.ts`.
+  // Computed from this session's own messages rather than the header's
+  // reading, which reads the *current* directory's store and so loses the
+  // readout for any session held elsewhere. See `contextUsage.ts`.
   const contextUsage = React.useMemo(
     () => computeContextUsage(sessionMessages, contextLimit),
     [sessionMessages, contextLimit],
@@ -179,8 +183,13 @@ export const WorkStatusPrimaryGroup: React.FC<Props> = ({ sessionId, directory, 
   const openContextOverview = useUIStore((state) => state.openContextOverview);
   const openContextPanelTab = useUIStore((state) => state.openContextPanelTab);
   const openSurface = React.useCallback(
-    (mode: 'git' | 'pr') => { if (directory) openContextSurface(directory, mode); },
-    [directory, openContextSurface],
+    (mode: 'git' | 'pr') => {
+      if (!directory) return;
+      // The branch's pull request is the Tracker's branch tab, whichever item tab was last in front.
+      if (mode === 'pr') openContextPanelTab(directory, { mode: 'pr' });
+      else openContextSurface(directory, mode);
+    },
+    [directory, openContextPanelTab, openContextSurface],
   );
   // Working-tree diff without a target path: the panel opens on the whole
   // change set rather than picking a file on the user's behalf.
@@ -247,7 +256,7 @@ export const WorkStatusPrimaryGroup: React.FC<Props> = ({ sessionId, directory, 
   // restate the number directly above it.
   const showCostBreakdown = cost !== null && subagentCount > 0 && subagentCost > 0;
   const hasSession = showSession && (contextUsage !== null || cost !== null || Boolean(goalRow));
-  const hasRepository = showRepository && Boolean(branch || changed || prSummary || attentionLabel);
+  const hasRepository = showRepository && Boolean(branch || changed || prSummary || attentionLabel || projectActionsContext);
 
   useReportWorkStatusPresence('session-repository', hasSession || hasRepository);
 
@@ -263,6 +272,8 @@ export const WorkStatusPrimaryGroup: React.FC<Props> = ({ sessionId, directory, 
                 label={t('chat.workStatus.context.label')}
                 value={(
                   <>
+                    {/* Keeping the cache warm is about this context, so its switch sits on the row. */}
+                    <WorkStatusWarmingToggle sessionId={sessionId} directory={directory} />
                     <WorkStatusValue>{usagePercent !== null ? formatPercent(usagePercent) : UNKNOWN_PERCENT}</WorkStatusValue>
                     {/* No icon of its own: the sprite has no currency glyph, and
                         spend belongs with consumption anyway. The `$` labels it. */}
@@ -298,7 +309,10 @@ export const WorkStatusPrimaryGroup: React.FC<Props> = ({ sessionId, directory, 
       repository: hasRepository ? (
         <WorkStatusSection
           title={t('chat.workStatus.section.project')}
-          summary={projectLabel}
+          subject={projectLabel}
+          summary={projectActionsContext?.directory
+            ? <OpenInAppButton directory={projectActionsContext.directory} />
+            : null}
         >
           {attentionLabel ? <WorkStatusCallout>{attentionLabel}</WorkStatusCallout> : null}
 
@@ -400,6 +414,9 @@ export const WorkStatusPrimaryGroup: React.FC<Props> = ({ sessionId, directory, 
               ) : null}
             </>
           ) : null}
+
+          {/* Last: the readouts above describe the project, this runs something in it. */}
+          {projectActionsContext ? <ProjectActionsButton projectRef={projectActionsContext.projectRef} directory={projectActionsContext.directory} /> : null}
         </WorkStatusSection>
       ) : null,
   });

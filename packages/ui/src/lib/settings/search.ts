@@ -1,5 +1,6 @@
 import type { I18nKey } from '@/lib/i18n/store';
-import { ISOLATED_SPACES_RELEASED } from '@/lib/spaces/release';
+import { getCustomizableShortcutActions } from '@/lib/shortcuts';
+import { isIsolatedSpacesPageVisible } from '@/lib/spaces/release';
 import { useUIStore } from '@/stores/useUIStore';
 import type { SettingsPageSlug, SettingsRuntimeContext } from './metadata';
 import { getSettingsPageMeta } from './metadata';
@@ -29,6 +30,9 @@ interface SettingsSearchAvailabilityContext extends SettingsRuntimeContext {
   // Linux desktop shell — for controls that only render on linux.
   isLinux: boolean;
 }
+
+/** The search target (and highlight anchor) of one shortcut row on the Shortcuts page. */
+export const shortcutSearchItemId = (actionId: string): string => `shortcuts.action.${actionId}`;
 
 const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
   {
@@ -176,6 +180,60 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['editor', 'autosave', 'auto-save', 'files', 'save'],
   },
   {
+    id: 'appearance.confirm-file-tree-move',
+    page: 'general',
+    titleKey: 'settings.openchamber.visual.field.confirmFileTreeMove',
+    keywords: ['files', 'tree', 'move', 'drag', 'drop', 'confirm'],
+    isAvailable: (ctx) => !ctx.isMobile && !ctx.isVSCode,
+  },
+  {
+    id: 'appearance.file-tree-side',
+    page: 'general',
+    titleKey: 'settings.openchamber.visual.field.fileTreeSide',
+    keywords: ['files', 'tree', 'explorer', 'left', 'right', 'side', 'editor'],
+    isAvailable: (ctx) => !ctx.isMobile && !ctx.isVSCode,
+  },
+  {
+    id: 'appearance.layout-animations',
+    page: 'general',
+    titleKey: 'settings.openchamber.visual.field.layoutAnimations',
+    descriptionKey: 'settings.openchamber.visual.field.layoutAnimationsInfo',
+    keywords: ['animation', 'motion', 'sidebar', 'panel', 'slide', 'instant'],
+    isAvailable: (ctx) => !ctx.isMobile && !ctx.isVSCode,
+  },
+  {
+    id: 'appearance.open-links-in-browser-panel',
+    page: 'general',
+    titleKey: 'settings.openchamber.visual.field.openLinksInBrowserPanel',
+    descriptionKey: 'settings.openchamber.visual.field.openLinksInBrowserPanelInfo',
+    keywords: ['links', 'url', 'browser', 'open', 'preview', 'external'],
+    isAvailable: (ctx) => ctx.isDesktop && !ctx.isMobile && !ctx.isVSCode,
+  },
+  {
+    id: 'appearance.live-browser-tabs',
+    page: 'general',
+    titleKey: 'settings.openchamber.visual.field.liveBrowserTabs',
+    descriptionKey: 'settings.openchamber.visual.field.liveBrowserTabsInfo',
+    keywords: ['browser', 'tabs', 'memory', 'reload', 'background', 'loaded'],
+    isAvailable: (ctx) => ctx.isDesktop && !ctx.isMobile && !ctx.isVSCode,
+  },
+  {
+    id: 'layout.mobile-workspace-tabs',
+    page: 'general',
+    titleKey: 'settings.layout.general.mobileTabs.title',
+    descriptionKey: 'settings.layout.general.mobileTabs.info',
+    keywords: ['tabs', 'workspace', 'panel', 'order', 'hide', 'git', 'files', 'terminal', 'mcp', 'mobile'],
+    isAvailable: (ctx) => ctx.isMobile,
+  },
+  {
+    id: 'appearance.open-tracker-links-on-board',
+    page: 'general',
+    titleKey: 'settings.openchamber.visual.field.openTrackerLinksOnBoard',
+    descriptionKey: 'settings.openchamber.visual.field.openTrackerLinksOnBoardInfo',
+    keywords: ['links', 'github', 'gitlab', 'linear', 'issue', 'pull request', 'merge request', 'board'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
     id: 'appearance.file-editor-keymap',
     page: 'general',
     titleKey: 'settings.alcode.visual.field.fileEditorKeymap',
@@ -240,6 +298,15 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     page: 'chat',
     titleKey: 'settings.alcode.visual.field.sessionSuggestion',
     keywords: ['suggestion', 'assist', 'small model', 'follow up'],
+  },
+  {
+    id: 'chat.session-review-offer',
+    page: 'chat',
+    titleKey: 'settings.openchamber.visual.field.sessionReviewOffer',
+    descriptionKey: 'settings.openchamber.visual.field.sessionReviewOfferInfo',
+    keywords: ['review', 'walkthrough', 'changes', 'diff', 'jev', 'classification'],
+    // Jev runs on the OpenChamber server; VS Code has no such offer.
+    isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
     id: 'chat.session-goal',
@@ -364,6 +431,13 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['subagent', 'read only', 'prompt', 'banner'],
   },
   {
+    id: 'chat.save-pasted-images',
+    page: 'chat',
+    titleKey: 'settings.openchamber.visual.field.savePastedImagesAsFiles',
+    descriptionKey: 'settings.openchamber.visual.field.savePastedImagesAsFilesInfo',
+    keywords: ['image', 'screenshot', 'paste', 'vision', 'text-only', 'model', 'path', 'attachment', 'file', 'link'],
+  },
+  {
     id: 'chat.tool-file-icons',
     page: 'chat',
     titleKey: 'settings.alcode.visual.field.showToolFileIcons',
@@ -386,6 +460,31 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     page: 'chat',
     titleKey: 'settings.alcode.visual.field.showDotfiles',
     keywords: ['hidden files'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'general.file-viewer-preview',
+    page: 'general',
+    titleKey: 'settings.openchamber.defaults.field.openFilesPreview',
+    keywords: ['preview', 'markdown', 'files', 'viewer', 'rendered'],
+  },
+  {
+    id: 'chat.user-message-rendering',
+    page: 'chat',
+    titleKey: 'settings.openchamber.visual.section.userMessageRendering',
+    keywords: ['markdown', 'plain text', 'user message', 'format'],
+  },
+  {
+    id: 'chat.mermaid-rendering',
+    page: 'chat',
+    titleKey: 'settings.openchamber.visual.section.mermaidRendering',
+    keywords: ['mermaid', 'diagram', 'svg', 'ascii'],
+  },
+  {
+    id: 'chat.diff-layout',
+    page: 'chat',
+    titleKey: 'settings.openchamber.visual.section.diffLayout',
+    keywords: ['diff', 'inline', 'side by side', 'split', 'changes'],
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
@@ -494,6 +593,14 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.alcode.defaults.field.sessionWarming',
     descriptionKey: 'settings.alcode.defaults.field.sessionWarmingInfo',
     keywords: ['warming', 'warm', 'cache', 'prompt cache', 'keep-alive', 'idle'],
+  },
+  {
+    id: 'sessions.warming-duration',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.defaults.sessionWarming.duration',
+    keywords: ['warming', 'warm', 'duration', 'how long', 'hour', 'cache'],
+    // VS Code shows only OpenCode's switch, without a duration.
+    isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
     id: 'sessions.permission-default',
@@ -644,6 +751,24 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => ctx.isDesktopLocalOrigin,
   },
   {
+    id: 'sessions.desktop-quake-mode',
+    page: 'general',
+    titleKey: 'settings.openchamber.desktopNetwork.field.quakeMode',
+    descriptionKey: 'settings.openchamber.desktopNetwork.field.quakeModeDescription',
+    keywords: ['desktop', 'quake', 'dropdown', 'hotkey', 'shortcut', 'height', 'global', 'background', 'tray', 'terminal'],
+    isAvailable: (ctx) => ctx.isDesktopLocalOrigin,
+  },
+
+
+  {
+    id: 'sessions.desktop-ui-password',
+    page: 'general',
+    titleKey: 'settings.openchamber.desktopPassword.field.password',
+    descriptionKey: 'settings.openchamber.desktopPassword.field.passwordDescription',
+    keywords: ['desktop', 'password', 'auth', 'login'],
+    isAvailable: (ctx) => ctx.isDesktopLocalOrigin,
+  },
+  {
     id: 'sessions.desktop-lan-access',
     page: 'general',
     titleKey: 'settings.alcode.desktopNetwork.field.allowLanAccess',
@@ -689,6 +814,14 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
+    id: 'sessions.agent-schedule-tool',
+    page: 'general',
+    titleKey: 'settings.openchamber.tools.field.agentScheduleTool',
+    descriptionKey: 'settings.openchamber.tools.field.agentScheduleToolInfo',
+    keywords: ['agent', 'tool', 'schedule', 'scheduled', 'task', 'cron', 'recurring', 'openchamber'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
     id: 'sessions.agent-web-tool',
     page: 'general',
     titleKey: 'settings.alcode.tools.field.agentWebTool',
@@ -713,14 +846,30 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
+    id: 'sessions.agent-render-tool',
+    page: 'general',
+    titleKey: 'settings.openchamber.tools.field.agentRenderTool',
+    descriptionKey: 'settings.openchamber.tools.field.agentRenderToolInfo',
+    keywords: ['agent', 'tool', 'render', 'page', 'html', 'chart', 'table', 'diagram', 'generative', 'ui', 'openchamber'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'sessions.agent-knowledge-tool',
+    page: 'general',
+    titleKey: 'settings.openchamber.tools.field.agentKnowledgeTool',
+    descriptionKey: 'settings.openchamber.tools.field.agentKnowledgeToolInfo',
+    keywords: ['agent', 'tool', 'project', 'knowledge', 'notes', 'todos', 'plans', 'openchamber'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
     id: 'general.isolated-spaces',
     page: 'isolated-spaces',
     titleKey: 'settings.alcode.spaces.field.enabled',
     descriptionKey: 'settings.alcode.spaces.field.enabledInfo',
     keywords: ['isolated', 'space', 'spaces', 'container', 'docker', 'sandbox', 'agent'],
     // Never in VS Code: the feature has no entry point there (decision 16 of the design).
-    // Hidden from everyone until the feature's first release, like the row itself.
-    isAvailable: (ctx) => !ctx.isVSCode && ISOLATED_SPACES_RELEASED,
+    // Before the feature's first release only with the key on, like the page itself.
+    isAvailable: (ctx) => !ctx.isVSCode && isIsolatedSpacesPageVisible(),
   },
   {
     id: 'general.isolated-spaces-idle-stop',
@@ -728,8 +877,17 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.alcode.spaces.idleStop.enabled',
     descriptionKey: 'settings.alcode.spaces.idleStop.enabledInfo',
     keywords: ['idle', 'stop', 'space', 'spaces', 'container', 'hours', 'timeout', 'sleep'],
-    // Rendered only while the switch is on, and never before the feature's release or in VS Code.
-    isAvailable: (ctx) => !ctx.isVSCode && ISOLATED_SPACES_RELEASED && useUIStore.getState().isolatedSpacesEnabled,
+    // Rendered only while the switch is on, and never in VS Code.
+    isAvailable: (ctx) => !ctx.isVSCode && useUIStore.getState().isolatedSpacesEnabled,
+  },
+  {
+    id: 'general.isolated-spaces-machine',
+    page: 'isolated-spaces',
+    titleKey: 'settings.openchamber.spaces.places.machine.label',
+    descriptionKey: 'settings.openchamber.spaces.places.machine.info',
+    keywords: ['machine', 'ssh', 'remote', 'docker', 'space', 'spaces', 'host', 'server'],
+    // Rendered only while the switch is on, and never in VS Code.
+    isAvailable: (ctx) => !ctx.isVSCode && useUIStore.getState().isolatedSpacesEnabled,
   },
   {
     id: 'sessions.agent-memory-tool',
@@ -794,6 +952,14 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.routing.auto.enable',
     descriptionKey: 'settings.routing.auto.enableInfo',
     keywords: ['auto', 'routing', 'model', 'jev', 'automatic'],
+    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable && !ctx.jevBlockedByEnterprise,
+  },
+  {
+    id: 'routing.preserve-cache',
+    page: 'routing',
+    titleKey: 'settings.routing.auto.preserveCache',
+    descriptionKey: 'settings.routing.auto.preserveCacheInfo',
+    keywords: ['cache', 'prompt cache', 'auto', 'routing', 'switch', 'model', 'cost'],
     isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable && !ctx.jevBlockedByEnterprise,
   },
   {
@@ -875,16 +1041,24 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['thinking', 'variant', 'reasoning', 'effort', 'model', 'project metadata'],
   },
   {
-    id: 'projects.accent-color',
-    page: 'projects',
-    titleKey: 'settings.projects.page.field.accentColor',
-    keywords: ['color', 'appearance', 'project metadata'],
-  },
-  {
     id: 'projects.icon',
     page: 'projects',
     titleKey: 'settings.projects.page.field.projectIcon',
-    keywords: ['icon', 'favicon', 'upload', 'project metadata'],
+    keywords: ['icon', 'favicon', 'upload', 'color', 'accent color', 'appearance', 'project metadata'],
+  },
+  {
+    id: 'projects.close',
+    page: 'projects',
+    titleKey: 'settings.projects.page.actions.closeProject',
+    keywords: ['close', 'remove', 'delete', 'forget', 'project'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'projects.actions',
+    page: 'projects',
+    titleKey: 'settings.projects.actions.title',
+    descriptionKey: 'settings.projects.actions.info',
+    keywords: ['run', 'run button', 'commands', 'dev server', 'scripts', 'project actions'],
   },
   {
     id: 'projects.worktree',
@@ -1179,10 +1353,11 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['web search', 'websearch', 'internet', 'default provider', 'disable', 'off', 'random'],
   },
   {
-    id: 'web-search.keys',
+    id: 'web-search.providers',
     page: 'web-search',
-    titleKey: 'settings.webSearch.section.keys',
-    keywords: ['api key', 'exa', 'tavily', 'firecrawl', 'parallel', 'tinyfish', 'credentials'],
+    titleKey: 'settings.webSearch.section.providers',
+    descriptionKey: 'settings.webSearch.section.providersInfo',
+    keywords: ['api key', 'exa', 'tavily', 'firecrawl', 'parallel', 'tinyfish', 'searxng', 'brave', 'kagi', 'perplexity', 'linkup', 'serper', 'credentials'],
   },
   {
     id: 'skills.create',
@@ -1254,6 +1429,16 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     descriptionKey: 'settings.alcode.keyboardShortcuts.tooltip',
     keywords: ['keyboard', 'hotkeys', 'bindings'],
   },
+  // Every in-app shortcut the Shortcuts page lists, by its own name. The
+  // system-wide ones (category `desktop`) live on General.
+  ...getCustomizableShortcutActions()
+    .filter((action) => action.category !== 'desktop')
+    .map((action): SettingsSearchItem => ({
+      id: shortcutSearchItemId(action.id),
+      page: 'shortcuts',
+      titleKey: action.settingsLabelKey,
+      keywords: ['shortcut', 'hotkey', 'keyboard', 'keybinding'],
+    })),
   {
     id: 'voice.playback',
     page: 'voice',
@@ -1385,7 +1570,7 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.integrations.thirdParty.title',
     descriptionKey: 'settings.integrations.thirdParty.info',
     keywords: ['plugin', 'provider', 'install', 'update', 'remove', 'subscription'],
-    isAvailable: (ctx) => !ctx.isVSCode,
+    isAvailable: (ctx) => !ctx.isVSCode && !ctx.enterpriseMode,
   },
   {
     id: 'integrations.third-party.opencode-claude',
@@ -1409,6 +1594,14 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.integrations.extensionCatalog.excalidraw.name',
     descriptionKey: 'settings.integrations.extensionCatalog.excalidraw.description',
     keywords: ['excalidraw', 'drawing', 'diagram', 'canvas', 'whiteboard', 'obsidian', 'sketch'],
+    isAvailable: (ctx) => !ctx.isVSCode && !ctx.isMobile,
+  },
+  {
+    id: 'integrations.extensions.resource-monitor',
+    page: 'integrations',
+    titleKey: 'settings.integrations.extensionCatalog.resourceMonitor.name',
+    descriptionKey: 'settings.integrations.extensionCatalog.resourceMonitor.description',
+    keywords: ['resource', 'monitor', 'cpu', 'memory', 'ram', 'process', 'activity', 'task manager', 'dev server', 'port', 'performance'],
     isAvailable: (ctx) => !ctx.isVSCode && !ctx.isMobile,
   },
   {

@@ -1,7 +1,7 @@
 # Work-status panel
 
-A card rendered to the right of the transcript inside `ChatContainer`. It
-reports the state of the current session, its branch, its quotas and its
+A card rendered to the right of the transcript, in the right slot it shares
+with the context panel. It reports the state of the current session, its branch, its quotas and its
 subagents.
 
 ## Structure
@@ -11,8 +11,8 @@ without a name is unreadable at a glance, which is what an unlabelled stream of
 values degenerates into.
 
 Rows are grouped into **named sections**, one component each, composed in
-order by `WorkStatusPanel`. The separator between them is a
-`:not(:first-child)` CSS rule rather than a prop, because every section renders
+order by `WorkStatusPanel`. They are parted by space alone, no rule. The gap
+is a `:not(:first-child)` CSS rule rather than a prop, because every section renders
 conditionally; passing "am I first?" down would mean each one tracking what the
 sections above it decided to render.
 
@@ -24,21 +24,30 @@ selected session even without metrics, so a saved collapsed state can reopen.
 
 It is **not** a context-panel surface. It is not registered in
 `lib/surfaces/registry.ts`, has no rail icon, no tab, no persisted width and no
-resizer. It is a card floating inside the chat column — rounded border, faint
-fill, its own margin — rather than a docked pane flush against the window edge.
+resizer. It is a card inside the chat column — rounded, with the dropdown's
+hairline ring (`oc-panel-edge`, shared with the context panel card), a faint
+fill and its own margin — rather than a docked pane flush against the window
+edge. Opened over the transcript it is a dropdown and takes the dropdown's
+full edge, lit top and tight shadows included (`data-edge-floating`).
 When it overlays the transcript, it uses the shared `oc-glass-panel` surface;
 the inline card keeps its lighter, non-blurred fill instead.
 
 ## Placement
 
-`ChatContainer`'s top-level return is a flex row:
+`ChatContainer` owns the card's state, but the inline card renders through a
+portal into the right slot (`components/layout/rightSlot.ts`): the context
+panel's `aside` in `MainLayout`, which holds a right-anchored host for the card
+under the panel's content. The slot animates one width for both, from the
+card's column (`WORK_STATUS_COLUMN_WIDTH`, the card and its margins) to the
+panel's width and back, while the card fades out and the panel fades in over
+it. The chat column therefore narrows or widens once, in one direction.
 
-- the existing chat column (`data-composer-bound`, `flex-1 min-w-0`), holding
-  the viewport, the composer and the timeline dialog;
-- `WorkStatusPanel`, a fixed-width `shrink-0` sibling.
+The card tells the slot whether it wants its column through `reserved`:
+switched on, room beside the chat (`roomy`, see below), and something to
+show. It stays reserved while the context panel covers it, so closing the
+panel goes straight back to the card's column instead of to nothing first.
 
-Nothing inside `ChatViewport` changed. The virtualizer sees the column shrink
-exactly as it already does when the context panel opens.
+The overlay form stays inside the chat column in `ChatContainer`.
 
 ## Visibility
 
@@ -52,7 +61,9 @@ exactly as it already does when the context panel opens.
   directory this panel reports about: a managed Chat reports about none, and
   that empty key answered "closed" for a context panel that was plainly open;
 - the row cannot fit `WORK_STATUS_MIN_CHAT_WIDTH` of transcript alongside
-  `WORK_STATUS_PANEL_WIDTH` of panel.
+  `WORK_STATUS_PANEL_WIDTH` of panel. Only that threshold decision is state
+  (`roomy`); the width itself is not, because it changes on every frame of a
+  sidebar animation and storing it re-rendered the whole chat each frame.
 
 `ChatContainer` additionally suppresses it in mini-chat and in expanded-input
 mode. It remains available on a new-session draft: when the draft targets a
@@ -60,9 +71,11 @@ project or pending worktree, the panel uses that directory for project, MCP,
 and usage readouts before a session exists.
 
 Managed Chats never render or warm the Project repository section. A Chat draft
-also passes no fallback directory to the panel, so an active project's branch
-cannot leak into the draft while directory-independent sections remain
-available.
+passes no fallback directory to the panel, so an active project's branch cannot
+leak into it. The MCP section prepares the draft's own directory through
+`prepareChatDraftDirectory`, shared with the header dropdown and first send.
+MCP reads and toggles wait for that directory; they never use the previous
+Chat's connections or the shared Chats root for a draft.
 
 `rowRef` is a **callback ref, not an object ref**. An object ref gives no signal
 when the node attaches, so the measuring effect read `.current`, found nothing
@@ -103,8 +116,9 @@ which requests only providers enabled for this panel.
 | Subagents | child sessions from `useAllLiveSessions` (`parentID`) + `useAllSessionStatuses`; per-row cost from `computeRollup`'s `perChildCost` (each child's own subtree total, so nested subagent-of-subagent cost rolls up under its immediate parent row) | |
 | Subagent blockers | directory `permission` / `question` maps | one subscription covers every child |
 | Usage | `components/usage/usageGroups.ts` over `useQuotaStore` | grouping shared with the mobile popover; presentation is not |
-| Linked threads | `lib/linkedIssues.ts` over session metadata | written by the flows that attach an issue or PR |
-| Turn stats | `telemetry.ts` over `useSessionMessageRecords` | computed only while expanded and authoritatively idle; either rate above 5,000 tok/s is reported as unknown (see the two-rate description below) |
+| Linked threads | `lib/linkedIssues.ts` over session metadata; state from tracked items | written by the flows that attach an issue or PR, and removable from the row; a linked PR that is also the checked-out branch's PR shows the branch summary, as its sidebar row does |
+| Turn stats | `telemetry.ts` over `useSessionMessageRecords` | computed while authoritatively idle, including when collapsed so the headline stays current; either rate above 5,000 tok/s is reported as unknown (see the two-rate description below) |
+| Keep-warm switch | `useSessionWarmingStore`, mirrored from the server's `lib/session-warming` | on the Context row, shown only while Settings chose per-session warming and for a root session outside an isolated space; the tooltip's countdown ticks only while it is open |
 | Goal | `useSessionGoal` | respects the Settings toggle |
 | MCP | `useMcpStore` | connect/disconnect reuses the dropdown's actions |
 | Pinned messages | `getContextObligatoryMessages` + `state.part`, else one `getSessionMessage` read | see below |
@@ -114,7 +128,10 @@ which requests only providers enabled for this panel.
 
 Subagent status uses the Tasks section's leading icons: blue for busy/retrying,
 green for idle, and a neutral clock while status is unknown. A successful status
-snapshot also establishes idle for omitted sessions in that same directory.
+snapshot also establishes idle for omitted sessions in that same directory,
+compared as normalized paths and skipping sessions whose status was invalidated.
+The global status store fills the gap for children the snapshot does not cover:
+a child it holds as busy runs, and one it saw settle is idle (or failed).
 Permission requests and questions take precedence with a warning icon and text.
 Running rows reuse `SessionActivityDuration` and its shared one-second ticker
 for the current turn's elapsed time, including retries and waiting within that
@@ -122,11 +139,18 @@ turn. No timer is shown until the activity store has an observed start; blocked,
 settled, and collapsed rows do not mount a running counter.
 
 Rows are ordered newest first by creation time, never by last activity, which
-reshuffled them on every step and moved them under the pointer. Finished rows
-(done or failed, with no pending blocker) sink below unfinished ones and keep
-the same creation order, so a fully finished list reads as it did at launch.
+reshuffled them on every step and moved them under the pointer. Rows group by
+state first: blockers, then running, then unknown status, then finished (done
+or failed, with no pending blocker). Creation order holds within each group, so
+a fully finished list reads as it did at launch.
 The section derives per-row cost with `computeRollup` over the live-session list
 it already holds instead of opening a second subscription through the hook.
+
+Directory bootstrap publishes each session page as it arrives, so subagent rows
+do not wait for unrelated older history pages. Partial pages add coverage without
+removing cached sessions. Only the completed list establishes authoritative
+coverage and removes absent records; newer live updates and deletions win over
+both partial pages and the final snapshot.
 
 Hovering or focusing a row shows its session model's catalog display name,
 falling back to the formatted model ID. Missing model metadata produces no
@@ -165,14 +189,16 @@ the final assistant completion. It includes model waits, tool execution,
 compaction, and other gaps; it is not used as a throughput denominator.
 
 Metric labels stay short. Every row is a single hover and keyboard-focus target
-for a shared tooltip, with a 750ms hover delay and a portal outside the panel's
-scroller. Tooltips explain the measurement in every locale. The token row uses
+for a shared tooltip that opens above the row after a 300ms hover delay, with a
+portal outside the panel's scroller. Tooltips explain the measurement in every locale. The token row uses
 compact input/output arrows; its tooltip gives full counts and explains that
 input excludes cached tokens and output includes reasoning across all steps.
 
-Records subscriptions and aggregation stop while collapsed, busy, retrying, or
-awaiting status authority. Explicit idle events or a successful directory status
-snapshot allow computation. One component-owned committed result keeps the
+Records subscriptions and aggregation stop while busy, retrying, or awaiting
+status authority. Explicit idle events or a successful directory status snapshot
+allow computation even when collapsed: the response-speed headline remains visible
+and updates when a turn completes, after a remount, or when idle records change.
+The collapsed body stays unmounted. One component-owned committed result keeps the
 headline and rows stable during the next active turn. Its identity includes
 runtime, normalized directory and session. Scope changes discard it; fresh empty
 or reverted records clear it. There is no global message-ID cache. Corrections
@@ -180,16 +206,18 @@ to existing message/part identities invalidate the current result.
 
 ### Context usage has its own computation, on purpose
 
-`useSessionUIStore.getContextUsage` cannot serve this panel for two reasons:
+The header's readout cannot serve this panel, and the panel once failed in two
+ways by sharing the header's old `useSessionUIStore.getContextUsage` getter:
 
-1. It reads `getSyncMessages(sessionId)` with **no directory**, resolving to the
-   *current* directory's child store, and keys off the store's own
-   `currentSessionId`. A session held by another directory — a worktree, or the
-   moment after a directory switch — reads as "no messages", and the readout
-   vanished while the header still showed a value.
-2. It is an **imperative getter**, as is `useConfigStore.getCurrentModel`.
+1. The header reads the current session's messages with **no directory**,
+   resolving to the *current* directory's child store. A session held by
+   another directory — a worktree, or the moment after a directory switch —
+   reads as "no messages", and the readout vanished while the header still
+   showed a value.
+2. The getter was **imperative**, as is `useConfigStore.getCurrentModel`.
    Selecting one yields a reference that never changes, so calling it during
    render subscribes to nothing; the readout went stale across session switches.
+   The header now reads through `useSessionMessagesSelector`, which subscribes.
 
 `contextUsage.ts` therefore computes the same quantity from messages the panel
 has already subscribed to for a known session and directory, and the panel
@@ -198,8 +226,10 @@ subscribes to `currentProviderId` / `currentModelId` for the limits.
 reporting assistant turn is the answer, not a sum across turns.
 
 Which message is "latest" is decided by `findLatestContextFill` in
-`stores/utils/tokenUtils.ts`, shared with the header, VS Code header, mini chat,
-mobile metadata and context sidebar. A finished compaction's own record (a
+`stores/utils/tokenUtils.ts`, shared with the VS Code header, mini chat,
+mobile metadata, context sidebar and the context rail's ring icon
+(`layout/ContextRailUsage.tsx`, which re-renders only when the reading changes
+and reads cost only while its tooltip is open). A finished compaction's own record (a
 `compaction` message with `status: 'completed'`) is not a reading: its tokens
 describe the summarizing request,
 whose input is the pre-compaction history. Until a later response reports
@@ -293,7 +323,11 @@ sections that render nothing leave no spacing wrappers. Secondary elements are
 created by the panel, so primary readout updates do not rerender them.
 
 The overlay's outside-click and Escape dismissal pauses while this dialog is
-open, since the dialog is portalled outside the panel.
+open, since the dialog is portalled outside the panel. Menus the panel opens
+carry `data-work-status-popup` for the same reason: a dropdown's items render in
+a body portal, so an unmarked press on one reads as an outside click and closes
+the card before the item's action runs. A menu added to the panel later has to
+carry the marker too.
 
 The first rendered section heading reserves space on its right for the panel's
 settings button. The scroller selects the first actual section DOM node, so
@@ -369,16 +403,19 @@ settings; an empty list enables everything. Complete settings
 snapshots own this preference; unrelated partial save echoes leave it unchanged.
 
 `workStatusPanelVisible` is separate and transient: the switch can be on while
-layout still refuses the panel. The header and the git rail read it to drop the
-readouts the panel already carries, and it is deliberately not persisted — it
+layout still refuses the panel. The header's project/branch line and the git
+rail read it to drop the readouts the panel already carries, and it is deliberately not persisted — it
 describes the current frame, not a preference.
 
 ## Appearing and disappearing
 
-The panel collapses on the context panel's own curve and duration rather than
-unmounting, and slides out to the right with a fade when switched off. It stays
-mounted wherever it could ever show, so the collapse has something to animate;
-its content is dropped once the collapse finishes.
+The card keeps its width and only fades, on the slot's duration and curve
+(`LAYOUT_ANIMATION_MS` and `LAYOUT_ANIMATION_EASING` through `useLayoutAnimationMs`; zero when the `layoutAnimations` setting is off); the slot animates the width. It stays
+mounted wherever it could ever show, so the fade has something to animate;
+its content is dropped once the fade finishes. A card whose sections all
+reported nothing gives its column back. When it is shown again the presence
+count starts optimistic, as on first mount, so the column is not given back
+for the frames before the sections report.
 
 An empty card is a border around a settings icon, which reads as a fault. Each
 section decides for itself that it has nothing to say, so they report through
@@ -427,10 +464,12 @@ Rows that name something the app can already show are buttons:
 
 | Row | Opens |
 |---|---|
-| Context | the context overview (`openContextOverview`), same destination as the header readout |
+| Context | the context overview (`openContextOverview`), same destination as the rail's Context surface |
 | Changes | working-tree diff (`openContextPanelTab`, `diffScope: 'working'`, no target path) |
 | Branch | git surface (`openContextSurface(dir, 'git')`) |
-| Pull request, Checks | PR surface (`openContextSurface(dir, 'pr')`) |
+| Pull request, Checks | The Tracker's branch tab (`openContextPanelTab(dir, { mode: 'pr' })`) |
+| App icon (Project heading, right) | opens the project in the chosen app (`OpenInAppButton`, desktop with a local host only); its chevron copies the path or picks another app. The project name beside the title is plain text |
+| Project action | runs or stops the selected project action (`ProjectActionsButton`); its chevron picks another action. The project's own actions come first and auto-discovery last, so with nothing picked the row offers the first configured action, or auto-discovery when there is none. The pick is stored per runtime and project (`lib/projectActionSelection.ts`) and survives remounts and restarts; a pick that no longer names an action falls back to the first one. A running action takes the row over an idle pick, and pressing the row acts on the action it shows, through the same shared-setup trust prompt as the menu. The row is a view: the runner lives in `ProjectActionsProvider` above the whole layout (see below). The header carries no action control, so a project without a repository still gets a Project section |
 | Subagent | that child session's chat tab, read-only |
 | Goal (row) | the composer's own `SessionGoalDialog` |
 | Goal (pause/resume) | `setSessionGoalStatus(sessionId, directory, status)` |
@@ -438,6 +477,28 @@ Rows that name something the app can already show are buttons:
 | MCP status | the state doubles as the button that reconnects |
 | Pinned (pin icon) | unpins the message |
 | Pinned (text) | jumps the transcript to that message |
+
+### Project actions outside the panel
+
+The panel hides whenever a rail panel opens, so the actions cannot depend on
+it. `components/layout/ProjectActionsProvider` mounts one runner
+(`useProjectActionsRunner`) in `MainLayout` for the project
+`useProjectActionsContext` resolves, which is the panel's own context. A managed
+Chat resolves to none. A draft waiting for a new space has no actions until the
+space runs, then runs them in the space (`useDraftSpaceTarget`). Three views read that runner through
+`projectActionsRunnerContext`:
+
+- the Work Status row;
+- `ProjectActionsDialog`, opened by `open_project_actions` (`mod+alt+r`). It
+  lists the actions with their state, opens with the row's action highlighted,
+  and Enter picks the action and runs or stops it;
+- the command palette's search-only "Run: name" / "Stop: name" entries and its
+  "Project actions" entry.
+
+Because the runner outlives the panel, a run keeps its output watch (URL
+auto-open, exit tracking) while the card is hidden. The server terminal listing
+still runs only on demand: each view calls `useObserveProjectActionRuns` while
+it is on screen, and the runner polls only while at least one view asks.
 
 The goal icon reproduces the **composer target button's** colour mapping, not
 the goal strip's. The two disagree today — the strip paints `paused` muted and
@@ -468,12 +529,29 @@ something other than "tools available".
 ### Linked issues and pull requests
 
 Written by the flows that already attach a thread — sending a message with
-issues, PRs or guest items attached in the composer, and session creation from
-an issue or PR in `NewWorktreeDialog`. There is no manual "link this" control:
-attaching a thread to the work *is* the act of linking it. A message's
-references are written in one metadata patch (`sessionActions.addLinkedIssues`):
-each write replaces the whole list, so one write per item would keep only the
-last.
+issues, PRs or guest items attached in the composer, session creation from an
+issue or PR in `NewWorktreeDialog`, and an agent calling the `openchamber`
+tool's `session.link`. There is no manual "link this" control: attaching a
+thread to the work *is* the act of linking it. A message's references are
+written in one server operation (`sessionActions.addLinkedIssues`): each
+operation sends the items to link, and the OpenChamber server decides the new
+list from a fresh read inside the session's write queue, so a link an agent
+made while the request was in flight survives it.
+
+Detaching is a control on the row, not a side effect of another action. An
+agent's link has no composer chip to dismiss once the message is sent, so
+without a control here it would be permanent unless session metadata were
+edited by hand. Each linked row carries a close control in its trailing value
+slot, the place row actions already occupy, with the pinned rows' hover and
+disabled styling; those pins are the behavioural precedent — the panel that
+shows what is attached can detach it — not the visual one. Pressing it sends
+the removal through the same server operation (`setLinkedIssue(…, false)`) the
+attach flows use — one writer for the list, so a link cannot be dropped by a
+path that does not know the others. The write
+is deliberately user-initiated: an agent links but never removes, so it cannot
+drop a link the user set (`packages/web/server/lib/openchamber-sessions/session-link.js`).
+A failed removal reports `chat.workStatus.linkedIssues.unlinkFailed` rather than
+leaving the row looking removed.
 
 Stored in session metadata as a **snapshot** (`lib/linkedIssues.ts`, namespace
 `alcode.linked_issues`), riding the same `patchSessionMetadata` channel as
@@ -518,6 +596,10 @@ could stay missing from the panel until Settings -> Usage forced a fresh fetch.
 once-per-instance bookkeeping, so every caller can ask on each connection
 change.
 
+The visible panel's initial quota load uses the background gate's active-session
+priority. It runs ahead of queued metadata reads while keeping the same network
+concurrency limit and instance-readiness rule.
+
 ### These readouts belong to the connected instance
 
 Same-origin web pages and Electron's Vite proxy initialize a runtime identity
@@ -551,7 +633,7 @@ Git context surface being opened first.
 
 Expanded sections (`workStatusExpandedSections`, keyed by a stable section id)
 and the scroll offset (`workStatusScrollTop`) live in the persisted
-`useUIStore`. Component state would not do: the panel unmounts every time the
+`useUIStore`. Component state would not do: the content unmounts every time the
 context panel opens, which would silently discard the user's arrangement.
 
 The scroll offset is restored in the scroller's callback ref, at the moment it

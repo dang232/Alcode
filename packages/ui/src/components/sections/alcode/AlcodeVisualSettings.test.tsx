@@ -29,7 +29,6 @@ describe('AlcodeVisualSettings', () => {
   let host: HTMLDivElement;
   let root: Root;
   let initialAnimatedActivityIndicators: boolean;
-  let initialLargeTextPasteBehavior: ReturnType<typeof useUIStore.getState>['largeTextPasteBehavior'];
   let globalDescriptors: Map<string, PropertyDescriptor | undefined>;
 
   const globalNames = ['window', 'document', 'HTMLElement', 'Element', 'Node', 'localStorage', 'sessionStorage', 'IS_REACT_ACT_ENVIRONMENT'];
@@ -37,7 +36,6 @@ describe('AlcodeVisualSettings', () => {
   beforeEach(() => {
     windowInstance = new Window();
     initialAnimatedActivityIndicators = useSessionDisplayStore.getState().animatedActivityIndicators;
-    initialLargeTextPasteBehavior = useUIStore.getState().largeTextPasteBehavior;
     globalDescriptors = new Map(globalNames.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
     Object.assign(globalThis, {
       window: windowInstance,
@@ -59,7 +57,6 @@ describe('AlcodeVisualSettings', () => {
       await act(async () => root.unmount());
     } finally {
       useSessionDisplayStore.setState({ animatedActivityIndicators: initialAnimatedActivityIndicators });
-      useUIStore.setState({ largeTextPasteBehavior: initialLargeTextPasteBehavior });
       windowInstance.close();
       for (const [name, descriptor] of globalDescriptors) {
         if (descriptor) Object.defineProperty(globalThis, name, descriptor);

@@ -53,10 +53,11 @@ export const ULW_LOOP_MANIFEST = {
 			method: "createGoals",
 			mutating: true,
 			description:
-				"Create the session plan from a brief; one goal per bullet, each seeded with placeholder criteria until revised.",
+				"Create the session plan from a brief; one goal per bullet, each seeded with placeholder criteria until revised. Pass taskKind readonly for surveys and analyses with no code changes.",
 			args: {
 				brief: "string",
 				codexGoalMode: '"aggregate" | "per_story"?',
+				taskKind: '"implementation" | "readonly" | "mixed"?',
 				force: "boolean?",
 				validationBatchesJson: "string?",
 			},
@@ -107,7 +108,8 @@ export const ULW_LOOP_MANIFEST = {
 				criterionId: "string? (revise_criterion)",
 				scenario: "string? (revise_criterion)",
 				expectedEvidence: "string? (revise_criterion)",
-				userModel: '"happy" | "edge" | "regression" | "adversarial"? (revise_criterion)',
+				userModel:
+					'"happy" | "edge" | "regression" | "adversarial" | "findings" | "evidence" | "limitations"? (revise_criterion)',
 				title: "string? (add_subgoal)",
 				objective: "string? (add_subgoal)",
 				childGoals: "{ title: string, objective: string }[]? (split_subgoal)",

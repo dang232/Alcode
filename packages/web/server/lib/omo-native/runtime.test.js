@@ -18,7 +18,17 @@ describe('createOmoNativeRuntime', () => {
     expect(manifest.exports).toEqual({ '.': './index.js' });
     const plugin = await import(path.join(directory, 'index.js'));
     expect(plugin.default.id).toBe('omo-native');
-    await expect(plugin.default.setup()).resolves.toBeUndefined();
+    expect(typeof plugin.default.setup).toBe('function');
+    // The materialized entry carries the real engine chain, not the old
+    // empty setup: the native ULW operations are in the payload. setup()
+    // itself is the host's job (it needs a real V2 ctx), so the test pins
+    // the payload instead of invoking it without one.
+    const payload = fs.readFileSync(path.join(directory, 'index.js'), 'utf8');
+    expect(payload).toContain('ulw_goal_create');
+    expect(payload).toContain('ulw_checkpoint');
+    expect(payload).not.toContain('setup: async () => {}');
+    const before = fs.readFileSync(path.join(directory, 'index.js'), 'utf8');
     await expect(runtime.materializePlugin()).resolves.toBe(directory);
+    expect(fs.readFileSync(path.join(directory, 'index.js'), 'utf8')).toBe(before);
   });
 });

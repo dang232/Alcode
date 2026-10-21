@@ -16,7 +16,7 @@ import {
   type SpaceIdleStop,
   type SpacesSwitchChange,
 } from '@/lib/spaces/spaces-api';
-import { resetSpaceCreationRequests } from '@/lib/spaces/space-creation';
+import { resetSpaceCreationRequests } from '@/lib/spaces/space-creation-requests';
 import { resetSpaceModelAccess } from '@/lib/spaces/space-model-access';
 import { refreshSpacesJourney, spacesWithoutProject, useSpacesJourneyRead, useSpacesStore } from '@/lib/spaces/spaces-store';
 import { SpaceRow } from '@/components/session/spaces/SpaceRow';
@@ -236,7 +236,7 @@ export const IsolatedSpacesSettings: React.FC = () => {
             info={t('settings.alcode.spaces.field.enabledInfo')}
           />
           {notice ? (
-            <div className="space-y-2 pl-6" role="alert">
+            <div className="space-y-2 ps-6" role="alert">
               <p className="typography-ui-label text-[var(--status-warning)]">{noticeText}</p>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => setNotice(null)}>{t('settings.alcode.spaces.turnOff.cancel')}</Button>
@@ -249,7 +249,7 @@ export const IsolatedSpacesSettings: React.FC = () => {
               {t('settings.alcode.spaces.turnOff.stillRunning', { name: space.name, reason: spaceFailureText(t, space) })}
             </p>
           ))}
-          {error ? <p className="pl-6 typography-ui-label text-[var(--status-error)]">{error}</p> : null}
+          {error ? <p className="ps-6 typography-ui-label text-[var(--status-error)]">{error}</p> : null}
           {enabled ? <SpaceIdleStopSettings /> : null}
         </div>
       </SettingsSection>

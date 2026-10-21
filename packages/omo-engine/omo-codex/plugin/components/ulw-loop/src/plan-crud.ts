@@ -16,6 +16,7 @@ import type {
 	UlwLoopLedgerEntry,
 	UlwLoopPlan,
 	UlwLoopSuccessCriterion,
+	UlwLoopTaskKind,
 } from "./types.js";
 import { iso, UlwLoopError } from "./types.js";
 import { parseValidationBatches } from "./validation-batch.js";
@@ -61,7 +62,13 @@ function clearGoalBlockerFields(goal: UlwLoopItem): void {
 
 export async function createUlwLoopPlan(
 	repoRoot: string,
-	args: { brief: string; codexGoalMode?: UlwLoopCodexGoalMode; force?: boolean; validationBatchesJson?: string },
+	args: {
+		brief: string;
+		codexGoalMode?: UlwLoopCodexGoalMode;
+		force?: boolean;
+		validationBatchesJson?: string;
+		taskKind?: UlwLoopTaskKind;
+	},
 	scope?: UlwLoopScope,
 	surface: UlwLoopToolkitSurface = "lazycodex",
 ): Promise<UlwLoopPlan> {
@@ -82,8 +89,9 @@ export async function createUlwLoopPlan(
 			);
 		}
 		const now = iso();
+		const taskKind = args.taskKind ?? "implementation";
 		const goals = deriveGoalCandidates(args.brief).map((goal, index) =>
-			makeGoal(goal.title, goal.objective, index, now, { surface }),
+			makeGoal(goal.title, goal.objective, index, now, { surface, taskKind }),
 		);
 		const plan: UlwLoopPlan = {
 			version: 1,
@@ -97,6 +105,7 @@ export async function createUlwLoopPlan(
 			goalsPath: ulwLoopGoalsRelativePath(scope),
 			ledgerPath: ulwLoopLedgerRelativePath(scope),
 			codexGoalMode: args.codexGoalMode ?? "aggregate",
+			taskKind,
 			goals,
 		};
 		const validationBatches = await parseValidationBatches(args.validationBatchesJson, goals);
@@ -140,6 +149,7 @@ export async function addUlwLoopGoal(
 		const goal = appendGoalToPlan(plan, args.title, args.objective, now, {
 			surface,
 			...(args.successCriteria === undefined ? {} : { successCriteria: args.successCriteria }),
+			...(plan.taskKind === undefined ? {} : { taskKind: plan.taskKind }),
 		});
 		await commit(repoRoot, scope, {
 			plan,

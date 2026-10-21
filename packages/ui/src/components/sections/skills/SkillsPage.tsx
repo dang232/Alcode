@@ -23,7 +23,6 @@ import {
   SettingsStackedField,
   SettingsCheckboxRow,
   SETTINGS_FIELD_LABEL_CLASS,
-  SETTINGS_SELECT_SIZE,
 } from '@/components/sections/shared/SettingsSection';
 import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint';
 import {
@@ -584,7 +583,7 @@ const SkillsInstalledPage: React.FC = () => {
       <div className="flex h-full items-center justify-center px-4">
         <div className="text-center text-muted-foreground">
           <Icon name="book-open" className="mx-auto mb-3 h-10 w-10 sm:h-12 sm:w-12 opacity-50" />
-          <p className="typography-body">{t('settings.skills.page.empty.title')}</p>
+          <p className="typography-ui-label">{t('settings.skills.page.empty.title')}</p>
           <p className="typography-meta mt-1 opacity-75">{t('settings.skills.page.empty.description')}</p>
         </div>
       </div>
@@ -595,7 +594,7 @@ const SkillsInstalledPage: React.FC = () => {
     return (
       <div className="flex h-full items-center justify-center px-4">
         <div className="text-center text-muted-foreground">
-          <p className="typography-body">{t('settings.skills.page.loading.details')}</p>
+          <p className="typography-ui-label">{t('settings.skills.page.loading.details')}</p>
         </div>
       </div>
     );
@@ -641,7 +640,7 @@ const SkillsInstalledPage: React.FC = () => {
                     setDraftSource(next.source === 'agents' ? 'agents' : 'opencode');
                   }}
                 >
-                  <SelectTrigger size={SETTINGS_SELECT_SIZE} className="w-fit gap-1.5">
+                  <SelectTrigger className="w-fit gap-1.5">
                     {draftScope === 'user' ? (
                       <Icon name="user-3" className="h-3.5 w-3.5" />
                     ) : (
@@ -659,7 +658,7 @@ const SkillsInstalledPage: React.FC = () => {
                             {option.source === 'agents' ? <Icon name="robot-2" className="h-3.5 w-3.5" /> : null}
                             <span>{locationLabelText(option.value)}</span>
                           </div>
-                          <span className="typography-micro text-muted-foreground ml-6">{locationDescriptionText(option.value)}</span>
+                          <span className="typography-micro text-muted-foreground ms-6">{locationDescriptionText(option.value)}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -682,7 +681,7 @@ const SkillsInstalledPage: React.FC = () => {
                 onChange={(e) => handleDescriptionChange(e.target.value)}
                 placeholder={t('settings.skills.page.field.descriptionPlaceholder')}
                 rows={2}
-                className="w-full resize-none min-h-[60px] max-h-32 bg-transparent"
+                className="w-full resize-none min-h-[60px] bg-transparent"
                 disabled={isReadOnlySkill}
               />
             </SettingsStackedField>
@@ -728,7 +727,7 @@ const SkillsInstalledPage: React.FC = () => {
                     <SimpleMarkdownRenderer
                       content={skillMarkdown}
                       className="typography-markdown-body"
-                      stripFrontmatter
+                      frontmatter="hide"
                       enableFileReferences={false}
                     />
                   </div>

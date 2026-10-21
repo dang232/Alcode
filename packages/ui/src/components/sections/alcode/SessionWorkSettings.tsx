@@ -1,10 +1,12 @@
 import React from 'react';
-import { SettingsCheckboxRow, SettingsInset, SettingsSection } from '@/components/sections/shared/SettingsSection';
+import { SettingsCheckboxRow, SettingsInset, SettingsSection, SETTINGS_OPTION_STACK_CLASS } from '@/components/sections/shared/SettingsSection';
 import { JevAccessNote } from '@/components/sections/classification/JevAccessNote';
-import { useI18n } from '@/lib/i18n';
 import { isVSCodeRuntime } from '@/lib/desktop';
-import { useUIStore } from '@/stores/useUIStore';
+import { useI18n } from '@/lib/i18n';
+import { updateDesktopSettings } from '@/lib/persistence';
 import { selectSafetyNetAvailable, useRoutingStore } from '@/stores/useRoutingStore';
+import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
+import { useUIStore } from '@/stores/useUIStore';
 
 /**
  * "In work": the sidebar block and the Track / Done actions, and whether Jev
@@ -19,13 +21,28 @@ export const SessionWorkSettings: React.FC = () => {
   const setEnabled = useUIStore((state) => state.setSessionWorkEnabled);
   const setAutoOpen = useUIStore((state) => state.setSessionWorkAutoOpen);
   const jevAvailable = useRoutingStore(selectSafetyNetAvailable);
+  const showChatsSection = useSessionDisplayStore((state) => state.showChatsSection);
+  const setShowChatsSection = useSessionDisplayStore((state) => state.setShowChatsSection);
 
   return (
     <SettingsSection
       title={t('settings.alcode.sessionWork.title')}
       info={t('settings.alcode.sessionWork.info')}
       settingsItem="sessions.work"
+      contentClassName={SETTINGS_OPTION_STACK_CLASS}
     >
+      {isVSCodeRuntime() ? null : (
+        <SettingsCheckboxRow
+          settingsItem="sessions.show-chats"
+          checked={showChatsSection}
+          onChange={(checked) => {
+            setShowChatsSection(checked);
+            void updateDesktopSettings({ sidebarShowChatsSection: checked });
+          }}
+          label={t('settings.openchamber.defaults.field.showChats')}
+          ariaLabel={t('settings.openchamber.defaults.field.showChats')}
+        />
+      )}
       <SettingsCheckboxRow
         settingsItem="sessions.work-enabled"
         checked={enabled}

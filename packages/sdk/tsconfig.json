@@ -10,6 +10,7 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "types": ["node"],
     "paths": {
       "@alcode/sdk": ["./src/index.ts"],
       "@alcode/sdk/ui": ["./src/ui/index.ts"]

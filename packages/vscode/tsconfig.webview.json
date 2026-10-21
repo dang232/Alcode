@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "moduleDetection": "force",
@@ -12,8 +16,11 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "baseUrl": ".",
-    "types": ["vite/client", "@types/dom-speech-recognition"],
+    "types": [
+      "vite/client",
+      "@types/dom-speech-recognition",
+      "node"
+    ],
     "paths": {
       "@alcode/sdk": ["../sdk/src/index.ts"],
       "@alcode/sdk/schemas": ["../sdk/src/schemas.ts"],
@@ -22,5 +29,13 @@
       "@alcode/ui/*": ["../ui/src/*"]
     }
   },
-  "include": ["webview/**/*", "../ui/src/**/*"]
+  "include": [
+    "webview/**/*",
+    "../ui/src/**/*.d.ts"
+  ],
+  "references": [
+    {
+      "path": "../ui/tsconfig.build.json"
+    }
+  ]
 }

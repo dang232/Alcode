@@ -66,8 +66,7 @@ export const readLoginItemSettings = () => {
 export const shouldStartInBackground = (loginItemSettings = readLoginItemSettings()) => {
   return (
     process.argv.includes(BACKGROUND_START_ARG) ||
-    loginItemSettings?.wasOpenedAtLogin === true ||
-    loginItemSettings?.wasOpenedAsHidden === true
+    loginItemSettings?.wasOpenedAtLogin === true
   );
 };
 
@@ -173,7 +172,12 @@ export const readPreferredLocale = () => {
 
 export const getWindowIconPath = () => {
   if (process.platform !== 'win32' && process.platform !== 'linux') return undefined;
-  const iconFileName = process.platform === 'linux' ? 'icon.png' : 'icon.ico';
+  // A Windows dev copy shows the Windows icon behind construction tape
+  // (dev-icon-win.svg), like the macOS Dock's dev icon, in its taskbar, window
+  // and tray. GNOME takes the dock icon from the installed app's .desktop
+  // entry, whatever the window sets, so Linux keeps the usual icon.
+  const devWindowsIcon = isDev && process.platform === 'win32';
+  const iconFileName = devWindowsIcon ? 'dev-icon.ico' : process.platform === 'linux' ? 'icon.png' : 'icon.ico';
   const iconPath = isDev
     ? path.join(__dirname, 'resources', 'icons', iconFileName)
     : path.join(process.resourcesPath, 'icons', iconFileName);
@@ -222,6 +226,21 @@ export const macosMajorVersion = () => {
   const major = Number.parseInt(majorRaw || '0', 10);
   const minor = Number.parseInt(minorRaw || '0', 10);
   return major === 10 ? minor : major;
+};
+
+let cachedMacTrafficLightPosition = null;
+
+/**
+ * Where macOS draws the window controls. The renderer sizes its titlebar per
+ * macOS version around this point (`Header.tsx`, `MiniChatLayout.tsx`), so
+ * change them together. macOS 26 draws 14px controls, centred in the 44px
+ * titlebar: y = (44 - 14) / 2. Older releases keep the calibrated 56px layout.
+ */
+export const macTrafficLightPosition = () => {
+  if (!cachedMacTrafficLightPosition) {
+    cachedMacTrafficLightPosition = Object.freeze(macosMajorVersion() >= 26 ? { x: 14, y: 15 } : { x: 16, y: 17 });
+  }
+  return cachedMacTrafficLightPosition;
 };
 
 const SPLASH_DEFAULTS = { bgLight: '#FFFCF0', fgLight: '#100F0F', bgDark: '#151313', fgDark: '#CECDC3' };
@@ -376,6 +395,10 @@ export const resolvePreloadPath = () => (
   isDev ? path.join(__dirname, 'preload.mjs') : path.join(app.getAppPath(), 'preload.mjs')
 );
 
+export const resolveBrowserPanelPreloadPath = () => (
+  isDev ? path.join(__dirname, 'browser-panel-preload.cjs') : path.join(app.getAppPath(), 'browser-panel-preload.cjs')
+);
+
 // Arguments the preload reads from process.argv. They are fixed at window
 // creation: the main window is created before the backend resolves, so it
 // carries empty runtime values and receives them through the init script.
@@ -386,6 +409,7 @@ export const buildRendererAdditionalArguments = ({
   requestHeaders = {},
   bootOutcome = null,
   relayHostId = '',
+  explicitRuntime = false,
   trayEnabled = isMacMenuBarEnabled(),
   nativeFrame = usesLinuxNativeFrame(),
 } = {}) => [
@@ -410,6 +434,7 @@ export const buildRendererAdditionalArguments = ({
   `--openchamber-tray-enabled=${trayEnabled ? '1' : '0'}`,
   `--openchamber-boot-outcome=${JSON.stringify(bootOutcome)}`,
   `--openchamber-relay-host-id=${relayHostId}`,
+  `--openchamber-explicit-runtime=${explicitRuntime ? '1' : '0'}`,
   `--openchamber-native-frame=${nativeFrame ? '1' : '0'}`,
 ];
 
@@ -441,7 +466,7 @@ export const buildMainWindowOptions = ({ bounds, backgroundColor, additionalArgu
     // visibly lower than the app header. Use a plain hidden title bar instead.
     titleBarStyle: usesCustomTitleBar ? 'hidden' : 'default',
     titleBarOverlay: false,
-    trafficLightPosition: process.platform === 'darwin' ? { x: 16, y: 17 } : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? macTrafficLightPosition() : undefined,
     webPreferences: {
       additionalArguments,
       preload: resolvePreloadPath(),

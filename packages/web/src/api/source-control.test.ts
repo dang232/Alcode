@@ -65,6 +65,28 @@ afterEach(() => {
 });
 
 describe('createWebSourceControlAPI', () => {
+  it('posts across-search contexts and parses items with their directory and folder outcomes', async () => {
+    const api = createWebSourceControlAPI({ fetch: runtimeFetchMock });
+    const payload = { items: [{ kind: 'issue', number: 1, title: 'Issue', url: 'https://github.com/acme/app/issues/1',
+      body: '', bodyTruncated: false, createdAt: null, updatedAt: null, author: null, labels: [], commentCount: 0,
+      sourceRepo: { owner: 'acme', repo: 'app', source: 'origin' }, state: 'open', directory: readContext.directory,
+    }], cursor: null, hasMore: false, total: 1,
+    repositories: [{ directory: readContext.directory, status: 'included', repo: { owner: 'acme', repo: 'app', url: 'https://github.com/acme/app' } },
+      { directory: '/missing', status: 'no-repo' }],
+    };
+    runtimeFetchMock.mockResolvedValueOnce(Response.json(payload));
+    expect(await api.githubReferencesAcross?.([readContext], { kind: 'issue', query: ' fix ' })).toEqual(payload);
+    expect(runtimeFetchMock).toHaveBeenCalledWith('/api/source-control/github/references/across', {
+      method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contexts: [readContext], kind: 'issue', query: 'fix' }),
+    });
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ ...payload, items: payload.items.map(({ directory: _directory, ...item }) => item) }));
+    await expect(api.githubReferencesAcross?.([readContext], { kind: 'issue' })).rejects.toThrow();
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ ...payload, repositories: [{ directory: '/missing', status: 'unknown' }] }));
+    await expect(api.githubReferencesAcross?.([readContext], { kind: 'issue' })).rejects.toThrow();
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ error: 'GitHub rate limited' }, { status: 503 }));
+    await expect(api.githubReferencesAcross?.([readContext], { kind: 'issue' })).rejects.toThrow('GitHub rate limited');
+  });
   it('rejects failed and malformed transport configuration responses without retry or an applied empty binding', async () => {
     const intent = { directory: '/repo', expectedRepositoryId: 'repo_one', expectedRevision: 0,
       expectedConfigRevision: 'config_one', expectedFetchFingerprint: 'fetch', expectedPushFingerprint: 'push',
@@ -885,6 +907,26 @@ describe('createWebSourceControlAPI', () => {
       body: expect.stringContaining('"state":"closed"'),
     }));
     expect(runtimeFetchMock).toHaveBeenNthCalledWith(6, '/api/source-control/github/pr/state', expect.anything());
+  });
+
+  it('posts thread replies, resolutions and new threads to their routes', async () => {
+    const api = createWebSourceControlAPI({ fetch: runtimeFetchMock });
+    runtimeFetchMock
+      .mockResolvedValueOnce(Response.json(mutationReceipt()))
+      .mockResolvedValueOnce(Response.json(mutationReceipt()))
+      .mockResolvedValueOnce(Response.json(mutationReceipt()));
+
+    await api.changeRequestReplyToThread({ ...mutationContext, threadId: 'PRRT_one', body: 'Fixed' });
+    await api.changeRequestResolveThread({ ...mutationContext, threadId: 'PRRT_one', resolved: false });
+    await api.changeRequestStartThread({ ...mutationContext, body: 'Please rename' });
+
+    expect(runtimeFetchMock).toHaveBeenNthCalledWith(1, '/api/source-control/github/pr/thread/reply', expect.objectContaining({
+      body: expect.stringContaining('"threadId":"PRRT_one","body":"Fixed"'),
+    }));
+    expect(runtimeFetchMock).toHaveBeenNthCalledWith(2, '/api/source-control/github/pr/thread/resolve', expect.objectContaining({
+      body: expect.stringContaining('"threadId":"PRRT_one","resolved":false'),
+    }));
+    expect(runtimeFetchMock).toHaveBeenNthCalledWith(3, '/api/source-control/github/pr/thread/start', expect.anything());
   });
 
   it("sets labels and reviewers, and reads the pickers' choices as checked lists", async () => {

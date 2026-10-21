@@ -59,6 +59,10 @@ export type DagRunModel = {
   version: 1;
   conversationId: string;
   parentSessionId: string;
+  /** Run anchor: chat-path runs anchor by parent session id. */
+  runId: string;
+  /** Settled = children out of pending/running. */
+  progress: { total: number; settled: number };
   label: string;
   prompt: string;
   state: DagParentState;
@@ -239,6 +243,11 @@ export const buildDagRunModel = (input: DagRunModelInput): DagRunModel | null =>
     version: 1,
     conversationId: input.conversationId,
     parentSessionId: parent.id,
+    runId: parent.id,
+    progress: {
+      total: children.length,
+      settled: children.filter((child) => child.state !== 'running' && child.state !== 'pending').length,
+    },
     label,
     prompt,
     state,

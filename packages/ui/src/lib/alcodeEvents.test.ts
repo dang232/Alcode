@@ -75,6 +75,7 @@ describe('alcode events', () => {
       openWebSocket() { throw new Error('SSE must not open a socket'); },
       getStatus: () => ({ state: 'connected' }),
       subscribeStatus: () => () => undefined,
+      retry: () => undefined,
       close: () => undefined,
     };
     adoptRelayTunnel({ relayUrl: 'wss://relay.test', serverId: 'fixture', hostEncPubJwk: {} }, tunnel);
@@ -268,6 +269,42 @@ describe('alcode events', () => {
     unsubscribe();
   });
 
+  test('dispatches a project-context invalidation only with a valid owner id', async () => {
+    const { subscribeAlcodeEvents } = await import('./alcodeEvents');
+    const owners: string[] = [];
+    const unsubscribe = subscribeAlcodeEvents((event) => {
+      if (event.type === 'project-context-changed') owners.push(event.projectId);
+    });
+    try {
+      for (const properties of [{ projectId: 'path_chats' }, {}, { projectId: '' }, { projectId: 42 }]) {
+        MockEventSource.instances[0].onmessage?.({
+          data: JSON.stringify({ type: 'openchamber:project-context-changed', properties }),
+        });
+      }
+      expect(owners).toEqual(['path_chats']);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  test('dispatches a chat-folder change only with its stored revision', async () => {
+    const { subscribeAlcodeEvents } = await import('./alcodeEvents');
+    const revisions: number[] = [];
+    const unsubscribe = subscribeAlcodeEvents((event) => {
+      if (event.type === 'session-folders-changed') revisions.push(event.updatedAt);
+    });
+    try {
+      for (const properties of [{ updatedAt: 42 }, {}, { updatedAt: 'later' }]) {
+        MockEventSource.instances[0].onmessage?.({
+          data: JSON.stringify({ type: 'openchamber:session-folders-changed', properties }),
+        });
+      }
+      expect(revisions).toEqual([42]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   test('dispatches an agent file-open request and drops one without a path', async () => {
     const { subscribeAlcodeEvents } = await import('./alcodeEvents');
     const events: unknown[] = [];
@@ -289,6 +326,31 @@ describe('alcode events', () => {
 
     expect(events).toEqual([
       { type: 'file-open-request', path: '/repo/out/report.csv', directory: '/repo', sessionId: null },
+    ]);
+    unsubscribe();
+  });
+
+  test('dispatches an agent plan-open request and drops one without a plan id', async () => {
+    const { subscribeAlcodeEvents } = await import('./alcodeEvents');
+    const events: unknown[] = [];
+    const unsubscribe = subscribeAlcodeEvents((event) => events.push(event));
+    const source = MockEventSource.instances[0];
+
+    source.onmessage?.({
+      data: JSON.stringify({
+        type: 'openchamber:plan-open-request',
+        properties: { projectId: 'path_repo', planId: 'p1', title: 'Plan', directory: '/repo', sessionId: 'ses_1' },
+      }),
+    });
+    source.onmessage?.({
+      data: JSON.stringify({
+        type: 'openchamber:plan-open-request',
+        properties: { projectId: 'path_repo', title: 'Plan', directory: '/repo', sessionId: null },
+      }),
+    });
+
+    expect(events).toEqual([
+      { type: 'plan-open-request', projectId: 'path_repo', planId: 'p1', title: 'Plan', directory: '/repo', sessionId: 'ses_1' },
     ]);
     unsubscribe();
   });

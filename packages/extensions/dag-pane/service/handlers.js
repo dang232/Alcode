@@ -313,6 +313,90 @@ const readLoopGoalsPlan = (fs, directory, sessionId) => {
   return null;
 };
 
+// Worker rows for the delegation graph: CLI ledgers record every dispatch
+// (`goal_dispatched`) and every worker settlement (`child_completed` /
+// `child_failed`) with the goal id plus a human message (`Dispatched as
+// <role>: attempt N`, `Child <id> (<role>) result: <ref>`). Malformed
+// lines are skipped; anything outside the dispatch vocabulary is not a
+// worker record.
+const DAG_LOOP_WORKER_KINDS = ['goal_dispatched', 'child_completed', 'child_failed'];
+
+const readLoopWorkerEntries = (fs, directory, sessionId) => {
+  const root = directory.trim().replace(/[/\\]+$/, '');
+  const ledgerPath = `${root}/.omo/ulw-loop/${sessionId}/ledger.jsonl`;
+  let text;
+  try {
+    text = fs.readFileSync(ledgerPath, 'utf8').slice(0, DAG_DEBUG_MAX_LEDGER_BYTES);
+  } catch {
+    return [];
+  }
+  const entries = [];
+  const lines = text.split('\n').filter((line) => line.trim().length > 0);
+  for (const line of lines.slice(-200)) {
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isRecord(parsed)) continue;
+    const kind = asString(parsed.kind);
+    if (!DAG_LOOP_WORKER_KINDS.includes(kind)) continue;
+    const goalId = asString(parsed.goalId);
+    if (goalId === '') continue;
+    entries.push({ kind, goalId, at: asString(parsed.at), message: asString(parsed.message) });
+  }
+  return entries;
+};
+
+const workerRoleFromMessage = (message) => {
+  const dispatchRole = /^Dispatched as ([^:]+):/.exec(message);
+  if (dispatchRole) return dispatchRole[1].trim();
+  const childRole = /^Child \S+(?: \(([^)]+)\))? (?:result|failed):/.exec(message);
+  if (childRole && (childRole[1] ?? '').trim().length > 0) return childRole[1].trim();
+  return '';
+};
+
+// One node per settled child, plus one running node per dispatch still
+// waiting for its settlement (dispatches beyond settlements, newest
+// first). Entries naming a goal the plan no longer lists are dropped:
+// they belong to a superseded plan, and the pane never invents
+// structure for them.
+const projectGoalWorkerNodes = (entries, goalIds) => {
+  const known = new Set(goalIds);
+  const byGoal = new Map();
+  for (const entry of entries) {
+    if (!known.has(entry.goalId)) continue;
+    if (!byGoal.has(entry.goalId)) byGoal.set(entry.goalId, []);
+    byGoal.get(entry.goalId).push(entry);
+  }
+  const nodes = [];
+  for (const [goalId, goalEntries] of byGoal) {
+    const settled = goalEntries.filter((entry) => entry.kind === 'child_completed' || entry.kind === 'child_failed');
+    const dispatches = goalEntries.filter((entry) => entry.kind === 'goal_dispatched');
+    const running = Math.max(0, dispatches.length - settled.length);
+    const workers = [
+      ...settled.map((entry) => ({ entry, state: entry.kind === 'child_completed' ? 'completed' : 'failed' })),
+      ...(running > 0 ? dispatches.slice(-running).map((entry) => ({ entry, state: 'running' })) : []),
+    ];
+    workers.forEach(({ entry, state }, index) => {
+      const role = workerRoleFromMessage(entry.message);
+      const label = (role || `Worker ${index + 1}`).slice(0, 80);
+      nodes.push({
+        id: `worker:${goalId}:${index + 1}`,
+        label,
+        state,
+        attempt: 1,
+        prompt: (entry.message || label).slice(0, 512),
+        depends_on: [goalId],
+        started_at: entry.at || null,
+        completed_at: state === 'running' ? null : (entry.at || null),
+      });
+    });
+  }
+  return nodes;
+};
+
 const projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
   const root = directory.trim().replace(/[/\\]+$/, '');
   const dir = `${root}/.omo/ulw-loop/${sessionId}`;
@@ -358,6 +442,14 @@ const projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
         completed_at: asString(goal.completedAt) || null,
       };
     });
+    const goalIds = childNodes.map((node) => node.id);
+    const workerNodes = projectGoalWorkerNodes(readLoopWorkerEntries(fs, directory, sessionId), goalIds);
+    const workersByGoal = new Map();
+    for (const worker of workerNodes) {
+      const goalId = worker.depends_on[0];
+      if (!workersByGoal.has(goalId)) workersByGoal.set(goalId, []);
+      workersByGoal.get(goalId).push(worker.id);
+    }
     const aggregateDone = isRecord(goalsPlan?.aggregateCompletion) && goalsPlan.aggregateCompletion.status === 'complete';
     const allChildrenComplete = childNodes.every((node) => node.state === 'completed');
     const anyChildFailed = childNodes.some((node) => node.state === 'failed');
@@ -392,14 +484,15 @@ const projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
       state: synthesisState,
       attempt: 1,
       prompt: 'Synthesis waits for all goal children and reflects their real results.',
-      depends_on: childNodes.map((node) => node.id),
+      depends_on: childNodes.flatMap((node) => workersByGoal.get(node.id) ?? [node.id]),
       started_at: null,
       completed_at: null,
     };
-    const graphNodes = [parentNode, ...childNodes, synthesisNode];
+    const graphNodes = [parentNode, ...childNodes, ...workerNodes, synthesisNode];
     const graphEdges = [
       ...childNodes.map((node) => ({ from: 'parent', to: node.id })),
-      ...childNodes.map((node) => ({ from: node.id, to: 'synthesis' })),
+      ...workerNodes.map((worker) => ({ from: worker.depends_on[0], to: worker.id })),
+      ...childNodes.flatMap((node) => (workersByGoal.get(node.id) ?? [node.id]).map((tail) => ({ from: tail, to: 'synthesis' }))),
     ];
     const graphCounts = { pending: 0, running: 0, completed: 0 };
     for (const node of graphNodes) {
@@ -424,7 +517,7 @@ const projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
           counts: graphCounts,
           nodes: graphNodes,
           edges: graphEdges,
-          waves: [{ index: 0, node_ids: ['parent'] }, { index: 1, node_ids: childNodes.map((node) => node.id) }, { index: 2, node_ids: ['synthesis'] }],
+          waves: [{ index: 0, node_ids: ['parent'] }, { index: 1, node_ids: [...childNodes.map((node) => node.id), ...workerNodes.map((worker) => worker.id)] }, { index: 2, node_ids: ['synthesis'] }],
         }],
       },
       tasks: null,

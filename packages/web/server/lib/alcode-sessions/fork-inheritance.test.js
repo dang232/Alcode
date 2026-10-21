@@ -30,6 +30,8 @@ describe('sourceOwnedLinksPatch', () => {
     expect(sourceOwnedLinksPatch({ alcode: { kind: 'btw', originalSessionID: 'p', btwBoundaryMessageID: 'm' } }))
       .toEqual({ kind: null, originalSessionID: null, btwBoundaryMessageID: null });
     expect(sourceOwnedLinksPatch({ alcode: { kind: 'review', originalSessionID: 'p' } })).toBeNull();
+    // A fork of a scheduled run is the user's own work again.
+    expect(sourceOwnedLinksPatch({ alcode: { kind: 'scheduled' } })).toEqual({ kind: null });
     expect(sourceOwnedLinksPatch(undefined)).toBeNull();
   });
 });

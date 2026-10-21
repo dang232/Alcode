@@ -36,8 +36,16 @@ describe("ulw-loop domain constants", () => {
 	});
 
 	describe("when checking criterion user models", () => {
-		it("then exposes 4 user models including adversarial", () => {
-			expect(ULW_LOOP_SUCCESS_CRITERION_USER_MODELS).toEqual(["happy", "edge", "regression", "adversarial"]);
+		it("then exposes implementation and survey models", () => {
+			expect(ULW_LOOP_SUCCESS_CRITERION_USER_MODELS).toEqual([
+				"happy",
+				"edge",
+				"regression",
+				"adversarial",
+				"findings",
+				"evidence",
+				"limitations",
+			]);
 		});
 	});
 

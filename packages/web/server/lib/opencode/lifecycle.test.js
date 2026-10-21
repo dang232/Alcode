@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { injectedEnvKeys } from '../injected-env.js';
+
 const spawnMock = vi.fn();
 const spawnSyncMock = vi.fn();
 const recordStartupPerformanceMock = vi.fn();
@@ -41,6 +43,7 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 const { createOpenCodeLifecycleRuntime } = await import('./lifecycle.js');
+const { createServerDiagnosticJournal } = await import('../diagnostics/server-journal.js');
 
 const originalOpencodeBinary = process.env.OPENCODE_BINARY;
 const originalPath = process.env.PATH;
@@ -179,6 +182,38 @@ describe('OpenCode lifecycle', () => {
       // Credential reads take variable keys from the environment the current process got.
       expect(runtime.getManagedOpenCodeProcessEnv()).toBe(spawnMock.mock.calls[1][2].env);
       expect(runtime.getManagedOpenCodeProcessEnv()).toMatchObject({ SHELL_ONLY: 'yes' });
+    } finally {
+      await runtime.testState.openCodeProcess.close();
+    }
+  });
+
+  it('journals managed launch, readiness, exit and restart as fixed actions only', async () => {
+    const journal = createServerDiagnosticJournal();
+    spawnMock.mockImplementation(() => {
+      const child = createMockChild();
+      queueMicrotask(() => {
+        child.stderr.emit('data', 'plugin failed: token=secret-123 /private/file\n');
+        child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+      });
+      return child;
+    });
+    globalThis.fetch = vi.fn(async () => ({ ok: false }));
+    const runtime = createRuntime({ diagnosticJournal: journal });
+    const firstServer = await runtime.startOpenCode();
+    runtime.testState.openCodeProcess = firstServer;
+    try {
+      await runtime.restartOpenCode();
+      expect(journal.snapshot().events.map(({ action, detail }) => [action, detail])).toEqual([
+        ['managed launch', 'attempt=1'],
+        ['managed ready', 'attempt=1'],
+        ['managed restart started', undefined],
+        ['managed process exited', undefined],
+        ['managed launch', 'attempt=1'],
+        ['managed ready', 'attempt=1'],
+        ['managed restart ready', undefined],
+      ]);
+      expect(spawnMock.mock.calls[0][2].env).not.toHaveProperty('OPENCODE_PRINT_LOGS');
+      expect(JSON.stringify(journal.snapshot())).not.toMatch(/secret|private/);
     } finally {
       await runtime.testState.openCodeProcess.close();
     }
@@ -369,6 +404,82 @@ describe('OpenCode lifecycle', () => {
     // A path that now points at a regular file is not a directory either.
     await fs.writeFile(stale, 'x');
     expect(runtime.getDefaultOpenCodeDirectory()).toBeNull();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('scopes default reads to the chats root while no project directory is usable', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'oc-no-project-'));
+    const chats = path.join(root, 'chats');
+    const project = path.join(root, 'project');
+    await fs.mkdir(chats);
+    await fs.mkdir(project);
+    let warmup = [];
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ version: '2.0.20', pid: 1, urls: [], paths: { tmp: '/tmp' } }),
+    }));
+    const runtime = createRuntime({
+      env: {
+        ENV_CONFIGURED_OPENCODE_PORT: 45678,
+        ENV_CONFIGURED_OPENCODE_HOST: null,
+        ENV_EFFECTIVE_PORT: 45678,
+        ENV_CONFIGURED_OPENCODE_HOSTNAME: '127.0.0.1',
+        ENV_SKIP_OPENCODE_START: true,
+      },
+      reapManagedOrphanedProcesses: vi.fn(async () => ({ reaped: 0 })),
+      getWarmupDirectories: vi.fn(async () => warmup),
+      noProjectDirectory: chats,
+    });
+
+    await runtime.bootstrapOpenCodeAtStartup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // No project: a read without a directory would start OpenCode over the
+    // whole home, its working directory.
+    expect(runtime.getDefaultOpenCodeDirectory()).toBe(chats);
+    expect(globalThis.fetch.mock.calls.filter(([url]) => String(url).endsWith('/api/location'))).toEqual([]);
+
+    // A project opened later takes over once the warmup source names it.
+    warmup = [project];
+    await runtime.bootstrapOpenCodeAtStartup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runtime.getDefaultOpenCodeDirectory()).toBe(project);
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  // The UI stops a chat's location once the user leaves it. A read that went
+  // to the chat used last at startup would start it again, every quota poll.
+  it('scopes reads without a directory to the directory the user works in now', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'oc-current-'));
+    const leftChat = path.join(root, 'left-chat');
+    const current = path.join(root, 'current');
+    await fs.mkdir(leftChat);
+    await fs.mkdir(current);
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ version: '2.0.20', pid: 1, urls: [], paths: { tmp: '/tmp' } }),
+    }));
+    const runtime = createRuntime({
+      env: {
+        ENV_CONFIGURED_OPENCODE_PORT: 45678,
+        ENV_CONFIGURED_OPENCODE_HOST: null,
+        ENV_EFFECTIVE_PORT: 45678,
+        ENV_CONFIGURED_OPENCODE_HOSTNAME: '127.0.0.1',
+        ENV_SKIP_OPENCODE_START: true,
+      },
+      reapManagedOrphanedProcesses: vi.fn(async () => ({ reaped: 0 })),
+      getWarmupDirectories: vi.fn(async () => [leftChat]),
+    });
+
+    await runtime.bootstrapOpenCodeAtStartup();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runtime.getDefaultOpenCodeDirectory()).toBe(leftChat);
+
+    runtime.noteCurrentDirectory(current);
+    expect(runtime.getDefaultOpenCodeDirectory()).toBe(current);
+
+    // A directory that is not there is never sent.
+    runtime.noteCurrentDirectory(path.join(root, 'missing'));
+    expect(runtime.getDefaultOpenCodeDirectory()).toBe(current);
     await fs.rm(root, { recursive: true, force: true });
   });
 
@@ -1003,6 +1114,13 @@ describe('OpenCode lifecycle', () => {
     expect(options.env.OPENCODE_PASSWORD).toBe('password');
     expect(options.env.ALCODE_AGENT_TOOL_TOKEN).toBe('ephemeral');
     expect(runtime.getManagedOpenCodeProcessEnv().DATABASE_URL).toBe('postgres://db');
+    // The replaced values are recorded as OpenChamber's; the user's are not.
+    const injected = injectedEnvKeys(options.env);
+    for (const key of ['OPENCODE_PASSWORD', 'OPENCODE_SERVER_PASSWORD', 'OPENCHAMBER_AGENT_TOOL_TOKEN']) {
+      expect(injected.has(key)).toBe(true);
+    }
+    expect(injected.has('DATABASE_URL')).toBe(false);
+    expect(injected.has('PATH')).toBe(false);
 
     await server.close();
   });
@@ -1078,6 +1196,46 @@ describe('OpenCode lifecycle', () => {
     await server.close();
   });
 
+  it('defaults OMO_ULW_LOOP_RESOLVER to the checkout resolver unless explicitly set', async () => {
+    const previousOverride = process.env.OMO_ULW_LOOP_RESOLVER;
+    delete process.env.OMO_ULW_LOOP_RESOLVER;
+    try {
+      const child = createMockChild();
+      spawnMock.mockImplementationOnce(() => {
+        queueMicrotask(() => {
+          child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+        });
+        return child;
+      });
+      const getManagedOpenCodeEnv = vi.fn(async () => ({}));
+      const runtime = createRuntime({ getManagedOpenCodeEnv });
+      const server = await runtime.startOpenCode();
+      const [, , options] = spawnMock.mock.calls[0];
+      expect(options.env.OMO_ULW_LOOP_RESOLVER).toMatch(/resolve-ulw-loop-cli\.mjs$/);
+      // The default must be absolute for the same reason as the CLI pointer.
+      expect(path.isAbsolute(options.env.OMO_ULW_LOOP_RESOLVER)).toBe(true);
+      await server.close();
+    } finally {
+      if (previousOverride !== undefined) process.env.OMO_ULW_LOOP_RESOLVER = previousOverride;
+    }
+  });
+
+  it('keeps an explicit OMO_ULW_LOOP_RESOLVER over the checkout default', async () => {
+    const child = createMockChild();
+    spawnMock.mockImplementationOnce(() => {
+      queueMicrotask(() => {
+        child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+      });
+      return child;
+    });
+    const getManagedOpenCodeEnv = vi.fn(async () => ({ OMO_ULW_LOOP_RESOLVER: '/staged/ulw-loop-cli/resolve-ulw-loop-cli.mjs' }));
+    const runtime = createRuntime({ getManagedOpenCodeEnv });
+    const server = await runtime.startOpenCode();
+    const [, , options] = spawnMock.mock.calls[0];
+    expect(options.env.OMO_ULW_LOOP_RESOLVER).toBe('/staged/ulw-loop-cli/resolve-ulw-loop-cli.mjs');
+    await server.close();
+  });
+
   it('warns actionably and sets no pointer when the checkout dist is missing', async () => {
     const previousOverride = process.env.OMO_ULW_LOOP_CLI;
     const previousHide = process.env.OMO_ULW_LOOP_TEST_HIDE_DIST;
@@ -1097,6 +1255,7 @@ describe('OpenCode lifecycle', () => {
       const server = await runtime.startOpenCode();
       const [, , options] = spawnMock.mock.calls[0];
       expect(options.env.OMO_ULW_LOOP_CLI).toBeUndefined();
+      expect(options.env.OMO_ULW_LOOP_RESOLVER).toBeUndefined();
       expect(warn).toHaveBeenCalledOnce();
       expect(warn.mock.calls[0][0]).toContain('ulw-loop CLI unavailable');
       expect(warn.mock.calls[0][0]).toContain('prepare:ulw-loop-cli');

@@ -1,5 +1,8 @@
 import { OpenCode } from '@opencode/client';
 import { registerNotificationEmitRoutes } from '../notifications/emit-route.js';
+import { registerHttpResponseDiagnostics } from './core-routes.js';
+import { createStartupReadinessRuntime } from './startup-readiness-runtime.js';
+import { createStartupReadinessWiring } from './startup-readiness-wiring.js';
 import { ALCORE_PROVIDER_ID, createAlcoreProviderRuntime } from '../alcore-provider/alcore-provider.js';
 import { createFileKeyIdStore, createPersonalKeyRuntime } from '../alcore-provider/personal-key.js';
 import { upsertProviderConfig, removeProviderConfig } from './providers.js';
@@ -87,7 +90,17 @@ export const createBootstrapRuntime = (dependencies) => {
       // out by construction — the sync reports `needs_restart` instead.
       // Optional (tests omit it): without it the sync assumes managed.
       isExternalOpenCode = null,
+      // Startup readiness contract (§7): production bindings for the
+      // local-only probes. All optional: a missing binding fails its probe
+      // step with an exact missing-dep message instead of breaking boot.
+      omoNativeRuntime = null,
+      getSmallModelClient = null,
+      listModelInfos = null,
+      resetOpenCodeRuntimeProviders = null,
+      getMessageStreamHub = null,
     } = options;
+
+    registerHttpResponseDiagnostics(app);
 
     const uiAuthController = createUiAuth({
       alcoreSecret,
@@ -261,6 +274,32 @@ export const createBootstrapRuntime = (dependencies) => {
       setPushInitialized,
       setAutoAcceptSession,
     });
+
+    // Startup readiness contract: local-only probes (session, plugin,
+    // ULW tools, model resolution, child, events), zero model spend.
+    // Mounted with the other routes, ahead of the OpenCode proxy,
+    // so the indicator reads the contract instead of raw health. Missing
+    // bindings fail their probe steps exactly; they never break boot.
+    // Wired when the OpenCode URL/auth pair is available; otherwise the
+    // probes that need them report a missing binding instead of failing boot.
+    // `openCodeWired` is already bound above (the OpenCode credential block).
+    {
+      const { runProbes, repairStep } = createStartupReadinessWiring({
+        getOpenCodeBaseUrl: openCodeWired ? () => buildOpenCodeUrl('', '').replace(/\/+$/, '') : null,
+        getOpenCodeHeaders: openCodeWired ? () => ({ ...getOpenCodeAuthHeaders() }) : null,
+        defaultDirectory: alcodeDataDir,
+        omoNativeRuntime,
+        managedDataDir: alcodeDataDir,
+        fsPromises: fs?.promises ?? null,
+        path,
+        getSmallModelClient,
+        listModelInfos,
+        resetOpenCodeRuntimeProviders,
+        getMessageStreamHub,
+      });
+      const startupReadinessRuntime = createStartupReadinessRuntime({ runProbes, repairStep });
+      startupReadinessRuntime.registerStartupReadinessRoutes(app);
+    }
 
     registerAlcodeRoutes(app, {
       fs,

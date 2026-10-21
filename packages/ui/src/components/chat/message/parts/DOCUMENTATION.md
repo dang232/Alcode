@@ -8,17 +8,17 @@ Use this doc when you ask an agent to change tool/header/description behavior.
 
 - Message parts are rendered from `MessageBody.tsx`.
 - There are two tool rendering paths:
-  - **Static grouped tools** -> `StaticToolRow` in `ProgressiveGroup.tsx`
+  - **Static tools** -> `StaticToolRow` in `ProgressiveGroup.tsx`
   - **Expandable tools** -> `ToolPart.tsx`
 - Shared tool icon mapping is centralized in `toolPresentation.tsx` (`getToolIcon`).
 
 ## Which file controls what
 
 - `ProgressiveGroup.tsx`
-  - Renders grouped Activity rows and grouped static tools.
-  - Contains `StaticToolRow`.
+  - Contains `StaticToolRow`, the compact one-line row of a navigation tool.
+    The file keeps the name of the grouped Activity block it used to hold.
   - Contains static tool short description logic (`getToolShortDescription`).
-  - If you want to change how `read/grep/perplexity/webfetch/...` look in compact/grouped mode, edit here.
+  - If you want to change how `read/grep/perplexity/webfetch/...` look in compact mode, edit here.
 
 - `ToolPart.tsx`
   - Renders expandable tool rows (shell/edit/write/question/subagent + fallback).
@@ -58,16 +58,31 @@ Use this doc when you ask an agent to change tool/header/description behavior.
   - Thinking block UI (`ReasoningTimelineBlock`), summary + optional duration.
 
 - `components/LiveTurnActivity.tsx` (relative to the chat folder)
-  - Owns the optional live-only turn disclosure. `MessageList` enables it when
-    Activity Default is Collapsed and the turn has visible Activity content.
+  - Owns the optional turn disclosure. `MessageList` enables it when Activity
+    Default is Collapsed and the turn has visible Activity content.
   - `components/LiveActivityCollapse.tsx` owns the finite height transition;
     `components/liveActivityContext.ts` scopes the final message's non-text
-    disclosure without changing sorted message context or tool rendering.
+    disclosure without changing message context or tool rendering.
   - `lib/turns/liveActivity.ts` owns final-answer and interruption boundaries.
   - `lib/turns/liveActivitySummary.ts` derives the report from tool results.
 
-- `JustificationBlock.tsx`
-  - Justification block wrapper over `ReasoningTimelineBlock`.
+- `HtmlRenderFrame.tsx` and `htmlRender.ts`
+  - A completed `openchamber_render` call that OpenChamber accepted (`renderedPage` in `@/lib/opencode/tools`: `metadata.openchamber.ok` and an `html` input) is drawn as the page itself in place of its tool row. A refused call keeps its ordinary row, and so does a running one, except a page that waits for the user's answer (`awaitAnswer`): its call runs until the user answers, so it is drawn while it runs, and it stays with a "Not answered" line when the call ends in an error (the user stopped the turn).
+  - The page loads through `srcdoc` in a frame sandboxed with `allow-scripts allow-forms` and never `allow-same-origin`, so its script runs in an opaque origin with no reach into the app. `buildHtmlRenderDocument` puts a bootstrap first in the page's head: the theme as CSS variables (`htmlRenderTheme`; the agent tool's description in `packages/web/server/lib/agent-tool/runtime.js` lists the same names; `--chart-1` is the theme's accent and `--chart-2` to `--chart-6` a fixed set per light and dark, `CHART_SERIES`, because the theme's syntax colors made near-identical series), a size report, and http(s) link clicks handed to the host, which opens them with `openExternalUrl`. A theme switch is posted to the page instead of rebuilding it, so the page keeps its script state. Messages are accepted only from the frame's own window. A focused frame keeps every key from the app, so the bootstrap passes on a Cmd/Ctrl chord the page left alone (not typed into its own fields, not handled by its script, not the clipboard, select-all or undo chords), and the host replays it as a keydown and keyup on the frame element. The app's shortcut handling then runs as for any key pressed outside a text field, with no list of shortcuts to keep in sync. A chord without Cmd or Ctrl is never replayed. A wheel up or vertical swipe over the page scrolls the chat around the frame while its events stay in the frame, so the bootstrap reports each one its script and its own scrolling boxes left alone (a direction only), and the host raises it on the frame element for the chat's follow (`lib/scroll/DOCUMENTATION.md`); without it a streaming reply kept pulling a reader who scrolled over a page back to the end. Pages are interactive within themselves (tooltips, tabs, sorting).
+  - A page that waits for an answer sends it with `openchamber.submit(data, summary)`, which the bootstrap posts as an MCP Apps `ui/message` request (the summary as text content, the data in `_meta["openchamber/data"]`); the host replies with a JSON-RPC result or error that settles the page's promise. The host accepts it only while the page waits and only during a user gesture: a click inside the frame activates the chat window too (`navigator.userActivation`, checked in Chromium and WebKit), and a page that sends on its own does not, even if it skips the bootstrap. The answer goes to the server through `answerRenderedPage` (`@/lib/renderPageAnswer`); a refusal (answered on another device, turn ended) shows a toast and rejects the page's promise. The page learns where it stands from `openchamber.answer`, set when it loads (a JSON script element, so no data can close it) and updated by a posted state message, so a page loaded again after the answer can show the choice. A line under the page says it waits, what was answered, or that the user answered in the chat. The base stylesheet carries ready classes for such a page in the app's look (`.oc-options`, `.oc-option` with `aria-pressed="true"` on the chosen one, `.oc-button`), which the tool description names, so agents do not style their own on every page. `.oc-option` is the app's flat tile (`.oc-tile`: no border, a tone step on the page, a further step on hover or focus) and takes the selection fill once chosen (`--oc-selection`, like a pressed chip), since the accent colour means act, never chosen. Focus draws no ring on either class; a focused one takes its hover fill. `.oc-button` is drawn like the app's main `Button` (pale accent fill and border, readable accent text from `getReadableThemeColors`, the `.oc-raised-button` light), through `--oc-button-*` variables `htmlRenderTheme` computes per light and dark. It is sized in the app's rem (`--oc-rem`, read from the root font size, which the interface size setting scales), so it matches the app's buttons at any interface size; `--radius` follows the same scale.
+  - Every page also gets a small kit of ready classes for what agents drew again and again (`KIT_CSS`): `.oc-box`, `.oc-muted`, `.oc-table` (a div around a table: the chat's Markdown table frame, scrolling sideways when wide), `.oc-num`, `.oc-badge` with `data-tone`, `.oc-dot` and `.oc-bar` (colored by `--color`, the bar as long as `--value`), two more `Button` variants on `.oc-button` (`data-variant="outline"` for a secondary action, `"destructive"`, through the same `--oc-button-*` variables and `--oc-destructive-*`), and form controls drawn like the app's: `.oc-field`, `.oc-input` (the `Input` with its field light), `.oc-switch` (the `Switch` on a checkbox), `.oc-segmented` (the active-pill strip). In 45 pages agents drew before the kit, about a third of the characters were the page's own CSS for these, written anew each time and looking different on every model. The light and dark differences come from `--oc-edge`, `--oc-field-*`, `--oc-raised-*`, `--oc-recessed`, `--oc-hover` and `--oc-*-text`, which `htmlRenderTheme` computes from the app's `.oc-raised`, `.oc-field` and `.oc-recessed` rules; the tool description names the classes and not these variables. A page with its own look ignores the kit. Plain HTML with ready classes was chosen over a component language the model writes instead of HTML (a generative UI library): that kind of library sends its component and language reference with every request, about ten times the size of this tool's description, and cannot draw what is outside its components, such as a mockup of the user's own app.
+  - The row of buttons above the page (annotate, full screen, download) holds the browser panel's "Annotate page" toggle on web and desktop (not phones, not VS Code), so the user can point at an element, drag a region or draw over a mockup and tell the agent what to change; it is how a user reacts to a variant beyond picking it. It runs the same overlay as the Files view's HTML preview through `useFrameAnnotation` (`components/browser/`): the bootstrap carries the same bridge listener as a previewed file (`ANNOTATION_BRIDGE`, on the channel `lib/browser/previewFrameHost.ts` names), which evaluates the overlay's code only when the parent posts it. The prompt names the page by its title, with an intro saying the agent showed it in the chat; the frame's own address is `about:srcdoc`. A page is as tall as its content and often only partly on screen, so the desktop screenshot is the part of the frame that the window and the scrolling chat leave visible (`visibleFrameArea`), and the marks are shifted by where that part starts (`PageCapture.viewportArea`). The overlay's tool bar sits at the top of the page, just under the toggle. The buttons sit in a 24px row of their own above the page, small and without a fill, fading in on hover over space the row keeps: laid over the page's top corner they covered the page's own controls there. Sending the annotation while the page waits for an answer counts as answering in the chat. Only the inline page has the toggle; the full-screen view does not.
+  - The app cannot read a selection made inside the frame, so the bootstrap reports it: the trimmed text (at most 20,000 characters), its box in the frame's viewport and a quote anchor, once it settles (on mouse up, or after a pause for keyboard and touch selections), and an empty text when it is gone. The anchor is measured in the page's own `document.body` text stream with the algorithm of `lib/chatQuoteAnchor.ts` (32 characters of context either side, start offset); the host validates it and adds `page: { partId }`. The host clears the app's own selection and re-dispatches the report as a DOM event from the frame element (`message/frameSelection.ts`). Every page owns its menu (`PageSelectionScope`, a `TextSelectionMenu` with `frameSelections`), attributed to the message that owns the render call, so a page works in its message, hoisted into the live turn outside any message body, and full screen; the message-level menu ignores frame events. The menu shows for the selected text with the box translated to app coordinates (re-read from the frame's position while the chat scrolls), and a cleared report hides it unless a comment is open. In the full-screen dialog the menu portals into the dialog's content so it sits above it and its comment input can take focus.
+  - One selection at a time: when the menu stops tracking a frame selection (cleared, a press outside, the app selecting text, another page selecting) the host posts a clear message and the page drops its selection without echoing it back; a selection in one page clears the others' (`message/pageQuoteBridge.ts`). Escape pressed in the page closes the menu the same way, as Escape does for a selection in the chat: the bootstrap passes it on only while the page has a reported selection and its script left the key alone, so without a selection Escape stays the page's own. It travels as its own message and is never replayed as a key, because a bare Escape reaching the app's key handling would prime the abort of the running turn.
+  - Quotes taken in a page persist like reply-text quotes. The host posts the page's marks (id, anchor, focused) when they change and when the frame loads; the page re-finds each by text and context and paints it with the CSS Custom Highlight API (`--oc-quote-mark`; focus, hover and flash share one color). A click on a mark posts its id and box (an empty id for a click on no mark) and the highlight layer opens the mark popover on click only, since the pointer over a frame is invisible to the app; the popover does not follow scrolling inside the frame. A page mark's popover opens only for a mark of the page that reported the click. Reveal and flash scroll the frame into view and ask the page to scroll to and flash the quote. The frame is as tall as the page, so in the chat the page's `scrollIntoView` scrolls the chat around the frame, which brings a quote far down a long page into view (checked in Chromium with the frame in its own process); in the full-screen view it scrolls the page inside the frame. Anchors without `page` are unchanged; an older client strips `page` and finds no highlight.
+  - The frame takes the page's full reported height (at least 48 px; the 20,000 px ceiling only stops a page that grows with its frame), so a page never scrolls inside the chat: a scrolling frame keeps the wheel or a swipe that starts on it, so the chat stopped under the pointer until the page reached its end, and on a phone a frame as tall as the screen left no place to swipe the chat from. A long page reads in the full-screen view too. The page's root font size is the chat's body text size in px (`--oc-text`, from `--text-markdown` and the app's rem, so it follows the interface size setting live and is larger on phones, as the chat is); the tool description asks agents to size text in rem or em, so their text scales with it, while px stays fixed. The full-screen view builds the page `contained`, which stops its scrolling at the edges without the elastic bounce. A page that fits its frame gets `overflow-y: hidden` from the bootstrap, so a touch that starts on it scrolls the chat instead of bouncing inside the frame (iOS keeps a touch in any document that can scroll). Media is capped at the column width; content still wider scrolls sideways (`overflow-x: auto`, `overscroll-behavior-x: none`), and the tool description asks agents to give a wide table its own scroll box. A page wider than its frame has a horizontal scrollbar drawn like the app's (10 px, thumb from `--foreground` at the app's 18% and 36%), whose thumb shows only while the pointer is over the frame (#4949): the host posts pointer enter and leave on the frame element, the same hover that shows the buttons above the page, and the page marks its root with `data-oc-pointer`. The page's own `:hover` was not used, because with synthetic input in Chromium it stayed set after the pointer left the sandboxed frame, which runs in its own process. On a touch screen (`pointer: coarse`) the thumb always shows, as the buttons above the page do. The track keeps its place while the thumb is hidden, so hovering moves nothing, and the reported height includes it (the window's height less the root's client height); the tooltip check re-measures when that changes, since the bar can appear without the root resizing. The vertical bar has no width. Firefox has no per-axis scrollbar styles, so both its bars are thin and follow the same rule; Safari on iOS draws no styled scrollbar and reserves no room for one, so there the page looks as before. Only the horizontal bounce is off: `overscroll-behavior-y` stays default, because turning it off would also keep a vertical swipe from reaching the chat. The last height is kept per call, so a row the timeline unmounted comes back at its size. The reported height reaches down to where the body's content ends, overflow included unless the body clips it, and to the lowest absolutely positioned element outside any box that scrolls or clips. The document's scroll height counts content past the root's box only while the frame is shorter than where it ends, so a hidden tooltip parked below the page's last block (#4940), or a picture taller than the box it sat in, made the frame grow and shrink on every frame, and the text under the page shook with it. The body's scroll height does not depend on the frame's height, so it ends that loop; it misses an absolutely positioned element placed against the page itself, which the element check covers.
+  - A frame is transparent (`opacity: 0`) until the page's first size report or its load, whichever comes first. What a new frame paints before the page's own document is not the page, and under a dark theme a page flashed white each time the timeline mounted it again while scrolling. The size report arrives once the page is laid out, so a page with slow remote images does not wait for them; the space is already held at the page's remembered height. Opacity and not `visibility: hidden`, which Chromium may treat as a hidden cross-origin frame and throttle, holding the size report back.
+  - The bootstrap moves a tooltip or popup the page positions itself back inside the frame when it sticks out past an edge (`translate`, so the page's own `transform` still applies). Only absolutely or fixed positioned elements that are partly inside are moved; one wholly outside, wider than the frame, or inside a box that scrolls or clips is left alone. Hover counts as a trigger, because a CSS `:hover` tooltip changes nothing in the DOM. The tool description also asks agents to keep tooltips inside the page.
+  - In the mobile layout (`useUIStore.isMobile`) the page has no full screen or download: it is already as wide as the screen.
+  - Full screen opens the page in a dialog, inset from its edges and as tall as the page up to the window, past which the page scrolls. Download saves the page with the theme it was viewed in; on Capacitor it goes through the native share sheet, and VS Code shows no download because its bridge has no save route for HTML.
+  - A page can name an image file on the machine by its absolute path (`renderPageImages.ts`). The page cannot read files, so before drawing it the chat asks the image grant route for the paths the page names (the server checks them against the call's stored HTML; see `packages/web/server/lib/markdown-image-grants/`), reads each through `/api/fs/raw` as a data URL and puts it in place of the path. A data URL, not the asset URL: the asset URL carries the URL auth token, which the page's script would see. The page is drawn once its images are in, never before and again after, since a second draw reloads it; its space stays reserved meanwhile. An image that does not load keeps its path. VS Code reads workspace images through its file bridge and has no temporary-directory images.
+  - VS Code's webview CSP allows inline scripts but no remote ones, and a `srcdoc` page inherits that policy, so the tool description tells agents to draw charts with inline SVG or their own script.
+  - With Activity collapsed, a page is never folded away. `LiveTurnActivity` collects the turn's pages (`getShownPages`) and `LiveTurnHoistedPagesContext` keeps their rows out of the fold, so an opened fold does not draw them twice. While the turn works, and in a turn that ended without a final answer (stopped, failed), the pages sit right below the fold, and what the agent did after the last page (more steps, the reply it is still writing) is drawn below them, so the page stays put while new work appears under it; once the final answer arrives, the final message draws them above its first answer text. With Activity expanded there is no fold, and a page sits where its call ran.
 
 - `BlockLine.tsx`
   - The vertical connector line left of a collapsible block's body. It is also a click target: clicking it folds/expands the block via its header toggle handler (`onToggle`), or toggles the nearest native `<details>` when no handler is passed (JSON summary sections). Geometry is inline-styled (12px hit strip centered on the 1px line) so it does not depend on compiled Tailwind classes.
@@ -89,22 +104,57 @@ its logical gutter, allowing adjacent Arabic and English items. Inline code
 and code widgets have explicit LTR attributes so they do not choose the
 containing item's direction. Direction changes preserve source and copy text.
 
-### Optional live history disclosure
+### Turn footer copy and image
 
-Activity Default is shared by the settings UI in both render modes. In live
-mode, Expanded preserves the original timeline without a turn disclosure.
-Collapsed adds one Activity header after completion or interruption while preserving the original live rows,
-their order, and their individual controls. It adds no tool subgroups, side
-line, height cap, or inner scroller. Sorted rendering keeps its existing path
-and its own per-turn expansion state.
+The footer under a turn's last assistant message copies and saves the whole
+reply: the text parts of every assistant message in the turn, in order, with
+tool output and reasoning left out. `MessageList` hands the earlier text to the
+last message as `earlierAssistantText`; per-message copy buttons keep copying
+only their own text. Earlier messages may be folded or not mounted, so a
+reply of more than one text part is drawn by `buildTurnImageExportSource` from
+Markdown with the chat's classes and `decorateMarkdown`. A reply of one text
+part keeps the copy of what the chat rendered.
 
-The active turn stays open without an Activity header. A final assistant message with `finish: stop`
+### Optional history disclosure
+
+The chat has one render mode: parts stream in and stay in the order they ran.
+The Sorted mode, which folded a turn's work into one block above its answers,
+was removed; a stored `chatRenderMode: 'sorted'` reads as Collapsed Activity
+(`lib/settings/parsers.ts`, `parseActivityRenderMode`). Expanded preserves the
+timeline without a turn disclosure. Collapsed adds one Activity header after
+completion or interruption while preserving the original rows, their order, and
+their individual controls. It adds no tool subgroups, side line, height cap, or
+inner scroller. Subagent calls alone do not make a turn collapsible.
+
+The active turn has its Activity header from the first step. Folded, it shows
+only the latest 7 rows (a text, a reasoning block or a tool call each;
+`lib/turns/activityRows.ts`); the header counts the earlier ones ("+N more")
+and opens them all. `LiveTurnActivity` leaves out the messages entirely above
+the cut and tells the message it cuts into, through
+`ActivityRowSkipContext`, how many of its first rows `MessageBody` skips; both
+count with the same rule. When the cut moves down, `useActivityRowGlide`
+replays the jump as a 220 ms glide of the rows (FLIP, `transform` only, skipped
+with reduced motion). The trim stays while the settled fold closes and lifts
+when the reader opens it.
+
+A long turn, in either mode, mounts only a window of its rows
+(`lib/turns/turnMessageWindow.ts`, `components/TurnMessageWindow.tsx`): past
+60 rows its newest 40, with the rest behind spacers that mount 40 at a time as
+they near the viewport. It counts rows with the same rule as the fold, and the
+head may end inside a message, whose first rows `MessageBody` skips through
+`ActivityRowSkipContext`. Counting messages left a turn of a few steps with
+dozens of parallel calls each fully mounted.
+
+A final assistant message with `finish: stop`
 collapses the earlier messages and the final message's non-text parts, keeping
 the answer and its existing footer outside. Intermediate-text summary fallback
 and compaction summaries never become final answers. An older turn without a
 final answer collapses once a later visible turn has an assistant response;
 a queued user message alone is not enough. Hidden user continuations retain
-the visible-turn mapping established by `projectTurnRecords`.
+the visible-turn mapping established by `projectTurnRecords`. A notice the
+timeline skips that separates a `stop` answer from the next assistant message
+opens a turn there (`createNoticeTurnSplitter`), so each answer keeps its own
+Activity and stays outside it; a notice between steps of one run does not.
 
 Manual expansion survives later metadata updates and timeline virtualization
 within the session. The disclosure uses a finite 180ms height transition,
@@ -138,8 +188,23 @@ in ESM and CJS. Drop it once upstream ships #536 or an equivalent, and verify
 with `bun packages/ui/tests/chat-history-scroll.browser.mjs`, which runs the
 prepend scenarios over several row-height profiles for this reason.
 
+The same patch hands out containers in item order while the list's initial
+scroll is active, end-aligned included. Upstream reverses them for an
+end-aligned start (`renderPriority` in `findAvailableContainers`), so a
+freshly opened timeline was in reverse DOM order and the DOM-order pass
+(`useDOMOrder`) moved nearly every row about 300 ms after the reveal: each row
+restyled, and with an accessibility client on, the transcript re-serialized
+(about 40 ms on every session open and switch). Containers render in index
+order, so rows are now in DOM order (what screen readers and tab order follow)
+from the first paint, and the pass finds nothing to move. Scrolling up still
+recycles containers out of order; the pass corrects that as before. The patch
+also keeps the pass's own delay: it treats the list's mount as activity, so a
+pass that does have work waits for 500 ms of quiet instead of landing in the
+opening reveal. `scripts/legend-list-dom-order.test.mjs` runs the installed
+bundles' allocation and timer code for both.
+
 The header retains its report when expanded and has no hover background. Its
-left inset matches sorted Activity. Diff deletions use the ASCII hyphen.
+left inset matches the tool rows. Diff deletions use the ASCII hyphen.
 The header reports five categories: changed files, codebase
 exploration, commands, web research, and subagents. Narrow chat columns only
 show file changes. Exploration and research are flags, not synthetic counts.
@@ -178,32 +243,44 @@ finished with `stop`, so no tool patch is parsed while the turn streams.
   Markdown preview opts into rendering raw HTML (`allowRawHtml`, see
   `components/views/files/DOCUMENTATION.md`). Safe custom application links go through the
   app-link confirmation flow in every supported renderer, including VS Code.
-- Final assistant Markdown rendering is independent from image gallery
-  extraction: gallery presence never changes the chat body. Assistant image
-  syntax consistently renders as a shared image icon followed by its filename,
-  without loading the image in the body; tool and simple Markdown retain normal
-  inline image rendering. The gallery separately collects HTTP(S), embedded, and workspace-local
-  PNG/JPEG/GIF/WebP image candidates into one 100px thumbnail gallery in the
-  message-completion area after all message text and above the turn's changed
-  files. Each muted filename caption includes the shared image-file icon.
-  HTTP(S) images keep their browser URL. Embedded and workspace-local images
-  are limited to 10 MiB and validated as PNG/JPEG/GIF/WebP. Chat Markdown uses
-  the assistant image-label policy without gallery-specific link rewriting,
-  completion-state switching, or hidden placeholders. A
-  completed assistant message hydrates at most 12 unique image candidates,
-  including persisted text parts that omit their optional part-level end time.
-  In server-backed runtimes, a gallery approaching the viewport prepares all
-  local candidates in one message-level request, then reuses the authenticated
-  `/api/fs/raw` asset route. Each URL loads only when its thumbnail approaches
-  the viewport. VS Code instead loads workspace-contained images through its
-  local filesystem bridge and never calls the server grant route; OpenCode
-  temporary-directory images remain unsupported there. Mounted historical
-  messages therefore do not eagerly read every image.
-  Gallery clicks do not introduce or alter preview chrome: desktop and mobile
-  both reuse the pre-existing attachment image preview overlay.
-  Workspace-external images receive the existing path-bound `outsideFileGrant`
-  only when the server verifies the exact source in the owning assistant
-  message and the real file is inside OpenCode's dedicated temporary directory.
+- File references become links only once the file is confirmed
+  (`MarkdownRendererImpl` `useFileReferenceInteractions`): inline code, links
+  and path-like tokens inside code blocks are probed through the bounded,
+  cached stat queue after the message settles (never while it streams, never
+  on mobile), and each pass writes all its links at once. Inside a code block
+  nothing is written for a token that leads nowhere, so code full of
+  `console.log` and `this.state` stays plain text with no DOM change; a real
+  file's token gets its span and link a moment after the message shows.
+- Assistant images appear where the text puts them. The Markdown renderer
+  draws assistant image syntax as a label, the shared image icon and the file
+  name, and never loads an image itself (`label` mode in `markdownCore.ts`);
+  tool and simple Markdown keep their own image rendering. A label for a
+  workspace-local or embedded PNG/JPEG/GIF/WebP image outside a link carries
+  its source (`data-openchamber-markdown-image-source`). Once the text part
+  settles (`time.end`), `markdown/inlineMarkdownImages.ts` replaces each such
+  label with the picture, at most 30rem wide and tall, in a bordered frame.
+  A paragraph made only of two or more images becomes one row of equal height
+  that spans the text width (`arrangeImageRow`): each image grows with its
+  width-to-height ratio, the shared height stops at 30rem or the smallest
+  image's natural height, and below 8rem the row wraps. A label loads only when
+  it nears the viewport, so mounted history reads no image files, and the
+  picture replaces the label only after it decoded, so the row grows once.
+  An image that is missing, too large or fails validation keeps its label.
+  Remote images never load: they stay links to themselves (see
+  `MarkdownImageMode`), so a model or a fetched page cannot learn when the
+  user read the message. A click opens the shared attachment preview overlay
+  with every drawn image of the message as its gallery. Copying a selection
+  writes `![name](source)`, never the authenticated asset URL.
+  In server-backed runtimes, the first label of a part to near the viewport
+  prepares all of that part's local images (at most 12) in one request to the
+  grant route, then loads them through the authenticated `/api/fs/raw` asset
+  route; the preview prepares again, so an expired grant is renewed. Embedded
+  images are validated in the browser and limited to 10 MiB. VS Code loads
+  workspace-contained images through its local filesystem bridge and never
+  calls the grant route; images outside the workspace stay labels there.
+  Workspace-external images, wherever they are on the machine, receive the
+  existing path-bound `outsideFileGrant` only when the server verifies the
+  exact source in the owning assistant message and the file's signature.
 - `read` and `skill` are **static navigation tools** and render via `StaticToolRow`.
 - Every other tool, including search/fetch, OpenCode built-ins, custom tools, plugins, and MCP tools, is **expandable** and renders through `ToolPart`.
 - The managed `alcode` plugin tool uses the expandable path and hides its broad protocol input. The plugin supplies the selected action's human description as the native tool title; the UI renders that metadata without owning an action map. The full versioned result envelope renders through the same neutral JSON summary/tree/raw views as other tools, without a tool-specific output card.
@@ -232,7 +309,8 @@ finished with `stop`, so no tool patch is parsed while the turn streams.
 - The result of a session the agent dispatched with `returnResult` arrives as a `synthetic` message with `source: "alcode-session"` (`@/lib/opencode/dispatched-session`, delivered by the server's `lib/dispatch-results`). It is a background report like a subagent run (`isBackgroundReportEntry`): it opens a turn, so the woken agent's reply renders below it, and a fork after an answer cuts before it. `TimelineNotice` renders it as one collapsed row, `Session finished: <title>` (failed / stopped variants carry the status icon), that opens to the answer as Markdown with an `Open session` action going through `openSessionLink`.
 - Thinking/Justification duration is hidden in `sorted` mode (handled in `ReasoningPart.tsx` + `JustificationBlock.tsx`).
 - Reasoning streaming presentation derives from the live stream phase (`streaming`/`cooldown`), never from missing persisted timing: a cached part without `time.end` is not live, and a part whose `time.end` is set never streams (issue #2020).
-- Assistant text parts carry the same part-finalization gate (`assistantTextVisibility.ts`): live mode's block-commit reveal holds a still-growing part's trailing line, while a part sealed with `time.end` renders in full immediately — including while the turn stays blocked on a pending question or permission ask (#3277).
+- Text that draws nothing takes no space (#5215). Some models send text parts holding only a zero-width space between steps, and `trim()` keeps those characters, so each became a blank line in Activity. `lib/invisibleText.ts` (`isInvisibleText`: whitespace plus Unicode's default-ignorable characters) is the one test for "empty" text: `isEmptyTextPart`, the assistant text, reasoning and user text renderers, turn projection, the turn summary and the live turn's final-answer check all use it, and the markdown splitter (`markdown/markdownCore.ts`) drops a top-level block whose source is only such characters. Only a whole part or block counts, so a ZWJ inside an emoji or a ZWNJ inside a Persian word stays. A CSS rule cannot do this: `:empty` does not match an element holding a zero-width character.
+- Assistant text parts carry the same part-finalization gate (`assistantTextVisibility.ts`): the block-level reveal (`lib/streamTextCommit.ts`) holds a still-growing part's unfinished block, and the reply takes new text at most every 400 ms, while a part sealed with `time.end` renders in full immediately — including while the turn stays blocked on a pending question or permission ask (#3277).
 
 ## "I want to change description for Perplexity" (example recipe)
 
@@ -250,7 +328,7 @@ Why: only navigation tools use the compact static path; all other tools need obs
 1. Update `toolRenderUtils.ts`:
    - add/remove a tool name from `STATIC_TOOL_NAMES` only when it has a reliable direct in-app navigation action
 2. Ensure `ToolPart.tsx` supports desired header + expanded output format for that tool.
-3. Validate both modes (`sorted` and `live`).
+3. Validate with Activity Default set to Expanded and to Collapsed.
 
 ## Safe editing checklist
 
@@ -272,8 +350,20 @@ Why: only navigation tools use the compact static path; all other tools need obs
   (`lib/messages/inlineMessageLinks.ts`) that `markdownCore` renders as a span
   and `decorate.ts` gives its icon; the plain-text path builds the same chip
   directly. Brackets around anything that is not an attachment stay text.
-  A known skill (`/name`) renders as the same chip with the book icon and still
-  opens the skill file on click. The composer draws both chips too
+  In a sent message a citation opens what its attachment chip above the
+  message opens: one resolver (`lib/messages/attachmentPreview.ts`) decides for
+  both, and `message/useOpenAttachment.ts` carries it out per runtime. An image
+  opens the viewer, text sent inline (a pasted text, a picked text file) the
+  text dialog, a file attached by path (`file://`) the file itself, in the
+  editor in VS Code and a Files tab elsewhere. A citation whose file opens
+  nothing (a PDF sent inline, a folder) stays a label. Only `UserTextPart`
+  makes chips clickable: `withAttachmentChips` draws labels unless the caller
+  passes `isOpenable`, so the composer, the queue and context blocks get no
+  dead tab stops. A click that ends a text selection over a chip leaves it
+  closed.
+  A known skill (`$name`, or `/name` in messages sent before skills moved to
+  `$`) renders as the same chip with the book icon and still opens the skill
+  file on click. The composer draws both chips too
   (`composer/editor/composerLanguage.ts`).
 - User-attached context (inline code comments, terminal selections, browser
   annotations, PR comments/checks): `UserContextPart.tsx`. `UserTextPart`
@@ -285,6 +375,6 @@ Why: only navigation tools use the compact static path; all other tools need obs
   via text sniffing (`<terminal_context>` blocks, `GitHub issue context (JSON)`
   and `Linear issue context (JSON)` prefixes).
 - Tools: `ToolPart.tsx`, `ToolPartDiffPreview.tsx`, `PlainDiffFallback.tsx`, `ProgressiveGroup.tsx`, `toolPresentation.tsx`, `toolRenderUtils.ts`, `ToolRevealOnMount.tsx`, `GuestToolTable.tsx`
-- Reasoning/justification: `ReasoningPart.tsx`, `JustificationBlock.tsx`
-- Status/placeholders: `WorkingPlaceholder.tsx`, `SessionActiveSpinner.tsx`, `MigratingPart.tsx`, `BusyDots.tsx`
+- Reasoning: `ReasoningPart.tsx`
+- Status/placeholders: `WorkingPlaceholder.tsx`, `SessionActiveSpinner.tsx`, `MigratingPart.tsx`; the dots after a busy label are `components/ui/busy-dots.tsx`
 - Utility renderers: `VirtualizedCodeBlock.tsx`, `MinDurationShineText.tsx`

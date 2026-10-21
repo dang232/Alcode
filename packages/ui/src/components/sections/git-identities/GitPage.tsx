@@ -1,5 +1,5 @@
 import { isCompleteIdentity } from '@/lib/api/git-identity';
-import { identityAccountConnected, identityDisplayName } from '@/lib/source-control/identity';
+import { identityAccountConnected, identityDisplayName, unavailableAccountReason } from '@/lib/source-control/identity';
 import React from 'react';
 import { toast } from '@/components/ui';
 import {
@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useGitIdentitiesStore, type GitIdentityProfile } from '@/stores/useGitIdentitiesStore';
-import { useConnectedAccountIds, useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
+import { getSourceControlAuthKey, useConnectedAccountIds, useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useShallow } from 'zustand/react/shallow';
 import { GitSettings } from '@/components/sections/alcode/GitSettings';
@@ -129,7 +129,7 @@ export const GitPage: React.FC = () => {
           title={t('settings.gitIdentities.page.section.title')}
           headerAction={(
             <Button size="sm" variant="outline" onClick={() => openEditor('new')}>
-              <Icon name="add" className="w-3.5 h-3.5 mr-1" /> {t('settings.common.badge.new')}
+              <Icon name="add" className="w-3.5 h-3.5 me-1" /> {t('settings.common.badge.new')}
             </Button>
           )}
           settingsItem="git.identities"
@@ -232,14 +232,20 @@ const IdentityRow: React.FC<IdentityRowProps> = ({
 }) => {
   const { t } = useI18n();
   const connectedAccountIds = useConnectedAccountIds();
+  const authEntries = useSourceControlAuthStore((state) => state.entries);
   const [contextMenuOpen, setContextMenuOpen] = React.useState(false);
   const iconName = ICON_MAP[profile.icon || 'branch'] || 'git-branch';
-  // What keeps this identity from being chosen: a missing key, or an account
-  // that was disconnected.
+  // What keeps this identity from being chosen: a missing key, an account
+  // that was disconnected, or the gh CLI login while it is not in use.
+  const accountNoteKey = (account: NonNullable<GitIdentityProfile['account']>) => (
+    unavailableAccountReason(account, authEntries[getSourceControlAuthKey(account)]?.status?.accounts ?? null) === 'cli-not-in-use'
+      ? 'settings.gitIdentities.page.cliAccountInactive' as const
+      : 'settings.gitIdentities.page.accountGone' as const
+  );
   const noteKey = !isCompleteIdentity(profile)
     ? 'settings.gitIdentities.page.incomplete' as const
-    : !identityAccountConnected(profile, connectedAccountIds)
-      ? 'settings.gitIdentities.page.accountGone' as const
+    : profile.account && !identityAccountConnected(profile, connectedAccountIds)
+      ? accountNoteKey(profile.account)
       : null;
   const noteIsWarning = noteKey !== null;
   const iconColor = COLOR_MAP[profile.color || ''];
@@ -262,7 +268,7 @@ const IdentityRow: React.FC<IdentityRowProps> = ({
           onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(); }}
           className="text-destructive focus:text-destructive"
         >
-          <Icon name="delete-bin" className="h-4 w-4 mr-px" />
+          <Icon name="delete-bin" className="h-4 w-4 me-px" />
           {t('settings.common.actions.delete')}
         </Item>
       )}

@@ -3,7 +3,7 @@ import { createPortal, flushSync } from 'react-dom';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useChatColumnActions, useChatSessionSelection } from '../chatColumnSession';
 import { useInlineCommentDraftStore } from '@/stores/useInlineCommentDraftStore';
-import { useSessions } from '@/sync/sync-context';
+import { useSessionDirectory } from '@/sync/sync-context';
 import { useInputStore } from '@/sync/input-store';
 import { useUIStore } from '@/stores/useUIStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
@@ -28,6 +28,7 @@ import {
 import { rangeToMarkdown, trimSelectionValue, wrapMarkdownSelectionForChat } from './selectionMarkdown';
 import { registerActiveSelectionToolbar } from '@/lib/addSelectionToChat';
 import { collectSelectionOverlayRects } from '@/lib/selectionOverlayRects';
+import { frameRectInApp, onFrameSelection } from './frameSelection';
 import { captureChatQuoteAnchor, type ChatQuoteAnchor } from '@/lib/chatQuoteAnchor';
 import {
   DESKTOP_MENU_FALLBACK_HEIGHT_PX,
@@ -43,6 +44,12 @@ interface TextSelectionMenuProps {
   // the message's own read-aloud button.
   readingKey: string;
   canReadAloud: boolean;
+  // This menu answers to the selections made in the page frames inside its
+  // container (`openchamber_render`), not to the container's own text. Each
+  // page has its own such menu (HtmlRenderFrame), so a page works wherever it
+  // is drawn: in a message, in the live turn's hoisted pages, or full screen.
+  // `readingKey` is then the id of the message the page belongs to.
+  frameSelections?: boolean;
 }
 
 interface MenuPosition {
@@ -58,14 +65,20 @@ interface SelectionPayload {
   markdownText: string;
   rect: DOMRect;
   messageId: string | null;
-  range: Range;
+  // A selection inside a page frame has no Range: the app cannot reach it, so
+  // `measureRect` re-reads its box from the frame's current position, `anchor`
+  // is the one the page measured, and `clear` drops the page's own highlight.
+  range?: Range;
+  measureRect?: () => DOMRect;
+  anchor?: ChatQuoteAnchor;
+  clear?: () => void;
 }
 
 const normalizeDistilledInsight = (insight: string): string => (
   insight.trim().replace(/^[-*+]\s+/, '').slice(0, PROJECT_NOTE_BODY_MAX_LENGTH)
 );
 
-export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerRef, readingKey, canReadAloud }) => {
+const TextSelectionMenuImpl: React.FC<TextSelectionMenuProps> = ({ containerRef, readingKey, canReadAloud, frameSelections = false }) => {
   const { t } = useI18n();
   const { isPlaying: isReading, play: playReading, stop: stopReading } = useMessageTTS(readingKey);
   const [position, setPosition] = React.useState<MenuPosition>({ x: 0, y: 0, placement: 'above', show: false });
@@ -141,7 +154,9 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
   const projects = useProjectsStore((state) => state.projects);
   const availableWorktreesByProject = useSessionUIStore((state) => state.availableWorktreesByProject);
   const effectiveDirectory = useEffectiveDirectory();
-  const sessions = useSessions();
+  // A leaf read: the session list is replaced on every streamed step, while
+  // only this session's directory feeds the notes project fallback.
+  const currentSessionDirectory = useSessionDirectory(currentSessionId);
   const mobileCommentController = useMobileCommentComposerController();
   const mobileCommentDraft = useMobileCommentDraft(mobileCommentController);
   const mobileCommentActive = mobileCommentDraft.status === 'open';
@@ -166,11 +181,15 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
   }, []);
 
   const hideMenu = React.useCallback(() => {
+    const ended = pendingSelectionRef.current;
     pendingSelectionRef.current = null;
     anchorRectRef.current = null;
     activeAddToChatCleanupRef.current?.();
     activeAddToChatCleanupRef.current = null;
     setCommentRects(null);
+    // The menu stops tracking a page's selection: the page drops its highlight
+    // too. After the pending ref is null, so the report this triggers is a no-op.
+    ended?.clear?.();
 
     if (!isMenuVisibleRef.current) {
       return;
@@ -318,9 +337,9 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
       if (frame !== null) return;
       frame = window.requestAnimationFrame(() => {
         frame = null;
-        const range = pendingSelectionRef.current?.range;
-        if (!range) return;
-        const rect = range.getBoundingClientRect();
+        const pending = pendingSelectionRef.current;
+        const rect = pending?.range?.getBoundingClientRect() ?? pending?.measureRect?.();
+        if (!rect) return;
         anchorRectRef.current = rect;
         const boundary = containerRef.current
           ?.closest('[data-scrollbar="chat"], [data-selection-menu-boundary]')
@@ -376,6 +395,12 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
 
     const text = trimSelectionValue(selection.toString());
 
+    // A selection inside a page frame is the one the menu shows; the app's
+    // own selection was cleared for it, and that is no reason to close it.
+    if (!text && pendingSelectionRef.current && !pendingSelectionRef.current.range) {
+      return;
+    }
+
     // Only show if we have text and the selection is within our container
     if (!text) {
       if (!isDraggingRef.current) {
@@ -401,6 +426,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
     const anchorElement = range.commonAncestorContainer instanceof Element
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement;
+    const replaced = pendingSelectionRef.current;
     pendingSelectionRef.current = {
       plainText: text,
       markdownText: rangeToMarkdown(range, text),
@@ -408,6 +434,8 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
       messageId: anchorElement?.closest('[data-message-id]')?.getAttribute('data-message-id') ?? null,
       range: range.cloneRange(),
     };
+    // The app's selection takes over from one a page frame had.
+    replaced?.clear?.();
 
     // Only show menu if we're not currently dragging
     if (!isDraggingRef.current) {
@@ -439,8 +467,9 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
     // Track when dragging stops
     const handleMouseUp = () => {
       isDraggingRef.current = false;
-      // Check if we have a pending selection to show
-      if (pendingSelectionRef.current) {
+      // Check if we have a pending selection to show; one from a page frame
+      // is shown as it arrives, and the app has no selection of its own to check.
+      if (pendingSelectionRef.current?.range) {
         if (mouseUpTimeoutRef.current !== null) {
           window.clearTimeout(mouseUpTimeoutRef.current);
         }
@@ -498,6 +527,40 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
     };
   }, [containerRef, handleSelectionChange, hideMenu, showMenu]);
 
+  // A selection made inside a page frame (`openchamber_render`) arrives as an
+  // event from the frame, never through window.getSelection().
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !frameSelections) return;
+    return onFrameSelection(container, (selection, frame) => {
+      const text = trimSelectionValue(selection.text);
+      const isFrameSelection = Boolean(pendingSelectionRef.current && !pendingSelectionRef.current.range);
+      // Another page took the selection over: this menu closes, a comment
+      // in progress included.
+      if (!text && selection.dismiss) {
+        if (isFrameSelection) hideMenu();
+        return;
+      }
+      // An open comment, or the composer's, keeps its quote.
+      if (commentModeRef.current || mobileCommentActiveRef.current) return;
+      if (!text) {
+        if (isFrameSelection) hideMenu();
+        return;
+      }
+      const measureRect = () => frameRectInApp(frame, selection.rect);
+      pendingSelectionRef.current = {
+        plainText: text,
+        markdownText: text,
+        rect: measureRect(),
+        measureRect,
+        messageId: readingKey,
+        anchor: selection.anchor,
+        clear: selection.clear,
+      };
+      showMenu();
+    });
+  }, [containerRef, frameSelections, hideMenu, readingKey, showMenu]);
+
   const handleAddToChat = React.useCallback(() => {
     if (!selectedTextMarkdown) return;
     addMarkdownToChat(selectedTextMarkdown);
@@ -536,8 +599,10 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
   // it reads the whole message text.
   const captureCommentAnchor = React.useCallback((): ChatQuoteAnchor | null => {
     const container = containerRef.current;
-    const range = pendingSelectionRef.current?.range;
-    return container && range ? captureChatQuoteAnchor(container, range) : null;
+    const pending = pendingSelectionRef.current;
+    // A page's selection was anchored by the page, in its own text.
+    if (pending && !pending.range) return pending.anchor ?? null;
+    return container && pending?.range ? captureChatQuoteAnchor(container, pending.range) : null;
   }, [containerRef]);
 
   const openComment = React.useCallback((initialText: string) => {
@@ -630,19 +695,11 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
     });
   }, [addContextDraft, attachCitedImages, commentText, currentSessionId, effectiveDirectory, focusColumnInput, hideMenu, newSessionDraftOpen, selectedAnchor, selectedMessageId, selectedTextMarkdown, t]);
 
-  const currentSession = React.useMemo(() => {
-    if (!currentSessionId) {
-      return null;
-    }
-    return sessions.find((session) => session.id === currentSessionId) ?? null;
-  }, [currentSessionId, sessions]);
-
   const currentProjectRef = React.useMemo(() => {
-    const directory = effectiveDirectory
-      ?? (typeof currentSession?.directory === 'string' ? currentSession.directory : '');
+    const directory = effectiveDirectory ?? currentSessionDirectory ?? '';
     const resolved = resolveProjectForSessionDirectory(projects, availableWorktreesByProject, directory);
     return resolved ? { id: resolved.id, path: resolved.path } : null;
-  }, [availableWorktreesByProject, currentSession?.directory, effectiveDirectory, projects]);
+  }, [availableWorktreesByProject, currentSessionDirectory, effectiveDirectory, projects]);
 
   const handleAddToNotes = React.useCallback(async () => {
     if (!selectedText || !currentProjectRef) {
@@ -704,9 +761,9 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
   const commentInput = (
     <div
       className={cn(
-        'oc-glass-popover relative flex items-end gap-2 rounded-3xl border border-[var(--interactive-border)]',
-        'pl-4 shadow-[0_4px_16px_-4px_rgb(0_0_0_/_0.12)]',
-        'py-1 pr-1',
+        'oc-glass-popover oc-glass-floating relative flex items-end gap-2 rounded-3xl',
+        'ps-4',
+        'py-1 pe-1',
         'transition-[opacity,transform] duration-200 ease-out',
         isOpening ? 'opacity-0 translate-y-[4px]' : 'opacity-100 translate-y-0'
       )}
@@ -752,9 +809,9 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
       <div
         ref={menuRef}
         className={cn(
-          'fixed left-3 right-3 bottom-0 z-50 mx-auto max-w-[420px]',
-          'oc-glass-popover rounded-2xl border border-[var(--interactive-border)]',
-          'p-2 shadow-[0_4px_16px_-4px_rgb(0_0_0_/_0.12)]',
+          'fixed inset-s-3 inset-e-3 bottom-0 z-50 mx-auto max-w-[420px]',
+          'oc-glass-popover oc-glass-floating rounded-2xl',
+          'p-2',
           'safe-area-bottom',
           'transition-[opacity,transform] duration-200 ease-out will-change-[opacity,transform]',
           isOpening ? 'opacity-0 translate-y-[4px]' : 'opacity-100 translate-y-0'
@@ -771,7 +828,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
             <button
               onClick={handleOpenMobileComment}
               className={cn(
-                'flex flex-auto items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                'flex flex-auto items-center gap-2 rounded-xl px-3 py-2.5 text-start',
                 'text-sm font-medium leading-tight',
                 'bg-foreground/[0.04] text-foreground',
                 'active:opacity-80',
@@ -787,7 +844,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
             <button
               onClick={handleAddToChat}
               className={cn(
-                'flex flex-[1_0_auto] items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                'flex flex-[1_0_auto] items-center gap-2 rounded-xl px-3 py-2.5 text-start',
                 'text-sm font-medium leading-tight',
                 'bg-[var(--primary-base)] text-[var(--primary-foreground)]',
                 'active:opacity-80',
@@ -804,7 +861,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
               <button
                 onClick={handleReadAloud}
                 className={cn(
-                  'flex flex-[1_0_auto] items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                  'flex flex-[1_0_auto] items-center gap-2 rounded-xl px-3 py-2.5 text-start',
                   'text-sm font-medium leading-tight',
                   'bg-foreground/[0.04] text-foreground',
                   'active:opacity-80',
@@ -813,7 +870,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
                 title={readAloudLabel}
                 type="button"
               >
-                <Icon name="volume-up" className={cn('h-5 w-5 flex-shrink-0', isReading && 'animate-pulse text-[var(--primary-text)]')} />
+                <Icon name="volume-up" className={cn('h-5 w-5 flex-shrink-0', isReading && 'text-[var(--primary-text)]')} />
                 <span className="whitespace-normal hyphens-auto">
                   {isReading ? t('chat.textSelection.actions.stopReading') : t('chat.textSelection.actions.read')}
                 </span>
@@ -826,7 +883,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
               <button
                 onClick={handleAskAlcode}
                 className={cn(
-                  'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                  'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-start',
                   'text-sm font-medium leading-tight',
                   'bg-foreground/[0.04] text-foreground',
                   'active:opacity-80',
@@ -845,7 +902,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
                 onClick={handleAddToNotes}
                 disabled={isAddingToNotes}
                 className={cn(
-                  'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                  'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-start',
                   'text-sm font-medium leading-tight',
                   'bg-foreground/[0.04] text-foreground',
                   'active:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed',
@@ -865,7 +922,13 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
     );
   }
 
-  // Desktop: Show as a popup above the selection
+  // Desktop: Show as a popup above the selection. A page shown full screen
+  // lives in a modal dialog, which keeps everything outside it inert and
+  // behind it: the menu then renders inside the dialog, where it can be used.
+  // The popup has no transform when open, so `fixed` still means the viewport.
+  const menuPortalTarget = (frameSelections
+    ? containerRef.current?.closest<HTMLElement>('[data-slot="dialog-content"]')
+    : null) ?? document.body;
   return createPortal(
     <div
       ref={menuRef}
@@ -880,8 +943,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
         <div
           className={cn(
             'flex items-center whitespace-nowrap',
-            'oc-glass-popover rounded-full border border-[var(--interactive-border)]',
-            'shadow-[0_4px_16px_-4px_rgb(0_0_0_/_0.12)]',
+            'oc-glass-popover oc-glass-floating rounded-full',
             'p-1',
             'transition-[opacity,transform] duration-200 ease-out',
             isOpening ? 'opacity-0 translate-y-[4px]' : 'opacity-100 translate-y-0'
@@ -961,13 +1023,17 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
                 title={readAloudLabel}
                 type="button"
               >
-                <Icon name="volume-up" className={cn('h-4 w-4', isReading && 'animate-pulse')} />
+                <Icon name="volume-up" className={cn('h-4 w-4', isReading && 'text-[var(--primary-text)]')} />
               </button>
             </>
           ) : null}
         </div>
       )}
     </div>,
-    document.body
+    menuPortalTarget
   );
 };
+
+// Rendered by every assistant message, which re-renders on each streamed
+// chunk; its props (a ref, the message id, a flag) do not change then.
+export const TextSelectionMenu = React.memo(TextSelectionMenuImpl);

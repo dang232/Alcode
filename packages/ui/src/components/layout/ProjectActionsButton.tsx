@@ -80,9 +80,8 @@ interface ProjectActionsButtonProps {
 const AUTO_DISCOVER_ACTION_ID = '__alcode_auto_discover_preview__';
 const AUTO_DISCOVER_PREVIEW_WAIT_TIMEOUT_MS = 15_000;
 /**
- * How long to keep listening after the first server announces itself. A project
- * that starts several at once staggers them by a second or two, and opening the
- * first to speak would just be a race.
+ * The Work Status row: runs or stops the action it shows, and its chevron
+ * picks another. The runner itself lives in `ProjectActionsProvider`.
  */
 const AUTO_DISCOVER_SETTLE_MS = 3_000;
 

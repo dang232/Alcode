@@ -1,6 +1,6 @@
 # Registration boundary
 
-Application commands use `useKeybind(actionId, handler)` or `useKeybinds(bindings)`. Both accept only action IDs derived from `SHORTCUT_SCHEMA`. Batch registration also rejects undeclared keys in prebuilt objects, including objects that mix valid and misspelled IDs. Both hooks use the shared `shortcutRegistry`, so components never receive a registry. The first registration for an action ID wins until it unregisters, then the next mounted registration takes over. A component-local interaction, such as editor navigation or an open menu, remains local event handling rather than a registered application command.
+Application commands use `useKeybind(actionId, handler)` or `useKeybinds(bindings)`. Both accept only action IDs derived from `SHORTCUT_SCHEMA`. Batch registration also rejects undeclared keys in prebuilt objects, including objects that mix valid and misspelled IDs. Both hooks use the shared `shortcutRegistry`, so components never receive a registry. Registrations for one action ID are asked in the order they were made: the first one handles the key, and when it returns `false` the next one is asked. Several retained surfaces can therefore register one contextual command (`find_in_file` in Files, Changes and the walkthrough), each declining while it does not own the key. A component-local interaction, such as editor navigation or an open menu, remains local event handling rather than a registered application command.
 
 Do not add a component-level `window` or `document` keydown listener for an application command. Declare the action in `config.ts`, then register its handler near the state or UI it owns. This keeps definitions and dispatch centralized without lifting component state or passing callbacks through unrelated components.
 
@@ -10,7 +10,7 @@ Do not add a component-level `window` or `document` keydown listener for an appl
 
 Configuration must not contain lookup functions, override resolution, event matching, registry state, or runtime handlers. Those concerns belong to the owning modules below. Keeping configuration declarative makes the complete shortcut inventory reviewable without reading execution code.
 
-The `desktop` group is the one exception to the Settings-order rule: it holds OS-level commands registered with the operating system by the desktop shell instead of being dispatched in-app. Its entries are unassigned by default, never render in the Settings shortcut list, and still take part in conflict checks — the settings page feeds the active desktop combo into the recorder as a conflict source, and replacing it releases the desktop setting rather than an override. `mini_chat_global` is the current example.
+The `desktop` group is the one exception to the Settings-order rule: it holds OS-level commands registered with the operating system by the desktop shell instead of being dispatched in-app. Its entries are unassigned by default, never render in the Settings shortcut list, and still take part in conflict checks — the settings page feeds the active desktop combo into the recorder as a conflict source, and replacing it releases the desktop setting rather than an override. `mini_chat_global` and `quake_mode_global` are the current entries. Releasing Mini Chat clears its setting, which has no default. Releasing Quake Mode stores the unassigned value, because a cleared Quake setting falls back to its default ``Ctrl+` `` and would take the combo back.
 
 Component interaction keys that are not application commands, such as list navigation or text editing, do not belong in the schema. Contextual application commands do belong there even when they are not customizable; `save_file` and `find_in_file` are examples.
 
@@ -49,7 +49,9 @@ Shared `DropdownMenu` and `Select` can opt into this boundary with `disableGloba
 
 Terminal capture, Escape abort priming, and the shifted reverse-agent chord are input-boundary exceptions. They preserve their target-specific semantics and invoke the registered application handler rather than duplicating command behavior.
 
-`[data-btw-composer="true"]` owns Escape instead of main-session abort priming.
+Escape abort priming listens in the window bubble phase and only counts an Escape whose target is a chat composer editor (`[data-chat-input="true"]`) and that nothing prevented first. Escape from anywhere else, an Escape the composer spent on its own state (a picker, shell mode, the expanded input, a selection), IME composition, an open dropdown, or an open overlay clears the priming. `[data-btw-composer="true"]` owns Escape instead of main-session abort priming.
+
+A key the application route leaves unhandled, a paste, and the window regaining focus go through the composer input redirect (`components/chat/composer/editor/inputRedirect.ts`) last, so text typed with nothing focused lands in a chat composer. It never takes a key a shortcut or sequence consumed.
 While active, main and Mini Chat model/effort shortcuts yield; main agent,
 expansion and dictation shortcuts also yield. Footer unmounting alone cannot
 disable these global registrations or protect the parent composer's selection.
@@ -61,7 +63,7 @@ Local key handling remains appropriate for text editing, IME composition, menu a
 1. Add the command to the matching group in `config.ts`. Use a stable action ID and a normalized default binding. Keep sequences to at most two chords.
 2. Mark the command `customizable: true` only when it should appear in Settings. Add its `settingsLabelKey` and provide that key in every locale in the same change.
 3. Register the handler with `useKeybind` or `useKeybinds` near the state or UI that owns the behavior. Do not pass shortcut callbacks through unrelated components or move local UI state into a global store.
-4. Return `false` when the mounted handler is not applicable in the current runtime or focus context. This lets another command sharing the binding or prefix continue dispatching.
+4. Return `false` when the mounted handler is not applicable in the current runtime or focus context. This lets another registration of the same action, or another command sharing the binding or prefix, continue dispatching.
 5. Add or update schema, binding, registry, or dispatcher tests for the changed contract. Update Help Dialog metadata when the command should be discoverable there.
 
 # Best practices

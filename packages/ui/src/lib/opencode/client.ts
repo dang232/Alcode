@@ -30,14 +30,16 @@ import { FilesystemError, parseFilesystemErrorReason } from "@/lib/api/files-err
 import type { ContextPartMetadata } from "@/lib/messages/contextParts"
 import { getRuntimeUrlResolver } from "@/lib/runtime-url"
 import { runtimeFetch } from "@/lib/runtime-fetch"
-import { isSpaceDirectory } from "@/lib/spaces/space-route"
-import { spaceMarkSchema, type SpaceMark } from "@/lib/spaces/spaces-store"
+import { isRelayModeActive } from "@/lib/relay/runtime-tunnel"
+import { isSpaceDirectory, spaceIdOfDirectory } from "@/lib/spaces/space-route"
+import { getSpaceMark, spaceMarkSchema, type SpaceMark } from "@/lib/spaces/spaces-store"
 import { getRuntimeKey } from "@/lib/runtime-switch"
 import { getRegisteredRuntimeAPIs } from "@/contexts/runtimeAPIRegistry"
 import { markStartupTrace } from "@/lib/startupTrace"
 import { assertProviderCircuitClosed, recordProviderError, recordProviderSuccess } from "./provider-tracker"
 import { ensureAlcoreProviderReady } from "@/lib/alcore/alcoreReadiness"
 import { normalizePath } from "@/lib/pathNormalization"
+import { PART_SHELLS_HEADER, PART_SHELLS_VERSION } from "./toolContentShells"
 import { isAutoModel } from "@/lib/routing/autoModel"
 import { activeSessionSnapshotSchema, hostSessionStatusSnapshotSchema, type HostSessionStatusSnapshot } from "./session-status"
 import {
@@ -50,6 +52,7 @@ import {
   type Metadata,
   type Model,
   type ModelRef,
+  type ModelSelection,
   type Part,
   type PermissionReply,
   type PermissionRequest,
@@ -58,13 +61,27 @@ import {
   type Session,
   type SessionStatus,
   type Skill,
+  type SyntheticMessage,
+  type UserMessage,
   type Vcs,
+  toModelRef,
 } from "./model"
 import { ascendingId } from "./ids"
-import { runningShellFromWire, shellCancellationNote, type RunningShell } from "./background-shell"
+import { runningShellFromWire, shellCancellationNote, type RunningShell, type ShellToStop } from "./background-shell"
 import { subagentCancellationNote } from "./subagent-run"
 import { toJsonRecord } from "./json"
-import { deniesAnyProvider, mergeConfigDocuments, projectAgent, projectMessages, projectProject, projectSession, projectVcs } from "./projection"
+import {
+  deniesAnyProvider,
+  mergeConfigDocuments,
+  projectAgent,
+  projectInboxMessage,
+  projectMessages,
+  projectProject,
+  projectSession,
+  projectVcs,
+  readIntegrationPolicies,
+  type IntegrationPolicy,
+} from "./projection"
 
 export type { OpenCodeClient }
 
@@ -160,9 +177,9 @@ const validateRuntimeResponse = (response: Response): Response => {
 
 /**
  * Turns whatever the generated client threw into an `OpencodeApiError` with a
- * status the rest of the app can branch on. Transport failures keep their
- * relay "outcome unknown" marker so a lost response is not mistaken for a
- * request that never left.
+ * status the rest of the app can branch on. A transport failure is marked
+ * "outcome unknown" so a lost response is not mistaken for a request that never
+ * left; a routing failure proves the opposite and stays definite.
  */
 export function normalizeOpencodeError(operation: string, error: unknown): OpencodeApiError {
   if (error instanceof OpencodeApiError) return error
@@ -184,9 +201,12 @@ export function normalizeOpencodeError(operation: string, error: unknown): Openc
     const wrapped = new OpencodeApiError(operation, error.reason === "Transport" ? "transport failure" : error.reason, {
       cause: error.cause ?? error,
     })
-    if (error.reason === "Transport" && isAmbiguousTransportFailure(error.cause)) {
-      markAmbiguousTransportFailure(wrapped)
-    }
+    // A `Transport` reason means the request was handed to fetch and the
+    // response (or the connection carrying it) was lost. The outcome is
+    // therefore unknown: the server may already be running it. Only a routing
+    // failure proves the request never reached the API, and that is marked
+    // definite above.
+    if (error.reason === "Transport") markAmbiguousTransportFailure(wrapped)
     return wrapped
   }
   const tagged = taggedErrorSchema.safeParse(error)
@@ -207,7 +227,7 @@ export function normalizeOpencodeError(operation: string, error: unknown): Openc
 }
 
 /**
- * Skills the user named inline with `/name`, in order of appearance. They are
+ * Skills the user named with `$name`, in order of appearance. They are
  * attached to the prompt by id so OpenCode loads each one with the message,
  * whatever the session is doing; a name that cannot be attached falls back to
  * the instruction the caller builds for it.
@@ -315,6 +335,9 @@ type RuntimeOpencodeClientConfig = {
  * path (since 2.0.15), so it wants the root the `/api` mount hangs off, not
  * the mount itself. Our base URLs name the mount, so drop that last segment.
  */
+const PART_SHELLS_CAPABILITY = "api.message-part-shells.v1"
+const serverCapabilitiesSchema = z.object({ compatibility: z.object({ capabilities: z.array(z.string()) }) })
+
 const toOpencodeClientRoot = (baseUrl: string): string => baseUrl.replace(/\/api\/*$/, "") || "/"
 
 export const createRuntimeOpencodeClient = (config: RuntimeOpencodeClientConfig): OpenCodeClient => {
@@ -428,6 +451,16 @@ export type MessagePage = {
   cursor: { previous?: string; next?: string }
 }
 
+/**
+ * A message a session's pending OpenCode inbox item stands for, projected the
+ * way `session.inbox.enqueued` paints it live. Control items (compaction,
+ * move) paint nothing and are left out.
+ */
+export type PendingInboxMessage = {
+  info: UserMessage | SyntheticMessage
+  parts: Part[] | null
+}
+
 export type SessionPage = {
   sessions: Session[]
   cursor: { previous?: string; next?: string }
@@ -478,7 +511,93 @@ type DirectoryAvailability = "available" | "missing" | "unknown"
 type PendingRequestListOptions = {
   directories?: Array<string | null | undefined>
 }
-const directoryProbeErrorSchema = z.object({ reason: z.string().optional(), isDirectory: z.boolean().optional() })
+const directoryStatsSchema = z.object({
+  results: z.array(z.object({
+    path: z.string(),
+    isDirectory: z.boolean().optional(),
+    reason: z.string().optional(),
+  })).optional(),
+})
+
+// `getDirectoryAvailability` runs once per project row at startup, so an
+// unbatched probe costs a round trip and a header set per project for a single
+// boolean. Probes admitted within the same short window share one
+// `/api/fs/directory-stats` request.
+const DIRECTORY_AVAILABILITY_BATCH_WINDOW_MS = 15
+const DIRECTORY_AVAILABILITY_BATCH_MAX_PATHS = 200
+
+let pendingDirectoryAvailability: {
+  runtimeKey: string
+  waiters: Map<string, Array<(value: DirectoryAvailability) => void>>
+  timer: ReturnType<typeof setTimeout> | null
+} | null = null
+
+const flushDirectoryAvailability = async (): Promise<void> => {
+  const batch = pendingDirectoryAvailability
+  pendingDirectoryAvailability = null
+  if (!batch) return
+
+  // A runtime switch between admission and flush would send these paths to the
+  // new runtime; report `unknown` rather than pair old context with a new base.
+  if (batch.runtimeKey !== getRuntimeKey()) {
+    for (const waiters of batch.waiters.values()) {
+      for (const resolve of waiters) resolve("unknown")
+    }
+    return
+  }
+
+  const paths = [...batch.waiters.keys()]
+  // Chunk above the server's per-request cap so every path is read instead of
+  // the whole request failing.
+  const chunks: string[][] = []
+  for (let index = 0; index < paths.length; index += DIRECTORY_AVAILABILITY_BATCH_MAX_PATHS) {
+    chunks.push(paths.slice(index, index + DIRECTORY_AVAILABILITY_BATCH_MAX_PATHS))
+  }
+
+  const results = new Map<string, DirectoryAvailability>()
+  await Promise.all(chunks.map(async (chunk) => {
+    try {
+      const response = await runtimeFetch("/api/fs/directory-stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: chunk }),
+      })
+      const body = directoryStatsSchema.safeParse(await response.json().catch(() => null)).data
+      for (const entry of body?.results ?? []) {
+        if (entry.isDirectory === true) {
+          results.set(entry.path, "available")
+          continue
+        }
+        const reason = parseFilesystemErrorReason(entry.reason)
+        results.set(entry.path, reason === "not-found" || reason === "not-directory" ? "missing" : "unknown")
+      }
+    } catch {
+      // Transport failure: this chunk's waiters stay `unknown`, matching the single probe.
+    }
+  }))
+
+  for (const [directory, waiters] of batch.waiters) {
+    const value = results.get(directory) ?? "unknown"
+    for (const resolve of waiters) resolve(value)
+  }
+}
+
+const readDirectoryAvailability = (normalized: string): Promise<DirectoryAvailability> => {
+  if (!pendingDirectoryAvailability) {
+    pendingDirectoryAvailability = { runtimeKey: getRuntimeKey(), waiters: new Map(), timer: null }
+  }
+  const batch = pendingDirectoryAvailability
+  return new Promise<DirectoryAvailability>((resolve) => {
+    const waiters = batch.waiters.get(normalized) ?? []
+    waiters.push(resolve)
+    batch.waiters.set(normalized, waiters)
+    if (batch.timer === null) {
+      batch.timer = setTimeout(() => {
+        void flushDirectoryAvailability()
+      }, DIRECTORY_AVAILABILITY_BATCH_WINDOW_MS)
+    }
+  })
+}
 
 const normalizeFsPath = (path: string): string => path.replace(/\\/g, "/")
 const FS_LIST_CACHE_TTL_MS = 400
@@ -533,6 +652,9 @@ class OpencodeService {
   private client: OpenCodeClient
   private baseUrl: string
   private scopedClients: Map<string, OpenCodeClient> = new Map()
+  /** Whether each runtime's server shells message pages; absent until known. */
+  private partShellsSupport = new Map<string, boolean>()
+  private partShellsChecks = new Map<string, Promise<void>>()
   private currentDirectory: string | undefined = undefined
   private directoryContextQueue: Promise<void> = Promise.resolve()
   private listDirectoryInFlight: Map<string, Promise<FilesystemEntry[]>> = new Map()
@@ -597,6 +719,13 @@ class OpencodeService {
     const scoped = createRuntimeOpencodeClient({ baseUrl: this.baseUrl, directory: normalized })
     this.scopedClients.set(key, scoped)
     return scoped
+  }
+
+  /** The host's client in the project a space was made from, unscoped while that is unknown. */
+  private hostClientOfSpace(directory: string | undefined): OpenCodeClient {
+    const spaceId = spaceIdOfDirectory(directory)
+    const projectDirectory = spaceId ? getSpaceMark(spaceId)?.projectDirectory : null
+    return projectDirectory ? this.getScopedSdkClient(projectDirectory) : this.client
   }
 
   /** Client for an explicit directory, else the current one, else unscoped. */
@@ -826,15 +955,7 @@ class OpencodeService {
     if (!normalized) {
       return "unknown"
     }
-    try {
-      const response = await runtimeFetch("/api/fs/directory-stat", { query: { path: normalized } })
-      const body = directoryProbeErrorSchema.safeParse(await response.json().catch(() => null)).data
-      if (response.ok && body?.isDirectory === true) return "available"
-      const reason = parseFilesystemErrorReason(body?.reason)
-      return reason === "not-found" || reason === "not-directory" ? "missing" : "unknown"
-    } catch {
-      return "unknown"
-    }
+    return readDirectoryAvailability(normalized)
   }
 
   // -------------------------------------------------------------------------
@@ -870,7 +991,7 @@ class OpencodeService {
   }
 
   async createSession(
-    params?: { id?: string; title?: string; agent?: string; model?: ModelRef; metadata?: Metadata },
+    params?: { id?: string; title?: string; agent?: string; model?: ModelSelection; metadata?: Metadata },
     directory?: string | null,
   ): Promise<Session> {
     const requestDirectory = this.resolveDirectory(directory)
@@ -882,7 +1003,7 @@ class OpencodeService {
         // Auto is Alcode's sentinel, not a model OpenCode can start a
         // session on; the first send puts the session on Auto through the
         // model switch the server intercepts.
-        model: params?.model && isAutoModel(params.model.providerID, params.model.id) ? undefined : params?.model,
+        model: !params?.model || isAutoModel(params.model.providerID, params.model.id) ? undefined : toModelRef(params.model),
         location: requestDirectory ? { directory: requestDirectory } : undefined,
         metadata: params?.metadata,
       }),
@@ -915,8 +1036,8 @@ class OpencodeService {
     )
   }
 
-  async switchSessionModel(id: string, model: ModelRef, directory?: string | null): Promise<void> {
-    await call("session.switchModel", () => this.clientFor(directory).session.switchModel({ sessionID: id, model }))
+  async switchSessionModel(id: string, model: ModelSelection, directory?: string | null): Promise<void> {
+    await call("session.switchModel", () => this.clientFor(directory).session.switchModel({ sessionID: id, model: toModelRef(model) }))
   }
 
   async switchSessionAgent(id: string, agent: string, directory?: string | null): Promise<void> {
@@ -931,26 +1052,99 @@ class OpencodeService {
    * one, so a caller walking history would always need one more empty request
    * to learn it is done. A page shorter than the requested limit is the last
    * page, and its `next` is dropped here so `next` means "more" to callers.
+   *
+   * `partShells` asks the server for finished tool results left out of the
+   * page (`toolContentShells.ts`).
    */
   async getSessionMessages(
     id: string,
-    options?: { limit?: number; cursor?: string; order?: "asc" | "desc" },
+    options?: { limit?: number; cursor?: string; order?: "asc" | "desc"; partShells?: boolean },
     directory?: string | null,
   ): Promise<MessagePage> {
-    const response = await call("message.list", () =>
-      this.clientFor(directory).message.list({
-        sessionID: id,
-        limit: options?.limit,
-        cursor: options?.cursor,
-        order: options?.cursor ? undefined : options?.order,
-      }),
+    const list = (headers?: Record<string, string>) => call("message.list", () =>
+      this.clientFor(directory).message.list(
+        {
+          sessionID: id,
+          limit: options?.limit,
+          cursor: options?.cursor,
+          order: options?.cursor ? undefined : options?.order,
+        },
+        headers ? { headers } : undefined,
+      ),
     )
+    let response: Awaited<ReturnType<typeof list>>
+    if (options?.partShells && this.serverShellsMessagePages()) {
+      try {
+        response = await list({ [PART_SHELLS_HEADER]: PART_SHELLS_VERSION })
+      } catch (error) {
+        // Something between this client and the server (a CORS allow-list, a
+        // proxy) may refuse the header even though the server lists the
+        // capability. When the plain page works, this runtime stops asking.
+        // The relay tunnel has neither, so a failure there is the connection
+        // dropping, and the caller's retry asks for the shelled page again.
+        if (isRelayModeActive()) throw error
+        response = await list().catch(() => { throw error })
+        this.partShellsSupport.set(getRuntimeKey(), false)
+      }
+    } else {
+      response = await list()
+    }
     const items = projectMessages(response.data, id).map(({ message, parts }) => ({ info: message, parts }))
     const lastPage = options?.limit !== undefined && items.length < options.limit
     return {
       items,
       cursor: pageCursor({ ...response.cursor, next: lastPage ? undefined : response.cursor.next }),
     }
+  }
+
+  /**
+   * Pending items of one session's OpenCode inbox.
+   *
+   * A prompt steered into a running turn is not part of the message history
+   * until OpenCode admits it, so a client that starts (or restarts) while the
+   * session is busy has to read the inbox to paint those messages again.
+   */
+  async getSessionInbox(
+    id: string,
+    directory?: string | null,
+  ): Promise<readonly PendingInboxMessage[]> {
+    const items = await call("session.inbox.list", () =>
+      this.clientFor(directory).session.inbox.list({ sessionID: id }),
+    )
+    return items.flatMap((item) => {
+      const projected = projectInboxMessage(item, { sessionID: id, messageID: item.id, created: item.time.created })
+      return projected ? [projected] : []
+    })
+  }
+
+  /**
+   * Whether the connected server honours `PART_SHELLS_HEADER`. An older server
+   * on another origin would refuse the unknown header at CORS preflight and
+   * fail the whole page, so the header is sent only to a server that lists the
+   * capability. The answer is learned once per runtime, off the page's path:
+   * pages fetched before it arrives are whole.
+   */
+  /** Starts learning whether this runtime's server shells message pages, so the first session opened can use it. */
+  learnMessagePageShellsSupport(): void {
+    this.serverShellsMessagePages()
+  }
+
+  private serverShellsMessagePages(): boolean {
+    const runtimeKey = getRuntimeKey()
+    const known = this.partShellsSupport.get(runtimeKey)
+    if (known !== undefined) return known
+    if (!this.partShellsChecks.has(runtimeKey)) {
+      const check = runtimeFetch("/api/version", { headers: { Accept: "application/json" }, cache: "no-store" })
+        .then(async (response) => {
+          const parsed = serverCapabilitiesSchema.safeParse(response.ok ? await response.json().catch(() => null) : null)
+          this.partShellsSupport.set(runtimeKey, parsed.success && parsed.data.compatibility.capabilities.includes(PART_SHELLS_CAPABILITY))
+        })
+        // Unreachable is not an answer; the next page asks again.
+        .catch(() => undefined)
+        .finally(() => this.partShellsChecks.delete(runtimeKey))
+      this.partShellsChecks.set(runtimeKey, check)
+    }
+    return false
   }
 
   async getSessionMessage(id: string, messageID: string, directory?: string | null): Promise<{ info: Message; parts: Part[] }> {
@@ -1103,7 +1297,7 @@ class OpencodeService {
    */
   private async applySendSelection(
     sessionID: string,
-    selection: { model?: ModelRef; agent?: string },
+    selection: { model?: ModelSelection; agent?: string },
     directory: string | null | undefined,
     runtimeKey: string | undefined,
   ): Promise<void> {
@@ -1130,7 +1324,7 @@ class OpencodeService {
     runtimeKey?: string
     id: string
     /** Switch the session to this model before sending; omit when unchanged. */
-    model?: ModelRef
+    model?: ModelSelection
     /** Switch the session to this agent before sending; omit when unchanged. */
     agent?: string
     /** Provider the prompt will run on, for the provider circuit breaker. */
@@ -1249,7 +1443,7 @@ class OpencodeService {
   async sendCommand(params: {
     runtimeKey?: string
     id: string
-    model?: ModelRef
+    model?: ModelSelection
     agent?: string
     command: string
     arguments?: string
@@ -1323,7 +1517,11 @@ class OpencodeService {
     return id
   }
 
-  /** Stages a revert to before `messageId`; nothing changes until {@link commitRevert}. */
+  /**
+   * Stages a revert to before `messageId`: the later messages hide and their
+   * file changes roll back. The next prompt commits it on the server;
+   * {@link clearRevert} puts everything back.
+   */
   async stageRevert(sessionId: string, messageId: string, options?: { files?: boolean; directory?: string | null }): Promise<SessionRevert> {
     return call("session.revert.stage", () =>
       this.clientFor(options?.directory).session.revert.stage({
@@ -1332,10 +1530,6 @@ class OpencodeService {
         files: options?.files,
       }),
     )
-  }
-
-  async commitRevert(sessionId: string, directory?: string | null): Promise<void> {
-    await call("session.revert.commit", () => this.clientFor(directory).session.revert.commit({ sessionID: sessionId }))
   }
 
   async clearRevert(sessionId: string, directory?: string | null): Promise<void> {
@@ -1460,9 +1654,9 @@ class OpencodeService {
   }
 
   /** One stateless generation with the server's default model unless `model` is given. */
-  async generateText(prompt: string, options?: { model?: ModelRef; directory?: string | null }): Promise<string> {
+  async generateText(prompt: string, options?: { model?: ModelSelection; directory?: string | null }): Promise<string> {
     const result = await call("generate.text", () =>
-      this.clientFor(options?.directory).generate.text({ prompt, model: options?.model }),
+      this.clientFor(options?.directory).generate.text({ prompt, model: options?.model ? toModelRef(options.model) : undefined }),
     )
     return result.text
   }
@@ -1586,20 +1780,20 @@ class OpencodeService {
   }
 
   /**
-   * Stops a background command the agent started. The agent is told first,
-   * in a note that does not wake it, that the error OpenCode is about to
-   * report is the user's stop (see `shellCancellationNote`); the command is
-   * killed only once the note is in. Throws when either step fails, and
-   * nothing is killed when the note could not be delivered.
+   * Stops background commands one session started. The agent is told first,
+   * in one note that does not wake it, that the errors OpenCode is about to
+   * report are the user's stop (see `shellCancellationNote`); the commands
+   * are killed together only once the note is in, so their completions reach
+   * the agent at about the same time. Throws when the note or any kill
+   * fails; nothing is killed when the note could not be delivered, and a
+   * failed kill leaves the other commands stopped.
    */
-  async stopBackgroundShell(params: {
+  async stopBackgroundShells(params: {
     sessionID: string
     sessionDirectory?: string | null
-    shellID: string
-    shellDirectory: string
-    command: string
+    shells: readonly [ShellToStop, ...ShellToStop[]]
   }): Promise<void> {
-    const note = shellCancellationNote({ shellID: params.shellID, command: params.command })
+    const note = shellCancellationNote(params.shells)
     await call("session.synthetic", () =>
       this.clientFor(params.sessionDirectory).session.synthetic({
         sessionID: params.sessionID,
@@ -1609,7 +1803,11 @@ class OpencodeService {
         resume: false,
       }),
     )
-    await call("shell.remove", () => this.clientFor(params.shellDirectory).shell.remove({ id: params.shellID }))
+    const removals = await Promise.allSettled(params.shells.map((shell) =>
+      call("shell.remove", () => this.clientFor(shell.shellDirectory).shell.remove({ id: shell.shellID })),
+    ))
+    const failure = removals.find((result) => result.status === "rejected")
+    if (failure) throw failure.reason
   }
 
   /**
@@ -1665,6 +1863,12 @@ class OpencodeService {
     return deniesAnyProvider(entries)
   }
 
+  /** The `integration.use` statements OpenCode's config applies to MCP servers and skills in a directory. */
+  async getIntegrationPolicies(directory?: string | null): Promise<IntegrationPolicy[]> {
+    const entries = await call("config.get", () => this.clientFor(this.resolveDirectory(directory)).config.get())
+    return readIntegrationPolicies(entries)
+  }
+
   /** Effective configuration for a directory: every discovered document folded, highest priority last. */
   async getConfig(directory?: string | null): Promise<Config> {
     const effectiveDirectory = this.resolveDirectory(directory)
@@ -1717,7 +1921,17 @@ class OpencodeService {
    *
    * The providers of a directory inside an isolated space are the host's: a space offers the
    * host's catalog, and the host refuses its provider routes across the boundary, so they are
-   * asked of the host with no directory. Models and the default come from the space as usual.
+   * asked of the host, in the project the space was made from. A provider that project's own
+   * opencode.json defines exists on the host there and nowhere else, and a space can be granted
+   * it; asked with no directory, its models had no provider to be picked under. While the space's
+   * project is unknown they are asked with no directory. Models and the default come from the
+   * space as usual.
+   *
+   * Models are read before providers. Since OpenCode 2.0.27 the model routes wait for the
+   * directory's plugins to activate, and the provider route does not: asked together in a
+   * directory OpenCode has not started, providers answer empty beside a full model list. For a
+   * space the providers come from another location than the models, the host project, which may
+   * have stopped; its own model route is read beside the space's for the same wait.
    *
    * `fresh`: a request already in flight started before the caller's reason to re-read (a
    * catalog event), so it may carry the old catalog. Wait it out and read again.
@@ -1737,12 +1951,15 @@ class OpencodeService {
 
     const request = (async () => {
       const client = this.clientFor(effectiveDirectory)
-      const providerClient = isSpaceDirectory(effectiveDirectory) ? this.client : client
-      const [providers, models, fallback] = await Promise.all([
-        call("provider.list", () => providerClient.provider.list().then((r) => r.data)),
+      const providerClient = isSpaceDirectory(effectiveDirectory) ? this.hostClientOfSpace(effectiveDirectory) : client
+      const [models, fallback] = await Promise.all([
         call("model.list", () => client.model.list().then((r) => r.data)),
         call("model.default", () => client.model.default().then((r) => r.data)).catch(() => undefined),
+        providerClient !== client && providerClient !== this.client
+          ? call("model.list", () => providerClient.model.list()).catch(() => undefined)
+          : undefined,
       ])
+      const providers = await call("provider.list", () => providerClient.provider.list().then((r) => r.data))
       return compact({
         providers,
         models: models.map((model) => (
@@ -1854,15 +2071,22 @@ class OpencodeService {
    * server did not answer (network error or timeout); "unhealthy" means it
    * answered but OpenCode is not ready.
    */
-  async probeHealth(): Promise<OpencodeHealthProbe> {
+  async probeHealth(options?: { waitMs?: number }): Promise<OpencodeHealthProbe> {
+    // `waitMs` asks the OpenChamber server to hold an unhealthy answer until
+    // OpenCode is ready or the wait runs out. Hosts that predate the wait
+    // (and the VS Code bridge) ignore it and answer at once.
+    const waitMs = Math.max(0, Math.floor(options?.waitMs ?? 0))
     const normalizedBase = this.baseUrl.endsWith("/") ? this.baseUrl.replace(/\/+$/, "") : this.baseUrl
     const healthUrl =
       normalizedBase === "/api" || normalizedBase.endsWith("/api") ? "/api/opencode/health" : `${normalizedBase}/opencode/health`
     markStartupTrace("opencodeClient.checkHealth:url", { baseUrl: this.baseUrl, healthUrl })
     let response: Response
     try {
-      const timeout = createTimeoutSignal(OPENCODE_HEALTH_TIMEOUT_MS)
-      response = await runtimeFetch(healthUrl, { signal: timeout.signal }).finally(timeout.cleanup)
+      const timeout = createTimeoutSignal(OPENCODE_HEALTH_TIMEOUT_MS + waitMs)
+      response = await runtimeFetch(healthUrl, {
+        signal: timeout.signal,
+        ...(waitMs > 0 ? { query: { wait: String(waitMs) } } : {}),
+      }).finally(timeout.cleanup)
     } catch {
       return "unreachable"
     }
@@ -1881,6 +2105,40 @@ class OpencodeService {
     } catch {
       return "unhealthy"
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Files on the machine OpenCode runs on
+  // -------------------------------------------------------------------------
+
+  /**
+   * Writes files into a new folder under OpenCode's own temp folder
+   * (`GET /api/info` names it; its agents read there without asking) and
+   * answers each file's absolute path as OpenCode wrote it, or its error. The
+   * bytes reach OpenCode through the OpenChamber server, so the files land
+   * where OpenCode runs, also when that is another machine. A fresh folder per
+   * call keeps a repeated name from overwriting; names must be unique within
+   * a call. The write route is experimental in OpenCode 2.x.
+   */
+  async writeOpenCodeTempFiles(
+    directory: string | null | undefined,
+    files: Array<{ filename: string; bytes: Uint8Array }>,
+  ): Promise<Array<{ filename: string; path: string } | { filename: string; error: Error }>> {
+    const client = this.clientFor(directory)
+    const info = await call("server.info", () => client.server.info())
+    const folderName = Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, "0")).join("")
+    const folder = `${info.paths.tmp.replace(/[\\/]+$/, "")}/openchamber/${folderName}`
+    const results: Array<{ filename: string; path: string } | { filename: string; error: Error }> = []
+    for (const { filename, bytes } of files) {
+      try {
+        const written = await call("file.write", () => client.file.write({ path: `${folder}/${filename}`, payload: bytes }))
+        results.push({ filename, path: written.data.path })
+      } catch (error) {
+        results.push({ filename, error: error instanceof Error ? error : new Error(String(error)) })
+      }
+    }
+    return results
   }
 
   // -------------------------------------------------------------------------

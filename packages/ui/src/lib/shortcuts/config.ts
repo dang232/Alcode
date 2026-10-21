@@ -291,6 +291,13 @@ const SHORTCUT_GROUPS = {
       settingsLabelKey: 'settings.alcode.keyboardShortcuts.action.open_help.label',
     },
     {
+      // mod+alt keeps it off the browser's own reload (mod+r, mod+shift+r).
+      id: 'open_project_actions',
+      defaultBinding: 'mod+alt+r',
+      customizable: true,
+      settingsLabelKey: 'settings.alcode.keyboardShortcuts.action.open_project_actions.label',
+    },
+    {
       id: 'cycle_theme',
       defaultBinding: 'mod+k c',
       customizable: true,
@@ -306,6 +313,12 @@ const SHORTCUT_GROUPS = {
       defaultBinding: UNASSIGNED_SHORTCUT,
       customizable: true,
       settingsLabelKey: 'settings.alcode.keyboardShortcuts.action.mini_chat_global.label',
+    },
+    {
+      id: 'quake_mode_global',
+      defaultBinding: UNASSIGNED_SHORTCUT,
+      customizable: true,
+      settingsLabelKey: 'settings.alcode.keyboardShortcuts.action.quake_mode_global.label',
     },
   ],
 } as const satisfies Record<ShortcutCategory, readonly ShortcutConfig[]>;

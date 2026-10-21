@@ -34,7 +34,7 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })));
 });
 
-const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, versions, listUserCustomAgents } = {}) => {
+const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, versions, listUserCustomAgents, listConnectedProviders, readUserAgentModels } = {}) => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'alcode-managed-config-'));
   temporaryDirectories.push(dataDir);
   const agentToolRuntime = {
@@ -53,7 +53,7 @@ const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, 
   const dependencies = {
     fsPromises: fs,
     path,
-    dataDir,
+    instanceDir: dataDir,
     env,
     versions,
     agentToolRuntime,
@@ -63,6 +63,9 @@ const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, 
   // Test-only seam, attached only when a test opts in: the default keeps
   // unit tests without a home directory hermetic.
   if (listUserCustomAgents !== undefined) dependencies.listUserCustomAgents = listUserCustomAgents;
+  if (listConnectedProviders !== undefined) dependencies.listConnectedProviders = listConnectedProviders;
+  if (readUserAgentModels !== undefined) dependencies.readUserAgentModels = readUserAgentModels;
+  if (versions !== undefined) dependencies.versions = versions;
   const runtime = createManagedConfigRuntime(dependencies);
   const readConfigFile = async () => JSON.parse(await fs.readFile(path.join(dataDir, MANAGED_CONFIG_FILE_NAME), 'utf8'));
   return { dataDir, runtime, agentToolRuntime, current, readConfigFile };
@@ -182,6 +185,7 @@ describe('managed OpenCode config file', () => {
         'inspect',
         'record-child-failure',
         'record-child-result',
+        'record-evidence',
         'revise-goals',
         'status',
       ].sort(),
@@ -200,7 +204,7 @@ describe('managed OpenCode config file', () => {
 
   it('keeps the callback token in the child env while every tool is off', async () => {
     const { runtime, agentToolRuntime, readConfigFile } = await createHarness({
-      settings: { agentControlToolEnabled: false, agentWebToolEnabled: false, agentMemoryToolEnabled: false },
+      settings: { agentControlToolEnabled: false, agentScheduleToolEnabled: false, agentWebToolEnabled: false, agentMemoryToolEnabled: false, agentKnowledgeToolEnabled: false, agentRenderToolEnabled: false },
     });
 
     const childEnv = await runtime.buildManagedChildEnv();
@@ -209,6 +213,7 @@ describe('managed OpenCode config file', () => {
     const config = await readConfigFile();
     expect(config.plugins).toEqual(['-opencode.browser']);
     expect(Object.keys(config.mcp.servers)).toEqual([ULW_MCP_SERVER_NAME]);
+    expect(Object.keys(config.agent).sort()).toEqual([...EXPECTED_NATIVE_AGENT_KEYS].sort());
     // A tool switched on later reaches a process that can already call back.
     expect(childEnv.ALCODE_AGENT_TOOL_TOKEN).toBe('token');
   });
@@ -219,7 +224,7 @@ describe('managed OpenCode config file', () => {
     });
     await runtime.buildManagedChildEnv();
 
-    current.settings = { agentControlToolEnabled: false, agentWebToolEnabled: false };
+    current.settings = { agentControlToolEnabled: false, agentScheduleToolEnabled: false, agentWebToolEnabled: false, agentKnowledgeToolEnabled: false, agentRenderToolEnabled: false };
     expect(await runtime.refreshManagedConfigFile()).toEqual({ updated: true });
 
     const { plugins } = await readConfigFile();
@@ -229,35 +234,74 @@ describe('managed OpenCode config file', () => {
 
   it('turns a tool back on without a restart', async () => {
     const { runtime, current, agentToolRuntime, readConfigFile } = await createHarness({
-      settings: { agentControlToolEnabled: false, agentWebToolEnabled: false },
+      settings: { agentControlToolEnabled: false, agentScheduleToolEnabled: false, agentWebToolEnabled: false, agentKnowledgeToolEnabled: false, agentRenderToolEnabled: false },
     });
     await runtime.buildManagedChildEnv();
 
-    current.settings = { agentControlToolEnabled: false, agentWebToolEnabled: true };
+    current.settings = { agentControlToolEnabled: false, agentScheduleToolEnabled: false, agentWebToolEnabled: true, agentKnowledgeToolEnabled: false, agentRenderToolEnabled: false };
     await runtime.refreshManagedConfigFile();
 
     expect((await readConfigFile()).plugins).toHaveLength(2);
     expect(agentToolRuntime.materializePlugin).toHaveBeenCalledWith({
       includeControl: false,
+      includeSchedule: false,
       includeWeb: true,
       includeMemory: false,
+      includeKnowledge: false,
       includeNotify: false,
+      includeRender: false,
       codeMode: false,
     });
   });
 
+  it('injects the knowledge tool by default and leaves it out once switched off', async () => {
+    const { runtime, current, agentToolRuntime } = await createHarness({ settings: {} });
+
+    await runtime.buildManagedChildEnv();
+    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeKnowledge: true }));
+
+    current.settings = { agentKnowledgeToolEnabled: false };
+    await runtime.refreshManagedConfigFile();
+    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeKnowledge: false }));
+  });
+
+  it('injects the schedule tool by default and leaves it out once switched off', async () => {
+    const { runtime, current, agentToolRuntime } = await createHarness({ settings: {} });
+
+    await runtime.buildManagedChildEnv();
+    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeSchedule: true }));
+
+    current.settings = { agentScheduleToolEnabled: false };
+    await runtime.refreshManagedConfigFile();
+    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeControl: true, includeSchedule: false }));
+  });
+
+  it('injects the render tool by default and leaves it out once switched off', async () => {
+    const { runtime, current, agentToolRuntime } = await createHarness({ settings: {} });
+
+    await runtime.buildManagedChildEnv();
+    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeRender: true }));
+
+    current.settings = { agentRenderToolEnabled: false };
+    await runtime.refreshManagedConfigFile();
+    expect(agentToolRuntime.materializePlugin).toHaveBeenLastCalledWith(expect.objectContaining({ includeRender: false }));
+  });
+
   it('injects the notify tool only when it is switched on', async () => {
     const { runtime, agentToolRuntime } = await createHarness({
-      settings: { agentControlToolEnabled: false, agentWebToolEnabled: false, agentNotifyToolEnabled: true },
+      settings: { agentControlToolEnabled: false, agentScheduleToolEnabled: false, agentWebToolEnabled: false, agentKnowledgeToolEnabled: false, agentRenderToolEnabled: false, agentNotifyToolEnabled: true },
     });
 
     await runtime.buildManagedChildEnv();
 
     expect(agentToolRuntime.materializePlugin).toHaveBeenCalledWith({
       includeControl: false,
+      includeSchedule: false,
       includeWeb: false,
       includeMemory: false,
+      includeKnowledge: false,
       includeNotify: true,
+      includeRender: false,
       codeMode: false,
     });
   });
@@ -271,9 +315,12 @@ describe('managed OpenCode config file', () => {
 
     expect(agentToolRuntime.materializePlugin).toHaveBeenCalledWith({
       includeControl: true,
+      includeSchedule: true,
       includeWeb: true,
       includeMemory: false,
+      includeKnowledge: true,
       includeNotify: false,
+      includeRender: true,
       codeMode: true,
     });
   });
@@ -290,6 +337,7 @@ describe('managed OpenCode config file', () => {
     const content = JSON.parse(childEnv.OPENCODE_CONFIG_CONTENT);
     expect(content.model).toBe('test/model');
     expect(content.plugins).toEqual(['-opencode.browser', path.join(dataDir, 'agent-tool', 'alcode-agent-tool')]);
+    expect(Object.keys(content.agent).sort()).toEqual([...EXPECTED_NATIVE_AGENT_KEYS].sort());
     expect(content.mcp.servers[ULW_MCP_SERVER_NAME].type).toBe('local');
     expect(content.mcp.servers[ULW_MCP_SERVER_NAME].command[0]).toBe(process.execPath);
     await expect(fs.stat(path.join(dataDir, MANAGED_CONFIG_FILE_NAME))).rejects.toThrow();
@@ -351,7 +399,9 @@ describe('managed OpenCode config file', () => {
     for (const key of EXPECTED_NATIVE_AGENT_KEYS) {
       expect(agent[key].mode).toBe('subagent');
       expect(typeof agent[key].description).toBe('string');
-      expect(typeof agent[key].model).toBe('string');
+      // Providers unknown: the statics ship as bundled (fail-open, model-less);
+      // models resolve once providers are known (chain tests below).
+      expect(agent[key].model).toBe(OMO_NATIVE_AGENT_CONFIG[key]?.model);
     }
     expect(agent.oracle.model).toBe(OMO_NATIVE_AGENT_CONFIG.oracle.model);
     // The plan-gated advisers and final-gate trio ship as static entries so
@@ -380,6 +430,7 @@ describe('managed OpenCode config file', () => {
     const { agent } = await readConfigFile();
     // The user's file wins on collision; untouched statics stay intact.
     expect(agent.sisyphus).toMatchObject({ description: 'Mine', mode: 'primary', system: 'Do it.' });
+    expect(agent.explore.model).toBeUndefined();
     expect(agent.explore.model).toBe(OMO_NATIVE_AGENT_CONFIG.explore.model);
     expect(Object.keys(agent).sort()).toEqual([...EXPECTED_NATIVE_AGENT_KEYS].sort());
   });
@@ -402,6 +453,7 @@ describe('managed OpenCode config file', () => {
     // Explicit content wins, then the .md file, then the static.
     expect(content.agent.oracle).toEqual({ mode: 'subagent', description: 'mine' });
     expect(content.agent['mine-only']).toMatchObject({ description: 'md only', mode: 'all' });
+    expect(content.agent.metis.model).toBeUndefined();
     expect(content.agent.metis.model).toBe(OMO_NATIVE_AGENT_CONFIG.metis.model);
   });
 
@@ -424,7 +476,7 @@ describe('managed OpenCode config file', () => {
 
   it('ignores the memory tool while the feature is unavailable', async () => {
     const { runtime, agentToolRuntime, readConfigFile } = await createHarness({
-      settings: { agentControlToolEnabled: false, agentWebToolEnabled: false, agentMemoryToolEnabled: true },
+      settings: { agentControlToolEnabled: false, agentScheduleToolEnabled: false, agentWebToolEnabled: false, agentKnowledgeToolEnabled: false, agentRenderToolEnabled: false, agentMemoryToolEnabled: true },
       memoryAvailable: false,
     });
 
@@ -433,6 +485,73 @@ describe('managed OpenCode config file', () => {
     expect(agentToolRuntime.materializePlugin).not.toHaveBeenCalled();
     const config = await readConfigFile();
     expect(config.plugins).toEqual(['-opencode.browser']);
+    expect(Object.keys(config.agent).sort()).toEqual([...EXPECTED_NATIVE_AGENT_KEYS].sort());
     expect(Object.keys(config.mcp.servers)).toEqual([ULW_MCP_SERVER_NAME]);
+  });
+
+  it('resolves static agent models from the connected providers at build time', async () => {
+    const { runtime, readConfigFile } = await createHarness({
+      settings: {},
+      listConnectedProviders: async () => ['kimi-for-coding'],
+    });
+
+    await runtime.buildManagedChildEnv();
+
+    const { agent } = await readConfigFile();
+    expect(agent.explore.model).toBe('kimi-for-coding/kimi-for-coding-highspeed#off');
+  });
+
+  it('drops the agent when no chain provider is eligible', async () => {
+    const { runtime, readConfigFile } = await createHarness({
+      settings: {},
+      listConnectedProviders: async () => [],
+    });
+
+    await runtime.buildManagedChildEnv();
+
+    const { agent } = await readConfigFile();
+    expect(agent.explore).toBeUndefined();
+  });
+
+  it('lets a custom .md model win over the resolved static', async () => {
+    const { runtime, readConfigFile } = await createHarness({
+      settings: {},
+      listConnectedProviders: async () => ['kimi-for-coding'],
+      listUserCustomAgents: () => [
+        { name: 'explore', entry: { description: 'Mine', mode: 'primary', model: 'custom-lab/x' } },
+      ],
+    });
+
+    await runtime.buildManagedChildEnv();
+
+    const { agent } = await readConfigFile();
+    expect(agent.explore.model).toBe('custom-lab/x');
+    expect(agent.explore.mode).toBe('primary');
+  });
+
+  it('honours user-layer model overrides when the provider is connected', async () => {
+    const { runtime, readConfigFile } = await createHarness({
+      settings: {},
+      listConnectedProviders: async () => ['user-lab'],
+      readUserAgentModels: async () => ({ explore: 'user-lab/u' }),
+    });
+
+    await runtime.buildManagedChildEnv();
+
+    const { agent } = await readConfigFile();
+    expect(agent.explore.model).toBe('user-lab/u');
+  });
+
+  it('drops the agent when the override names an unconnected provider', async () => {
+    const { runtime, readConfigFile } = await createHarness({
+      settings: {},
+      listConnectedProviders: async () => ['kimi-for-coding'],
+      readUserAgentModels: async () => ({ explore: 'user-lab/u' }),
+    });
+
+    await runtime.buildManagedChildEnv();
+
+    const { agent } = await readConfigFile();
+    expect(agent.explore).toBeUndefined();
   });
 });

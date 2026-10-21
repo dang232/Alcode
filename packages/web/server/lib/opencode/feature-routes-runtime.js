@@ -1,4 +1,5 @@
 import { registerFsRoutes } from '../fs/routes.js';
+import { createRipgrepResolver } from '../fs/ripgrep.js';
 import { registerEnvironmentRoutes } from '../environment/routes.js';
 import { registerQuotaRoutes } from '../quota/routes.js';
 import { createTokenpanelQuotaRuntime } from '../tokenpanel/tokenpanel-quota.js';
@@ -6,6 +7,8 @@ import { sharedUserTokenStore } from '../user-tokens/user-token-store.js';
 import { registerSmallModelRoutes } from '../small-model/routes.js';
 import { registerWalkthroughRoutes } from '../walkthrough/routes.js';
 import { registerSessionGoalRoutes } from '../session-goal/routes.js';
+import { registerSessionWarmingRoutes } from '../session-warming/routes.js';
+import { setWarmingDuration, setWarmingEnabled } from './websearch-config.js';
 import { registerSourceControlRoutes } from '../source-control/routes.js';
 import { registerLinearRoutes } from '../linear/routes.js';
 import { registerGuestRoutes } from '../guests/routes.js';
@@ -76,7 +79,7 @@ import { refreshGitLabAccessToken, resolveGitLabClientId } from '../gitlab/devic
 import { createGitCredentialResolver, createHttpsCredentialReference, parseGitCredentialReference } from '../git/credential-resolver.js';
 import { createGitRepositoryCredentialRuntime } from '../git/repository-credential-runtime.js';
 import { managedSshCommand } from '../git/network-operations.js';
-import { createNetworkOperations } from '../git/network-operations.js';
+import { createNetworkOperations, createTrustedDirectoriesConfig } from '../git/network-operations.js';
 import { createManagedSshCredentialStore } from '../git/ssh-credential-storage.js';
 import { createManagedSshInventory } from '../git/credentials.js';
 import { createContributorProvenanceStore } from '../git/contributor-provenance-storage.js';
@@ -115,6 +118,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
   let walkthroughBindingService = null;
   let gitRepositoryCredentialRuntime = null;
   let networkOperations = null;
+  let gitWorktreeCreation = null;
   const getWalkthroughService = async () => {
     if (!walkthroughService) {
       const [service, pullRequest] = await Promise.all([
@@ -176,10 +180,35 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     });
   };
 
+  /**
+   * A worktree from a pull or merge request given by number, the same kind
+   * the New worktree dialog makes: the server reads the change request with
+   * the project's own account and creates the worktree through the Git
+   * routes' contributor pipeline. `name` and `branchName` default to the
+   * change request's head branch.
+   */
+  const createChangeRequestWorktree = async ({ directory, number, name, branchName }) => {
+    if (!(gitWorktreeCreation?.createWorktree instanceof Function)
+      || !(walkthroughBindingService?.resolveChangeRequestWorktreeSource instanceof Function)) {
+      throw Object.assign(new Error('Worktrees from pull requests are unavailable'), {
+        code: 'RUNTIME_UNSUPPORTED', status: 501,
+      });
+    }
+    const { headBranch, sourceRequest } = await walkthroughBindingService.resolveChangeRequestWorktreeSource({ directory, number });
+    const branch = branchName || headBranch;
+    return gitWorktreeCreation.createWorktree(directory, {
+      mode: 'existing',
+      branchName: branch,
+      worktreeName: name || branch,
+      changeRequestSource: sourceRequest,
+    });
+  };
+
   const registerRoutes = async (app, routeDependencies) => {
     const {
       uiAuthController,
       messageSearchRuntime,
+      sessionWarmingRuntime,
       crypto,
       fs,
       os,
@@ -318,7 +347,6 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     registerMarkdownImageGrantRoutes(app, {
       fsPromises,
       path,
-      os,
       crypto,
       validateDirectoryPath,
       buildOpenCodeUrl,
@@ -611,6 +639,46 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       fsImpl: fsPromises,
       snapshotRoot: path.join(alcodeDataDir, 'git-ssh-operation-keys'),
     });
+    registerSkillRoutes(app, {
+      fs,
+      path,
+      os,
+      resolveProjectDirectory,
+      resolveOptionalProjectDirectory,
+      readSettingsFromDisk,
+      sanitizeSkillCatalogs,
+      isUnsafeSkillRelativePath,
+      refreshOpenCodeAfterConfigChange,
+      clientReloadDelayMs,
+      buildOpenCodeUrl,
+      getOpenCodeAuthHeaders,
+      getOpenCodePort,
+      getSkillSources,
+      discoverSkills,
+      mergeDiscoveredSkills,
+      createSkill,
+      updateSkill,
+      deleteSkill,
+      renameSkill,
+      isManagedSkillPath,
+      readSkillSupportingFile,
+      writeSkillSupportingFile,
+      deleteSkillSupportingFile,
+      SKILL_SCOPE,
+      SKILL_DIR,
+      getCuratedSkillsSources,
+      getCacheKey,
+      scanWithCache,
+      parseSkillRepoSource,
+      scanSkillsRepository,
+      installSkillsFromRepository,
+      fetchGitHubRepoMetas,
+      getProfiles,
+      getProfile,
+      createHttpsCredentialReference,
+      resolveSourceControlAccount,
+      credentialResolver: gitCredentialResolver,
+    });
     gitRepositoryCredentialRuntime = createGitRepositoryCredentialRuntime({
       readBinding: (directory) => walkthroughBindingService.get(directory),
       credentialResolver: gitCredentialResolver,
@@ -641,10 +709,11 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       gitBinary,
       validateGitIdentity,
       resolveGitIdentity,
+      trustedDirectoriesConfig: createTrustedDirectoriesConfig({ gitBinary }),
     });
     await registerBuiltInGuests({ persistPath: extensionsPersistPath(alcodeDataDir), root: routeDependencies.builtInExtensionsDir });
     registerGuestRoutes(app, { alcodeDataDir, alcodeVersion, resolveGitBinaryForSpawn, resolveOptionalProjectDirectory, getSmallModelService, onGuestDeactivated, surfaceViewerHeaders });
-    registerGitRoutes(app, {
+    gitWorktreeCreation = registerGitRoutes(app, {
       // Identities for accounts connected before identities carried one are
       // made the first time identities are listed: a moment someone asked for,
       // not startup, where a development restart can kill a process holding a
@@ -694,12 +763,32 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     registerAgentMemoryRoutes(app, { agentMemoryRuntime, isAgentMemoryEnabled });
     registerSessionKnowledgeRoutes(app, { sessionKnowledgeRuntime });
     registerMessageSearchRoutes(app, { messageSearchRuntime });
+    registerSessionWarmingRoutes(app, {
+      sessionWarmingRuntime,
+      setGlobalWarming: setWarmingEnabled,
+      setGlobalWarmingDuration: setWarmingDuration,
+    });
 
     registerSessionFoldersRoutes(app, {
       fsPromises,
       path,
       alcodeDataDir,
+      // Folders are shared by every client of this server; each one reads
+      // them again when told they changed.
+      onChanged: (updatedAt) => {
+        const clients = getAlcodeEventClients();
+        for (const client of clients) {
+          try {
+            writeSseEvent(client, { type: 'openchamber:session-folders-changed', properties: { updatedAt } });
+          } catch {
+            clients.delete(client);
+          }
+        }
+      },
     });
+    // Content search looks for ripgrep on the same PATH user commands get, so
+    // a desktop app launched from the Dock still finds a Homebrew install.
+    const { resolveRipgrepBinary } = createRipgrepResolver({ fs, path, buildSearchPath: buildAugmentedPath });
     registerFsRoutes(app, {
       os,
       path,
@@ -710,6 +799,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       resolveProjectDirectory,
       buildAugmentedPath,
       resolveGitBinaryForSpawn,
+      resolveRipgrepBinary,
       alcodeUserConfigRoot,
       cloneRepository: networkOperations.cloneRepository,
       managedChatsRoot,
@@ -721,6 +811,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
   return {
     registerRoutes,
     hydrateBoundCheckout,
+    createChangeRequestWorktree,
     /** Writes the Git credential helper's endpoint file; a no-op until the Git routes are registered. */
     publishRepositoryCredentialEndpoint: async () => { await gitRepositoryCredentialRuntime?.publish(); },
   };

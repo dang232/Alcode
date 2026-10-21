@@ -139,6 +139,9 @@
     "agentControlToolEnabled": {
       "scope": "instance"
     },
+    "agentScheduleToolEnabled": {
+      "scope": "instance"
+    },
     "agentWebToolEnabled": {
       "scope": "instance"
     },
@@ -148,16 +151,25 @@
     "agentNotifyToolEnabled": {
       "scope": "instance"
     },
+    "agentRenderToolEnabled": {
+      "scope": "instance"
+    },
     "agentToolsCodeMode": {
       "scope": "instance"
     },
     "agentMemoryToolEnabled": {
       "scope": "instance"
     },
+    "agentKnowledgeToolEnabled": {
+      "scope": "instance"
+    },
     "isolatedSpacesEnabled": {
       "scope": "instance"
     },
     "isolatedSpacesIdleStop": {
+      "scope": "instance"
+    },
+    "isolatedSpacesSshHost": {
       "scope": "instance"
     },
     "agentMemoryFeatureAvailable": {
@@ -256,17 +268,29 @@
       "scope": "profile",
       "perSurface": true
     },
+    "sidebarListSessionGrouping": {
+      "scope": "profile",
+      "perSurface": true
+    },
     "sidebarProjectSortOrder": {
       "scope": "profile"
     },
     "sidebarWorktreeSortOrder": {
       "scope": "profile"
     },
-    "sidebarShowRecentSection": {
+    "sidebarShowChatsSection": {
       "scope": "profile",
       "perSurface": true
     },
-    "sidebarShowChatsSection": {
+    "sidebarShowWorkSection": {
+      "scope": "profile",
+      "perSurface": true
+    },
+    "sidebarShowPinnedSection": {
+      "scope": "profile",
+      "perSurface": true
+    },
+    "sidebarDetailedZoneRows": {
       "scope": "profile",
       "perSurface": true
     },
@@ -343,12 +367,6 @@
     "showTurnChangedFiles": {
       "scope": "profile"
     },
-    "showExpandedBashTools": {
-      "scope": "profile"
-    },
-    "showExpandedEditTools": {
-      "scope": "profile"
-    },
     "toolJsonViewMode": {
       "scope": "profile"
     },
@@ -365,6 +383,9 @@
       "scope": "profile"
     },
     "diffWrapLines": {
+      "scope": "profile"
+    },
+    "diffHideWhitespace": {
       "scope": "profile"
     },
     "gitChangesViewMode": {
@@ -390,6 +411,43 @@
     },
     "autoSaveEnabled": {
       "scope": "profile"
+    },
+    "confirmFileTreeMove": {
+      "scope": "profile"
+    },
+    "fileTreeSide": {
+      "scope": "profile",
+      "surfaces": [
+        "web",
+        "desktop"
+      ]
+    },
+    "layoutAnimations": {
+      "scope": "profile",
+      "surfaces": [
+        "web",
+        "desktop"
+      ]
+    },
+    "openLinksInBrowserPanel": {
+      "scope": "profile",
+      "surfaces": [
+        "desktop"
+      ]
+    },
+    "liveBrowserTabLimit": {
+      "scope": "profile",
+      "surfaces": [
+        "desktop"
+      ]
+    },
+    "openTrackerLinksOnBoard": {
+      "scope": "profile",
+      "surfaces": [
+        "web",
+        "desktop",
+        "mobile"
+      ]
     },
     "autoCreateWorktree": {
       "scope": "profile"
@@ -418,6 +476,9 @@
       "scope": "profile"
     },
     "largeTextPasteBehavior": {
+      "scope": "profile"
+    },
+    "savePastedImagesAsFiles": {
       "scope": "profile"
     },
     "followUpBehavior": {
@@ -539,7 +600,7 @@
     "sessionWorkEnabled": {
       "scope": "profile"
     },
-    "sessionWorkAutoOpen": {
+    "sessionReviewOfferEnabled": {
       "scope": "profile",
       "surfaces": [
         "web",
@@ -705,6 +766,18 @@
       "scope": "device",
       "local": true
     },
+    "mobileWorkspaceTabOrder": {
+      "scope": "device",
+      "local": true
+    },
+    "mobileWorkspaceHiddenTabs": {
+      "scope": "device",
+      "local": true
+    },
+    "contextSurfaceZones": {
+      "scope": "device",
+      "local": true
+    },
     "contextEditorTreeVisible": {
       "scope": "device",
       "local": true
@@ -714,10 +787,6 @@
       "local": true
     },
     "contextEditorTreeWidth": {
-      "scope": "device",
-      "local": true
-    },
-    "notesPanelHeight": {
       "scope": "device",
       "local": true
     },
@@ -794,10 +863,6 @@
       "local": true
     },
     "agentMemoryViewedAt": {
-      "scope": "device",
-      "local": true
-    },
-    "projectContextSidebarWidth": {
       "scope": "device",
       "local": true
     },

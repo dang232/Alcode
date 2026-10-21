@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:
 import type { Session } from '@/lib/opencode/model';
 import * as sessionRoutes from './session-archive-batch';
 import { opencodeClient } from '@/lib/opencode/client';
-import { switchRuntimeEndpoint } from '@/lib/runtime-switch';
+import { switchRuntimeEndpoint, getRuntimeKey } from '@/lib/runtime-switch';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from './session-ui-store';
 import { replaceGlobalSessionStatusById } from './global-session-status';
+import { setPendingPin } from '@/stores/useSessionPinnedStore';
+import { getPinnedSessionKey } from '@/lib/sessionPins';
 import { buildSessionRetentionCandidates, isSessionKeptByUser, runSessionRetentionCleanup, useSessionRetentionRunStore } from './session-retention';
-import { useSessionPinnedStore } from '@/stores/useSessionPinnedStore';
 
 const now = Date.now();
 const day = 86_400_000;
@@ -63,7 +64,8 @@ describe('retention eligibility', () => {
   });
 
   test('keeps pinned and In work sessions however old they are', () => {
-    useSessionPinnedStore.getState().toggle({ directory: '/retention-project', sessionId: 'pinned' });
+    const pinnedKey = getPinnedSessionKey(getRuntimeKey(), '/retention-project', 'pinned')!;
+    setPendingPin(pinnedKey, true);
     const inWork = session('in-work', { metadata: { alcode: { work: { state: 'open', openedAt: 1, openedBy: 'user' } } } });
     const doneWork = session('done-work', { metadata: { alcode: { work: { state: 'done', openedAt: 1, openedBy: 'user', doneAt: 2 } } } });
     try {
@@ -72,7 +74,7 @@ describe('retention eligibility', () => {
         action: 'archive', activeSessionIds: new Set(), isKept: isSessionKeptByUser, now,
       }).sort()).toEqual(['done-work', 'old']);
     } finally {
-      useSessionPinnedStore.getState().toggle({ directory: '/retention-project', sessionId: 'pinned' });
+      setPendingPin(pinnedKey, null);
     }
   });
 

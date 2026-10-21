@@ -46,6 +46,7 @@ import {
   isGuestFilePath,
   isGuestRequestPath,
   resolveHostRequestErrorCode,
+  HOST_REQUEST_ERROR_CODES,
   type GuestMessage,
   type HostMessage,
   type JsonValue,
@@ -177,6 +178,17 @@ const generateResultPayloadSchema = z.object({
   text: z.string().max(GUEST_GENERATE_TEXT_MAX),
 });
 
+const generateRequestSchema = z.object({
+  prompt: z.string().trim().min(1).max(GUEST_GENERATE_PROMPT_MAX),
+  system: z.string().trim().min(1).max(GUEST_GENERATE_SYSTEM_MAX).optional(),
+  maxOutputTokens: z.number().int().min(1).max(GUEST_GENERATE_OUTPUT_TOKENS_MAX).optional(),
+});
+
+const lateGenerateResultSchema = z.discriminatedUnion('ok', [
+  z.object({ request: generateRequestSchema, ok: z.literal(true), result: generateResultPayloadSchema }),
+  z.object({ request: generateRequestSchema, ok: z.literal(false), code: z.enum(HOST_REQUEST_ERROR_CODES), error: z.string().min(1) }),
+]);
+
 const shellOutputResultPayloadSchema = z.object({
   output: z.string(),
   cursor: z.number(),
@@ -267,6 +279,7 @@ const readyPayloadSchema = z.object({
     deviceStorage: z.literal(true).optional(),
     statusControls: z.literal(true).optional(),
     popovers: z.literal(true).optional(),
+    lateGenerateResults: z.literal(true).optional(),
   }).optional(),
 });
 
@@ -313,24 +326,24 @@ const hostResultSchema = z.object({
   };
 });
 
-export const guestRunningShellSchema = z.object({
+const guestRunningShellSchema = z.object({
   id: z.string().min(1).max(GUEST_SHELL_ID_MAX),
   sessionID: z.string().min(1).max(1024),
   command: z.string(),
   startedAt: z.number().nonnegative(),
   background: z.boolean(),
 }).strict();
-export const guestEndedShellSchema = guestRunningShellSchema.extend({
+const guestEndedShellSchema = guestRunningShellSchema.extend({
   status: z.enum(GUEST_SHELL_END_STATUSES),
   exit: z.number().int().optional(),
   endedAt: z.number().nonnegative(),
 }).strict();
-export const guestShellsScopeSchema = z.discriminatedUnion('kind', [
+const guestShellsScopeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('session'), sessionId: z.string().min(1).max(1024) }).strict(),
   z.object({ kind: z.literal('project'), projectId: z.string().min(1).max(1024) }).strict(),
   z.object({ kind: z.literal('global') }).strict(),
 ]);
-export const guestRunningShellsSnapshotSchema = z.object({
+const guestRunningShellsSnapshotSchema = z.object({
   kind: z.literal('shells'),
   scope: guestShellsScopeSchema,
   shells: z.array(guestRunningShellSchema).max(GUEST_SHELLS_MAX),
@@ -455,6 +468,7 @@ export const hostMessageSchema = z.union([
     type: z.literal('file-saved'),
     payload: z.object({ version: z.string().max(GUEST_FILE_EDITOR_VERSION_MAX) }),
   }),
+  z.object({ ...envelope, type: z.literal('generate-late'), payload: lateGenerateResultSchema }),
 ]);
 
 const filePathSchema = z.string().min(1).max(GUEST_FILE_PATH_MAX).refine(isGuestFilePath);
@@ -640,11 +654,7 @@ export const guestMessageSchema = z.discriminatedUnion('type', [
     ...envelope,
     type: z.literal('generate'),
     id: z.string().min(1),
-    payload: z.object({
-      prompt: z.string().trim().min(1).max(GUEST_GENERATE_PROMPT_MAX),
-      system: z.string().trim().min(1).max(GUEST_GENERATE_SYSTEM_MAX).optional(),
-      maxOutputTokens: z.number().int().min(1).max(GUEST_GENERATE_OUTPUT_TOKENS_MAX).optional(),
-    }),
+    payload: generateRequestSchema,
   }),
   z.object({
     ...envelope,
@@ -700,6 +710,7 @@ export const guestMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({ ...envelope, type: z.literal('file-save') }),
   z.object({ ...envelope, type: z.literal('file-unsupported') }),
+  z.object({ ...envelope, type: z.literal('generate-late-listen') }),
 ]);
 
 type ParsedHostMessage = z.infer<typeof hostMessageSchema>;

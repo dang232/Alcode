@@ -9,6 +9,18 @@ import { ThemeImportStorageError } from './theme-runtime.js';
 import { registerThemeCatalogRoutes } from './theme-catalog.js';
 import { createDesktopAuthRuntime } from '../desktop-auth/desktop-auth.js';
 import { sharedUserTokenStore } from '../user-tokens/user-token-store.js';
+import { collectLocalFileDiagnostics } from '../diagnostics/local-files.js';
+import { serverDiagnosticJournal } from '../diagnostics/server-journal.js';
+
+// Install before any routes or body parsers so early 4xx responses are covered too.
+export const registerHttpResponseDiagnostics = (app, journal = serverDiagnosticJournal) => {
+  app.use((req, res, next) => {
+    res.once('finish', () => {
+      journal.recordHttpResponse(req.method, req.path, res.statusCode);
+    });
+    next();
+  });
+};
 
 const parseLoopbackUrl = (rawUrl) => {
   if (typeof rawUrl !== 'string') {
@@ -119,6 +131,8 @@ export const registerServerStatusRoutes = (app, dependencies) => {
       'realtime.sse.v1',
       'realtime.websocket.global-events.v1',
       'terminal.websocket.v1',
+      // Message pages honour `x-openchamber-part-shells` (message-shells.js).
+      'api.message-part-shells.v1',
     ],
   };
 
@@ -240,6 +254,26 @@ export const registerServerStatusRoutes = (app, dependencies) => {
       ...(serverId ? { serverId } : {}),
       ...getHealthSnapshot(),
     });
+  });
+
+  // This is a local support export, not an API for connected remote clients.
+  // Check the socket address rather than proxy-provided forwarding headers.
+  // The private relay also dials loopback, and stamps every request it forwards.
+  app.get('/api/diagnostics/local-files', (req, res, next) => {
+    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket?.remoteAddress)
+      || req.headers['x-openchamber-relay-connection']
+      || (tunnelAuthController?.classifyRequestScope && tunnelAuthController.classifyRequestScope(req) !== 'local')) {
+      res.status(403).json({ error: 'Local diagnostics require a loopback connection' });
+      return;
+    }
+    if (uiAuthController?.requireAuth) return uiAuthController.requireAuth(req, res, next);
+    next();
+  }, async (_req, res) => {
+    try {
+      res.json(await collectLocalFileDiagnostics({ webPort: getServerPort() }));
+    } catch {
+      res.status(500).json({ error: 'Diagnostics unavailable' });
+    }
   });
 
   app.get('/api/version', async (_req, res) => {
@@ -859,6 +893,20 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
     }
   });
 
+  app.patch('/api/passkeys/:id', express.json({ limit: '8kb' }), async (req, res, next) => {
+    const requestScope = tunnelAuthController.classifyRequestScope(req);
+    if (requestScope === 'tunnel' || requestScope === 'unknown-public') {
+      return res.status(403).json({ error: 'Passkey management is disabled for tunnel scope', tunnelLocked: true });
+    }
+    try {
+      await uiAuthController.requireSessionAuth(req, res, async () => {
+        await uiAuthController.handlePasskeyRename(req, res);
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post('/api/auth/reset', async (req, res, next) => {
     const requestScope = tunnelAuthController.classifyRequestScope(req);
     if (requestScope === 'tunnel' || requestScope === 'unknown-public') {
@@ -1264,6 +1312,7 @@ export const registerCommonRequestMiddleware = (app, dependencies) => {
       req.path.startsWith('/api/config/plugins') ||
       req.path.startsWith('/api/config/websearch') ||
       req.path.startsWith('/api/config/warming') ||
+      req.path.startsWith('/api/session-warming') ||
       req.path.startsWith('/api/projects') ||
       req.path.startsWith('/api/fs') ||
       req.path.startsWith('/api/git') ||

@@ -33,9 +33,9 @@ import { useDeviceInfo } from '@/lib/device';
 import { usePwaDetection } from '@/hooks/usePwaDetection';
 import { loadDesktopSettings, updateDesktopSettings } from '@/lib/persistence';
 import { CODE_FONT_OPTIONS, CUSTOM_FONT_ID, DEFAULT_MONO_FONT, DEFAULT_UI_FONT, UI_FONT_OPTIONS, type MonoFontOption, type UiFontOption } from '@/lib/fontOptions';
-import { useI18n } from '@/lib/i18n';
 import { parseVimMappings } from '@/lib/codemirror/vimMappings';
 import { useConfigStore } from '@/stores/useConfigStore';
+import { useI18n } from '@/lib/i18n';
 import { useEnterpriseMode } from '@/stores/useEnterprisePolicyStore';
 import { useFontPreferences } from '@/hooks/useFontPreferences';
 import { normalizeMobileKeyboardMode, supportsMobileKeyboardResizeContent, type MobileKeyboardMode } from '@/lib/mobileKeyboardMode';
@@ -45,8 +45,8 @@ import {
 } from '@/lib/directoryShowHidden';
 import {
     SettingsSection,
-    SettingsTwoColumn,
     SettingsControlGroup,
+    SettingsTwoColumn,
     SettingsStackedField,
     SettingsFieldRow,
     SettingsInset,
@@ -335,8 +335,8 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     const { locale, locales, setLocale, label, t } = useI18n();
     const tUnsafe = React.useCallback((key: string) => t(key as Parameters<typeof t>[0]), [t]);
     const { isMobile } = useDeviceInfo();
-    const { terminal } = useRuntimeAPIs();
     const { browserTab } = usePwaDetection();
+    const { terminal } = useRuntimeAPIs();
     const directoryShowHidden = useDirectoryShowHidden();
     const showReasoningTraces = useUIStore(state => state.showReasoningTraces);
     const sessionRecapEnabled = useUIStore(state => state.sessionRecapEnabled);
@@ -345,6 +345,12 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     const setSessionSuggestionEnabled = useUIStore(state => state.setSessionSuggestionEnabled);
     const sessionGoalEnabled = useUIStore(state => state.sessionGoalEnabled);
     const setSessionGoalEnabled = useUIStore(state => state.setSessionGoalEnabled);
+    const chatRenderMode = useUIStore(state => state.chatRenderMode);
+    const setChatRenderMode = useUIStore(state => state.setChatRenderMode);
+    const showExpandedBashTools = useUIStore(state => state.showExpandedBashTools);
+    const setShowExpandedBashTools = useUIStore(state => state.setShowExpandedBashTools);
+    const showExpandedEditTools = useUIStore(state => state.showExpandedEditTools);
+    const setShowExpandedEditTools = useUIStore(state => state.setShowExpandedEditTools);
     const sessionGoalDefaultBudgetEnabled = useUIStore(state => state.sessionGoalDefaultBudgetEnabled);
     const setSessionGoalDefaultBudgetEnabled = useUIStore(state => state.setSessionGoalDefaultBudgetEnabled);
     const sessionGoalDefaultBudget = useUIStore(state => state.sessionGoalDefaultBudget);
@@ -379,8 +385,7 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     const setTableCellWrap = useUIStore(state => state.setTableCellWrap);
     const copyMessagesAsPlainText = useUIStore(state => state.copyMessagesAsPlainText);
     const setCopyMessagesAsPlainText = useUIStore(state => state.setCopyMessagesAsPlainText);
-    const chatRenderMode = useUIStore(state => state.chatRenderMode);
-    const setChatRenderMode = useUIStore(state => state.setChatRenderMode);
+
     const activityRenderMode = useUIStore(state => state.activityRenderMode);
     const setActivityRenderMode = useUIStore(state => state.setActivityRenderMode);
     const fontSize = useUIStore(state => state.fontSize);
@@ -409,6 +414,10 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     const setInputBarOffset = useUIStore(state => state.setInputBarOffset);
     const mobileKeyboardMode = useUIStore(state => state.mobileKeyboardMode);
     const setMobileKeyboardMode = useUIStore(state => state.setMobileKeyboardMode);
+    const timeFormatPreference = useUIStore(state => state.timeFormatPreference);
+    const setTimeFormatPreference = useUIStore(state => state.setTimeFormatPreference);
+    const weekStartPreference = useUIStore(state => state.weekStartPreference);
+    const setWeekStartPreference = useUIStore(state => state.setWeekStartPreference);
     const diffLayoutPreference = useUIStore(state => state.diffLayoutPreference);
     const setDiffLayoutPreference = useUIStore(state => state.setDiffLayoutPreference);
     const showTerminalQuickKeysOnDesktop = useUIStore(state => state.showTerminalQuickKeysOnDesktop);
@@ -444,14 +453,6 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     const setShowToolFileIcons = useUIStore(state => state.setShowToolFileIcons);
     const showTurnChangedFiles = useUIStore(state => state.showTurnChangedFiles);
     const setShowTurnChangedFiles = useUIStore(state => state.setShowTurnChangedFiles);
-    const showExpandedBashTools = useUIStore(state => state.showExpandedBashTools);
-    const setShowExpandedBashTools = useUIStore(state => state.setShowExpandedBashTools);
-    const showExpandedEditTools = useUIStore(state => state.showExpandedEditTools);
-    const setShowExpandedEditTools = useUIStore(state => state.setShowExpandedEditTools);
-    const timeFormatPreference = useUIStore(state => state.timeFormatPreference);
-    const setTimeFormatPreference = useUIStore(state => state.setTimeFormatPreference);
-    const weekStartPreference = useUIStore(state => state.weekStartPreference);
-    const setWeekStartPreference = useUIStore(state => state.setWeekStartPreference);
     const showSplitAssistantMessageActions = useUIStore(state => state.showSplitAssistantMessageActions);
     const setShowSplitAssistantMessageActions = useUIStore(state => state.setShowSplitAssistantMessageActions);
     const allowPromptingSubagentSessions = useUIStore(state => state.allowPromptingSubagentSessions);
@@ -726,7 +727,6 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     );
 
     const shouldShow = (setting: VisibleSetting): boolean => {
-        if (setting === 'enterToSend' && isMobile) return false;
         if (!visibleSettings) return true;
         return visibleSettings.includes(setting);
     };
@@ -801,7 +801,6 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     // First behavior section under the page header should not draw a top border on Chat-only;
     // when Appearance (or earlier sections) already rendered, keep the default divider.
     const behaviorSectionDivider = hasAppearanceSettings || hasLayoutSettings || hasNavigationSettings;
-
     const showPwaInstallNameSetting = shouldShow('pwaInstallName') && isWebRuntime() && browserTab && !isDesktopShell() && !isVSCode;
     const showPwaOrientationSetting = shouldShow('pwaOrientation') && isWebRuntime() && !isDesktopShell() && !isVSCode;
     const showMobileKeyboardModeSetting = shouldShow('mobileKeyboardMode') && isWebRuntime() && !isDesktopShell() && !isVSCode && supportsMobileKeyboardResizeContent();
@@ -1110,7 +1109,7 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
                                         settingsItem="appearance.language"
                                     >
                                         <Select value={locale} onValueChange={handleLocaleChange}>
-                                            <SelectTrigger aria-label={t('settings.appearance.language.select')} size={SETTINGS_SELECT_SIZE} className={SETTINGS_SELECT_TRIGGER_CLASS}>
+                                            <SelectTrigger aria-label={t('settings.appearance.language.select')} className={SETTINGS_SELECT_TRIGGER_CLASS}>
                                                 <SelectValue>{label(locale)}</SelectValue>
                                             </SelectTrigger>
                                             <SelectContent>

@@ -10,6 +10,8 @@ import { ensureLogsDir, getLogFilePath } from './cli-paths.js';
 import { rotateLogFile } from './cli-log-files.js';
 import { discoverAlcodeInstanceOnPort, isDesktopRuntimeForPort } from './cli-lifecycle.js';
 import { getPidFilePath, getInstanceFilePath, writePidFile, writeInstanceOptions, removePidFile, removeInstanceFile, isProcessRunning, terminateProcessTree } from './cli-process.js';
+import { isNetworkExposedBindHost } from '../../server/lib/security/bind-host.js';
+import { assignInjectedEnv } from '../../server/lib/injected-env.js';
 import {
   intro as clackIntro,
   outro as clackOutro,
@@ -126,6 +128,8 @@ async function serveCommand(options) {
       }
 
       // Propagate resolved values into env before importing the server module.
+      // The binary path is left unmarked: a startup service enabled from this
+      // server's terminal wants the same OpenCode.
       if (opencodeBinary) {
         process.env.OPENCODE_BINARY = opencodeBinary;
       }

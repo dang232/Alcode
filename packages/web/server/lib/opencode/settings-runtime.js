@@ -43,9 +43,12 @@ const ensureNotificationTemplateShape = (templates) => {
 /** Settings that decide which Alcode plugins the managed OpenCode loads. */
 const MANAGED_PLUGIN_SETTINGS_KEYS = new Set([
   'agentControlToolEnabled',
+  'agentScheduleToolEnabled',
   'agentWebToolEnabled',
   'agentMemoryToolEnabled',
+  'agentKnowledgeToolEnabled',
   'agentNotifyToolEnabled',
+  'agentRenderToolEnabled',
   'agentToolsCodeMode',
 ]);
 
@@ -67,9 +70,12 @@ export const createSettingsRuntime = (deps) => {
     normalizeManagedRemoteTunnelPresetTokens,
     syncManagedRemoteTunnelConfigWithPresets,
     upsertManagedRemoteTunnelToken,
+    chatRoots = [],
     onManagedPluginSettingsChanged = async () => {},
     onMessageSearchEnabledChanged = () => {},
     onMessageSearchReasoningChanged = () => {},
+    onPermissionDefaultModeChanged = () => {},
+    onLastDirectoryChanged = () => {},
   } = deps;
 
   let persistSettingsLock = Promise.resolve();
@@ -768,6 +774,23 @@ export const createSettingsRuntime = (deps) => {
     return (await Promise.all(validations)).filter((p) => p !== null);
   };
 
+  const isWithinRoot = (candidate, root) => {
+    const relative = path.relative(root, candidate);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  };
+
+  // A chat's folder belongs to no project. With no project open, the folder
+  // the UI last browsed is often a chat's, and it must not become one.
+  const isChatDirectory = async (candidate) => {
+    const roots = chatRoots.filter(Boolean).map((root) => path.resolve(root));
+    if (roots.some((root) => isWithinRoot(candidate, root))) {
+      return true;
+    }
+    const realCandidate = await fsPromises.realpath(candidate);
+    const realRoots = await Promise.all(roots.map((root) => fsPromises.realpath(root).catch(() => null)));
+    return realRoots.some((root) => root && isWithinRoot(realCandidate, root));
+  };
+
   const migrateSettingsFromLegacyLastDirectory = async (current) => {
     const settings = current && typeof current === 'object' ? current : {};
     const now = Date.now();
@@ -786,7 +809,7 @@ export const createSettingsRuntime = (deps) => {
       if (candidate) {
         try {
           const stats = await fsPromises.stat(candidate);
-          if (stats.isDirectory()) {
+          if (stats.isDirectory() && !(await isChatDirectory(candidate))) {
             const id = createProjectIdFromPath(candidate);
             nextProjects = [
               {
@@ -1020,6 +1043,17 @@ export const createSettingsRuntime = (deps) => {
     return { settings: next, changed: true };
   };
 
+  // Scheduled tasks used to be part of the agent control tool. Someone who had
+  // switched that tool off keeps them off after the split instead of getting a
+  // scheduling tool they never chose.
+  const migrateSettingsScheduleToolFromControl = (settings) => {
+    const chosen = settings.agentScheduleToolEnabled === true || settings.agentScheduleToolEnabled === false;
+    if (settings.agentControlToolEnabled !== false || chosen) {
+      return { settings, changed: false };
+    }
+    return { settings: { ...settings, agentScheduleToolEnabled: false }, changed: true };
+  };
+
   let hasCleanedOrphanedTempFiles = false;
 
   const readSettingsFromDiskMigrated = async ({ surface = null } = {}) => {
@@ -1036,12 +1070,13 @@ export const createSettingsRuntime = (deps) => {
     const migration6 = normalizeSettingsPaths(migration5.settings);
     const migration7 = await migrateSettingsToDeterministicProjectIds(migration6.settings);
     const migration8 = migrateSettingsRemoveApprovedDirectories(migration7.settings);
-    if (migration1.changed || migration2.changed || migration3.changed || migration4.changed || migration5.changed || migration6.changed || migration7.changed || migration8.changed) {
-      await writeSettingsToDisk(migration8.settings);
+    const migration9 = migrateSettingsScheduleToolFromControl(migration8.settings);
+    if (migration1.changed || migration2.changed || migration3.changed || migration4.changed || migration5.changed || migration6.changed || migration7.changed || migration8.changed || migration9.changed) {
+      await writeSettingsToDisk(migration9.settings);
     }
     // Migrations run on the base view; a surface asks for its own resolution
     // of the per-surface keys on top of the migrated files.
-    return normalizeSettingsSurface(surface) ? readSettingsFromDisk({ surface }) : migration8.settings;
+    return normalizeSettingsSurface(surface) ? readSettingsFromDisk({ surface }) : migration9.settings;
   };
 
   const persistSettings = async (changes, { surface = null } = {}) => {
@@ -1140,6 +1175,12 @@ export const createSettingsRuntime = (deps) => {
       }
       if (changedKeys.includes('messageSearchReasoningEnabled')) {
         onMessageSearchReasoningChanged(next.messageSearchReasoningEnabled === true);
+      }
+      if (changedKeys.includes('permissionDefaultMode') && next.permissionDefaultMode !== current.permissionDefaultMode) {
+        onPermissionDefaultModeChanged(next.permissionDefaultMode);
+      }
+      if (changedKeys.includes('lastDirectory') && next.lastDirectory !== current.lastDirectory) {
+        onLastDirectoryChanged(next.lastDirectory);
       }
       return formatSettingsResponse(next);
     });

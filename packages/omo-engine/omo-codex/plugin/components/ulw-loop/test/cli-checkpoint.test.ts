@@ -241,4 +241,34 @@ describe("ulwLoopCommand checkpoint", () => {
 		expect(err.join("")).toBe("");
 		expect(stdoutJson()).toMatchObject({ ok: false, error: { code: "ULW_LOOP_QUALITY_GATE_INVALID" } });
 	});
+
+	it("#given identical checkpoint rejections with no state change #when checkpointed repeatedly #then the fourth stops with a terminal error", async () => {
+		await createPlan("- Goal A");
+		const attempt = () =>
+			ulwLoopCommand([
+				"checkpoint",
+				"--goal-id",
+				"G001-goal-a",
+				"--status",
+				"complete",
+				"--evidence",
+				"done",
+				"--json",
+			]);
+
+		for (let index = 0; index < 3; index += 1) {
+			resetOutput();
+			expect(await attempt()).toBe(1);
+			expect(stdoutJson()).toMatchObject({ ok: false, error: { code: "ulw_loop_criteria_not_all_pass" } });
+		}
+		resetOutput();
+		expect(await attempt()).toBe(1);
+		const terminal = stdoutJson();
+		expect(terminal).toMatchObject({ ok: false, error: { code: "ulw_loop_checkpoint_retry_exhausted" } });
+		expect(JSON.stringify(terminal)).toContain("record-evidence");
+		expect(JSON.stringify(terminal)).toContain("Do not create probe goals");
+		resetOutput();
+		expect(await ulwLoopCommand(["status", "--json"])).toBe(0);
+		expect(stdoutJson()).toMatchObject({ plan: { goals: [{ id: "G001-goal-a" }] } });
+	});
 });

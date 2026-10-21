@@ -35,8 +35,14 @@ export const ULW_LOOP_SUCCESS_CRITERION_USER_MODELS = [
 	"edge",
 	"regression",
 	"adversarial",
+	"findings",
+	"evidence",
+	"limitations",
 ] as const satisfies readonly string[];
 export type UlwLoopSuccessCriterionUserModel = (typeof ULW_LOOP_SUCCESS_CRITERION_USER_MODELS)[number];
+
+export const ULW_LOOP_TASK_KINDS = ["implementation", "readonly", "mixed"] as const satisfies readonly string[];
+export type UlwLoopTaskKind = (typeof ULW_LOOP_TASK_KINDS)[number];
 
 export const ULW_LOOP_CRITERION_STATUSES = ["pending", "pass", "fail", "blocked"] as const satisfies readonly string[];
 export type UlwLoopCriterionStatus = (typeof ULW_LOOP_CRITERION_STATUSES)[number];
@@ -60,6 +66,7 @@ export const ULW_LOOP_LEDGER_EVENT_KINDS = [
 	"steering_rejected",
 	"final_review_failed",
 	"goal_review_blocked",
+	"blocker_recorded",
 	"evidence_captured",
 	"criterion_failed",
 	"criterion_blocked",

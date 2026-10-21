@@ -224,4 +224,29 @@ describe("ulwLoopCommand create-goals", () => {
 		expect(err.join("")).toContain("--session-id requires a non-empty value");
 		await expect(readFile(join(testDir, ".omo/ulw-loop/cli-test/goals.json"), "utf8")).rejects.toThrow();
 	});
+
+	it("#given --task-kind readonly #when creating goals #then seeds survey criteria", async () => {
+		const code = await ulwLoopCommand([
+			"create-goals",
+			"--brief",
+			"- Survey the repo",
+			"--task-kind",
+			"readonly",
+			"--json",
+		]);
+
+		expect(code).toBe(0);
+		expect(stdoutJson()).toMatchObject({
+			plan: { taskKind: "readonly", goals: [{ taskKind: "readonly" }] },
+		});
+		expect(await readFile(join(testDir, ".omo/ulw-loop/cli-test/goals.json"), "utf8")).toContain("findings");
+	});
+
+	it("#given an invalid --task-kind #when creating goals #then it fails and writes no plan", async () => {
+		const code = await ulwLoopCommand(["create-goals", "--brief", "- Alpha", "--task-kind", "vibes"]);
+
+		expect(code).toBe(1);
+		expect(err.join("")).toContain("Invalid --task-kind");
+		await expect(readFile(join(testDir, ".omo/ulw-loop/cli-test/goals.json"), "utf8")).rejects.toThrow();
+	});
 });

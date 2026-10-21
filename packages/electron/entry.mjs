@@ -10,6 +10,7 @@
 
 import { app, protocol } from 'electron';
 import path from 'node:path';
+import { enableMainProcessCompileCache } from './compile-cache.mjs';
 import { shouldIgnoreLoopbackConnectionLimit } from './startup-url-selection.mjs';
 import {
   APP_USER_MODEL_ID,
@@ -28,7 +29,16 @@ recordEarlyStartupMark('electron.entry');
 
 // Set the product name early so electron-log derives its log directory as
 // ~/Library/Logs/Alcode/ (not ~/Library/Logs/@alcode/electron/).
+const versionBeforeRename = app.getVersion();
 app.setName('Alcode');
+// An unpackaged run on Linux reports version "0.0" after the rename, and
+// electron-updater refuses a version that is not semver, so the dev app quit
+// before its first window. Restoring the version from before the rename gives
+// it Electron's own version, as on macOS. `setVersion` is undocumented;
+// Electron's default app uses it to apply a package.json version.
+if (app.getVersion() !== versionBeforeRename) {
+  app.setVersion(versionBeforeRename);
+}
 if (process.platform === 'linux') {
   app.setDesktopName('openchamber.desktop');
 }
@@ -45,6 +55,8 @@ const userDataOverride = String(process.env.ALCODE_DESKTOP_USER_DATA_DIR || proc
 if (userDataOverride) {
   app.setPath('userData', userDataOverride);
 }
+// After the userData path is final, before main.mjs and the server load.
+enableMainProcessCompileCache({ packaged: app.isPackaged, userDataDir: app.getPath('userData') });
 app.setAppUserModelId(APP_USER_MODEL_ID);
 // Resolve preview names in Chromium, not through the configured proxy.
 app.commandLine.appendSwitch('proxy-bypass-list', '<-loopback>;openchamber-preview.localhost');
@@ -59,6 +71,12 @@ if (shouldIgnoreLoopbackConnectionLimit({
   packagedUi: process.env.ALCODE_ELECTRON_USE_BUNDLED_UI === '1',
 })) {
   app.commandLine.appendSwitch('ignore-connections-limit', '127.0.0.1');
+}
+// Development only: lets a debugger or an agent attach to the dev window over
+// CDP. Chromium binds the port to loopback.
+const devRemoteDebuggingPort = String(process.env.OPENCHAMBER_ELECTRON_REMOTE_DEBUGGING_PORT || '').trim();
+if (isDev && /^\d+$/.test(devRemoteDebuggingPort)) {
+  app.commandLine.appendSwitch('remote-debugging-port', devRemoteDebuggingPort);
 }
 // Both UI origins stay privileged so packaged pages served from the
 // pre-rename scheme keep the same fetch/CORS/code-cache behavior.

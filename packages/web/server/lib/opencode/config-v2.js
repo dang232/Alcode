@@ -11,6 +11,7 @@
  * Reference: OpenCode `packages/core/src/config/normalize.ts`,
  * `packages/core/src/v1/config/migrate.ts`, and `services/www` migrate-v1 docs.
  */
+import { isRecord } from '../shared/guards.js';
 
 // omo.json keys are owned by the engine core (`@oh-my-opencode/omo-config-core`:
 // schema + loader + atomic writer). This module keeps the OpenCode opencode.json
@@ -34,15 +35,12 @@ import {
  * Config section keys per entity. `v2` is what Alcode writes; `v1` is the
  * legacy key OpenCode still decodes and Alcode still reads.
  */
+
 const SECTIONS = {
   agents: { v2: 'agents', v1: 'agent' },
   commands: { v2: 'commands', v1: 'command' },
   providers: { v2: 'providers', v1: 'provider' },
 };
-
-function isRecord(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
 
 function sectionKeys(kind) {
   const section = SECTIONS[kind];
@@ -798,6 +796,22 @@ function writeWarmingEnabled(config, enabled) {
   return JSON.stringify(config.warming) !== before;
 }
 
+/**
+ * Sets how long OpenCode keeps a session warm after its last turn, while
+ * warming is on; leaves the key alone while it is off. OpenCode's default (30
+ * minutes) goes back to the plain `true` when nothing else was tuned. Returns
+ * whether the config changed.
+ */
+function writeWarmingDuration(config, minutes) {
+  if (!config.warming) return false;
+  const before = JSON.stringify(config.warming);
+  const tuned = isRecord(config.warming) ? { ...config.warming } : {};
+  delete tuned.duration;
+  if (minutes !== 30) tuned.duration = `${minutes} minutes`;
+  config.warming = Object.keys(tuned).length > 0 ? tuned : true;
+  return JSON.stringify(config.warming) !== before;
+}
+
 const hasWebSearchKey = (config) => config != null && Object.hasOwn(config, 'websearch');
 
 /**
@@ -856,6 +870,7 @@ export {
   writeWebSearchSelection,
   findWebSearchProjectOverride,
   writeWarmingEnabled,
+  writeWarmingDuration,
   OmoConfigLayerSchema,
   OmoConfigSchema,
   OmoConfigWriteError,

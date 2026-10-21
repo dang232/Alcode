@@ -5,7 +5,7 @@ import { dropdownMenuItemClass, dropdownMenuPopupClass } from '@/components/ui/d
 import type { IconName } from '@/components/icon/icons';
 import { MESSAGE_IMAGE_EXPORT_EXCLUDE_ATTRIBUTE } from '../message/imageExport';
 import { getMermaidViewerController } from './mermaidViewer';
-import { getMarkdownCodeText } from './codeText';
+import { emptyTrailingCodeLine } from './openFenceIncremental';
 import { getMarkdownSelectionText, type RenderedCopyFormat } from './selectionMarkdown';
 
 // ---------------------------------------------------------------------------
@@ -42,7 +42,6 @@ export type DecorateContext = {
   labels: DecorateLabels;
   mermaidControls: MermaidControlOptions;
   codeBlockLineWrap: boolean;
-  deferCodeLineNumberSync?: boolean;
   onToggleCodeBlockLineWrap?: () => void;
   // Tables fit the available width and wrap cell text instead of scrolling.
   tableCellWrap: boolean;
@@ -65,6 +64,7 @@ const ICONS = {
   textWrap: 'text-wrap',
   image: 'file-image',
   disclosure: 'arrow-right-s',
+  browser: 'global',
 } as const satisfies Record<string, IconName>;
 
 const ICON_BTN_CLASS =
@@ -156,7 +156,6 @@ const applyCodeBlockWrapState = (wrapper: HTMLElement, enabled: boolean, labels:
   const body = wrapper.querySelector<HTMLElement>('[data-md-code-body]');
   const pre = wrapper.querySelector<HTMLElement>('pre');
   const code = wrapper.querySelector<HTMLElement>('pre code');
-  const lineContents = wrapper.querySelectorAll<HTMLElement>('[data-md-code-line-content]');
   const wrapButton = wrapper.querySelector<HTMLButtonElement>('[data-md-action="toggle-code-wrap"]');
   wrapper.setAttribute('data-code-wrap', enabled ? 'true' : 'false');
   body?.classList.toggle('overflow-x-auto', !enabled);
@@ -173,73 +172,42 @@ const applyCodeBlockWrapState = (wrapper: HTMLElement, enabled: boolean, labels:
     code.style.whiteSpace = enabled ? 'pre-wrap' : 'pre';
     code.style.overflowWrap = enabled ? 'anywhere' : 'normal';
   }
-  for (const lineContent of Array.from(lineContents)) {
-    lineContent.style.whiteSpace = enabled ? 'pre-wrap' : 'pre';
-    lineContent.style.overflowWrap = enabled ? 'anywhere' : 'normal';
-  }
   if (wrapButton) applyWrapButtonState(wrapButton, enabled, labels.enableCodeWrap, labels.disableCodeWrap);
 };
 
-const layoutCodeLines = (pre: HTMLPreElement): void => {
-  const code = pre.querySelector<HTMLElement>(':scope > code');
-  if (!code || code.hasAttribute('data-md-code-lines')) return;
+const CODE_LINES_ATTR = 'data-md-code-lines';
 
-  // The real gutter takes over the reserved footprint.
-  pre.removeAttribute('data-md-gutter-reserved');
-
-  const text = code.textContent ?? '';
-  const hasTrailingNewline = text.endsWith('\n');
-  const lines = hasTrailingNewline ? text.slice(0, -1).split('\n') : text.split('\n');
-  const sourceLines = lines.length > 0 ? lines : [''];
-  const highlightedLines = Array.from(code.children).filter((child) => child.classList.contains('line'));
-  if (
-    hasTrailingNewline
-    && highlightedLines.length === sourceLines.length + 1
-    && highlightedLines.at(-1)?.textContent === ''
-  ) {
-    highlightedLines.pop();
+// Line numbers are a CSS counter over the code's `.line` children (see
+// index.css), so a block needs no element per number. Shiki already emits
+// one `<span class="line">` per source line, separated by line breaks;
+// unhighlighted code gets the same shape here, so the highlighted paint has
+// the geometry of the first one and the open-fence patch keeps working on it.
+const markCodeLines = (pre: HTMLPreElement): void => {
+  // A direct child walk rather than `:scope > code`: happy-dom, which the
+  // decoration tests run on, does not match `:scope`.
+  const code = Array.from(pre.children).find((child) => child.tagName === 'CODE');
+  if (!code || code.hasAttribute(CODE_LINES_ATTR)) return;
+  code.setAttribute(CODE_LINES_ATTR, '');
+  if (Array.from(code.children).some((child) => child.classList.contains('line'))) {
+    emptyTrailingCodeLine(code);
+    return;
   }
-  const preserveHighlighting = highlightedLines.length === sourceLines.length;
-  const fragment = document.createDocumentFragment();
 
-  sourceLines.forEach((sourceLine, index) => {
-    const row = document.createElement('span');
-    row.setAttribute('data-md-code-line', '');
-
-    const number = document.createElement('span');
-    number.setAttribute('data-md-code-line-number', String(index + 1));
-    number.setAttribute('aria-hidden', 'true');
-
-    const content = document.createElement('span');
-    content.setAttribute('data-md-code-line-content', '');
-    if (preserveHighlighting) {
-      const highlightedLine = highlightedLines[index];
-      if (highlightedLine) content.append(...Array.from(highlightedLine.childNodes));
-    } else {
-      content.textContent = sourceLine;
-    }
-    row.append(number, content);
-    fragment.appendChild(row);
-    if (index < sourceLines.length - 1 || hasTrailingNewline) {
-      const lineBreak = document.createElement('span');
-      lineBreak.setAttribute('data-md-code-line-break', '');
-      lineBreak.textContent = '\n';
-      fragment.appendChild(lineBreak);
-    }
+  const doc = code.ownerDocument;
+  const fragment = doc.createDocumentFragment();
+  (code.textContent ?? '').split('\n').forEach((sourceLine, index) => {
+    if (index > 0) fragment.appendChild(doc.createTextNode('\n'));
+    const line = doc.createElement('span');
+    line.className = 'line';
+    if (sourceLine) line.textContent = sourceLine;
+    fragment.appendChild(line);
   });
-
   code.replaceChildren(fragment);
-  code.setAttribute('data-md-code-lines', '');
-  code.toggleAttribute('data-md-code-trailing-newline', hasTrailingNewline);
 };
-
-export { getMarkdownCodeText };
 
 export const applyMarkdownCodeBlockWrapState = (root: HTMLElement, enabled: boolean, labels: DecorateLabels): void => {
   const wrappers = root.querySelectorAll<HTMLElement>('[data-component="markdown-code"]');
   for (const wrapper of Array.from(wrappers)) {
-    const pre = wrapper.querySelector<HTMLPreElement>('pre');
-    if (pre) layoutCodeLines(pre);
     applyCodeBlockWrapState(wrapper, enabled, labels);
   }
 };
@@ -284,7 +252,9 @@ const decorateCodeBlocks = (root: HTMLElement, ctx: DecorateContext): void => {
     // `data-md-lang` is stamped by the async highlight pass; on the synchronous
     // first paint it isn't set yet, so fall back to the `language-*` class marked
     // emits — keeps the card header label stable instead of flashing 'text'.
-    const classLang = pre.querySelector('code')?.className.match(/language-([\w+#.-]+)/)?.[1];
+    // Lowercased like the highlight pass's stamp, so the label does not
+    // change case when highlighting lands.
+    const classLang = pre.querySelector('code')?.className.match(/language-([\w+#.-]+)/)?.[1]?.toLowerCase();
     const language = pre.getAttribute('data-md-lang') ?? classLang ?? 'text';
 
     const wrapper = document.createElement('div');
@@ -316,15 +286,7 @@ const decorateCodeBlocks = (root: HTMLElement, ctx: DecorateContext): void => {
     pre.style.margin = '0';
     pre.style.background = 'transparent';
     pre.classList.add('min-w-0', 'w-full', 'flex-1');
-    if (!ctx.deferCodeLineNumberSync) {
-      layoutCodeLines(pre);
-    } else {
-      // Streaming defers the per-line gutter markup, but the gutter's
-      // horizontal footprint is reserved immediately — otherwise the
-      // end-of-stream decorate pass shifts every code line right by the
-      // gutter column and the finished message visibly jumps.
-      pre.setAttribute('data-md-gutter-reserved', '');
-    }
+    markCodeLines(pre);
     body.appendChild(pre);
     wrapper.appendChild(header);
     wrapper.appendChild(body);
@@ -402,14 +364,14 @@ const tableToMarkdown = ({ headers, rows }: { headers: string[]; rows: string[][
 const buildTableMenu = (action: string, items: Array<{ key: string; label: string }>): HTMLDivElement => {
   const menu = document.createElement('div');
   // Match the app's DropdownMenu look (same class tokens + surface colors).
-  menu.className = `absolute top-full right-0 mt-1 hidden ${dropdownMenuPopupClass}`;
+  menu.className = `absolute top-full inset-e-0 mt-1 hidden ${dropdownMenuPopupClass}`;
   menu.style.backgroundColor = 'var(--surface-elevated)';
   menu.style.color = 'var(--surface-elevated-foreground)';
   menu.setAttribute('data-md-menu', action);
   for (const item of items) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `w-full text-left ${dropdownMenuItemClass}`;
+    button.className = `w-full text-start ${dropdownMenuItemClass}`;
     button.setAttribute('data-md-action', `${action}-${item.key}`);
     button.textContent = item.label;
     menu.appendChild(button);
@@ -420,8 +382,9 @@ const buildTableMenu = (action: string, items: Array<{ key: string; label: strin
 const TABLE_COLUMN_MIN_WIDTH = 120;
 const TABLE_COLUMN_FALLBACK_MAX_WIDTH = 320;
 const TABLE_LAYOUT_ATTR = 'data-md-table-layout';
-// The wrap mode the fixed column widths were computed for.
+// The wrap mode and available width the fixed column widths were computed for.
 const TABLE_WRAP_ATTR = 'data-md-table-wrap';
+const TABLE_WIDTH_ATTR = 'data-md-table-width';
 
 const applyTableWrapState = (wrapper: Element, enabled: boolean, labels: DecorateLabels): void => {
   const button = wrapper.querySelector<HTMLButtonElement>('[data-md-action="toggle-table-wrap"]');
@@ -491,10 +454,10 @@ const decorateTables = (root: HTMLElement, ctx: DecorateContext): void => {
     lastBodyRow?.classList.remove('border-b');
     lastBodyRow?.classList.add('border-0');
     for (const th of Array.from(table.querySelectorAll('th'))) {
-      th.classList.add('min-w-[120px]', 'whitespace-normal', '[overflow-wrap:anywhere]', 'border-r', 'border-border/60', 'px-4', 'py-2.5', 'text-left', 'align-middle', 'font-semibold', 'text-foreground', 'last:border-r-0');
+      th.classList.add('min-w-[120px]', 'whitespace-normal', '[overflow-wrap:anywhere]', 'border-e', 'border-border/60', 'px-4', 'py-2.5', 'text-start', 'align-middle', 'font-semibold', 'text-foreground', 'last:border-e-0');
     }
     for (const td of Array.from(table.querySelectorAll('td'))) {
-      td.classList.add('min-w-[120px]', 'whitespace-normal', '[overflow-wrap:anywhere]', 'border-r', 'border-border/60', 'px-4', 'py-2.5', 'align-middle', 'text-foreground/90', 'last:border-r-0');
+      td.classList.add('min-w-[120px]', 'whitespace-normal', '[overflow-wrap:anywhere]', 'border-e', 'border-border/60', 'px-4', 'py-2.5', 'align-middle', 'text-foreground/90', 'last:border-e-0');
     }
 
     scroll.appendChild(table);
@@ -523,12 +486,143 @@ const fitColumnWidths = (naturalWidths: number[], availableWidth: number): numbe
   return widths;
 };
 
-export const stabilizeMarkdownTableWidths = (root: HTMLElement, wrapCells: boolean): void => {
-  const wrapMode = String(wrapCells);
-  const tables = Array.from(root.querySelectorAll<HTMLTableElement>(
-    `table[data-markdown="table"]:not([${TABLE_LAYOUT_ATTR}="fixed"][${TABLE_WRAP_ATTR}="${wrapMode}"])`,
+// The table wrapper hugs its table, so a fixed-width table would report its own
+// width back. Stretching the wrappers for one read gives the width the table
+// may use, which grows and shrinks with the chat.
+const measureAvailableWidths = (tables: HTMLTableElement[]): number[] => {
+  const wrappers = tables.map((table) => table.closest<HTMLElement>('[data-markdown="table-wrapper"]'));
+  for (const wrapper of wrappers) wrapper?.style.setProperty('width', '100%');
+  const widths = tables.map((table) => table.parentElement?.clientWidth ?? 0);
+  for (const wrapper of wrappers) wrapper?.style.removeProperty('width');
+  return widths;
+};
+
+// The content width of the block the table's wrapper sits in: read without
+// writing anything, so a refit during a resize forces no extra layout.
+// Markdown blocks are `display: contents`, so the box is further up.
+const readContainerContentWidth = (table: HTMLTableElement): number => {
+  const view = table.ownerDocument.defaultView;
+  let container = table.closest('[data-markdown="table-wrapper"]')?.parentElement ?? null;
+  let style = container ? view?.getComputedStyle(container) : undefined;
+  while (container && style?.display === 'contents') {
+    container = container.parentElement;
+    style = container ? view?.getComputedStyle(container) : undefined;
+  }
+  if (!container) return 0;
+  return container.clientWidth - (Number.parseFloat(style?.paddingLeft ?? '') || 0) - (Number.parseFloat(style?.paddingRight ?? '') || 0);
+};
+
+// What a table's column widths are computed from, kept per table element: the
+// width each column takes unwrapped, which does not depend on the available
+// width, and how the available width relates to the container's content width
+// (the table box's border). A refit at a new width then needs only arithmetic.
+// Measured again when the table's font changes; new content is a new element.
+type TableMeasurement = { naturalWidths: number[]; font: string; availableOffset: number };
+const tableMeasurements = new WeakMap<HTMLTableElement, TableMeasurement>();
+const readTableFont = (table: HTMLTableElement): string => table.ownerDocument.defaultView?.getComputedStyle(table).font ?? '';
+
+const planTableColumns = (naturalWidths: number[], availableWidth: number, wrapCells: boolean) => {
+  // Without layout (for example, a hidden chat), retain the former limit.
+  const maxColumnWidth = Math.max(TABLE_COLUMN_MIN_WIDTH, availableWidth || TABLE_COLUMN_FALLBACK_MAX_WIDTH);
+  const cappedWidths = naturalWidths.map((width) => Math.min(maxColumnWidth, Math.max(TABLE_COLUMN_MIN_WIDTH, width)));
+  // Without layout there is no width to fit into, so wrapping waits.
+  const widths = wrapCells && availableWidth > 0 ? fitColumnWidths(cappedWidths, availableWidth) : cappedWidths;
+  return { widths, cappedColumns: naturalWidths.map((width, columnIndex) => width > (widths[columnIndex] ?? 0)) };
+};
+
+const applyTableColumns = (
+  table: HTMLTableElement,
+  { availableWidth, widths, cappedColumns, wrapMode }: { availableWidth: number; widths: number[]; cappedColumns: boolean[]; wrapMode: string },
+): void => {
+  // Identifiers stay on one line only while the column can hold them; in a
+  // column capped at the available width they wrap instead of overflowing
+  // into the neighbouring cell.
+  for (const row of Array.from(table.querySelectorAll<HTMLTableRowElement>('tr'))) {
+    const cells = Array.from(row.children).filter((child) => child.tagName === 'TH' || child.tagName === 'TD');
+    cells.forEach((cell, columnIndex) => {
+      const nowrap = !cappedColumns[columnIndex];
+      for (const code of Array.from(cell.querySelectorAll('code[data-markdown="inline-code"]'))) {
+        code.classList.toggle('whitespace-nowrap', nowrap);
+      }
+    });
+  }
+
+  const existingColumns = Array.from(table.children).find((child) => (
+    child.matches('colgroup[data-md-table-columns]')
   ));
-  if (tables.length === 0 || !root.isConnected) return;
+  const existingCols = existingColumns ? Array.from(existingColumns.children) : [];
+  if (existingColumns && existingCols.length === widths.length) {
+    // The same columns: only their widths change, as on every frame of a resize.
+    existingCols.forEach((column, index) => {
+      if (column instanceof HTMLElement) column.style.width = `${widths[index]}px`;
+    });
+  } else {
+    existingColumns?.remove();
+    const colgroup = table.ownerDocument.createElement('colgroup');
+    colgroup.setAttribute('data-md-table-columns', '');
+    for (const width of widths) {
+      const column = table.ownerDocument.createElement('col');
+      column.style.width = `${width}px`;
+      colgroup.appendChild(column);
+    }
+    const firstSection = Array.from(table.children).find((child) => (
+      child.tagName === 'THEAD' || child.tagName === 'TBODY' || child.tagName === 'TFOOT'
+    )) ?? null;
+    table.insertBefore(colgroup, firstSection);
+  }
+  table.style.tableLayout = 'fixed';
+  table.style.width = `${widths.reduce((total, width) => total + width, 0)}px`;
+  table.setAttribute(TABLE_LAYOUT_ATTR, 'fixed');
+  table.setAttribute(TABLE_WRAP_ATTR, wrapMode);
+  table.setAttribute(TABLE_WIDTH_ATTR, String(availableWidth));
+};
+
+/**
+ * Fits the tables' columns to the available width. With `cachedOnly`, it
+ * refits only from widths measured before and does nothing, returning false,
+ * when any table would need measuring: a caller following a resize on every
+ * frame can afford arithmetic, not a measurement.
+ */
+export const stabilizeMarkdownTableWidths = (root: HTMLElement, wrapCells: boolean, options: { cachedOnly?: boolean } = {}): boolean => {
+  const wrapMode = String(wrapCells);
+  const allTables = Array.from(root.querySelectorAll<HTMLTableElement>('table[data-markdown="table"]'));
+  if (allTables.length === 0 || !root.isConnected) return true;
+  // Reads first: container widths and fonts, then the stretched measurement
+  // for tables measured for the first time.
+  const known = allTables.map((table) => {
+    const measurement = tableMeasurements.get(table);
+    const contentWidth = readContainerContentWidth(table);
+    return { table, contentWidth, measurement: measurement && measurement.font === readTableFont(table) ? measurement : null };
+  });
+  const unmeasured = known.filter(({ measurement }) => !measurement);
+  if (options.cachedOnly && unmeasured.length > 0) return false;
+  const stretchedWidths = new Map<HTMLTableElement, number>();
+  if (unmeasured.length > 0) {
+    const widths = measureAvailableWidths(unmeasured.map(({ table }) => table));
+    unmeasured.forEach(({ table }, index) => stretchedWidths.set(table, widths[index] ?? 0));
+  }
+  const all = known.map(({ table, contentWidth, measurement }) => ({
+    table,
+    contentWidth,
+    measurement,
+    availableWidth: measurement
+      ? (contentWidth > 0 ? Math.max(0, Math.round(contentWidth + measurement.availableOffset)) : 0)
+      : (stretchedWidths.get(table) ?? 0),
+  }));
+  const stale = all.filter(({ table, availableWidth }) => (
+    table.getAttribute(TABLE_LAYOUT_ATTR) !== 'fixed'
+    || table.getAttribute(TABLE_WRAP_ATTR) !== wrapMode
+    || table.getAttribute(TABLE_WIDTH_ATTR) !== String(availableWidth)
+  ));
+  if (stale.length === 0) return true;
+
+  for (const { table, availableWidth, measurement } of stale) {
+    if (!measurement) continue;
+    applyTableColumns(table, { availableWidth, wrapMode, ...planTableColumns(measurement.naturalWidths, availableWidth, wrapCells) });
+  }
+  const toMeasure = stale.filter(({ measurement }) => !measurement);
+  if (toMeasure.length === 0) return true;
+  const tables = toMeasure.map(({ table }) => table);
 
   const measurementRoot = root.ownerDocument.createElement('div');
   measurementRoot.setAttribute('aria-hidden', 'true');
@@ -587,57 +681,21 @@ export const stabilizeMarkdownTableWidths = (root: HTMLElement, wrapCells: boole
   });
 
   root.appendChild(measurementRoot);
-  const plans = probes.map(({ table, columnProbes }) => {
-    const availableWidth = table.parentElement?.clientWidth ?? 0;
-    // Without layout (for example, a hidden chat), retain the former limit.
-    const maxColumnWidth = Math.max(TABLE_COLUMN_MIN_WIDTH, availableWidth || TABLE_COLUMN_FALLBACK_MAX_WIDTH);
+  const plans = probes.map(({ table, columnProbes }, index) => {
+    const { availableWidth, contentWidth } = toMeasure[index] ?? { availableWidth: 0, contentWidth: 0 };
     const naturalWidths = columnProbes.map((probe) => Math.ceil(probe.getBoundingClientRect().width));
-    const cappedWidths = naturalWidths.map((width) => Math.min(maxColumnWidth, Math.max(TABLE_COLUMN_MIN_WIDTH, width)));
-    // Without layout there is no width to fit into, so wrapping waits.
-    const widths = wrapCells && availableWidth > 0 ? fitColumnWidths(cappedWidths, availableWidth) : cappedWidths;
-    return {
-      table,
-      widths,
-      cappedColumns: naturalWidths.map((width, index) => width > (widths[index] ?? 0)),
-    };
+    // Only a table laid out on screen has widths worth keeping.
+    if (availableWidth > 0 && contentWidth > 0) {
+      tableMeasurements.set(table, { naturalWidths, font: readTableFont(table), availableOffset: availableWidth - contentWidth });
+    }
+    return { table, availableWidth, ...planTableColumns(naturalWidths, availableWidth, wrapCells) };
   });
   measurementRoot.remove();
 
-  for (const { table, widths, cappedColumns } of plans) {
-    // Identifiers stay on one line only while the column can hold them; in a
-    // column capped at the available width they wrap instead of overflowing
-    // into the neighbouring cell.
-    for (const row of Array.from(table.querySelectorAll<HTMLTableRowElement>('tr'))) {
-      const cells = Array.from(row.children).filter((child) => child.tagName === 'TH' || child.tagName === 'TD');
-      cells.forEach((cell, columnIndex) => {
-        const nowrap = !cappedColumns[columnIndex];
-        for (const code of Array.from(cell.querySelectorAll('code[data-markdown="inline-code"]'))) {
-          code.classList.toggle('whitespace-nowrap', nowrap);
-        }
-      });
-    }
-
-    const existingColumns = Array.from(table.children).find((child) => (
-      child.matches('colgroup[data-md-table-columns]')
-    ));
-    existingColumns?.remove();
-
-    const colgroup = root.ownerDocument.createElement('colgroup');
-    colgroup.setAttribute('data-md-table-columns', '');
-    for (const width of widths) {
-      const column = root.ownerDocument.createElement('col');
-      column.style.width = `${width}px`;
-      colgroup.appendChild(column);
-    }
-    const firstSection = Array.from(table.children).find((child) => (
-      child.tagName === 'THEAD' || child.tagName === 'TBODY' || child.tagName === 'TFOOT'
-    )) ?? null;
-    table.insertBefore(colgroup, firstSection);
-    table.style.tableLayout = 'fixed';
-    table.style.width = `${widths.reduce((total, width) => total + width, 0)}px`;
-    table.setAttribute(TABLE_LAYOUT_ATTR, 'fixed');
-    table.setAttribute(TABLE_WRAP_ATTR, wrapMode);
+  for (const { table, availableWidth, widths, cappedColumns } of plans) {
+    applyTableColumns(table, { availableWidth, widths, cappedColumns, wrapMode });
   }
+  return true;
 };
 
 // ---------------------------------------------------------------------------
@@ -664,7 +722,7 @@ const decorateMermaid = (root: HTMLElement, ctx: DecorateContext): void => {
     toolbar.setAttribute('data-markdown', 'mermaid-toolbar');
     // Visible on touch screens, so a shared image must drop it explicitly.
     toolbar.setAttribute(MESSAGE_IMAGE_EXPORT_EXCLUDE_ATTRIBUTE, 'true');
-    toolbar.className = 'absolute top-1 right-2 flex items-center gap-1';
+    toolbar.className = 'absolute top-1 inset-e-2 flex items-center gap-1';
 
     if (rendered.svg) {
       block.setAttribute('data-mermaid-render', 'svg');
@@ -733,7 +791,7 @@ const decorateLinks = (root: HTMLElement, ctx: DecorateContext): void => {
       const favWrap = document.createElement('span');
       favWrap.setAttribute(MESSAGE_IMAGE_EXPORT_EXCLUDE_ATTRIBUTE, 'true');
       favWrap.className =
-        'mr-1 inline-flex size-[18px] items-center justify-center rounded border border-[var(--border)] bg-[var(--interactive-hover)] align-middle';
+        'me-1 inline-flex size-[18px] items-center justify-center rounded border border-[var(--border)] bg-[var(--interactive-hover)] align-middle';
       const img = document.createElement('img');
       img.src = faviconUrl;
       img.alt = '';
@@ -749,12 +807,13 @@ const decorateLinks = (root: HTMLElement, ctx: DecorateContext): void => {
     if (ctx.onPreviewLoopback && isLoopbackHttpUrl(href)) {
       const preview = document.createElement('button');
       preview.type = 'button';
-      preview.className = `ml-1 align-middle ${ICON_BTN_CLASS}`;
+      preview.className = `ms-1 align-middle ${ICON_BTN_CLASS}`;
       preview.setAttribute('data-md-action', 'preview-loopback');
       preview.setAttribute('data-md-url', href);
       preview.setAttribute('title', ctx.labels.previewTitle);
       preview.setAttribute('aria-label', ctx.labels.previewLabel);
-      setIcon(preview, 'download');
+      // The browser panel's own icon: the button opens the address there.
+      setIcon(preview, 'browser');
       anchor.parentNode?.insertBefore(preview, anchor.nextSibling);
     }
   }
@@ -802,14 +861,14 @@ const closeAllMenus = (container: HTMLElement): void => {
 
 const getContainingMarkdownCode = (node: Node): HTMLElement | null => {
   const element = node.nodeType === 1 ? node as Element : node.parentElement;
-  return element?.closest<HTMLElement>('pre code[data-md-code-lines]') ?? null;
+  return element?.closest<HTMLElement>(`pre code[${CODE_LINES_ATTR}]`) ?? null;
 };
 
 const getMarkdownCodeSelectionText = (range: Range): string | null => {
   const code = getContainingMarkdownCode(range.startContainer);
   if (!code || code !== getContainingMarkdownCode(range.endContainer)) return null;
   // Line numbers are CSS-generated, so the DOM range is already the exact
-  // source selection, including boundaries between rows and empty lines.
+  // source selection, including line breaks and empty lines.
   return range.toString();
 };
 
@@ -898,8 +957,7 @@ export const attachMarkdownInteractions = (
 
     // Copy code
     if (action === 'copy-code') {
-      const code = actionEl.closest('[data-component="markdown-code"]')?.querySelector('code');
-      const text = code ? getMarkdownCodeText(code) : '';
+      const text = actionEl.closest('[data-component="markdown-code"]')?.querySelector('code')?.textContent ?? '';
       if (text) {
         actionEl.setAttribute('data-md-copy-pending', '');
         void copyTextToClipboard(text)

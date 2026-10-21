@@ -30,6 +30,12 @@ const BASE_TOOLS: RegistryMap = {
   call_omo_agent: { description: "Delegate work to a named helper agent." },
   teammate: { description: "Hand work to a teammate session." },
   todo_write: { description: "Record and update the task checklist." },
+  ulw_goal_create: { description: "Open a native ULW run from a brief; returns the run record." },
+  ulw_status: { description: "Report a native ULW run (record, roster, receipts, missing) or list runs." },
+  ulw_dispatch: { description: "Dispatch ULW goals: record worker sessions, or spawn them through the team pool." },
+  ulw_evidence: { description: "Record a dispatched ULW goal's child result as evidence." },
+  ulw_checkpoint: { description: "Gate a ULW checkpoint on recorded child results." },
+  ulw_complete: { description: "Close a ULW run once every dispatched goal has its result." },
   LspHover: { description: "Show hover information for a code symbol." },
   grep_app_search: { description: "Search the companion app index." },
 };

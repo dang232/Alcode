@@ -12,6 +12,7 @@ import type {
 import type { OhMyOpenCodeConfig } from "./config/schema/oh-my-opencode-config";
 import { buildToolRegistry } from "./plugin/tool-registry";
 import { getAgentToolRestrictions } from "./shared/agent-tool-restrictions";
+import { createUlwTools } from "./tools/ulw/index.ts";
 
 // Candidate locations for the shared skills loader barrel. Tried in order;
 // a miss just falls through to the next one so this module always imports
@@ -155,6 +156,16 @@ export async function createTools(
       args: { properties: {} },
       execute: async () => "tool unavailable in this context",
     };
+  }
+
+  // Native ULW tools keep their registry names and gating (user disables,
+  // per-agent denies, and the size cap all applied above) but run the real
+  // store-backed executes. A name the registry dropped stays dropped.
+  const ulwTools = createUlwTools();
+  for (const [name, tool] of Object.entries(ulwTools)) {
+    if (registry[name] !== undefined) {
+      filteredTools[name] = tool;
+    }
   }
 
   return { filteredTools, mergedSkills, availableSkills };

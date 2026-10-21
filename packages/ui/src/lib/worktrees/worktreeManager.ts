@@ -14,6 +14,7 @@ import {
 } from '@/lib/worktrees/worktreeBootstrap';
 import { invalidateResolvedProjectRootCache, resolveProjectRoot } from '@/lib/worktrees/worktreeStatus';
 import { clearWorktreeRemoval, markWorktreeRemoving } from '@/lib/worktrees/worktreeRemovalState';
+import { checkoutHoldsSubfolder } from '@/lib/worktrees/worktreePaths';
 import type {
   CreateGitWorktreePayload,
   GitWorktreeBootstrapStatus,
@@ -31,6 +32,7 @@ type WorktreeListEntry = {
   head?: string;
   name?: string;
   prunable?: boolean;
+  provenance?: WorktreeMetadata['provenance'];
 };
 
 const deriveHeadStateFromWorktreeEntry = (entry: WorktreeListEntry): 'branch' | 'detached' | 'unborn' => {
@@ -322,7 +324,10 @@ export const worktreeMapsEqual = (
  * under every project. The primary checkout owns the topology when it is
  * configured; otherwise the first configured checkout for that repository
  * owns it. Checkouts that are configured projects are omitted from the owned
- * worktree list because they already have their own project section.
+ * worktree list because they already have their own project section. So are
+ * checkouts that hold a configured project in a sub-folder, such as the
+ * repository root of a project at `repo/app`: deleting one would delete that
+ * project's folder.
  */
 export const partitionWorktreesByRegisteredProject = (
   projects: ReadonlyArray<Pick<ProjectRef, 'path'>>,
@@ -335,6 +340,13 @@ export const partitionWorktreesByRegisteredProject = (
       configuredProjectOrder.set(projectPath, index);
     }
   });
+  const holdsConfiguredProject = (worktreePath: string): boolean => {
+    if (configuredProjectOrder.has(worktreePath)) return true;
+    for (const projectPath of configuredProjectOrder.keys()) {
+      if (checkoutHoldsSubfolder(worktreePath, projectPath)) return true;
+    }
+    return false;
+  };
 
   type RepositorySource = {
     projectPath: string;
@@ -370,7 +382,7 @@ export const partitionWorktreesByRegisteredProject = (
     const seenPaths = new Set<string>();
     const ownedWorktrees = topologySource.worktrees.filter((worktree) => {
       const worktreePath = normalizePath(worktree.path.trim());
-      if (!worktreePath || configuredProjectOrder.has(worktreePath) || seenPaths.has(worktreePath)) {
+      if (!worktreePath || holdsConfiguredProject(worktreePath) || seenPaths.has(worktreePath)) {
         return false;
       }
       seenPaths.add(worktreePath);
@@ -533,6 +545,7 @@ const readProjectWorktrees = async (projectDirectory: string): Promise<WorktreeM
         worktreeStatus: canonical.worktreeStatus,
         headState: canonical.headState,
         worktreeSource: canonical.worktreeSource,
+        ...(entry.provenance ? { provenance: entry.provenance } : {}),
       };
     })
     .filter((entry) => normalizePath(entry.path) !== normalizedProjectDirectory);
@@ -641,6 +654,13 @@ export async function createWorktree(project: ProjectRef, args: CreateWorktreeAr
     toast.warning(formatMessage(
       useI18nStore.getState().dictionary,
       created.sourceFetchReason === 'access' ? 'session.newWorktree.toast.fetchSourceAccess' : 'session.newWorktree.toast.fetchSourceFailed',
+    ));
+  }
+  if (created?.branchBackup) {
+    toast.info(formatMessage(
+      useI18nStore.getState().dictionary,
+      'session.newWorktree.toast.branchBackup',
+      { branch: created.branch, backup: created.branchBackup },
     ));
   }
   const returnedName = typeof created?.name === 'string' ? created.name : '';

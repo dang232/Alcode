@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clearSuggestionPatch, openByJevPatch, readWork, suggestDonePatch } from './state.js';
+import { clearSuggestionPatch, openByJevPatch, openPatch, readWork, offerReviewPatch, suggestDonePatch } from './state.js';
 
 const withWork = (work) => ({ alcode: { goal: { id: 'g' }, work } });
 
@@ -10,15 +10,25 @@ describe('session work state', () => {
     expect(readWork(withWork({ state: 'maybe' }))).toBeNull();
   });
 
+  it('opens a session that is not in work and records that it opened on its own', () => {
+    expect(openPatch({}, { requestAt: 5, now: 10 })).toEqual({
+      alcode: { work: { state: 'open', openedAt: 10, openedBy: 'auto', doneAt: null, suggestDoneAt: null } },
+    });
+    expect(openPatch(withWork({ state: 'open', openedAt: 1 }), { requestAt: 5, now: 10 })).toBeNull();
+  });
+
   it('opens a session that is not in work and records that Jev did it', () => {
     expect(openByJevPatch({}, { requestAt: 5, now: 10 })).toEqual({
       alcode: { work: { state: 'open', openedAt: 10, openedBy: 'jev', doneAt: null, suggestDoneAt: null } },
     });
-    expect(openByJevPatch(withWork({ state: 'open', openedAt: 1 }), { requestAt: 5, now: 10 })).toBeNull();
+    expect(openPatch(withWork({ state: 'open', openedAt: 1 }), { requestAt: 5, now: 10 })).toBeNull();
   });
 
-  it('reopens a closed session only for a request sent after the user closed it', () => {
+  it('reopens a closed session only for a message sent after the user closed it', () => {
     const closedAt7 = withWork({ state: 'done', doneAt: 7 });
+    expect(openPatch(closedAt7, { requestAt: 5, now: 10 })).toBeNull();
+    expect(openPatch(closedAt7, { requestAt: 7, now: 10 })).toBeNull();
+    expect(openPatch(closedAt7, { requestAt: 8, now: 10 })).toMatchObject({ alcode: { work: { state: 'open' } } });
     expect(openByJevPatch(closedAt7, { requestAt: 5, now: 10 })).toBeNull();
     expect(openByJevPatch(closedAt7, { requestAt: 7, now: 10 })).toBeNull();
     expect(openByJevPatch(closedAt7, { requestAt: 8, now: 10 })).toMatchObject({ alcode: { work: { state: 'open' } } });
@@ -30,5 +40,12 @@ describe('session work state', () => {
     expect(suggestDonePatch({}, { now: 3 })).toBeNull();
     expect(clearSuggestionPatch(withWork({ state: 'open', suggestDoneAt: 3 }))).toEqual({ alcode: { work: { suggestDoneAt: null } } });
     expect(clearSuggestionPatch(withWork({ state: 'open' }))).toBeNull();
+  });
+
+  it('offers a review on any session, and a new turn retires both hints', () => {
+    expect(offerReviewPatch({}, { now: 3 })).toEqual({ alcode: { reviewOffer: { at: 3 } } });
+    expect(clearSuggestionPatch({ alcode: { reviewOffer: { at: 3 } } })).toEqual({ alcode: { reviewOffer: null } });
+    expect(clearSuggestionPatch({ alcode: { work: { state: 'open', suggestDoneAt: 3 }, reviewOffer: { at: 3 } } }))
+      .toEqual({ alcode: { work: { suggestDoneAt: null }, reviewOffer: null } });
   });
 });

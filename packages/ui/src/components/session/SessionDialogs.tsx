@@ -18,6 +18,7 @@ import type { Session } from '@/lib/opencode/model';
 import type { WorktreeMetadata } from '@/types/worktree';
 import { canDeleteWorktreeWithoutConfirm, getWorktreeStatus } from '@/lib/worktrees/worktreeStatus';
 import { getWorktreeDisplayName, removeProjectWorktree } from '@/lib/worktrees/worktreeManager';
+import { checkoutHoldsDirectory } from '@/lib/worktrees/worktreePaths';
 import { removeWorktreeThenArchiveSessions } from '@/lib/worktrees/worktreeRemovalFlow';
 import { clearWorktreeRemoval, markWorktreeRemoving } from '@/lib/worktrees/worktreeRemovalState';
 import { useSessionUIStore } from '@/sync/session-ui-store';
@@ -55,7 +56,6 @@ export const SessionDialogs: React.FC = () => {
     const { t } = useI18n();
     const { git, sourceControl } = useRuntimeAPIs();
     const [isDirectoryDialogOpen, setIsDirectoryDialogOpen] = React.useState(false);
-    const [hasShownInitialDirectoryPrompt, setHasShownInitialDirectoryPrompt] = React.useState(false);
     const [deleteDialog, setDeleteDialog] = React.useState<DeleteDialogState | null>(null);
     const [deleteDialogSummaries, setDeleteDialogSummaries] = React.useState<Array<{ session: Session; metadata: WorktreeMetadata }>>([]);
     const [deleteDialogShouldRemoveRemote, setDeleteDialogShouldRemoveRemote] = React.useState(false);
@@ -76,7 +76,6 @@ export const SessionDialogs: React.FC = () => {
     const setShowDeletionDialog = useUIStore((state) => state.setShowDeletionDialog);
     const currentDirectory = useDirectoryStore((s) => s.currentDirectory);
     const homeDirectory = useDirectoryStore((s) => s.homeDirectory);
-    const isHomeReady = useDirectoryStore((s) => s.isHomeReady);
     const projects = useProjectsStore((s) => s.projects);
     const activeProjectId = useProjectsStore((s) => s.activeProjectId);
     const { isMobile, isTablet, hasTouchInput } = useDeviceInfo();
@@ -121,20 +120,6 @@ export const SessionDialogs: React.FC = () => {
     const deleteLocalOptionDisabled = isProcessingDelete || !isWorktreeDelete;
 
     // Session loading is handled by sync bootstrap — no manual loadSessions needed.
-
-    React.useEffect(() => {
-        if (hasShownInitialDirectoryPrompt || !isHomeReady || projects.length > 0) {
-            return;
-        }
-
-        setHasShownInitialDirectoryPrompt(true);
-
-        setIsDirectoryDialogOpen(true);
-    }, [
-        hasShownInitialDirectoryPrompt,
-        isHomeReady,
-        projects.length,
-    ]);
 
     const openDeleteDialog = React.useCallback((payload: { sessions: Session[]; dateLabel?: string; mode?: 'session' | 'worktree'; worktree?: WorktreeMetadata | null }) => {
         setDeleteDialog({
@@ -352,11 +337,16 @@ export const SessionDialogs: React.FC = () => {
                 }
             );
 
+            // A directory inside the removed checkout, such as `<worktree>/sub`, goes with it.
+            const isInRemovedWorktree = (directory: string): boolean => Boolean(
+                normalizedWorktreePath
+                && directory
+                && checkoutHoldsDirectory(normalizedWorktreePath, directory)
+            );
             const draftDirectory = normalizeProjectDirectory(newSessionDraft?.directoryOverride);
             if (
                 newSessionDraft?.open
-                && normalizedWorktreePath
-                && draftDirectory === normalizedWorktreePath
+                && isInRemovedWorktree(draftDirectory)
                 && normalizedProjectPath
             ) {
                 setDraftBootstrapPendingDirectory(null);
@@ -366,7 +356,7 @@ export const SessionDialogs: React.FC = () => {
                 }, { force: true });
             }
 
-            if (normalizeProjectDirectory(currentDirectory) === normalizedWorktreePath && normalizedProjectPath) {
+            if (isInRemovedWorktree(normalizeProjectDirectory(currentDirectory)) && normalizedProjectPath) {
                 useDirectoryStore.getState().setDirectory(normalizedProjectPath, { showOverlay: false });
             }
 
@@ -628,7 +618,7 @@ export const SessionDialogs: React.FC = () => {
                                 <span className={cn(!isWorktreeDelete && 'hidden')}>
                                     •
                                 </span>
-                                <span dir="auto" className="truncate">
+                                <span dir="auto" className="oc-ui-start-align truncate">
                                     {session.title || t('sessions.sidebar.session.untitled')}
                                 </span>
                             </li>

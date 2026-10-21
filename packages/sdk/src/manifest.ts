@@ -516,6 +516,11 @@ export const clampStatusSectionHeight = (height: number): number => {
   return Math.min(GUEST_STATUS_SECTION_HEIGHT_MAX, Math.max(GUEST_STATUS_SECTION_HEIGHT_MIN, Math.round(height)));
 };
 
+export type OpenChamberEngines = {
+  openchamber?: string;
+  /** Normalized spelling: `engines.openchamber` parses and writes back as `engines.alcode`. */
+  alcode?: string;
+};
 export type AlcodeEngines = {
   alcode: string;
 };

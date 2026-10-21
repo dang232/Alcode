@@ -7,6 +7,7 @@ import { DEFAULT_PORT } from './cli-args.js';
 import { EXIT_CODE, TunnelCliError } from './cli-errors.js';
 import { getDataDir } from './cli-paths.js';
 import { searchPathFor } from './cli-executables.js';
+import { injectedEnvKeys } from '../../server/lib/injected-env.js';
 
 const STARTUP_SERVICE_ID = 'dev.alcode.web';
 const LEGACY_STARTUP_SERVICE_ID = 'dev.openchamber.web';
@@ -84,9 +85,12 @@ function getWindowsStartupWrapperPath() {
 }
 
 function collectStartupEnv(options = {}) {
+  // Variables OpenChamber itself put into this shell (the desktop app's
+  // terminal, an agent's shell) describe that instance, not the service.
+  const injected = injectedEnvKeys(process.env);
   const env = options.envSnapshot === false ? {} : Object.fromEntries(
     Object.entries(process.env)
-      .filter(([key, value]) => shouldPersistStartupEnv(key, value))
+      .filter(([key, value]) => !injected.has(key) && shouldPersistStartupEnv(key, value))
       .map(([key, value]) => [key, String(value)])
   );
 
@@ -253,9 +257,7 @@ function buildMacosLaunchAgent(options = {}) {
   <array>
 ${argXml}
   </array>
-${envXml}  <key>ProcessType</key>
-  <string>Background</string>
-  <key>RunAtLoad</key>
+${envXml}  <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>

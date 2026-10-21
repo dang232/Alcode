@@ -1,8 +1,5 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { toast } from '@/components/ui';
 import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint';
 import { Icon } from "@/components/icon/Icon";
 import type { Session } from '@/lib/opencode/model';
@@ -21,14 +18,17 @@ import {
   updateSharedProjectSetup,
 } from '@/lib/alcodeConfig';
 import { resetSharedSetupTrust } from '@/lib/sharedTrustConfirmation';
+
+import { PROJECT_SETTINGS_CONTROL_WIDTH, ProjectSettingsSubsection } from '@/components/sections/projects/ProjectSettingsSubsection';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui';
 import { listProjectWorktrees } from '@/lib/worktrees/worktreeManager';
+import { checkoutHoldsDirectory } from '@/lib/worktrees/worktreePaths';
 import { sessionEvents } from '@/lib/sessionEvents';
 import type { WorktreeMetadata } from '@/types/worktree';
 import { formatPathForDisplay, cn } from '@/lib/utils';
-import {
-  PROJECT_SETTINGS_CONTROL_WIDTH,
-  ProjectSettingsSubsection,
-} from '@/components/sections/projects/ProjectSettingsSubsection';
+import { SettingsSection } from '@/components/sections/shared/SettingsSection';
 import { useI18n } from '@/lib/i18n';
 import { useProjectWorktrees } from './useProjectWorktrees';
 
@@ -44,6 +44,10 @@ interface WorktreeSectionContentProps {
 
 const SETUP_COMMANDS_SAVE_DELAY_MS = 450;
 
+/**
+ * The project's worktrees with a delete button each, for the Worktrees page.
+ * Setup commands are edited on the project's Settings page.
+ */
 export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ projectRef: projectRefProp = null, sections = 'all' }) => {
   const { t } = useI18n();
   const { isMobile, isTablet } = useDeviceInfo();
@@ -315,7 +319,7 @@ export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ 
       const sessionDir = (session as { directory?: string }).directory;
       if (sessionDir) {
         const normalizedSessionDir = normalize(sessionDir);
-        if (normalizedSessionDir === normalizedWorktreePath) {
+        if (checkoutHoldsDirectory(normalizedWorktreePath, normalizedSessionDir)) {
           return true;
         }
       }
@@ -378,27 +382,25 @@ export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ 
 
   if (!projectPath) {
     return (
-      <ProjectSettingsSubsection
+      <SettingsSection
         title={t('settings.projects.page.section.worktree')}
-        settingsItem="projects.worktree"
       >
         <p className="typography-meta text-muted-foreground">
           {t('settings.alcode.worktrees.state.selectProject')}
         </p>
-      </ProjectSettingsSubsection>
+      </SettingsSection>
     );
   }
 
   if (isGitRepoLocal === false) {
     return (
-      <ProjectSettingsSubsection
+      <SettingsSection
         title={t('settings.projects.page.section.worktree')}
-        settingsItem="projects.worktree"
       >
         <p className="typography-meta text-muted-foreground">
           {t('settings.alcode.worktrees.state.gitOnly')}
         </p>
-      </ProjectSettingsSubsection>
+      </SettingsSection>
     );
   }
 
@@ -529,9 +531,7 @@ export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ 
             {t('settings.alcode.worktrees.list.empty')}
           </p>
         ) : (
-          // The settings panel keeps its narrow control column; the full-page
-          // Worktrees surface lets rows use the whole content width.
-          <div className={cn('space-y-1', sections === 'all' && PROJECT_SETTINGS_CONTROL_WIDTH)}>
+          <div className="space-y-1">
             {availableWorktrees.map((worktree) => (
               <div
                 key={worktree.path}

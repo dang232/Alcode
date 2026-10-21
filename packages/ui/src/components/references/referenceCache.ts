@@ -8,15 +8,27 @@
  * an empty list.
  *
  * Keys carry everything that changes the answer (runtime, account, project,
- * kind, filter, search text), so nothing here is invalidated by hand.
+ * kind, filter, search text). What a key holds can still go out of date on
+ * the host: `revalidateReferences` makes the lists and values on screen check
+ * their age again, for a surface that stays mounted while nobody looks at it.
  */
 
 import * as React from 'react';
 
+import type { GitHubReferencesAcrossSkip } from '@/lib/api/types';
+
 const FRESH_MS = 60_000;
 
+/** A folder a list over several repositories could not read, and why. */
+export type ListSkip = { directory: string; reason: GitHubReferencesAcrossSkip };
+
+const mergeSkipped = (shown: readonly ListSkip[], next: readonly ListSkip[]): ListSkip[] => {
+    const known = new Set(shown.map((skip) => skip.directory));
+    return [...shown, ...next.filter((skip) => !known.has(skip.directory))];
+};
+
 export type ListPage<T> =
-    | { kind: 'page'; items: T[]; cursor: string | null; hasMore: boolean }
+    | { kind: 'page'; items: T[]; cursor: string | null; hasMore: boolean; skipped?: ListSkip[] }
     /** The source answered but cannot list: not connected, or no repo. */
     | { kind: 'unavailable'; reason: 'disconnected' | 'no-repo' };
 
@@ -30,6 +42,8 @@ export type CachedList<T> = {
     loadingMore: boolean;
     /** The last failure, first page or a later one; cleared by the next success. */
     error: string | null;
+    /** Folders the latest page of a list over several repositories left out; empty otherwise. */
+    skipped: ListSkip[];
 };
 
 export type CachedValue<T> =
@@ -120,8 +134,8 @@ class KeyedStore<R> {
 }
 
 export type ListCache<T> = {
-    /** Show what `key` has and fetch it when missing or stale. */
-    ensure: (key: string, fetchPage: PageFetcher<T>, options?: { force?: boolean }) => void;
+    /** Show what `key` has and fetch it when missing or stale; settles when that fetch does, or at once when none starts. */
+    ensure: (key: string, fetchPage: PageFetcher<T>, options?: { force?: boolean }) => Promise<void>;
     loadMore: (key: string) => void;
     read: (key: string) => CachedList<T> | null;
     subscribe: (key: string, listener: Listener) => () => void;
@@ -140,7 +154,7 @@ export function createListCache<T>(limit = 40, now: () => number = Date.now): Li
         const existing = store.get(key);
         if (existing && (existing.refreshing || (!options?.force && now() - existing.fetchedAt < FRESH_MS))) {
             if (existing.fetchPage !== fetchPage) update(key, existing, { fetchPage });
-            return;
+            return Promise.resolve();
         }
         const generation = (existing?.generation ?? 0) + 1;
         store.set(key, existing
@@ -153,12 +167,13 @@ export function createListCache<T>(limit = 40, now: () => number = Date.now): Li
                 refreshing: true,
                 loadingMore: false,
                 error: null,
+                skipped: [],
                 cursor: null,
                 fetchedAt: 0,
                 generation,
                 fetchPage,
             });
-        void settle(fetchPage(null)).then((outcome) => {
+        return settle(fetchPage(null)).then((outcome) => {
             const current = store.get(key);
             if (!current || current.generation !== generation) return;
             if (!outcome.ok) {
@@ -179,12 +194,14 @@ export function createListCache<T>(limit = 40, now: () => number = Date.now): Li
                     hasMore: false,
                     refreshing: false,
                     error: null,
+                    skipped: [],
                     fetchedAt: now(),
                 });
                 return;
             }
             update(key, current, {
                 status: 'ready',
+                skipped: page.skipped ?? [],
                 unavailable: null,
                 items: page.items,
                 cursor: page.cursor,
@@ -219,6 +236,8 @@ export function createListCache<T>(limit = 40, now: () => number = Date.now): Li
                 hasMore: page.hasMore,
                 loadingMore: false,
                 error: null,
+                // A folder left out of an earlier page stays left out of the list.
+                skipped: mergeSkipped(current.skipped, page.skipped ?? []),
             });
         });
     };
@@ -326,6 +345,27 @@ export function createValueCache<T>(limit = 40, now: () => number = Date.now): V
 
 const noSubscription = () => () => undefined;
 
+let revalidation = 0;
+const revalidationListeners = new Set<Listener>();
+
+const subscribeRevalidation = (listener: Listener) => {
+    revalidationListeners.add(listener);
+    return () => {
+        revalidationListeners.delete(listener);
+    };
+};
+
+/** Lists and values on screen older than `FRESH_MS` are read again; fresh ones stay as they are. */
+export function revalidateReferences(): void {
+    revalidation += 1;
+    for (const listener of revalidationListeners) listener();
+}
+
+/** Changes on every `revalidateReferences`; an effect that fetches lists it among its dependencies. */
+export function useReferenceRevalidation(): number {
+    return React.useSyncExternalStore(subscribeRevalidation, () => revalidation, () => revalidation);
+}
+
 /**
  * The cached list for `key`, refreshed when stale. A null key shows nothing
  * and fetches nothing.
@@ -334,26 +374,29 @@ export function useCachedList<T>(
     cache: ListCache<T>,
     key: string | null,
     fetchPage: PageFetcher<T>,
-): CachedList<T> & { loadMore: () => void; retry: () => void } {
+): CachedList<T> & { loadMore: () => void; retry: () => Promise<void> } {
     const subscribe = React.useCallback(
         (listener: Listener) => (key ? cache.subscribe(key, listener) : noSubscription()),
         [cache, key],
     );
     const snapshot = React.useSyncExternalStore(subscribe, () => (key ? cache.read(key) : null));
+    const revalidation = useReferenceRevalidation();
 
     React.useEffect(() => {
-        if (key) cache.ensure(key, fetchPage);
-    }, [cache, fetchPage, key]);
+        if (key) void cache.ensure(key, fetchPage);
+    }, [cache, fetchPage, key, revalidation]);
 
     const loadMore = React.useCallback(() => {
         if (key) cache.loadMore(key);
     }, [cache, key]);
-    const retry = React.useCallback(() => {
-        if (key) cache.ensure(key, fetchPage, { force: true });
-    }, [cache, fetchPage, key]);
+    /** Settles once the list is read again. */
+    const retry = React.useCallback(
+        () => (key ? cache.ensure(key, fetchPage, { force: true }) : Promise.resolve()),
+        [cache, fetchPage, key],
+    );
 
     return {
-        ...(snapshot ?? { status: 'loading', unavailable: null, items: [], hasMore: false, refreshing: false, loadingMore: false, error: null }),
+        ...(snapshot ?? { status: 'loading', unavailable: null, items: [], hasMore: false, refreshing: false, loadingMore: false, error: null, skipped: [] }),
         loadMore,
         retry,
     };
@@ -375,10 +418,11 @@ export function useCachedValue<T>(
         [cache, key],
     );
     const snapshot = React.useSyncExternalStore(subscribe, () => (key ? cache.read(key) : null));
+    const revalidation = useReferenceRevalidation();
 
     React.useEffect(() => {
         if (key && fetchNow) cache.ensure(key, fetch).catch(() => undefined);
-    }, [cache, fetch, fetchNow, key]);
+    }, [cache, fetch, fetchNow, key, revalidation]);
 
     return snapshot ?? { status: 'idle' };
 }

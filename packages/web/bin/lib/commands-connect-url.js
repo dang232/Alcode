@@ -17,6 +17,7 @@ import { createRemoteClientAuthRuntime } from '../../server/lib/client-auth/remo
 import { createClientPairingRuntime } from '../../server/lib/client-auth/pairing.js';
 import { encodePairingConnectUrl } from '../../server/lib/client-auth/pairing-url.js';
 import { createRelayIdentityRuntime } from '../../server/lib/relay/identity.js';
+import { createRelayKeyStore } from '../../server/lib/relay/key-store.js';
 import { DEFAULT_RELAY_URL, pinnedRelayUrl } from '../../server/lib/relay/service.js';
 import { createSettingsAccessors as createSettingsAccessorsModule } from './cli-settings-accessors.js';
 import {
@@ -81,7 +82,13 @@ async function buildRelayPairingCandidate() {
   const accessors = createSettingsAccessors();
   const settings = await accessors.readSettingsFromDiskMigrated();
   const relayUrl = resolveRelayUrl(settings);
-  const identityRuntime = createRelayIdentityRuntime({ crypto, ...accessors });
+  const relayKeyStore = createRelayKeyStore({
+    fsPromises: fs.promises,
+    path,
+    dataDir: getOpenChamberDataDir(),
+    ...accessors,
+  });
+  const identityRuntime = createRelayIdentityRuntime({ crypto, relayKeyStore });
   const identity = await identityRuntime.getRelayIdentity();
   return {
     enabled: settings?.privateRelay?.enabled === true,

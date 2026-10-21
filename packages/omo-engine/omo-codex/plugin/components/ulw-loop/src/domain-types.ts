@@ -6,6 +6,7 @@ import type {
 	UlwLoopSteeringMutationKind,
 	UlwLoopSteeringStatus,
 	UlwLoopSuccessCriterionUserModel,
+	UlwLoopTaskKind,
 } from "./constants.js";
 import type { UlwLoopSteeringAudit } from "./steering-types.js";
 
@@ -37,6 +38,8 @@ export interface UlwLoopItem {
 	reviewBlockedAt?: string;
 	evidence?: string;
 	failureReason?: string;
+	dispatchedRole?: string;
+	workerSessionId?: string;
 	steeringStatus?: UlwLoopSteeringStatus;
 	supersededBy?: string[];
 	supersedes?: string[];
@@ -47,6 +50,7 @@ export interface UlwLoopItem {
 	nonRetriable?: boolean;
 	steeringEvidence?: string;
 	steeringRationale?: string;
+	taskKind?: UlwLoopTaskKind;
 }
 
 export interface UlwLoopAggregateCompletion {
@@ -74,6 +78,7 @@ export interface UlwLoopPlan {
 	goalsPath: string;
 	ledgerPath: string;
 	codexGoalMode?: UlwLoopCodexGoalMode;
+	taskKind?: UlwLoopTaskKind;
 	codexObjective?: string;
 	codexObjectiveAliases?: string[];
 	acknowledgedDriverObjectives?: string[];

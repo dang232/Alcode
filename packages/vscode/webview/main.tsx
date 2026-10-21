@@ -1,7 +1,8 @@
+import { z } from 'zod';
 import { createVSCodeAPIs } from './api';
 import { createRemovalTombstones } from './inlineCommentRemovals';
 import { resolveCommentTarget } from './inlineCommentTarget';
-import { onCommand, onThemeChange, postBridgeNotification, proxyApiRequest, proxySessionMessageRequest, sendBridgeMessage, sendBridgeMessageWithOptions, startSseProxy, stopSseProxy } from './api/bridge';
+import { BridgeRequestError, onCommand, onThemeChange, postBridgeNotification, proxyApiRequest, proxySessionMessageRequest, sendBridgeMessage, sendBridgeMessageWithOptions, startSseProxy, stopSseProxy } from './api/bridge';
 import { vscodeStreamPerfCount, vscodeStreamPerfMeasure, vscodeStreamPerfObserve } from './api/streamPerf';
 import { extractBodyBase64, extractBodyText, extractJsonBody, hasInitBody } from './requestBodyTransport';
 import type { RuntimeAPIs } from '@alcode/ui/lib/api/types';
@@ -54,7 +55,6 @@ declare global {
     __OPENCHAMBER_VSCODE_THEME__?: VSCodeThemePayload['theme'];
     __OPENCHAMBER_VSCODE_SHIKI_THEMES__?: { light?: Record<string, unknown>; dark?: Record<string, unknown> } | null;
     __OPENCHAMBER_HOME__?: string;
-    __OPENCHAMBER_VSCODE_WINDOW_FOCUSED__?: boolean;
   }
 }
 
@@ -364,6 +364,14 @@ const pluginConfigErrorStatus = (message: string): number => {
   return 500;
 };
 
+// Entry writes answer like the web server's plugin routes: a spec the
+// extension refused comes back as 400 with its code, so the dialog can say so
+// under the field.
+const pluginEntryErrorResponse = (message: string, code: string | undefined): Response => {
+  const status = code === 'UNLOADABLE_SPEC' ? 400 : pluginConfigErrorStatus(message);
+  return jsonResponse({ error: message, code }, status);
+};
+
 const isNullBodyStatus = (status: number): boolean => status === 204 || status === 205 || status === 304;
 
 const buildProxiedResponse = (
@@ -619,6 +627,19 @@ const handleLocalApiRequest = async (input: RequestInfo | URL, url: URL, init: R
         headers: { 'Content-Type': 'application/json' },
       },
     );
+  }
+
+  // The web server answers this route; here the extension host reads the same
+  // provider and model lists from OpenCode (`bridge-small-model-runtime.ts`).
+  if (normalizedPathname === '/api/small-model' && method === 'GET') {
+    const directory = getRequestDirectoryHint(url, input, init);
+    try {
+      const data = await sendBridgeMessage('api:small-model:get', { directory });
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    }
   }
 
   if (normalizedPathname === '/api/tts/status' && method === 'GET') {
@@ -1056,7 +1077,7 @@ const handleLocalApiRequest = async (input: RequestInfo | URL, url: URL, init: R
       return jsonResponse(data);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return jsonResponse({ error: message }, pluginConfigErrorStatus(message));
+      return pluginEntryErrorResponse(message, error instanceof BridgeRequestError ? error.code : undefined);
     }
   }
 
@@ -1075,7 +1096,7 @@ const handleLocalApiRequest = async (input: RequestInfo | URL, url: URL, init: R
       return jsonResponse(data);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return jsonResponse({ error: message }, pluginConfigErrorStatus(message));
+      return pluginEntryErrorResponse(message, error instanceof BridgeRequestError ? error.code : undefined);
     }
   }
 
@@ -1227,7 +1248,7 @@ const handleLocalApiRequest = async (input: RequestInfo | URL, url: URL, init: R
     }
   }
 
-  const quotaCredentialMatch = pathname.match(/^\/api\/quota\/credentials\/(exe-dev|ollama-cloud|cursor|zenmux)(?:\/(validate|import))?$/);
+  const quotaCredentialMatch = pathname.match(/^\/api\/quota\/credentials\/(exe-dev|cursor|zenmux)(?:\/(validate|import))?$/);
   if (quotaCredentialMatch) {
     try {
       const body = method === 'PUT' ? await extractJsonBody(input, init, method) : undefined;
@@ -1810,15 +1831,22 @@ onCommand('reloadOpenCode', () => {
   });
 });
 
-const getNotificationClaimKey = (payload: { title?: unknown; body?: unknown; sessionId?: unknown; tag?: unknown } | undefined): string => {
-  const tag = typeof payload?.tag === 'string' ? payload.tag.trim() : '';
-  if (tag) return tag;
-  return [payload?.sessionId, payload?.title, payload?.body]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .map((value) => value.trim())
-    .join('|');
+// The extension host shows the notification and decides whether the chat is in
+// view: Chromium never displays a `new Notification()` from a webview frame.
+const showOpenChamberNotification = (payload: { title: string; body: string; sessionId: string; requireHidden: boolean }) => {
+  void sendBridgeMessage('api:notifications:show', payload).catch(() => undefined);
 };
 
+const openSessionPayloadSchema = z.object({ sessionId: z.string().min(1) });
+
+// "Open Session" on a notification.
+onCommand('openSession', (payload) => {
+  const sessionId = openSessionPayloadSchema.safeParse(payload).data?.sessionId;
+  if (!sessionId) return;
+  void import('@/sync/session-ui-store').then(({ useSessionUIStore }) => {
+    useSessionUIStore.getState().setCurrentSession(sessionId);
+  });
+  window.dispatchEvent(new CustomEvent('alcode:navigate', { detail: { view: 'chat' } }));
 const claimAlcodeNotification = async (payload: { title?: unknown; body?: unknown; sessionId?: unknown; tag?: unknown } | undefined): Promise<boolean> => {
   const key = getNotificationClaimKey(payload);
   if (!key) return true;

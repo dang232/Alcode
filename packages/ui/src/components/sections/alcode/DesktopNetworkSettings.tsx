@@ -22,6 +22,7 @@ import { formatShortcutForDisplay, getCustomizableShortcutActions, UNASSIGNED_SH
 import {
   SettingsSection,
   SettingsCheckboxRow,
+  SettingsStackedField,
   SETTINGS_OPTION_STACK_CLASS,
   SettingsFieldRow,
 } from '@/components/sections/shared/SettingsSection';
@@ -30,6 +31,14 @@ import { useUIStore } from '@/stores/useUIStore';
 
 import { ShortcutRecordingDialog } from './ShortcutRecordingDialog';
 
+import { saveDesktopRestartDrafts, useDesktopRestartDrafts } from './desktopRestartDrafts';
+
+/**
+ * Who may open the desktop app over the network: the UI password and access
+ * from the local network. Both apply on the next launch, so they are drafts
+ * until "Save + restart", which also saves the restart drafts of
+ * `DesktopAppSettings` (`desktopRestartDrafts.ts`).
+ */
 export const DesktopNetworkSettings: React.FC = () => {
   const { t } = useI18n();
   const isLocalDesktop = isDesktopShell() && isDesktopLocalOriginActive();
@@ -118,6 +127,26 @@ export const DesktopNetworkSettings: React.FC = () => {
   }, [isLocalDesktop, t]);
 
   React.useEffect(() => {
+    if (!isLocalDesktop || !draftValue) {
+      setLanAddress(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const address = await getDesktopLanAddress();
+      if (!cancelled) {
+        setLanAddress(address);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftValue, isLocalDesktop]);
+
+  React.useEffect(() => {
     if (!isLocalDesktop) {
       setLaunchAtLoginSupported(false);
       return;
@@ -201,26 +230,6 @@ export const DesktopNetworkSettings: React.FC = () => {
       cancelled = true;
     };
   }, [isLocalDesktop]);
-
-  React.useEffect(() => {
-    if (!isLocalDesktop || !draftValue) {
-      setLanAddress(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    void (async () => {
-      const address = await getDesktopLanAddress();
-      if (!cancelled) {
-        setLanAddress(address);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [draftValue, isLocalDesktop]);
 
   const isDirty = draftValue !== savedValue
     || draftMacMenuBarEnabled !== savedMacMenuBarEnabled
@@ -565,6 +574,7 @@ export const DesktopNetworkSettings: React.FC = () => {
         <div className="flex justify-start py-1.5">
           <Button
             type="button"
+            variant="ghost"
             size="xs"
             onClick={handleSaveAndRestart}
             disabled={saveDisabled}
@@ -573,7 +583,7 @@ export const DesktopNetworkSettings: React.FC = () => {
             {isSaving ? t('settings.common.actions.saving') : t('settings.alcode.desktopNetwork.actions.saveAndRestart')}
           </Button>
         </div>
-      </div>
+
       <ShortcutRecordingDialog
         action={editingMiniChatGlobalShortcut ? miniChatGlobalShortcutAction : null}
         overrides={shortcutOverrides}
@@ -586,6 +596,7 @@ export const DesktopNetworkSettings: React.FC = () => {
         maxChords={1}
         maxKeys={5}
       />
+      </div>
     </SettingsSection>
   );
 };

@@ -1,13 +1,16 @@
 import * as React from 'react';
 
 import { Icon } from '@/components/icon/Icon';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 import { referenceNumberLabel } from '@/components/references/referencePickerItems';
 import { ChecksSummaryLine } from '@/components/references/ReferencePreview';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CheckRunList } from '@/components/views/git/CheckRunList';
-import { useCheckRunExpansion } from '@/components/views/git/checkRunState';
+import { isFailedConclusion, useCheckRunExpansion } from '@/components/views/git/checkRunState';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import type { GitHubPullReference, SourceControlReadContext } from '@/lib/api/types';
+import type { CIRun } from '@/lib/source-control/types';
 import { useI18n } from '@/lib/i18n';
 import { formatDateTimeForPreference } from '@/lib/timeFormat';
 import { getChangeRequestContextKey, useChangeRequestContextStore } from '@/stores/useChangeRequestContextStore';
@@ -26,7 +29,9 @@ export const SourceBoardChecksDialog: React.FC<{
     context: SourceControlReadContext;
     open: boolean;
     onOpenChange: (open: boolean) => void;
-}> = ({ pull, context, open, onOpenChange }) => {
+    /** Pins the failed runs, with their steps and annotations, above the composer. */
+    onAttachFailed?: (runs: CIRun[]) => void;
+}> = ({ pull, context, open, onOpenChange, onAttachFailed }) => {
     const { t } = useI18n();
     const { sourceControl } = useRuntimeAPIs();
     const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
@@ -65,8 +70,14 @@ export const SourceBoardChecksDialog: React.FC<{
                 <DialogHeader>
                     <DialogTitle>{t('sourceBoard.checks.title', { reference: referenceNumberLabel(pull) })}</DialogTitle>
                     {ci ? (
-                        <span className="inline-flex items-center gap-1.5 typography-meta text-muted-foreground">
+                        <span className="flex items-center gap-1.5 typography-meta text-muted-foreground">
                             <ChecksSummaryLine checks={ci.summary} />
+                            {onAttachFailed && runs.some((run) => isFailedConclusion(run.conclusion)) ? (
+                                <Button variant="outline" size="xs" className="ms-auto" onClick={() => onAttachFailed(runs)}>
+                                    <Icon name="attachment-2" className="size-3.5" />
+                                    {t('gitView.pr.actions.resolveFailedChecks')}
+                                </Button>
+                            ) : null}
                         </span>
                     ) : null}
                 </DialogHeader>
@@ -78,7 +89,7 @@ export const SourceBoardChecksDialog: React.FC<{
                     </p>
                 ) : !ci || entry?.isLoading ? (
                     <div role="status" className="flex justify-center py-8">
-                        <Icon name="loader-4" className="size-5 animate-spin text-muted-foreground" />
+                        <Spinner className="size-5 text-muted-foreground" />
                     </div>
                 ) : (
                     <p className="py-6 text-center typography-meta text-muted-foreground">{t('sourceBoard.checks.empty')}</p>

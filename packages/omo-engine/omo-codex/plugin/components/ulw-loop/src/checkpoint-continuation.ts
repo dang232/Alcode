@@ -1,9 +1,11 @@
 import { type CheckpointUlwLoopArgs, type CheckpointUlwLoopResult, checkpointUlwLoop } from "./checkpoint.js";
+import { checkpointRejectionSignature, consumeCheckpointRetryBudget } from "./checkpoint-retry-budget.js";
 import { checkpointTemplate } from "./checkpoint-template.js";
 import { hasFlag, parseCodexGoalJson, readValue } from "./cli-arg-parser.js";
 import { blockedDecisionHandoff, printJson } from "./cli-output.js";
 import { buildCodexGoalInstruction, type UlwLoopGoalInstruction } from "./codex-goal-instruction.js";
 import type { UlwLoopScope } from "./paths.js";
+import { normalizeUlwLoopSessionId, ulwLoopDir } from "./paths.js";
 import { startNextUlwLoop, summarizeUlwLoopPlan } from "./plan-crud.js";
 import type { UlwLoopItem, UlwLoopPlan } from "./types.js";
 import { UlwLoopError } from "./types.js";
@@ -25,6 +27,79 @@ export async function checkpointAndContinue(
 	if ("done" in next) return { ...result, plan: next.plan, next: doneNext(next.plan) };
 	const instruction = buildCodexGoalInstruction({ plan: next.plan, goal: next.goal });
 	return { ...result, plan: next.plan, next: { resumed: next.resumed, goal: next.goal, instruction } };
+}
+
+interface UnresolvedCriterion {
+	readonly goalId: string;
+	readonly id: string;
+	readonly status: string;
+}
+
+function unresolvedFrom(error: UlwLoopError, fallbackGoalId: string): UnresolvedCriterion[] {
+	const raw = error.details?.["unresolved"];
+	if (!Array.isArray(raw)) return [];
+	const out: UnresolvedCriterion[] = [];
+	for (const item of raw) {
+		if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+		const record = item as Record<string, unknown>;
+		const id = record["id"];
+		const status = record["status"];
+		if (typeof id !== "string" || typeof status !== "string") continue;
+		const goalId = record["goalId"];
+		out.push({ goalId: typeof goalId === "string" ? goalId : fallbackGoalId, id, status });
+	}
+	return out;
+}
+
+function sessionOption(scope: UlwLoopScope | undefined): string {
+	const normalized = normalizeUlwLoopSessionId(scope?.sessionId);
+	return normalized === null ? "" : ` --session-id ${normalized}`;
+}
+
+function exhaustedMessage(goalId: string, attempts: number, unresolved: UnresolvedCriterion[], option: string): string {
+	const lines = [
+		`Checkpoint recovery exhausted for ${goalId}: ${attempts} identical rejections with no state change.`,
+		`Unresolved: ${unresolved.map((criterion) => `${criterion.goalId} ${criterion.id} (${criterion.status})`).join(", ")}.`,
+		"Stop retrying checkpoint. Resolve exactly one of:",
+	];
+	for (const criterion of unresolved)
+		lines.push(
+			`- record evidence: omo-agent-toolkit ulw-loop record-evidence${option} --goal-id ${criterion.goalId} --criterion-id ${criterion.id} --status pass --evidence "<proof>"`,
+		);
+	lines.push(
+		`- revise an incompatible criterion: omo-agent-toolkit ulw-loop steer${option} --kind revise_criterion --goal-id ${goalId} --criterion-id <id> --scenario "<scenario>" --expected-evidence "<proof>" --evidence "<why>" --rationale "<why>"`,
+	);
+	lines.push(
+		"Do not create probe goals to bypass this; record evidence against the existing goals and reuse recorded worker results.",
+	);
+	lines.push(
+		`If genuinely blocked, checkpoint${option} --goal-id ${goalId} --status blocked with the reason instead.`,
+	);
+	return lines.join("\n");
+}
+
+async function checkpointWithRetryBudget(
+	repoRoot: string,
+	args: CheckpointUlwLoopArgs & { readonly advance: boolean },
+	scope?: UlwLoopScope,
+): Promise<CheckpointAndContinueResult> {
+	try {
+		return await checkpointAndContinue(repoRoot, args, scope);
+	} catch (error) {
+		if (!(error instanceof UlwLoopError) || error.code !== "ulw_loop_criteria_not_all_pass") throw error;
+		const unresolved = unresolvedFrom(error, args.goalId);
+		const budget = consumeCheckpointRetryBudget(
+			ulwLoopDir(repoRoot, scope),
+			args.goalId,
+			checkpointRejectionSignature(unresolved),
+		);
+		if (budget.allowed) throw error;
+		throw new UlwLoopError(
+			exhaustedMessage(args.goalId, budget.attempts, unresolved, sessionOption(scope)),
+			"ulw_loop_checkpoint_retry_exhausted",
+			{ details: { ...(error.details ?? {}), attempts: budget.attempts } },
+		);
+	}
 }
 
 export async function checkpoint(
@@ -52,7 +127,7 @@ export async function checkpoint(
 		...(codexGoalJson === undefined ? {} : { codexGoalJson }),
 		...(qualityGateJson === undefined ? {} : { qualityGateJson }),
 	};
-	const result = await checkpointAndContinue(repoRoot, args, scope);
+	const result = await checkpointWithRetryBudget(repoRoot, args, scope);
 	if (json) printJson({ ok: true, ...result, summary: summarizeUlwLoopPlan(result.plan) });
 	else printCheckpointText(result);
 	return 0;

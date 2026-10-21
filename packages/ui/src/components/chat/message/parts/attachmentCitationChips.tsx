@@ -10,11 +10,14 @@ export type InlineTextNode = string | React.ReactElement;
  * Splits plain text into runs and file chips for each `[name]` citation of
  * one of `filenames`. The React counterpart of the Markdown path, for text
  * that is not rendered as Markdown: plain-mode user messages and comments.
+ * Chips render as labels; `isOpenable` is kept for callers whose files open
+ * on click.
  */
 export function withAttachmentChips(
     text: string,
     filenames: readonly string[],
     keyPrefix: string,
+    isOpenable?: (filename: string) => boolean,
 ): InlineTextNode[] {
     if (filenames.length === 0) return [text];
     const ranges = findAttachmentCitationRanges(text, [...filenames]);
@@ -24,7 +27,12 @@ export function withAttachmentChips(
     for (const range of ranges) {
         if (range.start > cursor) nodes.push(text.slice(cursor, range.start));
         const filename = text.slice(range.start + 1, range.end - 1).trim();
-        nodes.push(<AttachmentCitationChip key={`${keyPrefix}-${range.start}`} filename={filename} />);
+        nodes.push(
+            <AttachmentCitationChip
+                key={`${keyPrefix}-${range.start}`}
+                filename={filename}
+            />,
+        );
         cursor = range.end;
     }
     if (cursor < text.length) nodes.push(text.slice(cursor));

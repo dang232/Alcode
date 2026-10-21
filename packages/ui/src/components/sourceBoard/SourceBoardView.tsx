@@ -7,24 +7,32 @@
  * switching it never changes the project the rest of the app shows; only an
  * action that opens something in a project (a session, its changes) moves the
  * app there.
+ *
+ * A project whose folder is not a repository but holds some is read through
+ * one of them, chosen beside the project picker; the board's choice is its
+ * own and leaves the Git screen's selection alone.
  */
 
 import * as React from 'react';
 
 import { Icon } from '@/components/icon/Icon';
 import { Button } from '@/components/ui/button';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { dropdownTriggerVariants } from '@/components/ui/dropdown-trigger';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { SortableTabsStrip } from '@/components/ui/sortable-tabs-strip';
 import { NewWorktreeDialog } from '@/components/session/NewWorktreeDialog';
 import { ReferenceBrowserList, ReferenceBrowserSearch } from '@/components/references/ReferenceBrowser';
 import { IDLE_PULL_STATUS, useReferenceBrowser } from '@/components/references/useReferenceBrowser';
 import { ReferencePreview } from '@/components/references/ReferencePreview';
-import { referencePickerItemKey, type ReferencePickerSelection } from '@/components/references/referencePickerItems';
-import { useGitHubReadContext, useRepositoryHostProvider } from '@/components/references/referenceSources';
+import { DEFAULT_REPOSITORY_FILTER, referenceNumberLabel, referencePickerItemKey, type ReferencePickerItem, type ReferencePickerSelection } from '@/components/references/referencePickerItems';
+import { itemDirectory } from '@/components/references/acrossRepositories';
+import { forgetGitHubPullStatuses, useGitHubAcrossReferenceList, useGitHubReadContext, useGitHubReferenceList, useLinearIssueDetail, useRepositoryHostProvider } from '@/components/references/referenceSources';
+import { openExternalUrl } from '@/lib/url';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
-import type { GitHubReferenceKind, LinearMappingResult, ProjectEntry, SourceControlReadContext } from '@/lib/api/types';
-import { useI18n } from '@/lib/i18n';
+import type { GitHubReference, GitHubReferenceKind, LinearMappingResult, ProjectEntry, SourceControlReadContext } from '@/lib/api/types';
+import { isRightToLeft, useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { resolveLinearMappedProjectPath } from '@/lib/linearProjectMapping';
 import { normalizeProjectPath, resolveProjectForSessionDirectory } from '@/lib/projectResolution';
@@ -34,14 +42,23 @@ import { useSourceBoardChoice, useSourceBoardStore, type SourceBoardTab } from '
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 
-import { SourceBoardActions, SourceBoardPullLinks, type SourceBoardProject } from './SourceBoardActions';
+import { SourceBoardActions, SourceBoardPullLinks, SourceBoardStateMenuItems, type SourceBoardProject } from './SourceBoardActions';
 import { SourceBoardLinearStatus } from './SourceBoardLinearStatus';
 import { SourceBoardReply } from './SourceBoardReply';
+import { SourceBoardAcrossNote } from './SourceBoardAcrossNote';
 import { SourceBoardChecksDialog } from './SourceBoardChecksDialog';
 import { SourceBoardLabels, SourceBoardReviewers } from './SourceBoardMetaEditors';
-import { SourceBoardProjectPicker, SourceBoardTeamPicker } from './SourceBoardPickers';
+import { SourceBoardProjectPicker, SourceBoardRepositoryPicker, SourceBoardTeamPicker } from './SourceBoardPickers';
+import { choiceForFocus, shouldRememberAll, useBoardRepository } from './boardRepository';
+import { isSameRepositoryItemLink } from './openTrackerItem';
+import { usePullAttachments } from './pullAttachments';
+import { useThreadActions } from './threadActions';
+import { useBoardRevalidation } from './useBoardRevalidation';
 
+const NO_REPOSITORIES: readonly string[] = [];
 const LIST_MIN_WIDTH = 280;
+/** Below this the list leaves its column for a dropdown, so the preview keeps the width. */
+const NARROW_BOARD_WIDTH = 960;
 const LIST_MAX_FRACTION = 0.6;
 
 const openIntegrationsSettings = () => {
@@ -65,54 +82,119 @@ function useLinearMapping(enabled: boolean, workspaceId: string): LinearMappingR
     return loaded && loaded.workspaceId === workspaceId ? loaded.mapping : null;
 }
 
+/**
+ * Once opened, the board stays mounted and is only hidden while closed, so it
+ * reopens exactly where it was left however it was opened: the item, the
+ * search, the list and preview scrolled where they were, a reply half typed.
+ */
 export const SourceBoardView: React.FC = () => {
     const open = useUIStore((state) => state.isSourceBoardOpen);
-    if (!open) return null;
+    const [opened, setOpened] = React.useState(open);
+    if (open && !opened) setOpened(true);
+    // The search took focus when it mounted; a reopen gives it back, as before.
+    const boardRef = React.useRef<HTMLDivElement>(null);
+    const wasOpenRef = React.useRef(open);
+    React.useEffect(() => {
+        if (open && !wasOpenRef.current) boardRef.current?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
+        wasOpenRef.current = open;
+    }, [open]);
+    if (!opened) return null;
     return (
-        <div className="absolute inset-0 z-10 flex flex-col bg-background">
-            <SourceBoard layout="desktop" />
+        <div
+            ref={boardRef}
+            className={cn('absolute inset-0 z-10 flex flex-col bg-background', !open && 'invisible')}
+            inert={!open || undefined}
+        >
+            {/* Inside the overlay, so a crash shows its fallback in the board's
+                place, with its own way to try again. */}
+            <ErrorBoundary><SourceBoard layout="desktop" /></ErrorBoundary>
         </div>
     );
 };
 
 /**
  * The board as the phone shell's page: one column, the preview in place of
- * the list, and `onLeave` once a session starts so the chat comes back.
+ * the list, and `onLeave` once a session starts so the chat comes back. It
+ * draws its own header, so the project picker and the way back from an item
+ * share the close button's row.
  */
-export const MobileSourceBoard: React.FC<{ onLeave: () => void }> = ({ onLeave }) => (
+export const MobileSourceBoard: React.FC<{ onLeave: () => void; onClose: () => void }> = ({ onLeave, onClose }) => (
     <div className="flex h-full min-h-0 flex-col">
-        <SourceBoard layout="mobile" onLeave={onLeave} />
+        <SourceBoard layout="mobile" onLeave={onLeave} onClose={onClose} />
     </div>
 );
+
+/** The phone page's header: close, or back from an item, then what the page is on. */
+const MobileBoardHeader: React.FC<{ onClose?: () => void; onBack?: () => void; children?: React.ReactNode }> = ({ onClose, onBack, children }) => {
+    const { t } = useI18n();
+    const action = onBack ?? onClose;
+    return (
+        <header className="flex h-[var(--oc-header-height,56px)] shrink-0 items-center gap-2 border-b border-border/70 px-3">
+            {action ? (
+                <button
+                    type="button"
+                    className="-ms-1 flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={onBack ? t('references.picker.actions.back') : t('mobile.surface.closeAria')}
+                    onClick={action}
+                    style={{ touchAction: 'manipulation' }}
+                >
+                    <Icon name={onBack ? 'arrow-left-s' : 'close'} className="size-5" />
+                </button>
+            ) : null}
+            <div className="flex min-w-0 flex-1 items-center">{children}</div>
+        </header>
+    );
+};
 
 type SourceBoardLayout = 'desktop' | 'mobile';
 
 /** What the board lists: the repository's issues or change requests, or Linear. */
 type SourceBoardKind = GitHubReferenceKind | 'linear';
 
-const SourceBoard: React.FC<{ layout: SourceBoardLayout; onLeave?: () => void }> = ({ layout, onLeave }) => {
+const SourceBoard: React.FC<{ layout: SourceBoardLayout; onLeave?: () => void; onClose?: () => void }> = ({ layout, onLeave, onClose }) => {
     const { t } = useI18n();
-    const { linear } = useRuntimeAPIs();
+    const { linear, sourceControl } = useRuntimeAPIs();
     const projects = useProjectsStore((state) => state.projects);
     const activeProjectId = useProjectsStore((state) => state.activeProjectId);
     const choice = useSourceBoardChoice();
     const updateChoice = useSourceBoardStore((state) => state.update);
     // The repository tab to land on when switching back from Linear.
     const [repositoryKind, setRepositoryKind] = React.useState<GitHubReferenceKind | undefined>(undefined);
+    // The phone's board page is mounted only while shown.
+    const desktopBoardOpen = useUIStore((state) => state.isSourceBoardOpen);
+    useBoardRevalidation(layout === 'mobile' || desktopBoardOpen);
 
     // The remembered project while it still exists, else the app's own.
     const project = projects.find((entry) => entry.id === choice.projectId)
         ?? projects.find((entry) => entry.id === activeProjectId)
         ?? projects[0]
         ?? null;
-    const directory = project ? normalizeProjectPath(project.path) : null;
-    const hostProvider = useRepositoryHostProvider(directory);
-    const hasRepository = hostProvider === 'github' || hostProvider === 'gitlab';
+    const projectRoot = project ? normalizeProjectPath(project.path) : null;
+    // The folder everything below reads from: the project's root, or the
+    // repository under it when the root is not one.
+    // A link another surface asked to show is looked up across the folder's repositories.
+    const focusPending = useSourceBoardStore((state) => state.repositoryFocus !== null);
+    const storedAll = project ? choice.allRepositoriesByProject[project.id] : undefined;
+    const repository = useBoardRepository(projectRoot, choiceForFocus({
+        path: project ? choice.repositoryByProject[project.id] ?? null : null,
+        all: storedAll,
+    }, focusPending));
+    const projectId = project?.id;
+    const rememberAll = shouldRememberAll(repository, storedAll, focusPending);
+    React.useEffect(() => {
+        if (rememberAll && projectId) updateChoice({ allRepositoriesByProject: { [projectId]: true } });
+    }, [projectId, rememberAll, updateChoice]);
+    const directory = repository.directory;
+    // Across the repositories under the folder: GitHub's, which is what that search reads.
+    const allRepositories = repository.all ? repository.repositories : null;
+    const hostProvider = useRepositoryHostProvider(allRepositories ? null : directory);
+    const hasRepository = allRepositories !== null || hostProvider === 'github' || hostProvider === 'gitlab';
     const hasLinear = Boolean(linear);
     const linearConnected = useLinearAuthStore((state) => state.status?.connected === true);
+    // Until the folder says whether it holds a repository, Linear is not the answer.
     const tab: SourceBoardTab | null = choice.tab === 'linear' && hasLinear
         ? 'linear'
-        : hasRepository ? 'repository' : hasLinear ? 'linear' : null;
+        : hasRepository ? 'repository' : repository.status === 'pending' ? null : hasLinear ? 'linear' : null;
 
     const linearWorkspaceId = useLinearAuthStore((state) => state.status?.organization?.id ?? '');
     const mapping = useLinearMapping(tab === 'linear' && linearConnected, linearWorkspaceId);
@@ -129,6 +211,22 @@ const SourceBoard: React.FC<{ layout: SourceBoardLayout; onLeave?: () => void }>
             sheet={layout === 'mobile'}
         />
     ) : null;
+    const repositoryPicker = projectRoot && directory && repository.repositories.length > 0 ? (
+        <SourceBoardRepositoryPicker
+            repositories={repository.repositories}
+            selected={allRepositories ? null : directory}
+            root={projectRoot}
+            allAvailable={Boolean(sourceControl.githubReferencesAcross)}
+            onSelect={(repositoryPath) => {
+                if (!project) return;
+                updateChoice(repositoryPath === null
+                    ? { allRepositoriesByProject: { [project.id]: true }, tab: 'repository' }
+                    : { repositoryByProject: { [project.id]: repositoryPath }, allRepositoriesByProject: { [project.id]: false }, tab: 'repository' });
+            }}
+            sheet={layout === 'mobile'}
+        />
+    ) : null;
+    const projectScope = <>{projectPicker}{repositoryPicker}</>;
     // On Linear the board lists a team, not a project.
     const scopePicker = tab === 'linear' ? (
         <SourceBoardTeamPicker
@@ -137,7 +235,7 @@ const SourceBoard: React.FC<{ layout: SourceBoardLayout; onLeave?: () => void }>
             onSelectTeam={(teamId) => updateChoice({ linearTeamId: teamId })}
             onWorkspaceSwitched={() => updateChoice({ linearTeamId: null })}
         />
-    ) : projectPicker;
+    ) : projectScope;
 
     const selectKind = (kind: SourceBoardKind) => {
         if (kind === 'linear') {
@@ -151,13 +249,31 @@ const SourceBoard: React.FC<{ layout: SourceBoardLayout; onLeave?: () => void }>
     if (!tab) {
         return (
             <>
-                <div className="flex h-12 shrink-0 items-center border-b border-border/60 px-2">{projectPicker}</div>
-                <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center typography-meta text-muted-foreground">
-                    <span>{t(projects.length === 0 ? 'sourceBoard.empty.noProjects' : 'sourceBoard.empty.noSource')}</span>
-                    {projects.length > 0 ? (
-                        <Button size="sm" variant="outline" onClick={openIntegrationsSettings}>{t('references.picker.actions.openSettings')}</Button>
-                    ) : null}
-                </div>
+                {layout === 'mobile' ? (
+                    <MobileBoardHeader onClose={onClose}>{projectScope}</MobileBoardHeader>
+                ) : (
+                    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border/60 px-2">{projectScope}</div>
+                )}
+                {repository.status === 'ready' ? (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center typography-meta text-muted-foreground">
+                        <span>{t(projects.length === 0 ? 'sourceBoard.empty.noProjects' : 'sourceBoard.empty.noSource')}</span>
+                        {projects.length > 0 ? (
+                            <Button size="sm" variant="outline" onClick={openIntegrationsSettings}>{t('references.picker.actions.openSettings')}</Button>
+                        ) : null}
+                    </div>
+                ) : (
+                    // Looking for the folder's repositories, or unable to: neither says there are none.
+                    <div role="status" className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center typography-meta text-muted-foreground">
+                        {repository.status === 'pending' ? <Icon name="loader-4" className="size-5 animate-spin" /> : null}
+                        <span>{t(repository.status === 'failed' ? 'gitView.empty.discoverFailed' : 'gitView.empty.discoveringRepositories')}</span>
+                        {repository.status === 'failed' ? (
+                            <Button size="sm" variant="outline" onClick={repository.retry}>
+                                <Icon name="refresh" className="size-3.5" />
+                                {t('gitView.empty.retryDiscovery')}
+                            </Button>
+                        ) : null}
+                    </div>
+                )}
             </>
         );
     }
@@ -165,19 +281,21 @@ const SourceBoard: React.FC<{ layout: SourceBoardLayout; onLeave?: () => void }>
     return (
         // Remounted per source and project: a new list starts with an empty search.
         <SourceBoardBody
-            key={`${tab}:${tab === 'repository' ? directory : linearTeamId ?? ''}`}
+            key={`${tab}:${tab === 'repository' ? `${allRepositories ? 'all:' : ''}${directory}` : linearTeamId ?? ''}`}
             tab={tab}
             project={project}
             directory={directory}
+            allRepositories={allRepositories}
             linearTeamId={linearTeamId}
             mapping={mapping}
             projects={projects}
             scopePicker={scopePicker}
-            kinds={{ repository: hasRepository ? (hostProvider === 'gitlab' ? 'gitlab' : 'github') : null, linear: hasLinear }}
+            kinds={{ repository: hasRepository ? (!allRepositories && hostProvider === 'gitlab' ? 'gitlab' : 'github') : null, linear: hasLinear }}
             initialRepositoryKind={repositoryKind}
             onSelectKind={selectKind}
             layout={layout}
             onLeave={onLeave}
+            onClose={onClose}
         />
     );
 };
@@ -185,7 +303,10 @@ const SourceBoard: React.FC<{ layout: SourceBoardLayout; onLeave?: () => void }>
 const SourceBoardBody: React.FC<{
     tab: SourceBoardTab;
     project: ProjectEntry | null;
+    /** The folder the board reads; the project's root while it lists `allRepositories`. */
     directory: string | null;
+    /** The repositories listed together, or null while one folder is read. */
+    allRepositories: readonly string[] | null;
     linearTeamId: string | null;
     mapping: LinearMappingResult | null;
     projects: ProjectEntry[];
@@ -196,26 +317,99 @@ const SourceBoardBody: React.FC<{
     onSelectKind: (kind: SourceBoardKind) => void;
     layout: SourceBoardLayout;
     onLeave?: () => void;
-}> = ({ tab, project, directory, linearTeamId, mapping, projects, scopePicker, kinds, initialRepositoryKind, onSelectKind, layout, onLeave }) => {
+    /** The phone page's close button. */
+    onClose?: () => void;
+}> = ({ tab, project, directory, allRepositories, linearTeamId, mapping, projects, scopePicker, kinds, initialRepositoryKind, onSelectKind, layout, onLeave, onClose }) => {
     const isMobile = layout === 'mobile';
     const { t } = useI18n();
+    const { sourceControl } = useRuntimeAPIs();
     const source = tab === 'linear' ? 'linear' : 'github';
+    // An item another surface asked to show: an issue or PR by its link, a
+    // Linear issue by its identifier. It is read on its own, not typed into the
+    // search: the list stays as it was, and the preview opens on the item.
+    const [pinnedLink, setPinnedLink] = React.useState<{ kind: GitHubReferenceKind; url: string } | null>(null);
+    const [pinnedLinearId, setPinnedLinearId] = React.useState<string | null>(null);
+    // Counts the requests to show an item, so each is shown once, and the one
+    // shown before never answers for the one just asked.
+    const [pinRequest, setPinRequest] = React.useState(0);
+    const pinnedSingle = useGitHubReferenceList({
+        enabled: tab === 'repository' && pinnedLink !== null && allRepositories === null,
+        directory,
+        kind: pinnedLink?.kind ?? 'issue',
+        filter: DEFAULT_REPOSITORY_FILTER,
+        query: pinnedLink?.url ?? '',
+    });
+    const pinnedAcross = useGitHubAcrossReferenceList({
+        enabled: tab === 'repository' && pinnedLink !== null && allRepositories !== null,
+        directories: allRepositories ?? NO_REPOSITORIES,
+        kind: pinnedLink?.kind ?? 'issue',
+        filter: DEFAULT_REPOSITORY_FILTER,
+        query: pinnedLink?.url ?? '',
+    });
+    const pinnedLookup = allRepositories ? pinnedAcross : pinnedSingle;
+    const { detail: pinnedLinear } = useLinearIssueDetail(tab === 'linear' ? pinnedLinearId : null, true);
+    // Only the item the link names: a lookup that fell back to a search lists others.
+    const namesPinnedLink = (item: GitHubReference) => pinnedLink !== null && isSameRepositoryItemLink(item.url, pinnedLink.url);
+    const pinnedAcrossItem = tab === 'repository' && allRepositories ? pinnedAcross.items.find(namesPinnedLink) ?? null : null;
+    const pinnedReference = tab === 'repository' && !allRepositories ? pinnedSingle.items.find(namesPinnedLink) ?? null : pinnedAcrossItem;
+    // Across repositories the item names the folder it was read through.
+    const pinnedFolder = pinnedAcrossItem?.directory;
+    const pinnedLinearIssue = tab === 'linear' && pinnedLinear.status === 'ready' ? pinnedLinear.value : null;
+    const pinnedItem = React.useMemo<ReferencePickerItem | null>(() => {
+        if (pinnedReference) return { source: 'github', reference: pinnedReference, directory: pinnedFolder };
+        if (pinnedLinearIssue) return { source: 'linear', issue: pinnedLinearIssue };
+        return null;
+    }, [pinnedFolder, pinnedLinearIssue, pinnedReference]);
     const browser = useReferenceBrowser({
         source,
         directory: tab === 'linear' ? null : directory,
+        directories: tab === 'linear' ? null : allRepositories,
         isMobile,
         linearTeamId,
         initialGitHubKind: initialRepositoryKind,
+        pinnedItem,
     });
-    const { previewItem } = browser;
-    // A Linear issue another surface asked to show: searched for, then forgotten.
+    const { previewItem, setQuery, selectGitHubKind, showItem } = browser;
+    const shownPinRequestRef = React.useRef(0);
     const linearFocus = useSourceBoardStore((state) => (tab === 'linear' ? state.linearFocus : null));
-    const { setQuery } = browser;
     React.useEffect(() => {
         if (!linearFocus) return;
-        setQuery(linearFocus);
+        setPinRequest((request) => request + 1);
+        setQuery('');
+        setPinnedLinearId(linearFocus);
         useSourceBoardStore.getState().clearLinearFocus();
     }, [linearFocus, setQuery]);
+    const repositoryFocus = useSourceBoardStore((state) => (tab === 'repository' ? state.repositoryFocus : null));
+    React.useEffect(() => {
+        if (!repositoryFocus) return;
+        setPinRequest((request) => request + 1);
+        selectGitHubKind(repositoryFocus.kind);
+        setQuery('');
+        setPinnedLink({ kind: repositoryFocus.kind, url: repositoryFocus.query });
+        useSourceBoardStore.getState().clearRepositoryFocus();
+    }, [repositoryFocus, selectGitHubKind, setQuery]);
+    // Shown once found; the user then moves on from it like from any row. The
+    // commit that takes a new request still holds the previous item, and the
+    // previous request was already shown, so it is not shown over again.
+    React.useEffect(() => {
+        if (!pinnedItem || shownPinRequestRef.current === pinRequest) return;
+        shownPinRequestRef.current = pinRequest;
+        showItem(referencePickerItemKey(pinnedItem));
+    }, [pinRequest, pinnedItem, showItem]);
+    // Not found: a link the project's host does not know opens in the browser;
+    // a Linear identifier is searched for instead.
+    const pinnedLinkStatus = pinnedLookup.status;
+    React.useEffect(() => {
+        if (!pinnedLink || pinnedLinkStatus === 'loading' || pinnedReference) return;
+        void openExternalUrl(pinnedLink.url);
+        setPinnedLink(null);
+    }, [pinnedLink, pinnedLinkStatus, pinnedReference]);
+    const pinnedLinearStatus = pinnedLinear.status;
+    React.useEffect(() => {
+        if (!pinnedLinearId || pinnedLinearStatus !== 'error') return;
+        setQuery(pinnedLinearId);
+        setPinnedLinearId(null);
+    }, [pinnedLinearId, pinnedLinearStatus, setQuery]);
     const currentDirectory = useEffectiveDirectory();
     const worktreesByProject = useSessionUIStore((state) => state.availableWorktreesByProject);
     const [worktreeRequest, setWorktreeRequest] = React.useState<{ project: SourceBoardProject; selection: ReferencePickerSelection } | null>(null);
@@ -233,7 +427,15 @@ const SourceBoardBody: React.FC<{
         : project;
     const actionPath = actionProjectEntry ? normalizeProjectPath(actionProjectEntry.path) : null;
     const actionProject: SourceBoardProject | null = actionProjectEntry && actionPath ? { id: actionProjectEntry.id, path: actionPath } : null;
-    const actionContext = useGitHubReadContext(actionProject?.path ?? null);
+    // A Linear issue is read nowhere; an issue or PR is acted on in the repository it was listed from.
+    // An item of a repository under a root that is not one: the project itself is no repository to branch from.
+    const readsNestedRepository = tab === 'repository'
+        && (allRepositories !== null || (actionPath !== null && directory !== null && directory !== actionPath));
+    // An item is read and acted on through the folder it came from: its repository's, across several.
+    const readFolder = tab === 'linear'
+        ? actionProject?.path ?? null
+        : allRepositories ? itemDirectory(previewItem, null) : directory;
+    const actionContext = useGitHubReadContext(readFolder);
     const context: SourceControlReadContext | null = actionContext && actionContext !== 'missing' ? actionContext : null;
 
     const projectOwnsDirectory = React.useCallback((candidate: string | undefined) => {
@@ -267,8 +469,11 @@ const SourceBoardBody: React.FC<{
             onChanged={browser.list.retry}
             startIn={startIn}
             onLeave={onLeave}
+            worktreeAvailable={!readsNestedRepository}
         />
     ) : null;
+
+    const attachments = usePullAttachments(previewItem?.source === 'github' ? previewItem.reference : null);
 
     // The previewed PR's check runs, opened from its checks totals.
     const [checksOpenFor, setChecksOpenFor] = React.useState<string | null>(null);
@@ -280,19 +485,31 @@ const SourceBoardBody: React.FC<{
             context={context}
             open={checksOpenFor !== null && checksOpenFor === previewKey}
             onOpenChange={(open) => setChecksOpenFor(open ? previewKey : null)}
+            onAttachFailed={attachments.attachFailedChecks}
         />
     ) : null;
 
     // After a change to an issue or PR: its detail and the list read again.
-    const refreshRepositoryItem = () => {
-        browser.refreshGithubDetail();
-        browser.list.retry();
+    const { refreshGithubDetail, list: { retry: retryList } } = browser;
+    const refreshRepositoryItem = React.useCallback(
+        () => Promise.all([refreshGithubDetail(), retryList()]).then(() => undefined),
+        [refreshGithubDetail, retryList],
+    );
+    const threadActions = useThreadActions(previewItem?.source === 'github' ? previewItem.reference : null, context, refreshRepositoryItem);
+    // The refresh button: for a change made on the host's own site, which the
+    // server's short-lived answers would otherwise hide for up to half a minute.
+    const refreshFromHost = async () => {
+        if (context) await sourceControl.refreshProviderReads(context).catch(() => undefined);
+        forgetGitHubPullStatuses();
+        // The button spins until the item and the list are read again.
+        await refreshRepositoryItem();
     };
 
     const preview = (
         <ReferencePreview
             item={previewItem}
-            pullStatus={previewItem?.source === 'github' ? browser.pullStatusOf(previewItem.reference) : IDLE_PULL_STATUS}
+            directory={itemDirectory(previewItem, browser.directory)}
+            pullStatus={previewItem?.source === 'github' ? browser.pullStatusOf(previewItem.reference, previewItem.directory) : IDLE_PULL_STATUS}
             linearDetail={browser.linearDetail}
             githubDetail={browser.githubDetail}
             purpose="attach"
@@ -302,7 +519,16 @@ const SourceBoardBody: React.FC<{
             now={browser.now}
             footer={actions}
             linearStateControl={previewItem?.source === 'linear' ? <SourceBoardLinearStatus issue={previewItem.issue} onChanged={browser.list.retry} /> : undefined}
+            onOpenLinearIssue={(issue) => browser.openItem({ source: 'linear', issue })}
             onOpenChecks={previewPull && context ? () => setChecksOpenFor(previewKey) : undefined}
+            onRefresh={previewItem?.source === 'github' && context ? refreshFromHost : undefined}
+            threadActions={threadActions}
+            stateMenu={previewItem?.source === 'github' && previewItem.reference.state !== 'merged' && context ? (
+                <SourceBoardStateMenuItems item={previewItem} context={context} onChanged={refreshRepositoryItem} />
+            ) : undefined}
+            commentAttachments={previewItem?.source === 'github'
+                ? { onAttach: attachments.attachComment, onAttachAll: attachments.attachComments }
+                : undefined}
             labelsControl={previewItem?.source === 'github' && context ? (
                 <SourceBoardLabels key={referencePickerItemKey(previewItem)} reference={previewItem.reference} context={context} onChanged={refreshRepositoryItem} />
             ) : undefined}
@@ -324,18 +550,35 @@ const SourceBoardBody: React.FC<{
                     onRefresh={refreshRepositoryItem}
                 />
             ) : undefined}
-            // The phone shell has no side panel to open a PR's changes in.
-            pullLinks={!isMobile && previewItem?.source === 'github' && previewItem.reference.kind === 'pull' && actionProject && context ? (
+            pullLinks={previewItem?.source === 'github' && previewItem.reference.kind === 'pull' && actionProject && context ? (
                 <SourceBoardPullLinks
                     pull={previewItem.reference}
                     project={actionProject}
+                    repository={tab === 'repository' ? readFolder : null}
                     context={context}
                     projectOwnsDirectory={projectOwnsDirectory}
                     currentDirectory={currentDirectory}
+                    onLeave={onLeave}
                 />
             ) : null}
         />
     );
+
+    // A narrow board (the side panel beside it, a small window) shows the list
+    // as a dropdown under the toolbar instead of a column.
+    const boardRef = React.useRef<HTMLDivElement>(null);
+    const [narrow, setNarrow] = React.useState(false);
+    const [listOpen, setListOpen] = React.useState(false);
+    React.useLayoutEffect(() => {
+        const board = boardRef.current;
+        if (!board) return;
+        const observer = new ResizeObserver(([entry]) => {
+            if (entry) setNarrow(entry.contentRect.width < NARROW_BOARD_WIDTH);
+        });
+        observer.observe(board);
+        return () => observer.disconnect();
+    }, []);
+    const listDropdown = narrow && listOpen;
 
     const list = (
         <ReferenceBrowserList
@@ -343,9 +586,47 @@ const SourceBoardBody: React.FC<{
             label={title}
             multiselectable={false}
             onOpenSettings={openIntegrationsSettings}
+            onShow={() => setListOpen(false)}
+            notice={browser.across && directory ? <SourceBoardAcrossNote leftOut={browser.leftOut} root={directory} /> : null}
         />
     );
-    const search = <ReferenceBrowserSearch browser={browser} onKeyDown={(event) => { browser.handleNavigationKey(event); }} />;
+    const search = (
+        <ReferenceBrowserSearch
+            browser={browser}
+            onKeyDown={(event) => {
+                if (narrow) {
+                    // Typing or arrows show the results; Enter keeps the one picked.
+                    if (event.key === 'Enter' || event.key === 'Escape') {
+                        if (listOpen && event.key === 'Escape') event.stopPropagation();
+                        setListOpen(false);
+                    } else if (event.key.length === 1 || event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Backspace') {
+                        setListOpen(true);
+                    }
+                }
+                browser.handleNavigationKey(event);
+            }}
+        />
+    );
+    const itemLabel = previewItem
+        ? previewItem.source === 'linear' ? previewItem.issue.identifier : referenceNumberLabel(previewItem.reference)
+        : t('sourceBoard.list.choose');
+    const itemIcon = previewItem?.source === 'linear' || tab === 'linear'
+        ? 'linear'
+        : browser.githubKind === 'pull' ? 'git-pull-request' : 'record-circle';
+    const itemTrigger = (
+        <button
+            type="button"
+            className={cn(dropdownTriggerVariants(), 'shrink-0 gap-1.5')}
+            aria-expanded={listDropdown}
+            aria-label={t('sourceBoard.list.toggleAria', { item: itemLabel })}
+            data-popup-open={listDropdown ? '' : undefined}
+            onClick={() => setListOpen((open) => !open)}
+        >
+            <Icon name={itemIcon} className="size-3.5" />
+            <span className="tabular-nums">{itemLabel}</span>
+            <Icon name="arrow-down-s" className="size-4 opacity-70" />
+        </button>
+    );
 
     const worktreeDialog = (
         <NewWorktreeDialog
@@ -384,7 +665,9 @@ const SourceBoardBody: React.FC<{
                 // own. Phone: the full row, shared.
                 layoutMode={isMobile ? 'fit' : 'scrollable'}
                 intrinsicWidth={!isMobile}
-                activePillButtonClassName={isMobile ? undefined : 'h-7 px-3'}
+                // A narrow board names the kinds by icon; the label is the tooltip.
+                iconOnly={narrow}
+                activePillButtonClassName={isMobile ? undefined : narrow ? 'px-2.5' : 'px-3'}
             />
         </div>
     );
@@ -402,8 +685,10 @@ const SourceBoardBody: React.FC<{
         event.preventDefault();
         const startX = event.clientX;
         const startWidth = listRef.current?.offsetWidth ?? LIST_MIN_WIDTH;
+        // The list is at the start; in RTL dragging left widens it.
+        const sign = isRightToLeft(event.currentTarget) ? -1 : 1;
         setResizing(true);
-        const onMove = (move: PointerEvent) => useSourceBoardStore.getState().setListWidth(clampWidth(startWidth + move.clientX - startX));
+        const onMove = (move: PointerEvent) => useSourceBoardStore.getState().setListWidth(clampWidth(startWidth + (move.clientX - startX) * sign));
         const onUp = () => {
             setResizing(false);
             window.removeEventListener('pointermove', onMove);
@@ -416,7 +701,8 @@ const SourceBoardBody: React.FC<{
     };
     const resizeWithKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
         const step = event.shiftKey ? 40 : 10;
-        const delta = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+        const sign = isRightToLeft(event.currentTarget) ? -1 : 1;
+        const delta = (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0) * sign;
         if (delta === 0) return;
         event.preventDefault();
         useSourceBoardStore.getState().setListWidth(clampWidth((listRef.current?.offsetWidth ?? LIST_MIN_WIDTH) + delta));
@@ -427,22 +713,24 @@ const SourceBoardBody: React.FC<{
         return (
             <>
                 {inPreview ? (
-                    <div className="flex shrink-0 items-center border-b border-border/60 px-2 py-1.5">
-                        <Button variant="ghost" size="sm" onClick={browser.closeMobilePreview}>
-                            <Icon name="arrow-left-s" className="size-4" />
-                            {t('references.picker.actions.back')}
-                        </Button>
-                    </div>
+                    <MobileBoardHeader onBack={browser.closeMobilePreview}>
+                        <h2 className="truncate px-1 typography-ui-label tabular-nums text-foreground">{itemLabel}</h2>
+                    </MobileBoardHeader>
                 ) : (
-                    <div className="flex shrink-0 flex-col gap-2 border-b border-border/60 px-3 py-2">
-                        <div className="-ml-1.5 flex min-w-0">{scopePicker}</div>
-                        {kindSwitch}
-                        {search}
-                    </div>
+                    <>
+                        <MobileBoardHeader onClose={onClose}>{scopePicker}</MobileBoardHeader>
+                        <div className="flex shrink-0 flex-col gap-2 border-b border-border/60 px-3 py-2">
+                            {kindSwitch}
+                            {search}
+                        </div>
+                    </>
                 )}
-                <ScrollableOverlay outerClassName="min-h-0 flex-1" className={inPreview ? 'px-4 py-3' : undefined} disableHorizontal>
-                    {inPreview ? preview : list}
-                </ScrollableOverlay>
+                {/* A crash below keeps the header, the only way to close the page on iOS. */}
+                <ErrorBoundary>
+                    <ScrollableOverlay outerClassName="min-h-0 flex-1" className={inPreview ? 'px-4 py-3' : undefined} disableHorizontal>
+                        {inPreview ? preview : list}
+                    </ScrollableOverlay>
+                </ErrorBoundary>
                 {worktreeDialog}
                 {checksDialog}
             </>
@@ -453,12 +741,29 @@ const SourceBoardBody: React.FC<{
     // kind switch comes first: its width is fixed, while the scope picker's
     // follows the chosen name and would push the switch around.
     return (
-        <>
+        <div ref={boardRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-2 py-2.5">
                 {kindSwitch}
                 {scopePicker}
-                {search}
+                {narrow ? itemTrigger : null}
+                {/* Narrow, the search takes a row of its own rather than shrink to a few letters. */}
+                {narrow ? <div className="flex min-w-[20rem] flex-1">{search}</div> : search}
             </div>
+            {narrow ? (
+                <div className="relative min-h-0 flex-1">
+                    {preview}
+                    {listDropdown ? (
+                        <>
+                            <div className="absolute inset-0 z-10" aria-hidden onClick={() => setListOpen(false)} />
+                            <div className="oc-glass-popover oc-glass-floating absolute inset-x-2 top-1 z-20 flex h-[min(28rem,75%)] flex-col overflow-hidden rounded-xl">
+                                <ScrollableOverlay outerClassName="min-h-0 flex-1" disableHorizontal>
+                                    {list}
+                                </ScrollableOverlay>
+                            </div>
+                        </>
+                    ) : null}
+                </div>
+            ) : (
             <div ref={splitRef} className="flex min-h-0 flex-1">
                 {/* CSS keeps a remembered width inside the board: never under
                     280 px (or half a narrow board, so the preview keeps room),
@@ -477,15 +782,16 @@ const SourceBoardBody: React.FC<{
                     onKeyDown={resizeWithKeys}
                     className={cn(
                         'relative w-px shrink-0 cursor-col-resize bg-border/60',
-                        "before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']",
+                        "before:absolute before:inset-y-0 before:-inset-s-1.5 before:-inset-e-1.5 before:content-['']",
                         'hover:bg-interactive-selection focus-visible:bg-interactive-selection focus-visible:outline-none',
                         resizing && 'bg-interactive-selection',
                     )}
                 />
                 <div className="min-h-0 min-w-0 flex-1">{preview}</div>
             </div>
+            )}
             {worktreeDialog}
             {checksDialog}
-        </>
+        </div>
     );
 };

@@ -1,6 +1,8 @@
 import type { UlwLoopScope } from "./paths.js";
 import { commit } from "./plan-commit.js";
 import { readUlwLoopPlan, withUlwLoopMutationLock } from "./plan-io.js";
+import { requireAllCriteriaPass } from "./evidence.js";
+import { clearGoalBlockerFields } from "./quality-gate-blockers.js";
 import { DEFAULT_FANOUT_LIMIT } from "./spawn-guard.js";
 import type { UlwLoopItem, UlwLoopLedgerEntry, UlwLoopPlan } from "./types.js";
 import { iso, UlwLoopError } from "./types.js";
@@ -14,6 +16,7 @@ type ChildResultArgs = {
 	readonly goalId: string;
 	readonly childId: string;
 	readonly resultRef: string;
+	readonly childRole?: string;
 };
 
 type ChildFailureArgs = {
@@ -21,6 +24,7 @@ type ChildFailureArgs = {
 	readonly childId: string;
 	readonly reason: string;
 	readonly retryable?: boolean;
+	readonly childRole?: string;
 };
 
 function ulwLoopFail(message: string, code: string, details: Record<string, unknown>): never {
@@ -50,6 +54,18 @@ function requireDispatched(goal: UlwLoopItem): void {
 	}
 }
 
+function verifyChildRole(goal: UlwLoopItem, childRole: string | undefined): string | undefined {
+	const reported = childRole?.trim() || undefined;
+	if (goal.dispatchedRole !== undefined && reported !== undefined && reported !== goal.dispatchedRole) {
+		ulwLoopFail(
+			`UlwLoop child role mismatch for ${goal.id}: dispatched as "${goal.dispatchedRole}" but reported as "${reported}".`,
+			"ULW_LOOP_CHILD_ROLE_MISMATCH",
+			{ goalId: goal.id, dispatchedRole: goal.dispatchedRole, reportedRole: reported },
+		);
+	}
+	return reported;
+}
+
 function nonEmpty(value: string, message: string, code: string): string {
 	const trimmed = value.trim();
 	return trimmed || ulwLoopFail(message, code, {});
@@ -69,6 +85,8 @@ export async function recordGoalDispatched(
 		goal.attempt += 1;
 		goal.startedAt = now;
 		goal.updatedAt = now;
+		const dispatchedRole = args.childRole?.trim() || undefined;
+		if (dispatchedRole !== undefined) goal.dispatchedRole = dispatchedRole;
 		const role = args.childRole?.trim() ? ` as ${args.childRole.trim()}` : "";
 		const entry: UlwLoopLedgerEntry = {
 			at: now,
@@ -92,22 +110,30 @@ export async function recordChildCompleted(
 		const plan = await readUlwLoopPlan(repoRoot, scope);
 		const goal = findGoal(plan, args.goalId);
 		requireDispatched(goal);
+		const childId = args.childId.trim();
+		const reportedRole = verifyChildRole(goal, args.childRole);
 		const resultRef = nonEmpty(
 			args.resultRef,
 			"Child result reference is required.",
 			"ULW_LOOP_CHILD_RESULT_REQUIRED",
 		);
+		requireAllCriteriaPass(goal);
 		const now = iso();
 		goal.status = "complete";
 		goal.completedAt = now;
 		goal.updatedAt = now;
+		goal.workerSessionId = childId;
 		goal.evidence = resultRef;
+		delete goal.failedAt;
+		delete goal.failureReason;
+		delete goal.nonRetriable;
+		clearGoalBlockerFields(goal);
 		const entry: UlwLoopLedgerEntry = {
 			at: now,
 			kind: "child_completed",
 			goalId: goal.id,
 			status: goal.status,
-			message: `Child ${args.childId.trim()} result: ${resultRef}`,
+			message: `Child ${childId}${reportedRole === undefined ? "" : ` (${reportedRole})`} result: ${resultRef}`,
 		};
 		plan.updatedAt = now;
 		await commit(repoRoot, scope, { plan, entries: [entry] });
@@ -124,6 +150,8 @@ export async function recordChildFailed(
 		const plan = await readUlwLoopPlan(repoRoot, scope);
 		const goal = findGoal(plan, args.goalId);
 		requireDispatched(goal);
+		const childId = args.childId.trim();
+		const reportedRole = verifyChildRole(goal, args.childRole);
 		const reason = nonEmpty(args.reason, "Child failure reason is required.", "ULW_LOOP_CHILD_REASON_REQUIRED");
 		const now = iso();
 		goal.status = "failed";
@@ -131,12 +159,13 @@ export async function recordChildFailed(
 		goal.failureReason = reason;
 		goal.nonRetriable = args.retryable === false;
 		goal.updatedAt = now;
+		goal.workerSessionId = childId;
 		const entry: UlwLoopLedgerEntry = {
 			at: now,
 			kind: "child_failed",
 			goalId: goal.id,
 			status: goal.status,
-			message: `Child ${args.childId.trim()} failed: ${reason}`,
+			message: `Child ${childId}${reportedRole === undefined ? "" : ` (${reportedRole})`} failed: ${reason}`,
 		};
 		plan.updatedAt = now;
 		await commit(repoRoot, scope, { plan, entries: [entry] });

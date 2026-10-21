@@ -1,3 +1,4 @@
+import { isRecord } from '../shared/guards.js';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -9,6 +10,7 @@ import {
 } from './shared.js';
 import { isPathSpec } from './plugin-spec.js';
 import { PLUGIN_SECTION, toPluginEntity, fromPluginEntity, readPluginList } from './config-v2.js';
+import { toLoadablePluginSpec } from './loadable-plugin-spec.js';
 
 // OpenCode 2 reads `plugins` (bare string or `{package, options}`) and still
 // decodes the v1 `plugin` array with its `[spec, options]` tuples. Alcode
@@ -57,8 +59,12 @@ function validatePluginSpec(spec) {
   return spec.trim();
 }
 
-function isRecord(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+function requireLoadablePluginSpec(spec) {
+  const loadable = toLoadablePluginSpec(spec);
+  if (loadable === null) {
+    throw codedError(`OpenCode cannot load plugin "${spec}"`, 'UNLOADABLE_SPEC');
+  }
+  return loadable;
 }
 
 function hasOptions(options) {
@@ -324,7 +330,7 @@ function getPluginEntry(id, workingDirectory) {
 }
 
 function createPluginEntry(entry, workingDirectory) {
-  const spec = validatePluginSpec(entry?.spec);
+  const spec = requireLoadablePluginSpec(validatePluginSpec(entry?.spec));
   const scope = entry?.scope || AGENT_SCOPE.USER;
   validateScope(scope);
 
@@ -357,7 +363,10 @@ function updatePluginEntry(id, updates, workingDirectory) {
     throw codedError('Plugin entry not found', 'NOT_FOUND');
   }
   const existing = parsePluginRaw(target.plugin[target.index]);
-  const nextSpec = updates?.spec === undefined ? existing.spec : validatePluginSpec(updates.spec);
+  let nextSpec = updates?.spec === undefined ? existing.spec : validatePluginSpec(updates.spec);
+  // An entry already in the config keeps its spec as written; only a changed
+  // spec has to be one OpenCode loads.
+  if (nextSpec !== existing.spec) nextSpec = requireLoadablePluginSpec(nextSpec);
   const nextOptions = updates?.options === undefined ? existing.options : updates.options;
   target.plugin[target.index] = serializePluginEntry({ spec: nextSpec, options: nextOptions });
   writeConfig(target.source.config, target.source.filePath);

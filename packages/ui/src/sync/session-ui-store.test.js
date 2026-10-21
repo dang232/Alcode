@@ -4,10 +4,13 @@ import { opencodeClient } from '@/lib/opencode/client';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSessionWorktreeStore } from './session-worktree-store';
-import { expandSlashCommandGoalObjective, routeMessage, useSessionUIStore } from './session-ui-store';
+import { expandSlashCommandGoalObjective, resolveSendSelection, routeMessage, useSessionUIStore } from './session-ui-store';
+import { ChildStoreManager } from './child-store';
+import { setSyncRefs } from './sync-refs';
 import { recordDagRouteDecision } from '@/lib/dagRouteLog';
 import { setActionRefs, setOptimisticRefs } from './session-actions';
 import { useSkillsStore } from '@/stores/useSkillsStore';
+import { useSpaceArchivesStore } from '@/lib/spaces/space-archives';
 import { useCommandsStore } from '@/stores/useCommandsStore';
 import { useSessionGoalArmStore } from '@/stores/useSessionGoalArmStore';
 import { useConfigStore } from '@/stores/useConfigStore';
@@ -18,6 +21,7 @@ import { CHAT_DRAFT_PROJECT_ID } from '@/lib/chatDirectories';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { createContextPart } from '@/lib/messages/contextParts';
+import { buildDagRunModel } from '@/lib/dagRunModel';
 
 /**
  * Unit tests for session worktree routing through the authoritative store.
@@ -279,6 +283,48 @@ describe('routeMessage directory scoping', () => {
   });
 });
 
+describe('resolveSendSelection thinking level', () => {
+  const DIRECTORY = '/repo/variant';
+  const MODEL = { providerID: 'openai', id: 'gpt-5.6-luna' };
+  const seedSession = (model) => {
+    const childStores = new ChildStoreManager();
+    childStores.ensureChild(DIRECTORY, { bootstrap: false }).setState({ session: [{ id: 'ses_variant', model }] });
+    setSyncRefs({}, childStores, DIRECTORY);
+  };
+  afterEach(() => {
+    setSyncRefs({}, new ChildStoreManager(), '');
+  });
+  const desire = (variant) => resolveSendSelection('ses_variant', DIRECTORY, { providerID: 'openai', modelID: MODEL.id, variant });
+
+  // An explicit Default is `null` in UI state; OpenCode rejects a null
+  // variant, so it has to switch the session off its effort without one.
+  test('Default on a session with an effort switches it to the model without a variant', () => {
+    seedSession({ ...MODEL, variant: 'high' });
+    expect(desire(null).model).toEqual(MODEL);
+  });
+
+  test('Default on a session without an effort sends no switch', () => {
+    seedSession(MODEL);
+    expect(desire(null).model).toBeUndefined();
+    expect(desire(undefined).model).toBeUndefined();
+  });
+
+  // OpenCode records a switch without a variant as variant "default"; reading
+  // that back as a difference would switch again before every prompt.
+  test('Default on a session OpenCode recorded as "default" sends no switch', () => {
+    seedSession({ ...MODEL, variant: 'default' });
+    expect(desire(null).model).toBeUndefined();
+    expect(desire(undefined).model).toBeUndefined();
+    expect(desire('high').model).toEqual({ ...MODEL, variant: 'high' });
+  });
+
+  test('a chosen effort switches only when it differs', () => {
+    seedSession({ ...MODEL, variant: 'high' });
+    expect(desire('high').model).toBeUndefined();
+    expect(desire('low').model).toEqual({ ...MODEL, variant: 'low' });
+  });
+});
+
 describe('routeMessage inline skills', () => {
   test('the command route names inline skills in an instruction after the attached context', async () => {
     const calls = [];
@@ -476,21 +522,24 @@ describe('routeMessage bare ulw capture', () => {
   });
 });
 
-describe('routeMessage unresolved ulw fallback', () => {
+describe('routeMessage unresolved ulw starts the native run', () => {
   // The session directory defines no /ulw template (the normal case outside
-  // this checkout): the send stays a prompt, but the bundled workflow
-  // definition rides along as context so the model runs the loop instead
-  // of reporting it missing.
+  // this checkout): the send session is adopted as the run parent — one
+  // conversation, no second session, the brief stripped of its trigger.
+  // A run that cannot start throws instead of degrading into a prompt.
   const sendCommandCalls = [];
   const sendMessageCalls = [];
+  const createSessionCalls = [];
   let originalSendCommand;
   let originalSendMessage;
+  let originalCreateSession;
   let originalListCommands;
   let originalLoadSkills;
 
   beforeEach(() => {
     sendCommandCalls.length = 0;
     sendMessageCalls.length = 0;
+    createSessionCalls.length = 0;
 
     const childStore = {
       getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
@@ -509,6 +558,7 @@ describe('routeMessage unresolved ulw fallback', () => {
 
     originalSendCommand = opencodeClient.sendCommand;
     originalSendMessage = opencodeClient.sendMessage;
+    originalCreateSession = opencodeClient.createSession;
     originalListCommands = opencodeClient.listCommands;
     originalLoadSkills = useSkillsStore.getState().loadSkills;
     useSkillsStore.setState({ loadSkills: async () => true });
@@ -521,11 +571,16 @@ describe('routeMessage unresolved ulw fallback', () => {
       sendMessageCalls.push(params);
       return 'msg';
     };
+    opencodeClient.createSession = async (params, directory) => {
+      createSessionCalls.push({ params, directory });
+      return { id: 'session-should-not-exist', directory };
+    };
   });
 
   afterEach(() => {
     opencodeClient.sendCommand = originalSendCommand;
     opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.createSession = originalCreateSession;
     opencodeClient.listCommands = originalListCommands;
     useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
     useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
@@ -539,68 +594,73 @@ describe('routeMessage unresolved ulw fallback', () => {
     modelID: 'model-a',
   });
 
-  // Machine-consumed contract tokens the engine CLI reads — not prose.
-  const appendixOf = () => {
+  // Machine-consumed contract: the native procedure names the parent run id.
+  const procedureOf = () => {
     expect(sendMessageCalls).toHaveLength(1);
     const context = sendMessageCalls[0].context ?? [];
     return context.map((item) => item.text).join('\n');
   };
 
-  test('unresolved /ulw sends a prompt driving the engine CLI', async () => {
+  test('unresolved /ulw starts the native run on the send session', async () => {
     const decision = await send('/ulw analyze this repo');
 
-    expect(decision).toBe('prompt');
+    expect(decision).toBe('command');
     expect(sendCommandCalls).toHaveLength(0);
-    expect(sendMessageCalls[0].text).toBe('/ulw analyze this repo');
-    const appendix = appendixOf();
-    expect(appendix).toContain('omo-agent-toolkit');
-    expect(appendix).toContain('create-goals');
-    expect(appendix).toContain('--session-id "session-elsewhere"');
-    expect(appendix).toContain('status --json');
-    expect(appendix).toContain('complete-goals');
-    expect(appendix).toContain('hand-write');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls[0].id).toBe('session-elsewhere');
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    const procedure = procedureOf();
+    expect(procedure).toContain('ULW run session-elsewhere');
+    expect(procedure).not.toContain('${sessionId}');
+    expect(procedure).not.toContain('omo-agent-toolkit');
   });
 
-  test('bare ulw without a template gets the same appendix', async () => {
+  test('bare ulw without a template starts the same native run', async () => {
     const decision = await send('ulw analyze this repo');
 
-    expect(decision).toBe('prompt');
+    expect(decision).toBe('command');
     expect(sendCommandCalls).toHaveLength(0);
-    const appendix = appendixOf();
-    expect(appendix).toContain('omo-agent-toolkit');
-    expect(appendix).toContain('--session-id "session-elsewhere"');
-    expect(appendix).toContain('checkpoint');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    expect(procedureOf()).toContain('ULW run session-elsewhere');
   });
 
-  test('bare ulw with a colon separator gets the same appendix', async () => {
+  test('bare ulw with a colon separator starts the same native run', async () => {
     const decision = await send('ulw: analyze this repo');
 
-    expect(decision).toBe('prompt');
+    expect(decision).toBe('command');
     expect(sendCommandCalls).toHaveLength(0);
-    const appendix = appendixOf();
-    expect(appendix).toContain('omo-agent-toolkit');
-    expect(appendix).toContain('--session-id "session-elsewhere"');
-    expect(appendix).toContain('checkpoint');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    expect(procedureOf()).toContain('ULW run session-elsewhere');
   });
 
-  test('plain prompts carry no appendix', async () => {
+  test('a failed native send fails instead of degrading to a prompt', async () => {
+    opencodeClient.sendMessage = async () => {
+      throw new Error('transport down');
+    };
+    await expect(send('ulw analyze this repo')).rejects.toThrow('transport down');
+    expect(sendCommandCalls).toHaveLength(0);
+  });
+
+  test('plain prompts carry no procedure', async () => {
     const decision = await send('hello there');
 
     expect(decision).toBe('prompt');
     expect(sendMessageCalls).toHaveLength(1);
     expect(sendMessageCalls[0].text).toBe('hello there');
     const context = sendMessageCalls[0].context ?? [];
-    expect(context.map((item) => item.text).join('\n')).not.toContain('omo-agent-toolkit');
+    expect(context.map((item) => item.text).join('\n')).not.toContain('ULW run');
   });
 
-  test('an unresolved non-ulw command still sends raw without appendix', async () => {
+  test('an unresolved non-ulw command still sends raw without procedure', async () => {
     const decision = await send('/nope test');
 
     expect(decision).toBe('prompt');
     expect(sendCommandCalls).toHaveLength(0);
     expect(sendMessageCalls[0].text).toBe('/nope test');
     const context = sendMessageCalls[0].context ?? [];
-    expect(context.map((item) => item.text).join('\n')).not.toContain('omo-agent-toolkit');
+    expect(context.map((item) => item.text).join('\n')).not.toContain('ULW run');
   });
 
   test('a failed skills load still fails the ulw send instead of guessing', async () => {
@@ -1028,6 +1088,26 @@ describe('openNewSessionDraft project binding', () => {
     expect(draft.selectedProjectId).toBeNull();
     expect(draft.target).toBe('chat');
     expect(draft.directoryOverride).toBeNull();
+  });
+
+  test('a deleted space\'s archive directory, current or forwarded as the override, opens a Chat draft, never a draft rooted in the archive', () => {
+    const archiveDirectory = '/home/me/.config/openchamber/spaces/archive/a1b2c3d4e5f6';
+    useSpaceArchivesStore.setState({ byDirectory: new Map([[archiveDirectory, { spaceId: 'a1b2c3d4e5f6', name: 'gone', projectDirectory: projectA.path, directory: archiveDirectory, archivedAt: 1 }]]) });
+    try {
+      // The "new chat" shortcut and the desktop menu forward the current directory, the archive's after its chat was open.
+      useSessionUIStore.getState().openNewSessionDraft({ directoryOverride: archiveDirectory });
+      let draft = useSessionUIStore.getState().newSessionDraft;
+      expect(draft.target).toBe('chat');
+      expect(draft.directoryOverride).toBeNull();
+
+      useDirectoryStore.getState().setDirectory(archiveDirectory, { showOverlay: false });
+      useSessionUIStore.getState().openNewSessionDraft();
+      draft = useSessionUIStore.getState().newSessionDraft;
+      expect(draft.target).toBe('chat');
+      expect(draft.directoryOverride).toBeNull();
+    } finally {
+      useSpaceArchivesStore.setState({ byDirectory: null });
+    }
   });
 
   test('respects an explicit Chat target over a recorded project target', () => {
@@ -1814,7 +1894,7 @@ describe('routeMessage skill invocation', () => {
       skills: { names: ['grill-with-docs'] },
     });
     // Without a caller builder the skill is still named if it cannot attach.
-    expect(sendMessageCalls[0].skills.instructionFor(['grill-with-docs'])).toContain('/grill-with-docs');
+    expect(sendMessageCalls[0].skills.instructionFor(['grill-with-docs'])).toContain('$grill-with-docs');
     expect(liveLookupCalls).toEqual([]);
   });
 
@@ -1965,7 +2045,7 @@ describe('routeMessage skill invocation', () => {
     expect(sendCommandCalls[0].context[0].metadata.alcodeContext.kind).toBe('code-comment');
   });
 
-  test('includes pinned knowledge with the skill prompt', async () => {
+  test('includes attached context with the skill prompt', async () => {
     useSkillsStore.setState({
       skillsByDirectory: { '/skills/project': [{ name: 'grill-with-docs', path: '/skills/grill-with-docs/SKILL.md', scope: 'user', source: 'opencode' }] },
     });
@@ -1976,12 +2056,12 @@ describe('routeMessage skill invocation', () => {
       content: '/grill-with-docs focus on auth',
       providerID: 'provider-a',
       modelID: 'model-a',
-      additionalParts: [{ text: 'Pinned project knowledge', synthetic: true, systemContext: 'session-knowledge' }],
+      additionalParts: [{ text: 'Attached context', synthetic: true }],
     });
 
     expect(sendCommandCalls).toHaveLength(0);
     expect(sendMessageCalls).toHaveLength(1);
-    expect(sendMessageCalls[0].context).toEqual([{ id: expect.stringMatching(/^msg_/), text: 'Pinned project knowledge', metadata: undefined }]);
+    expect(sendMessageCalls[0].context).toEqual([{ id: expect.stringMatching(/^msg_/), text: 'Attached context', metadata: undefined }]);
     expect(route).toBe('prompt');
   });
 
@@ -2003,7 +2083,7 @@ describe('routeMessage skill invocation', () => {
       providerID: 'provider-a',
       modelID: 'model-a',
       files,
-      additionalParts: [{ text: 'Pinned project knowledge', synthetic: true, systemContext: 'session-knowledge' }],
+      additionalParts: [{ text: 'Attached context', synthetic: true }],
     });
 
     expect(route).toBe('prompt');
@@ -2242,6 +2322,34 @@ describe('goal objective directory scoping', () => {
     expect(metadataWrites).toHaveLength(1);
     expect(metadataWrites[0].directory).toBe('/repo/worktree');
     expect(metadataWrites[0].patch.alcode.goal.objective).toBe('Worktree inspects auth flow.');
+  });
+
+  const sendQueued = (content, queuedGoal) => useSessionUIStore.getState().sendMessage(
+    content,
+    'provider-a',
+    'model-a',
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'normal',
+    { target: { runtimeKey: getRuntimeKey(), sessionId: 'session-worktree', directory: '/repo/worktree' }, queuedGoal },
+  );
+
+  test('a queued message starts the goal it was queued with and leaves the composer arm alone', async () => {
+    await sendQueued('Implement this plan: X', { objective: 'the whole plan', tokenBudget: 5000 });
+
+    expect(metadataWrites).toHaveLength(1);
+    expect(metadataWrites[0].patch.alcode.goal).toMatchObject({ objective: 'the whole plan', tokenBudget: 5000 });
+    expect(useSessionGoalArmStore.getState().armed).toBe(true);
+  });
+
+  test('a queued message without a goal starts none, even while the composer is armed', async () => {
+    await sendQueued('plain queued message', null);
+
+    expect(metadataWrites).toHaveLength(0);
+    expect(useSessionGoalArmStore.getState().armed).toBe(true);
   });
 });
 
@@ -2513,5 +2621,367 @@ describe('missing session directory recovery', () => {
 
     expect(probes).toEqual([]);
     expect(moves).toEqual([]);
+  });
+});
+
+describe('send does not wait for session knowledge before showing the message', () => {
+  let originalSendMessage;
+  let originalFetch;
+
+  beforeEach(() => {
+    originalSendMessage = opencodeClient.sendMessage;
+    originalFetch = globalThis.fetch;
+    useConfigStore.setState({ isConnected: true });
+    useSessionGoalArmStore.getState().setArmed(false, null);
+  });
+
+  afterEach(() => {
+    opencodeClient.sendMessage = originalSendMessage;
+    globalThis.fetch = originalFetch;
+  });
+
+  test('inserts the user message before the knowledge write finishes, and sends the prompt after it', async () => {
+    let state = { session: [], message: {}, part: {}, session_status: {} };
+    const childStore = {
+      getState: () => state,
+      setState: (patch) => { state = { ...state, ...patch }; },
+    };
+    setActionRefs({ children: new Map(), ensureChild: () => childStore, getChild: () => childStore }, () => '/repo');
+    const added = [];
+    setOptimisticRefs((input) => { added.push(input.message); }, () => {});
+
+    const sendCalls = [];
+    opencodeClient.sendMessage = async (params) => {
+      sendCalls.push(params);
+      return 'msg';
+    };
+    let finishWrite = null;
+    const writes = [];
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/session-knowledge/sync')) {
+        writes.push(JSON.parse(init.body));
+        return new Promise((resolve) => {
+          finishWrite = () => resolve(Response.json({ synced: true }));
+        });
+      }
+      return Response.json({});
+    };
+
+    const sending = useSessionUIStore.getState().sendMessage(
+      'hello',
+      'provider-a',
+      'model-a',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'normal',
+      { target: { runtimeKey: getRuntimeKey(), sessionId: 'session-knowledge', directory: '/repo' } },
+    );
+    for (let tick = 0; tick < 50 && (added.length === 0 || !finishWrite); tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    // The bubble is already there; the prompt request waits for the write.
+    expect(added.map((message) => message.role)).toEqual(['user']);
+    expect(writes).toEqual([{ directory: '/repo', sessionId: 'session-knowledge' }]);
+    expect(sendCalls).toHaveLength(0);
+
+    finishWrite();
+    await sending;
+
+    // The knowledge lives in the session's instruction entries, never in a message.
+    expect(added.map((message) => message.role)).toEqual(['user']);
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0].messageId).toBe(added[0].id);
+    expect(sendCalls[0].context).toBeUndefined();
+  });
+});
+describe('routeMessage native ulw parent-run regression (gaps)', () => {
+  // Gap cover for the native ULW route: one prompt adopts its send session
+  // (no second conversation), chat + run record + DAG agree on the parent
+  // id, reconnect/reopen never redispatch, and ordinary sends still work.
+  // Each case below asserts only what the existing native-ulw block does not.
+  const PARENT = 'session-ulw-parent';
+  const CHILD = 'session-ulw-child-1';
+  const DIRECTORY = '/elsewhere/project';
+  const sendCommandCalls = [];
+  const createSessionCalls = [];
+  const sendMessageCalls = [];
+  const shellCalls = [];
+  const routePosts = [];
+  let originalSendCommand;
+  let originalCreateSession;
+  let originalSendMessage;
+  let originalListCommands;
+  let originalShellSession;
+  let originalLoadSkills;
+  let originalFetch;
+  let originalProjects;
+  let originalActiveProjectId;
+
+  const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } };
+
+  const parentRunInput = () => {
+    const assistant = {
+      id: 'm-ulw-parent-1',
+      sessionID: PARENT,
+      role: 'assistant',
+      time: { created: 1500, completed: 1600 },
+      agent: 'explore',
+      providerID: 'provider-a',
+      modelID: 'model-a',
+    };
+    const call = {
+      id: 't-ulw-parent-1',
+      sessionID: PARENT,
+      messageID: 'm-ulw-parent-1',
+      type: 'tool',
+      callID: 'call_t-ulw-parent-1',
+      tool: 'subagent',
+      state: {
+        status: 'completed',
+        input: { description: 'Analyze auth' },
+        output: '',
+        metadata: { sessionID: CHILD },
+        time: { start: 2000, end: 8000 },
+      },
+    };
+    return {
+      conversationId: PARENT,
+      conversationTitle: 'ULW parent run',
+      sessions: [
+        { id: PARENT, projectID: 'proj_1', directory: DIRECTORY, title: 'ULW parent run', cost: 0, tokens, time: { created: 1000, updated: 9000 } },
+        { id: CHILD, parentID: PARENT, projectID: 'proj_1', directory: DIRECTORY, title: 'Analyze auth', agent: 'explore', cost: 0.001, tokens, time: { created: 2000, updated: 8000 } },
+      ],
+      statuses: {},
+      messages: [assistant],
+      parts: { 'm-ulw-parent-1': [call] },
+    };
+  };
+
+  beforeEach(() => {
+    sendCommandCalls.length = 0;
+    createSessionCalls.length = 0;
+    sendMessageCalls.length = 0;
+    shellCalls.length = 0;
+    routePosts.length = 0;
+
+    const childStore = {
+      getState: () => ({ session: [], message: {}, part: {}, session_status: {} }),
+      setState: () => {},
+    };
+    const childStores = {
+      children: new Map(),
+      ensureChild: () => childStore,
+      getChild: () => childStore,
+    };
+    setActionRefs(childStores, () => DIRECTORY);
+    setOptimisticRefs(() => {}, () => {});
+    useConfigStore.setState({ isConnected: true });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {} });
+
+    originalSendCommand = opencodeClient.sendCommand;
+    originalCreateSession = opencodeClient.createSession;
+    originalSendMessage = opencodeClient.sendMessage;
+    originalListCommands = opencodeClient.listCommands;
+    originalShellSession = opencodeClient.shellSession;
+    originalLoadSkills = useSkillsStore.getState().loadSkills;
+    originalFetch = globalThis.fetch;
+    originalProjects = useProjectsStore.getState().projects;
+    originalActiveProjectId = useProjectsStore.getState().activeProjectId;
+    useSkillsStore.setState({ loadSkills: async () => true });
+    opencodeClient.listCommands = async () => [];
+    opencodeClient.createSession = async (params, directory) => {
+      createSessionCalls.push({ params, directory });
+      return { id: 'session-run-1', directory: directory ?? DIRECTORY };
+    };
+    opencodeClient.sendCommand = async (params) => {
+      sendCommandCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.sendMessage = async (params) => {
+      sendMessageCalls.push(params);
+      return 'msg';
+    };
+    opencodeClient.shellSession = async (params) => {
+      shellCalls.push(params);
+      return { info: {}, parts: [] };
+    };
+    globalThis.fetch = async (url, options) => {
+      try {
+        const outer = JSON.parse(options?.body ?? '');
+        if (outer?.path === '/debug/route') routePosts.push(JSON.parse(outer.body));
+      } catch {
+        // Non-JSON traffic is not a route report; ignore it.
+      }
+      return new Response('{}', { status: 200 });
+    };
+    useProjectsStore.setState({ projects: [], activeProjectId: null });
+    useSessionUIStore.setState({
+      currentSessionId: null,
+      currentSessionDirectory: null,
+      materializedDraftSessionId: null,
+      worktreeMetadata: new Map(),
+      newSessionDraft: { open: false, directoryOverride: null, parentID: null },
+    });
+  });
+
+  afterEach(() => {
+    opencodeClient.sendCommand = originalSendCommand;
+    opencodeClient.createSession = originalCreateSession;
+    opencodeClient.sendMessage = originalSendMessage;
+    opencodeClient.listCommands = originalListCommands;
+    opencodeClient.shellSession = originalShellSession;
+    globalThis.fetch = originalFetch;
+    useSkillsStore.setState({ skills: [], skillsByDirectory: {}, loadSkills: originalLoadSkills });
+    useCommandsStore.setState({ commands: [], commandsByDirectory: {} });
+    useProjectsStore.setState({ projects: originalProjects, activeProjectId: originalActiveProjectId });
+    useSessionUIStore.setState({
+      currentSessionId: null,
+      currentSessionDirectory: null,
+      worktreeMetadata: new Map(),
+      newSessionDraft: { open: false, directoryOverride: null, parentID: null },
+    });
+  });
+
+  const send = (content, inputMode) => routeMessage({
+    sessionId: PARENT,
+    directory: DIRECTORY,
+    content,
+    providerID: 'provider-a',
+    modelID: 'model-a',
+    inputMode,
+  });
+
+  const procedureTextOf = (call) => (call.context ?? []).map((part) => part.text).join('\n');
+
+  const waitForRoutePost = async () => {
+    for (let index = 0; index < 10 && routePosts.length === 0; index += 1) {
+      await Bun.sleep(0);
+    }
+  };
+
+  test('(1) a second ULW prompt reuses the one parent run instead of creating again', async () => {
+    expect(await send('ulw analyze this repo')).toBe('command');
+    expect(await send('ulw: check the auth flow')).toBe('command');
+
+    // One prompt, one parent conversation: no second session is ever created.
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(2);
+    expect(sendMessageCalls[0].id).toBe(PARENT);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    expect(sendMessageCalls[1].id).toBe(PARENT);
+    expect(sendMessageCalls[1].text).toBe('check the auth flow');
+    // Both turns drive the same run: the native procedure names the parent id.
+    for (const call of sendMessageCalls) {
+      expect(procedureTextOf(call)).toContain(`ULW run ${PARENT}`);
+    }
+  });
+
+  test('(2) chat, run record, and DAG share the one parent session id', async () => {
+    expect(await send('ulw analyze this repo')).toBe('command');
+
+    // Chat: the brief lands in the parent conversation.
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe(PARENT);
+    expect(sendMessageCalls[0].text).toBe('analyze this repo');
+    // Run record: the procedure the DAG reads is bound to the parent id.
+    expect(procedureTextOf(sendMessageCalls[0])).toContain(`ULW run ${PARENT}`);
+    // DAG trace: the route report names the same parent session.
+    await waitForRoutePost();
+    expect(routePosts).toHaveLength(1);
+    expect(routePosts[0]).toMatchObject({
+      decision: 'captured-to-/ulw',
+      sessionId: PARENT,
+      command: 'ulw',
+      arguments: 'analyze this repo',
+    });
+    // DAG model: one run under the parent id, with the delegated child settled.
+    const model = buildDagRunModel(parentRunInput());
+    expect(model?.conversationId).toBe(PARENT);
+    expect(model?.parentSessionId).toBe(PARENT);
+    expect(model?.runId).toBe(PARENT);
+    expect(model?.progress).toEqual({ total: 1, settled: 1 });
+    expect(model?.children.map((child) => child.sessionId)).toEqual([CHILD]);
+  });
+
+  test('(3) reconnect rehydration creates no second session and no duplicate run', async () => {
+    await send('ulw analyze this repo');
+    const before = buildDagRunModel(parentRunInput());
+    expect(before?.children).toHaveLength(1);
+
+    useSessionUIStore.getState().setCurrentSession(PARENT, DIRECTORY);
+    useSessionUIStore.getState().prepareForRuntimeSwitch('host:ulw-reconnect');
+    // The live selection drops the way a disconnect does; the reconnect restores it.
+    useSessionUIStore.setState({ currentSessionId: null, currentSessionDirectory: null });
+    useSessionUIStore.getState().restoreForRuntimeSwitch('host:ulw-reconnect');
+
+    expect(useSessionUIStore.getState().currentSessionId).toBe(PARENT);
+    expect(useSessionUIStore.getState().currentSessionDirectory).toBe(DIRECTORY);
+    const after = buildDagRunModel(parentRunInput());
+    expect(after?.parentSessionId).toBe(before?.parentSessionId);
+    expect(after?.runId).toBe(before?.runId);
+    expect(after?.children.map((child) => child.sessionId)).toEqual(
+      before?.children.map((child) => child.sessionId),
+    );
+    expect(after?.children).toHaveLength(1);
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(shellCalls).toHaveLength(0);
+  });
+
+  test('(9) reopening the parent restores it without redispatching the run', async () => {
+    await send('ulw analyze this repo');
+    const before = buildDagRunModel(parentRunInput());
+
+    useSessionUIStore.getState().setCurrentSession(PARENT, DIRECTORY);
+    useSessionUIStore.getState().setCurrentSession('session-other', DIRECTORY);
+    expect(useSessionUIStore.getState().currentSessionId).toBe('session-other');
+    useSessionUIStore.getState().setCurrentSession(PARENT, DIRECTORY);
+    await Bun.sleep(0);
+    await Bun.sleep(0);
+
+    expect(useSessionUIStore.getState().currentSessionId).toBe(PARENT);
+    expect(useSessionUIStore.getState().currentSessionDirectory).toBe(DIRECTORY);
+    const after = buildDagRunModel(parentRunInput());
+    expect(after?.runId).toBe(before?.runId);
+    expect(after?.children).toHaveLength(1);
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(shellCalls).toHaveLength(0);
+  });
+
+  test('(10) ordinary prompts and new-session creation still work without the native path', async () => {
+    const decision = await send('hello there');
+
+    expect(decision).toBe('prompt');
+    expect(createSessionCalls).toHaveLength(0);
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(shellCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe(PARENT);
+    expect(sendMessageCalls[0].text).toBe('hello there');
+    expect(sendMessageCalls[0].context).toBeUndefined();
+
+    opencodeClient.createSession = async (params, directory) => {
+      createSessionCalls.push({ params, directory });
+      return { id: 'session-ordinary-1', directory };
+    };
+    useSessionUIStore.setState({
+      newSessionDraft: { open: true, directoryOverride: DIRECTORY, parentID: null, title: 'Ordinary title' },
+    });
+    const created = await useSessionUIStore.getState().createSession('Ordinary title', DIRECTORY);
+
+    expect(createSessionCalls).toHaveLength(1);
+    expect(createSessionCalls[0].directory).toBe(DIRECTORY);
+    expect(created?.id).toBe('session-ordinary-1');
+    expect(useSessionUIStore.getState().newSessionDraft.open).toBe(false);
   });
 });

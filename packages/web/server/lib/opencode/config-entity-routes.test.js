@@ -40,7 +40,7 @@ describe('config entity names', () => {
     const { app } = createApp();
     const response = await request(app).get('/api/config/agents/catalog');
     expect(response.status).toBe(200);
-    expect(response.body.version).toBe(2);
+    expect(response.body.version).toBe(4);
     const ids = response.body.items.map((item) => item.id);
     expect(ids).toContain('explore');
     expect(ids).toContain('quick');

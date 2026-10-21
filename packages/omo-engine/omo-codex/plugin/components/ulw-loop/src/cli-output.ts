@@ -1,11 +1,11 @@
-import type { UlwLoopCodexGoalMode, UlwLoopItem, UlwLoopPlan } from "./types.js";
+import type { UlwLoopCodexGoalMode, UlwLoopItem, UlwLoopPlan, UlwLoopTaskKind } from "./types.js";
 import { UlwLoopError } from "./types.js";
 
 export const ULW_LOOP_HELP = `Usage:
   omo-agent-toolkit hook user-prompt-submit [--with-ultrawork]  (Codex UserPromptSubmit hook)
   omo-agent-toolkit help | --help | -h                          (this message)
   omo-agent-toolkit ulw-loop help
-  omo-agent-toolkit ulw-loop create-goals --brief "..." [--brief-file <path>] [--from-stdin] [--codex-goal-mode aggregate|per_story] [--validation-batch-json <json-or-path>] [--force] [--json]
+  omo-agent-toolkit ulw-loop create-goals --brief "..." [--brief-file <path>] [--from-stdin] [--codex-goal-mode aggregate|per_story] [--task-kind implementation|readonly|mixed] [--validation-batch-json <json-or-path>] [--force] [--json]
   omo-agent-toolkit ulw-loop status [--json]
   omo-agent-toolkit ulw-loop complete-goals [--retry-failed] [--json]
   omo-agent-toolkit ulw-loop dispatch [--goal-id <id> ...] [--child-role <role>] [--json]
@@ -93,6 +93,16 @@ export function normalizeCodexGoalMode(value: string | undefined): UlwLoopCodexG
 	throw new UlwLoopError(
 		"Invalid --codex-goal-mode; expected aggregate or per_story.",
 		"ULW_LOOP_CODEX_GOAL_MODE_INVALID",
+		{ details: { value } },
+	);
+}
+
+export function normalizeTaskKind(value: string | undefined): UlwLoopTaskKind {
+	if (value === undefined) return "implementation";
+	if (value === "implementation" || value === "readonly" || value === "mixed") return value;
+	throw new UlwLoopError(
+		"Invalid --task-kind; expected implementation, readonly, or mixed.",
+		"ULW_LOOP_TASK_KIND_INVALID",
 		{ details: { value } },
 	);
 }

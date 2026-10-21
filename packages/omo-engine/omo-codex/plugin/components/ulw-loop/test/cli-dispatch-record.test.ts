@@ -53,6 +53,21 @@ function makePlan(goals: UlwLoopItem[]): UlwLoopPlan {
 	};
 }
 
+function makePassGoal(): UlwLoopItem {
+	return makeGoal({
+		successCriteria: [
+			{
+				id: "C001",
+				scenario: "child result collected",
+				userModel: "happy",
+				expectedEvidence: "result ref recorded",
+				capturedEvidence: "fixture proof",
+				status: "pass",
+			},
+		],
+	});
+}
+
 describe("recordGoalDispatched", () => {
 	describe("#given a pending goal #when dispatched #then it opens an attempt and records the event", () => {
 		it("marks in_progress with attempt and ledger entry", async () => {
@@ -98,7 +113,7 @@ describe("recordChildCompleted", () => {
 	describe("#given a dispatched goal #when its child completes #then the goal completes with the result ref", () => {
 		it("marks complete and records child_completed", async () => {
 			// given
-			const repo = await bootstrapRepo(makePlan([makeGoal()]));
+			const repo = await bootstrapRepo(makePlan([makePassGoal()]));
 			await recordGoalDispatched(repo, { goalId: "G001" });
 			// when
 			const { goal } = await recordChildCompleted(repo, {
@@ -171,6 +186,77 @@ describe("recordChildFailed", () => {
 			});
 			// then
 			expect(goal.nonRetriable).toBe(true);
+		});
+	});
+});
+
+describe("dispatched child identity", () => {
+	describe("#given a dispatch with a child role #when recorded #then the goal keeps the expected role", () => {
+		it("stores dispatchedRole on the goal", async () => {
+			// given
+			const repo = await bootstrapRepo(makePlan([makeGoal()]));
+			// when
+			const { goal } = await recordGoalDispatched(repo, { goalId: "G001", childRole: "explore" });
+			// then
+			expect(goal.dispatchedRole).toBe("explore");
+		});
+	});
+
+	describe("#given an explore dispatch #when a general child reports #then it refuses the mismatch", () => {
+		it("throws ROLE_MISMATCH and keeps the dispatch open", async () => {
+			// given
+			const repo = await bootstrapRepo(makePlan([makeGoal()]));
+			await recordGoalDispatched(repo, { goalId: "G001", childRole: "explore" });
+			// when
+			const attempt = recordChildCompleted(repo, {
+				goalId: "G001",
+				childId: "ses_general",
+				resultRef: "r.md",
+				childRole: "general",
+			});
+			// then
+			await expect(attempt).rejects.toMatchObject({ code: "ULW_LOOP_CHILD_ROLE_MISMATCH" });
+			const plan = await readUlwLoopPlan(repo);
+			expect(plan.goals[0]?.status).toBe("in_progress");
+		});
+	});
+
+	describe("#given an explore dispatch #when the explore child reports #then it completes with the worker session", () => {
+		it("stores workerSessionId and names the role in the ledger", async () => {
+			// given
+			const repo = await bootstrapRepo(makePlan([makePassGoal()]));
+			await recordGoalDispatched(repo, { goalId: "G001", childRole: "explore" });
+			// when
+			const { goal, ledgerEntry } = await recordChildCompleted(repo, {
+				goalId: "G001",
+				childId: "ses_explore",
+				resultRef: "r.md",
+				childRole: "explore",
+			});
+			// then
+			expect(goal.status).toBe("complete");
+			expect(goal.workerSessionId).toBe("ses_explore");
+			expect(ledgerEntry.message).toContain("(explore)");
+		});
+	});
+
+	describe("#given an explore dispatch #when the explore child fails #then the failure keeps the worker session and reason", () => {
+		it("stores workerSessionId, role, and the provider reason", async () => {
+			// given
+			const repo = await bootstrapRepo(makePlan([makeGoal()]));
+			await recordGoalDispatched(repo, { goalId: "G001", childRole: "explore" });
+			// when
+			const { goal, ledgerEntry } = await recordChildFailed(repo, {
+				goalId: "G001",
+				childId: "ses_explore",
+				reason: "provider 400 tool_choice",
+				childRole: "explore",
+			});
+			// then
+			expect(goal.status).toBe("failed");
+			expect(goal.workerSessionId).toBe("ses_explore");
+			expect(goal.failureReason).toContain("tool_choice");
+			expect(ledgerEntry.message).toContain("(explore)");
 		});
 	});
 });

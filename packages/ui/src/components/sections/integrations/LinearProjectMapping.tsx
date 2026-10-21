@@ -5,11 +5,11 @@ import {
   SettingsFieldRow,
   SETTINGS_FIELDS_STACK_CLASS,
   SETTINGS_SELECT_ROW_TRIGGER_CLASS,
-  SETTINGS_SELECT_SIZE,
 } from '@/components/sections/shared/SettingsSection';
 import { reportSettingsSaveState } from '@/lib/persistence';
 import { useI18n } from '@/lib/i18n';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { useProjectsInSidebarOrder } from '@/components/session/sidebar/list/useProjectsInSidebarOrder';
 import type { LinearAPI, LinearMappingResult } from '@/lib/api/types';
 
 const NONE = '__none__';
@@ -25,7 +25,7 @@ export function LinearProjectMapping({
   organizationId?: string | null;
 }) {
   const { t } = useI18n();
-  const projects = useProjectsStore((state) => state.projects);
+  const projects = useProjectsInSidebarOrder(useProjectsStore((state) => state.projects));
   const [mapping, setMapping] = React.useState<LinearMappingResult | null>(null);
   const [loadFailed, setLoadFailed] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -144,7 +144,6 @@ export function LinearProjectMapping({
           }}
         >
           <SelectTrigger
-            size={SETTINGS_SELECT_SIZE}
             className={SETTINGS_SELECT_ROW_TRIGGER_CLASS}
             aria-label={t('settings.integrations.linear.mapping.defaultProject.aria')}
           >
@@ -198,7 +197,6 @@ export function LinearProjectMapping({
                   }}
                 >
                   <SelectTrigger
-                    size={SETTINGS_SELECT_SIZE}
                     className={SETTINGS_SELECT_ROW_TRIGGER_CLASS}
                     aria-label={t('settings.integrations.linear.mapping.teams.aria', { team: team.key })}
                   >

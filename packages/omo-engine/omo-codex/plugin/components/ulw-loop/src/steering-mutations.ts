@@ -32,8 +32,8 @@ function nextId(plan: UlwLoopPlan, offset: number): string {
 }
 
 export function makeGoal(plan: UlwLoopPlan, childGoal: UlwLoopSteeringChildGoal, evidence: string, now: string, offset: number, surface: UlwLoopToolkitSurface = "lazycodex"): UlwLoopItem {
-	const id = nextId(plan, offset); const digits = /^G(\d+)/u.exec(id)?.[1]; const goalIndex = digits === undefined ? plan.goals.length + offset - 1 : Number(digits) - 1;
-	return { id, title: childGoal.title, objective: childGoal.objective, status: "pending", successCriteria: seedDefaultSuccessCriteria(goalIndex, childGoal.objective, { goalId: id, surface }), attempt: 0, createdAt: now, updatedAt: now, evidence };
+	const id = nextId(plan, offset); const digits = /^G(\d+)/u.exec(id)?.[1]; const goalIndex = digits === undefined ? plan.goals.length + offset - 1 : Number(digits) - 1; const taskKind = plan.taskKind ?? "implementation";
+	return { id, title: childGoal.title, objective: childGoal.objective, status: "pending", taskKind, successCriteria: seedDefaultSuccessCriteria(goalIndex, childGoal.objective, { goalId: id, surface, taskKind }), attempt: 0, createdAt: now, updatedAt: now, evidence };
 }
 
 export function reviseWording(plan: UlwLoopPlan, proposal: UlwLoopSteeringProposal, now: string): void {

@@ -1,6 +1,7 @@
 import type { WorktreeMetadata } from '@/types/worktree';
 import type { DesktopSettings } from '@/lib/settings/registry';
 import type { GitIdentityProfile, GitIdentitySummary } from './git-identity';
+import type { GitPathUnavailableReason } from './git-path-diff';
 import type {
   ChangeRequest,
   ChangeRequestContext,
@@ -17,6 +18,8 @@ import type {
   SetStateInput,
   SetLabelsInput,
   SetReviewersInput,
+  ThreadReplyInput,
+  ThreadResolveInput,
   SourceControlAuthStatus,
   SourceControlCapabilities,
   SourceControlDeviceFlowComplete,
@@ -219,13 +222,19 @@ export interface GitStatus {
   behind: number;
   /**
    * Set only when the branch has no upstream and `ahead` counts its commits
-   * missing from this base ref (e.g. `origin/main`). Absent or null means no
-   * such count was made, so `ahead: 0` alone does not prove nothing is lost.
+   * missing from this base ref (e.g. `origin/main`) and from every remote
+   * branch. Absent or null means no such count was made, so `ahead: 0` alone
+   * does not prove nothing is lost.
    */
   aheadBase?: string | null;
   upstreamComparison?: GitRemoteComparison | null;
   files: GitStatusFile[];
   isClean: boolean;
+  /**
+   * True when the branch has no commit yet (a fresh `git init`). Absent from
+   * runtimes that do not report it (VS Code), which reads as false.
+   */
+  unborn?: boolean;
   /**
    * Per-file line stats split by Git scope. A file with edits in both scopes
    * appears in both maps; the values are never summed into each other.
@@ -280,6 +289,20 @@ export interface GetGitDiffOptions {
   contextLines?: number;
 }
 
+export interface GetGitDiffsOptions {
+  paths: string[];
+  staged?: boolean;
+  contextLines?: number;
+}
+
+/**
+ * One path of a batched `getGitDiff`: the same diff, or the failure that read
+ * would have thrown. `reason` is set when the path no longer resolves.
+ */
+export type GitPathDiffBatchEntry =
+  | { path: string; ok: true; diff: GitPathDiffResponse }
+  | { path: string; ok: false; error: string; reason: GitPathUnavailableReason | null };
+
 /**
  * Diff between two refs. Uses three-dot (`base...head`) semantics server-side, so changes
  * pulled into `head` by merging `base` are excluded. Refs are used as selected.
@@ -304,6 +327,11 @@ export interface GetGitRangeFilesOptions {
 export interface GitRangeFileEntry {
   path: string;
   status: string;
+  /**
+   * Working-tree listings only: changes exactly when this file's patch can
+   * change (merge base moved, or the file was written). Absent elsewhere.
+   */
+  revision?: string;
 }
 
 export interface GitBranchBaseResponse {
@@ -663,6 +691,7 @@ export type GitNetworkOperationErrorCode =
   | 'OUTCOME_UNKNOWN'
   | 'RUNTIME_UNSUPPORTED'
   | 'GIT_LFS_CLIENT_MISSING'
+  | 'CHECKOUT_TOO_LARGE'
   | 'UNKNOWN';
 
 export interface GitNetworkOperationError<Code extends GitNetworkOperationErrorCode = GitNetworkOperationErrorCode> {
@@ -736,6 +765,7 @@ export type GitNetworkOperation =
         | 'TRANSPORT_FAILED'
         | 'RUNTIME_UNSUPPORTED'
         | 'GIT_LFS_CLIENT_MISSING'
+        | 'CHECKOUT_TOO_LARGE'
         | 'UNKNOWN'
       >;
     })
@@ -748,6 +778,7 @@ export type GitNetworkOperation =
         | 'TRANSPORT_FAILED'
         | 'RUNTIME_UNSUPPORTED'
         | 'GIT_LFS_CLIENT_MISSING'
+        | 'CHECKOUT_TOO_LARGE'
         | 'UNKNOWN'
       >;
     })
@@ -974,6 +1005,8 @@ export interface GitWorktreeCreateResult {
   sourceFetchFailed?: true;
   /** Set when the failed fetch was the repository's access: an account that needs attention, refused credentials. */
   sourceFetchReason?: 'access';
+  /** A leftover local branch of the change request had diverged from its head; its old tip is kept in this branch. */
+  branchBackup?: string;
   provenance?: GitContributorWorktreeProvenance;
 }
 
@@ -1049,7 +1082,19 @@ interface GitWorktreeAPI {
 export interface GitAPI {
   checkIsGitRepository(directory: string): Promise<boolean>;
   getGitStatus(directory: string, options?: { mode?: 'light'; fresh?: boolean }): Promise<GitStatus>;
+  /**
+   * Warm the status cache for many directories with one request, so the
+   * per-directory `getGitStatus` reads that follow are cache hits. Runtimes
+   * without a batched status read (VS Code) omit it and read one by one.
+   */
+  prefetchProjectStatuses?(directories: string[]): Promise<void>;
   getGitDiff(directory: string, options: GetGitDiffOptions): Promise<GitPathDiffResponse>;
+  /**
+   * `getGitDiff` for many paths of one side in one request. Rejects when the
+   * request itself fails; per-path failures are entries. Absent in runtimes
+   * that read per path (VS Code).
+   */
+  getGitDiffs?(directory: string, options: GetGitDiffsOptions): Promise<GitPathDiffBatchEntry[]>;
   getGitFileDiff(directory: string, options: GetGitFileDiffOptions): Promise<GitFileDiffResponse>;
   getGitRangeDiff?(directory: string, options: GetGitRangeDiffOptions): Promise<GitDiffResponse>;
   getGitRangeFiles?(directory: string, options: GetGitRangeFilesOptions): Promise<GitRangeFileEntry[]>;
@@ -1146,6 +1191,8 @@ export interface GitAPI {
     resolvedWorktreeRoot: string | null;
     resolvedCwd: string | null;
   }>;
+  /** Where `directory` sits inside its checkout (`ai`, or `''` at the root); rejects when unknown. */
+  resolveRepositoryPrefix?(directory: string): Promise<string>;
   /** Phase 1: canonicalize a directory to full worktree state */
   canonicalizeWorktreeState?(directory: string): Promise<{
     worktreeRoot: string | null;
@@ -1221,6 +1268,40 @@ export interface FileSearchResult {
   preview?: string[];
 }
 
+/** Find in files: lines of workspace files containing a text or a regular expression. */
+export interface FileContentSearchQuery {
+  directory: string;
+  query: string;
+  regex: boolean;
+  limit?: number;
+  includeHidden?: boolean;
+  respectGitignore?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface FileContentSearchMatch {
+  path: string;
+  relativePath: string;
+  line: number;
+  /** 1-based column of the first match on the line, in UTF-16 code units. */
+  column: number;
+  /** The line, without indentation and cut to what a result row can show. */
+  text: string;
+  /** `[start, end)` offsets of the matches inside `text`. */
+  ranges: Array<[number, number]>;
+  /** `text` begins after the line's start, so the row shows an ellipsis first. */
+  cutStart: boolean;
+}
+
+/** Why a search returned fewer matches than exist: the limit or the server's deadline. */
+export type FileContentSearchStop = 'limit' | 'deadline';
+
+export type FileContentSearchOutcome =
+  | { status: 'ok'; matches: FileContentSearchMatch[]; stopped: FileContentSearchStop | null }
+  | { status: 'invalid-pattern'; message: string }
+  /** The server has no ripgrep to search with. */
+  | { status: 'unavailable' };
+
 export interface CommandExecResult {
   command: string;
   success: boolean;
@@ -1245,6 +1326,12 @@ interface FileReadOptions {
 export interface FilesAPI {
   listDirectory(path: string, options?: ListDirectoryOptions): Promise<DirectoryListResult>;
   search(payload: FileSearchQuery): Promise<FileSearchResult[]>;
+  /**
+   * Find in files. Absent on runtimes without it (VS Code has its own
+   * search), so the files tree offers the mode only when it is here.
+   * Resolves to the search outcome; rejects on a transport or server failure.
+   */
+  searchContents?(payload: FileContentSearchQuery): Promise<FileContentSearchOutcome>;
   createDirectory(path: string): Promise<{ success: boolean; path: string }>;
   statFile?(path: string, options?: FileReadOptions): Promise<{ path: string; isFile: boolean; size: number; mtimeMs?: number }>;
   readFile?(path: string, options?: FileReadOptions): Promise<{ content: string; path: string }>;
@@ -1255,7 +1342,7 @@ export interface FilesAPI {
   rename?(oldPath: string, newPath: string): Promise<{ success: boolean; path: string }>;
   revealPath?(path: string): Promise<{ success: boolean }>;
   execCommands?(commands: string[], cwd: string): Promise<{ success: boolean; results: CommandExecResult[] }>;
-  downloadFile?(path: string): Promise<void>;
+  downloadFile?(path: string, options?: FileReadOptions): Promise<void>;
 }
 
 export interface ProjectEntry {
@@ -1326,6 +1413,10 @@ export interface NotificationPayload {
   kind?: string;
   sessionId?: string;
   directory?: string;
+  // Runtime key of the instance that owns the session ('local' or 'host:<id>').
+  // The desktop shell uses it to route a notification click to the owning
+  // instance instead of the currently active one.
+  runtimeKey?: string;
   requireHidden?: boolean;
   showWhenFocused?: boolean;
 }
@@ -1691,6 +1782,20 @@ export type GitHubReferenceComment = {
   path: string | null;
   line: number | null;
   review: 'approved' | 'changes_requested' | 'commented' | 'dismissed' | null;
+  /** Set when the comment opens a review thread. */
+  thread?: GitHubReferenceThread;
+};
+
+/** A review thread a comment opens: the answers under it and whether it is resolved. */
+export type GitHubReferenceThread = {
+  /** The host's id: a GraphQL node id on GitHub, a discussion id on GitLab. */
+  id: string;
+  resolved: boolean;
+  /** Whether this account can resolve the thread, or open it again. */
+  canResolve: boolean;
+  canReply: boolean;
+  /** Oldest first. */
+  replies: GitHubReferenceComment[];
 };
 
 /** Someone asked to review, or who can be; `id` is what the host names them by (a login on GitHub). */
@@ -1767,6 +1872,29 @@ export type GitHubReferencesResult =
       hasMore: boolean;
       total: number;
     };
+
+/** Why a folder asked for in a search across repositories was left out of it. */
+export type GitHubReferencesAcrossSkip = 'no-repo' | 'disconnected' | 'invalid-context' | 'error';
+
+/**
+ * One page of issues or PRs across several repositories, each read through its
+ * own bound context: a folder that holds repositories, listed all at once.
+ * Repositories read with the same account are searched together; one folder
+ * that cannot be read is reported in `repositories` and never empties the rest.
+ */
+export type GitHubReferencesAcrossResult = {
+  /** Newest activity first. `directory` is the context folder the item was read through, for its preview and actions. */
+  items: Array<GitHubReference & { directory: string }>;
+  /** Opaque; null on the last page. */
+  cursor: string | null;
+  hasMore: boolean;
+  total: number;
+  /** Every folder asked for, in the order asked: its GitHub repository, or why it was left out. */
+  repositories: Array<
+    | { directory: string; status: 'included'; repo: GitHubRepoRef }
+    | { directory: string; status: GitHubReferencesAcrossSkip }
+  >;
+};
 
 export type GitHubRepoUpstreamResult = {
   connected: boolean;
@@ -1851,6 +1979,10 @@ export interface SourceControlAPI {
   changeRequestMerge(payload: MergeChangeRequestInput): Promise<SourceControlMutationReceipt<SourceControlMergeMutationResult>>;
   changeRequestReady(payload: ReadyChangeRequestInput): Promise<SourceControlMutationReceipt<SourceControlReadyMutationResult>>;
   changeRequestComment(payload: CommentInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
+  /** Opens a thread on a change request: a comment that waits to be resolved (GitLab). */
+  changeRequestStartThread(payload: CommentInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
+  changeRequestReplyToThread(payload: ThreadReplyInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
+  changeRequestResolveThread(payload: ThreadResolveInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   changeRequestReview(payload: ReviewChangeRequestInput): Promise<SourceControlMutationReceipt<SourceControlReviewMutationResult>>;
   issueComment(payload: CommentInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   changeRequestSetState(payload: SetStateInput): Promise<SourceControlMutationReceipt<SourceControlStateMutationResult>>;
@@ -1858,6 +1990,8 @@ export interface SourceControlAPI {
   changeRequestSetLabels(payload: SetLabelsInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   issueSetLabels(payload: SetLabelsInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
   changeRequestSetReviewers(payload: SetReviewersInput): Promise<SourceControlMutationReceipt<SourceControlEmptyMutationResult>>;
+  /** Forgets the server's short-lived answers from this host, so the next reads ask it again. */
+  refreshProviderReads(identity: SourceControlIdentity): Promise<void>;
   /** One page of a project's labels, for the board's picker. */
   referenceLabels(context: SourceControlReadContext, project: GitHubRepoSelector): Promise<GitHubIssueLabel[]>;
   /** One page of the people who can be asked to review in a project. */
@@ -1897,6 +2031,13 @@ export interface SourceControlAPI {
 
   /** GitHub only: one page of issues or PRs for the reference picker. Throws on failure. */
   githubReferences(context: SourceControlReadContext, options: GitHubReferencesOptions): Promise<GitHubReferencesResult>;
+  /**
+   * GitHub only: one page of issues or PRs across up to 100 repositories, each
+   * read through its own context. Absent where the runtime cannot. Throws when
+   * the whole request fails (rate limit, network); a single folder that cannot
+   * be read is reported in the result instead.
+   */
+  githubReferencesAcross?(contexts: SourceControlReadContext[], options: GitHubReferencesOptions): Promise<GitHubReferencesAcrossResult>;
   /** GitHub only: comments of one item the picker previews, and a PR's size, review and checks. Throws on failure. */
   githubReferenceDetail(context: SourceControlReadContext, item: GitHubPullRequestRef): Promise<GitHubReferenceDetailResult>;
   /** GitHub only: checks and mergeability of up to 30 listed PRs, for their colour. Throws on failure. */
@@ -1987,6 +2128,16 @@ export interface ClientAuthAPI {
   // Direct transports the server can be reached on, for the create-device dialog.
   // LAN reflects the server's actual bind, independent of the UI origin.
   getPairingTransports(): Promise<{ local: string | null; lan: string | null; relayAvailable: boolean }>;
+  // This server's relay host. `identityConflict` is true while another copy of
+  // its data dir, usually on another machine, keeps taking the relay slot.
+  getRelayHostStatus(): Promise<RelayHostStatus>;
+  // Gives this server its own relay identity. Devices paired through the relay
+  // keep reaching the other copy until they are paired here again.
+  resetRelayIdentity(): Promise<RelayHostStatus>;
+}
+
+export interface RelayHostStatus {
+  identityConflict: boolean;
 }
 
 export type LinearUserSummary = {
@@ -2070,8 +2221,20 @@ export type LinearIssueSummary = {
   assignee?: LinearIssueAssignee | null;
   team?: LinearIssueTeam | null;
   priority?: LinearIssuePriority | null;
+  /** Absent on a related issue (a parent, a sub-issue): Linear is not asked for them there. */
   labels?: LinearIssueLabel[];
   updatedAt?: string | null;
+  /** The issue this one is a sub-issue of. */
+  parent?: LinearIssueSummary | null;
+  /** Null without sub-issues. Only the first few are counted; `more` says there are others. */
+  subIssueProgress?: LinearSubIssueProgress | null;
+};
+
+export type LinearSubIssueProgress = {
+  total: number;
+  /** Completed, canceled or a duplicate. */
+  done: number;
+  more: boolean;
 };
 
 export type LinearIssueComment = {
@@ -2084,6 +2247,9 @@ export type LinearIssueComment = {
 export type LinearIssue = LinearIssueSummary & {
   description?: string | null;
   comments?: LinearIssueComment[];
+  /** In Linear's order; the first page only, `subIssuesMore` says there are others. */
+  subIssues?: LinearIssueSummary[];
+  subIssuesMore?: boolean;
 };
 
 /** `open`: not done, canceled or a duplicate; the server's default. */
@@ -2298,6 +2464,7 @@ interface SkillsInstallSelection {
 export interface SkillsInstallRequest {
   source: string;
   subpath?: string;
+  sourceId?: string;
   gitIdentityId?: string;
   scope: 'user' | 'project';
   targetSource?: 'opencode' | 'agents';
@@ -2314,7 +2481,7 @@ export type SkillsInstallError = SkillsRepoScanError | {
 
 export interface SkillsInstallResponse {
   ok: boolean;
-  installed?: Array<{ skillName: string; scope: 'user' | 'project'; source?: 'opencode' | 'agents' }>;
+  installed?: Array<{ skillName: string; skillDir?: string; scope: 'user' | 'project'; source?: 'opencode' | 'agents' }>;
   skipped?: Array<{ skillName: string; reason: string }>;
   error?: SkillsInstallError;
   requiresReload?: boolean;

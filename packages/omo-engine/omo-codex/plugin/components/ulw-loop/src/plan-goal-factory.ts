@@ -1,3 +1,4 @@
+import type { UlwLoopSuccessCriterionUserModel, UlwLoopTaskKind } from "./constants.js";
 import { criteriaFromInput, criterionId, type SuccessCriterionInput } from "./success-criteria-input.js";
 import type { UlwLoopToolkitSurface } from "./surface.js";
 import type { UlwLoopItem, UlwLoopPlan, UlwLoopSuccessCriterion } from "./types.js";
@@ -7,6 +8,7 @@ export interface GoalSeedOptions {
 	readonly goalId?: string;
 	readonly surface?: UlwLoopToolkitSurface;
 	readonly successCriteria?: readonly SuccessCriterionInput[];
+	readonly taskKind?: UlwLoopTaskKind;
 }
 
 function cleanLine(line: string): string {
@@ -46,6 +48,49 @@ function truncateObjective(objective: string): string {
 	return objective.length > 80 ? `${objective.slice(0, 77).trimEnd()}...` : objective;
 }
 
+type SeedRow = readonly [
+	userModel: UlwLoopSuccessCriterionUserModel,
+	scenario: string,
+	proof: string,
+	essential: boolean,
+];
+
+function implementationRows(subject: string, goalIndex: number): readonly SeedRow[] {
+	return [
+		["happy", `happy path for: ${subject}`, `observable happy-path proof for goal ${goalIndex + 1}`, true],
+		["edge", "edge case (boundary/empty/malformed)", `boundary or malformed-input proof for: ${subject}`, true],
+		[
+			"regression",
+			"regression: adjacent surface still works",
+			`regression proof for neighboring behavior after: ${subject}`,
+			false,
+		],
+	];
+}
+
+function readonlyRows(subject: string, goalIndex: number): readonly SeedRow[] {
+	return [
+		[
+			"findings",
+			`survey findings for: ${subject}`,
+			`written findings covering the survey scope of goal ${goalIndex + 1}`,
+			true,
+		],
+		[
+			"evidence",
+			"supporting evidence for the survey findings",
+			`file, line, or output references backing each finding for: ${subject}`,
+			true,
+		],
+		[
+			"limitations",
+			"scope and limitations of the survey",
+			`explicit statement of what was not covered for: ${subject} and why`,
+			false,
+		],
+	];
+}
+
 // The placeholder must name the exact call that replaces it on the surface the plan is driven from,
 // so a goal seeded without criteria costs one documented call per criterion instead of a doc hunt.
 function replaceVia(goalId: string, id: string, surface: UlwLoopToolkitSurface): string {
@@ -57,21 +102,18 @@ function replaceVia(goalId: string, id: string, surface: UlwLoopToolkitSurface):
 export function seedDefaultSuccessCriteria(
 	goalIndex: number,
 	objective: string,
-	options: Pick<GoalSeedOptions, "goalId" | "surface"> = {},
+	options: Pick<GoalSeedOptions, "goalId" | "surface" | "taskKind"> = {},
 ): UlwLoopSuccessCriterion[] {
 	const subject = truncateObjective(normalizeObjective(objective) || `Goal ${goalIndex + 1}`);
 	const goalId = options.goalId ?? `G${String(goalIndex + 1).padStart(3, "0")}`;
 	const surface = options.surface ?? "lazycodex";
-	const rows = [
-		["happy", `happy path for: ${subject}`, `observable happy-path proof for goal ${goalIndex + 1}`, true],
-		["edge", "edge case (boundary/empty/malformed)", `boundary or malformed-input proof for: ${subject}`, true],
-		[
-			"regression",
-			"regression: adjacent surface still works",
-			`regression proof for neighboring behavior after: ${subject}`,
-			false,
-		],
-	] as const;
+	const taskKind = options.taskKind ?? "implementation";
+	const rows =
+		taskKind === "readonly"
+			? readonlyRows(subject, goalIndex)
+			: taskKind === "mixed"
+				? [...readonlyRows(subject, goalIndex), ...implementationRows(subject, goalIndex)]
+				: implementationRows(subject, goalIndex);
 	return rows.map(([userModel, scenario, proof, essential], index) => {
 		const id = criterionId(index);
 		return {
@@ -128,6 +170,7 @@ export function makeGoal(
 			? seedDefaultSuccessCriteria(index, cleanObjective, {
 					goalId: id,
 					...(options.surface === undefined ? {} : { surface: options.surface }),
+					...(options.taskKind === undefined ? {} : { taskKind: options.taskKind }),
 				})
 			: criteriaFromInput(options.successCriteria);
 	return {
@@ -139,6 +182,7 @@ export function makeGoal(
 		attempt: 0,
 		createdAt: now,
 		updatedAt: now,
+		...(options.taskKind === undefined ? {} : { taskKind: options.taskKind }),
 	};
 }
 

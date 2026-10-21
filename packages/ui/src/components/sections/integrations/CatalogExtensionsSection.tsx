@@ -173,7 +173,9 @@ export const CatalogExtensionsSection: React.FC<CatalogExtensionsSectionProps> =
       <IntegrationCatalogCard
         key={definition.guestId}
         settingsItem={`integrations.extensions.${definition.guestId}`}
-        logo={<FileTypeIcon filePath={definition.logoFileName} className="size-5" />}
+        logo={definition.logo.kind === 'file-type'
+          ? <FileTypeIcon filePath={definition.logo.fileName} className="size-5" />
+          : <Icon name={definition.logo.name} className="size-5 text-foreground" />}
         name={t(definition.nameKey)}
         description={t(definition.descriptionKey)}
         status={status}

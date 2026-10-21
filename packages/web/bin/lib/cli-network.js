@@ -1,6 +1,12 @@
 import dgram from 'dgram';
 import os from 'os';
 import { EXIT_CODE, TunnelCliError } from './cli-errors.js';
+import {
+  getUnauthenticatedLanErrorMessage,
+  isNetworkExposedBindHost,
+  isUnsafeUnauthenticatedLanAllowed,
+} from '../../server/lib/security/bind-host.js';
+import { injectedEnvKeys } from '../../server/lib/injected-env.js';
 
 // Browser-unsafe ports (Fetch/Chromium restricted ports).
 const UNSAFE_BROWSER_PORTS = new Set([
@@ -18,6 +24,11 @@ function isUnsafeBrowserPort(port) {
 }
 
 function resolveConfiguredBindHost(hostOverride) {
+  // A host OpenChamber itself put into this shell (the desktop app's, a
+  // running server's) is not a default for a new one.
+  const configuredHost = injectedEnvKeys(process.env).has('OPENCHAMBER_HOST')
+    ? undefined
+    : process.env.OPENCHAMBER_HOST;
   const configured = typeof hostOverride === 'string' && hostOverride.trim()
     ? hostOverride.trim()
     : typeof process.env.ALCODE_HOST === 'string'

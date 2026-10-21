@@ -37,17 +37,20 @@ import {
     tryParseJsonOutput,
     coerceToText,
     capToolOutputText,
+    unwrapTextBlocks,
 } from '../toolRenderers';
 import { JsonTreeViewer } from '@/components/ui/JsonTreeViewer';
 import { JsonSummaryView } from './JsonSummaryView';
 import { Icon } from "@/components/icon/Icon";
 import { DiffViewToggle, type DiffViewMode } from '../DiffViewToggle';
+import { useDefaultDiffViewMode } from '../useDefaultDiffViewMode';
 import { MinDurationShineText } from './MinDurationShineText';
 import { getToolIcon } from './toolPresentation';
 import { GuestToolTable } from './GuestToolTable';
 import type { JsonValue } from '@alcode/sdk';
 import {
     guestToolTableRows,
+    guestToolHeaderReadsOutput,
     renderGuestToolHeader,
     useGuestToolPresentation,
     type GuestToolRule,
@@ -77,6 +80,8 @@ import { useChatColumnActions } from '@/components/chat/chatColumnSession';
 import { useStreamingTextThrottle } from '../../hooks/useStreamingTextThrottle';
 import { getStreamingOutputAppend, getToolOutput } from './toolOutput';
 import { toAbsoluteFilePath } from '@/lib/path-utils';
+import { hasTextSelectionInside } from '@/lib/textSelection';
+import { dispatchRowExpand } from '@/components/chat/lib/scroll/timelineScrollIntent';
 import {
     executeOutputTruncation,
     executeScript,
@@ -106,6 +111,7 @@ import { toBackgroundSubagentPart, toStoppedSubagentPart, type BackgroundSubagen
 import { findSubagentCancellation, findSubagentRun, readBackgroundSubagentChildID } from '@/lib/opencode/subagent-run';
 import { useGlobalSessionStatusStore } from '@/sync/global-session-status';
 import { useBackgroundShellOutput } from './useBackgroundShellOutput';
+import { useToolContentCompletion } from './useToolContentCompletion';
 
 type ToolJsonViewMode = 'summary' | 'formatted' | 'raw';
 
@@ -125,16 +131,19 @@ interface ToolPartProps {
     animateTailText?: boolean;
 }
 
+// A finished run shows tenths; a running one counts whole seconds on the
+// shared 1 s tick, so a live row redraws once a second, in step with the
+// session list's counter.
 const formatDuration = (start: number, end?: number, now: number = Date.now()) => {
-    const duration = Math.max(0, (end ?? now) - start);
-    const seconds = duration / 1000;
-
-    const displaySeconds = seconds < 0.05 && end !== undefined ? 0.1 : seconds;
-    return `${displaySeconds.toFixed(1)}s`;
+    if (end === undefined) {
+        return `${Math.floor(Math.max(0, now - start) / 1000)}s`;
+    }
+    const seconds = Math.max(0, end - start) / 1000;
+    return `${Math.max(0.1, seconds).toFixed(1)}s`;
 };
 
 const LiveDuration: React.FC<{ start: number; end?: number; active: boolean }> = ({ start, end, active }) => {
-    const now = useDurationTickerNow(active, 250);
+    const now = useDurationTickerNow(active);
 
     return <>{formatDuration(start, end, now)}</>;
 };
@@ -668,9 +677,11 @@ const JsonToolOutput: React.FC<{
         useUIStore.getState().setToolJsonViewMode(view);
     }, []);
 
+    const textOutput = jsonViewMode === 'summary' ? unwrapTextBlocks(jsonResult.data) : null;
+
     return (
         <div className="tool-output-surface relative p-2 rounded-xl w-full min-w-0">
-            <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+            <div className="absolute inset-e-2 top-2 z-10 flex items-center gap-1">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -707,7 +718,19 @@ const JsonToolOutput: React.FC<{
                 <CopyToolOutputButton output={renderedOutput} />
             </div>
             {jsonViewMode === 'summary' ? (
-                <JsonSummaryView data={jsonResult.data} />
+                textOutput !== null ? (
+                    <div className="typography-code pe-12 text-muted-foreground/90">
+                        <WorkerHighlightedCode
+                            language="text"
+                            code={textOutput}
+                            style={TOOL_COLLAPSED_CUSTOM_STYLE}
+                            codeStyle={CODE_TAG_PROPS.style}
+                            wrap
+                        />
+                    </div>
+                ) : (
+                    <JsonSummaryView data={jsonResult.data} />
+                )
             ) : jsonViewMode === 'formatted' ? (
                 <JsonTreeViewer
                     data={jsonResult.data}
@@ -715,7 +738,7 @@ const JsonToolOutput: React.FC<{
                     maxHeight="400px"
                 />
             ) : (
-                <div className="typography-code pr-12 text-muted-foreground/90">
+                <div className="typography-code pe-12 text-muted-foreground/90">
                     <WorkerHighlightedCode
                         language="json"
                         code={renderedOutput}
@@ -763,9 +786,7 @@ const ToolScrollableTextOutput: React.FC<{
     if (forcedMode === 'table' && presentation?.columns?.length) {
         // A declared table whose output is not a list falls through to the
         // host's own detection, so the user still sees the raw result.
-        // SAFETY: `tryParseJsonOutput` fills `data` from JSON.parse of the tool
-        // output, so a parsed result is a JSON value.
-        const rows = jsonResult.isJson ? guestToolTableRows(jsonResult.data as JsonValue) : null;
+        const rows = jsonResult.isJson ? guestToolTableRows(jsonResult.data) : null;
         if (rows) {
             return <GuestToolTable rows={rows} columns={presentation.columns} />;
         }
@@ -789,11 +810,14 @@ const ToolScrollableTextOutput: React.FC<{
 
     if (isShellTool(part.tool)) {
         return (
-            <div className="relative typography-code text-muted-foreground/90">
-                <div className="absolute right-1 top-1 z-10">
+            // min-h-7 holds the copy button (top-1 + h-6): an absolute child taller
+            // than one output line overflows the scroller, and platforms with
+            // classic scrollbars (Windows) then show one for a single line.
+            <div className="relative min-h-7 typography-code text-muted-foreground/90">
+                <div className="absolute inset-e-1 top-1 z-10">
                     <CopyToolOutputButton output={renderedOutput} />
                 </div>
-                <div className="pr-8">
+                <div className="pe-8">
                     <WorkerHighlightedCode
                         language={outputLanguage}
                         code={renderedOutput}
@@ -950,8 +974,8 @@ const renderPathLikeGitChanges = (path: string, grow = true) => {
     if (lastSlash === -1) {
         return (
             <span
-                className={cn('min-w-0 truncate typography-ui-label text-foreground', grow && 'flex-1')}
-                style={{ direction: 'rtl', textAlign: 'left', unicodeBidi: 'plaintext' }}
+                className={cn('oc-ui-start-align min-w-0 truncate typography-ui-label text-foreground', grow && 'flex-1')}
+                style={{ direction: 'rtl', unicodeBidi: 'plaintext' }}
                 title={path}
             >
                 {path}
@@ -965,9 +989,9 @@ const renderPathLikeGitChanges = (path: string, grow = true) => {
     const displayDir = hasAbsoluteRoot ? dir.slice(1) : dir;
 
     return (
-        <span className={cn('min-w-0 flex items-baseline overflow-hidden typography-ui-label', grow && 'flex-1')} title={path}>
+        <span dir="ltr" className={cn('min-w-0 flex items-baseline overflow-hidden typography-ui-label', grow && 'flex-1')} title={path}>
             {hasAbsoluteRoot ? <span className="flex-shrink-0 text-muted-foreground">/</span> : null}
-            <span className="min-w-0 truncate text-muted-foreground" style={{ direction: 'rtl', textAlign: 'left', unicodeBidi: 'plaintext' }}>
+            <span className="oc-ui-start-align min-w-0 truncate text-muted-foreground" style={{ direction: 'rtl', unicodeBidi: 'plaintext' }}>
                 {displayDir}
             </span>
             <span className="flex-shrink-0">
@@ -1004,14 +1028,13 @@ const renderAnimatedPathWithIcon = (path: string, animate = true, grow = true, s
     return (
         <span className={cn('min-w-0 inline-flex items-center gap-1 overflow-hidden', grow && 'flex-1')} title={path}>
             {showFileIcons ? <FileTypeIcon filePath={path} className="h-3.5 w-3.5 flex-shrink-0" /> : null}
-            <span className={cn('min-w-0 inline-flex max-w-full items-baseline overflow-hidden', textClassName, grow && 'flex-1')}>
+            <span dir="ltr" className={cn('min-w-0 inline-flex max-w-full items-baseline overflow-hidden', textClassName, grow && 'flex-1')}>
                 {hasAbsoluteRoot ? <span className="flex-shrink-0" style={{ color: 'var(--tools-description)' }}>/</span> : null}
                 <span
-                    className="min-w-0 shrink truncate whitespace-nowrap"
+                    className="oc-ui-start-align min-w-0 shrink truncate whitespace-nowrap"
                     style={{
                         color: 'var(--tools-description)',
                         direction: 'rtl',
-                        textAlign: 'left',
                         unicodeBidi: 'plaintext',
                     }}
                 >
@@ -1066,7 +1089,8 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
     const { t } = useI18n();
     const runtime = React.useContext(RuntimeAPIContext);
     const mobileActions = useMobileAppActions();
-    const [diffViewMode, setDiffViewMode] = React.useState<DiffViewMode>('unified');
+    const defaultDiffViewMode = useDefaultDiffViewMode();
+    const [diffViewMode, setDiffViewMode] = React.useState<DiffViewMode>(defaultDiffViewMode);
     const stateWithData = state as ToolStateWithMetadata;
     const metadata = stateWithData.metadata;
     const input = stateWithData.input;
@@ -1145,8 +1169,8 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
     }, [hasInputText, input?.filePath, input?.file_path, input?.path, inputTextContent, isWriteLikeTool]);
 
     React.useEffect(() => {
-        setDiffViewMode('unified');
-    }, [part.id]);
+        setDiffViewMode(defaultDiffViewMode);
+    }, [defaultDiffViewMode, part.id]);
 
     const renderScrollableBlock = (
         content: React.ReactNode,
@@ -1201,9 +1225,8 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
 
             return (
                 <div
-                    className="tool-output-surface rounded-xl border p-2 space-y-2"
+                    className="tool-output-surface rounded-xl p-2 space-y-2"
                     style={{
-                        borderColor: 'var(--status-error-border)',
                         backgroundColor: 'var(--status-error-background)',
                     }}
                 >
@@ -1216,7 +1239,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                         </div>
                         <div className="space-y-1">
                             {diagnosticSection.diagnostics.map((diagnostic, index) => (
-                                <div key={`${diagnosticSection.displayPath}:${diagnostic.line}:${diagnostic.character}:${index}`} className="rounded-md border px-2 py-1" style={{ borderColor: 'var(--status-error-border)', backgroundColor: 'var(--surface-elevated)' }}>
+                                <div key={`${diagnosticSection.displayPath}:${diagnostic.line}:${diagnostic.character}:${index}`} className="oc-tile-inset rounded-md px-2 py-1">
                                     <div className="flex items-start gap-2 min-w-0">
                                         <span className="typography-micro shrink-0" style={{ color: 'var(--status-error)' }}>
                                             [{diagnostic.line}:{diagnostic.character}]
@@ -1277,10 +1300,9 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                 return (
                     <div>
                         <div className="typography-meta font-medium text-muted-foreground mb-1">{t('chat.toolPart.error')}</div>
-                        <div className="typography-meta p-2 rounded-xl border" style={{
+                        <div className="typography-meta p-2 rounded-xl" style={{
                             backgroundColor: 'var(--status-error-background)',
                             color: 'var(--status-error)',
-                            borderColor: 'var(--status-error-border)',
                         }}>
                             {coerceToText(state.error)}
                         </div>
@@ -1304,7 +1326,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                                 {Array.isArray(q.options) && q.options.length > 0 ? (
                                     <div className="flex flex-wrap gap-1 mt-0.5">
                                         {q.options.map((opt) => (
-                                            <span key={coerceToText(opt.label)} className="typography-micro px-1.5 py-0.5 rounded bg-muted/30 border border-border/30 text-muted-foreground">
+                                            <span key={coerceToText(opt.label)} className="typography-micro px-1.5 py-0.5 rounded oc-tile-inset text-muted-foreground">
                                                 {coerceToText(opt.label)}
                                             </span>
                                         ))}
@@ -1428,7 +1450,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
     return (
         <div
             className={cn(
-                'relative pr-2 pb-2 pt-2 space-y-2 pl-4'
+                'relative pe-2 pb-2 pt-2 space-y-2 ps-4'
             )}
         >
             {isQuestionTool(part.tool) ? (
@@ -1528,10 +1550,9 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                     {state.status === 'error' && 'error' in state && (
                         <div>
                             <div className="typography-meta font-medium text-muted-foreground/80 mb-1">{t('chat.toolPart.error')}</div>
-                            <div className="typography-meta p-2 rounded-xl border" style={{
+                            <div className="typography-meta p-2 rounded-xl" style={{
                                 backgroundColor: 'var(--status-error-background)',
                                 color: 'var(--status-error)',
-                                borderColor: 'var(--status-error-border)',
                             }}>
                                 {coerceToText(state.error)}
                             </div>
@@ -1560,7 +1581,7 @@ type ToolRowHeader = {
 const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subagentSessionId?: string }> = ({
     part,
     isExpanded,
-    onToggle,
+    onToggle: toggleRow,
     isMobile,
     onShowPopup,
     animateTailText = true,
@@ -1568,6 +1589,11 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
     subagentSessionId: taskSessionId,
 }) => {
     const { t } = useI18n();
+    const rowRef = React.useRef<HTMLDivElement>(null);
+    const onToggle = (toolId: string) => {
+        if (!isExpanded) dispatchRowExpand(rowRef.current);
+        toggleRow(toolId);
+    };
     const state = part.state;
     const stateWithData = state as ToolStateWithMetadata;
     const metadata = stateWithData.metadata;
@@ -1708,7 +1734,7 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
     const writeLineCount = React.useMemo(() => {
         return isWriteTool(normalizedPartTool) ? parseWriteLineCount(input) : null;
     }, [input, normalizedPartTool]);
-    const isMultiFileApplyPatch = isPatchTool(normalizedPartTool) && Array.isArray(metadata?.files) && (metadata?.files as []).length > 1;
+    const isMultiFileApplyPatch = isPatchTool(normalizedPartTool) && Array.isArray(metadata?.files) && metadata.files.length > 1;
     const normalizedPart = normalizedPartTool !== part.tool ? ({ ...part, tool: normalizedPartTool } as ToolPartType) : part;
     const descriptionPath = getToolDescriptionPath(normalizedPart, state, currentDirectory);
     const builtInDescription = getToolDescription(normalizedPart, state, currentDirectory, t);
@@ -1754,6 +1780,9 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
         }
 
         event.stopPropagation();
+        if (hasTextSelectionInside(event.currentTarget)) {
+            return;
+        }
         const rawPath = getApplyPatchFilePath(file);
         const displayPath = rawPath ? getRelativePath(rawPath, currentDirectory) : '';
         openApplyPatchFileInEditor({
@@ -1802,6 +1831,12 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
         } else {
             onToggle(part.id);
         }
+    };
+
+    const handleMainRowClick = (event: React.MouseEvent<HTMLDivElement>) => {
+        // Selecting the tool title must not open the file or toggle the row.
+        if (hasTextSelectionInside(event.currentTarget)) return;
+        handleMainClick(event);
     };
 
     const handleMainKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1864,6 +1899,10 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
     const iconStyle = isError ? TOOL_ERROR_ICON_STYLE : TOOL_NORMAL_ICON_STYLE;
     const titleStyle = isError ? TOOL_ERROR_TITLE_STYLE : TOOL_NORMAL_TITLE_STYLE;
     const shouldRenderExpandedContent = useDeferredExpandedContent(isExpanded);
+    const contentCompletion = useToolContentCompletion(
+        part,
+        shouldRenderExpandedContent || (presentation !== null && guestToolHeaderReadsOutput(presentation)),
+    );
     // Shell and subagent rows carry their duration: live while they run, final once settled.
     const showsDuration = isShellTool(normalizedPartTool) || isTaskTool;
 
@@ -1872,14 +1911,14 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
     }
 
     return (
-        <div>
+        <div ref={rowRef}>
             {}
             <div
                 className={cn(
-                    'group/tool flex gap-1.5 pr-2 pl-px py-1.5 rounded-xl',
+                    'group/tool flex gap-1.5 pe-2 ps-px py-1.5 rounded-xl',
                     isMultiFileApplyPatch ? 'flex-wrap items-start cursor-pointer' : 'items-center cursor-pointer',
                 )}
-                onClick={isMultiFileApplyPatch ? () => onToggle(part.id) : handleMainClick}
+                onClick={isMultiFileApplyPatch ? () => onToggle(part.id) : handleMainRowClick}
                 onKeyDown={isMultiFileApplyPatch ? (event) => {
                     if (event.target !== event.currentTarget) return;
                     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -2075,17 +2114,32 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
             >
                 {shouldRenderExpandedContent ? (
                     <div
-                        className="relative ml-2 pl-3"
+                        className="relative ms-2 ps-3"
                     >
                         <BlockLine onToggle={() => onToggle(part.id)} topOffset={1} />
-                        <ToolExpandedContent
-                            part={part}
-                            state={state}
-                            currentDirectory={currentDirectory}
-                            isExpanded={isExpanded}
-                            onShowPopup={onShowPopup}
-                            presentation={presentation}
-                        />
+                        {contentCompletion.status === 'whole' ? (
+                            <ToolExpandedContent
+                                part={part}
+                                state={state}
+                                currentDirectory={currentDirectory}
+                                isExpanded={isExpanded}
+                                onShowPopup={onShowPopup}
+                                presentation={presentation}
+                            />
+                        ) : contentCompletion.status === 'loading' ? (
+                            contentCompletion.showProgress ? (
+                                <div className="typography-meta py-1 text-muted-foreground">
+                                    {t('chat.toolPart.content.loading')}
+                                </div>
+                            ) : null
+                        ) : (
+                            <div className="typography-meta flex items-center gap-2 py-1 text-muted-foreground">
+                                <span>{t('chat.toolPart.content.loadFailed')}</span>
+                                <Button variant="ghost" size="xs" onClick={contentCompletion.retry}>
+                                    {t('chat.toolPart.content.retry')}
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 ) : null}
             </div>
@@ -2125,7 +2179,7 @@ class ToolPartErrorBoundary extends React.Component<{
 
         const message = this.state.error?.message;
         return (
-            <div className="flex items-center gap-1.5 pr-2 pl-px py-1.5 rounded-xl min-w-0">
+            <div className="flex items-center gap-1.5 pe-2 ps-px py-1.5 rounded-xl min-w-0">
                 <div className="h-3.5 w-3.5 flex-shrink-0" style={TOOL_ERROR_ICON_STYLE}>
                     {getToolIcon(this.props.toolName)}
                 </div>
@@ -2168,12 +2222,10 @@ const BackgroundShellToolPartContent: React.FC<ToolPartProps & { shellID: string
     const stop = React.useCallback(() => {
         if (!running) return;
         setStopping(true);
-        opencodeClient.stopBackgroundShell({
+        opencodeClient.stopBackgroundShells({
             sessionID: props.part.sessionID,
             sessionDirectory: directory,
-            shellID,
-            shellDirectory: running.directory,
-            command: running.command,
+            shells: [{ shellID, shellDirectory: running.directory, command: running.command }],
         }).catch(() => {
             setStopping(false);
             toast.error(t('chat.toolPart.background.stopFailed'));
