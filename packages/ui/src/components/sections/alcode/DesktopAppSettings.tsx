@@ -45,10 +45,10 @@ export const DesktopAppSettings: React.FC = () => {
   const isLocalDesktop = isDesktopShell() && isDesktopLocalOriginActive();
   const isMacDesktop = isLocalDesktop
     && typeof window !== 'undefined'
-    && window.__OPENCHAMBER_PLATFORM__ === 'darwin';
+    && window.__ALCODE_PLATFORM__ === 'darwin';
   const isLinuxDesktop = isLocalDesktop
     && typeof window !== 'undefined'
-    && window.__OPENCHAMBER_PLATFORM__ === 'linux';
+    && window.__ALCODE_PLATFORM__ === 'linux';
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [launchAtLoginSupported, setLaunchAtLoginSupported] = React.useState(false);

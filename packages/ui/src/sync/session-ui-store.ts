@@ -360,6 +360,8 @@ export async function routeMessage(params: {
     content: params.content,
     directory: requestDirectory,
     files: sendFiles,
+    // The prompt waits for the knowledge write; the bubble above did not.
+    ready: params.knowledgeSync,
     context: ulwFallbackArgs === null
       ? contextItems
       : [...contextItems, { text: ulwWorkflowInstruction(params.sessionId) }],
@@ -520,7 +522,7 @@ export type SessionUIState = {
   isAlcodeCreatedSession: (sessionId: string) => boolean
   getContextUsage: (contextLimit: number, outputLimit: number) => SessionContextUsage | null
   initializeNewAlcodeSession: (sessionId: string, agents: unknown[]) => void
-  setWorktreeMetadata: (sessionId: string, metadata: WorktreeMetadata | null) => void
+  setWorktreeMetadata: (sessionId: string, metadata: WorktreeMetadata | null, cwd?: string | null) => void
   overrideNewSessionDraftTarget: (options: Record<string, unknown>) => void
   resolvePendingDraftWorktreeTarget: (requestId: string, directory: string | null, options?: Record<string, unknown>) => void
   setDraftBootstrapPendingDirectory: (directory: string | null) => void
@@ -1793,7 +1795,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
     // Stub — was a no-op in old store
   },
 
-  setWorktreeMetadata: (sessionId, metadata, cwd) => {
+  setWorktreeMetadata: (sessionId: string, metadata: WorktreeMetadata | null, cwd?: string | null) => {
     // Write to authoritative session-worktree-store
     if (metadata) {
       useSessionWorktreeStore.getState().setAttachment(sessionId, {
@@ -1952,11 +1954,6 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         }, options?.draftSnapshot)
         if (!createdDraftSession) throw new Error("Failed to create session")
 
-      const draftKnowledge = await fetchSessionKnowledge(
-        createdDraftSession.directory,
-        createdDraftSession.sessionId,
-      )
-
         const draftParts: Array<{ text: string; attachments?: AttachedFile[]; synthetic?: boolean; metadata?: ContextPartMetadata }> | undefined = createdDraftSession.syntheticParts?.length
           ? [...(additionalParts || []), ...createdDraftSession.syntheticParts]
           : additionalParts
@@ -1994,7 +1991,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         // routeMessage, which resolves only when the turn completes — the
         // pane then opened minutes late and read as never opening.
         revealDagPaneForUlvStart(content, createdDraftSession.directory, { inputMode })
-        const messageRoute = await routeMessage({
+        await routeMessage({
           sessionId: createdDraftSession.sessionId,
           directory: createdDraftSession.directory,
           content,
@@ -2021,15 +2018,6 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
             })),
           })),
         })
-        // Recorded only after the send resolves: a failed send must carry the
-        // pinned context again rather than assume the agent already saw it.
-        if (draftKnowledge.text && messageRoute !== 'shell') {
-          void reportSessionKnowledgeDelivered(
-            createdDraftSession.directory,
-            createdDraftSession.sessionId,
-            draftKnowledge.signature,
-          )
-        }
         return
       }
 

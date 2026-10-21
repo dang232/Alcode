@@ -137,13 +137,13 @@ describe('create-fallback: no sessionId means exactly one create with metadata u
     const metadata = createCalls[0].params?.metadata?.alcode as Record<string, string> | undefined;
     const runId = metadata?.[ULW_RUN_METADATA_KEY];
     expect(ULW_RUN_METADATA_KEY).toBe('ulwRunId');
-    expect(runId).toMatch(/^ulw-/);
+    expect(runId?.startsWith('ulw-')).toBe(true);
     expect(result.runId).toBe(runId);
     expect(result.sessionId).toBe('session-run-1');
     expect(result.resumed).toBe(false);
     expect(sendCalls[0].id).toBe('session-run-1');
     expect(sendCalls[0].text).toBe('analyze this repo');
-    expect(String(createCalls[0].params?.title)).toMatch(/^ulw: /);
+    expect(String(createCalls[0].params?.title).startsWith('ulw: ')).toBe(true);
   });
 
   test('a creation failure throws loudly and sends nothing', async () => {
@@ -269,7 +269,7 @@ describe('procedure text names native tools and forbids CLI shell-outs', () => {
   test('forbids shelling out to the ulw-loop CLI instead of teaching argv', () => {
     const procedure = buildUlwRunProcedure('session-run-1');
 
-    expect(procedure).toMatch(/never shell out/i);
+    expect(procedure.toLowerCase()).toContain('never shell out');
     expect(procedure).toContain('ulw-loop');
     expect(procedure).not.toContain('argv');
     expect(procedure).not.toContain('child_process');

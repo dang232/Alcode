@@ -576,7 +576,7 @@ describe("a session in an isolated space", () => {
     await useMessageQueueStore.getState().hydrate()
 
     const fromSpace = (spaceId: string | undefined, revision: number, changed: ServerSession): MessageQueueUpdatedEvent => ({
-      type: "openchamber:message-queue.updated",
+      type: "alcode:message-queue.updated",
       properties: { revision, session: changed, spaceId },
     })
     applyMessageQueueUpdatedEvent(fromSpace(SPACE, 1, spaceSession([serverItem("s1", "next")])), "runtime-a")

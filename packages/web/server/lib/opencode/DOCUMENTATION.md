@@ -1051,6 +1051,11 @@ under a running child.
   Static entries with no eligible model for the connected providers are
   dropped from the map (never shipped model-less); the missing capability
   is reported through the model gaps so the failure is loud, not silent.
+  When the provider list itself is unknown (never listed, not listed as
+  empty), the statics still ship, model-less as bundled (fail-open): an
+  unknown list is not evidence that no model can run, and the child falls
+  back to its default model. Chain-resolved models overlay the statics
+  only where a model actually resolved.
   `-opencode.browser` first, then the absolute
   directory of every Alcode plugin currently switched on. OpenCode's
   built-in browser tools need OpenCode's own desktop app to attach a browser;

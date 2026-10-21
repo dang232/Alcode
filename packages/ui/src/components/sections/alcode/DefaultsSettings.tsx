@@ -6,14 +6,20 @@ import {
   SettingsSection,
   SettingsFieldRow,
   SettingsCheckboxRow,
+  SettingsInset,
+  SettingsGroupTitle,
   SETTINGS_CUSTOM_TRIGGER_CLASS,
   SETTINGS_SELECT_ROW_TRIGGER_CLASS,
+  SETTINGS_SELECT_SIZE,
+  SETTINGS_FIELDS_STACK_CLASS,
   SETTINGS_OPTION_STACK_CLASS,
 } from '@/components/sections/shared/SettingsSection';
+import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint';
 import { SessionWarmingCheckbox } from './SessionWarmingCheckbox';
 import { SessionWarmingModeField } from './SessionWarmingModeField';
 import { PermissionDefaultModeField } from './PermissionDefaultModeField';
 import { isVSCodeRuntime } from '@/lib/desktop';
+import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { loadDesktopSettings, updateDesktopSettings } from '@/lib/persistence';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
@@ -73,6 +79,8 @@ export const DefaultsSettings: React.FC = () => {
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
   const showDeletionDialog = useUIStore((state) => state.showDeletionDialog);
   const setShowDeletionDialog = useUIStore((state) => state.setShowDeletionDialog);
+  const showChatsSection = useSessionDisplayStore((state) => state.showChatsSection);
+  const setShowChatsSection = useSessionDisplayStore((state) => state.setShowChatsSection);
   const providers = useConfigStore((state) => state.providers);
   const modelsMetadata = useConfigStore((state) => state.modelsMetadata);
 

@@ -2758,7 +2758,7 @@ export const dict: Record<I18nKey, string> = {
   'chat.modelControls.clearSearch': '清除搜索',
   'chat.modelControls.current': '当前',
   'chat.modelControls.thinking': '思考',
-  'chat.modelControls.inheritedVariantTooltip': '思考：{variant}，此模型的默认值',
+  'chat.modelControls.inheritedVariantTooltip': "Thinking: {variant}, this model's default",
   'chat.modelControls.default': '默认',
   'chat.modelControls.selectAgent': '选择智能体',
   'chat.modelControls.costPerMillion': '成本（$/100万 tokens）',

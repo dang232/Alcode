@@ -1033,7 +1033,7 @@ describe("linking items through the server", () => {
     replyCalls.length = 0
     globalUpsertedSessions.length = 0
     registeredSessionDirectories.length = 0
-    openchamberRouteRequests.length = 0
+    alcodeRouteRequests.length = 0
     linksRouteResponse = { status: 404, body: { error: "not found" } }
   })
 
@@ -1048,9 +1048,9 @@ describe("linking items through the server", () => {
 
     const updated = await setLinkedIssue("session-a", "/test/project", guestEntry, true)
 
-    expect(openchamberRouteRequests).toHaveLength(1)
-    expect(openchamberRouteRequests[0].path).toBe("/api/openchamber/sessions/session-a/links")
-    expect(openchamberRouteRequests[0].body).toEqual({ entries: [guestEntry], linked: true })
+    expect(alcodeRouteRequests).toHaveLength(1)
+    expect(alcodeRouteRequests[0].path).toBe("/api/openchamber/sessions/session-a/links")
+    expect(alcodeRouteRequests[0].body).toEqual({ entries: [guestEntry], linked: true })
     // No session read is spent computing the list.
     expect(replyCalls.filter((call) => call.method === "session.get")).toEqual([])
     expect(updated.metadata).toEqual(metadata)
@@ -1069,8 +1069,8 @@ describe("linking items through the server", () => {
 
     await addLinkedIssues("session-a", "/test/project", [issue, guestEntry])
 
-    expect(openchamberRouteRequests).toHaveLength(1)
-    expect(openchamberRouteRequests[0].body).toEqual({ entries: [issue, guestEntry], linked: true })
+    expect(alcodeRouteRequests).toHaveLength(1)
+    expect(alcodeRouteRequests[0].body).toEqual({ entries: [issue, guestEntry], linked: true })
   })
 
   test("reads the record only for display when no store holds it yet", async () => {
@@ -1085,7 +1085,7 @@ describe("linking items through the server", () => {
     // The read feeds the mirrored record only, and happens before the request:
     // the link list is the server's.
     expect(replyCalls.filter((call) => call.method === "session.get")).toHaveLength(1)
-    expect(openchamberRouteRequests).toHaveLength(1)
+    expect(alcodeRouteRequests).toHaveLength(1)
     expect(updated.metadata).toEqual(metadata)
     expect(updated.id).toBe("session-x")
   })
@@ -1100,7 +1100,7 @@ describe("linking items through the server", () => {
       .rejects.toThrow("SessionNotFoundError")
     await expect(addLinkedIssues("session-never-read", "/test/project", [issue]))
       .rejects.toThrow("SessionNotFoundError")
-    expect(openchamberRouteRequests).toHaveLength(0)
+    expect(alcodeRouteRequests).toHaveLength(0)
     expect(globalUpsertedSessions).toEqual([])
   })
 
@@ -1215,7 +1215,7 @@ describe("session restore (unarchive)", () => {
     globalArchivedSessions.push({ ...archivedFixture("child"), parentID: "parent" }, { ...archivedFixture("grandchild"), parentID: "child" })
     beforeArchiveRouteResolve = (path) => {
       if (!path.endsWith("/unarchive")) return
-      const ids = openchamberRouteRequests.at(-1)?.body.ids
+      const ids = alcodeRouteRequests.at(-1)?.body.ids
       unarchiveBatchResponse = { status: 200, body: { restored: [{ id: Array.isArray(ids) ? String(ids[0]) : "", archivedAt: null }], failedIds: [] } }
     }
     const source = createStore({}, { session: [] })
@@ -1224,7 +1224,7 @@ describe("session restore (unarchive)", () => {
 
     // Its own archived subsessions come back with it.
     expect(await unarchiveSession("child")).toBe(true)
-    expect(openchamberRouteRequests.map((request) => request.body.ids)).toEqual([["child"], ["grandchild"]])
+    expect(alcodeRouteRequests.map((request) => request.body.ids)).toEqual([["child"], ["grandchild"]])
   })
 
   test("never restores a subsession of an archived or unknown parent on its own", async () => {
@@ -1243,7 +1243,7 @@ describe("session restore (unarchive)", () => {
     // The same once the parent is known and archived.
     globalArchivedSessions.push(archivedFixture("parent"))
     expect(await unarchiveSession("child")).toBe(false)
-    expect(openchamberRouteRequests).toEqual([])
+    expect(alcodeRouteRequests).toEqual([])
 
     // Undo puts back exactly what an archive just moved, subsessions included.
     expect(await unarchiveSessions(["child"], { undo: true })).toEqual({ restoredIds: ["child"], failedIds: [] })
@@ -2606,7 +2606,7 @@ describe("revertToMessage passes session directory", () => {
     })
     const { setActionRefs, revertToMessage } = await import("./session-actions")
     setActionRefs(createChildStores([["/test/project", sessionStore]]), () => "/test/project")
-    openchamberRouteRequests.length = 0
+    alcodeRouteRequests.length = 0
 
     await revertToMessage("session-a", "msg_2")
 

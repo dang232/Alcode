@@ -15,10 +15,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 import { useUIStore } from '@/stores/useUIStore';
+import { useContextWindowLimits } from '@/hooks/useContextWindowLimits';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useSessionWorktreeStore } from '@/sync/session-worktree-store';
 import { formatSessionWorktreeBadge } from '@/sync/session-worktree-contract';
-import { useGlobalSessionStatus } from '@/sync/sync-context';
+import { useGlobalSessionStatus, useSessionMessagesResolved } from '@/sync/sync-context';
 import { useDirectoryStore as useAppDirectoryStore } from '@/stores/useDirectoryStore';
 import { isChatDirectoryForHome } from '@/lib/chatDirectories';
 import { useSessionMessageRecordsForExport } from '@/sync/use-sync';
@@ -39,6 +40,8 @@ import {
 
 import {
 } from '@/components/ui/collapsible';
+import type { SessionContextUsage } from '@/stores/types/sessionTypes';
+import { isSameContextUsage } from '@/stores/utils/tokenUtils';
 import { SpaceAccessButton } from '@/components/session/spaces/SpaceAccessButton';
 import { SpaceApplyButton } from '@/components/session/spaces/SpaceApplyButton';
 import { useDraftSpaceTarget } from '@/lib/spaces/useDraftSpaceTarget';
@@ -49,9 +52,18 @@ import { AccountProfile } from './AccountProfile';
 import { SessionMenuItemHint } from '@/components/session/SessionMenuItemHint';
 import { MoveChatToProjectDialog } from '@/components/session/MoveChatToProjectDialog';
 import { HeaderSessionArchiveMenuItem } from './HeaderSessionArchiveMenuItem';
-import { canUseElectronDesktopIPC, getMiniChatRuntimeArgs, invokeDesktop, isDesktopShell, isVSCodeRuntime, startDesktopWindowDrag } from '@/lib/desktop';
+import { canUseElectronDesktopIPC, getMiniChatRuntimeArgs, invokeDesktop, isDesktopLocalOriginActive, isDesktopShell, isVSCodeRuntime, startDesktopWindowDrag, type UpdateInfo } from '@/lib/desktop';
+import { desktopHostsGet, redactSensitiveUrl } from '@/lib/desktopHosts';
+import {
+  LOCAL_HOST_ID,
+  getLocalDesktopOrigin,
+  resolveCurrentDesktopHost,
+  withLocalDesktopHost,
+} from '@/lib/desktopCurrentHost';
 import { Icon } from "@/components/icon/Icon";
 import { getInlineStartSide, useI18n } from '@/lib/i18n';
+import { runtimeFetch } from '@/lib/runtime-fetch';
+import { subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from '@/components/ui';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -101,8 +113,10 @@ export const Header: React.FC = () => {
   const layoutAnimationMs = useLayoutAnimationMs();
   const sessionTabsEnabled = useUIStore((state) => state.sessionTabsEnabled);
 
+  const getContextUsage = useSessionUIStore((state) => state.getContextUsage);
   const isNewSessionDraftOpen = useSessionUIStore((state) => Boolean(state.newSessionDraft?.open));
   const currentSessionId = useSessionUIStore((state) => state.currentSessionId);
+  const currentSessionMessagesResolved = useSessionMessagesResolved(currentSessionId ?? '');
   const currentSessionStatus = useGlobalSessionStatus(currentSessionId ?? '');
   const isCurrentSessionMovingToWorktree = useIsSessionWorktreeMovePending(currentSessionId ?? '');
   const currentGlobalSession = useGlobalSessionsStore(useShallow(React.useCallback(
@@ -199,6 +213,33 @@ export const Header: React.FC = () => {
     setIsDesktopApp(isDesktopShell());
   }, []);
 
+  const { context: contextLimit, output: outputLimit } = useContextWindowLimits(currentSessionId);
+  const contextUsage = getContextUsage(contextLimit, outputLimit);
+  const [stableDesktopContextUsage, setStableDesktopContextUsage] = React.useState<SessionContextUsage | null>(null);
+  const isContextUsageResolvedForSession = !currentSessionId || currentSessionMessagesResolved;
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      setStableDesktopContextUsage((prev) => (prev === null ? prev : null));
+      return;
+    }
+
+    if (contextUsage) {
+      setStableDesktopContextUsage((prev) => (isSameContextUsage(prev, contextUsage) ? prev : contextUsage));
+      return;
+    }
+
+    if (isContextUsageResolvedForSession) {
+      setStableDesktopContextUsage((prev) => (prev === null ? prev : null));
+    }
+  }, [contextUsage, currentSessionId, isContextUsageResolvedForSession]);
+
+  const [currentInstanceLabel, setCurrentInstanceLabel] = React.useState('Local');
+  const [currentInstanceIsLocal, setCurrentInstanceIsLocal] = React.useState(true);
+  const [remoteUpdateDialogOpen, setRemoteUpdateDialogOpen] = React.useState(false);
+  const [remoteUpdateInfo, setRemoteUpdateInfo] = React.useState<UpdateInfo | null>(null);
+  const [remoteUpdateChecking, setRemoteUpdateChecking] = React.useState(false);
+  const [remoteUpdateError, setRemoteUpdateError] = React.useState<string | null>(null);
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
   // While the work-status panel is on screen it already reports the project
   // and the branch — three paces away in the same window. The meta row under
@@ -246,7 +287,7 @@ export const Header: React.FC = () => {
       // the panel it opens can never disagree about which instance this is.
       const cfg = await desktopHostsGet();
       const localOrigin = getLocalDesktopOrigin();
-      const resolved = resolveCurrentDesktopHost([buildLocalDesktopHost(localOrigin), ...cfg.hosts]);
+      const resolved = resolveCurrentDesktopHost(withLocalDesktopHost(cfg.hosts, localOrigin));
 
       if (resolved.id === LOCAL_HOST_ID) {
         setCurrentInstanceLabel('Local');

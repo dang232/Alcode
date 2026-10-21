@@ -251,9 +251,6 @@ export const getVisibleContextRailSurfaces = (options: VisibleRailSurfacesOption
     if (!options.isDesktopShell && DESKTOP_ONLY_PLUGIN_SURFACE_IDS.includes(surface.id)) {
       return false;
     }
-    if (surface.id === 'plan' && !options.planModeEnabled) {
-      return false;
-    }
     // The walkthrough needs room for a stop list beside real code, and its
     // diffs come from Alcode's Git routes, which VS Code does not serve.
     if (surface.id === 'walkthrough' && (options.isVSCode || options.screenWidth < WALKTHROUGH_MIN_WIDTH)) {

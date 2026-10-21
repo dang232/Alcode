@@ -2327,7 +2327,7 @@ describe('goal objective directory scoping', () => {
     await sendQueued('Implement this plan: X', { objective: 'the whole plan', tokenBudget: 5000 });
 
     expect(metadataWrites).toHaveLength(1);
-    expect(metadataWrites[0].patch.openchamber.goal).toMatchObject({ objective: 'the whole plan', tokenBudget: 5000 });
+    expect(metadataWrites[0].patch.alcode.goal).toMatchObject({ objective: 'the whole plan', tokenBudget: 5000 });
     expect(useSessionGoalArmStore.getState().armed).toBe(true);
   });
 

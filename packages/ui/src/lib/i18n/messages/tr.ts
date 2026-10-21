@@ -1,4 +1,5 @@
 import { settingsDict } from './tr.settings';
+import type { I18nKey } from './en';
 import { linearIssuePickerI18n } from './linear-issue-picker.i18n';
 import { referencePickerI18n } from './reference-picker.i18n';
 import { sessionMenuHintsI18n } from './session-menu-hints.i18n';
@@ -25,7 +26,7 @@ import { pluginsGridI18n } from './plugins-grid.i18n';
 import { integrationsCatalogI18n } from './integrations-catalog.i18n';
 import { diffFindI18n } from './diff-find.i18n';
 
-export const dict = {
+export const dict: Record<I18nKey, string> = {
   "opencodeCompatibility.bundled": "OpenCode, Alcode ile birlikte gelir. OpenCode v2 için Alcode’ı güncelleyin.",
   "opencodeCompatibility.title": "OpenCode v2 gerekli",
   "opencodeCompatibility.outdatedTitle": "OpenCode’u güncelleyin",
@@ -1930,7 +1931,6 @@ export const dict = {
   'chat.errorDetails.show': 'Yanıt ayrıntılarını göster',
   'chat.errorDetails.hide': 'Yanıt ayrıntılarını gizle',
   'chat.goal.dialog.titleCreate': 'Session hedefi belirle',
-  'chat.goal.toast.distillFallback': 'Hedef limiti aştı ve özetlenemedi — denetçi için kısaltılmış bir sürüm kullanılıyor',
   'chat.goal.dialog.titleManage': 'Session hedefi',
   'chat.goal.dialog.objectiveLabel': 'Amaç',
   'chat.goal.dialog.objectivePlaceholder': 'Agent\'ın ulaşması ve doğrulaması gereken son durumu açıkla…',
@@ -1953,6 +1953,7 @@ export const dict = {
   'chat.goal.action.save': 'Hedefi kaydet',
   'chat.goal.action.start': 'Hedefi başlat',
   'chat.goal.toast.actionFailed': 'Hedef güncellenemedi',
+  'chat.goal.toast.distillFallback': 'Hedef limiti aştı ve özetlenemedi — denetçi için kısaltılmış bir sürüm kullanılıyor',
   'chat.goal.row.aria': 'Session hedefi — ayrıntıları aç',
   'chat.goal.button.createAria': 'Bir session hedefi belirle',
   'chat.goal.button.manageAria': 'Session hedefini yönet',
@@ -2606,7 +2607,7 @@ export const dict = {
   'chat.modelControls.clearSearch': 'Aramayı temizle',
   'chat.modelControls.current': 'Mevcut',
   'chat.modelControls.thinking': 'Düşünme',
-  'chat.modelControls.inheritedVariantTooltip': 'Düşünme: {variant}, bu modelin varsayılanı',
+  'chat.modelControls.inheritedVariantTooltip': "Thinking: {variant}, this model's default",
   'chat.modelControls.default': 'Varsayılan',
   'chat.modelControls.selectAgent': 'Agent seç',
   'chat.modelControls.costPerMillion': 'Maliyet ($/1M token)',

@@ -84,7 +84,7 @@ mock.module('@/lib/modelIdentifier', () => ({
   parseModelIdentifier: () => null,
 }));
 
-mock.module('@/lib/openchamberConfig', () => ({
+mock.module('@/lib/alcodeConfig', () => ({
   getWorktreeSetupWaitEnabled: async () => false,
 }));
 

@@ -1,4 +1,4 @@
-import type { HostRequestErrorCode } from '@openchamber/sdk';
+import type { HostRequestErrorCode } from '@alcode/sdk';
 
 import type { ContextPanelMode } from '@/lib/surfaces/modes';
 import { shownContextModes } from '@/lib/workspace/zones';

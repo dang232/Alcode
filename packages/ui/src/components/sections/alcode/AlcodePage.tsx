@@ -24,6 +24,7 @@ import { SettingsPageLayout } from '@/components/sections/shared/SettingsPageLay
 import { isDesktopLocalOriginActive, isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
 import { isCapacitorApp } from '@/lib/platform';
 import { useI18n } from '@/lib/i18n';
+import { useDeviceInfo } from '@/lib/device';
 import { subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import type { AlcodeSection } from './types';
 
@@ -44,6 +45,7 @@ interface AlcodePageProps {
 
 export const AlcodePage: React.FC<AlcodePageProps> = ({ section }) => {
     const { t } = useI18n();
+    const { isMobile } = useDeviceInfo();
     const runtimeEndpointEpoch = useRuntimeEndpointEpoch();
     const showAbout = isMobile && isWebRuntime();
     const isVSCode = isVSCodeRuntime();

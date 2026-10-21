@@ -91,6 +91,16 @@ export const buildTurnEndRequest = ({ history, request, answer, ask }) => {
 const noulAnswer = z.object({ noul: z.number() });
 const answerOf = (answers, id) => noulAnswer.safeParse(answers?.[id]).data?.noul ?? null;
 
+const OPEN_THRESHOLDS = { change: 0.85, towardChange: 0.9 };
+
+/** True when the answers say real work started; a missing answer never opens. */
+export const decideOpen = (answers) => {
+  const change = answerOf(answers, 'change');
+  const towardChange = answerOf(answers, 'toward_change');
+  return (change !== null && change >= OPEN_THRESHOLDS.change)
+    || (towardChange !== null && towardChange >= OPEN_THRESHOLDS.towardChange);
+};
+
 export const decideWrapUp = (answers) => {
   const score = answerOf(answers, 'wrap_up');
   return score !== null && score >= WRAP_UP_THRESHOLD;

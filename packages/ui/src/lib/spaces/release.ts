@@ -4,7 +4,7 @@ import { useUIStore } from '@/stores/useUIStore';
 // Docker, and stays hidden until the maintainers decide to show it (decision 17 in
 // packages/web/server/lib/spaces/DOCUMENTATION.md). Flip this to show it; nothing else needs to
 // change.
-const ISOLATED_SPACES_RELEASED = false;
+export const ISOLATED_SPACES_RELEASED = false;
 
 // Whether Settings shows the "Isolated spaces" page and its search entries: always once the
 // feature is released, and before that while the `isolatedSpacesEnabled` key in settings.json is

@@ -30,6 +30,7 @@ import {
   answerGuestMessage,
   buildConnectionMessage,
   buildDirectoryMessage,
+  buildGenerateLateMessage,
   buildItemMessage,
   buildReadyMessage,
   buildResolveMessage,

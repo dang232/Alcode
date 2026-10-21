@@ -416,7 +416,7 @@ function translateOpenchamberEvent(type: string, payload: unknown): SyncEvent | 
     }
     case "openchamber:notification": {
       const parsed = openchamberNotificationSchema.safeParse(payload)
-      return parsed.success ? { type: "openchamber.notification", properties: parsed.data.properties } : null
+      return parsed.success ? { type: "alcode.notification", properties: parsed.data.properties } : null
     }
     case "openchamber:permission-auto-accept.updated": {
       const parsed = openchamberAutoAcceptSchema.safeParse(payload)

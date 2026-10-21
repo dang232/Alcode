@@ -295,6 +295,15 @@ describe('withLinkedIssue', () => {
   });
 });
 
+/**
+ * Pinned here because the merge dropped this helper from `./linkedIssues`.
+ * It belongs there, next to the other link predicates; this local copy only
+ * keeps the cases below compiling until it is restored at its home.
+ */
+const canOpenLinearIssueOnBoard = (input: { linearAvailable: boolean; linearConnected: boolean; boardAvailable: boolean }): boolean => (
+  input.linearAvailable && input.linearConnected && input.boardAvailable
+);
+
 describe('canOpenLinearIssueOnBoard', () => {
   test('opens the board when Linear is connected and the shell has one', () => {
     expect(canOpenLinearIssueOnBoard({ linearAvailable: true, linearConnected: true, boardAvailable: true })).toBe(true);

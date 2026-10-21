@@ -1,8 +1,10 @@
 import React from 'react';
-import { SettingsCheckboxRow, SettingsSection, SETTINGS_OPTION_STACK_CLASS } from '@/components/sections/shared/SettingsSection';
+import { SettingsCheckboxRow, SettingsInset, SettingsSection, SETTINGS_OPTION_STACK_CLASS } from '@/components/sections/shared/SettingsSection';
+import { JevAccessNote } from '@/components/sections/classification/JevAccessNote';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
 import { updateDesktopSettings } from '@/lib/persistence';
+import { selectSafetyNetAvailable, useRoutingStore } from '@/stores/useRoutingStore';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { useUIStore } from '@/stores/useUIStore';
 
@@ -13,8 +15,12 @@ import { useUIStore } from '@/stores/useUIStore';
  */
 export const SessionWorkSettings: React.FC = () => {
   const { t } = useI18n();
+  const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
   const enabled = useUIStore((state) => state.sessionWorkEnabled);
+  const autoOpen = useUIStore((state) => state.sessionWorkAutoOpen);
   const setEnabled = useUIStore((state) => state.setSessionWorkEnabled);
+  const setAutoOpen = useUIStore((state) => state.setSessionWorkAutoOpen);
+  const jevAvailable = useRoutingStore(selectSafetyNetAvailable);
   const showChatsSection = useSessionDisplayStore((state) => state.showChatsSection);
   const setShowChatsSection = useSessionDisplayStore((state) => state.setShowChatsSection);
 

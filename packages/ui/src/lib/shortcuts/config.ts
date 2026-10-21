@@ -295,7 +295,7 @@ const SHORTCUT_GROUPS = {
       id: 'open_project_actions',
       defaultBinding: 'mod+alt+r',
       customizable: true,
-      settingsLabelKey: 'settings.openchamber.keyboardShortcuts.action.open_project_actions.label',
+      settingsLabelKey: 'settings.alcode.keyboardShortcuts.action.open_project_actions.label',
     },
     {
       id: 'cycle_theme',
@@ -318,7 +318,7 @@ const SHORTCUT_GROUPS = {
       id: 'quake_mode_global',
       defaultBinding: UNASSIGNED_SHORTCUT,
       customizable: true,
-      settingsLabelKey: 'settings.openchamber.keyboardShortcuts.action.quake_mode_global.label',
+      settingsLabelKey: 'settings.alcode.keyboardShortcuts.action.quake_mode_global.label',
     },
   ],
 } as const satisfies Record<ShortcutCategory, readonly ShortcutConfig[]>;

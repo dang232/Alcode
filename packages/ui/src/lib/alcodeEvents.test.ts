@@ -270,9 +270,9 @@ describe('alcode events', () => {
   });
 
   test('dispatches a project-context invalidation only with a valid owner id', async () => {
-    const { subscribeOpenchamberEvents } = await import('./openchamberEvents');
+    const { subscribeAlcodeEvents } = await import('./alcodeEvents');
     const owners: string[] = [];
-    const unsubscribe = subscribeOpenchamberEvents((event) => {
+    const unsubscribe = subscribeAlcodeEvents((event) => {
       if (event.type === 'project-context-changed') owners.push(event.projectId);
     });
     try {
@@ -288,9 +288,9 @@ describe('alcode events', () => {
   });
 
   test('dispatches a chat-folder change only with its stored revision', async () => {
-    const { subscribeOpenchamberEvents } = await import('./openchamberEvents');
+    const { subscribeAlcodeEvents } = await import('./alcodeEvents');
     const revisions: number[] = [];
-    const unsubscribe = subscribeOpenchamberEvents((event) => {
+    const unsubscribe = subscribeAlcodeEvents((event) => {
       if (event.type === 'session-folders-changed') revisions.push(event.updatedAt);
     });
     try {
@@ -331,9 +331,9 @@ describe('alcode events', () => {
   });
 
   test('dispatches an agent plan-open request and drops one without a plan id', async () => {
-    const { subscribeOpenchamberEvents } = await import('./openchamberEvents');
+    const { subscribeAlcodeEvents } = await import('./alcodeEvents');
     const events: unknown[] = [];
-    const unsubscribe = subscribeOpenchamberEvents((event) => events.push(event));
+    const unsubscribe = subscribeAlcodeEvents((event) => events.push(event));
     const source = MockEventSource.instances[0];
 
     source.onmessage?.({

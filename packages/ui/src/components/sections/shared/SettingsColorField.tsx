@@ -3,7 +3,7 @@ import { Icon } from '@/components/icon/Icon';
 import { Input } from '@/components/ui/input';
 import { COLOR_PRESETS, isHexColor } from '@/lib/colorPresets';
 import { cn } from '@/lib/utils';
-import { isAgentHexColor } from './isAgentHexColor';
+import { isAgentHexColor } from '../agents/isAgentHexColor';
 
 /**
  * Preset agent colours. These are user data written into the agent's config,

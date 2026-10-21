@@ -185,6 +185,7 @@ describe('managed OpenCode config file', () => {
         'inspect',
         'record-child-failure',
         'record-child-result',
+        'record-evidence',
         'revise-goals',
         'status',
       ].sort(),
@@ -398,7 +399,9 @@ describe('managed OpenCode config file', () => {
     for (const key of EXPECTED_NATIVE_AGENT_KEYS) {
       expect(agent[key].mode).toBe('subagent');
       expect(typeof agent[key].description).toBe('string');
-      expect(typeof agent[key].model).toBe('string');
+      // Providers unknown: the statics ship as bundled (fail-open, model-less);
+      // models resolve once providers are known (chain tests below).
+      expect(agent[key].model).toBe(OMO_NATIVE_AGENT_CONFIG[key]?.model);
     }
     expect(agent.oracle.model).toBe(OMO_NATIVE_AGENT_CONFIG.oracle.model);
     // The plan-gated advisers and final-gate trio ship as static entries so

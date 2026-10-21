@@ -224,6 +224,7 @@ const PlaceDisk: React.FC<{ placeId: string }> = ({ placeId }) => {
   const totalBytes = (disk.value.imageBytes ?? 0) + disk.value.toolsBytes + disk.value.spacesBytes;
   // Offered only when it would free something, and never while the image downloads: the host refuses then.
   const canFree = disk.value.freeBytes > 0 && !disk.value.imagePulling;
+  const nothingToFree = disk.value.freeBytes === 0;
   return (
     <div className="space-y-2">
       <DiskLine disk={disk.value} />

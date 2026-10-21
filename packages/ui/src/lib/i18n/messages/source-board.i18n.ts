@@ -1329,6 +1329,7 @@ export const sourceBoardI18n = {
     'sourceBoard.actions.newWorktreeSession': 'جلسة جديدة في شجرة عمل (worktree)…',
     'sourceBoard.list.choose': 'اختيار',
     'sourceBoard.list.toggleAria': 'قائمة العناصر، المعروض: {item}',
+    'settings.alcode.keyboardShortcuts.action.toggle_source_board.label': 'Show or hide issues and PRs',
   },
   he: {
     'sourceBoard.reply.startThread': 'פתח שרשור',
@@ -1424,5 +1425,6 @@ export const sourceBoardI18n = {
     'sourceBoard.actions.newWorktreeSession': 'הפעלה חדשה בעץ עבודה…',
     'sourceBoard.list.choose': 'בחר',
     'sourceBoard.list.toggleAria': 'רשימת פריטים, מוצג {item}',
+    'settings.alcode.keyboardShortcuts.action.toggle_source_board.label': 'Show or hide issues and PRs',
   },
 } as const;

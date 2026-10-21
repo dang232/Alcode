@@ -84,7 +84,7 @@ const isDesktopRuntime = (): boolean => (
 );
 
 /** The local server's origin, as the desktop shell injected it; '' outside the shell. */
-const localOrigin = (): string => globalThis.window?.__OPENCHAMBER_LOCAL_ORIGIN__ ?? '';
+const localOrigin = (): string => globalThis.window?.__ALCODE_LOCAL_ORIGIN__ ?? '';
 
 /**
  * True when the app is talking to an Alcode on another machine. A local

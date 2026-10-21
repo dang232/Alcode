@@ -136,12 +136,15 @@ function SelectValue({ placeholder, children, ...props }: SelectValueProps) {
 
 function SelectTrigger({
   className,
+  size = "default",
   children,
   asChild,
   onPointerDownCapture,
   onFocusCapture,
   ...props
-}: React.ComponentProps<typeof BaseSelect.Trigger> & AsChildProps) {
+}: React.ComponentProps<typeof BaseSelect.Trigger> & AsChildProps & {
+  size?: "default" | "settings"
+}) {
   const portalContext = React.useContext(SelectPortalContext);
 
   const syncPortalContainer = React.useCallback((target: EventTarget | null) => {
@@ -159,9 +162,10 @@ function SelectTrigger({
   return (
     <BaseSelect.Trigger
       data-slot="select-trigger"
+      data-size={size}
       className={cn(
         // Shared trigger chrome: one source of truth for every dropdown trigger.
-        dropdownTriggerVariants(),
+        dropdownTriggerVariants({ size: size === 'settings' ? 'default' : size }),
         "w-fit data-[placeholder]:text-muted-foreground *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 *:data-[slot=select-value]:truncate",
         className
       )}

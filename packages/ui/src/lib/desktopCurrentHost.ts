@@ -100,6 +100,7 @@ export const resolveCurrentDesktopHost = (hosts: DesktopHost[]): ResolvedDesktop
   // Nothing configured matches. Naming the address is still more use than the
   // bare word "Instance"; the redaction strips anything credential-shaped. The
   // packaged page's own address names no instance, so the runtime's does.
+  const packagedPage = currentHref.startsWith('alcode-ui://');
   const address = runtimeApiBaseUrl
     ? normalizeHostUrl(runtimeApiBaseUrl) || runtimeApiBaseUrl
     : packagedPage ? '' : normalizedCurrent;

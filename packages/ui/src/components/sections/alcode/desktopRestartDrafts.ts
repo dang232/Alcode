@@ -5,7 +5,7 @@ import { updateDesktopSettings } from '@/lib/persistence';
 
 /** Desktop settings that only apply on the next launch. */
 type DesktopRestartPatch = Partial<Pick<DesktopSettings,
-  'desktopLanAccessEnabled' | 'desktopUiPassword' | 'desktopMacMenuBarEnabled' | 'desktopLinuxNativeFrame'
+  'desktopLanAccessEnabled' | 'desktopMacMenuBarEnabled' | 'desktopLinuxNativeFrame'
 >>;
 
 type DraftOwner = 'app' | 'network';

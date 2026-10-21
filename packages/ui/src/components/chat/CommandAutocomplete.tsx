@@ -1,8 +1,9 @@
 import React from 'react';
-import { cn } from '@/lib/utils';
+import { cn, fuzzyMatch } from '@/lib/utils';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useChatSessionSelection } from './chatColumnSession';
 import { selectCommandsForDirectory, useCommandsStore } from '@/stores/useCommandsStore';
+import { selectSkillsForDirectory, useSkillsStore } from '@/stores/useSkillsStore';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { Icon } from "@/components/icon/Icon";
@@ -92,6 +93,11 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
   const commandsWithMetadata = useCommandsStore((s) => selectCommandsForDirectory(s, effectiveDirectory));
   const loadCommandsForDirectory = useCommandsStore((s) => s.loadCommands);
   const refreshCommands = React.useCallback(() => loadCommandsForDirectory(effectiveDirectory), [effectiveDirectory, loadCommandsForDirectory]);
+  const skills = useSkillsStore((s) => selectSkillsForDirectory(s, effectiveDirectory));
+  const loadSkillsForDirectory = useSkillsStore((s) => s.loadSkills);
+  const refreshSkills = React.useCallback(() => loadSkillsForDirectory(effectiveDirectory), [effectiveDirectory, loadSkillsForDirectory]);
+  const [commands, setCommands] = React.useState<CommandInfo[]>([]);
+  const [loading, setLoading] = React.useState(false);
   const [selectedIndex, setSelectedIndex] = React.useState(0);
   const selectedIndexRef = React.useRef(0);
   const keyboardNavigationRef = React.useRef(false);
@@ -125,7 +131,8 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
   React.useEffect(() => {
     // Force refresh to get latest project context when mounting
     void refreshCommands();
-  }, [refreshCommands]);
+    void refreshSkills();
+  }, [refreshCommands, refreshSkills]);
 
   const reservedCommandNames = React.useMemo(() => {
     const names = new Set<string>(LOCAL_COMMAND_NAMES);
@@ -136,17 +143,30 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
 
   // The list depends on the registries, not on what is typed: it is built
   // once per registry change, and only the ranking follows the query.
-  const allCommands = React.useMemo<CommandInfo[]>(() => {
-    const customCommands: CommandInfo[] = commandsWithMetadata.map((cmd, index) => ({
-      id: `opencode:${cmd.scope ?? 'global'}:${cmd.name}:${cmd.agent ?? ''}:${cmd.model ?? ''}:${index}`,
-      name: cmd.name,
-      source: 'opencode',
-      description: cmd.description,
-      agent: cmd.agent ?? undefined,
-      model: cmd.model ?? undefined,
-      isBuiltIn: cmd.name === 'init' || cmd.name === 'review',
-      scope: cmd.scope,
-    }));
+  React.useEffect(() => {
+    const loadCommands = async () => {
+      setLoading(true);
+      try {
+      const skillNames = new Set(skills.map((skill) => skill.name));
+      const customCommands: CommandInfo[] = commandsWithMetadata.map((cmd, index) => ({
+        id: `opencode:${cmd.scope ?? 'global'}:${cmd.name}:${cmd.agent ?? ''}:${cmd.model ?? ''}:${index}`,
+        name: cmd.name,
+        source: 'opencode',
+        description: cmd.description,
+        agent: cmd.agent ?? undefined,
+        model: cmd.model ?? undefined,
+        isBuiltIn: cmd.name === 'init' || cmd.name === 'review',
+        isSkill: cmd.source === 'skill' || skillNames.has(cmd.name),
+        scope: cmd.scope,
+      }));
+      const skillCommands: CommandInfo[] = skills.map((skill, index) => ({
+        id: `skill:${skill.scope}:${skill.source ?? 'opencode'}:${skill.name}:${index}`,
+        name: skill.name,
+        source: 'skill',
+        description: skill.description,
+        isSkill: true,
+        scope: skill.scope,
+      }));
 
         const builtInCommands: CommandInfo[] = [
           ...(hasSession

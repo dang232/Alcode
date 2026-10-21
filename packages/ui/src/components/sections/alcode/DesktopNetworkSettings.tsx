@@ -3,13 +3,22 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import {
   getDesktopLanAddress,
+  getDesktopKeepAwake,
+  getDesktopLaunchAtLogin,
+  getDesktopMiniChatGlobalShortcut,
+  getDesktopMinimizeToTray,
   isDesktopLocalOriginActive,
   isDesktopShell,
   restartDesktopApp,
+  setDesktopKeepAwake,
+  setDesktopLaunchAtLogin,
+  setDesktopMiniChatGlobalShortcut,
+  setDesktopMinimizeToTray,
 } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
-import { loadDesktopSettings } from '@/lib/persistence';
+import { loadDesktopSettings, updateDesktopSettings } from '@/lib/persistence';
 import { getRuntimeApiBaseUrl } from '@/lib/runtime-switch';
+import { formatShortcutForDisplay, getCustomizableShortcutActions, UNASSIGNED_SHORTCUT } from '@/lib/shortcuts';
 import {
   SettingsSection,
   SettingsCheckboxRow,
@@ -18,6 +27,9 @@ import {
   SettingsFieldRow,
 } from '@/components/sections/shared/SettingsSection';
 import { useEnterprisePolicyStore } from '@/stores/useEnterprisePolicyStore';
+import { useUIStore } from '@/stores/useUIStore';
+
+import { ShortcutRecordingDialog } from './ShortcutRecordingDialog';
 
 import { saveDesktopRestartDrafts, useDesktopRestartDrafts } from './desktopRestartDrafts';
 
@@ -42,6 +54,30 @@ export const DesktopNetworkSettings: React.FC = () => {
   const [lanAccessBlockedReason, setLanAccessBlockedReason] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
+  const [launchAtLoginSupported, setLaunchAtLoginSupported] = React.useState(false);
+  const [launchAtLoginEnabled, setLaunchAtLoginEnabled] = React.useState(false);
+  const [isSavingLaunchAtLogin, setIsSavingLaunchAtLogin] = React.useState(false);
+  const [minimizeToTraySupported, setMinimizeToTraySupported] = React.useState(false);
+  const [minimizeToTrayEnabled, setMinimizeToTrayEnabled] = React.useState(false);
+  const [isSavingMinimizeToTray, setIsSavingMinimizeToTray] = React.useState(false);
+  const [savedMacMenuBarEnabled, setSavedMacMenuBarEnabled] = React.useState(true);
+  const [draftMacMenuBarEnabled, setDraftMacMenuBarEnabled] = React.useState(true);
+  const [savedLinuxNativeFrame, setSavedLinuxNativeFrame] = React.useState(false);
+  const [draftLinuxNativeFrame, setDraftLinuxNativeFrame] = React.useState(false);
+  const [keepAwakeSupported, setKeepAwakeSupported] = React.useState(false);
+  const [keepAwakeEnabled, setKeepAwakeEnabled] = React.useState(false);
+  const [isSavingKeepAwake, setIsSavingKeepAwake] = React.useState(false);
+  const [miniChatGlobalShortcutSupported, setMiniChatGlobalShortcutSupported] = React.useState(false);
+  const [miniChatGlobalShortcutCombo, setMiniChatGlobalShortcutCombo] = React.useState<string | null>(null);
+  const [miniChatGlobalShortcutActive, setMiniChatGlobalShortcutActive] = React.useState(false);
+  const [isSavingMiniChatGlobalShortcut, setIsSavingMiniChatGlobalShortcut] = React.useState(false);
+  const [editingMiniChatGlobalShortcut, setEditingMiniChatGlobalShortcut] = React.useState(false);
+  const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
+  const setShortcutOverride = useUIStore((state) => state.setShortcutOverride);
+  const miniChatGlobalShortcutAction = React.useMemo(
+    () => getCustomizableShortcutActions().find((action) => action.id === 'mini_chat_global') ?? null,
+    [],
+  );
   const [error, setError] = React.useState<string | null>(null);
   const [lanAddress, setLanAddress] = React.useState<string | null>(null);
 
@@ -67,6 +103,12 @@ export const DesktopNetworkSettings: React.FC = () => {
         setDraftValue(enabled);
         setLanAccessActive(data.desktopLanAccessActive === true);
         setLanAccessBlockedReason(data.desktopLanAccessBlockedReason ?? null);
+        const macMenuBarEnabled = data.desktopMacMenuBarEnabled !== false;
+        setSavedMacMenuBarEnabled(macMenuBarEnabled);
+        setDraftMacMenuBarEnabled(macMenuBarEnabled);
+        const linuxNativeFrame = data.desktopLinuxNativeFrame === true;
+        setSavedLinuxNativeFrame(linuxNativeFrame);
+        setDraftLinuxNativeFrame(linuxNativeFrame);
         setError(null);
       } catch (cause) {
         if (!cancelled) {
@@ -103,6 +145,91 @@ export const DesktopNetworkSettings: React.FC = () => {
       cancelled = true;
     };
   }, [draftValue, isLocalDesktop]);
+
+  React.useEffect(() => {
+    if (!isLocalDesktop) {
+      setLaunchAtLoginSupported(false);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const status = await getDesktopLaunchAtLogin();
+      if (cancelled) {
+        return;
+      }
+      setLaunchAtLoginSupported(status?.supported === true);
+      setLaunchAtLoginEnabled(status?.enabled === true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocalDesktop]);
+
+  React.useEffect(() => {
+    if (!isLocalDesktop) {
+      setMinimizeToTraySupported(false);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const status = await getDesktopMinimizeToTray();
+      if (cancelled) {
+        return;
+      }
+      setMinimizeToTraySupported(status?.supported === true);
+      setMinimizeToTrayEnabled(status?.enabled === true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocalDesktop]);
+
+  React.useEffect(() => {
+    if (!isLocalDesktop) {
+      setKeepAwakeSupported(false);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const status = await getDesktopKeepAwake();
+      if (cancelled) {
+        return;
+      }
+      setKeepAwakeSupported(status?.supported === true);
+      setKeepAwakeEnabled(status?.enabled === true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocalDesktop]);
+
+  React.useEffect(() => {
+    if (!isLocalDesktop) {
+      setMiniChatGlobalShortcutSupported(false);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const status = await getDesktopMiniChatGlobalShortcut();
+      if (cancelled) {
+        return;
+      }
+      setMiniChatGlobalShortcutSupported(status?.supported === true);
+      setMiniChatGlobalShortcutCombo(status?.combo ?? null);
+      setMiniChatGlobalShortcutActive(status?.active === true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocalDesktop]);
 
   const isDirty = draftValue !== savedValue
     || draftMacMenuBarEnabled !== savedMacMenuBarEnabled
@@ -252,6 +379,10 @@ export const DesktopNetworkSettings: React.FC = () => {
   }, [handleMiniChatGlobalShortcutSave, setShortcutOverride, shortcutOverrides]);
 
   const handleSaveAndRestart = React.useCallback(async () => {
+    if (!isDirty) {
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 
@@ -446,59 +577,25 @@ export const DesktopNetworkSettings: React.FC = () => {
             variant="ghost"
             size="xs"
             onClick={handleSaveAndRestart}
-            disabled={isLoading || isSaving}
+            disabled={saveDisabled}
             className="shrink-0 !font-normal"
           >
             {isSaving ? t('settings.common.actions.saving') : t('settings.alcode.desktopNetwork.actions.saveAndRestart')}
           </Button>
         </div>
 
-      <SettingsCheckboxRow
-        settingsItem="sessions.desktop-lan-access"
-        checked={draftValue && !lanBlockedByEnterprise}
-        onChange={setDraftValue}
-        disabled={isLoading || isSaving || lanBlockedByEnterprise}
-        label={t('settings.openchamber.desktopNetwork.field.allowLanAccess')}
-        info={t('settings.openchamber.desktopNetwork.field.allowLanAccessDescription')}
-        description={lanBlockedByEnterprise ? (
-          <span className="block">{t('settings.openchamber.desktopNetwork.field.enterpriseBlocked')}</span>
-        ) : (
-          <>
-            <span className="block text-[var(--status-warning)]/85">
-              {t('settings.openchamber.desktopNetwork.field.warning')}
-            </span>
-            {lanRequiresPassword || lanBlockedByMissingPassword ? (
-              <span className="block text-[var(--status-warning)]/85">
-                {t('settings.openchamber.desktopNetwork.field.passwordRequiredWarning')}
-              </span>
-            ) : null}
-          </>
-        )}
-        ariaLabel={t('settings.openchamber.desktopNetwork.field.allowLanAccessAria')}
+      <ShortcutRecordingDialog
+        action={editingMiniChatGlobalShortcut ? miniChatGlobalShortcutAction : null}
+        overrides={shortcutOverrides}
+        onSave={handleMiniChatGlobalRecorderSave}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingMiniChatGlobalShortcut(false);
+          }
+        }}
+        maxChords={1}
+        maxKeys={5}
       />
-
-      {lanUrl && !lanBlockedByEnterprise ? (
-        <p className="typography-meta text-muted-foreground">
-          {isDirty && !savedValue
-            ? t('settings.openchamber.desktopNetwork.hint.openAfterRestart')
-            : t('settings.openchamber.desktopNetwork.hint.openNow')}
-          <span className="font-mono text-foreground">{lanUrl}</span>
-        </p>
-      ) : null}
-
-      {error ? (
-        <p className="typography-micro text-[var(--status-error)]">{error}</p>
-      ) : null}
-
-      <Button
-        type="button"
-        size="xs"
-        onClick={handleSaveAndRestart}
-        disabled={saveDisabled}
-        className="!font-normal"
-      >
-        {isSaving ? t('settings.common.actions.saving') : t('settings.openchamber.desktopNetwork.actions.saveAndRestart')}
-      </Button>
       </div>
     </SettingsSection>
   );

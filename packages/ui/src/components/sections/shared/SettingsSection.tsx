@@ -24,6 +24,7 @@ const SETTINGS_TRIGGER_WIDTH_CLASS = 'w-fit max-w-[28ch]';
 
 /** Settings select trigger in stacked cells. */
 export const SETTINGS_SELECT_TRIGGER_CLASS = SETTINGS_TRIGGER_WIDTH_CLASS;
+export const SETTINGS_SELECT_SIZE = 'settings' as const;
 
 /** Settings select trigger in SettingsFieldRow control columns. */
 export const SETTINGS_SELECT_ROW_TRIGGER_CLASS = SETTINGS_TRIGGER_WIDTH_CLASS;

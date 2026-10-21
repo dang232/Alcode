@@ -5,6 +5,7 @@ import type { IconName } from '@/components/icon/icons';
 import {
   SettingsSection,
   SettingsCheckboxRow,
+  SETTINGS_SELECT_SIZE,
 } from '@/components/sections/shared/SettingsSection';
 import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint';
 import { Switch } from '@/components/ui/switch';

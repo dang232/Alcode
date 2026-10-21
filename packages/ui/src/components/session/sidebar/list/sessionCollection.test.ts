@@ -10,6 +10,7 @@ import {
   projectSidebarActiveSessions,
   projectSidebarCollection,
 } from './sessionCollection';
+import { deriveRecentSessions } from '../recent/activitySections';
 
 const session = (id: string, directory: string | null): Session => {
   // SAFETY: Sidebar projection reads only id, directory, and time from session fixtures.

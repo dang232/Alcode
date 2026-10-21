@@ -90,7 +90,21 @@ export const createManagedConfigRuntime = ({
       .then(() => listConnectedProviders()).catch(() => null);
     const modelOverrides = await Promise.resolve()
       .then(() => readUserAgentModels()).catch(() => ({}));
-    const map = buildNativeAgentConfigMap({ connectedProviders, modelOverrides });
+    const resolved = buildNativeAgentConfigMap({ connectedProviders, modelOverrides });
+    // Providers unknown: every native identity ships with its static
+    // entry, and chain-resolved entries win where a model resolved.
+    // Providers known: the chain map is the whole story, so uncovered
+    // agents stay dropped instead of leaking static models the child
+    // cannot run.
+    const map = {};
+    if (connectedProviders == null) {
+      Object.assign(map, OMO_NATIVE_AGENT_CONFIG);
+      for (const [key, entry] of Object.entries(resolved)) {
+        if (typeof entry?.model === 'string') map[key] = entry;
+      }
+    } else {
+      Object.assign(map, resolved);
+    }
     // Known gaps are loud and exact: the agent is already dropped from the
     // map, so this names the missing capability instead of shipping doom.
     for (const gap of getNativeAgentModelGaps({ connectedProviders, modelOverrides })) {

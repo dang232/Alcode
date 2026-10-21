@@ -28,11 +28,8 @@ import { spaceFailureText } from './spaceFailureText';
 const STEP_TEXT = {
   checking_place: 'spaces.group.step.checkingPlace',
   creating: 'spaces.group.step.creating',
-  downloading_image: 'spaces.group.step.downloadingImage',
-  preparing_tools: 'spaces.group.step.preparingTools',
   setting_network: 'spaces.group.step.settingNetwork',
   bringing_code: 'spaces.group.step.bringingCode',
-  giving_access: 'spaces.group.step.givingAccess',
 } satisfies Record<Exclude<SpaceCreationStep, 'ready'>, I18nKey>;
 
 const BUSY_TEXT = {

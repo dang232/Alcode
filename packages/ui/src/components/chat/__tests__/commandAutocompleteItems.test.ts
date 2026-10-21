@@ -8,6 +8,7 @@ interface Item {
   description?: string;
   searchAliases?: string[];
   isBuiltIn?: boolean;
+  isSkill?: boolean;
 }
 
 describe('mergeCommandAutocompleteItems', () => {
@@ -44,7 +45,7 @@ describe('mergeCommandAutocompleteItems', () => {
 
     expect(mergeCommandAutocompleteItems([], [custom, builtIn])).toEqual([{
       ...builtIn,
-      searchAliases: ['Review skill'],
+      searchAliases: ['Custom review'],
     }]);
   });
 

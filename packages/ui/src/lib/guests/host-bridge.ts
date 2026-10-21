@@ -155,8 +155,8 @@ export const buildResolveMessage = (id: string, command: string, args: string): 
 });
 
 export const buildGenerateLateMessage = (result: LateGenerateResult): HostMessage => ({
-  channel: OPENCHAMBER_SDK_CHANNEL,
-  v: OPENCHAMBER_SDK_API_VERSION,
+  channel: ALCODE_SDK_CHANNEL,
+  v: ALCODE_SDK_API_VERSION,
   type: 'generate-late',
   payload: result,
 });

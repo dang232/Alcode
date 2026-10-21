@@ -1,4 +1,4 @@
-import { Marked, type MarkedExtension, type Tokens, type TokenizerAndRendererExtension } from 'marked';
+import { Marked, marked, type MarkedExtension, type Tokens, type TokenizerAndRendererExtension } from 'marked';
 import markedLinkifyIt from 'marked-linkify-it';
 import remend from 'remend';
 import katex from 'katex';
@@ -50,7 +50,109 @@ const URL_SCHEME_RE = /^[A-Za-z][A-Za-z\d+.-]*:/;
  */
 export type MarkdownImageMode = 'inline' | 'label' | 'local';
 
-const isRemoteMarkdownImageSource = (source: string): boolean => /^(?:https?:)?\/\//i.test(source);
+export interface MarkdownImageCandidate {
+  source: string;
+  filename: string;
+}
+
+export const isRemoteMarkdownImageSource = (source: string): boolean => /^(?:https?:)?\/\//i.test(source);
+
+export const MAX_MARKDOWN_IMAGE_COUNT = 12;
+
+const MARKDOWN_IMAGE_CANDIDATE_CACHE_MAX_ENTRIES = 1024;
+const MARKDOWN_IMAGE_CANDIDATE_CACHE_MAX_BYTES = 2 * 1024 * 1024;
+const MARKDOWN_IMAGE_CANDIDATE_CACHE_MAX_ENTRY_BYTES = 64 * 1024;
+
+type MarkdownImageCandidateCacheEntry = {
+  candidates: MarkdownImageCandidate[];
+  bytes: number;
+};
+
+const markdownImageCandidateCache = new Map<string, MarkdownImageCandidateCacheEntry>();
+let markdownImageCandidateCacheBytes = 0;
+let markdownImageCandidateScanCount = 0;
+
+const estimateMarkdownImageCandidateCacheEntryBytes = (
+  markdown: string,
+  candidates: readonly MarkdownImageCandidate[],
+): number => (
+  (markdown.length + candidates.reduce((total, candidate) => total + candidate.source.length + candidate.filename.length, 0)) * 2
+);
+
+const scanMarkdownImageCandidates = (markdown: string): MarkdownImageCandidate[] => {
+  markdownImageCandidateScanCount += 1;
+  const candidates: MarkdownImageCandidate[] = [];
+  const seen = new Set<string>();
+  const tokens = marked.lexer(markdown);
+  marked.walkTokens(tokens, (token) => {
+    if (token.type !== 'image') return;
+
+    const source = token.href ?? '';
+    if (!source || !isSupportedMarkdownImageSource(source) || seen.has(source)) return;
+    const fallback = typeof token.text === 'string' ? token.text : '';
+    const filename = getMarkdownImageFilename(source, fallback);
+    if (!filename) return;
+
+    seen.add(source);
+    candidates.push({ source, filename });
+  });
+  return candidates;
+};
+
+const getMarkdownImageCandidates = (markdown: string): MarkdownImageCandidate[] => {
+  const cached = markdownImageCandidateCache.get(markdown);
+  if (cached) {
+    markdownImageCandidateCache.delete(markdown);
+    markdownImageCandidateCache.set(markdown, cached);
+    return cached.candidates;
+  }
+
+  let candidates: MarkdownImageCandidate[];
+  try {
+    candidates = scanMarkdownImageCandidates(markdown);
+  } catch {
+    // Image discovery is optional; a malformed message must not hide the chat
+    // or prevent discovery in the other messages.
+    return [];
+  }
+  const bytes = estimateMarkdownImageCandidateCacheEntryBytes(markdown, candidates);
+  if (bytes > MARKDOWN_IMAGE_CANDIDATE_CACHE_MAX_ENTRY_BYTES) return candidates;
+
+  while (
+    markdownImageCandidateCache.size >= MARKDOWN_IMAGE_CANDIDATE_CACHE_MAX_ENTRIES
+    || markdownImageCandidateCacheBytes + bytes > MARKDOWN_IMAGE_CANDIDATE_CACHE_MAX_BYTES
+  ) {
+    const oldest = markdownImageCandidateCache.entries().next().value;
+    if (!oldest) break;
+    markdownImageCandidateCache.delete(oldest[0]);
+    markdownImageCandidateCacheBytes -= oldest[1].bytes;
+  }
+  markdownImageCandidateCache.set(markdown, { candidates, bytes });
+  markdownImageCandidateCacheBytes += bytes;
+  return candidates;
+};
+
+export const extractMarkdownImageCandidates = (
+  markdownTexts: readonly string[],
+  limit = MAX_MARKDOWN_IMAGE_COUNT,
+): MarkdownImageCandidate[] => {
+  if (limit <= 0) return [];
+
+  const candidates: MarkdownImageCandidate[] = [];
+  const seen = new Set<string>();
+
+  for (const markdown of markdownTexts) {
+    if (!markdown || candidates.length >= limit) continue;
+    for (const candidate of getMarkdownImageCandidates(markdown)) {
+      if (candidates.length >= limit) break;
+      if (seen.has(candidate.source)) continue;
+      seen.add(candidate.source);
+      candidates.push({ ...candidate });
+    }
+  }
+
+  return candidates;
+};
 
 /**
  * `escape` keeps raw HTML visible as text (assistant output and every other

@@ -59,13 +59,13 @@ const DIFF_LAYOUT_OPTIONS: ChipOption<'dynamic' | 'inline' | 'side-by-side'>[] =
 ];
 
 const FOLLOW_UP_BEHAVIOR_OPTIONS: ChipOption<FollowUpBehavior>[] = [
-  { id: 'steer', labelKey: 'settings.openchamber.visual.option.followUpBehavior.steer.label' },
-  { id: 'queue', labelKey: 'settings.openchamber.visual.option.followUpBehavior.queue.label' },
+  { id: 'steer', labelKey: 'settings.alcode.visual.option.followUpBehavior.steer.label' },
+  { id: 'queue', labelKey: 'settings.alcode.visual.option.followUpBehavior.queue.label' },
 ];
 
 const INPUT_HISTORY_SCOPE_OPTIONS: ChipOption<InputHistoryScope>[] = [
-  { id: 'global', labelKey: 'settings.openchamber.visual.option.inputHistoryScope.global.label' },
-  { id: 'session', labelKey: 'settings.openchamber.visual.option.inputHistoryScope.session.label' },
+  { id: 'global', labelKey: 'settings.alcode.visual.option.inputHistoryScope.global.label' },
+  { id: 'session', labelKey: 'settings.alcode.visual.option.inputHistoryScope.session.label' },
 ];
 
 const LARGE_TEXT_PASTE_BEHAVIOR_OPTIONS: ChipOption<LargeTextPasteBehavior>[] = [
@@ -396,14 +396,14 @@ const ComposerTab: React.FC = () => {
             </SettingsFieldRow>
           )}
           <SettingsFieldRow
-            label={t('settings.openchamber.visual.section.followUpBehavior')}
+            label={t('settings.alcode.visual.section.followUpBehavior')}
             settingsItem="chat.follow-up-behavior"
           >
             <SettingsChipGroup
               value={followUpBehavior}
               options={followUpOptions}
               onChange={setFollowUpBehavior}
-              aria-label={t('settings.openchamber.visual.section.followUpBehaviorAria')}
+              aria-label={t('settings.alcode.visual.section.followUpBehaviorAria')}
             />
           </SettingsFieldRow>
         </div>
@@ -467,8 +467,8 @@ const ComposerTab: React.FC = () => {
         </div>
         <div>
           <SettingsFieldRow
-            label={t('settings.openchamber.visual.field.inputHistoryScope')}
-            info={t('settings.openchamber.visual.field.inputHistoryScopeDescription')}
+            label={t('settings.alcode.visual.field.inputHistoryScope')}
+            info={t('settings.alcode.visual.field.inputHistoryScopeDescription')}
             settingsItem="chat.input-history-scope"
           >
             <SettingsChipGroup
@@ -478,13 +478,13 @@ const ComposerTab: React.FC = () => {
                 applyInputHistoryScope(scope);
                 void updateDesktopSettings({ inputHistoryScope: scope });
               }}
-              aria-label={t('settings.openchamber.visual.section.inputHistoryScopeAria')}
+              aria-label={t('settings.alcode.visual.section.inputHistoryScopeAria')}
             />
           </SettingsFieldRow>
           <SettingsFieldRow
-            label={t('settings.openchamber.visual.field.inputHistoryLimit')}
+            label={t('settings.alcode.visual.field.inputHistoryLimit')}
             // Lowering the number drops prompts for good, so this stays visible.
-            description={t('settings.openchamber.visual.field.inputHistoryLimitDescription')}
+            description={t('settings.alcode.visual.field.inputHistoryLimitDescription')}
             settingsItem="chat.input-history-limit"
           >
             <div className={SETTINGS_NUMBER_STEPPER_ROW_CLASS}>
@@ -496,10 +496,10 @@ const ComposerTab: React.FC = () => {
                 step={1}
                 className={SETTINGS_NUMBER_INPUT_CLASS}
                 deferExternalValueWhileFocused
-                aria-label={t('settings.openchamber.visual.field.inputHistoryLimitAria')}
+                aria-label={t('settings.alcode.visual.field.inputHistoryLimitAria')}
               />
               <span className={SETTINGS_NUMBER_UNIT_CLASS}>
-                {t('settings.openchamber.visual.field.inputHistoryLimitUnit')}
+                {t('settings.alcode.visual.field.inputHistoryLimitUnit')}
               </span>
             </div>
           </SettingsFieldRow>

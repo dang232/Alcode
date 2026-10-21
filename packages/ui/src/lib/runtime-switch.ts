@@ -90,7 +90,8 @@ export const getRuntimeApiBaseUrl = (): string => activeApiBaseUrl || readInject
 export const isSshForwardedRuntime = (): boolean => {
   if (activeSshForwarded !== null) return activeSshForwarded;
   const apiBaseUrl = getRuntimeApiBaseUrl();
-  return Boolean(apiBaseUrl && apiBaseUrl === globalThis.window?.__OPENCHAMBER_SSH_FORWARD_API_URL__);
+  const forwarded = (globalThis.window as (typeof window & { __OPENCHAMBER_SSH_FORWARD_API_URL__?: string }) | undefined)?.__OPENCHAMBER_SSH_FORWARD_API_URL__;
+  return Boolean(apiBaseUrl && apiBaseUrl === forwarded);
 };
 
 // `getRuntimeKey` keys caches, stores, and persisted state across the whole UI,

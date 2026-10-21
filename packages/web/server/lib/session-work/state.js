@@ -1,6 +1,6 @@
 /**
  * `metadata.alcode.work`: whether a session is in work and what Jev
- * currently suggests about it; `metadata.openchamber.reviewOffer`: Jev's offer
+ * currently suggests about it; `metadata.alcode.reviewOffer`: Jev's offer
  * to look over the last turn's changes, which does not depend on work. Every
  * function returns a JSON merge patch for the session metadata store, or null
  * when nothing changes, so the store can decide against the record as it is
@@ -25,7 +25,7 @@ const workSchema = z.object({
 });
 
 const metadataSchema = z.object({ alcode: z.object({ work: workSchema }) });
-const reviewOfferSchema = z.object({ openchamber: z.object({ reviewOffer: z.object({ at: z.number() }) }) });
+const reviewOfferSchema = z.object({ alcode: z.object({ reviewOffer: z.object({ at: z.number() }) }) });
 
 /** The session's work record, or null when it has none (or a malformed one). */
 export const readWork = (metadata) => metadataSchema.safeParse(metadata).data?.alcode.work ?? null;
@@ -41,6 +41,15 @@ export const openPatch = (metadata, { requestAt, now }) => {
   return patchOf({ state: 'open', openedAt: now, openedBy: 'auto', doneAt: null, suggestDoneAt: null });
 };
 
+/** Jev saw a request that starts work, sent at `requestAt`. */
+export const openByJevPatch = (metadata, { requestAt, now }) => {
+  const work = readWork(metadata);
+  if (work?.state === 'open') return null;
+  // Closed after this request was sent: the user's decision stands.
+  if (work?.state === 'done' && Number.isFinite(requestAt) && (work.doneAt ?? 0) >= requestAt) return null;
+  return patchOf({ state: 'open', openedAt: now, openedBy: 'jev', doneAt: null, suggestDoneAt: null });
+};
+
 /** The turn that just ended looks like the end of the work. */
 export const suggestDonePatch = (metadata, { now }) => {
   if (readWork(metadata)?.state !== 'open') return null;
@@ -48,12 +57,12 @@ export const suggestDonePatch = (metadata, { now }) => {
 };
 
 /** The turn that just ended handed over changes worth a look; any session. */
-export const offerReviewPatch = (_metadata, { now }) => ({ openchamber: { reviewOffer: { at: now } } });
+export const offerReviewPatch = (_metadata, { now }) => ({ alcode: { reviewOffer: { at: now } } });
 
 /** A new turn started: whatever Jev concluded about the last one no longer holds. */
 export const clearSuggestionPatch = (metadata) => {
   const patch = {};
   if (readWork(metadata)?.suggestDoneAt !== undefined) patch.work = { suggestDoneAt: null };
   if (reviewOfferSchema.safeParse(metadata).success) patch.reviewOffer = null;
-  return Object.keys(patch).length > 0 ? { openchamber: patch } : null;
+  return Object.keys(patch).length > 0 ? { alcode: patch } : null;
 };

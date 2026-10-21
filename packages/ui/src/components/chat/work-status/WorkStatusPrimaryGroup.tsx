@@ -416,7 +416,7 @@ export const WorkStatusPrimaryGroup: React.FC<Props> = ({ sessionId, directory, 
           ) : null}
 
           {/* Last: the readouts above describe the project, this runs something in it. */}
-          {projectActionsContext ? <ProjectActionsButton /> : null}
+          {projectActionsContext ? <ProjectActionsButton projectRef={projectActionsContext.projectRef} directory={projectActionsContext.directory} /> : null}
         </WorkStatusSection>
       ) : null,
   });

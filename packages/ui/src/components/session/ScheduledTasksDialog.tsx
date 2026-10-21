@@ -16,7 +16,7 @@ import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { refreshGlobalSessions, useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { openSessionFromRoute } from '@/lib/router/openSessionFromRoute';
-import { PROJECT_COLOR_MAP, PROJECT_ICON_MAP, resolveProjectColor, ProjectIconImage } from '@/lib/projectMeta';
+import { PROJECT_ICON_MAP, resolveProjectColor, ProjectIconImage } from '@/lib/projectMeta';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { cn, formatDirectoryName } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';

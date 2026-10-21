@@ -190,8 +190,8 @@ describe("createEventPipeline", () => {
   test("passes the server's recap wait announcements through typed", async () => {
     const { events } = await collect(
       [
-        { type: "openchamber:session-assist", properties: { sessionID: "ses_1", directory: "/chat", pending: true } },
-        { type: "openchamber:session-assist", properties: { sessionID: "ses_1", directory: null, pending: false } },
+        { type: "openchamber:session-assist", properties: { sessionID: "ses_1", directory: "/chat", pending: true } } as never,
+        { type: "openchamber:session-assist", properties: { sessionID: "ses_1", directory: null, pending: false } } as never,
       ],
       2,
     )

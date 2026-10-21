@@ -60,6 +60,13 @@ const copyCurrentSelectionFallback = async (): Promise<boolean> => {
 const MENU_ACTION_EVENT = 'alcode:menu-action';
 const CHECK_FOR_UPDATES_EVENT = 'alcode:check-for-updates';
 
+type DesktopBridgeGlobal = {
+  listen?: (
+    event: string,
+    handler: (evt: { payload?: unknown }) => void
+  ) => Promise<() => void>;
+};
+
 type MenuAction =
   | 'about'
   | 'settings'

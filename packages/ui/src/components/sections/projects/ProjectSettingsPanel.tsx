@@ -34,6 +34,12 @@ type ProjectSettingsPanelProps = {
   onOpenWorktrees?: () => void;
   /** Closes the project, as the sidebar's "Close project" does; shown only in the page frame. */
   onCloseProject?: () => void;
+  /**
+   * The project-edit dialog hides the worktree section — worktrees have
+   * their own full-page surface (project menu → Manage worktrees). Settings
+   * keeps the full panel.
+   */
+  showWorktrees?: boolean;
 };
 
 const isProjectSettingsTab = (id: string): id is ProjectSettingsTab => (
@@ -53,6 +59,7 @@ export const ProjectSettingsPanel: React.FC<ProjectSettingsPanelProps> = ({
   frame,
   onOpenWorktrees,
   onCloseProject,
+  showWorktrees = true,
 }) => {
   const { t } = useI18n();
   const form = useProjectIdentityForm(project);
@@ -119,7 +126,7 @@ export const ProjectSettingsPanel: React.FC<ProjectSettingsPanelProps> = ({
   // tab's content scrolls, so switching tabs never resizes the dialog.
   return (
     <div className="space-y-0">
-      <ProjectIdentityFields form={form} />
+      <ProjectSettingsHeader form={form} />
       <ProjectActionsSection projectRef={projectRef} />
       {/* VS Code runs no Alcode server that could apply these. */}
       {!isVSCodeRuntime() ? <ProjectEnvironmentSection projectRef={projectRef} /> : null}

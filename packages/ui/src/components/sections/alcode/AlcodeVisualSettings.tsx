@@ -1,15 +1,18 @@
 import React from 'react';
 import { ThemeImportButton } from './ThemeImportButton';
 import { ThemePicker } from './ThemePicker';
+import { MessageSearchSettings } from './MessageSearchSettings';
 
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import type { ThemeMode } from '@/types/theme';
-import { useUIStore } from '@/stores/useUIStore';
+import { useUIStore, type LargeTextPasteBehavior } from '@/stores/useUIStore';
+import { useMessageQueueStore, type FollowUpBehavior } from '@/stores/messageQueueStore';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Select,
     SelectContent,
@@ -30,12 +33,19 @@ import { useDeviceInfo } from '@/lib/device';
 import { usePwaDetection } from '@/hooks/usePwaDetection';
 import { loadDesktopSettings, updateDesktopSettings } from '@/lib/persistence';
 import { CODE_FONT_OPTIONS, CUSTOM_FONT_ID, DEFAULT_MONO_FONT, DEFAULT_UI_FONT, UI_FONT_OPTIONS, type MonoFontOption, type UiFontOption } from '@/lib/fontOptions';
+import { parseVimMappings } from '@/lib/codemirror/vimMappings';
+import { useConfigStore } from '@/stores/useConfigStore';
 import { useI18n } from '@/lib/i18n';
 import { useEnterpriseMode } from '@/stores/useEnterprisePolicyStore';
 import { useFontPreferences } from '@/hooks/useFontPreferences';
 import { normalizeMobileKeyboardMode, supportsMobileKeyboardResizeContent, type MobileKeyboardMode } from '@/lib/mobileKeyboardMode';
 import {
+    setDirectoryShowHidden,
+    useDirectoryShowHidden,
+} from '@/lib/directoryShowHidden';
+import {
     SettingsSection,
+    SettingsControlGroup,
     SettingsTwoColumn,
     SettingsStackedField,
     SettingsFieldRow,
@@ -45,6 +55,7 @@ import {
     SettingsRadioOption,
     SettingsChipGroup,
     SETTINGS_SELECT_TRIGGER_CLASS,
+    SETTINGS_SELECT_SIZE,
     SETTINGS_ICON_BUTTON_CLASS,
     SETTINGS_CONTROL_CLUSTER_CLASS,
     SETTINGS_CLUSTER_CONTROL_CLASS,
@@ -56,6 +67,19 @@ import {
     SETTINGS_HELPER_CLASS,
 } from '@/components/sections/shared/SettingsSection';
 import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint';
+import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
+import type { TerminalShellOption } from '@/lib/api/types';
+import {
+    MAX_INPUT_HISTORY_LIMIT,
+    MIN_INPUT_HISTORY_LIMIT,
+    isInputHistoryLimit,
+    type InputHistoryScope,
+} from '@/lib/inputHistoryScope';
+import { isTerminalShell } from '@/lib/terminalShell';
+import { subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
+import { formatShortcutForDisplay } from '@/lib/shortcuts';
+import { useInputHistoryStore } from '@/stores/useInputHistoryStore';
+import { SessionGoalCheckerField, SessionGoalMaxTurnsField } from './SessionGoalCheckerField';
 
 interface Option<T extends string> {
     id: T;
@@ -312,13 +336,66 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     const tUnsafe = React.useCallback((key: string) => t(key as Parameters<typeof t>[0]), [t]);
     const { isMobile } = useDeviceInfo();
     const { browserTab } = usePwaDetection();
+    const { terminal } = useRuntimeAPIs();
+    const directoryShowHidden = useDirectoryShowHidden();
+    const showReasoningTraces = useUIStore(state => state.showReasoningTraces);
+    const sessionRecapEnabled = useUIStore(state => state.sessionRecapEnabled);
+    const sessionSuggestionEnabled = useUIStore(state => state.sessionSuggestionEnabled);
+    const setSessionRecapEnabled = useUIStore(state => state.setSessionRecapEnabled);
+    const setSessionSuggestionEnabled = useUIStore(state => state.setSessionSuggestionEnabled);
+    const sessionGoalEnabled = useUIStore(state => state.sessionGoalEnabled);
+    const setSessionGoalEnabled = useUIStore(state => state.setSessionGoalEnabled);
+    const chatRenderMode = useUIStore(state => state.chatRenderMode);
+    const setChatRenderMode = useUIStore(state => state.setChatRenderMode);
+    const showExpandedBashTools = useUIStore(state => state.showExpandedBashTools);
+    const setShowExpandedBashTools = useUIStore(state => state.setShowExpandedBashTools);
+    const showExpandedEditTools = useUIStore(state => state.showExpandedEditTools);
+    const setShowExpandedEditTools = useUIStore(state => state.setShowExpandedEditTools);
+    const sessionGoalDefaultBudgetEnabled = useUIStore(state => state.sessionGoalDefaultBudgetEnabled);
+    const setSessionGoalDefaultBudgetEnabled = useUIStore(state => state.setSessionGoalDefaultBudgetEnabled);
+    const sessionGoalDefaultBudget = useUIStore(state => state.sessionGoalDefaultBudget);
+    const setSessionGoalDefaultBudget = useUIStore(state => state.setSessionGoalDefaultBudget);
+    const setShowReasoningTraces = useUIStore(state => state.setShowReasoningTraces);
+    const streamingAutoFollowEnabled = useUIStore(state => state.streamingAutoFollowEnabled);
+    const setStreamingAutoFollowEnabled = useUIStore(state => state.setStreamingAutoFollowEnabled);
+    const collapsibleThinkingBlocks = useUIStore(state => state.collapsibleThinkingBlocks);
+    const setCollapsibleThinkingBlocks = useUIStore(state => state.setCollapsibleThinkingBlocks);
+    const expandReasoningWhileStreaming = useUIStore(state => state.expandReasoningWhileStreaming);
+    const setExpandReasoningWhileStreaming = useUIStore(state => state.setExpandReasoningWhileStreaming);
     const animatedActivityIndicators = useSessionDisplayStore((s) => s.animatedActivityIndicators);
     const setAnimatedActivityIndicators = useSessionDisplayStore((s) => s.setAnimatedActivityIndicators);
 
+    const mermaidRenderingMode = useUIStore(state => state.mermaidRenderingMode);
+    const setMermaidRenderingMode = useUIStore(state => state.setMermaidRenderingMode);
+    const userMessageRenderingMode = useUIStore(state => state.userMessageRenderingMode);
+    const setUserMessageRenderingMode = useUIStore(state => state.setUserMessageRenderingMode);
+    const collapsibleUserMessages = useUIStore(state => state.collapsibleUserMessages);
+    const setCollapsibleUserMessages = useUIStore(state => state.setCollapsibleUserMessages);
+    const stickyUserHeader = useUIStore(state => state.stickyUserHeader);
+    const promptNavigatorEnabled = useUIStore(state => state.promptNavigatorEnabled);
+    const setStickyUserHeader = useUIStore(state => state.setStickyUserHeader);
+    const setPromptNavigatorEnabled = useUIStore(state => state.setPromptNavigatorEnabled);
+    const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled);
+    const setAutoSaveEnabled = useUIStore(state => state.setAutoSaveEnabled);
+    const wideChatLayoutEnabled = useUIStore(state => state.wideChatLayoutEnabled);
+    const setWideChatLayoutEnabled = useUIStore(state => state.setWideChatLayoutEnabled);
+    const codeBlockLineWrap = useUIStore(state => state.codeBlockLineWrap);
+    const setCodeBlockLineWrap = useUIStore(state => state.setCodeBlockLineWrap);
+    const tableCellWrap = useUIStore(state => state.tableCellWrap);
+    const setTableCellWrap = useUIStore(state => state.setTableCellWrap);
+    const copyMessagesAsPlainText = useUIStore(state => state.copyMessagesAsPlainText);
+    const setCopyMessagesAsPlainText = useUIStore(state => state.setCopyMessagesAsPlainText);
+
+    const activityRenderMode = useUIStore(state => state.activityRenderMode);
+    const setActivityRenderMode = useUIStore(state => state.setActivityRenderMode);
     const fontSize = useUIStore(state => state.fontSize);
     const setFontSize = useUIStore(state => state.setFontSize);
     const terminalFontSize = useUIStore(state => state.terminalFontSize);
     const setTerminalFontSize = useUIStore(state => state.setTerminalFontSize);
+    const terminalShell = useUIStore(state => state.terminalShell);
+    const setTerminalShell = useUIStore(state => state.setTerminalShell);
+    const terminalLoginShells = useUIStore(state => state.terminalLoginShells);
+    const setTerminalLoginShells = useUIStore(state => state.setTerminalLoginShells);
     const editorFontSize = useUIStore(state => state.editorFontSize);
     const setEditorFontSize = useUIStore(state => state.setEditorFontSize);
     // The fonts in effect: enterprise mode shows the system font where the
@@ -341,6 +418,53 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     const setTimeFormatPreference = useUIStore(state => state.setTimeFormatPreference);
     const weekStartPreference = useUIStore(state => state.weekStartPreference);
     const setWeekStartPreference = useUIStore(state => state.setWeekStartPreference);
+    const diffLayoutPreference = useUIStore(state => state.diffLayoutPreference);
+    const setDiffLayoutPreference = useUIStore(state => state.setDiffLayoutPreference);
+    const showTerminalQuickKeysOnDesktop = useUIStore(state => state.showTerminalQuickKeysOnDesktop);
+    const sessionTabsEnabled = useUIStore(state => state.sessionTabsEnabled);
+    const setSessionTabsEnabled = useUIStore(state => state.setSessionTabsEnabled);
+    const setShowTerminalQuickKeysOnDesktop = useUIStore(state => state.setShowTerminalQuickKeysOnDesktop);
+    const fileEditorKeymap = useUIStore(state => state.fileEditorKeymap);
+    const setFileEditorKeymap = useUIStore(state => state.setFileEditorKeymap);
+    const fileEditorVimMappings = useUIStore(state => state.fileEditorVimMappings);
+    const setFileEditorVimMappings = useUIStore(state => state.setFileEditorVimMappings);
+    const invalidVimMappingLines = React.useMemo(
+        () => parseVimMappings(fileEditorVimMappings).invalidLines,
+        [fileEditorVimMappings],
+    );
+    const followUpBehavior = useMessageQueueStore(state => state.followUpBehavior);
+    const setFollowUpBehavior = useMessageQueueStore(state => state.setFollowUpBehavior);
+    const inputHistoryScope = useInputHistoryStore(state => state.scope);
+    const inputHistoryLimit = useInputHistoryStore(state => state.entryLimit);
+    const applyInputHistoryScope = useInputHistoryStore(state => state.applyScope);
+    const applyInputHistoryLimit = useInputHistoryStore(state => state.applyEntryLimit);
+    const persistChatDraft = useUIStore(state => state.persistChatDraft);
+    const setPersistChatDraft = useUIStore(state => state.setPersistChatDraft);
+    const inputSpellcheckEnabled = useUIStore(state => state.inputSpellcheckEnabled);
+    const setInputSpellcheckEnabled = useUIStore(state => state.setInputSpellcheckEnabled);
+    const largeTextPasteBehavior = useUIStore(state => state.largeTextPasteBehavior);
+    const setLargeTextPasteBehavior = useUIStore(state => state.setLargeTextPasteBehavior);
+    const enterToSend = useUIStore(state => state.enterToSend);
+    const setEnterToSend = useUIStore(state => state.setEnterToSend);
+    const enterToSendConfigured = useUIStore(state => state.enterToSendConfigured);
+    const setEnterToSendConfigured = useUIStore(state => state.setEnterToSendConfigured);
+    const enterSendSelected = enterToSendConfigured ? enterToSend : !isMobile;
+    const showToolFileIcons = useUIStore(state => state.showToolFileIcons);
+    const setShowToolFileIcons = useUIStore(state => state.setShowToolFileIcons);
+    const showTurnChangedFiles = useUIStore(state => state.showTurnChangedFiles);
+    const setShowTurnChangedFiles = useUIStore(state => state.setShowTurnChangedFiles);
+    const showSplitAssistantMessageActions = useUIStore(state => state.showSplitAssistantMessageActions);
+    const setShowSplitAssistantMessageActions = useUIStore(state => state.setShowSplitAssistantMessageActions);
+    const allowPromptingSubagentSessions = useUIStore(state => state.allowPromptingSubagentSessions);
+    const setAllowPromptingSubagentSessions = useUIStore(state => state.setAllowPromptingSubagentSessions);
+    const draftStartersVisible = useUIStore(state => state.draftStartersVisible);
+    const setDraftStartersVisible = useUIStore(state => state.setDraftStartersVisible);
+    const messageStreamTransport = useConfigStore((state) => state.settingsMessageStreamTransport);
+    const setMessageStreamTransport = useConfigStore((state) => state.setSettingsMessageStreamTransport);
+    const effectiveMessageStreamTransport = messageStreamTransport;
+    const settingsDefaultFileViewerPreview = useConfigStore((state) => state.settingsDefaultFileViewerPreview);
+    const setSettingsDefaultFileViewerPreview = useConfigStore((state) => state.setSettingsDefaultFileViewerPreview);
+    const isSettingsDialogOpen = useUIStore(state => state.isSettingsDialogOpen);
     const {
         themeMode,
         setThemeMode,
@@ -372,6 +496,15 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
     const setDesktopWindowControlsPosition = useUIStore((state) => state.setDesktopWindowControlsPosition);
     const desktopWindowControlsStyle = useUIStore((state) => state.desktopWindowControlsStyle);
     const setDesktopWindowControlsStyle = useUIStore((state) => state.setDesktopWindowControlsStyle);
+    const [chatRenderPreviewTick, setChatRenderPreviewTick] = React.useState(0);
+    const reportUsage = useUIStore(state => state.reportUsage);
+    const setReportUsage = useUIStore(state => state.setReportUsage);
+
+    // Sync reportUsage changes to server settings
+    const handleReportUsageChange = React.useCallback((enabled: boolean) => {
+        setReportUsage(enabled);
+        void updateDesktopSettings({ reportUsage: enabled });
+    }, [setReportUsage]);
 
     // The server copy lets the language survive lost browser storage and reach
     // the other clients of this instance.
@@ -606,9 +739,106 @@ export const AlcodeVisualSettings: React.FC<AlcodeVisualSettingsProps> = ({ visi
         ? hasLocalizationSettings
         : (shouldShow('theme') || showWindowControlsPositionSetting || shouldShow('pwaInstallName') || shouldShow('pwaOrientation') || shouldShow('timeFormat') || shouldShow('weekStart'));
     const hasLayoutSettings = shouldShow('fontSize') || shouldShow('terminalFontSize') || shouldShow('editorFontSize') || shouldShow('spacing') || (shouldShow('scrollbars') && !hasThemeSettings) || (shouldShow('inputBarOffset') && isMobile);
+    const hasNavigationSettings = (shouldShow('terminalQuickKeys') && !isMobile) || ((shouldShow('terminalShell') || shouldShow('terminalLoginShell')) && !isVSCode) || shouldShow('fileEditorKeymap') || shouldShow('autoSaveEnabled') || (shouldShow('sessionTabs') && !isVSCode && !isMobile);
+    const hasBehaviorSettings = shouldShow('mermaidRendering')
+        || (shouldShow('sessionGoal') && !isVSCode)
+        || shouldShow('userMessageRendering')
+        || shouldShow('chatRenderMode')
+        || shouldShow('messageTransport')
+        || shouldShow('activityRenderMode')
+        || shouldShow('collapsibleUserMessages')
+        || shouldShow('stickyUserHeader')
+        || shouldShow('promptNavigatorEnabled')
+        || shouldShow('wideChatLayout')
+        || shouldShow('codeBlockLineWrap')
+        || shouldShow('tableCellWrap')
+        || shouldShow('copyMessagesAsPlainText')
+        || shouldShow('splitAssistantMessageActions')
+        || shouldShow('subagentReadOnlyBanner')
+        || shouldShow('diffLayout')
+        || shouldShow('dotfiles')
+        || shouldShow('fileViewerPreview')
+        || shouldShow('reasoning')
+        || shouldShow('followUpBehavior')
+        || shouldShow('inputHistoryScope')
+        || shouldShow('inputHistoryLimit')
+        || shouldShow('persistDraft')
+        || shouldShow('largeTextPaste')
+        || shouldShow('showToolFileIcons')
+        || shouldShow('expandedTools')
+        || (!isMobile && shouldShow('inputSpellcheck'))
+        || shouldShow('enterToSend');
+    const showBehaviorDisplaySettings = shouldShow('chatRenderMode')
+        || shouldShow('activityRenderMode');
+    const showTransportSection = shouldShow('messageTransport');
+    const showBehaviorMessageOptions = shouldShow('userMessageRendering')
+        || shouldShow('mermaidRendering')
+        || (shouldShow('diffLayout') && !isVSCode)
+        || shouldShow('followUpBehavior')
+        || shouldShow('inputHistoryScope')
+        || shouldShow('inputHistoryLimit');
+    const showBehaviorFeatureCheckboxes = shouldShow('sessionAssist')
+        || (shouldShow('sessionGoal') && !isVSCode)
+        || shouldShow('subagentReadOnlyBanner')
+        || shouldShow('collapsibleUserMessages')
+        || shouldShow('stickyUserHeader')
+        || shouldShow('promptNavigatorEnabled')
+        || shouldShow('wideChatLayout')
+        || shouldShow('codeBlockLineWrap')
+        || shouldShow('tableCellWrap')
+        || shouldShow('copyMessagesAsPlainText')
+        || shouldShow('splitAssistantMessageActions')
+        || shouldShow('dotfiles')
+        || shouldShow('fileViewerPreview')
+        || shouldShow('persistDraft')
+        || shouldShow('largeTextPaste')
+        || shouldShow('showToolFileIcons')
+        || shouldShow('showTurnChangedFiles')
+        || (!isMobile && shouldShow('inputSpellcheck'))
+        || shouldShow('enterToSend')
+        || shouldShow('reasoning')
+        || shouldShow('expandedTools');
+    // First behavior section under the page header should not draw a top border on Chat-only;
+    // when Appearance (or earlier sections) already rendered, keep the default divider.
+    const behaviorSectionDivider = hasAppearanceSettings || hasLayoutSettings || hasNavigationSettings;
     const showPwaInstallNameSetting = shouldShow('pwaInstallName') && isWebRuntime() && browserTab && !isDesktopShell() && !isVSCode;
     const showPwaOrientationSetting = shouldShow('pwaOrientation') && isWebRuntime() && !isDesktopShell() && !isVSCode;
     const showMobileKeyboardModeSetting = shouldShow('mobileKeyboardMode') && isWebRuntime() && !isDesktopShell() && !isVSCode && supportsMobileKeyboardResizeContent();
+    const showTerminalShellSetting = (shouldShow('terminalShell') || shouldShow('terminalLoginShell')) && !isVSCode;
+    const [availableTerminalShells, setAvailableTerminalShells] = React.useState<TerminalShellOption[]>([]);
+    const [terminalShellRuntimeEpoch, setTerminalShellRuntimeEpoch] = React.useState(0);
+    React.useEffect(() => subscribeRuntimeEndpointChanged(() => {
+        setAvailableTerminalShells([]);
+        setTerminalShellRuntimeEpoch((epoch) => epoch + 1);
+    }), []);
+    React.useEffect(() => {
+        let cancelled = false;
+        if (!showTerminalShellSetting || !terminal.listShells) return;
+        void terminal.listShells()
+            .then((shells) => {
+                if (!cancelled) setAvailableTerminalShells(shells);
+            })
+            .catch(() => {
+                if (!cancelled) setAvailableTerminalShells([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [showTerminalShellSetting, terminal, terminalShellRuntimeEpoch]);
+    const terminalShellOptions = React.useMemo(() => {
+        const explicitShells = availableTerminalShells.filter((shell) => shell.id !== 'auto');
+        if (terminalShell === 'auto' || explicitShells.some((shell) => shell.id === terminalShell)) {
+            return explicitShells;
+        }
+        return [{ id: terminalShell, name: terminalShell, supportsLogin: false }, ...explicitShells];
+    }, [availableTerminalShells, terminalShell]);
+    const terminalShellSupportsLogin = availableTerminalShells.find((shell) => shell.id === terminalShell)?.supportsLogin === true;
+    const terminalLoginShellEnabled = terminalLoginShells.includes(terminalShell);
+    const setTerminalLoginShellEnabled = (enabled: boolean) => {
+        setTerminalLoginShells(enabled
+            ? [...terminalLoginShells.filter((shell) => shell !== terminalShell), terminalShell]
+            : terminalLoginShells.filter((shell) => shell !== terminalShell));
+    };
     const [pwaInstallName, setPwaInstallName] = React.useState('');
     const [pwaOrientation, setPwaOrientation] = React.useState<'system' | 'portrait' | 'landscape'>('system');
     const selectedTimeFormatLabel = React.useMemo(() => {

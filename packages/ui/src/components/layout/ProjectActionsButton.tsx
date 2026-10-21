@@ -7,9 +7,23 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from '@/components/ui';
 import { Icon } from "@/components/icon/Icon";
+import type { IconName } from '@/components/icon/icons';
+import { cn } from '@/lib/utils';
+import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
+import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
+import { useDeviceInfo } from '@/lib/device';
+import { isDesktopShell } from '@/lib/desktop';
 import { useUIStore } from '@/stores/useUIStore';
 import { useTerminalStore } from '@/stores/useTerminalStore';
+import { terminalSnapshotSize } from '@/lib/terminalApi';
+import { extractAnnouncedUrls, extractProjectActionUrl, extractProxiedPorts } from '@/lib/terminalPreview';
+import { setAnnouncedDevServers } from '@/lib/browser/announcedServers';
+import { reachesDevServersThroughTunnel } from '@/lib/browser/devTunnel';
+import { useThemeSystem } from '@/contexts/useThemeSystem';
+import { useDesktopSshStore } from '@/stores/useDesktopSshStore';
+import { openExternalUrl } from '@/lib/url';
 import { useI18n } from '@/lib/i18n';
 import {
   getProjectActionsState,
@@ -106,9 +120,20 @@ export const ProjectActionsButton = ({
   allowMobile = false,
 }: ProjectActionsButtonProps) => {
   const { t } = useI18n();
-  const runner = useProjectActions();
+  const { currentTheme } = useThemeSystem();
+  const { terminal, runtime, git } = useRuntimeAPIs();
+  const effectiveDirectory = useEffectiveDirectory();
+  const { isMobile } = useDeviceInfo();
+  const isDesktopShellApp = React.useMemo(() => isDesktopShell(), []);
+  const desktopSshInstances = useDesktopSshStore((state) => state.instances);
+  const loadDesktopSsh = useDesktopSshStore((state) => state.load);
+
+  const terminalShell = useUIStore((state) => state.terminalShell);
+  const terminalLoginShell = useUIStore((state) => state.terminalLoginShells.includes(state.terminalShell));
+  const setSettingsPage = useUIStore((state) => state.setSettingsPage);
+  const setSettingsDialogOpen = useUIStore((state) => state.setSettingsDialogOpen);
+  const setSettingsProjectsSelectedId = useUIStore((state) => state.setSettingsProjectsSelectedId);
   const openContextPreview = useUIStore((state) => state.openContextPreview);
-  useObserveProjectActionRuns(true);
 
   const ensureDirectory = useTerminalStore((state) => state.ensureDirectory);
   const reconcileServerSessions = useTerminalStore((state) => state.reconcileServerSessions);
@@ -1089,93 +1114,238 @@ export const ProjectActionsButton = ({
     return state.getDirectoryState(previewRun.directory)?.tabs.find((tab) => tab.id === previewRun.tabId)?.previewUrl ?? null;
   });
 
-  if (!runner || !shown) {
+  if (runtime.isVSCode || (!allowMobile && isMobile) || !stableProjectRef || !normalizedDirectory) {
     return null;
   }
 
-  const isStoppingShown = shownRun?.status === 'stopping';
-  const handleOpenShownPreview = () => {
-    if (!shownRun || !shownRunPreviewUrl) {
+  const resolvedSelected = selectedAction ?? displayActions[0] ?? null;
+  if (!resolvedSelected) {
+    return null;
+  }
+
+  const selectedIconName = resolveProjectActionIconName(resolvedSelected);
+  const selectedRunKey = toProjectActionRunKey(executionDirectoryFor(resolvedSelected), resolvedSelected.id);
+  const selectedRunning = projectActionRuns[selectedRunKey];
+  const isStoppingSelected = selectedRunning?.status === 'stopping';
+  const isWaitingForSelectedPreview = selectedRunning?.status === 'waiting-for-preview';
+  const showSelectedPreviewButton = Boolean(selectedRunning && selectedRunPreviewUrl);
+  const handleOpenSelectedPreview = () => {
+    if (!selectedRunning || !selectedRunPreviewUrl) {
       return;
     }
-    openContextPreview(shownRun.directory, shownRunPreviewUrl);
+    openContextPreview(selectedRunning.directory, selectedRunPreviewUrl);
   };
+  const isAutoDiscoverSelected = resolvedSelected.id === AUTO_DISCOVER_ACTION_ID;
+
+  if (compact) {
+    return (
+      <div className="inline-flex items-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              disabled={isLoading || isStoppingSelected}
+              className={cn(
+                'app-region-no-drag inline-flex h-9 w-9 items-center justify-center rounded-[10px] [corner-shape:squircle] supports-[corner-shape:squircle]:rounded-[50px] p-2',
+                'typography-ui-label font-medium text-muted-foreground hover:bg-interactive-hover hover:text-foreground transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'disabled:cursor-not-allowed',
+                className
+              )}
+              onClick={handlePrimaryClick}
+              aria-label={selectedRunning
+                ? t('projectActions.actions.stopNamedAria', { name: resolvedSelected.name })
+                : t('projectActions.actions.runNamedAria', { name: resolvedSelected.name })}
+            >
+              {isStoppingSelected || isWaitingForSelectedPreview
+                ? <Icon name="loader-4" className="h-5 w-5 animate-spin text-[var(--status-warning)]" />
+                : selectedRunning
+                  ? <Icon name="stop" className="h-5 w-5 text-[var(--status-warning)]" />
+                  : <Icon name={selectedIconName} className="h-5 w-5" />}
+            </button>
+          </TooltipTrigger>
+          {isAutoDiscoverSelected ? (
+            <TooltipContent sideOffset={6}>{t('projectActions.actions.autoDiscoverTooltip')}</TooltipContent>
+          ) : null}
+        </Tooltip>
+        {showSelectedPreviewButton ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="app-region-no-drag -ml-1 inline-flex h-9 w-7 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={t('projectActions.actions.openPreview')}
+                onClick={handleOpenSelectedPreview}
+              >
+                <Icon name="global" className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent sideOffset={6}>{t('projectActions.actions.openPreview')}</TooltipContent>
+          </Tooltip>
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="app-region-no-drag -ml-1 inline-flex h-9 w-5 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={t('projectActions.actions.chooseActionAria')}
+            >
+              <Icon name="arrow-down-s" className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52 max-h-[70vh] overflow-y-auto">
+            <DropdownMenuItem className="flex items-center gap-2" onClick={openProjectActionsSettings}>
+              <Icon name="add" className="h-4 w-4" />
+              <span className="typography-ui-label text-foreground">{t('projectActions.actions.addNewAction')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {displayActions.map((entry) => {
+              const iconName = resolveProjectActionIconName(entry);
+              const runKey = toProjectActionRunKey(executionDirectoryFor(entry), entry.id);
+              const runState = projectActionRuns[runKey];
+              const isRunning = Boolean(runState);
+              const isStopping = runState?.status === 'stopping';
+
+              return (
+                <DropdownMenuItem
+                  key={entry.id}
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    handleSelectAction(entry, true);
+                  }}
+                >
+                  <Icon name={iconName} className="h-4 w-4" />
+                  <span className="typography-ui-label text-foreground truncate">{entry.name}</span>
+                  {entry.source === 'shared' ? (
+                    <span className="shrink-0 typography-micro px-1 rounded leading-none pb-px text-muted-foreground bg-[var(--surface-subtle)]">
+                      {t('projectActions.menu.sharedBadge')}
+                    </span>
+                  ) : null}
+                  {isStopping || runState?.status === 'waiting-for-preview'
+                    ? <Icon name="loader-4" className="ml-auto h-4 w-4 animate-spin text-[var(--status-warning)]" />
+                    : isRunning
+                      ? <Icon name="stop" className="ml-auto h-4 w-4 text-[var(--status-warning)]" />
+                      : null}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  }
 
   return (
-    <div className="group/action relative flex h-7 w-full items-center gap-2 rounded-md px-1 text-muted-foreground transition-colors hover:text-foreground">
+    <div
+      className={cn(
+        'app-region-no-drag inline-flex shrink-0 items-center self-center rounded-[9px] [corner-shape:squircle] supports-[corner-shape:squircle]:rounded-[50px]',
+        'bg-[var(--surface-elevated)] overflow-hidden',
+        'border border-border/60',
+        compact ? 'h-9' : 'h-7',
+        className
+      )}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
-            onClick={() => runner.toggle(shown)}
-            disabled={runner.isLoading || isStoppingShown}
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-start focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)] disabled:cursor-not-allowed"
-            aria-label={shownRun
-              ? t('projectActions.actions.stopNamedAria', { name: shown.name })
-              : t('projectActions.actions.runNamedAria', { name: shown.name })}
+            onClick={handlePrimaryClick}
+            disabled={isLoading || isStoppingSelected}
+            className={cn(
+              'inline-flex h-full items-center justify-center typography-ui-label font-medium text-foreground hover:bg-interactive-hover',
+              compact ? 'w-9 px-0' : 'px-2.5',
+              'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed'
+            )}
+            aria-label={selectedRunning
+              ? t('projectActions.actions.stopNamedAria', { name: resolvedSelected.name })
+              : t('projectActions.actions.runNamedAria', { name: resolvedSelected.name })}
           >
-            <Icon name={resolveProjectActionIconName(shown)} className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate text-[13px]">{shown.name}</span>
-            {/* The state is the trailing value: what pressing the row does next. */}
-            <ProjectActionRunIndicator run={shownRun} showIdle />
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+              {isStoppingSelected || isWaitingForSelectedPreview
+                ? <Icon name="loader-4" className="h-4 w-4 animate-spin text-[var(--status-warning)]" />
+                : selectedRunning
+                  ? <Icon name="stop" className="h-4 w-4 text-[var(--status-warning)]" />
+                  : <Icon name={selectedIconName} className="h-4 w-4" />}
+            </span>
           </button>
         </TooltipTrigger>
-        {shown.id === AUTO_DISCOVER_ACTION_ID ? (
-          <TooltipContent side="left" sideOffset={8}>{t('projectActions.actions.autoDiscoverTooltip')}</TooltipContent>
+        {isAutoDiscoverSelected ? (
+          <TooltipContent sideOffset={6}>{t('projectActions.actions.autoDiscoverTooltip')}</TooltipContent>
         ) : null}
       </Tooltip>
-      {shownRun && shownRunPreviewUrl ? (
-        <button
-          type="button"
-          onClick={handleOpenShownPreview}
-          className="inline-flex size-5 shrink-0 items-center justify-center rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)]"
-          aria-label={t('projectActions.actions.openPreview')}
-          title={t('projectActions.actions.openPreview')}
-        >
-          <Icon name="global" className="size-4" />
-        </button>
+
+      {showSelectedPreviewButton ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleOpenSelectedPreview}
+              className={cn(
+                compact ? 'inline-flex h-full w-8 items-center justify-center' : 'inline-flex h-full w-7 items-center justify-center',
+                'border-l border-[var(--interactive-border)] text-foreground',
+                'hover:bg-interactive-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+              )}
+              aria-label={t('projectActions.actions.openPreview')}
+            >
+              <Icon name="global" className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent sideOffset={6}>{t('projectActions.actions.openPreview')}</TooltipContent>
+        </Tooltip>
       ) : null}
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="inline-flex size-5 shrink-0 items-center justify-center rounded-md hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--interactive-focus-ring)]"
+            className={cn(
+              compact ? 'inline-flex h-full w-8 items-center justify-center' : 'inline-flex h-full w-7 items-center justify-center',
+              'border-l border-[var(--interactive-border)] text-muted-foreground',
+              'hover:bg-interactive-hover hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+            )}
             aria-label={t('projectActions.actions.chooseActionAria')}
           >
-            <Icon name="arrow-down-s" className="size-4" />
+            <Icon name="arrow-down-s" className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent data-work-status-popup align="end" className="w-60 max-h-[70vh] overflow-y-auto">
-          <DropdownMenuItem className="flex items-center gap-2" onClick={runner.openSettings}>
+        <DropdownMenuContent align="start" className="w-52 max-h-[70vh] overflow-y-auto">
+          <DropdownMenuItem className="flex items-center gap-2" onClick={openProjectActionsSettings}>
             <Icon name="add" className="h-4 w-4" />
             <span className="typography-ui-label text-foreground">{t('projectActions.actions.addNewAction')}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          {runner.actions.map((entry) => (
-            <DropdownMenuItem
-              key={entry.id}
-              className="flex items-center gap-2"
-              onClick={() => {
-                runner.select(entry);
-                runner.toggle(entry);
-              }}
-            >
-              <Icon name={resolveProjectActionIconName(entry)} className="h-4 w-4" />
-              <span className="typography-ui-label text-foreground truncate">{entry.name}</span>
-              {entry.source === 'shared' ? (
-                <span className="shrink-0 typography-micro px-1 rounded leading-none pb-px text-muted-foreground bg-[var(--surface-subtle)]">
-                  {t('projectActions.menu.sharedBadge')}
-                </span>
-              ) : null}
-              <ProjectActionRunIndicator run={runner.runOf(entry)} className="ms-auto" />
-            </DropdownMenuItem>
-          ))}
+          {displayActions.map((entry) => {
+            const iconName = resolveProjectActionIconName(entry);
+            const runKey = toProjectActionRunKey(executionDirectoryFor(entry), entry.id);
+            const runState = projectActionRuns[runKey];
+            const isRunning = Boolean(runState);
+            const isStopping = runState?.status === 'stopping';
+
+            return (
+              <DropdownMenuItem
+                key={entry.id}
+                className="flex items-center gap-2"
+                onClick={() => {
+                  handleSelectAction(entry, true);
+                }}
+              >
+                <Icon name={iconName} className="h-4 w-4" />
+                <span className="typography-ui-label text-foreground truncate">{entry.name}</span>
+                {entry.source === 'shared' ? (
+                  <span className="shrink-0 typography-micro px-1 rounded leading-none pb-px text-muted-foreground bg-[var(--surface-subtle)]">
+                    {t('projectActions.menu.sharedBadge')}
+                  </span>
+                ) : null}
+                {isStopping || runState?.status === 'waiting-for-preview'
+                  ? <Icon name="loader-4" className="ml-auto h-4 w-4 animate-spin text-[var(--status-warning)]" />
+                  : isRunning
+                    ? <Icon name="stop" className="ml-auto h-4 w-4 text-[var(--status-warning)]" />
+                    : null}
+              </DropdownMenuItem>
+            );
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   );
 };
-
-// Memoised: it sits in the work-status card, which re-renders on every streamed
-// message; it re-renders on its own when the runner changes.
-export const ProjectActionsButton = React.memo(ProjectActionsButtonComponent);

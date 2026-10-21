@@ -288,17 +288,18 @@ const extractHrefFileReferenceCandidate = (anchor: HTMLAnchorElement): string | 
 // repeated on the same element. When the renderer replaces the `<code>` subtree
 // (e.g. on content change during streaming), the new element lacks the marker and
 // will be rescanned on the next mutation-observer callback.
-const wrapBlockCodePathTokens = (container: HTMLElement): void => {
-  const codeBlocks = container.querySelectorAll<HTMLElement>('pre code');
-  if (codeBlocks.length === 0) {
-    return;
-  }
-
+// (Implemented below by findBlockCodePathTokens plus the confirmed-token wrapper.)
 // The path-like tokens of each code block not scanned yet. Reads text only:
 // code is full of things shaped like paths (`console.log`, `this.state`),
 // and wrapping each one on mount restyled the block and re-serialized it for
 // assistive technology. A token becomes a span only once its file is
 // confirmed (`wrapBlockCodePathTokens`).
+interface BlockCodePathToken {
+  start: number;
+  end: number;
+  raw: string;
+}
+
 const findBlockCodePathTokens = (container: HTMLElement): Array<{ codeBlock: HTMLElement; tokens: BlockCodePathToken[] }> => {
   const blocks: Array<{ codeBlock: HTMLElement; tokens: BlockCodePathToken[] }> = [];
   for (const codeBlock of Array.from(container.querySelectorAll<HTMLElement>('pre code'))) {
@@ -605,21 +606,6 @@ const useFileReferenceInteractions = ({
             if (getResolvedReference(latestRaw, effectiveDirectory)?.resolvedPath !== resolvedPath) continue;
             if (targetPath) markFileLink(candidate, latestRaw, targetPath);
             else clearFileLinkAttributes(candidate);
-          }
-
-          const latestRawCandidate = extractPathCandidateFromElement(candidate);
-          const latestResolved = getResolvedReference(latestRawCandidate, effectiveDirectory);
-          if (!latestResolved || latestResolved.resolvedPath !== resolved.resolvedPath) {
-            return;
-          }
-
-          candidate.setAttribute('data-alcode-file-link', 'true');
-          candidate.setAttribute('data-alcode-file-ref', latestRawCandidate);
-          candidate.setAttribute('data-alcode-file-path', targetPath);
-          candidate.setAttribute('title', 'Open file');
-          if (candidate.tagName.toLowerCase() !== 'a') {
-            candidate.setAttribute('role', 'button');
-            candidate.setAttribute('tabindex', '0');
           }
         });
       });

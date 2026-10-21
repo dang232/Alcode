@@ -99,7 +99,7 @@ const { RuntimeAPIContext } = await import('@/contexts/runtimeAPIContext');
 const { SyncProvider } = await import('@/sync/sync-context');
 const { OpenCode } = await import('@opencode/client');
 const { resolveProjectContextId } = await import('@/lib/projectContextApi');
-const { subscribeOpenchamberEvents } = await import('@/lib/openchamberEvents');
+const { subscribeAlcodeEvents } = await import('@/lib/alcodeEvents');
 const { useProjectContextStore } = await import('@/stores/useProjectContextStore');
 const { useUIStore } = await import('@/stores/useUIStore');
 const { useSessionUIStore } = await import('@/sync/session-ui-store');
@@ -184,7 +184,7 @@ beforeEach(() => {
   useUIStore.setState({ projectContextTab: 'notes', isMobile: false });
   useSessionUIStore.setState({ currentSessionId: null, currentSessionDirectory: null });
   // App already owns this shared connection before its knowledge panel opens.
-  releaseStream = subscribeOpenchamberEvents(() => {});
+  releaseStream = subscribeAlcodeEvents(() => {});
 });
 
 afterEach(async () => {

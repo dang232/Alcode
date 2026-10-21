@@ -1,4 +1,4 @@
-import { subscribeOpenchamberEvents } from './openchamberEvents';
+import { subscribeAlcodeEvents } from './alcodeEvents';
 import { resolveProjectContextId, type ProjectRef } from './projectContextApi';
 import { getRuntimeKey } from './runtime-switch';
 import { useProjectContextStore } from '@/stores/useProjectContextStore';
@@ -38,7 +38,7 @@ export const observeProjectContext = (
     });
   };
 
-  const releaseEvents = subscribeOpenchamberEvents(event => {
+  const releaseEvents = subscribeAlcodeEvents((event) => {
     if ((event.type === 'project-context-changed' && event.projectId === projectId)
       || event.type === 'event-stream-ready') refresh();
   });

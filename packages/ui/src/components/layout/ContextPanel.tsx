@@ -39,8 +39,9 @@ import type { IconName } from "@/components/icon/icons";
 import { GuestIcon } from './GuestRailIcon';
 import { useGuestsStore } from '@/lib/guests/store';
 import { FALLBACK_GUEST_ICON } from '@/lib/guests/icon';
+import { guestHasSharedSurface, guestSurfaceDocking, type GuestSurfaceDocking } from '@/lib/guests/surfaces';
 import { isPluginContextPanelMode, pluginIdFromMode, type PluginContextPanelMode } from '@/lib/surfaces/modes';
-import { CONTEXT_SURFACE_WIDTHS, getContextSurfaceDefaultWidth, getContextSurfaceWidthFraction } from '@/lib/surfaces/registry';
+import { CONTEXT_SURFACE_WIDTHS, getContextSurfaceDefaultWidth } from '@/lib/surfaces/registry';
 import { beginLayoutAnimation, cancelWhenLayoutSettled, LAYOUT_ANIMATION_EASING, runWhenLayoutSettled } from '@/lib/layoutAnimation';
 import { useLayoutAnimationMs } from '@/hooks/useLayoutAnimationMs';
 import { WORK_STATUS_COLUMN_WIDTH } from '@/components/chat/work-status/useWorkStatusVisibility';
@@ -441,8 +442,8 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
   // a screenshot of it. The tab appears in the strip.
   React.useEffect(() => {
     if (!effectiveDirectory) return;
-    return registerBrowserOpener((url) => {
-      const tabId = openAgentBrowserTab(effectiveDirectory, url);
+    return registerBrowserOpener((url, context) => {
+      const tabId = openAgentBrowserTab(effectiveDirectory, url, context.sessionId);
       if (tabId) wakeBrowserTab(tabId);
       return tabId;
     });
@@ -839,13 +840,6 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
                     : <PullRequestView />)
             : activeTab?.mode === 'notes'
                 ? <ProjectContextPanel />
-        : activeTab?.mode === 'plan'
-            ? <React.Suspense fallback={null}><PlanView
-                targetPath={activeTab.targetPath}
-                savedProjectPlan={activeTab.projectPlanId && activeTab.projectPlanRef
-                  ? { projectRef: activeTab.projectPlanRef, planId: activeTab.projectPlanId }
-                  : null}
-              /></React.Suspense>
             : null;
 
   const browserTabs = React.useMemo(
@@ -868,6 +862,8 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
       .filter((tab) => !loadedBrowserTabs.includes(tab))
       .map((tab) => registerSleepingBrowserTab({
         tabId: tab.id,
+        directory: tab.targetDirectory ?? effectiveDirectory,
+        ownerSessionId: tab.ownerSessionId,
         describe: () => ({ title: '', url: tab.targetPath ?? '' }),
         wake: () => wakeBrowserTab(tab.id),
       }));

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Button } from '@/components/ui/button';
 import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint';
 import { Icon } from "@/components/icon/Icon";
 import type { Session } from '@/lib/opencode/model';
@@ -20,6 +21,8 @@ import { resetSharedSetupTrust } from '@/lib/sharedTrustConfirmation';
 
 import { PROJECT_SETTINGS_CONTROL_WIDTH, ProjectSettingsSubsection } from '@/components/sections/projects/ProjectSettingsSubsection';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui';
 import { listProjectWorktrees } from '@/lib/worktrees/worktreeManager';
 import { checkoutHoldsDirectory } from '@/lib/worktrees/worktreePaths';
 import { sessionEvents } from '@/lib/sessionEvents';
@@ -31,13 +34,21 @@ import { useProjectWorktrees } from './useProjectWorktrees';
 
 interface WorktreeSectionContentProps {
   projectRef?: { id: string; path: string } | null;
+  /**
+   * 'all' renders setup commands + the worktree list (settings panel);
+   * 'list-only' renders just the list (the Worktrees page — setup commands
+   * stay a settings concern).
+   */
+  sections?: 'all' | 'list-only';
 }
+
+const SETUP_COMMANDS_SAVE_DELAY_MS = 450;
 
 /**
  * The project's worktrees with a delete button each, for the Worktrees page.
  * Setup commands are edited on the project's Settings page.
  */
-export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ projectRef: projectRefProp = null }) => {
+export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ projectRef: projectRefProp = null, sections = 'all' }) => {
   const { t } = useI18n();
   const { isMobile, isTablet } = useDeviceInfo();
   const alwaysShowActions = isMobile || isTablet;
@@ -49,7 +60,21 @@ export const WorktreeSectionContent: React.FC<WorktreeSectionContentProps> = ({ 
   const sessions = useSessions();
   const homeDirectory = useDirectoryStore((state) => state.homeDirectory);
 
+  const [setupCommands, setSetupCommands] = React.useState<string[]>([]);
+  const [sharedSetupCommands, setSharedSetupCommands] = React.useState<string[]>([]);
+  const [sharedConfigPath, setSharedConfigPath] = React.useState('');
+  const [replaceSharedCommands, setReplaceSharedCommands] = React.useState(false);
+  // The trust answer covers the repository's setup commands and actions; it is
+  // shown here, next to the commands it is mostly about.
+  const [sharedTrusted, setSharedTrusted] = React.useState(false);
+  const [isResettingTrust, setIsResettingTrust] = React.useState(false);
+  const [isSharing, setIsSharing] = React.useState(false);
+  const [reloadCounter, setReloadCounter] = React.useState(0);
+  const [waitForSetupCommands, setWaitForSetupCommands] = React.useState(false);
+  const [isLoadingCommands, setIsLoadingCommands] = React.useState(false);
+  const [commandsSnapshot, setCommandsSnapshot] = React.useState<string | null>(null);
   const [isGitRepoLocal, setIsGitRepoLocal] = React.useState<boolean | null>(null);
+  const isSavingCommandsRef = React.useRef(false);
 
   const projectRef = React.useMemo(() => {
     if (projectRefProp?.id && projectRefProp?.path) {

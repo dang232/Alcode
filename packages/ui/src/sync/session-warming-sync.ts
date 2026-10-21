@@ -1,5 +1,5 @@
 import { isVSCodeRuntime } from '@/lib/desktop';
-import { subscribeOpenchamberEvents } from '@/lib/openchamberEvents';
+import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { useSessionWarmingStore } from '@/stores/useSessionWarmingStore';
 
@@ -20,7 +20,7 @@ export const subscribeSessionWarmingSync = (runtimeKey: string): (() => void) =>
   };
   // The stream may already be connected, and then no ready event comes for this listener.
   refresh();
-  return subscribeOpenchamberEvents((event) => {
+  return subscribeAlcodeEvents((event) => {
     if (runtimeKey !== getRuntimeKey()) return;
     if (event.type === 'event-stream-ready') refresh();
     else if (event.type === 'session-warming') store.applySnapshot(event.snapshot);

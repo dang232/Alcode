@@ -1266,6 +1266,7 @@ export const dict: Record<I18nKey, string> = {
   "onboarding.localSetup.docs.windows": "Instrukcja instalacji",
   "onboarding.localSetup.docs.default": "Instrukcja instalacji",
   'onboarding.localSetup.actions.checking': 'Sprawdzanie...',
+  'onboarding.localSetup.actions.checkAndContinue': 'Sprawdź i kontynuuj',
   'onboarding.localSetup.helper.checkAndContinue': 'Kliknij aby sprawdzić czy OpenCode CLI jest dostępny. Jeśli się uda, automatycznie przejdziesz do głównego ekranu.',
   'onboarding.localSetup.field.alreadyInstalled': 'Juz zainstalowane? Ustaw ścieżkę binarki OpenCode:',
   'onboarding.localSetup.actions.browse': 'Przeglądaj',
@@ -1575,7 +1576,7 @@ export const dict: Record<I18nKey, string> = {
   'chat.modelControls.showThinkingModes': 'Pokaż tryby myślenia',
   'chat.modelControls.temperature': 'Temperatura',
   'chat.modelControls.thinking': 'Myślenie',
-  'chat.modelControls.inheritedVariantTooltip': 'Myślenie: {variant}, domyślne dla tego modelu',
+  'chat.modelControls.inheritedVariantTooltip': "Thinking: {variant}, this model's default",
   'chat.modelControls.topP': 'Top P',
   'chat.modelControls.unfavoriteAria': 'Usuń z ulubionych',
   'chat.modelControls.webFetch': 'WebFetch',
@@ -3398,6 +3399,7 @@ export const dict: Record<I18nKey, string> = {
   'updateDialog.desktopHostInstall': 'OpenChamber {version} jest dostępny. Zaktualizuj go na komputerze, na którym działa.',
   'updateDialog.header.updateAvailable': 'Dostępna aktualizacja',
   'updateDialog.header.updating': 'Aktualizowanie Alcode...',
+  'updateDialog.changelog.title': 'Informacje o wersji',
   'updateDialog.status.autoReloadHint': 'Strona automatycznie odświeży się po zakończeniu aktualizacji.',
   'updateDialog.status.downloading': 'Pobieranie...',
   'updateDialog.status.downloadingPayload': 'Pobieranie pakietu aktualizacji...',
@@ -3444,7 +3446,6 @@ export const dict: Record<I18nKey, string> = {
   'vscodeLayout.title.sessions': 'Sesje',
 
   // Onboarding
-  'onboarding.localSetup.actions.checkAndContinue': 'Sprawdź i kontynuuj',
   'onboarding.localSetup.intro': 'Zainstaluj CLI OpenCode v2 aby kontynuować.',
   'onboarding.localSetup.actions.checkNow': 'Sprawdź teraz',
   'onboarding.localSetup.status.watching': 'Czekanie na OpenCode v2',
@@ -3453,7 +3454,6 @@ export const dict: Record<I18nKey, string> = {
   'onboarding.localSetup.troubleshoot.title': 'Masz problem?',
 
   // Update dialog
-  'updateDialog.changelog.title': 'Informacje o wersji',
   'gitView.stashes.actions.apply': 'Zastosuj',
   'gitView.stashes.actions.drop': 'Usuń',
   'gitView.stashes.actions.pop': 'Przywróć i usuń',

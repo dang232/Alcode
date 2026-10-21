@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { OpenChamberProjectAction, ProjectSetup } from '@/lib/openchamberConfig';
+import type { AlcodeProjectAction, ProjectSetup } from '@/lib/alcodeConfig';
 import {
   addSetupCommand,
   deleteProjectAction,
@@ -51,12 +51,12 @@ const setupWith = (options: {
   },
 });
 
-type Write = { file: keyof ProjectSetupWriters; value: Array<OpenChamberProjectAction | string> };
+type Write = { file: keyof ProjectSetupWriters; value: Array<AlcodeProjectAction | string> };
 
 /** Writers that record every call in order; `fail` names the writer that reports failure. */
 const recordingWriters = (fail?: keyof ProjectSetupWriters) => {
   const writes: Write[] = [];
-  const writer = (file: keyof ProjectSetupWriters) => async (value: Array<OpenChamberProjectAction | string>) => {
+  const writer = (file: keyof ProjectSetupWriters) => async (value: Array<AlcodeProjectAction | string>) => {
     writes.push({ file, value });
     return file !== fail;
   };

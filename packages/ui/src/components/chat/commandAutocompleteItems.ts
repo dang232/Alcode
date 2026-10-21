@@ -6,6 +6,8 @@ export interface CommandAutocompleteSearchItem {
   description?: string;
   searchAliases?: string[];
   isBuiltIn?: boolean;
+  isSkill?: boolean;
+  source?: string;
 }
 
 function addSearchAliases<T extends CommandAutocompleteSearchItem>(winner: T, duplicate: T): T {
@@ -23,12 +25,20 @@ function addSearchAliases<T extends CommandAutocompleteSearchItem>(winner: T, du
 }
 
 /**
- * Precedence is built-in command, then custom/plugin command. Identity matches
+ * Precedence is built-in command, then discovered skill, then skill
+ * command, then custom/plugin command. Identity matches
  * session.command's case-sensitive lookup.
  */
+function precedenceOf(item: CommandAutocompleteSearchItem): number {
+  if (item.isBuiltIn) return 3;
+  if (item.isSkill) return item.source === 'skill' ? 2 : 1;
+  return 0;
+}
+
 export function mergeCommandAutocompleteItems<T extends CommandAutocompleteSearchItem>(
   builtIns: T[],
   commands: T[],
+  skills: T[] = [],
 ): T[] {
   const merged: T[] = [];
   const byName = new Map<string, { index: number; item: T; precedence: number }>();
@@ -56,8 +66,9 @@ export function mergeCommandAutocompleteItems<T extends CommandAutocompleteSearc
     }
   };
 
-  addItems(builtIns, () => 1);
-  addItems(commands, (item) => item.isBuiltIn ? 1 : 0);
+  addItems(builtIns, precedenceOf);
+  addItems(commands, precedenceOf);
+  addItems(skills, precedenceOf);
   return merged;
 }
 

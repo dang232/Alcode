@@ -124,7 +124,7 @@ describe('answerGuestMessage', () => {
 
   test('a surface that did not open is a failed result with its code', async () => {
     const reply = await answerGuestMessage({
-      channel: OPENCHAMBER_SDK_CHANNEL,
+      channel: ALCODE_SDK_CHANNEL,
       v: 1,
       type: 'open-surface',
       id: 'oc-3b',

@@ -142,7 +142,7 @@ describe('spaceModelRefusal', () => {
 
   test('while the space is still being made, what the creation in this window chose decides', () => {
     noteSpaceModelAccess({ requestId: 'r1', directory: DIRECTORY }, ['anthropic']);
-    listed(running({ state: 'preparing', step: 'giving_access', grants: [], access: null }));
+    listed(running({ state: 'preparing', step: 'creating', grants: [], access: null }));
     expect(spaceModelRefusal(session, 'anthropic')).toBeNull();
     expect(spaceModelRefusal(session, 'openai')).toEqual({ spaceId: ID, providerId: 'openai', reason: 'not_granted' });
   });
