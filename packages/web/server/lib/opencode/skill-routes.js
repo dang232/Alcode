@@ -125,7 +125,7 @@ export const registerSkillRoutes = (app, dependencies) => {
   const attachEngineInstalledFlags = async (items, workingDirectory) => {
     const resolvedDiscovered = mergeDiscoveredSkills(
       (await fetchOpenCodeDiscoveredSkills(workingDirectory)) ?? [],
-      discoverSkills(workingDirectory),
+      await discoverSkills(workingDirectory),
     );
     const installedByName = new Map(resolvedDiscovered.map((s) => [s.name, s]));
     return (items || []).map((item) => {
