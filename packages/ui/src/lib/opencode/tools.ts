@@ -334,7 +334,7 @@ export type RenderedPageAsk =
 // A page sent without a title is named after its own <title>, else its first
 // h1 to h3: the server accepts such a call and names it with the same rule
 // (renderPageTitleFromHtml in
-// packages/web/server/lib/openchamber-control/render-page.js); change both
+// packages/web/server/lib/alcode-control/render-page.js); change both
 // together. The server's last resort, "Page", is the chat's own localized word.
 const TITLE_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", "#39": "'", apos: "'", nbsp: " " } as const
 const RENDER_PAGE_MAX_TITLE_LENGTH = 120

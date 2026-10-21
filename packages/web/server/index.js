@@ -456,7 +456,7 @@ const settingsRuntime = createSettingsRuntime({
   normalizeManagedRemoteTunnelPresetTokens,
   syncManagedRemoteTunnelConfigWithPresets,
   upsertManagedRemoteTunnelToken,
-  chatRoots: [path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'chats'), OPENCHAMBER_CHATS_DIR],
+  chatRoots: [path.join(ALCODE_USER_CONFIG_ROOT, 'chats'), ALCODE_CHATS_DIR],
   onManagedPluginSettingsChanged: () => managedConfigRuntime?.refreshManagedConfigFile(),
   // Declared further down; settings are only saved once the server serves requests.
   onMessageSearchEnabledChanged: (enabled) => messageSearchRuntime.setEnabled(enabled),
@@ -515,7 +515,7 @@ const setPushInitialized = (...args) => pushRuntime.setPushInitialized(...args);
 const relayKeyStore = createRelayKeyStore({
   fsPromises,
   path,
-  dataDir: OPENCHAMBER_DATA_DIR,
+  dataDir: ALCODE_DATA_DIR,
   readSettingsFromDiskMigrated,
   readSettingsStrict: readSettingsFromDiskStrict,
   writeSettingsToDisk,
@@ -656,7 +656,7 @@ const projectContextRuntime = createProjectContextRuntime({
   path,
   projectsDirPath: ALCODE_PROJECTS_CONFIG_DIR,
   resolveSharedPlansDir: (projectId) => projectConfigRuntime.resolveSharedPlansDir(projectId),
-  onChanged: (projectId) => broadcastOpenChamberUiEvent({
+  onChanged: (projectId) => broadcastAlcodeUiEvent({
     type: 'openchamber:project-context-changed',
     properties: { projectId },
   }),
@@ -941,7 +941,7 @@ notificationTemplateRuntime = createNotificationTemplateRuntime({
   getOpenCodeAuthHeaders,
   resolveGitBinaryForSpawn,
   resolvePrimaryWorktreeRoot,
-  chatRoots: [path.join(OPENCHAMBER_USER_CONFIG_ROOT, 'chats'), OPENCHAMBER_CHATS_DIR],
+  chatRoots: [path.join(ALCODE_USER_CONFIG_ROOT, 'chats'), ALCODE_CHATS_DIR],
 });
 
 const notificationTriggerRuntime = createNotificationTriggerRuntime({
@@ -983,7 +983,7 @@ const sessionAssistRuntime = createSessionAssistRuntime({
   evaluateTurn: (input) => sessionWorkRuntime.evaluateTurnEnd(input),
   lineage: sessionLineage,
   // Clients hold a left chat's OpenCode location until its assist is done.
-  onPendingChange: ({ sessionId, directory, pending }) => broadcastOpenChamberUiEvent({
+  onPendingChange: ({ sessionId, directory, pending }) => broadcastAlcodeUiEvent({
     type: 'openchamber:session-assist',
     properties: { sessionID: sessionId, directory: directory || null, pending },
   }),
@@ -1087,10 +1087,10 @@ const contextObligatoryRuntime = createContextObligatoryRuntime({
 // Keeps the prompt cache of the sessions the user picked warm while they sit
 // idle; the per-session counterpart of OpenCode's `warming` config.
 const sessionWarmingRuntime = createSessionWarmingRuntime({
-  dataDir: OPENCHAMBER_DATA_DIR,
+  dataDir: ALCODE_DATA_DIR,
   buildOpenCodeUrl,
   getOpenCodeAuthHeaders,
-  broadcast: broadcastOpenChamberUiEvent,
+  broadcast: broadcastAlcodeUiEvent,
 });
 sessionWarmingRuntime.start();
 
@@ -1543,7 +1543,7 @@ const openCodeLifecycleRuntime = createOpenCodeLifecycleRuntime({
     )));
     return existing.filter(Boolean);
   },
-  noProjectDirectory: OPENCHAMBER_CHATS_DIR,
+  noProjectDirectory: ALCODE_CHATS_DIR,
   // A managed restart can move OpenCode to a NEW port (the old one may stay
   // occupied if killProcessOnPort/waitForPortRelease didn't free it in time,
   // on any platform). Rebind the message-stream upstream readers to the current port
@@ -1858,12 +1858,12 @@ const alcodeControlService = createAlcodeControlService({
   // project open the plan.
   showPlan: (request) => {
     let delivered = 0;
-    for (const client of uiOpenChamberEventClients) {
+    for (const client of uiAlcodeEventClients) {
       try {
         writeSseEvent(client, { type: 'openchamber:plan-open-request', properties: request });
         delivered += 1;
       } catch {
-        uiOpenChamberEventClients.delete(client);
+        uiAlcodeEventClients.delete(client);
       }
     }
     return delivered;
@@ -1887,11 +1887,11 @@ const alcodeControlService = createAlcodeControlService({
         type: 'openchamber:page-waiting',
         properties: { sessionID: change.sessionId, directory: change.directory, page: { id: change.callId, title: change.title } },
       };
-      broadcastOpenChamberUiEvent(payload);
+      broadcastAlcodeUiEvent(payload);
       void maybeSendPushForTrigger(payload);
       return;
     }
-    broadcastOpenChamberUiEvent({
+    broadcastAlcodeUiEvent({
       type: 'openchamber:page-settled',
       properties: { sessionID: change.sessionId, pageID: change.callId },
     });
@@ -2015,7 +2015,7 @@ const gracefulShutdownRuntime = createGracefulShutdownRuntime({
 const gracefulShutdown = (...args) => gracefulShutdownRuntime.gracefulShutdown(...args);
 
 async function main(options = {}) {
-  beginGuestServiceHost({ registryDir: guestServiceRegistryDir(OPENCHAMBER_DATA_DIR) });
+  beginGuestServiceHost({ registryDir: guestServiceRegistryDir(ALCODE_DATA_DIR) });
   // Again at start: the desktop shell merges the login shell's environment,
   // where proxy variables often live, after this module first loaded.
   applyOutboundProxyFromEnv();
@@ -2025,7 +2025,7 @@ async function main(options = {}) {
     || (typeof process.env.ALCODE_HOST === 'string' && process.env.ALCODE_HOST.trim().length > 0
       ? process.env.ALCODE_HOST.trim()
       : '127.0.0.1');
-  const instanceDir = await prepareInstanceDir({ fsPromises, path, dataDir: OPENCHAMBER_DATA_DIR });
+  const instanceDir = await prepareInstanceDir({ fsPromises, path, dataDir: ALCODE_DATA_DIR });
   agentToolRuntime = createAgentToolRuntime({
     crypto,
     fsPromises,
@@ -2284,7 +2284,7 @@ async function main(options = {}) {
     readPermissionDefault: async () => permissionDefaultOf((await readSettingsFromDiskMigrated())?.permissionDefaultMode),
     archive: spaceArchive,
     // What the host says to the login issuer when it renews a browser login for a space.
-    userAgent: `OpenChamber/${OPENCHAMBER_VERSION}`,
+    userAgent: `Alcode/${ALCODE_VERSION}`,
   });
   const startupSettings = await readSettingsFromDiskMigrated().catch(() => null);
   if (startupSettings?.isolatedSpacesEnabled === true) {
@@ -2532,7 +2532,7 @@ async function main(options = {}) {
     host.prepareUpgrades({ uiAuthController, isRequestOriginAllowed });
     // Every space's events join the host's hub, and the host asks each space for its live status;
     // each space's queue changes and permission modes reach the browsers on the streams the host's own use.
-    void host.startEvents(globalMessageStreamHub, { broadcastUiEvent: broadcastOpenChamberUiEvent, broadcastGlobalUiEvent }).catch((error) => {
+    void host.startEvents(globalMessageStreamHub, { broadcastUiEvent: broadcastAlcodeUiEvent, broadcastGlobalUiEvent }).catch((error) => {
       console.warn(`[spaces] could not follow the spaces: ${error?.message ?? error}`);
     });
   };

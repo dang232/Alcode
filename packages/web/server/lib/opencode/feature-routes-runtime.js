@@ -800,7 +800,6 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       buildAugmentedPath,
       resolveGitBinaryForSpawn,
       resolveRipgrepBinary,
-      openchamberUserConfigRoot,
       alcodeUserConfigRoot,
       cloneRepository: networkOperations.cloneRepository,
       managedChatsRoot,

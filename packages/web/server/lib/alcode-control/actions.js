@@ -69,6 +69,9 @@ const isScheduleAction = ({ action }) => action.startsWith('schedule.');
 export const OPENCHAMBER_AGENT_TOOL_ACTION_DEFINITIONS = Object.freeze(
   AGENT_EXPOSED_CONTROL_ACTION_DEFINITIONS.filter((definition) => !isScheduleAction(definition)),
 );
+export const OPENCHAMBER_AGENT_TOOL_ACTIONS = Object.freeze(
+  OPENCHAMBER_AGENT_TOOL_ACTION_DEFINITIONS.map(({ action }) => action),
+);
 export const ALCODE_AGENT_TOOL_ACTION_DEFINITIONS = Object.freeze(
   ALCODE_CONTROL_ACTION_DEFINITIONS.filter(({ agentExposed }) => agentExposed !== false),
 );
@@ -98,6 +101,9 @@ export const OPENCHAMBER_WEB_ACTION_DEFINITIONS = Object.freeze([
   { action: 'browser.resize', title: 'Change the page viewport', description: 'Lay the page out at viewport; fill uses the whole panel' },
   { action: 'browser.close', title: 'Close a browser tab', description: 'Close a tab this session opened; without tabId, its most recent one. Never a tab the user opened' },
 ]);
+export const OPENCHAMBER_WEB_ACTIONS = Object.freeze(
+  OPENCHAMBER_WEB_ACTION_DEFINITIONS.map(({ action }) => action),
+);
 export const ALCODE_WEB_ACTION_DEFINITIONS = Object.freeze([
   { action: 'browser.open', title: 'Open a page in the browser panel', description: 'Open url in the in-app browser panel; use it to look at the running app. Without tabId it opens a new background tab and answers with its tabId: pass that tabId to the following actions to keep working there. With tabId it loads url in that tab. Set viewport to mobile, tablet or desktop to lay the page out at that size. The result says whether this client can drive the page: drivable false means display-only, so later browser actions cannot run there' },
   { action: 'browser.snapshot', title: 'Read the open page', description: 'Read the open page: url, title, visible text, and interactive elements with the selectors the other browser actions accept. Pass selector to read only that part of a long page. Reports any errors the page logged, and lists the open tabs with the ids tabId accepts' },
@@ -132,6 +138,9 @@ export const OPENCHAMBER_MEMORY_ACTION_DEFINITIONS = Object.freeze([
   { action: 'memory.save', title: 'Remember something', description: 'Requires title, body, scope. Saving the same thing updates it; memoryId rewrites that entry, to correct one or merge several into it' },
   { action: 'memory.delete', title: 'Forget a memory', description: 'For a memory that turned out wrong or obsolete; requires memoryId and scope' },
 ]);
+export const OPENCHAMBER_MEMORY_ACTIONS = Object.freeze(
+  OPENCHAMBER_MEMORY_ACTION_DEFINITIONS.map(({ action }) => action),
+);
 export const ALCODE_MEMORY_ACTION_DEFINITIONS = Object.freeze([
   { action: 'memory.read', title: 'Read a stored memory', description: 'Read the full text of one memory listed in the session index. The index shows titles only, and a title omits the conditions that decide how the memory applies, so read before acting rather than working from the title. Once read, an entry stays in your context; do not read it again in the same conversation. Requires title (as the index spells it) or memoryId; scope is optional and both stores are searched without it' },
   { action: 'memory.list', title: 'List stored memories', description: 'List stored memory titles when the session index is missing or stale; scope is global, project, or both (default)' },
@@ -169,6 +178,9 @@ export const OPENCHAMBER_KNOWLEDGE_ACTIONS = Object.freeze(
 export const OPENCHAMBER_NOTIFY_ACTION_DEFINITIONS = Object.freeze([
   { action: 'notify.send', title: 'Notify the user', description: 'Requires title' },
 ]);
+export const OPENCHAMBER_NOTIFY_ACTIONS = Object.freeze(
+  OPENCHAMBER_NOTIFY_ACTION_DEFINITIONS.map(({ action }) => action),
+);
 export const ALCODE_NOTIFY_ACTION_DEFINITIONS = Object.freeze([
   { action: 'notify.send', title: 'Notify the user', description: 'Send the user a notification; requires title, body is optional. By default it appears only while the user is away from Alcode; set showWhenFocused only when it cannot wait' },
 ]);

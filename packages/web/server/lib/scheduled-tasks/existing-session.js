@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { z } from 'zod';
-import { OpenChamberControlError } from '../openchamber-control/error.js';
+import { OpenChamberControlError } from '../alcode-control/error.js';
 import { asNonEmptyString } from '../shared/guards.js';
 import { expandSnippets } from '../opencode/snippets.js';
 

@@ -189,7 +189,7 @@ Clients re-read authoritative context for the visible owner. This is a commit no
 - **Agents write conditionally; the panel does not.** `updateNote` and
   `updatePlan` take an optional `expectedBody` / `expectedRaw` and answer `409`
   without writing or announcing when the stored text differs. Only the agent
-  tool passes them (`../openchamber-control/project-knowledge.js`): what the
+  tool passes them (`../alcode-control/project-knowledge.js`): what the
   user types in the panel is saved over an agent's change, and an agent that
   read before the user's save is refused and reads again.
 - **Notes are capped at 200 per project.** Past that, creation fails loudly

@@ -1196,6 +1196,46 @@ describe('OpenCode lifecycle', () => {
     await server.close();
   });
 
+  it('defaults OMO_ULW_LOOP_RESOLVER to the checkout resolver unless explicitly set', async () => {
+    const previousOverride = process.env.OMO_ULW_LOOP_RESOLVER;
+    delete process.env.OMO_ULW_LOOP_RESOLVER;
+    try {
+      const child = createMockChild();
+      spawnMock.mockImplementationOnce(() => {
+        queueMicrotask(() => {
+          child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+        });
+        return child;
+      });
+      const getManagedOpenCodeEnv = vi.fn(async () => ({}));
+      const runtime = createRuntime({ getManagedOpenCodeEnv });
+      const server = await runtime.startOpenCode();
+      const [, , options] = spawnMock.mock.calls[0];
+      expect(options.env.OMO_ULW_LOOP_RESOLVER).toMatch(/resolve-ulw-loop-cli\.mjs$/);
+      // The default must be absolute for the same reason as the CLI pointer.
+      expect(path.isAbsolute(options.env.OMO_ULW_LOOP_RESOLVER)).toBe(true);
+      await server.close();
+    } finally {
+      if (previousOverride !== undefined) process.env.OMO_ULW_LOOP_RESOLVER = previousOverride;
+    }
+  });
+
+  it('keeps an explicit OMO_ULW_LOOP_RESOLVER over the checkout default', async () => {
+    const child = createMockChild();
+    spawnMock.mockImplementationOnce(() => {
+      queueMicrotask(() => {
+        child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+      });
+      return child;
+    });
+    const getManagedOpenCodeEnv = vi.fn(async () => ({ OMO_ULW_LOOP_RESOLVER: '/staged/ulw-loop-cli/resolve-ulw-loop-cli.mjs' }));
+    const runtime = createRuntime({ getManagedOpenCodeEnv });
+    const server = await runtime.startOpenCode();
+    const [, , options] = spawnMock.mock.calls[0];
+    expect(options.env.OMO_ULW_LOOP_RESOLVER).toBe('/staged/ulw-loop-cli/resolve-ulw-loop-cli.mjs');
+    await server.close();
+  });
+
   it('warns actionably and sets no pointer when the checkout dist is missing', async () => {
     const previousOverride = process.env.OMO_ULW_LOOP_CLI;
     const previousHide = process.env.OMO_ULW_LOOP_TEST_HIDE_DIST;
@@ -1215,6 +1255,7 @@ describe('OpenCode lifecycle', () => {
       const server = await runtime.startOpenCode();
       const [, , options] = spawnMock.mock.calls[0];
       expect(options.env.OMO_ULW_LOOP_CLI).toBeUndefined();
+      expect(options.env.OMO_ULW_LOOP_RESOLVER).toBeUndefined();
       expect(warn).toHaveBeenCalledOnce();
       expect(warn.mock.calls[0][0]).toContain('ulw-loop CLI unavailable');
       expect(warn.mock.calls[0][0]).toContain('prepare:ulw-loop-cli');

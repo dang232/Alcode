@@ -2,7 +2,7 @@ import express from 'express';
 import { constants as fsConstants } from 'node:fs';
 import { mintOutsideFileGrant } from '../fs/routes.js';
 import { unwrapOpenCodeResponse } from '../opencode/response-envelope.js';
-import { renderPageImageSources } from '../openchamber-control/render-page.js';
+import { renderPageImageSources } from '../alcode-control/render-page.js';
 import { isString } from '../shared/guards.js';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;

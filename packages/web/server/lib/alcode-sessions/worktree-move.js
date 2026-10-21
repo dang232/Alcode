@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { asNonEmptyString } from '../shared/guards.js';
-import { OpenChamberControlError, asControlError } from '../openchamber-control/error.js';
+import { OpenChamberControlError, asControlError } from '../alcode-control/error.js';
 
 /**
  * Moves a running session into a new worktree of its repository: the agent's

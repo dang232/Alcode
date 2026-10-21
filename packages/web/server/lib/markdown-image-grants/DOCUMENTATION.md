@@ -22,7 +22,7 @@ the UI is on a different machine.
   excluding fenced and inline code.
 - The local images an `openchamber_render` page in the same message names are
   referenced too (`renderPageImageSources` in
-  `../openchamber-control/render-page.js`): the page's HTML is the call's
+  `../alcode-control/render-page.js`): the page's HTML is the call's
   input, which OpenCode stores with the message. The chat reads them as data
   URLs and puts them in the page
   (`packages/ui/src/components/chat/message/parts/renderPageImages.ts`).

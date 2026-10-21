@@ -800,6 +800,26 @@ export const createOpenCodeLifecycleRuntime = (deps) => {
         );
       }
     }
+    // Authoritative CLI resolver for the same agents (dev parity with
+    // packaged electron/main.mjs, which exports the staged copy): the repo
+    // resolver when readable, so loop agents outside any checkout resolve
+    // internal-first instead of PATH fishing. Precedence mirrors the CLI:
+    // an explicit OMO_ULW_LOOP_RESOLVER (staged or override) in either
+    // layer always wins. No warning when it falls back or stays unset:
+    // the CLI pointer above already covers that failure loudly, and the
+    // CLI alone still satisfies the skill doc's override branch.
+    let internalUlwLoopResolver = null;
+    try {
+      const checkoutUlwLoopResolver = path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '..', '..', '..', '..', '..',
+        'scripts', 'resolve-ulw-loop-cli.mjs',
+      );
+      accessSync(checkoutUlwLoopResolver, fsConstants.R_OK);
+      internalUlwLoopResolver = checkoutUlwLoopResolver;
+    } catch {
+      internalUlwLoopResolver = null;
+    }
     // What Alcode sets for OpenCode is recorded as injected, so a shell
     // the agent opens can tell it from the user's own variables.
     const processEnv = stripAppImageLauncherEnv(stripAppImageArgv0Leak(applyProviderEnvAliases(assignInjectedEnv(
@@ -808,6 +828,9 @@ export const createOpenCodeLifecycleRuntime = (deps) => {
         ...managedOpenCodeEnv,
         ...(!inheritedEnv.OMO_ULW_LOOP_CLI && !(managedOpenCodeEnv || {}).OMO_ULW_LOOP_CLI && internalUlwLoopCli
           ? { OMO_ULW_LOOP_CLI: internalUlwLoopCli }
+          : {}),
+        ...(!inheritedEnv.OMO_ULW_LOOP_RESOLVER && !(managedOpenCodeEnv || {}).OMO_ULW_LOOP_RESOLVER && internalUlwLoopResolver
+          ? { OMO_ULW_LOOP_RESOLVER: internalUlwLoopResolver }
           : {}),
         PATH: inheritedEnv.PATH,
         // OpenCode 2 reads OPENCODE_PASSWORD before the legacy name, so a

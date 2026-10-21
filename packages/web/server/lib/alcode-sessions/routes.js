@@ -771,7 +771,7 @@ export const createAlcodeSessionService = (dependencies) => {
         const sessionDirectory = asNonEmptyString(session?.location?.directory);
         if (sessionDirectory) await sessionKnowledgeRuntime.sync(sessionID, sessionDirectory);
       } catch (error) {
-        console.warn('[OpenChamberSessions] Failed to read session directory for knowledge sync:', error?.message || error);
+        console.warn('[AlcodeSessions] Failed to read session directory for knowledge sync:', error?.message || error);
       }
     }
 
@@ -1374,7 +1374,7 @@ export const registerAlcodeSessionRoutes = (app, dependencies) => {
     try {
       return res.json(await service.setSessionLinks(req.params.sessionId, req.body));
     } catch (error) {
-      console.error('[OpenChamberSessions] failed to update session links:', error);
+      console.error('[AlcodeSessions] failed to update session links:', error);
       return sendServiceError(res, error, 'Failed to update session links');
     }
   });

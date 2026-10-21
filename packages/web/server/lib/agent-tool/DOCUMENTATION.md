@@ -21,7 +21,7 @@ the user can want independently:
   with `kind` naming note, todo or plan; plans are files, so list and save
   give their path and the agent reads and edits them with its own file tools;
   dispatched by
-  `../openchamber-control/project-knowledge.js` into
+  `../alcode-control/project-knowledge.js` into
   `../project-context/runtime.js`). On by default: enabled while
   `agentKnowledgeToolEnabled` is not `false`, and the control service refuses
   these actions when it is, so a stale plugin cannot keep writing. Writes are
@@ -29,7 +29,7 @@ the user can want independently:
 - `openchamber_render` — `render.page`, a self-contained HTML page (`html`,
   `title`) the chat draws inline above the agent's answer, such as a chart or
   table. The page travels in the call's input, which OpenCode stores and
-  syncs, so the server keeps no copy: `../openchamber-control/render-page.js`
+  syncs, so the server keeps no copy: `../alcode-control/render-page.js`
   only checks the input (`html` at most 200,000 characters so the callback
   body stays under its 1 MB limit, `title` at most 120) and the setting.
   On by default: enabled while `agentRenderToolEnabled` is not `false`, and the
