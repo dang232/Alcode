@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 
 import type { DagOwnerFingerprintInput } from "./owner"
+import type { DagVerifyCheck } from "./verification"
 import type { DagNodeId, DagRoute } from "./types"
 
 export type DagNodeFingerprintInputV1 = {
@@ -16,6 +17,8 @@ export type DagNodeFingerprintInputV1 = {
   // Conflict-aware admission (slice 3): scope-only changes must invalidate
   // the fingerprint like any other scheduling input.
   readonly writeScopes: readonly string[]
+  // Evidence-first verification (slice 4): check changes invalidate the node.
+  readonly verify?: readonly DagVerifyCheck[]
   readonly childName: string
 }
 
@@ -62,7 +65,15 @@ export function dagFingerprint(value: JsonValue): string {
 }
 
 export function nodeFingerprintInput(input: DagNodeFingerprintInputV1): DagNodeFingerprintInputV1 {
-  return { ...input, dependsOn: [...input.dependsOn].sort(), writeScopes: [...input.writeScopes].sort() }
+  const normalized: DagNodeFingerprintInputV1 = {
+    ...input,
+    dependsOn: [...input.dependsOn].sort(),
+    writeScopes: [...input.writeScopes].sort(),
+  }
+  if (input.verify === undefined) return normalized
+  const byCheckId = (a: { readonly checkId: string }, b: { readonly checkId: string }): number =>
+    a.checkId < b.checkId ? -1 : a.checkId > b.checkId ? 1 : 0
+  return { ...normalized, verify: [...input.verify].sort(byCheckId) }
 }
 
 export function dagDefinitionFingerprint(input: DagDefinitionFingerprintInputV1): string {

@@ -10,6 +10,7 @@ import {
   type DagSettings,
   type DagWave,
 } from "./types"
+import type { DagVerifyCheck } from "./verification"
 
 // Scheduling-only dependency graph input. dependsOn orders execution and nothing else: no prompt
 // templating, no substitution of an upstream result into a downstream prompt.
@@ -22,6 +23,10 @@ export type DagNodeInput = DagNodeTargetInput & {
   // running nodes or nodes admitted earlier in the same pass. Empty/missing
   // behaves like today (admittable once dependencies complete).
   readonly writeScopes?: readonly string[]
+  // Evidence-first verification (slice 4): checks the engine must run and record
+  // after this node completes, before dependents admit. A failing check fails the
+  // node; the identifiers join the node fingerprint so check changes invalidate.
+  readonly verify?: readonly DagVerifyCheck[]
   readonly task_summary?: string
   readonly description?: string
   readonly load_skills?: readonly string[]
@@ -263,6 +268,7 @@ export function compileDag(definition: DagDefinition, options?: DagCompileOption
       route: routeOf(input),
       dependsOn: dependencies.get(id) ?? [],
       writeScopes: input.writeScopes ?? [],
+      verify: input.verify === undefined ? [] : [...input.verify],
       state: "pending",
       attempt: 0,
       createdAt: at,

@@ -14,6 +14,7 @@ import {
 } from "./fingerprint"
 import type { DagOwnerFingerprintInput } from "./owner"
 import type { DagNodeId, DagRoute } from "./types"
+import type { DagVerifyCheck } from "./verification"
 
 const nodeId = (value: string): DagNodeId => value as DagNodeId
 
@@ -163,6 +164,31 @@ describe("dagDefinitionFingerprint", () => {
       nodes: [scopedNode],
     }
     expect(dagDefinitionFingerprint(reordered)).toBe(dagDefinitionFingerprint(ordered))
+  })
+
+  it("#given a verify-only amendment #when fingerprinted #then the fingerprint changes", () => {
+    const amended: DagDefinitionFingerprintInputV1 = {
+      ...baseDefinition,
+      nodes: [{
+        ...baseNode,
+        verify: [{ checkId: "unit-core", category: "unit", command: ["bun", "test"], timeoutMs: 60_000, criteria: ["AC-1"] }],
+      }],
+    }
+    expect(dagDefinitionFingerprint(amended)).not.toBe(dagDefinitionFingerprint(baseDefinition))
+  })
+
+  it("#given reordered checks #when fingerprinted #then identical fingerprints", () => {
+    const first: DagVerifyCheck = { checkId: "b-check", category: "unit", command: ["bun", "test", "b"], timeoutMs: 60_000, criteria: [] }
+    const second: DagVerifyCheck = { checkId: "a-check", category: "lint", command: ["bunx", "oxlint"], timeoutMs: 60_000, criteria: [] }
+    const forward: DagDefinitionFingerprintInputV1 = {
+      ...baseDefinition,
+      nodes: [{ ...baseNode, verify: [first, second] }],
+    }
+    const backward: DagDefinitionFingerprintInputV1 = {
+      ...baseDefinition,
+      nodes: [{ ...baseNode, verify: [second, first] }],
+    }
+    expect(dagDefinitionFingerprint(forward)).toBe(dagDefinitionFingerprint(backward))
   })
 })
 
