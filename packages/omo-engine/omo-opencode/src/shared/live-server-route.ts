@@ -1,6 +1,7 @@
-import { createOpencodeClient as createOpencodeClientSdk } from "@opencode-ai/sdk"
+import { z } from "zod"
 import { subagentSessions } from "../features/claude-code-session-state/state"
-import { getServerBasicAuthHeader, injectServerAuthIntoClient } from "./opencode-server-auth"
+import { getServerBasicAuthHeader } from "./opencode-server-auth"
+import { assertSupportedServerVersion, createV2EngineClient } from "../cli/run/opencode-v2-client"
 import { log } from "./logger"
 
 const PROBE_TTL_MS = 60_000
@@ -97,7 +98,7 @@ async function probe(registration: RouteRegistration): Promise<boolean> {
     return false
   }
 
-  const probeUrl = new URL("/global/health", registration.serverUrl)
+  const probeUrl = new URL("/api/info", registration.serverUrl)
   const authHeader = getServerBasicAuthHeader()
   const headers: Record<string, string> = authHeader ? { Authorization: authHeader } : {}
 
@@ -127,9 +128,29 @@ async function probe(registration: RouteRegistration): Promise<boolean> {
       return false
     }
 
-    registration.available = response.ok
+    if (!response.ok) {
+      registration.available = false
+      registration.probeTimestamp = Date.now()
+      return false
+    }
+    const versionSchema = z.object({ version: z.string() })
+    const parsed = versionSchema.safeParse(await response.json().catch(() => null))
+    const version = parsed.success ? parsed.data.version : null
+    try {
+      if (!version) throw new Error("missing version")
+      assertSupportedServerVersion(version)
+    } catch {
+      if (!registration.warnedOnce) {
+        registration.warnedOnce = true
+        log("[live-server-route] listener is not a supported OpenCode 2.x server; live wake routing disabled", { version })
+      }
+      registration.available = false
+      registration.probeTimestamp = Date.now()
+      return false
+    }
+    registration.available = true
     registration.probeTimestamp = Date.now()
-    return registration.available
+    return true
   } catch {
     registration.available = false
     registration.probeTimestamp = Date.now()
@@ -137,7 +158,7 @@ async function probe(registration: RouteRegistration): Promise<boolean> {
   }
 }
 
-// A healthy `/global/health` only proves SOME listener answers on the
+// A healthy `/api/info` only proves SOME listener answers on the
 // registered URL — not that it is the instance owning the target session.
 // Dispatching a parent wake to a listener that does not own the session
 // silently drops the wake and the parent never continues (#5569). Before
@@ -149,7 +170,7 @@ async function probeSessionAffinity(registration: RouteRegistration, sessionID: 
     return undefined
   }
 
-  const probeUrl = new URL(`/session/${sessionID}`, registration.serverUrl)
+  const probeUrl = new URL(`/api/session/${sessionID}`, registration.serverUrl)
   const authHeader = getServerBasicAuthHeader()
   const headers: Record<string, string> = authHeader ? { Authorization: authHeader } : {}
 
@@ -242,11 +263,10 @@ function getOrBuildLiveClient(registration: RouteRegistration): unknown {
   if (!registration.serverUrl) {
     return undefined
   }
-  const client = createOpencodeClientSdk({
+  const client = createV2EngineClient({
     baseUrl: registration.serverUrl.toString(),
-    directory: registration.directory,
+    password: undefined,
   })
-  injectServerAuthIntoClient(client)
   registration.liveClient = client
   return registration.liveClient
 }

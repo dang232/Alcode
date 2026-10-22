@@ -2,5 +2,10 @@
   "name": "oh-my-openagent",
   "version": "5.1.23",
   "private": true,
-  "description": "Vendored oh-my-openagent engine closure root (upstream repo-root manifest; the run barrel reads packageJson.version for telemetry identity)."
+  "description": "Vendored oh-my-openagent engine closure root (upstream repo-root manifest; the run barrel reads packageJson.version for telemetry identity).",
+  "devDependencies": {
+    "@code-yeongyu/senpi": "2026.10.10-6",
+    "@earendil-works/pi-tui": "npm:@code-yeongyu/senpi-tui@2026.10.10-6",
+    "typebox": "1.3.34"
+  }
 }

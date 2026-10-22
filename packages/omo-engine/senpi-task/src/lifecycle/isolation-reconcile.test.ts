@@ -107,7 +107,9 @@ describe("startup isolation reclamation", () => {
     }
   })
 
-  test("#given a host that crashed mid-run #when the next session starts #then the isolated delta is salvaged as artifacts and never auto-merged", async () => {
+  // Real git clone + salvage work costs seconds on Windows; the 60 s budget below only guards
+  // hangs, it never weakens the assertions (all expect() calls still run and must pass).
+  test("#given a host that crashed mid-run #when the next session starts #then the isolated delta is salvaged as artifacts and never auto-merged", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const store = tempStore()
     const runtime = createIsolationRuntime({ homeDir: fixture.homeDir })

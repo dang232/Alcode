@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -67,7 +67,7 @@ export function tempGitRepo(): IsolationFixture {
   const repoRoot = join(root, "repo")
   const homeDir = join(root, "home")
   const projectDir = join(root, "project")
-  for (const dir of [repoRoot, homeDir, projectDir]) run(root, ["mkdir", "-p", dir])
+  for (const dir of [repoRoot, homeDir, projectDir]) mkdirSync(dir, { recursive: true })
   run(repoRoot, ["git", "init", "--initial-branch=main"])
   run(repoRoot, ["git", "config", "user.email", "fixture@example.com"])
   run(repoRoot, ["git", "config", "user.name", "Fixture"])

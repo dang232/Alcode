@@ -410,7 +410,8 @@ describe("scheduler verification integration", () => {
       currentFingerprints: new Map([["a", fingerprint]]),
       changedFiles: [],
       persistRecord: (record) => {
-        store.writeVerification(record.runId, record.nodeId ?? "run", record.checkId, record.repairAttempt, JSON.stringify(record))
+        // SAFETY: fixture record id; the brand is compile-time only and nothing reads its shape at runtime.
+        store.writeVerification(record.runId as DagRunId, record.nodeId ?? "run", record.checkId, record.repairAttempt, JSON.stringify(record))
       },
     })
     // then the repair is accepted and the stored record proves it

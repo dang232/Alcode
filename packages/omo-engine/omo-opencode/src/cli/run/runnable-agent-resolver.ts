@@ -8,7 +8,7 @@ interface AgentListItem {
 
 export interface RunAgentListClient {
   readonly app: {
-    readonly agents: () => Promise<unknown>
+    readonly agents: (directory?: string) => Promise<unknown>
   }
 }
 
@@ -20,9 +20,10 @@ export async function resolveRunnableRunAgent(
   client: RunAgentListClient,
   resolvedAgent: string,
   config: RunAgentDisplayNameConfig = {},
+  directory?: string,
 ): Promise<string> {
   try {
-    const agentsRes = await client.app.agents()
+    const agentsRes = await client.app.agents(directory)
     const agents = normalizeSDKResponse(agentsRes, [] as readonly AgentListItem[], {
       preferResponseOnMissingData: true,
     })

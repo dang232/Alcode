@@ -997,6 +997,10 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     alcoreModels: callAlcoreModels,
     isProviderReady: callIsProviderReady,
     agent,
+    // Explicit user-selected workflow profile (native path only): trimmed
+    // in invoke, carried in the native-kind stdin job, forwarded to
+    // run(). Wrapper-kind jobs never carry it (fixed wrapper CLI).
+    workflow,
     // Kind selection: true forces the native kind or throws, false forces
     // the wrapper kind, undefined defers to env/default (see the seam
     // note above).
@@ -1096,6 +1100,7 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
       sessionId,
       agent: isNonEmptyString(agent) ? agent.trim() : undefined,
       model: argvModel,
+      workflow: isNonEmptyString(workflow) ? workflow.trim() : undefined,
       onEvent,
       explicitSnapshotPath,
     });
@@ -1216,7 +1221,7 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
   // kills the worker, which forwards the signal to the wrapper child it
   // owns, so no engine process outlives the handle on either kind.
   const invokeViaWorker = ({
-    kind, runner, entry, argv, message, port, attachUrl, sessionId, agent, model, onEvent, explicitSnapshotPath,
+    kind, runner, entry, argv, message, port, attachUrl, sessionId, agent, model, workflow, onEvent, explicitSnapshotPath,
   }) => {
     const workerArgv = [runner.workerEntry];
     if (kind === 'native') {
@@ -1238,6 +1243,9 @@ export const createOmoBridgeRuntime = (dependencies = {}) => {
     if (port !== undefined) job.port = port;
     if (attachUrl !== undefined) job.attach = attachUrl;
     if (sessionId !== undefined) job.sessionId = sessionId;
+    // Native path only: the wrapper `run` contract has no workflow flag,
+    // so a workflow travels solely in native-kind stdin jobs.
+    if (kind === 'native' && workflow !== undefined) job.workflow = workflow;
     if (kind === 'wrapper') {
       job.wrapperEntry = entry;
       job.wrapperArgv = argv;

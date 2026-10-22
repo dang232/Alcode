@@ -1001,6 +1001,30 @@ describe('one run path (kind selection on the default)', () => {
     expect(settled.result).toMatchObject({ sessionId: 'ses_fixture01', success: true });
   });
 
+  it('explicit workflow travels trimmed into the native-kind job', () => {
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn: stub.spawn }));
+    const handle = bridge.invoke({ message: 'hi', workflow: '  plan-then-execute  ' });
+    expect(handle.native).toBe(true);
+    expect(stub.calls).toHaveLength(1);
+    expect(stdinJob(stub)).toMatchObject({ kind: 'native', message: 'hi', workflow: 'plan-then-execute' });
+  });
+
+  it('wrapper-kind jobs never carry workflow (fixed wrapper CLI contract)', () => {
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn: stub.spawn }));
+    const handle = bridge.invoke({ message: 'hi', native: false, workflow: 'plan-then-execute' });
+    expect(handle.native).toBe(false);
+    expect(stdinJob(stub).workflow).toBeUndefined();
+  });
+
+  it('blank workflow reads as absent on the native-kind job', () => {
+    const stub = stubSpawn();
+    const bridge = createOmoBridgeRuntime(capable({ spawn: stub.spawn }));
+    bridge.invoke({ message: 'hi', workflow: '   ' });
+    expect(stdinJob(stub).workflow).toBeUndefined();
+  });
+
   it('default with bun absent throws the exact degraded message and spawns nothing', () => {
     const { spawn, calls } = stubSpawn();
     const bridge = createOmoBridgeRuntime(capable({ spawn, env: {} }));

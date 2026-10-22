@@ -20,9 +20,11 @@ import {
   type DagChangeScope,
   type DagVerificationCurrent,
   type DagVerificationRecord,
+  type DagVerificationRecordInput,
   type DagVerifyCheck,
   type DagVerifyCommandResult,
 } from "./verification"
+import type { DagRunId } from "./types"
 
 function check(overrides: Partial<DagVerifyCheck> = {}): DagVerifyCheck {
   return {
@@ -53,7 +55,7 @@ function current(overrides: Partial<DagVerificationCurrent> = {}): DagVerificati
   return { sourceRevision: "rev-1", nodeFingerprints: new Map(), generation: 1, ...overrides }
 }
 
-function record(overrides: Partial<DagVerificationRecord> = {}): DagVerificationRecord {
+function record(overrides: Partial<DagVerificationRecordInput> = {}): DagVerificationRecord {
   return buildVerificationRecord({
     runId: "run-1",
     parentSessionId: "ses-parent",
@@ -199,11 +201,12 @@ describe("verification records and malformed output (V06)", () => {
         ["a.broken.0.json", "{truncated"],
       ]),
       writeVerification: () => "",
-      readVerification: (_run: string, node: string, checkId: string, _attempt: number) =>
+      readVerification: (_run: DagRunId, node: string, checkId: string, _attempt: number) =>
         store.files.get(`${node}.${checkId}.0.json`) ?? null,
       listVerifications: () => [...store.files.keys()],
     }
-    const read = readRunVerificationRecords(store, "run-1")
+    // SAFETY: fixed fixture id; the brand is compile-time only and nothing reads its shape at runtime.
+    const read = readRunVerificationRecords(store, "run-1" as DagRunId)
     // then the good record parses and the malformed file is reported, never trusted
     expect(read.records.size).toBe(1)
     expect(read.malformed).toEqual(["a.broken.0.json"])
@@ -218,7 +221,8 @@ describe("verification records and malformed output (V06)", () => {
       readVerification: () => body,
       listVerifications: () => ["a.unit-core.0.json", "a.unit-core.0.json"],
     }
-    const read = readRunVerificationRecords(store, "run-1")
+    // SAFETY: fixed fixture id; the brand is compile-time only and nothing reads its shape at runtime.
+    const read = readRunVerificationRecords(store, "run-1" as DagRunId)
     // then duplicates collapse to one record, not two successes
     expect(read.records.size).toBe(1)
     expect(read.records.get(verificationRecordKey("a", "unit-core"))).toBeDefined()

@@ -1,10 +1,24 @@
-import { piTui } from "./lazy/pi-tui"
+import { tryPiTui } from "./lazy/pi-tui"
 
 const DEFAULT_EXCERPT_WIDTH = 120
 export const ELLIPSIS = "..."
 
+// Non-interactive callers (tool result paths with no render lifecycle owner) run without a
+// warmed pi-tui barrel. Truncation then degrades to a code-unit approximation instead of
+// throwing, so progress reporting never breaks a spawn it only describes.
+export function truncateToWidthFallback(value: string, width: number, ellipsis: string): string {
+  if (value.length <= width) return value
+  return `${value.slice(0, Math.max(0, width - ellipsis.length))}${ellipsis}`
+}
+
+export function truncateToWidthOrFallback(value: string, width: number, ellipsis: string): string {
+  const loaded = tryPiTui()
+  if (loaded !== undefined) return loaded.truncateToWidth(value, width, ellipsis)
+  return truncateToWidthFallback(value, width, ellipsis)
+}
+
 export function rendererVisibleWidth(value: string): number {
-  return piTui().visibleWidth(value)
+  return tryPiTui()?.visibleWidth(value) ?? value.length
 }
 
 export function normalizeRendererText(value: string): string {
@@ -14,7 +28,7 @@ export function normalizeRendererText(value: string): string {
 export function excerptRendererText(value: string, width = DEFAULT_EXCERPT_WIDTH): string {
   const normalized = normalizeRendererText(value)
   if (width <= 0) return ""
-  return stripTerminalControls(piTui().truncateToWidth(normalized, width, ELLIPSIS))
+  return stripTerminalControls(truncateToWidthOrFallback(normalized, width, ELLIPSIS))
 }
 
 export function excerptRendererPromptText(value: string, width = DEFAULT_EXCERPT_WIDTH): string {
@@ -22,10 +36,10 @@ export function excerptRendererPromptText(value: string, width = DEFAULT_EXCERPT
   if (width <= 0) return ""
   if (rendererVisibleWidth(normalized) <= width) return normalized
   const contentWidth = Math.max(0, width - rendererVisibleWidth(ELLIPSIS))
-  const clipped = piTui().truncateToWidth(normalized, contentWidth, "")
+  const clipped = truncateToWidthOrFallback(normalized, contentWidth, "")
   const boundary = clipped.search(/\s+\S*$/u)
   if (boundary > 0) return `${clipped.slice(0, boundary).trimEnd()}${ELLIPSIS}`
-  return stripTerminalControls(piTui().truncateToWidth(normalized, width, ELLIPSIS))
+  return stripTerminalControls(truncateToWidthOrFallback(normalized, width, ELLIPSIS))
 }
 
 export function joinRendererTokens(tokens: readonly (string | undefined | false)[]): string {

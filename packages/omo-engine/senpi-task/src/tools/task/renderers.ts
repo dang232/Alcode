@@ -1,12 +1,7 @@
 import type { Theme, ThemeColor } from "@code-yeongyu/senpi"
 
-import { piTui } from "../../lazy/pi-tui"
 import type { TaskToolDetails, TaskToolItemDetail } from "./types"
-import {
-  formatTaskMode,
-  renderTaskCallLines,
-  taskCallLines,
-} from "./call-renderer"
+import { formatTaskMode } from "./call-renderer"
 import { formatTargetWithModel } from "../../status-line"
 import {
   ELLIPSIS,
@@ -15,6 +10,7 @@ import {
   normalizeRendererText,
   optionalRendererText,
   rendererVisibleWidth,
+  truncateToWidthOrFallback,
 } from "../../renderer-text"
 import { runStatsCardSummary } from "../run-stats-format"
 
@@ -59,15 +55,14 @@ export function renderTaskResultLines(details: TaskToolDetails, theme: RendererT
 }
 
 export function renderTaskResultComponent(details: TaskToolDetails, theme: RendererTheme): LinesComponent {
-  const { truncateToWidth } = piTui()
   return {
     render: (width: number): string[] => {
       if (width <= 0) return [""]
       const mode = details.run_in_background === undefined ? undefined : theme.italic(formatTaskMode(details.run_in_background))
       const line = taskResultLineForWidth(details, mode, width)
-      const aggregate = truncateToWidth(theme.fg(statusThemeColor(details.status), line), width, ELLIPSIS)
+      const aggregate = truncateToWidthOrFallback(theme.fg(statusThemeColor(details.status), line), width, ELLIPSIS)
       const items = (details.items ?? []).map((item) =>
-        truncateToWidth(theme.fg(statusThemeColor(item.status), taskItemResultLine(item)), width, ELLIPSIS),
+        truncateToWidthOrFallback(theme.fg(statusThemeColor(item.status), taskItemResultLine(item)), width, ELLIPSIS),
       )
       return [aggregate, ...items]
     },
@@ -76,14 +71,13 @@ export function renderTaskResultComponent(details: TaskToolDetails, theme: Rende
 }
 
 export function linesComponent(lines: readonly string[] | WidthAwareLines): LinesComponent {
-  const { truncateToWidth } = piTui()
   return {
     render: (width: number): string[] => {
       const widthAware = typeof lines === "function"
       const renderedLines = widthAware ? lines(width) : lines
       return renderedLines.map((line) => {
         if (width <= 0) return ""
-        return widthAware ? line : truncateToWidth(line, width, ELLIPSIS)
+        return widthAware ? line : truncateToWidthOrFallback(line, width, ELLIPSIS)
       })
     },
     invalidate: (): void => {},

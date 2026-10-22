@@ -1,0 +1,2 @@
+[test]
+preload = ["./packages/omo-engine/senpi-task/test-support/warm-pi-tui.ts"]

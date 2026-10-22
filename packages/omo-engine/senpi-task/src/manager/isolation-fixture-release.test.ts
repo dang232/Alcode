@@ -1,6 +1,9 @@
 import { existsSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 
+
+// Real git teardown work costs seconds per test on Windows; the 60 s budget only
+// guards hangs, it never weakens the assertions.
 import { afterEach, describe, expect, test } from "bun:test"
 
 import { createIsolationRuntime } from "../isolation"
@@ -12,7 +15,7 @@ afterEach(cleanupIsolationProjects)
 // contains one fails EBUSY - four isolation tests died that way on the ubuntu CI shard while passing
 // on macOS. Teardown must go through the recorded backend, never a plain recursive delete.
 describe("isolation fixture teardown", () => {
-  test("#given a retained sandbox #when the fixture releases it #then its backend tore the sandbox down", async () => {
+  test("#given a retained sandbox #when the fixture releases it #then its backend tore the sandbox down", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runtime = createIsolationRuntime({ homeDir: fixture.homeDir })
     const handle = await runtime.ensure({ repoRoot: fixture.repoRoot, id: "st_release1", preferred: "auto" })
@@ -28,7 +31,7 @@ describe("isolation fixture teardown", () => {
     expect(readdirSync(worktrees)).toEqual([])
   })
 
-  test("#given a sandbox that was never retained #when the fixture releases it #then it is torn down too", async () => {
+  test("#given a sandbox that was never retained #when the fixture releases it #then it is torn down too", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runtime = createIsolationRuntime({ homeDir: fixture.homeDir })
     const handle = await runtime.ensure({ repoRoot: fixture.repoRoot, id: "st_release2", preferred: "auto" })
