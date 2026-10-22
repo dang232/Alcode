@@ -568,6 +568,37 @@ async function runFrontier(context: SchedulerContext): Promise<DagRunRecordV1> {
   return context.journal.snapshot()
 }
 
+// Conflict-aware admission (slice 3): a runnable node whose writeScopes intersect
+// the scopes of a running/scheduled node, or of a node admitted earlier in the
+// same pass, stays pending and is reconsidered on the next pass. Scopes are
+// exact-match strings; nodes without scopes behave exactly like today.
+function partitionConflicts(
+  snapshot: DagRunRecordV1,
+  runnable: readonly DagNodeId[],
+) {
+  const heldScopes = new Set<string>()
+  for (const node of snapshot.nodes) {
+    if (node.state === "running" || node.state === "scheduled") {
+      for (const scope of node.writeScopes ?? []) heldScopes.add(scope)
+    }
+  }
+  const admittable: DagNodeId[] = []
+  const conflicted: DagNodeId[] = []
+  const passScopes = new Set<string>()
+  for (const nodeId of runnable) {
+    const node = nodeById(snapshot, nodeId)
+    const scopes = node.writeScopes ?? []
+    const clash = scopes.some((scope) => heldScopes.has(scope) || passScopes.has(scope))
+    if (clash) {
+      conflicted.push(nodeId)
+      continue
+    }
+    admittable.push(nodeId)
+    for (const scope of scopes) passScopes.add(scope)
+  }
+  return { admittable, conflicted }
+}
+
 // One admission pass over the frontier: the ordered residency-denied queue first (oldest denial
 // gets the first freed slot), then every newly ready node. startOwned runs as one batch; denials
 // park in the queue and retry after ANY slot-freeing event in the parent session - one of this
@@ -586,16 +617,17 @@ async function admitFrontier(context: SchedulerContext): Promise<boolean> {
         !deniedIds.has(node.id) &&
         isRunnable(snapshot, node.id))
       .map((node) => node.id)
-    if (denied.length === 0 && runnable.length === 0) return true
+    const { admittable, conflicted } = partitionConflicts(snapshot, runnable)
+    if (denied.length === 0 && admittable.length === 0 && conflicted.length === 0) return true
 
-    for (const nodeId of runnable) transition(context, nodeId, "scheduled", { kind: "scheduled" })
-    emitWaveAdmissions(context, runnable)
+    for (const nodeId of admittable) transition(context, nodeId, "scheduled", { kind: "scheduled" })
+    emitWaveAdmissions(context, admittable)
 
     // Armed BEFORE the probe: the wake is edge-triggered, and a sibling child that settles while
     // this batch is in flight must still be seen, or a run whose last chance passed in that gap
     // parks until an unrelated resident settles.
     const residencyReleased = context.taskManager.residencyChanged(snapshot.parentSessionId)
-    const awaitingAdmission = [...denied, ...runnable]
+    const awaitingAdmission = [...denied, ...admittable]
     context.admissionInProgress = true
     let results: PromiseSettledResult<{ readonly nodeId: DagNodeId; readonly result: OwnedStartResult }>[]
     try {
@@ -637,6 +669,13 @@ async function admitFrontier(context: SchedulerContext): Promise<boolean> {
     }
     if (context.cancellationStarted) return false
     context.pendingAdmission.push(...nextDenied)
+    // A conflict park names no resident to wait on: when nothing is attached and
+    // nothing is denied, re-probe at once instead of returning to a run loop that
+    // would read an all-pending frontier as unterminalizable — but only when this
+    // pass actually attempted starts, so an unchanged snapshot can never re-probe
+    // in a tight loop. Holders that are still running keep the normal path below
+    // (settleOne wakes the next pass).
+    if (conflicted.length > 0 && context.attachedTasks.size === 0 && nextDenied.length === 0 && awaitingAdmission.length > 0) continue
     if (nextDenied.length === 0) return true
     // A contended or displaced admission lease is a bounded wait inside acquisition itself, so the
     // next probe is already paced; only a cap denial has to wait for a slot to free.

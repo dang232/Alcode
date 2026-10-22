@@ -528,6 +528,7 @@ function amendRun(params: DagAmendParams, context: AmendContext): DagRunRecordV1
       prompt: compiledNode.prompt,
       route: compiledNode.route,
       dependsOn: compiledNode.dependsOn,
+      writeScopes: compiledNode.writeScopes,
       state: "pending" as const,
       execAttempt: (oldNode.execAttempt ?? 0) + 1,
     }
@@ -649,6 +650,7 @@ function nodeFingerprintFromInput(node: DagNodeInput): DagNodeFingerprintInputV1
       : { kind: "agent", agent: node.subagent_type, ...(node.model === undefined ? {} : { model: node.model }) },
     ...(node.task_summary === undefined ? {} : { taskSummary: node.task_summary }),
     ...(node.description === undefined ? {} : { description: node.description }),
+    writeScopes: [...(node.writeScopes ?? [])],
     childName: node.id,
   }
 }

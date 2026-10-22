@@ -13,6 +13,9 @@ export type DagNodeFingerprintInputV1 = {
   readonly route: DagRoute
   readonly taskSummary?: string
   readonly description?: string
+  // Conflict-aware admission (slice 3): scope-only changes must invalidate
+  // the fingerprint like any other scheduling input.
+  readonly writeScopes: readonly string[]
   readonly childName: string
 }
 
@@ -59,7 +62,7 @@ export function dagFingerprint(value: JsonValue): string {
 }
 
 export function nodeFingerprintInput(input: DagNodeFingerprintInputV1): DagNodeFingerprintInputV1 {
-  return { ...input, dependsOn: [...input.dependsOn].sort() }
+  return { ...input, dependsOn: [...input.dependsOn].sort(), writeScopes: [...input.writeScopes].sort() }
 }
 
 export function dagDefinitionFingerprint(input: DagDefinitionFingerprintInputV1): string {

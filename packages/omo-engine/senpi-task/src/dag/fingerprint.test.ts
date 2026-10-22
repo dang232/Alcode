@@ -26,7 +26,13 @@ const baseNode: DagNodeFingerprintInputV1 = {
   dependsOn: [nodeId("b"), nodeId("c")],
   prompt: "summarize the repo",
   route: categoryRoute,
+  writeScopes: [],
   childName: "child-a",
+}
+
+const scopedNode: DagNodeFingerprintInputV1 = {
+  ...baseNode,
+  writeScopes: ["db", "cache"],
 }
 
 const baseDefinition: DagDefinitionFingerprintInputV1 = {
@@ -81,6 +87,7 @@ describe("dagDefinitionFingerprint", () => {
       dependsOn: [],
       prompt: "second task",
       route: agentRoute,
+      writeScopes: [],
       childName: "child-z",
     }
     const forward = dagDefinitionFingerprint({ ...baseDefinition, nodes: [baseNode, other] })
@@ -110,6 +117,7 @@ describe("dagDefinitionFingerprint", () => {
           dependsOn: [nodeId("b"), nodeId("c")],
           label: "Node A",
           nodeId: nodeId("a"),
+          writeScopes: [],
           childName: "child-a",
         },
       ],
@@ -140,9 +148,21 @@ describe("dagDefinitionFingerprint", () => {
   it("#given optional node fields present #when fingerprinted #then included in the hash", () => {
     const withOptionals: DagDefinitionFingerprintInputV1 = {
       ...baseDefinition,
-      nodes: [{ ...baseNode, taskSummary: "short", description: "long" }],
+      nodes: [{ ...baseNode, taskSummary: "short", description: "long", writeScopes: ["db"] }],
     }
     expect(dagDefinitionFingerprint(withOptionals)).not.toBe(dagDefinitionFingerprint(baseDefinition))
+  })
+
+  it("#given reordered writeScopes #when fingerprinted #then identical fingerprints", () => {
+    const reordered: DagDefinitionFingerprintInputV1 = {
+      ...baseDefinition,
+      nodes: [{ ...scopedNode, writeScopes: ["cache", "db"] }],
+    }
+    const ordered: DagDefinitionFingerprintInputV1 = {
+      ...baseDefinition,
+      nodes: [scopedNode],
+    }
+    expect(dagDefinitionFingerprint(reordered)).toBe(dagDefinitionFingerprint(ordered))
   })
 })
 
@@ -154,6 +174,7 @@ describe("nodeFingerprintInput", () => {
       dependsOn: [nodeId("d"), nodeId("a")],
       prompt: "exact prompt  as submitted",
       route: agentRoute,
+      writeScopes: [],
       childName: "child-n",
     })
     expect(normalized.dependsOn).toEqual([nodeId("a"), nodeId("d")])
@@ -195,6 +216,7 @@ describe("diffNodeFingerprints", () => {
     dependsOn: [],
     prompt: "do a",
     route: categoryRoute,
+    writeScopes: [],
     childName: "child-a",
   }
 
@@ -204,6 +226,7 @@ describe("diffNodeFingerprints", () => {
     dependsOn: [],
     prompt: "do b",
     route: categoryRoute,
+    writeScopes: [],
     childName: "child-b",
   }
 
@@ -213,6 +236,7 @@ describe("diffNodeFingerprints", () => {
     dependsOn: [],
     prompt: "do d",
     route: categoryRoute,
+    writeScopes: [],
     childName: "child-d",
   }
 
@@ -227,6 +251,7 @@ describe("diffNodeFingerprints", () => {
         dependsOn: [],
         prompt: "do c",
         route: categoryRoute,
+        writeScopes: [],
         childName: "child-c",
       },
     ]

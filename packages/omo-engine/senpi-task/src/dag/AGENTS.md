@@ -28,6 +28,7 @@ Compile a node definition into an execution graph, admit each node the moment ev
 ## Admission semantics
 
 - A node starts once EVERY node it dependsOn holds `completed` and a resident slot is free (dependency-frontier admission). Compiled waves NEVER gate execution; `dag.wave.started` groups the nodes one admission pass scheduled (one wave index can appear in several started events when its nodes become ready at different times) and `dag.wave.completed` fires once per index when the wave's FULL membership is terminal (skipped and failed nodes included in the listing).
+- Conflict-aware admission (slice 3): a node carrying `writeScopes` starts only when none of its scopes intersect the scopes of running/scheduled nodes or nodes admitted earlier in the same pass. A conflicted node stays `pending` and is reconsidered on the next pass after a settle; it names no resident to wait on, so a pass that parks conflicts while nothing is attached re-probes at once instead of waiting out a residency wake that may never fire. Scope-free nodes behave exactly like before the gate existed.
 - The dependent skip cascade runs at frontier quiescence (nothing attached): a failed node stays revivable via `send` while siblings are mid-flight, so an eager cascade would strand revived-completable dependents as skipped. A pass whose every admission failed at start (nothing attached, dependents still pending) re-enters the loop so the cascade settles the run instead of throwing (#8396).
 - The resident-child cap is SESSION-wide (`lifecycle/residency.ts` counts every resident record of the parent session), so a residency denial parks the node (`scheduled`, journaled once as `residency_queued` with `residents` / `heldByOtherOwners`) and the scheduler waits on `Promise.race([own settlements, taskManager.residencyChanged(parentSessionId), foreign journal commit, cancellation])` - never on its own `attachedTasks` alone, which is empty for a run that arrives second (#8396). Only a denial naming NO resident (`cause: "residents"`, empty list) terminal-fails the node; a `cause: "lease"` denial re-probes at once because lease acquisition is itself a bounded wait.
 
@@ -39,8 +40,8 @@ Recovery resolves the newest owned task before consulting the checkpoint's `task
 
 ## Conventions
 
-- Policy is fixed inside the definition fingerprint: `dependency-frontier` wave admission (was `strict-barrier` before 2026-08-25), `continue-independent` failure handling, filesystem-only dependency data.
-- Run reuse keys on the SUBMITTED definition (canonicalized). Amendments preserve eligible node state and invalidate affected dependents.
+- Policy is fixed inside the definition fingerprint: `dependency-frontier` wave admission (was `strict-barrier` before 2026-08-25), `continue-independent` failure handling, filesystem-only dependency data. Scope-only definition changes invalidate the node fingerprint like any other scheduling input.
+- Run reuse keys on the SUBMITTED definition (canonicalized). Amendments preserve eligible node state and invalidate affected dependents. An amend that changes only `writeScopes` rebuilds the node record with the new scopes and invalidates that node plus its transitive dependents.
 - Boundary events are sequenced by the journal writer; live telemetry rides the unsequenced `omo.dag.activity` channel as a separate union.
 - Node target rules mirror the task tool: category XOR `subagent_type`, model only with an agent route, error codes `both_targets` / `no_target` / `category_with_model`.
 

@@ -157,6 +157,11 @@ export type DagNode = {
   readonly prompt: string
   readonly route: DagRoute
   readonly dependsOn: readonly DagNodeId[]
+  // Conflict-aware scheduling (slice 3): write scopes this node may mutate.
+  // A node is admitted only when none of its scopes intersect the scopes of
+  // running nodes or nodes admitted earlier in the same pass. Empty = today's
+  // behavior (always admittable once dependencies complete).
+  readonly writeScopes: readonly string[]
   readonly state: DagNodeState
   readonly taskId?: string
   readonly attempt: number

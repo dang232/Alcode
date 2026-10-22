@@ -17,6 +17,11 @@ export type DagNodeInput = DagNodeTargetInput & {
   readonly id: string
   readonly label?: string
   readonly dependsOn?: readonly string[]
+  // Conflict-aware admission (slice 3): write scopes this node may mutate.
+  // A node is admitted only when none of its scopes intersect the scopes of
+  // running nodes or nodes admitted earlier in the same pass. Empty/missing
+  // behaves like today (admittable once dependencies complete).
+  readonly writeScopes?: readonly string[]
   readonly task_summary?: string
   readonly description?: string
   readonly load_skills?: readonly string[]
@@ -257,6 +262,7 @@ export function compileDag(definition: DagDefinition, options?: DagCompileOption
       prompt: input.prompt,
       route: routeOf(input),
       dependsOn: dependencies.get(id) ?? [],
+      writeScopes: input.writeScopes ?? [],
       state: "pending",
       attempt: 0,
       createdAt: at,
