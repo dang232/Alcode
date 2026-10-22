@@ -1,5 +1,6 @@
-import type { OpencodeClient } from "@opencode-ai/sdk"
+import type { V2EngineClient as OpencodeClient } from "./opencode-v2-client"
 export type { OpencodeClient }
+import type { WorkflowDecision } from "./workflow-select"
 
 export interface RunOptions {
   message: string
@@ -13,6 +14,7 @@ export interface RunOptions {
   onComplete?: string
   json?: boolean
   sessionId?: string
+  workflow?: string
 }
 
 export interface ServerConnection {
@@ -34,6 +36,7 @@ export interface RunContext {
   directory: string
   abortController: AbortController
   verbose?: boolean
+  workflowDecision?: WorkflowDecision
 }
 
 export interface Todo {

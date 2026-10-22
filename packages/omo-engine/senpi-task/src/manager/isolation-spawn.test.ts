@@ -15,6 +15,9 @@ import {
 } from "./__fixtures__/isolation-fakes"
 import { flush } from "./__fixtures__/manager-fakes"
 
+// Real git clone + merge work costs seconds per test on Windows; the 60 s budget only
+// guards hangs, it never weakens the assertions.
+
 afterEach(cleanupIsolationProjects)
 
 async function startAndSettle(manager: ReturnType<typeof makeIsolationManager>["manager"], spec = isolatedSpec()) {
@@ -25,7 +28,7 @@ async function startAndSettle(manager: ReturnType<typeof makeIsolationManager>["
 }
 
 describe("isolated child spawn", () => {
-  test("#given an isolated child that writes a file #when it completes #then the write lands in the parent checkout and the clone is gone", async () => {
+  test("#given an isolated child that writes a file #when it completes #then the write lands in the parent checkout and the clone is gone", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner([{ path: "a.txt", content: "from the child\n" }])
     const { manager, store } = makeIsolationManager({ fixture, runner })
@@ -47,7 +50,7 @@ describe("isolated child spawn", () => {
     expect(store.load(started.task_id)?.isolation?.merge_result?.kind).toBe("applied")
   })
 
-  test("#given a completed isolated child #when the completion notification is built #then its details and rendered line carry the isolation outcome", async () => {
+  test("#given a completed isolated child #when the completion notification is built #then its details and rendered line carry the isolation outcome", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner([{ path: "a.txt", content: "child\n" }])
     const { manager } = makeIsolationManager({ fixture, runner })
@@ -68,7 +71,7 @@ describe("isolated child spawn", () => {
     expect(toolDetails.isolation?.files_changed).toBeGreaterThan(0)
   })
 
-  test("#given the parent edited the same file during the run #when the child completes #then nothing is applied and the workspace is retained beside its patch", async () => {
+  test("#given the parent edited the same file during the run #when the child completes #then nothing is applied and the workspace is retained beside its patch", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner([{ path: "seed.txt", content: "child edit\n" }])
     const { manager } = makeIsolationManager({ fixture, runner })
@@ -88,7 +91,7 @@ describe("isolated child spawn", () => {
     expect(siblings.some((entry) => entry.startsWith(`${basename(base)}.retained-`))).toBe(true)
   })
 
-  test("#given an isolated child that is cancelled #when it settles #then the delta is retained as artifacts and nothing is merged", async () => {
+  test("#given an isolated child that is cancelled #when it settles #then the delta is retained as artifacts and nothing is merged", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner([{ path: "a.txt", content: "abandoned\n" }])
     const { manager } = makeIsolationManager({ fixture, runner })
@@ -105,7 +108,7 @@ describe("isolated child spawn", () => {
     expect(existsSync(record.isolation?.merge_result?.patchPath ?? "")).toBe(true)
   })
 
-  test("#given an isolated child that errors #when it settles #then the delta is retained and never merged", async () => {
+  test("#given an isolated child that errors #when it settles #then the delta is retained and never merged", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner([{ path: "a.txt", content: "half done\n" }])
     const { manager } = makeIsolationManager({ fixture, runner })
@@ -120,7 +123,7 @@ describe("isolated child spawn", () => {
     expect(existsSync(join(fixture.repoRoot, "a.txt"))).toBe(false)
   })
 
-  test("#given task.isolation.enabled #when a child spawns without the parameter #then it is isolated, and an explicit isolated:false overrides it", async () => {
+  test("#given task.isolation.enabled #when a child spawns without the parameter #then it is isolated, and an explicit isolated:false overrides it", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner()
     const { manager } = makeIsolationManager({
@@ -139,7 +142,7 @@ describe("isolated child spawn", () => {
     if (overridden.kind === "started") expect(manager.get(overridden.task_id)?.isolation).toBeUndefined()
   })
 
-  test("#given a cwd that is not a git checkout #when an isolated child is requested #then the spawn is refused typed, no record stays running and the lease is released", async () => {
+  test("#given a cwd that is not a git checkout #when an isolated child is requested #then the spawn is refused typed, no record stays running and the lease is released", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner()
     const { manager, store } = makeIsolationManager({
@@ -163,7 +166,7 @@ describe("isolated child spawn", () => {
     if (next.kind === "started") expect(next.status).toBe("running")
   })
 
-  test("#given task.isolation.enabled #when a DAG node spawns through the manager #then the node runs in a clone without any per-node field", async () => {
+  test("#given task.isolation.enabled #when a DAG node spawns through the manager #then the node runs in a clone without any per-node field", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner()
     const { manager, store } = makeIsolationManager({
@@ -183,7 +186,7 @@ describe("isolated child spawn", () => {
     expect(store.load(started.task_id)?.spawn_spec?.cwd).toBe(store.load(started.task_id)?.isolation?.merged_dir)
   })
 
-  test("#given a spawned isolated child #when its spawn spec is persisted #then the clone is recorded for a later rebuild and the baseline is on disk", async () => {
+  test("#given a spawned isolated child #when its spawn spec is persisted #then the clone is recorded for a later rebuild and the baseline is on disk", { timeout: 60000 }, async () => {
     const fixture = tempGitRepo()
     const runner = new WritingRunner()
     const { manager, store } = makeIsolationManager({ fixture, runner })

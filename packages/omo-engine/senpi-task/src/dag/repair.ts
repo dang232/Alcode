@@ -34,7 +34,7 @@ export const DAG_REPAIR_BUDGET_DEFAULTS: DagRepairBudgets = {
 // only when the redacted evidence matches, so a genuinely new error re-arms.
 export function failureSignature(
   classification: DagFailureClassification,
-  result: Pick<DagVerifyCommandResult, "exitCode" | "signal" | "timedOut" | "output">,
+  result: { readonly exitCode?: number; readonly signal?: string; readonly timedOut?: boolean; readonly output: string },
 ): string {
   const tail = result.output.slice(-500)
   return [classification, String(result.exitCode), result.signal ?? "", String(result.timedOut), tail].join("|")

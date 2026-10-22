@@ -4,6 +4,8 @@
 import { spawn } from "node:child_process"
 import { isAbsolute, resolve } from "node:path"
 
+import type { DagRunId } from "./types"
+
 export const DAG_VERIFICATION_STATUSES = [
   "pending",
   "running",
@@ -372,9 +374,9 @@ export function evaluateAcceptance(input: DagAcceptanceInput): DagAcceptanceVerd
 }
 
 export type VerificationRecordStore = {
-  readonly writeVerification: (runId: string, nodeId: string, checkId: string, attempt: number, record: string) => string
-  readonly readVerification: (runId: string, nodeId: string, checkId: string, attempt: number) => string | null
-  readonly listVerifications: (runId: string) => readonly string[]
+  readonly writeVerification: (runId: DagRunId, nodeId: string, checkId: string, attempt: number, record: string) => string
+  readonly readVerification: (runId: DagRunId, nodeId: string, checkId: string, attempt: number) => string | null
+  readonly listVerifications: (runId: DagRunId) => readonly string[]
 }
 
 export function serializeVerificationRecord(record: DagVerificationRecord): string {
@@ -409,7 +411,7 @@ export type RunVerificationRecords = {
 // trusted: a result that cannot be parsed cannot accept anything.
 export function readRunVerificationRecords(
   store: VerificationRecordStore,
-  runId: string,
+  runId: DagRunId,
 ): RunVerificationRecords {
   const records = new Map<string, DagVerificationRecord>()
   const malformed: string[] = []
@@ -428,7 +430,7 @@ export function readRunVerificationRecords(
 
 function readListedVerification(
   store: VerificationRecordStore,
-  runId: string,
+  runId: DagRunId,
   file: string,
 ): string | null {
   const suffix = ".json"

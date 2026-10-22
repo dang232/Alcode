@@ -4,7 +4,7 @@ import { join } from "node:path"
 
 import { OmoTaskSettingsSchema, type OmoTaskSettings } from "../../../../../omo-config-core/src/index.ts"
 
-import { createManagerResidencyRegistry } from "../../../../../omo-senpi/src/components/task/residency-registry"
+import { createManagerResidencyRegistry } from "../../../../test-vendor/host-task-components/residency-registry"
 import { createTaskLifecycle, createHostSessionProbe, type TaskLifecycle } from "../../../lifecycle"
 import { defaultHostSessionProbe } from "../../../lifecycle/host-session-default"
 import { createTaskManager } from "../../../manager/manager"

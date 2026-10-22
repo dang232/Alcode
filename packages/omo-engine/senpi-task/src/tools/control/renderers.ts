@@ -1,6 +1,5 @@
 import type { AgentToolResult, Theme, ThemeColor, ToolRenderResultOptions } from "@code-yeongyu/senpi"
 
-import { piTui } from "../../lazy/pi-tui"
 import {
   excerptRendererPromptText,
   excerptRendererText,
@@ -10,6 +9,7 @@ import {
   rendererVisibleWidth,
   statusThemeColor,
 } from "../task/renderers"
+import { truncateToWidthOrFallback } from "../../renderer-text"
 import type { TaskCancelInput } from "./cancel"
 import type { MemberScopedTaskSendInput, TaskSendInput, StructuredMessageInput } from "./send-schema"
 import type { CancelResultDetails, SendResultDetails } from "./types"
@@ -62,9 +62,8 @@ export function renderTaskCancelResult(
 }
 
 function widthComponent(renderLine: (width: number) => string): RenderComponent {
-  const { truncateToWidth } = piTui()
   return {
-    render: (width: number): string[] => [truncateToWidth(renderLine(width), width, ELLIPSIS)],
+    render: (width: number): string[] => [truncateToWidthOrFallback(renderLine(width), width, ELLIPSIS)],
     invalidate: (): void => {},
   }
 }

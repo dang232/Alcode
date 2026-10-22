@@ -1,4 +1,3 @@
-import type { OpencodeClient } from "@opencode-ai/sdk"
 import { normalizeSDKResponse } from "../../shared"
 
 interface AgentProfile {
@@ -6,11 +5,18 @@ interface AgentProfile {
   color?: string
 }
 
+interface AgentListClient {
+  readonly app: {
+    readonly agents: (directory?: string) => Promise<{ data?: Array<{ name?: string; color?: string }> }>
+  }
+}
+
 export async function loadAgentProfileColors(
-  client: OpencodeClient,
+  client: AgentListClient,
+  directory?: string,
 ): Promise<Record<string, string>> {
   try {
-    const agentsRes = await client.app.agents()
+    const agentsRes = await client.app.agents(directory)
     const agents = normalizeSDKResponse(agentsRes, [] as AgentProfile[], {
       preferResponseOnMissingData: true,
     })

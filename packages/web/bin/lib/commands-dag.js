@@ -204,6 +204,9 @@ async function streamAction(options = {}, dependencies = {}) {
     throw new TunnelCliError(detail, EXIT_CODE.MISSING_DEPENDENCY);
   }
   const sessionId = asNonEmptyString(options.session) ?? undefined;
+  // Explicit user-selected workflow profile (native path only): blank
+  // reads as absent, exactly like --attach above.
+  const workflow = asNonEmptyString(options.workflow) ?? undefined;
   let handle;
   try {
     handle = bridge.invoke({
@@ -211,6 +214,7 @@ async function streamAction(options = {}, dependencies = {}) {
       port: options.explicitPort ? options.port : undefined,
       attachUrl: asNonEmptyString(options.attach) ?? undefined,
       sessionId,
+      workflow,
       onEvent: (name, data) => {
         if (sessionId && data instanceof Object && data.parent_session_id !== sessionId) {
           return;
@@ -272,7 +276,7 @@ export function showDagHelp() {
 
 USAGE:
   alcode dag status --session <id> [--snapshot-dir <dir>]
-  alcode dag stream --message <text> [--session <id>] [--port <n> | --attach <url>]
+  alcode dag stream --message <text> [--session <id>] [--workflow <name>] [--port <n> | --attach <url>]
 
 SUBCOMMANDS:
   status         Print the snapshot for one run session
@@ -287,6 +291,7 @@ OPTIONS:
                        OS temp dir under ${DAG_SNAPSHOT_PREFIX})
   --port <n>           Engine loopback port for stream (explicit --port only)
   --attach <url>       Attach stream to a running engine URL
+  --workflow <name>    Explicit workflow profile for stream (native path only)
 
 MODES:
   --quiet              Compact lines, no frames

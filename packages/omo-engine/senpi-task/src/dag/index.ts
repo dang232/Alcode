@@ -91,7 +91,7 @@ export type { DagJournal, DagJournalCheckpoint, DagJournalListener, DagJournalOp
 
 // manager.ts and handle.ts both name a `DagRunHandle`. handle.ts's is the superset (it adds done()
 // and cancel()), so it keeps the plain name and the manager's snapshot-only shape is aliased.
-export { createDagManager, DAG_MANAGER_ERROR_CODES, DagManagerError } from "./manager"
+export { createDagManager, DAG_MANAGER_ERROR_CODES, DagManagerError, nodeFingerprintFromInput } from "./manager"
 export type {
   AmendRecord,
   DagHistoryParams,

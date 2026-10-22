@@ -32,3 +32,37 @@ describe('parseArgs ui password default', () => {
     expect(parseArgs(['serve', '--ui-password', 'chosen']).options.uiPassword).toBe('chosen');
   });
 });
+
+describe('parseArgs dag --workflow', () => {
+  it('parses dag stream --workflow through', () => {
+    const parsed = parseArgs(['dag', 'stream', '--workflow', 'plan-then-execute']);
+
+    expect(parsed.command).toBe('dag');
+    expect(parsed.dagAction).toBe('stream');
+    expect(parsed.options.workflow).toBe('plan-then-execute');
+    expect(parsed.removedFlagErrors).toEqual([]);
+  });
+
+  it('parses dag stream --workflow=<name> inline through', () => {
+    const parsed = parseArgs(['dag', 'stream', '--workflow=plan-then-execute']);
+
+    expect(parsed.options.workflow).toBe('plan-then-execute');
+    expect(parsed.removedFlagErrors).toEqual([]);
+  });
+
+  it('rejects --workflow where it is not owned', () => {
+    const parsed = parseArgs(['serve', '--workflow', 'plan-then-execute']);
+
+    expect(parsed.removedFlagErrors).toContain(
+      'Unknown option for serve: --workflow (used by: dag)',
+    );
+  });
+
+  it('leaves neighboring DAG flags and the default untouched', () => {
+    const parsed = parseArgs(['dag', 'stream', '--attach', 'http://127.0.0.1:4096']);
+
+    expect(parsed.options.attach).toBe('http://127.0.0.1:4096');
+    expect(parsed.options.workflow).toBeUndefined();
+    expect(parsed.removedFlagErrors).toEqual([]);
+  });
+});
