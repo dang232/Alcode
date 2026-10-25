@@ -52,6 +52,7 @@ declare global {
     __ALCODE_VSCODE_WINDOW_FOCUSED__?: boolean;
     // Pre-rename twins of the globals above. Only ever read as a fallback;
     // the host writes the new names.
+    __OPENCHAMBER_VSCODE_WINDOW_FOCUSED__?: boolean;
     __OPENCHAMBER_VSCODE_THEME__?: VSCodeThemePayload['theme'];
     __OPENCHAMBER_VSCODE_SHIKI_THEMES__?: { light?: Record<string, unknown>; dark?: Record<string, unknown> } | null;
     __OPENCHAMBER_HOME__?: string;
@@ -1831,12 +1832,6 @@ onCommand('reloadOpenCode', () => {
   });
 });
 
-// The extension host shows the notification and decides whether the chat is in
-// view: Chromium never displays a `new Notification()` from a webview frame.
-const showOpenChamberNotification = (payload: { title: string; body: string; sessionId: string; requireHidden: boolean }) => {
-  void sendBridgeMessage('api:notifications:show', payload).catch(() => undefined);
-};
-
 const openSessionPayloadSchema = z.object({ sessionId: z.string().min(1) });
 
 // "Open Session" on a notification.
@@ -1847,6 +1842,17 @@ onCommand('openSession', (payload) => {
     useSessionUIStore.getState().setCurrentSession(sessionId);
   });
   window.dispatchEvent(new CustomEvent('alcode:navigate', { detail: { view: 'chat' } }));
+});
+
+const getNotificationClaimKey = (payload: { title?: unknown; body?: unknown; sessionId?: unknown; tag?: unknown } | undefined): string => {
+  const tag = typeof payload?.tag === 'string' ? payload.tag.trim() : '';
+  if (tag) return tag;
+  return [payload?.sessionId, payload?.title, payload?.body]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => value.trim())
+    .join('|');
+};
+
 const claimAlcodeNotification = async (payload: { title?: unknown; body?: unknown; sessionId?: unknown; tag?: unknown } | undefined): Promise<boolean> => {
   const key = getNotificationClaimKey(payload);
   if (!key) return true;
