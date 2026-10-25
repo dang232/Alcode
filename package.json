@@ -1,6 +1,6 @@
 {
   "name": "alcode-monorepo",
-  "version": "2.1.1",
+  "version": "0.0.1",
   "description": "Alcode monorepo workspace for web, ui, and desktop runtimes",
   "private": true,
   "type": "module",
