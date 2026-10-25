@@ -375,12 +375,12 @@ test('A to B to empty to A switching clears selection and never mixes content', 
   if (!taskA) throw new Error('task A missing');
   await act(async () => { taskA.click(); });
   await settle();
-  expect(taskA.getAttribute('aria-pressed')).toBe('true');
+  expect(taskA.getAttribute('aria-current')).toBe('true');
   await rerenderPanel('ses_parent02', 'Second analysis');
   expect(document.body.textContent).toContain('Second analysis');
   expect(document.body.textContent).not.toContain('Repository analysis');
   expect(document.body.textContent).toContain('Select a task');
-  expect(Array.from(document.querySelectorAll('button')).filter((button) => button.getAttribute('aria-pressed') === 'true')).toHaveLength(0);
+  expect(Array.from(document.querySelectorAll('button')).filter((button) => button.getAttribute('aria-current') === 'true')).toHaveLength(0);
   await rerenderPanel(null);
   expect(document.body.textContent).toContain('Open a session');
   await rerenderPanel('ses_parent01');
@@ -388,7 +388,7 @@ test('A to B to empty to A switching clears selection and never mixes content', 
   expect(document.body.textContent).not.toContain('Second analysis');
 });
 
-test('graph interaction creates no sessions and calls no runtime APIs', async () => {
+test('evidence-only panel keeps the run graph out and creates no sessions', async () => {
   await mount('ses_parent01');
   await act(async () => { resetStore(); seedSecondRun(); });
   await settle();
@@ -398,19 +398,12 @@ test('graph interaction creates no sessions and calls no runtime APIs', async ()
   const task = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Analyze explore'));
   if (!task) throw new Error('task missing');
   await act(async () => { task.click(); });
-  const frame = document.querySelector('[role="application"]');
-  if (!frame) throw new Error('graph frame missing');
-  await act(async () => {
-    const event = new Event('wheel', { bubbles: true, cancelable: true });
-    Object.assign(event, { clientX: 400, clientY: 300, deltaY: -120 });
-    frame.dispatchEvent(event);
-  });
-  const fit = Array.from(document.querySelectorAll('button')).find((button) => button.textContent === 'Fit');
-  if (!fit) throw new Error('fit button missing');
-  await act(async () => { fit.click(); });
   await settle();
-  // Selecting, zooming, and refitting touched no runtime API (they throw on
-  // use) and left the session list exactly as seeded.
+  // The run graph belongs to the DAG runs pane; this panel is evidence only.
+  expect(document.querySelector('[role="application"]')).toBeNull();
+  expect(task.getAttribute('aria-current')).toBe('true');
+  // Selecting and scrolling touched no runtime API (they throw on use) and
+  // left the session list exactly as seeded.
   expect(peekSessions()).toBe(4);
 });
 

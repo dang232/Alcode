@@ -10,26 +10,22 @@ import { engineSnapshotToView } from './engineSnapshotModel';
 import { useUIStore } from '@/stores/useUIStore';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
 import {
   buildActivityTree,
   buildExplanationCard,
   buildInspectorSummaries,
   buildInspectorTimeline,
-  buildRunGraph,
   taskAssociatedFiles,
 } from './activityModel';
-import { RunGraphView } from './RunGraph';
 import { TaskExplorer } from './TaskExplorer';
 import { TaskInspector } from './TaskInspector';
+import { TaskChanges } from './TaskChanges';
 
 type Props = {
   directory: string | null | undefined;
   conversationId: string | null | undefined;
   conversationTitle?: string | null | undefined;
 };
-
-type View = 'run' | 'code';
 
 // Stable identities for missing slices. A fresh `[]` or `{}` here returns a
 // new snapshot on every store read, and useSyncExternalStore treats each
@@ -46,7 +42,6 @@ const EMPTY_PARTS: Record<string, Part[]> = {};
  */
 export const ActivityPanel: React.FC<Props> = ({ directory, conversationId, conversationTitle }) => {
   const { t } = useI18n();
-  const [view, setView] = React.useState<View>('run');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
   const model = useDagRunModel(conversationId ?? null, conversationTitle, directory || undefined);
@@ -122,10 +117,6 @@ export const ActivityPanel: React.FC<Props> = ({ directory, conversationId, conv
     () => engineView?.rows ?? buildActivityTree(model),
     [engineView, model],
   );
-  const graph = React.useMemo(
-    () => engineView?.graph ?? buildRunGraph(model),
-    [engineView, model],
-  );
   const selectedLabel = rows.find((row) => row.id === selectedId)?.label ?? null;
   // Freshness comes from the store, not the fetch: a 'persisted' session list
   // was restored from cache and has not been confirmed live yet.
@@ -177,49 +168,24 @@ export const ActivityPanel: React.FC<Props> = ({ directory, conversationId, conv
 
   return (
     <div className="flex h-full flex-col gap-2 p-2">
-      <div className="flex items-center gap-1" role="tablist" aria-label={t('activity.view.label')}>
-        {(['run', 'code'] as const).map((entry) => (
-          <Button
-            key={entry}
-            variant={view === entry ? 'secondary' : 'ghost'}
-            size="sm"
-            role="tab"
-            aria-selected={view === entry}
-            onClick={() => setView(entry)}
-          >
-            {t(`activity.view.${entry}`)}
-          </Button>
-        ))}
+      {/* Evidence only: the run graph lives in the DAG runs pane, so this panel
+          spends its space on what each task did and what came back. */}
+      <div className="flex items-center gap-1">
+        <span className="typography-micro text-[var(--text-tertiary)]">{t('activity.explorer.label')}</span>
         <span className="typography-micro ms-auto text-[var(--text-tertiary)]">
           {storeStale ? t('activity.source.stale') : engineView ? t('activity.source.snapshot') : t('activity.source.live')}
         </span>
       </div>
-      {view === 'code' ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-auto p-2" data-testid="activity-code-bridge">
-          {files.map((file) => (
-            <button
-              key={file}
-              type="button"
-              onClick={() => openFileInCode(file)}
-              className="typography-micro w-full break-words text-start text-[var(--text-secondary)] hover:underline"
-            >
-              {file}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className={cn('grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2')}>
-          <section aria-label={t('activity.dag.label')} className="min-h-0">
-            {graph && <RunGraphView graph={graph} selectedId={selectedId} onSelect={setSelectedId} />}
-          </section>
-          <section aria-label={t('activity.explorer.label')} className="overflow-auto border-t border-[var(--surface-border)] pt-2">
-            <TaskExplorer rows={rows} selectedId={selectedId} onSelect={setSelectedId} />
-          </section>
-          <section aria-label={t('activity.inspector.label')} className="overflow-auto border-t border-[var(--surface-border)] pt-2">
-            <TaskInspector selectedLabel={selectedLabel} events={timeline} summaries={summaries} files={files} onOpenFile={openFileInCode} card={card} />
-          </section>
-        </div>
-      )}
+      <section aria-label={t('activity.explorer.label')} className="max-h-[38%] min-h-0 shrink-0 overflow-auto">
+        <TaskExplorer rows={rows} selectedId={selectedId} onSelect={setSelectedId} />
+      </section>
+      <section
+        aria-label={t('activity.inspector.label')}
+        className="min-h-0 flex-1 overflow-auto border-t border-[var(--surface-border)] pt-2"
+      >
+        <TaskInspector selectedLabel={selectedLabel} events={timeline} summaries={summaries} files={files} onOpenFile={openFileInCode} card={card} />
+        <TaskChanges directory={directory} files={files} onOpenFile={openFileInCode} />
+      </section>
     </div>
   );
 };
