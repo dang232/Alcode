@@ -8,6 +8,7 @@ import {
 } from '@/components/activity/activityGraphView';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { exceedsDragThreshold } from '@/lib/dragGesture';
 import type { CodeGraphTopology } from '@/lib/codeGraphApi';
 import { NODE_HEIGHT, NODE_WIDTH, layoutCodeGraph, type CodeGraphDrawnNode } from './codeGraphLayout';
 
@@ -78,7 +79,7 @@ export const CodeGraphCanvas: React.FC<Props> = ({
   const frameRef = React.useRef<HTMLDivElement | null>(null);
   const [view, setView] = React.useState<GraphView>({ x: 16, y: 16, scale: 1 });
   const fittedSignature = React.useRef<string | null>(null);
-  const dragRef = React.useRef<{ startX: number; startY: number; base: GraphView } | null>(null);
+  const dragRef = React.useRef<{ startX: number; startY: number; base: GraphView; moved: boolean } | null>(null);
   const layout = React.useMemo(() => layoutCodeGraph(graph), [graph]);
 
   // Kinds actually present, first-seen order, plus the subject's kind when a
@@ -112,11 +113,19 @@ export const CodeGraphCanvas: React.FC<Props> = ({
     }
   }, [layout, fit]);
 
-  const onWheel = React.useCallback((event: React.WheelEvent) => {
+  // Wheel has to be a native non-passive listener: a React onWheel prop is
+  // attached passively at the root, so it cannot stop the panel scrolling while
+  // it zooms, and the graph slides out from under the cursor.
+  React.useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    const rect = frame.getBoundingClientRect();
-    setView((current) => zoomGraphView(current, event.clientX - rect.left, event.clientY - rect.top, event.deltaY < 0));
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = frame.getBoundingClientRect();
+      setView((current) => zoomGraphView(current, event.clientX - rect.left, event.clientY - rect.top, event.deltaY < 0));
+    };
+    frame.addEventListener('wheel', onWheel, { passive: false });
+    return () => frame.removeEventListener('wheel', onWheel);
   }, []);
 
   return (
@@ -158,15 +167,18 @@ export const CodeGraphCanvas: React.FC<Props> = ({
         ref={frameRef}
         role="application"
         aria-label={t('codeGraph.section.graph')}
-        className="relative min-h-64 flex-1 cursor-grab overflow-hidden rounded-md border border-[var(--surface-border)] active:cursor-grabbing"
-        onWheel={onWheel}
+        className="relative min-h-64 flex-1 cursor-grab touch-none overflow-hidden rounded-md border border-[var(--surface-border)] select-none active:cursor-grabbing"
         onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-          dragRef.current = { startX: event.clientX, startY: event.clientY, base: view };
+          dragRef.current = { startX: event.clientX, startY: event.clientY, base: view, moved: false };
         }}
         onPointerMove={(event) => {
           const drag = dragRef.current;
           if (!drag) return;
+          if (!drag.moved) {
+            if (!exceedsDragThreshold(drag.startX, drag.startY, event.clientX, event.clientY)) return;
+            drag.moved = true;
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }
           setView({ ...drag.base, x: drag.base.x + event.clientX - drag.startX, y: drag.base.y + event.clientY - drag.startY });
         }}
         onPointerUp={() => { dragRef.current = null; }}

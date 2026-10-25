@@ -8,6 +8,7 @@ Object.assign(globalThis, {
   HTMLButtonElement: browser.HTMLButtonElement, HTMLDivElement: browser.HTMLDivElement,
   Event: browser.Event, CustomEvent: browser.CustomEvent, MouseEvent: browser.MouseEvent,
   PointerEvent: browser.PointerEvent,
+  WheelEvent: browser.WheelEvent,
   getComputedStyle: browser.getComputedStyle.bind(browser),
   requestAnimationFrame: browser.requestAnimationFrame.bind(browser),
   cancelAnimationFrame: browser.cancelAnimationFrame.bind(browser),
@@ -284,5 +285,59 @@ describe('code graph canvas', () => {
     expect(container.textContent).toContain('+2');
     root?.unmount();
     container.remove();
+  });
+
+  test('a tap picks a node: capture waits for a real drag, so the click reaches it', async () => {
+    const seen: string[] = [];
+    await render({ onSelect: (id: string) => { seen.push(id); } });
+    const frame = document.querySelector('[role="application"]') as HTMLElement;
+    if (!frame) throw new Error('frame missing');
+    const captures: number[] = [];
+    frame.setPointerCapture = ((id: number) => { captures.push(id); }) as never;
+    const pointer = (type: string, x: number, y: number) => new PointerEvent(type, {
+      bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 7, button: 0,
+    });
+
+    await act(async () => { frame.dispatchEvent(pointer('pointerdown', 100, 100)); });
+    expect(captures).toEqual([]);
+    await act(async () => { frame.dispatchEvent(pointer('pointermove', 102, 101)); });
+    expect(captures).toEqual([]);
+    await act(async () => { frame.dispatchEvent(pointer('pointerup', 102, 101)); });
+
+    const node = frame.querySelector('button[aria-pressed]') as HTMLElement;
+    if (!node) throw new Error('node missing');
+    await act(async () => { node.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(seen.length).toBeGreaterThan(0);
+    expect(captures).toEqual([]);
+  });
+
+  test('a real drag captures once and pans the content', async () => {
+    await render({});
+    const frame = document.querySelector('[role="application"]') as HTMLElement;
+    if (!frame) throw new Error('frame missing');
+    const captures: number[] = [];
+    frame.setPointerCapture = ((id: number) => { captures.push(id); }) as never;
+    const world = frame.firstElementChild as HTMLElement;
+    const before = world.style.transform;
+    const pointer = (type: string, x: number, y: number) => new PointerEvent(type, {
+      bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 7, button: 0,
+    });
+
+    await act(async () => { frame.dispatchEvent(pointer('pointerdown', 100, 100)); });
+    await act(async () => { frame.dispatchEvent(pointer('pointermove', 140, 130)); });
+    expect(captures).toEqual([7]);
+    expect(world.style.transform).not.toBe(before);
+  });
+
+  test('the graph owns the wheel: it zooms and cancels the panel scroll', async () => {
+    await render({});
+    const frame = document.querySelector('[role="application"]') as HTMLElement;
+    if (!frame) throw new Error('frame missing');
+    const world = frame.firstElementChild as HTMLElement;
+    const before = world.style.transform;
+    const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, clientX: 120, clientY: 120 });
+    await act(async () => { frame.dispatchEvent(wheel); });
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(world.style.transform).not.toBe(before);
   });
 });

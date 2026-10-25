@@ -11,6 +11,7 @@ import {
   type RunGraph,
 } from './activityModel';
 import { computeFitView, graphNodeSignature, zoomGraphView, type GraphView } from './activityGraphView';
+import { exceedsDragThreshold } from '@/lib/dragGesture';
 
 const STATE_ICON = {
   pending: null,
@@ -55,7 +56,7 @@ export const RunGraphView: React.FC<Props> = ({ graph, selectedId, onSelect }) =
   const { t } = useI18n();
   const frameRef = React.useRef<HTMLDivElement | null>(null);
   const [view, setView] = React.useState<GraphView>({ x: 16, y: 16, scale: 1 });
-  const dragRef = React.useRef<{ startX: number; startY: number; base: GraphView } | null>(null);
+  const dragRef = React.useRef<{ startX: number; startY: number; base: GraphView; moved: boolean } | null>(null);
   // Node-set identity of the last refit. State-only updates keep the user's
   // pan and zoom; added or removed nodes (or a new conversation) refit.
   const fittedSignature = React.useRef<string | null>(null);
@@ -76,13 +77,19 @@ export const RunGraphView: React.FC<Props> = ({ graph, selectedId, onSelect }) =
     }
   }, [graph, fit]);
 
-  const onWheel = React.useCallback((event: React.WheelEvent) => {
+  // Wheel has to be a native non-passive listener: a React onWheel prop is
+  // attached passively at the root, so it cannot stop the panel scrolling while
+  // it zooms, and the graph slides out from under the cursor.
+  React.useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    const rect = frame.getBoundingClientRect();
-    const cursorX = event.clientX - rect.left;
-    const cursorY = event.clientY - rect.top;
-    setView((current) => zoomGraphView(current, cursorX, cursorY, event.deltaY < 0));
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = frame.getBoundingClientRect();
+      setView((current) => zoomGraphView(current, event.clientX - rect.left, event.clientY - rect.top, event.deltaY < 0));
+    };
+    frame.addEventListener('wheel', onWheel, { passive: false });
+    return () => frame.removeEventListener('wheel', onWheel);
   }, []);
 
   const nodeById = React.useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph]);
@@ -108,15 +115,18 @@ export const RunGraphView: React.FC<Props> = ({ graph, selectedId, onSelect }) =
         ref={frameRef}
         role="application"
         aria-label={t('activity.graph.label')}
-        className="relative min-h-64 flex-1 cursor-grab overflow-hidden rounded-md border border-[var(--surface-border)] active:cursor-grabbing"
-        onWheel={onWheel}
+        className="relative min-h-64 flex-1 cursor-grab touch-none overflow-hidden rounded-md border border-[var(--surface-border)] select-none active:cursor-grabbing"
         onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-          dragRef.current = { startX: event.clientX, startY: event.clientY, base: view };
+          dragRef.current = { startX: event.clientX, startY: event.clientY, base: view, moved: false };
         }}
         onPointerMove={(event) => {
           const drag = dragRef.current;
           if (!drag) return;
+          if (!drag.moved) {
+            if (!exceedsDragThreshold(drag.startX, drag.startY, event.clientX, event.clientY)) return;
+            drag.moved = true;
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }
           setView({ ...drag.base, x: drag.base.x + event.clientX - drag.startX, y: drag.base.y + event.clientY - drag.startY });
         }}
         onPointerUp={() => { dragRef.current = null; }}
