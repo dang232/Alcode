@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AlcodeLogo } from '@/components/ui/AlcodeLogo';
-import { AppStartupOverlay } from '@/components/ui/AppStartupOverlay';
+
 import { Icon } from '@/components/icon/Icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';

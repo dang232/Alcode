@@ -179,7 +179,7 @@ const RoutingSection: React.FC = () => {
                   {status ? <RoutingStatusPill status={status} /> : null}
                 </SettingsFieldRow>
                 {provider.models.map((model) => (
-                  <div key={model.id} className="typography-meta text-muted-foreground pl-4">
+                  <div key={model.id} className="typography-meta text-muted-foreground ps-4">
                     {model.name || model.id}
                   </div>
                 ))}

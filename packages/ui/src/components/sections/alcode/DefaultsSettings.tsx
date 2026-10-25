@@ -16,7 +16,7 @@ import {
 } from '@/components/sections/shared/SettingsSection';
 import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint';
 import { SessionWarmingCheckbox } from './SessionWarmingCheckbox';
-import { SessionWarmingModeField } from './SessionWarmingModeField';
+
 import { PermissionDefaultModeField } from './PermissionDefaultModeField';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';

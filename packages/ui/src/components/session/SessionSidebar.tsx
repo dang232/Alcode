@@ -31,7 +31,7 @@ import {
   worktreeMapsEqual,
   type ProjectRef,
 } from '@/lib/worktrees/worktreeManager';
-import { resolveProjectForCreatedSession, resolveProjectsForWorktreeChange } from '@/lib/worktrees/worktreeTopologyRefresh';
+import { resolveProjectsForWorktreeChange } from '@/lib/worktrees/worktreeTopologyRefresh';
 import type { WorktreeMetadata } from '@/types/worktree';
 import { checkIsGitRepository } from '@/lib/gitApi';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';

@@ -589,7 +589,7 @@ describe('SessionAuthGate status-check failure behavior', () => {
     const buttons = findAllElements(tree, 'button-mock');
     const google = buttons.find((button) => typeof button.props.onClick === 'function');
     expect(google).toBeTruthy();
-    await (google?.props.onClick as () => Promise<void>)();
+    await (google!.props.onClick as () => Promise<void>)();
     await flushEffects();
     await flushEffects();
     expect(desktopInvokeCalls).toBe(1);
@@ -606,22 +606,22 @@ describe('SessionAuthGate status-check failure behavior', () => {
     const lockedTree = await renderGate();
     const emailInput = findElement(lockedTree, 'input');
     expect(emailInput).not.toBeNull();
-    (emailInput?.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'a@example.test' } });
+    (emailInput!.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'a@example.test' } });
 
     const emailTree = await renderGate();
     const emailForm = findElement(emailTree, 'form');
     expect(emailForm).not.toBeNull();
-    (emailForm?.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault: () => undefined });
+    (emailForm!.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault: () => undefined });
 
     const passwordTree = await renderGate();
     const passwordInput = findElement(passwordTree, 'input');
     expect(passwordInput).not.toBeNull();
-    (passwordInput?.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 's3cret' } });
+    (passwordInput!.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 's3cret' } });
 
     const passwordView = await renderGate();
     const passwordForm = findElement(passwordView, 'form');
     expect(passwordForm).not.toBeNull();
-    (passwordForm?.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault: () => undefined });
+    (passwordForm!.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault: () => undefined });
     await Promise.resolve();
 
     runtimeApiBaseUrl = 'https://host-b.example';

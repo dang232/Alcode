@@ -1173,7 +1173,7 @@ export const ProjectActionsButton = ({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="app-region-no-drag -ml-1 inline-flex h-9 w-7 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="app-region-no-drag -ms-1 inline-flex h-9 w-7 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={t('projectActions.actions.openPreview')}
                 onClick={handleOpenSelectedPreview}
               >
@@ -1187,7 +1187,7 @@ export const ProjectActionsButton = ({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="app-region-no-drag -ml-1 inline-flex h-9 w-5 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="app-region-no-drag -ms-1 inline-flex h-9 w-5 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={t('projectActions.actions.chooseActionAria')}
             >
               <Icon name="arrow-down-s" className="h-3.5 w-3.5" />
@@ -1222,9 +1222,9 @@ export const ProjectActionsButton = ({
                     </span>
                   ) : null}
                   {isStopping || runState?.status === 'waiting-for-preview'
-                    ? <Icon name="loader-4" className="ml-auto h-4 w-4 animate-spin text-[var(--status-warning)]" />
+                    ? <Icon name="loader-4" className="ms-auto h-4 w-4 animate-spin text-[var(--status-warning)]" />
                     : isRunning
-                      ? <Icon name="stop" className="ml-auto h-4 w-4 text-[var(--status-warning)]" />
+                      ? <Icon name="stop" className="ms-auto h-4 w-4 text-[var(--status-warning)]" />
                       : null}
                 </DropdownMenuItem>
               );
@@ -1282,7 +1282,7 @@ export const ProjectActionsButton = ({
               onClick={handleOpenSelectedPreview}
               className={cn(
                 compact ? 'inline-flex h-full w-8 items-center justify-center' : 'inline-flex h-full w-7 items-center justify-center',
-                'border-l border-[var(--interactive-border)] text-foreground',
+                'border-s border-[var(--interactive-border)] text-foreground',
                 'hover:bg-interactive-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
               )}
               aria-label={t('projectActions.actions.openPreview')}
@@ -1300,7 +1300,7 @@ export const ProjectActionsButton = ({
             type="button"
             className={cn(
               compact ? 'inline-flex h-full w-8 items-center justify-center' : 'inline-flex h-full w-7 items-center justify-center',
-              'border-l border-[var(--interactive-border)] text-muted-foreground',
+              'border-s border-[var(--interactive-border)] text-muted-foreground',
               'hover:bg-interactive-hover hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
             )}
             aria-label={t('projectActions.actions.chooseActionAria')}
@@ -1337,9 +1337,9 @@ export const ProjectActionsButton = ({
                   </span>
                 ) : null}
                 {isStopping || runState?.status === 'waiting-for-preview'
-                  ? <Icon name="loader-4" className="ml-auto h-4 w-4 animate-spin text-[var(--status-warning)]" />
+                  ? <Icon name="loader-4" className="ms-auto h-4 w-4 animate-spin text-[var(--status-warning)]" />
                   : isRunning
-                    ? <Icon name="stop" className="ml-auto h-4 w-4 text-[var(--status-warning)]" />
+                    ? <Icon name="stop" className="ms-auto h-4 w-4 text-[var(--status-warning)]" />
                     : null}
               </DropdownMenuItem>
             );

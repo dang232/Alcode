@@ -17,7 +17,7 @@ export function withAttachmentChips(
     text: string,
     filenames: readonly string[],
     keyPrefix: string,
-    isOpenable?: (filename: string) => boolean,
+    _isOpenable?: (filename: string) => boolean,
 ): InlineTextNode[] {
     if (filenames.length === 0) return [text];
     const ranges = findAttachmentCitationRanges(text, [...filenames]);

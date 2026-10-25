@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/icon/Icon';
 import { SortableTabsStrip, type SortableTabsStripItem } from '@/components/ui/sortable-tabs-strip';
-import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
+
 import { SettingsPageLayout } from '@/components/sections/shared/SettingsPageLayout';
 import { ProjectActionsTab } from '@/components/sections/projects/ProjectActionsTab';
 import { WorktreeSectionContent } from '@/components/sections/alcode/WorktreeSectionContent';

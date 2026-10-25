@@ -14,7 +14,7 @@ import { TunnelSettings } from './TunnelSettings';
 import { OpenCodeCliSettings } from './OpenCodeCliSettings';
 import { EnvironmentVariablesSettings } from './EnvironmentVariablesSettings';
 import { IsolatedSpacesSettings } from './IsolatedSpacesSettings';
-import { ISOLATED_SPACES_RELEASED } from '@/lib/spaces/release';
+
 import { AlcodeToolsSettings } from './AlcodeToolsSettings';
 import { DesktopNetworkSettings } from './DesktopNetworkSettings';
 import { DesktopAppSettings } from './DesktopAppSettings';

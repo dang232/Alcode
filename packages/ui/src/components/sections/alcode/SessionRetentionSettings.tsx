@@ -3,16 +3,7 @@ import { toast } from '@/components/ui';
 import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import { Icon } from "@/components/icon/Icon";
-import {
-  SettingsSection,
-  SettingsFieldRow,
-  SettingsCheckboxRow,
-  SettingsChipGroup,
-  SETTINGS_ICON_BUTTON_CLASS,
-  SETTINGS_NUMBER_INPUT_CLASS,
-  SETTINGS_NUMBER_STEPPER_ROW_CLASS,
-  SETTINGS_NUMBER_UNIT_CLASS,
-} from '@/components/sections/shared/SettingsSection';
+import { SettingsSection, SettingsFieldRow, SettingsCheckboxRow, SettingsChipGroup, SETTINGS_ICON_BUTTON_CLASS, SETTINGS_NUMBER_INPUT_CLASS } from '@/components/sections/shared/SettingsSection';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionAutoCleanup } from '@/hooks/useSessionAutoCleanup';

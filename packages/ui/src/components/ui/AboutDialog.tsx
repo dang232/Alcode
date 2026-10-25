@@ -147,7 +147,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
   }, [open, showDiagnostics]);
 
   // Both rows render from the first frame so the dialog height stays put while versions load.
-  const renderVersionRow = (labelKey: 'aboutDialog.alcodeVersionLabel' | 'aboutDialog.openCodeVersionLabel', value: string | null | undefined) => {
+  const _renderVersionRow = (labelKey: 'aboutDialog.alcodeVersionLabel' | 'aboutDialog.openCodeVersionLabel', value: string | null | undefined) => {
     if (value !== undefined) {
       return <p>{t(labelKey, { version: value ?? t('settings.openchamber.about.state.unknown') })}</p>;
     }

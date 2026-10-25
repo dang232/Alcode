@@ -236,10 +236,10 @@ export const Header: React.FC = () => {
 
   const [currentInstanceLabel, setCurrentInstanceLabel] = React.useState('Local');
   const [currentInstanceIsLocal, setCurrentInstanceIsLocal] = React.useState(true);
-  const [remoteUpdateDialogOpen, setRemoteUpdateDialogOpen] = React.useState(false);
+  const [_remoteUpdateDialogOpen, setRemoteUpdateDialogOpen] = React.useState(false);
   const [remoteUpdateInfo, setRemoteUpdateInfo] = React.useState<UpdateInfo | null>(null);
-  const [remoteUpdateChecking, setRemoteUpdateChecking] = React.useState(false);
-  const [remoteUpdateError, setRemoteUpdateError] = React.useState<string | null>(null);
+  const [_remoteUpdateChecking, setRemoteUpdateChecking] = React.useState(false);
+  const [_remoteUpdateError, setRemoteUpdateError] = React.useState<string | null>(null);
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
   // While the work-status panel is on screen it already reports the project
   // and the branch — three paces away in the same window. The meta row under
@@ -266,7 +266,7 @@ export const Header: React.FC = () => {
     }
     setWorkStatusPanelEnabled(!workStatusPanelEnabled);
   }, [setWorkStatusOverlayOpen, setWorkStatusPanelEnabled, workStatusOverlayOpen, workStatusPanelEnabled, workStatusPanelFits]);
-  const showDesktopHeaderContextUsage = !isVSCode
+  const _showDesktopHeaderContextUsage = !isVSCode
     && !workStatusPanelVisible
     && !!stableDesktopContextUsage;
 
@@ -388,7 +388,7 @@ export const Header: React.FC = () => {
     };
   }, [checkRemoteInstanceUpdate, currentInstanceIsLocal, currentInstanceLabel, isDesktopApp]);
 
-  const openRemoteInstanceUpdate = React.useCallback(() => {
+  const _openRemoteInstanceUpdate = React.useCallback(() => {
     if (remoteUpdateInfo?.available) {
       setRemoteUpdateDialogOpen(true);
       return;

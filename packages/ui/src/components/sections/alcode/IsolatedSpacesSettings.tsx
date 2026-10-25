@@ -74,7 +74,7 @@ const SpaceIdleStopSettings: React.FC = () => {
   };
 
   if (loadFailed) {
-    return <p className="pl-6 typography-ui-label text-[var(--status-error)]">{t('settings.alcode.spaces.idleStop.loadFailed')}</p>;
+    return <p className="ps-6 typography-ui-label text-[var(--status-error)]">{t('settings.alcode.spaces.idleStop.loadFailed')}</p>;
   }
   if (!setting) return null;
 
@@ -245,7 +245,7 @@ export const IsolatedSpacesSettings: React.FC = () => {
             </div>
           ) : null}
           {outcome?.stillRunning.map((space) => (
-            <p key={space.id} className="pl-6 typography-ui-label text-[var(--status-warning)]">
+            <p key={space.id} className="ps-6 typography-ui-label text-[var(--status-warning)]">
               {t('settings.alcode.spaces.turnOff.stillRunning', { name: space.name, reason: spaceFailureText(t, space) })}
             </p>
           ))}

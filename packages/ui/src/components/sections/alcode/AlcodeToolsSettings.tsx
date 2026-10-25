@@ -223,7 +223,7 @@ export const AlcodeToolsSettings: React.FC = () => {
             >
               <SelectTrigger
                 size={SETTINGS_SELECT_SIZE}
-                className="ml-auto w-auto min-w-0 max-w-[14rem]"
+                className="ms-auto w-auto min-w-0 max-w-[14rem]"
                 aria-label={t('settings.alcode.tools.browserProvider.aria')}
               >
                 <SelectValue>

@@ -36,7 +36,7 @@ import { useSessionTurnActivity } from '@/sync/global-session-status';
 import { SessionActivityIndicator } from '@/components/session/SessionActivityIndicator';
 import { ContextPanelContent } from './ContextSidebarTab';
 import { browserUrlLabel } from '@/lib/browser/url';
-import { registerBrowserOpener, registerSleepingBrowserTab, setShownBrowserTab } from '@/lib/browser/controlClient';
+import { registerBrowserOpener, registerSleepingBrowserTab } from '@/lib/browser/controlClient';
 import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { Icon } from "@/components/icon/Icon";
 import type { IconName } from "@/components/icon/icons";
@@ -44,15 +44,15 @@ import { GuestIcon } from './GuestRailIcon';
 import { useGuestsStore } from '@/lib/guests/store';
 import { FALLBACK_GUEST_ICON } from '@/lib/guests/icon';
 import { guestHasSharedSurface, guestSurfaceDocking, type GuestSurfaceDocking } from '@/lib/guests/surfaces';
-import { isPluginContextPanelMode, pluginIdFromMode, type PluginContextPanelMode } from '@/lib/surfaces/modes';
+import { isPluginContextPanelMode, pluginIdFromMode } from '@/lib/surfaces/modes';
 import { CONTEXT_SURFACE_WIDTHS, defaultContextPanelWidth, getContextSurfaceDefaultWidth } from '@/lib/surfaces/registry';
 import { beginLayoutAnimation, cancelWhenLayoutSettled, LAYOUT_ANIMATION_EASING, runWhenLayoutSettled } from '@/lib/layoutAnimation';
 import { useLayoutAnimationMs } from '@/hooks/useLayoutAnimationMs';
 import { WORK_STATUS_COLUMN_WIDTH } from '@/components/chat/work-status/useWorkStatusVisibility';
 import { setWorkStatusHost, useRightSlotStore } from './rightSlot';
-import { GUEST_SURFACE_DOCK_SIZE_MIN } from '@alcode/sdk';
-import { isEditorEventTarget } from '@/lib/editorFocus';
-import { isTerminalEventTarget } from '@/lib/terminalFocus';
+
+
+
 import { changeRequestCopy } from '@/lib/source-control/changeRequestCopy';
 import { ContextPanelHeaderSlotProvider } from './contextPanelHeaderSlot';
 import { CLOSED_ZONE_VIEW, getZoneView, isZoneShown, resolveZoneActiveTab, type ContextZone } from '@/lib/workspace/zones';
@@ -915,31 +915,31 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
       }));
     return () => unregister.forEach((release) => release());
   }, [browserTabs, loadedBrowserTabs, wakeBrowserTab]);
-  const diffTabs = React.useMemo(
+  const _diffTabs = React.useMemo(
     () => tabs.filter((tab) => tab.mode === 'diff'),
     [tabs],
   );
-  const terminalTab = React.useMemo(
+  const _terminalTab = React.useMemo(
     () => tabs.find((tab) => tab.mode === 'terminal') ?? null,
     [tabs],
   );
   // Keep-alive: the walkthrough holds reading progress and scroll position that
   // a remount would silently throw away.
-  const hasWalkthroughTab = React.useMemo(
+  const _hasWalkthroughTab = React.useMemo(
     () => tabs.some((tab) => tab.mode === 'walkthrough'),
     [tabs],
   );
-  const pluginTabs = React.useMemo(
+  const _pluginTabs = React.useMemo(
     () => tabs.filter((tab) => isPluginContextPanelMode(tab.mode)),
     [tabs],
   );
   const guests = useGuestsStore((state) => state.guests);
-  const surfaceGuestIds = React.useMemo(
+  const _surfaceGuestIds = React.useMemo(
     () => new Set(guests.filter(guestHasSharedSurface).map((guest) => guest.id)),
     [guests],
   );
   // Surface extensions that also ship a page: it is docked to one edge of the picture.
-  const surfaceDockings = React.useMemo(() => {
+  const _surfaceDockings = React.useMemo(() => {
     const dockings = new Map<string, GuestSurfaceDocking>();
     for (const guest of guests) {
       const docking = guestSurfaceDocking(guest);
@@ -947,7 +947,7 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
     }
     return dockings;
   }, [guests]);
-  const hasFileTabs = React.useMemo(
+  const _hasFileTabs = React.useMemo(
     () => tabs.some((tab) => tab.mode === 'file'),
     [tabs],
   );

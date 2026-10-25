@@ -1,8 +1,8 @@
 import React from 'react';
 import { toast } from '@/components/ui';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Icon } from '@/components/icon/Icon';
+
+
 import {
   cancelPasskeyCeremony,
   defaultPasskeyStatus,
@@ -41,9 +41,9 @@ export const PasskeySettings: React.FC = () => {
   const [isRegistering, setIsRegistering] = React.useState(false);
   const [revokingId, setRevokingId] = React.useState<string | null>(null);
   const [isResetting, setIsResetting] = React.useState(false);
-  const [renamingId, setRenamingId] = React.useState<string | null>(null);
+  const [_renamingId, setRenamingId] = React.useState<string | null>(null);
   const [renameDraft, setRenameDraft] = React.useState('');
-  const [isRenaming, setIsRenaming] = React.useState(false);
+  const [_isRenaming, setIsRenaming] = React.useState(false);
   const renameCancelledRef = React.useRef(false);
   const renameSubmittingRef = React.useRef(false);
   const [passkeys, setPasskeys] = React.useState<StoredPasskey[]>([]);
@@ -165,19 +165,19 @@ export const PasskeySettings: React.FC = () => {
     }
   }, [loadPasskeys, t]);
 
-  const startRenamePasskey = React.useCallback((passkey: StoredPasskey) => {
+  const _startRenamePasskey = React.useCallback((passkey: StoredPasskey) => {
     renameCancelledRef.current = false;
     setRenameDraft(passkey.customLabel ?? '');
     setRenamingId(passkey.id);
   }, []);
 
-  const cancelRenamePasskey = React.useCallback(() => {
+  const _cancelRenamePasskey = React.useCallback(() => {
     renameCancelledRef.current = true;
     setRenameDraft('');
     setRenamingId(null);
   }, []);
 
-  const submitRenamePasskey = React.useCallback(async (passkey: StoredPasskey) => {
+  const _submitRenamePasskey = React.useCallback(async (passkey: StoredPasskey) => {
     if (renameCancelledRef.current) {
       renameCancelledRef.current = false;
       return;

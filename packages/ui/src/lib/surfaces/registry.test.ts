@@ -1,13 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import {
-  CODE_GRAPH_WIDTH_MAX,
-  CONTEXT_SURFACES,
-  CONTEXT_SURFACE_WIDTHS,
-  defaultContextPanelWidth,
-  getVisibleContextRailSurfaces,
-  WALKTHROUGH_MIN_WIDTH,
-} from './registry';
+import { CONTEXT_SURFACES, CONTEXT_SURFACE_WIDTHS, defaultContextPanelWidth, getVisibleContextRailSurfaces, WALKTHROUGH_MIN_WIDTH } from './registry';
 
 const baseOptions = {
   railOrder: [],

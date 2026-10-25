@@ -242,7 +242,6 @@ export const AboutSettings: React.FC<AboutSettingsProps> = ({ initialUpdateDialo
   })();
   const isInstallBlocked = (info: UpdateInfo | null) => Boolean(info?.installBlocked);
   const installBlocked = update.available && update.info?.installBlocked === 'service-manager';
-  const manualUpdateCommand = update.info?.updateCommand || 'alcode update';
   const remoteHostInstallBlocked = Boolean(remoteHostUpdate?.available && isInstallBlocked(remoteHostUpdate.info));
 
   const checkAll = () => {
@@ -590,7 +589,7 @@ export const AboutSettings: React.FC<AboutSettingsProps> = ({ initialUpdateDialo
                 variant="default"
                 onClick={() => setUpdateDialogOpen(true)}
               >
-                <Icon name="download" className="h-4 w-4 mr-1" />
+                <Icon name="download" className="h-4 w-4 me-1" />
                 {alcodeUpdateLabel}
               </Button>
             )}

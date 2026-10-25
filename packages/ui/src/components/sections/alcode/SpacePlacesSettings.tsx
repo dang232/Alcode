@@ -19,43 +19,19 @@ import { DockerSetupNotice } from '@/components/session/spaces/DockerSetupNotice
 import { SpaceRow } from '@/components/session/spaces/SpaceRow';
 import { failureOfError, spaceFailureText } from '@/components/session/spaces/spaceFailureText';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { MobileOverlayPanel } from '@/components/ui/MobileOverlayPanel';
-import { getCurrentIntlLocale, useI18n, type I18nKey } from '@/lib/i18n';
+
+import { useI18n, type I18nKey } from '@/lib/i18n';
 import { Input } from '@/components/ui/input';
 import { reportSettingsSaveState } from '@/lib/persistence';
-import {
-  SSH_PLACE_ID,
-  cleanUpSpaceDisk,
-  listSpacePlaces,
-  pullSpaceImage,
-  readSpaceDisk,
-  setSpaceMachine,
-  type SpaceCleanUp,
-  type SpaceDisk,
-  type SpaceEntry,
-  type SpacePlace,
-} from '@/lib/spaces/spaces-api';
+import { SSH_PLACE_ID, listSpacePlaces, setSpaceMachine, type SpaceEntry, type SpacePlace } from '@/lib/spaces/spaces-api';
 import { refreshSpacesJourney, useSpacesJourneyRead } from '@/lib/spaces/spaces-store';
-import { cn } from '@/lib/utils';
+
 import { useUIStore } from '@/stores/useUIStore';
 import { SettingsControlGroup, SettingsFieldRow } from '../shared/SettingsSection';
-import { IMAGE_SETTLE_REFRESH_MS, nextDiskReadDelay } from './spacePlacesDisk';
+
 
 // Decimal units, as Docker and the Mac's own disk tools count; only the number is localised.
-const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
-const formatDiskSize = (bytes: number): string => {
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1000 && unit < SIZE_UNITS.length - 1) {
-    value /= 1000;
-    unit += 1;
-  }
-  const number = new Intl.NumberFormat(getCurrentIntlLocale(), { maximumFractionDigits: unit === 0 ? 0 : 1 }).format(value);
-  // A no-break space, so a narrow screen never puts the unit alone on the next line.
-  return `${number}\u00a0${SIZE_UNITS[unit]}`;
-};
 
 type Read<T> = { kind: 'reading' } | { kind: 'read'; value: T } | { kind: 'failed'; error: Error };
 
@@ -81,182 +57,11 @@ const useRead = <T,>(load: (signal: AbortSignal) => Promise<T>): [Read<T>, () =>
   return [state, retry, replace, fail];
 };
 
-const DiskLine: React.FC<{ disk: SpaceDisk }> = ({ disk }) => {
-  const { t } = useI18n();
-  const parts = [
-    ...(disk.imageBytes === null ? [] : [t('settings.alcode.spaces.places.disk.image', { size: formatDiskSize(disk.imageBytes) })]),
-    t('settings.alcode.spaces.places.disk.tools', { size: formatDiskSize(disk.toolsBytes) }),
-    t('settings.alcode.spaces.places.disk.spaces', { size: formatDiskSize(disk.spacesBytes) }),
-  ];
-  return <p className="typography-meta text-muted-foreground">{t('settings.alcode.spaces.places.disk.line', { parts: parts.join(' · ') })}</p>;
-};
-
-/** The one confirmation of a clean-up, with what it frees and, when the image goes, what that costs later. */
-const CleanUpConfirm: React.FC<{ disk: SpaceDisk | null; onCancel: () => void; onConfirm: () => void }> = ({ disk, onCancel, onConfirm }) => {
-  const { t } = useI18n();
-  const isMobile = useUIStore((state) => state.isMobile);
-  const open = disk !== null;
-  const title = t('settings.alcode.spaces.places.cleanUp.confirmTitle');
-  const lines = disk
-    ? [
-      t('settings.alcode.spaces.places.cleanUp.frees', { size: formatDiskSize(disk.freeBytes) }),
-      ...(disk.freesImage ? [t('settings.alcode.spaces.places.cleanUp.imageAgain')] : []),
-    ]
-    : [];
-  const buttons = (
-    <div className="flex w-full justify-end gap-2">
-      <Button variant="outline" size="sm" onClick={onCancel}>{t('settings.alcode.spaces.places.cleanUp.cancel')}</Button>
-      <Button size="sm" onClick={onConfirm}>{t('settings.alcode.spaces.places.cleanUp.confirm')}</Button>
-    </div>
-  );
-  if (isMobile) {
-    return (
-      <MobileOverlayPanel open={open} title={title} onClose={onCancel} footer={buttons}>
-        <div className="flex flex-col gap-1 px-3 pb-4 pt-1">
-          {lines.map((line) => <p key={line} className="typography-meta text-muted-foreground">{line}</p>)}
-        </div>
-      </MobileOverlayPanel>
-    );
-  }
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onCancel(); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="flex flex-col gap-1">
-            {lines.map((line) => <span key={line}>{line}</span>)}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>{buttons}</DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-type CleanUpState = { kind: 'idle' } | { kind: 'confirming' } | { kind: 'cleaning' } | { kind: 'done'; outcome: SpaceCleanUp } | { kind: 'failed'; error: Error };
-
-/** What a finished clean-up says: what it freed, and what Docker kept. */
-const CleanUpOutcome: React.FC<{ outcome: SpaceCleanUp }> = ({ outcome }) => {
-  const { t } = useI18n();
-  const inUse = outcome.kept.some((item) => item.reason === 'in_use');
-  const failed = outcome.kept.some((item) => item.reason === 'failed');
-  return (
-    <div className="space-y-0.5" role="status">
-      <p className="typography-meta text-muted-foreground">{t('settings.alcode.spaces.places.cleanUp.freed', { size: formatDiskSize(outcome.freedBytes) })}</p>
-      {inUse ? <p className="typography-meta text-muted-foreground">{t('settings.alcode.spaces.places.cleanUp.keptInUse')}</p> : null}
-      {failed ? <p className="typography-meta text-[var(--status-warning)]">{t('settings.alcode.spaces.places.cleanUp.keptFailed')}</p> : null}
-    </div>
-  );
-};
-
-/** The "Download image" button: asking the host to start, or a start the host refused. */
-type DownloadState = { kind: 'idle' } | { kind: 'starting' } | { kind: 'failed'; error: Error };
-
-/** The disk of a place that answers, its image download while the image is absent, and its clean-up. */
-const PlaceDisk: React.FC<{ placeId: string }> = ({ placeId }) => {
-  const { t } = useI18n();
-  const load = React.useCallback((signal: AbortSignal) => readSpaceDisk(placeId, signal), [placeId]);
-  const [disk, , replaceDisk, failDisk] = useRead(load);
-  const [cleanUp, setCleanUp] = React.useState<CleanUpState>({ kind: 'idle' });
-
-  const run = async () => {
-    setCleanUp({ kind: 'cleaning' });
-    try {
-      const outcome = await cleanUpSpaceDisk(placeId);
-      replaceDisk(outcome.disk);
-      setCleanUp({ kind: 'done', outcome });
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
-      setCleanUp({ kind: 'failed', error });
-    }
-  };
-
-  // "Download image" while the image is absent (journey step 0). The download runs on the host;
-  // the disk is read again, one read at a time with a pause between, until it says the download
-  // ended: the one poll of this page, and only while the user watches a download they started or
-  // found under way. A read that fails ends the poll and shows as the disk's own failure, so a
-  // host that went away does not leave the spinner turning.
-  const [download, setDownload] = React.useState<DownloadState>({ kind: 'idle' });
-  // The reads after a download ended, while the image has no size yet; a download starts them over.
-  const settleReads = React.useRef(0);
-  React.useEffect(() => {
-    if (disk.kind !== 'read') return;
-    const delay = nextDiskReadDelay(disk.value, settleReads.current);
-    if (delay === null) return;
-    const controller = new AbortController();
-    // Each answer replaces the disk and schedules the read after it, until the rule says stop.
-    const timer = setTimeout(() => {
-      readSpaceDisk(placeId, controller.signal).then(
-        (value) => {
-          if (controller.signal.aborted) return;
-          // The reads of the settle phase are the one-second ones; the three-second read that
-          // first sees the download ended is not one of them.
-          if (value.imagePulling) settleReads.current = 0;
-          else if (value.imageBytes === 0 && delay === IMAGE_SETTLE_REFRESH_MS) settleReads.current += 1;
-          replaceDisk(value);
-        },
-        (error: Error) => { if (!controller.signal.aborted) failDisk(error); },
-      );
-    }, delay);
-    return () => { controller.abort(); clearTimeout(timer); };
-  }, [disk, failDisk, placeId, replaceDisk]);
-  const downloadImage = async () => {
-    setDownload({ kind: 'starting' });
-    // What the last clean-up freed is about the disk before this download; one still running keeps its state.
-    setCleanUp((current) => (current.kind === 'done' || current.kind === 'failed' ? { kind: 'idle' } : current));
-    settleReads.current = 0;
-    try {
-      replaceDisk(await pullSpaceImage(placeId));
-      setDownload({ kind: 'idle' });
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
-      setDownload({ kind: 'failed', error });
-    }
-  };
-
-  if (disk.kind === 'reading') return <p className="typography-meta text-muted-foreground">{t('settings.alcode.spaces.places.disk.reading')}</p>;
-  if (disk.kind === 'failed') {
-    return <p className="typography-meta text-[var(--status-error)]">{t('settings.alcode.spaces.places.disk.readFailed', { reason: spaceFailureText(t, failureOfError(disk.error)) })}</p>;
-  }
-  // A download this window could not start, or the host's word on the last one while the image is absent.
-  const imageFailure = download.kind === 'failed' ? failureOfError(download.error) : disk.value.imageFailure;
-  const downloading = disk.value.imagePulling || download.kind === 'starting';
-  const totalBytes = (disk.value.imageBytes ?? 0) + disk.value.toolsBytes + disk.value.spacesBytes;
-  // Offered only when it would free something, and never while the image downloads: the host refuses then.
-  const canFree = disk.value.freeBytes > 0 && !disk.value.imagePulling;
-  const nothingToFree = disk.value.freeBytes === 0;
-  return (
-    <div className="space-y-2">
-      <DiskLine disk={disk.value} />
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={nothingToFree || cleanUp.kind === 'cleaning'}
-        title={nothingToFree ? t('settings.alcode.spaces.places.cleanUp.nothing') : undefined}
-        onClick={() => setCleanUp({ kind: 'confirming' })}
-      >
-        {cleanUp.kind === 'cleaning' ? t('settings.alcode.spaces.places.cleanUp.running') : t('settings.alcode.spaces.places.cleanUp.button')}
-      </Button>
-      {cleanUp.kind === 'done' ? <CleanUpOutcome outcome={cleanUp.outcome} /> : null}
-      {cleanUp.kind === 'failed' ? (
-        <p className="typography-meta text-[var(--status-error)]" role="alert">
-          {t('settings.alcode.spaces.places.cleanUp.failed', { reason: spaceFailureText(t, failureOfError(cleanUp.error)) })}
-        </p>
-      ) : null}
-      <CleanUpConfirm
-        disk={cleanUp.kind === 'confirming' ? disk.value : null}
-        onCancel={() => setCleanUp({ kind: 'idle' })}
-        onConfirm={() => void run()}
-      />
-    </div>
-  );
-};
 
 // The places the host has, by the name the user knows them by; a place from a later version keeps its id.
 const PLACE_NAMES: ReadonlyMap<string, I18nKey> = new Map<string, I18nKey>([['docker', 'settings.alcode.spaces.places.docker']]);
 
 /** Whether a place runs Docker, whose version the block names. */
-const DOCKER_PLACES: ReadonlySet<string> = new Set(['docker', SSH_PLACE_ID]);
 
 /**
  * The block of a place: what runs there, its disk, the spaces left behind; or, for one out of
@@ -310,7 +115,7 @@ const PlaceBlock: React.FC<{ place: SpacePlace; title: string; field?: React.Rea
   const gone = spaces?.filter((entry) => entry.state === 'missing') ?? [];
   // Which engine runs Docker here, when this computer's Docker said so.
   const engine = place.setup?.memory?.engine;
-  const dockerText = engine === 'colima'
+  const _dockerText = engine === 'colima'
     ? t('settings.openchamber.spaces.places.dockerRunningColima', { version: place.version })
     : engine === 'docker_desktop'
       ? t('settings.openchamber.spaces.places.dockerRunningDesktop', { version: place.version })

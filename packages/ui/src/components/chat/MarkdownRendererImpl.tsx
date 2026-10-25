@@ -323,7 +323,7 @@ const findBlockCodePathTokens = (container: HTMLElement): Array<{ codeBlock: HTM
 // `data-openchamber-block-path-token`, which later passes treat like inline
 // code references, and marks the block scanned. A token whose text moved
 // since the scan stays text.
-const wrapBlockCodePathTokens = (
+const _wrapBlockCodePathTokens = (
   codeBlock: HTMLElement,
   confirmed: Array<BlockCodePathToken & { decorate: (span: HTMLElement) => void }>,
 ): void => {
@@ -597,7 +597,7 @@ const useFileReferenceInteractions = ({
           codeBlock,
           tokens: await Promise.all(tokens.map((token) => token.target.then((targetPath) => ({ ...token, targetPath })))),
         }))),
-      ]).then(([linkResults, blockResults]) => {
+      ]).then(([linkResults, _blockResults]) => {
         if (cancelled) return;
         writeAnnotations(() => {
           for (const { candidate, resolvedPath, targetPath } of linkResults) {
