@@ -23,7 +23,26 @@ import { runtimeFetch } from './runtime-fetch';
 export type CodeGraphFreshness = 'fresh' | 'stale';
 export type CodeGraphCoverage = 'indexed' | 'partial' | 'unindexed';
 
-export type CodeGraphQueryKind = 'context' | 'impact' | 'search' | 'tests' | 'file' | 'explore' | 'trace';
+export type CodeGraphQueryKind = 'context' | 'impact' | 'search' | 'tests' | 'file' | 'explore' | 'trace' | 'content';
+
+export type CodeGraphSearchReason =
+  | 'exact-name'
+  | 'exact-qualified'
+  | 'prefix'
+  | 'token'
+  | 'substring'
+  | 'fuzzy';
+
+export type CodeGraphContentReason = 'literal' | 'phrase' | 'token';
+
+export interface CodeGraphContentItem {
+  file: string;
+  line: number;
+  column?: number;
+  excerpt: string;
+  reason: CodeGraphContentReason;
+  confidence: number;
+}
 
 export interface CodeGraphEvidence {
   edge: string;
@@ -39,6 +58,8 @@ export interface CodeGraphItem {
   evidence: CodeGraphEvidence[];
   confidence: number;
   knowledgeIds: string[];
+  reason?: CodeGraphSearchReason;
+  rank?: number;
 }
 
 export interface CodeGraphNode {
@@ -86,6 +107,9 @@ export interface CodeGraphIndexSummary extends CodeGraphFreshnessBinding {
   nodeCount: number;
   edgeCount: number;
   entryCount: number;
+  indexTruncated?: boolean;
+  excludedCount?: number;
+  excludedSample?: string[];
 }
 
 export interface CodeGraphQueryResult extends CodeGraphFreshnessBinding {
@@ -101,7 +125,13 @@ export interface CodeGraphQueryResult extends CodeGraphFreshnessBinding {
   unsupported: string[];
   /** The engine hit its own answer cap, so the list is a prefix of a larger set. */
   truncated?: boolean;
+  /** True when the index walk skipped files, so `coverage` reads `partial`. */
+  indexTruncated?: boolean;
+  excludedCount?: number;
+  excludedSample?: string[];
   items: CodeGraphItem[];
+  /** Present only on `kind: 'content'`: source-text hits with excerpts. */
+  contentItems?: CodeGraphContentItem[];
   /** The `impact` answer's resolved subject, when the engine found one. */
   subject?: CodeGraphItem;
   definition?: CodeGraphItem;
@@ -129,6 +159,11 @@ export interface CodeGraphQueryInput {
   limit?: number;
   refresh?: boolean;
   signal?: AbortSignal;
+  /** Source-text scope filters; only `kind: 'content'` reads them. */
+  pathPrefix?: string;
+  language?: string;
+  contentKind?: 'test' | 'source';
+  contentDirectory?: string;
 }
 
 /** One repo-relative path bucket of indexed files, as the server grouped it. */
@@ -201,6 +236,9 @@ const parseEvidence = (value: unknown): CodeGraphEvidence[] => {
   return out;
 };
 
+const SEARCH_REASONS = new Set(['exact-name', 'exact-qualified', 'prefix', 'token', 'substring', 'fuzzy']);
+const CONTENT_REASONS = new Set(['literal', 'phrase', 'token']);
+
 const parseItem = (value: unknown): CodeGraphItem | null => {
   if (!isRecord(value)) return null;
   if (typeof value.id !== 'string' || typeof value.file !== 'string') return null;
@@ -214,8 +252,49 @@ const parseItem = (value: unknown): CodeGraphItem | null => {
     evidence: parseEvidence(value.evidence),
     confidence: value.confidence,
     knowledgeIds: asStringArray(value.knowledgeIds),
+    ...(typeof value.reason === 'string' && SEARCH_REASONS.has(value.reason)
+      ? { reason: value.reason as CodeGraphItem['reason'] }
+      : {}),
+    ...(typeof value.rank === 'number' && Number.isFinite(value.rank) ? { rank: value.rank } : {}),
   };
 };
+
+const parseContentItem = (value: unknown): CodeGraphContentItem | null => {
+  if (!isRecord(value)) return null;
+  if (typeof value.file !== 'string' || !value.file) return null;
+  if (typeof value.line !== 'number' || !Number.isFinite(value.line)) return null;
+  if (typeof value.excerpt !== 'string') return null;
+  if (typeof value.reason !== 'string' || !CONTENT_REASONS.has(value.reason)) return null;
+  if (typeof value.confidence !== 'number' || !Number.isFinite(value.confidence)) return null;
+  return {
+    file: value.file,
+    line: value.line,
+    ...(typeof value.column === 'number' && Number.isFinite(value.column) ? { column: value.column } : {}),
+    excerpt: value.excerpt,
+    reason: value.reason as CodeGraphContentItem['reason'],
+    confidence: value.confidence,
+  };
+};
+
+const parseContentItems = (value: unknown): CodeGraphContentItem[] => (
+  Array.isArray(value)
+    ? value.map(parseContentItem).filter((item): item is CodeGraphContentItem => item !== null)
+    : []
+);
+
+const parseIndexTruncation = (value: Record<string, unknown>): {
+  indexTruncated?: boolean;
+  excludedCount?: number;
+  excludedSample?: string[];
+} => ({
+  ...(value.indexTruncated === true ? { indexTruncated: true as const } : {}),
+  ...(typeof value.excludedCount === 'number' && Number.isFinite(value.excludedCount)
+    ? { excludedCount: value.excludedCount }
+    : {}),
+  ...(Array.isArray(value.excludedSample)
+    ? { excludedSample: asStringArray(value.excludedSample) }
+    : {}),
+});
 
 const parseItems = (value: unknown): CodeGraphItem[] => (
   Array.isArray(value)
@@ -421,6 +500,7 @@ export const fetchCodeGraphIndex = async (
   }
   return {
     ...parseBinding(payload),
+    ...parseIndexTruncation(payload),
     ...(typeof payload.binding === 'string' ? { binding: payload.binding } : {}),
     ...(typeof payload.snapshotRoot === 'string' && payload.snapshotRoot
       ? { snapshotRoot: payload.snapshotRoot }
@@ -449,6 +529,10 @@ export const queryCodeGraph = async (
       ...(input.to ? { to: input.to } : {}),
       ...(input.limit !== undefined ? { limit: String(input.limit) } : {}),
       ...(input.refresh ? { refresh: '1' } : {}),
+      ...(input.pathPrefix ? { pathPrefix: input.pathPrefix } : {}),
+      ...(input.language ? { language: input.language } : {}),
+      ...(input.contentKind ? { contentKind: input.contentKind } : {}),
+      ...(input.contentDirectory ? { contentDirectory: input.contentDirectory } : {}),
     },
     directory: resolved,
     cache: 'no-store',
@@ -468,8 +552,12 @@ export const queryCodeGraph = async (
   const maybeItems = (key: string): CodeGraphItem[] | undefined => (
     payload[key] === undefined ? undefined : parseItems(payload[key])
   );
+  const contentItems = parseContentItems(payload.items);
+  const symbolItems = parseItems(payload.items);
+  const isContentKind = input.kind === 'content';
   return {
     ...parseBinding(payload),
+    ...parseIndexTruncation(payload),
     coverage,
     ...(typeof payload.snapshotRoot === 'string' && payload.snapshotRoot
       ? { snapshotRoot: payload.snapshotRoot }
@@ -477,7 +565,14 @@ export const queryCodeGraph = async (
     knowledgeIds: asStringArray(payload.knowledgeIds),
     unresolved: asStringArray(payload.unresolved),
     unsupported: asStringArray(payload.unsupported),
-    items: parseItems(payload.items),
+    items: isContentKind ? [] : symbolItems,
+    ...(isContentKind
+      ? contentItems.length > 0
+        ? { contentItems }
+        : { contentItems: [] as CodeGraphContentItem[] }
+      : contentItems.length > 0
+        ? { contentItems }
+        : {}),
     ...(maybeItems('callers') ? { callers: maybeItems('callers') } : {}),
     ...(maybeItems('callees') ? { callees: maybeItems('callees') } : {}),
     ...(maybeItems('impacted') ? { impacted: maybeItems('impacted') } : {}),

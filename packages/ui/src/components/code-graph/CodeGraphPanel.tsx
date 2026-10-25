@@ -59,6 +59,8 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
   const [indexLoading, setIndexLoading] = React.useState(false);
   const [searchText, setSearchText] = React.useState('');
   const [search, setSearch] = React.useState<CodeGraphQueryResult | null>(null);
+  const [searchScope, setSearchScope] = React.useState<'symbols' | 'content'>('symbols');
+  const [committedScope, setCommittedScope] = React.useState<'symbols' | 'content'>('symbols');
   const [showTestMatches, setShowTestMatches] = React.useState(false);
   const [matchWindow, setMatchWindow] = React.useState(SEARCH_PAGE_SIZE);
   const [moduleOpen, setModuleOpen] = React.useState<string | null>(null);
@@ -68,6 +70,9 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     return [...visible].sort((left, right) => {
       const testRank = Number(isTestPath(left.file)) - Number(isTestPath(right.file));
       if (testRank !== 0) return testRank;
+      const leftRank = typeof left.rank === 'number' ? left.rank : null;
+      const rightRank = typeof right.rank === 'number' ? right.rank : null;
+      if (leftRank !== null && rightRank !== null && leftRank !== rightRank) return leftRank - rightRank;
       if (right.confidence !== left.confidence) return right.confidence - left.confidence;
       return (left.name ?? left.id).localeCompare(right.name ?? right.id);
     });
@@ -184,6 +189,8 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     setTestsDetail(null);
     setDetailError(null);
     setCommittedQuery(null);
+    setSearchScope('symbols');
+    setCommittedScope('symbols');
     setMode('explore');
     setExplore(null);
     setExploreError(null);
@@ -255,7 +262,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     return { detail: contextResult, impact: impactResult, file: null, tests: await fetchTests() };
   }, [directory]);
 
-  const runSearch = React.useCallback(async (submitted: string, refresh: boolean, signal: AbortSignal, queryLimit: number) => {
+  const runSearch = React.useCallback(async (submitted: string, scope: 'symbols' | 'content', refresh: boolean, signal: AbortSignal, queryLimit: number) => {
     const needle = submitted.trim();
     if (!directory || !needle) return;
     const request = searchRef.current + 1;
@@ -264,6 +271,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     setSearchError(null);
     setSearch(null);
     setCommittedQuery(needle);
+    setCommittedScope(scope);
     setSelectedId(null);
     setDetailSubjectId(null);
     setPreview(null);
@@ -274,21 +282,27 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     setTestsDetail(null);
     setDetailError(null);
     setTrail(null);
+    setPeek(null);
     try {
-      const result = await queryCodeGraph(directory, { kind: 'search', query: needle, limit: Math.max(queryLimit, SEARCH_FETCH_LIMIT), refresh, signal });
+      const kind = scope === 'content' ? 'content' : 'search';
+      const result = await queryCodeGraph(directory, { kind, query: needle, limit: Math.max(queryLimit, SEARCH_FETCH_LIMIT), refresh, signal });
       if (signal.aborted || searchRef.current !== request) return;
       setSearch(result);
-      const first = result.items[0];
-      if (first) {
-        const previewRequest = previewRef.current + 1;
-        previewRef.current = previewRequest;
-        fetchSubject(first, refresh, signal, queryLimit).then(
-          (found) => {
-            if (signal.aborted || previewRef.current !== previewRequest || searchRef.current !== request) return;
-            setPreview({ id: first.id, ...found });
-          },
-          () => {},
-        );
+      // Honest ambiguity: several candidates for one subject stay a list until
+      // the user picks one. Only a single exact hit keeps the auto-preview.
+      if (scope !== 'content' && result.items.length === 1) {
+        const first = result.items[0];
+        if (first) {
+          const previewRequest = previewRef.current + 1;
+          previewRef.current = previewRequest;
+          fetchSubject(first, refresh, signal, queryLimit).then(
+            (found) => {
+              if (signal.aborted || previewRef.current !== previewRequest || searchRef.current !== request) return;
+              setPreview({ id: first.id, ...found });
+            },
+            () => {},
+          );
+        }
       }
     } catch (error) {
       if (signal.aborted || searchRef.current !== request) return;
@@ -307,6 +321,9 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     setSelectedId(item.id);
     setDetailSubjectId(item.id);
     setSelectedEdge(null);
+    // The old preview (if any) belonged to the unselected list: drop it now
+    // so the graph never shows a subject the user did not commit to.
+    setPreview(null);
     setDetailLoading(true);
     setDetailError(null);
     setDetail(null);
@@ -434,24 +451,13 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     setPeek({ file, line, text: null, error: firstError, loading: false });
   }, [directory, snapshotRoot]);
 
-  const onSubmit = React.useCallback((event: React.FormEvent) => {
-    event.preventDefault();
-    void runSearch(searchText, false, trackPending(new AbortController()), limit);
-  }, [limit, runSearch, searchText, trackPending]);
-
-  const retrySearch = React.useCallback(() => {
-    void runSearch(searchText, false, trackPending(new AbortController()), limit);
-  }, [limit, runSearch, searchText, trackPending]);
-
-  const handleSearchTextChange = React.useCallback((value: string) => {
-    setSearchText(value);
-    if (value.trim().length > 0) return;
-    // Emptying the box is the one keystroke that clears the answer: the old
-    // results, selection, preview and details cannot be re-submitted away
-    // because submit is disabled on empty text.
+  const clearAnswerState = React.useCallback(() => {
+    searchRef.current += 1;
+    previewRef.current += 1;
+    requestRef.current += 1;
     setSearch(null);
     setSearchError(null);
-    setCommittedQuery(null);
+    setSearchLoading(false);
     setSelectedId(null);
     setDetailSubjectId(null);
     setPreview(null);
@@ -461,8 +467,40 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     setImpactDetail(null);
     setTestsDetail(null);
     setDetailError(null);
+    setDetailLoading(false);
     setTrail(null);
+    setTrailError(null);
+    setPeek(null);
+    setMatchWindow(SEARCH_PAGE_SIZE);
   }, []);
+
+  const onSubmit = React.useCallback((event: React.FormEvent) => {
+    event.preventDefault();
+    void runSearch(searchText, searchScope, false, trackPending(new AbortController()), limit);
+  }, [limit, runSearch, searchText, searchScope, trackPending]);
+
+  const retrySearch = React.useCallback(() => {
+    void runSearch(searchText, searchScope, false, trackPending(new AbortController()), limit);
+  }, [limit, runSearch, searchText, searchScope, trackPending]);
+
+  const handleSearchTextChange = React.useCallback((value: string) => {
+    setSearchText(value);
+    if (value.trim().length > 0) return;
+    // Emptying the box is the one keystroke that clears the answer: the old
+    // results, selection, preview and details cannot be re-submitted away
+    // because submit is disabled on empty text. A changed (non-empty) edit
+    // keeps the committed subject with its stale mark; submitting the new
+    // query clears it via runSearch.
+    setCommittedQuery(null);
+    clearAnswerState();
+  }, [clearAnswerState]);
+
+  const handleScopeChange = React.useCallback((next: 'symbols' | 'content') => {
+    if (next === searchScope) return;
+    setSearchScope(next);
+    setCommittedScope(next);
+    clearAnswerState();
+  }, [clearAnswerState, searchScope]);
 
   const handleModeChange = React.useCallback((next: CodeGraphMode) => {
     setMode(next);
@@ -473,16 +511,30 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     trackPending(controller);
     void loadIndex(true, controller.signal).then(() => {
       if (searchText.trim()) {
-        void runSearch(searchText, true, controller.signal, limit);
+        void runSearch(searchText, searchScope, true, controller.signal, limit);
       }
       if (mode === 'explore') {
         void loadExplore(true, controller.signal, limit);
       }
     });
-  }, [limit, loadExplore, loadIndex, mode, runSearch, searchText, trackPending]);
+  }, [limit, loadExplore, loadIndex, mode, runSearch, searchText, searchScope, trackPending]);
 
-  const previewGraph = preview?.detail?.graph ?? preview?.file?.graph ?? null;
-  const selectedGraph = detail?.graph ?? fileDetail?.graph ?? null;
+  const previewGraphRaw = preview?.detail?.graph ?? preview?.file?.graph ?? null;
+  const selectedGraphRaw = detail?.graph ?? fileDetail?.graph ?? null;
+  const selectedRevision = detail?.revision ?? fileDetail?.revision ?? null;
+  // A committed selection owns its graph: the detail was fetched for the
+  // committed id, and the topology renders only when its revision still
+  // matches the index. Preview renders only for an unambiguous single hit.
+  const selectedGraph = selectedGraphRaw && selectedId !== null
+    && (index === null || selectedRevision === null || selectedRevision === index.revision)
+    ? selectedGraphRaw
+    : null;
+  const previewGraph = previewGraphRaw && (search?.items.length ?? 0) === 1
+    && preview !== null && preview.id === search?.items[0]?.id
+    && (index === null || (preview.detail?.revision ?? preview.file?.revision ?? null) === null
+      || (preview.detail?.revision ?? preview.file?.revision) === index.revision)
+    ? previewGraphRaw
+    : null;
   const activeGraph = selectedGraph ?? previewGraph;
   const showingPreview = selectedGraph === null && activeGraph !== null;
   const subjectAnswered = selectedId !== null && !detailLoading && !detailError && (detail !== null || fileDetail !== null);
@@ -541,9 +593,9 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
         };
       void selectItem(item, false, signal, next);
     } else if (selectedId === null && searchText.trim()) {
-      void runSearch(searchText, false, signal, next);
+      void runSearch(searchText, searchScope, false, signal, next);
     }
-  }, [activeGraph, runSearch, search, searchText, selectItem, selectedId, trackPending]);
+  }, [activeGraph, runSearch, search, searchText, searchScope, selectItem, selectedId, trackPending]);
 
   const committedRevision = search?.revision ?? null;
   const revisionMismatch = committedRevision !== null && index !== null && committedRevision !== index.revision;
@@ -679,7 +731,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     pendingRestoreRef.current = saved.selectedId;
     if (saved.query) {
       setSearchText(saved.query);
-      void runSearch(saved.query, false, trackPending(new AbortController()), limit);
+      void runSearch(saved.query, 'symbols', false, trackPending(new AbortController()), limit);
     }
     hydratedRef.current = true;
   }, [directory, index, limit, runSearch, trackPending]);
@@ -805,6 +857,28 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
               {searchLoading ? <Spinner aria-hidden /> : <Icon name="search" className="size-4" />}
             </Button>
           </form>
+          <div className="flex items-center gap-1" role="group" aria-label={t('codeGraph.search.label')}>
+            <Button
+              variant="chip"
+              size="xs"
+              type="button"
+              aria-pressed={searchScope === 'symbols'}
+              data-testid="code-graph-scope-symbols"
+              onClick={() => handleScopeChange('symbols')}
+            >
+              {`${t('codeGraph.explorer.symbols')} / ${t('codeGraph.explorer.files')}`}
+            </Button>
+            <Button
+              variant="chip"
+              size="xs"
+              type="button"
+              aria-pressed={searchScope === 'content'}
+              data-testid="code-graph-scope-content"
+              onClick={() => handleScopeChange('content')}
+            >
+              {t('codeGraph.peek.read')}
+            </Button>
+          </div>
 
           {searchLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -823,6 +897,15 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
           ) : null}
 
           {search && !searchError ? <SearchState result={search} /> : null}
+          {search && !searchError && (search.indexTruncated === true || (search.excludedCount ?? 0) > 0) ? (
+            <p className="typography-micro text-muted-foreground" data-testid="code-graph-coverage-note">
+              {(() => {
+                const note = search.unresolved.find((line) => line.includes('exclud') || line.includes('incomplete'));
+                if (note) return note;
+                return `${search.excludedCount ?? 0} ${t('codeGraph.explorer.files')}`;
+              })()}
+            </p>
+          ) : null}
 
           <fieldset className="flex flex-col gap-1">
             <legend className="typography-ui-header text-foreground">{t('codeGraph.explorer.kinds')}</legend>
@@ -947,7 +1030,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
             </section>
           ) : null}
 
-          {search && search.items.length > 0 ? (
+          {search && committedScope === 'symbols' && search.items.length > 0 ? (
             <section className="rounded-md border border-border p-2" aria-label={t('codeGraph.section.matches')}>
               <p className="typography-ui font-medium" data-testid="code-graph-matches-heading">
                 {t('codeGraph.section.matches')}
@@ -982,6 +1065,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
                         void selectItem(item, false, trackPending(new AbortController()), limit);
                       }}
                       aria-pressed={selectedId === item.id}
+                      data-testid={`code-graph-match-${item.id}`}
                       className={cn(
                         'flex w-full flex-col items-stretch gap-0.5 rounded-md px-2 py-1.5 text-start',
                         selectedId === item.id ? 'bg-interactive-selection text-interactive-selection-foreground' : 'hover:bg-interactive-hover',
@@ -989,8 +1073,13 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
                     >
                       <span className="typography-ui w-full truncate text-start">{item.name ?? item.id}</span>
                       <span className="typography-micro w-full truncate text-start text-muted-foreground">
-                        {`${displayPath(item.file)}:${item.line}`}
+                        {`${item.id.startsWith('file:') ? t('codeGraph.explorer.files') : t('codeGraph.explorer.symbols')} · ${displayPath(item.file)}:${item.line}`}
                       </span>
+                      {item.reason ? (
+                        <span className="typography-micro w-fit rounded border border-[var(--surface-border)] px-1 text-muted-foreground" data-testid={`code-graph-match-reason-${item.id}`}>
+                          {item.reason}
+                        </span>
+                      ) : null}
                     </button>
                   </li>
                 ))}
@@ -998,6 +1087,48 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
               {rankedMatches.length > matchWindow ? (
                 <div className="mt-1 flex items-center justify-between gap-2" data-testid="code-graph-matches-more">
                   <span className="typography-micro text-muted-foreground" data-testid="code-graph-matches-count">{`${matchWindow} / ${rankedMatches.length}${search?.truncated ? '+' : ''}`}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => setMatchWindow((current) => current + SEARCH_PAGE_SIZE)}
+                  >
+                    {t('codeGraph.results.loadMore')}
+                  </Button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+          {search && committedScope === 'content' && (search.contentItems ?? []).length > 0 ? (
+            <section className="rounded-md border border-border p-2" aria-label={t('codeGraph.section.matches')}>
+              <p className="typography-ui font-medium" data-testid="code-graph-matches-heading">
+                {t('codeGraph.section.matches')}
+                {committedQuery !== null && committedQuery !== '' ? ` · "${committedQuery}"` : ''}
+                {` (${(search.contentItems ?? []).length})`}
+              </p>
+              <ul className="mt-1 flex flex-col gap-1">
+                {(search.contentItems ?? []).slice(0, matchWindow).map((row, rowIndex) => (
+                  <li key={`${row.file}:${row.line}:${rowIndex}`}>
+                    <button
+                      type="button"
+                      onClick={() => openSourceAt(row.file, row.line)}
+                      data-testid={`code-graph-content-row-${row.file}:${row.line}`}
+                      className="flex w-full flex-col items-stretch gap-0.5 rounded-md px-2 py-1.5 text-start hover:bg-interactive-hover"
+                    >
+                      <span className="typography-ui w-full truncate text-start">{`${displayPath(row.file)}:${row.line}`}</span>
+                      <span className="typography-micro w-full break-words text-start text-muted-foreground">
+                        {row.excerpt}
+                      </span>
+                      <span className="typography-micro w-fit rounded border border-[var(--surface-border)] px-1 text-muted-foreground" data-testid={`code-graph-content-reason-${row.file}:${row.line}`}>
+                        {row.reason}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {(search.contentItems ?? []).length > matchWindow ? (
+                <div className="mt-1 flex items-center justify-between gap-2" data-testid="code-graph-matches-more">
+                  <span className="typography-micro text-muted-foreground" data-testid="code-graph-matches-count">{`${matchWindow} / ${(search.contentItems ?? []).length}${search?.truncated ? '+' : ''}`}</span>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1038,7 +1169,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
                 <Spinner aria-hidden />
               ) : subjectAnswered && subjectIndexed ? (
                 <p className="typography-micro text-center text-muted-foreground">{t('codeGraph.graph.empty')}</p>
-              ) : search && search.items.length > 0 ? (
+              ) : search && committedScope === 'symbols' && search.items.length > 0 ? (
                 <p className="typography-micro text-center text-muted-foreground">{t('codeGraph.graph.selectPrompt')}</p>
               ) : (
                 <p className="typography-micro text-center text-muted-foreground">{t('codeGraph.graph.idle')}</p>
@@ -1505,7 +1636,8 @@ const SearchState: React.FC<{ result: CodeGraphQueryResult }> = ({ result }) => 
       </div>
     );
   }
-  if (result.items.length === 0) {
+  const contentCount = result.contentItems?.length ?? 0;
+  if (result.items.length === 0 && contentCount === 0) {
     return (
       <div className="rounded-md border border-border p-3">
         <p className="typography-ui text-muted-foreground">{t('codeGraph.state.empty')}</p>
