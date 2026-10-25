@@ -29,9 +29,7 @@ import { refreshSpacesJourney, useSpacesJourneyRead } from '@/lib/spaces/spaces-
 import { useUIStore } from '@/stores/useUIStore';
 import { SettingsControlGroup, SettingsFieldRow } from '../shared/SettingsSection';
 
-
 // Decimal units, as Docker and the Mac's own disk tools count; only the number is localised.
-
 
 type Read<T> = { kind: 'reading' } | { kind: 'read'; value: T } | { kind: 'failed'; error: Error };
 
@@ -56,7 +54,6 @@ const useRead = <T,>(load: (signal: AbortSignal) => Promise<T>): [Read<T>, () =>
   const fail = React.useCallback((error: Error) => setState({ kind: 'failed', error }), []);
   return [state, retry, replace, fail];
 };
-
 
 // The places the host has, by the name the user knows them by; a place from a later version keeps its id.
 const PLACE_NAMES: ReadonlyMap<string, I18nKey> = new Map<string, I18nKey>([['docker', 'settings.alcode.spaces.places.docker']]);
@@ -113,13 +110,6 @@ const PlaceBlock: React.FC<{ place: SpacePlace; title: string; field?: React.Rea
   const running = spaces?.filter((entry) => entry.state === 'running').length ?? 0;
   const stopped = spaces?.filter((entry) => entry.state === 'exited').length ?? 0;
   const gone = spaces?.filter((entry) => entry.state === 'missing') ?? [];
-  // Which engine runs Docker here, when this computer's Docker said so.
-  const engine = place.setup?.memory?.engine;
-  const _dockerText = engine === 'colima'
-    ? t('settings.openchamber.spaces.places.dockerRunningColima', { version: place.version })
-    : engine === 'docker_desktop'
-      ? t('settings.openchamber.spaces.places.dockerRunningDesktop', { version: place.version })
-      : t('settings.openchamber.spaces.places.dockerRunning', { version: place.version });
   return (
     <SettingsControlGroup title={title}>
       <div className="space-y-2">

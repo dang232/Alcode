@@ -48,7 +48,6 @@ import type { RenderedCopyFormat } from './markdown/selectionMarkdown';
 import { attachInlineMarkdownImages } from './markdown/inlineMarkdownImages';
 import { attachMarkdownVideoFallback } from './markdown/markdownVideo';
 import { observeMarkdownTableWidth } from './markdown/tableWidthObserver';
-import { findTextPosition } from './markdown/textPosition';
 import { splitFrontmatter } from './markdown/frontmatter';
 import { FrontmatterProperties } from './markdown/FrontmatterProperties';
 import { createMermaidViewerRegistry, MERMAID_BLOCK_SELECTOR, shouldRefreshMermaidViewers } from './markdown/mermaidViewer';
@@ -288,12 +287,12 @@ const extractHrefFileReferenceCandidate = (anchor: HTMLAnchorElement): string | 
 // repeated on the same element. When the renderer replaces the `<code>` subtree
 // (e.g. on content change during streaming), the new element lacks the marker and
 // will be rescanned on the next mutation-observer callback.
-// (Implemented below by findBlockCodePathTokens plus the confirmed-token wrapper.)
+// (Implemented below by findBlockCodePathTokens.)
 // The path-like tokens of each code block not scanned yet. Reads text only:
 // code is full of things shaped like paths (`console.log`, `this.state`),
 // and wrapping each one on mount restyled the block and re-serialized it for
 // assistive technology. A token becomes a span only once its file is
-// confirmed (`wrapBlockCodePathTokens`).
+// confirmed.
 interface BlockCodePathToken {
   start: number;
   end: number;
@@ -317,42 +316,6 @@ const findBlockCodePathTokens = (container: HTMLElement): Array<{ codeBlock: HTM
     blocks.push({ codeBlock, tokens });
   }
   return blocks;
-};
-
-// Wraps confirmed tokens of one code block in spans carrying
-// `data-openchamber-block-path-token`, which later passes treat like inline
-// code references, and marks the block scanned. A token whose text moved
-// since the scan stays text.
-const _wrapBlockCodePathTokens = (
-  codeBlock: HTMLElement,
-  confirmed: Array<BlockCodePathToken & { decorate: (span: HTMLElement) => void }>,
-): void => {
-  const doc = codeBlock.ownerDocument;
-  if (confirmed.length > 0) {
-    const walker = doc.createTreeWalker(codeBlock, NodeFilter.SHOW_TEXT);
-    const textNodes: Text[] = [];
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (node instanceof Text) textNodes.push(node);
-    }
-    const fullText = codeBlock.textContent ?? '';
-    for (const { start, end, raw, decorate } of [...confirmed].sort((left, right) => right.start - left.start)) {
-      if (fullText.slice(start, end) !== raw) continue;
-      const startPosition = findTextPosition(textNodes, start, 'right');
-      const endPosition = findTextPosition(textNodes, end, 'left');
-      if (!startPosition || !endPosition) continue;
-
-      const range = doc.createRange();
-      range.setStart(startPosition.node, startPosition.offset);
-      range.setEnd(endPosition.node, endPosition.offset);
-      const span = doc.createElement('span');
-      span.setAttribute(BLOCK_PATH_TOKEN_ATTR, 'true');
-      span.textContent = raw;
-      decorate(span);
-      range.deleteContents();
-      range.insertNode(span);
-    }
-  }
-  codeBlock.setAttribute(CODE_BLOCK_PATH_SCANNED_ATTR, 'true');
 };
 
 const getResolvedReference = (rawValue: string, effectiveDirectory: string): (ParsedFileReference & { resolvedPath: string }) | null => {
@@ -1405,7 +1368,6 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     if (!effectiveDirectory) return;
     openContextPreview(effectiveDirectory, url);
   }, [effectiveDirectory, openContextPreview]);
-
 
   useMermaidInlineInteractions({
     containerRef,

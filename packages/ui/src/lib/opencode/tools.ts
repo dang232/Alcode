@@ -424,8 +424,6 @@ const MAX_TEXT_LENGTH = 120
 
 const OPENCHAMBER_RENDER_TOOL = "openchamber_render"
 
-/** The control, schedule, browser, memory, knowledge, notify and render tools OpenChamber gives every session. */
-const _OPENCHAMBER_TOOLS = new Set(["openchamber", "openchamber_schedule", "openchamber_web", "openchamber_memory", "openchamber_knowledge", "openchamber_notify", OPENCHAMBER_RENDER_TOOL])
 /** The control, browser, memory and notify tools Alcode gives every session. */
 const ALCODE_TOOLS = new Set(["alcode", "alcode_web", "alcode_memory", "alcode_notify"])
 

@@ -43,15 +43,12 @@ import type { IconName } from "@/components/icon/icons";
 import { GuestIcon } from './GuestRailIcon';
 import { useGuestsStore } from '@/lib/guests/store';
 import { FALLBACK_GUEST_ICON } from '@/lib/guests/icon';
-import { guestHasSharedSurface, guestSurfaceDocking, type GuestSurfaceDocking } from '@/lib/guests/surfaces';
 import { isPluginContextPanelMode, pluginIdFromMode } from '@/lib/surfaces/modes';
 import { CONTEXT_SURFACE_WIDTHS, defaultContextPanelWidth, getContextSurfaceDefaultWidth } from '@/lib/surfaces/registry';
 import { beginLayoutAnimation, cancelWhenLayoutSettled, LAYOUT_ANIMATION_EASING, runWhenLayoutSettled } from '@/lib/layoutAnimation';
 import { useLayoutAnimationMs } from '@/hooks/useLayoutAnimationMs';
 import { WORK_STATUS_COLUMN_WIDTH } from '@/components/chat/work-status/useWorkStatusVisibility';
 import { setWorkStatusHost, useRightSlotStore } from './rightSlot';
-
-
 
 import { changeRequestCopy } from '@/lib/source-control/changeRequestCopy';
 import { ContextPanelHeaderSlotProvider } from './contextPanelHeaderSlot';
@@ -343,7 +340,6 @@ const useSessionTitleMap = (sessionIDs: readonly string[]): ReadonlyMap<string, 
   );
 };
 
-
 const truncateTabLabel = (value: string, maxChars: number): string => {
   if (value.length <= maxChars) {
     return value;
@@ -351,7 +347,6 @@ const truncateTabLabel = (value: string, maxChars: number): string => {
 
   return `${value.slice(0, maxChars - 3)}...`;
 };
-
 
 // Dragging a header moves its surface once the pointer has travelled this far.
 const HEADER_DRAG_DISTANCE_PX = 8;
@@ -915,42 +910,6 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
       }));
     return () => unregister.forEach((release) => release());
   }, [browserTabs, loadedBrowserTabs, wakeBrowserTab]);
-  const _diffTabs = React.useMemo(
-    () => tabs.filter((tab) => tab.mode === 'diff'),
-    [tabs],
-  );
-  const _terminalTab = React.useMemo(
-    () => tabs.find((tab) => tab.mode === 'terminal') ?? null,
-    [tabs],
-  );
-  // Keep-alive: the walkthrough holds reading progress and scroll position that
-  // a remount would silently throw away.
-  const _hasWalkthroughTab = React.useMemo(
-    () => tabs.some((tab) => tab.mode === 'walkthrough'),
-    [tabs],
-  );
-  const _pluginTabs = React.useMemo(
-    () => tabs.filter((tab) => isPluginContextPanelMode(tab.mode)),
-    [tabs],
-  );
-  const guests = useGuestsStore((state) => state.guests);
-  const _surfaceGuestIds = React.useMemo(
-    () => new Set(guests.filter(guestHasSharedSurface).map((guest) => guest.id)),
-    [guests],
-  );
-  // Surface extensions that also ship a page: it is docked to one edge of the picture.
-  const _surfaceDockings = React.useMemo(() => {
-    const dockings = new Map<string, GuestSurfaceDocking>();
-    for (const guest of guests) {
-      const docking = guestSurfaceDocking(guest);
-      if (docking) dockings.set(guest.id, docking);
-    }
-    return dockings;
-  }, [guests]);
-  const _hasFileTabs = React.useMemo(
-    () => tabs.some((tab) => tab.mode === 'file'),
-    [tabs],
-  );
 
   const isFileTabActive = activeTab?.mode === 'file';
 
