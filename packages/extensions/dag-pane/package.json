@@ -7,30 +7,11 @@
   "alcode": {
     "apiVersion": 1,
     "engines": {
-      "alcode": ">=1.22.0"
+      "alcode": ">=0.0.1"
     },
     "contributes": {
       "panel": {
         "id": "alcode-builtin-dag-pane",
-        "name": "DAG runs",
-        "icon": "icon.svg",
-        "entry": "panel/index.html"
-      },
-      "service": {
-        "entry": "service/main.js",
-        "runtime": "host"
-      },
-      "attach": false
-    }
-  },
-  "openchamber": {
-    "apiVersion": 1,
-    "engines": {
-      "openchamber": ">=1.22.0"
-    },
-    "contributes": {
-      "panel": {
-        "id": "openchamber-builtin-dag-pane",
         "name": "DAG runs",
         "icon": "icon.svg",
         "entry": "panel/index.html"

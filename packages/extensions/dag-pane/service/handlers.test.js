@@ -128,11 +128,11 @@ describe('dag guest manifest compat', () => {
     }
   });
 
-  test('the shipped manifest keeps both blocks and the new spelling wins', () => {
+  test('the shipped manifest ships only the alcode block', () => {
     const shipped = JSON.parse(nodeFs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(shipped.openchamber).toBeUndefined();
     expect(shipped.alcode.contributes.panel.id).toBe('alcode-builtin-dag-pane');
-    expect(shipped.alcode.engines).toEqual({ alcode: '>=1.22.0' });
-    expect(shipped.openchamber.contributes.panel.id).toBe('openchamber-builtin-dag-pane');
+    expect(shipped.alcode.engines).toEqual({ alcode: '>=0.0.1' });
     const parsed = parseManifest(shipped);
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
