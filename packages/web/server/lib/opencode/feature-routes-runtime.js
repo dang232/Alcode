@@ -21,6 +21,8 @@ import { registerSessionFoldersRoutes } from '../session-folders/routes.js';
 import { registerProjectContextRoutes } from '../project-context/routes.js';
 import { registerProjectDirectoryRoutes, registerProjectSetupRoutes } from '../projects/routes.js';
 import { registerAgentMemoryRoutes } from '../agent-memory/routes.js';
+import { registerCodeGraphRoutes } from '../code-graph/routes.js';
+import { registerRunGraphRoutes } from '../run-graph/routes.js';
 import { registerSessionKnowledgeRoutes } from '../session-knowledge/routes.js';
 import { registerMessageSearchRoutes } from '../message-search/routes.js';
 import { registerPermissionAutoAcceptRoutes } from '../permission-auto-accept/runtime.js';
@@ -256,6 +258,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       projectContextRuntime,
       agentMemoryRuntime,
       isAgentMemoryEnabled,
+      codeGraphRuntime,
       sessionKnowledgeRuntime,
       scheduledTasksRuntime,
       scheduledTaskService,
@@ -761,6 +764,8 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     });
     registerProjectSetupRoutes(app, { projectConfigRuntime });
     registerAgentMemoryRoutes(app, { agentMemoryRuntime, isAgentMemoryEnabled });
+    registerCodeGraphRoutes(app, { codeGraphRuntime });
+    registerRunGraphRoutes(app);
     registerSessionKnowledgeRoutes(app, { sessionKnowledgeRuntime });
     registerMessageSearchRoutes(app, { messageSearchRuntime });
     registerSessionWarmingRoutes(app, {

@@ -6,40 +6,6 @@
  * engine TypeScript ships inline: the packaged web server runs under plain
  * Node with no transpile step, where a static `.ts` import fails.
  */
-import { createRequire } from "node:module";
-var __create = Object.create;
-var __getProtoOf = Object.getPrototypeOf;
-var __defProp = Object.defineProperty;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
-var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
-  }
-  target = mod != null ? __create(__getProtoOf(mod)) : {};
-  const to = isNodeMode || !mod || !mod.__esModule || !__hasOwnProp.call(mod, "default") ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
-  if (mod && typeof mod === "object" || typeof mod === "function") {
-    for (let key of __getOwnPropNames(mod))
-      if (!__hasOwnProp.call(to, key))
-        __defProp(to, key, {
-          get: __accessProp.bind(mod, key),
-          enumerable: true
-        });
-  }
-  if (canCache)
-    cache.set(mod, to);
-  return to;
-};
-var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 var __esm = (fn, res, err) => () => {
   if (fn)
     try {
@@ -51,468 +17,11 @@ var __esm = (fn, res, err) => () => {
     throw err[0];
   return res;
 };
-var __require = /* @__PURE__ */ createRequire(import.meta.url);
 // ../../../../omo-engine/tmux-core/src/runner.ts
 var init_runner = () => {};
 
 // ../../../../omo-engine/tmux-core/src/tmux-utils/environment.ts
 var init_environment = () => {};
-
-// ../../../../../node_modules/.bun/isexe@2.0.0/node_modules/isexe/windows.js
-var require_windows = __commonJS(function(exports, module) {
-  module.exports = isexe;
-  isexe.sync = sync;
-  var fs = __require("fs");
-  function checkPathExt(path, options) {
-    var pathext = options.pathExt !== undefined ? options.pathExt : process.env.PATHEXT;
-    if (!pathext) {
-      return true;
-    }
-    pathext = pathext.split(";");
-    if (pathext.indexOf("") !== -1) {
-      return true;
-    }
-    for (var i = 0;i < pathext.length; i++) {
-      var p = pathext[i].toLowerCase();
-      if (p && path.substr(-p.length).toLowerCase() === p) {
-        return true;
-      }
-    }
-    return false;
-  }
-  function checkStat(stat, path, options) {
-    if (!stat.isSymbolicLink() && !stat.isFile()) {
-      return false;
-    }
-    return checkPathExt(path, options);
-  }
-  function isexe(path, options, cb) {
-    fs.stat(path, function(er, stat) {
-      cb(er, er ? false : checkStat(stat, path, options));
-    });
-  }
-  function sync(path, options) {
-    return checkStat(fs.statSync(path), path, options);
-  }
-});
-
-// ../../../../../node_modules/.bun/isexe@2.0.0/node_modules/isexe/mode.js
-var require_mode = __commonJS(function(exports, module) {
-  module.exports = isexe;
-  isexe.sync = sync;
-  var fs = __require("fs");
-  function isexe(path, options, cb) {
-    fs.stat(path, function(er, stat) {
-      cb(er, er ? false : checkStat(stat, options));
-    });
-  }
-  function sync(path, options) {
-    return checkStat(fs.statSync(path), options);
-  }
-  function checkStat(stat, options) {
-    return stat.isFile() && checkMode(stat, options);
-  }
-  function checkMode(stat, options) {
-    var mod = stat.mode;
-    var uid = stat.uid;
-    var gid = stat.gid;
-    var myUid = options.uid !== undefined ? options.uid : process.getuid && process.getuid();
-    var myGid = options.gid !== undefined ? options.gid : process.getgid && process.getgid();
-    var u = parseInt("100", 8);
-    var g = parseInt("010", 8);
-    var o = parseInt("001", 8);
-    var ug = u | g;
-    var ret = mod & o || mod & g && gid === myGid || mod & u && uid === myUid || mod & ug && myUid === 0;
-    return ret;
-  }
-});
-
-// ../../../../../node_modules/.bun/isexe@2.0.0/node_modules/isexe/index.js
-var require_isexe = __commonJS(function(exports, module) {
-  var fs = __require("fs");
-  var core;
-  if (process.platform === "win32" || global.TESTING_WINDOWS) {
-    core = require_windows();
-  } else {
-    core = require_mode();
-  }
-  module.exports = isexe;
-  isexe.sync = sync;
-  function isexe(path, options, cb) {
-    if (typeof options === "function") {
-      cb = options;
-      options = {};
-    }
-    if (!cb) {
-      if (typeof Promise !== "function") {
-        throw new TypeError("callback not provided");
-      }
-      return new Promise(function(resolve, reject) {
-        isexe(path, options || {}, function(er, is) {
-          if (er) {
-            reject(er);
-          } else {
-            resolve(is);
-          }
-        });
-      });
-    }
-    core(path, options || {}, function(er, is) {
-      if (er) {
-        if (er.code === "EACCES" || options && options.ignoreErrors) {
-          er = null;
-          is = false;
-        }
-      }
-      cb(er, is);
-    });
-  }
-  function sync(path, options) {
-    try {
-      return core.sync(path, options || {});
-    } catch (er) {
-      if (options && options.ignoreErrors || er.code === "EACCES") {
-        return false;
-      } else {
-        throw er;
-      }
-    }
-  }
-});
-
-// ../../../../../node_modules/.bun/which@2.0.2/node_modules/which/which.js
-var require_which = __commonJS(function(exports, module) {
-  var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-  var path = __require("path");
-  var COLON = isWindows ? ";" : ":";
-  var isexe = require_isexe();
-  var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
-  var getPathInfo = (cmd, opt) => {
-    const colon = opt.colon || COLON;
-    const pathEnv = cmd.match(/\//) || isWindows && cmd.match(/\\/) ? [""] : [
-      ...isWindows ? [process.cwd()] : [],
-      ...(opt.path || process.env.PATH || "").split(colon)
-    ];
-    const pathExtExe = isWindows ? opt.pathExt || process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM" : "";
-    const pathExt = isWindows ? pathExtExe.split(colon) : [""];
-    if (isWindows) {
-      if (cmd.indexOf(".") !== -1 && pathExt[0] !== "")
-        pathExt.unshift("");
-    }
-    return {
-      pathEnv,
-      pathExt,
-      pathExtExe
-    };
-  };
-  var which = (cmd, opt, cb) => {
-    if (typeof opt === "function") {
-      cb = opt;
-      opt = {};
-    }
-    if (!opt)
-      opt = {};
-    const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
-    const found = [];
-    const step = (i) => new Promise((resolve, reject) => {
-      if (i === pathEnv.length)
-        return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
-      const ppRaw = pathEnv[i];
-      const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-      const pCmd = path.join(pathPart, cmd);
-      const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-      resolve(subStep(p, i, 0));
-    });
-    const subStep = (p, i, ii) => new Promise((resolve, reject) => {
-      if (ii === pathExt.length)
-        return resolve(step(i + 1));
-      const ext = pathExt[ii];
-      isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
-        if (!er && is) {
-          if (opt.all)
-            found.push(p + ext);
-          else
-            return resolve(p + ext);
-        }
-        return resolve(subStep(p, i, ii + 1));
-      });
-    });
-    return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
-  };
-  var whichSync = (cmd, opt) => {
-    opt = opt || {};
-    const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
-    const found = [];
-    for (let i = 0;i < pathEnv.length; i++) {
-      const ppRaw = pathEnv[i];
-      const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-      const pCmd = path.join(pathPart, cmd);
-      const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-      for (let j = 0;j < pathExt.length; j++) {
-        const cur = p + pathExt[j];
-        try {
-          const is = isexe.sync(cur, { pathExt: pathExtExe });
-          if (is) {
-            if (opt.all)
-              found.push(cur);
-            else
-              return cur;
-          }
-        } catch (ex) {}
-      }
-    }
-    if (opt.all && found.length)
-      return found;
-    if (opt.nothrow)
-      return null;
-    throw getNotFoundError(cmd);
-  };
-  module.exports = which;
-  which.sync = whichSync;
-});
-
-// ../../../../../node_modules/.bun/path-key@3.1.1/node_modules/path-key/index.js
-var require_path_key = __commonJS(function(exports, module) {
-  var pathKey = (options = {}) => {
-    const environment = options.env || process.env;
-    const platform = options.platform || process.platform;
-    if (platform !== "win32") {
-      return "PATH";
-    }
-    return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
-  };
-  module.exports = pathKey;
-  module.exports.default = pathKey;
-});
-
-// ../../../../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/util/resolveCommand.js
-var require_resolveCommand = __commonJS(function(exports, module) {
-  var path = __require("path");
-  var which = require_which();
-  var getPathKey = require_path_key();
-  function resolveCommandAttempt(parsed, withoutPathExt) {
-    const env = parsed.options.env || process.env;
-    const cwd = process.cwd();
-    const hasCustomCwd = parsed.options.cwd != null;
-    const shouldSwitchCwd = hasCustomCwd && process.chdir !== undefined && !process.chdir.disabled;
-    if (shouldSwitchCwd) {
-      try {
-        process.chdir(parsed.options.cwd);
-      } catch (err) {}
-    }
-    let resolved;
-    try {
-      resolved = which.sync(parsed.command, {
-        path: env[getPathKey({ env })],
-        pathExt: withoutPathExt ? path.delimiter : undefined
-      });
-    } catch (e) {} finally {
-      if (shouldSwitchCwd) {
-        process.chdir(cwd);
-      }
-    }
-    if (resolved) {
-      resolved = path.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
-    }
-    return resolved;
-  }
-  function resolveCommand(parsed) {
-    return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
-  }
-  module.exports = resolveCommand;
-});
-
-// ../../../../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/util/escape.js
-var require_escape = __commonJS(function(exports, module) {
-  var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
-  function escapeCommand(arg) {
-    arg = arg.replace(metaCharsRegExp, "^$1");
-    return arg;
-  }
-  function escapeArgument(arg, doubleEscapeMetaChars) {
-    arg = `${arg}`;
-    arg = arg.replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"");
-    arg = arg.replace(/(?=(\\+?)?)\1$/, "$1$1");
-    arg = `"${arg}"`;
-    arg = arg.replace(metaCharsRegExp, "^$1");
-    if (doubleEscapeMetaChars) {
-      arg = arg.replace(metaCharsRegExp, "^$1");
-    }
-    return arg;
-  }
-  exports.command = escapeCommand;
-  exports.argument = escapeArgument;
-});
-
-// ../../../../../node_modules/.bun/shebang-regex@3.0.0/node_modules/shebang-regex/index.js
-var require_shebang_regex = __commonJS(function(exports, module) {
-  module.exports = /^#!(.*)/;
-});
-
-// ../../../../../node_modules/.bun/shebang-command@2.0.0/node_modules/shebang-command/index.js
-var require_shebang_command = __commonJS(function(exports, module) {
-  var shebangRegex = require_shebang_regex();
-  module.exports = (string = "") => {
-    const match = string.match(shebangRegex);
-    if (!match) {
-      return null;
-    }
-    const [path, argument] = match[0].replace(/#! ?/, "").split(" ");
-    const binary = path.split("/").pop();
-    if (binary === "env") {
-      return argument;
-    }
-    return argument ? `${binary} ${argument}` : binary;
-  };
-});
-
-// ../../../../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/util/readShebang.js
-var require_readShebang = __commonJS(function(exports, module) {
-  var fs = __require("fs");
-  var shebangCommand = require_shebang_command();
-  function readShebang(command) {
-    const size = 150;
-    const buffer = Buffer.alloc(size);
-    let fd;
-    try {
-      fd = fs.openSync(command, "r");
-      fs.readSync(fd, buffer, 0, size, 0);
-      fs.closeSync(fd);
-    } catch (e) {}
-    return shebangCommand(buffer.toString());
-  }
-  module.exports = readShebang;
-});
-
-// ../../../../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/parse.js
-var require_parse = __commonJS(function(exports, module) {
-  var path = __require("path");
-  var resolveCommand = require_resolveCommand();
-  var escape = require_escape();
-  var readShebang = require_readShebang();
-  var isWin = process.platform === "win32";
-  var isExecutableRegExp = /\.(?:com|exe)$/i;
-  var isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
-  function detectShebang(parsed) {
-    parsed.file = resolveCommand(parsed);
-    const shebang = parsed.file && readShebang(parsed.file);
-    if (shebang) {
-      parsed.args.unshift(parsed.file);
-      parsed.command = shebang;
-      return resolveCommand(parsed);
-    }
-    return parsed.file;
-  }
-  function parseNonShell(parsed) {
-    if (!isWin) {
-      return parsed;
-    }
-    const commandFile = detectShebang(parsed);
-    const needsShell = !isExecutableRegExp.test(commandFile);
-    if (parsed.options.forceShell || needsShell) {
-      const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-      parsed.command = path.normalize(parsed.command);
-      parsed.command = escape.command(parsed.command);
-      parsed.args = parsed.args.map((arg) => escape.argument(arg, needsDoubleEscapeMetaChars));
-      const shellCommand = [parsed.command].concat(parsed.args).join(" ");
-      parsed.args = ["/d", "/s", "/c", `"${shellCommand}"`];
-      parsed.command = process.env.comspec || "cmd.exe";
-      parsed.options.windowsVerbatimArguments = true;
-    }
-    return parsed;
-  }
-  function parse(command, args, options) {
-    if (args && !Array.isArray(args)) {
-      options = args;
-      args = null;
-    }
-    args = args ? args.slice(0) : [];
-    options = Object.assign({}, options);
-    const parsed = {
-      command,
-      args,
-      options,
-      file: undefined,
-      original: {
-        command,
-        args
-      }
-    };
-    return options.shell ? parsed : parseNonShell(parsed);
-  }
-  module.exports = parse;
-});
-
-// ../../../../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/lib/enoent.js
-var require_enoent = __commonJS(function(exports, module) {
-  var isWin = process.platform === "win32";
-  function notFoundError(original, syscall) {
-    return Object.assign(new Error(`${syscall} ${original.command} ENOENT`), {
-      code: "ENOENT",
-      errno: "ENOENT",
-      syscall: `${syscall} ${original.command}`,
-      path: original.command,
-      spawnargs: original.args
-    });
-  }
-  function hookChildProcess(cp, parsed) {
-    if (!isWin) {
-      return;
-    }
-    const originalEmit = cp.emit;
-    cp.emit = function(name, arg1) {
-      if (name === "exit") {
-        const err = verifyENOENT(arg1, parsed);
-        if (err) {
-          return originalEmit.call(cp, "error", err);
-        }
-      }
-      return originalEmit.apply(cp, arguments);
-    };
-  }
-  function verifyENOENT(status, parsed) {
-    if (isWin && status === 1 && !parsed.file) {
-      return notFoundError(parsed.original, "spawn");
-    }
-    return null;
-  }
-  function verifyENOENTSync(status, parsed) {
-    if (isWin && status === 1 && !parsed.file) {
-      return notFoundError(parsed.original, "spawnSync");
-    }
-    return null;
-  }
-  module.exports = {
-    hookChildProcess,
-    verifyENOENT,
-    verifyENOENTSync,
-    notFoundError
-  };
-});
-
-// ../../../../../node_modules/.bun/cross-spawn@7.0.6/node_modules/cross-spawn/index.js
-var require_cross_spawn = __commonJS(function(exports, module) {
-  var cp = __require("child_process");
-  var parse = require_parse();
-  var enoent = require_enoent();
-  function spawn(command, args, options) {
-    const parsed = parse(command, args, options);
-    const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
-    enoent.hookChildProcess(spawned, parsed);
-    return spawned;
-  }
-  function spawnSync(command, args, options) {
-    const parsed = parse(command, args, options);
-    const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
-    result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
-    return result;
-  }
-  module.exports = spawn;
-  module.exports.spawn = spawn;
-  module.exports.sync = spawnSync;
-  module.exports._parse = parse;
-  module.exports._enoent = enoent;
-});
 
 // ../../../../omo-engine/omo-opencode/src/config/validate.ts
 import { relative as relative2 } from "node:path";
@@ -14923,7 +14432,8 @@ var HookNameSchema = _enum([
   "fsync-skip-warning",
   "plan-format-validator",
   "legacy-plugin-toast",
-  "native-edition-nudge"
+  "native-edition-nudge",
+  "planner-evidence"
 ]);
 // ../../../../omo-engine/omo-opencode/src/config/schema/i18n.ts
 var I18nConfigSchema = object({
@@ -15691,6 +15201,12680 @@ function createContinuationHooks(ctx, flags, _managers) {
   return { hooks, disposables };
 }
 
+// ../../../../omo-engine/memory-core/src/project-knowledge/identity.ts
+import { execFileSync } from "node:child_process";
+import { createHash as createHash2 } from "node:crypto";
+import { basename as basename2, resolve as resolve3 } from "node:path";
+import { realpathSync as realpathSync3 } from "node:fs";
+var GIT_TIMEOUT_MS = 5000;
+function defaultGit(directory, args) {
+  try {
+    const output = execFileSync("git", ["-C", directory, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: GIT_TIMEOUT_MS,
+      windowsHide: true
+    });
+    const trimmed = output.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  } catch {
+    return;
+  }
+}
+function normalizeRepositoryReference(raw) {
+  const value = raw.trim();
+  if (value.length === 0) {
+    return;
+  }
+  const scp = /^(?:[^@/]+@)?([^:/]+):(.+)$/.exec(value);
+  if (scp !== null && !value.includes("://")) {
+    const [, host = "", path = ""] = scp;
+    const cleaned = path.replace(/^\/+/, "").replace(/\.git$/i, "").toLowerCase();
+    return cleaned.length === 0 ? undefined : `${host.toLowerCase()}/${cleaned}`;
+  }
+  try {
+    const url = new URL(value);
+    const path = url.pathname.replace(/^\/+/, "").replace(/\.git$/i, "").toLowerCase();
+    return path.length === 0 ? undefined : `${url.hostname.toLowerCase()}/${path}`;
+  } catch {
+    const cleaned = value.replace(/^\/+/, "").replace(/\.git$/i, "").toLowerCase();
+    return cleaned.length === 0 ? undefined : cleaned;
+  }
+}
+function safeProjectSlug(raw) {
+  const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
+  return slug.length === 0 ? "project" : slug;
+}
+function shortHash(input) {
+  return createHash2("sha256").update(input).digest("hex").slice(0, 8);
+}
+function realPath(directory) {
+  try {
+    return realpathSync3.native(directory);
+  } catch {
+    return resolve3(directory);
+  }
+}
+function slugFromRepository(reference) {
+  const tail = reference.split("/").filter((part) => part.length > 0).at(-1);
+  return safeProjectSlug(tail ?? "project");
+}
+function resolveProjectIdentity(directory, deps = {}) {
+  const git = deps.git ?? defaultGit;
+  const absolute = realPath(directory);
+  const remote = git(directory, ["config", "--get", "remote.origin.url"]);
+  const normalized = remote === undefined ? undefined : normalizeRepositoryReference(remote);
+  if (normalized !== undefined) {
+    return {
+      projectId: `${slugFromRepository(normalized)}-${shortHash(`remote:${normalized}`)}`,
+      kind: "remote",
+      repository: normalized
+    };
+  }
+  const gitDir = git(directory, ["rev-parse", "--git-common-dir"]);
+  if (gitDir !== undefined) {
+    const shared = realPath(resolve3(directory, gitDir));
+    return {
+      projectId: `${safeProjectSlug(basename2(shared))}-${shortHash(`common:${shared}`)}`,
+      kind: "git-dir",
+      repository: shared
+    };
+  }
+  return {
+    projectId: `${safeProjectSlug(basename2(absolute))}-${shortHash(`path:${absolute}`)}`,
+    kind: "path"
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/cli/run/plan-evidence.ts
+import { promises as fs3 } from "node:fs";
+import path4 from "node:path";
+
+// ../../../../omo-engine/code-graph/src/extract.ts
+import { existsSync as existsSync7, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname as dirname4, join as join8, resolve as resolve4 } from "node:path";
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/completionItemKind.js
+var CompletionItemKind;
+(function(CompletionItemKind) {
+  CompletionItemKind[CompletionItemKind["Text"] = 1] = "Text";
+  CompletionItemKind[CompletionItemKind["Method"] = 2] = "Method";
+  CompletionItemKind[CompletionItemKind["Function"] = 3] = "Function";
+  CompletionItemKind[CompletionItemKind["Constructor"] = 4] = "Constructor";
+  CompletionItemKind[CompletionItemKind["Field"] = 5] = "Field";
+  CompletionItemKind[CompletionItemKind["Variable"] = 6] = "Variable";
+  CompletionItemKind[CompletionItemKind["Class"] = 7] = "Class";
+  CompletionItemKind[CompletionItemKind["Interface"] = 8] = "Interface";
+  CompletionItemKind[CompletionItemKind["Module"] = 9] = "Module";
+  CompletionItemKind[CompletionItemKind["Property"] = 10] = "Property";
+  CompletionItemKind[CompletionItemKind["Unit"] = 11] = "Unit";
+  CompletionItemKind[CompletionItemKind["Value"] = 12] = "Value";
+  CompletionItemKind[CompletionItemKind["Enum"] = 13] = "Enum";
+  CompletionItemKind[CompletionItemKind["Keyword"] = 14] = "Keyword";
+  CompletionItemKind[CompletionItemKind["Snippet"] = 15] = "Snippet";
+  CompletionItemKind[CompletionItemKind["Color"] = 16] = "Color";
+  CompletionItemKind[CompletionItemKind["File"] = 17] = "File";
+  CompletionItemKind[CompletionItemKind["Reference"] = 18] = "Reference";
+  CompletionItemKind[CompletionItemKind["Folder"] = 19] = "Folder";
+  CompletionItemKind[CompletionItemKind["EnumMember"] = 20] = "EnumMember";
+  CompletionItemKind[CompletionItemKind["Constant"] = 21] = "Constant";
+  CompletionItemKind[CompletionItemKind["Struct"] = 22] = "Struct";
+  CompletionItemKind[CompletionItemKind["Event"] = 23] = "Event";
+  CompletionItemKind[CompletionItemKind["Operator"] = 24] = "Operator";
+  CompletionItemKind[CompletionItemKind["TypeParameter"] = 25] = "TypeParameter";
+})(CompletionItemKind || (CompletionItemKind = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/diagnosticCategory.js
+var DiagnosticCategory;
+(function(DiagnosticCategory) {
+  DiagnosticCategory[DiagnosticCategory["Warning"] = 0] = "Warning";
+  DiagnosticCategory[DiagnosticCategory["Error"] = 1] = "Error";
+  DiagnosticCategory[DiagnosticCategory["Suggestion"] = 2] = "Suggestion";
+  DiagnosticCategory[DiagnosticCategory["Message"] = 3] = "Message";
+})(DiagnosticCategory || (DiagnosticCategory = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/elementFlags.js
+var ElementFlags;
+(function(ElementFlags) {
+  ElementFlags[ElementFlags["None"] = 0] = "None";
+  ElementFlags[ElementFlags["Required"] = 1] = "Required";
+  ElementFlags[ElementFlags["Optional"] = 2] = "Optional";
+  ElementFlags[ElementFlags["Rest"] = 4] = "Rest";
+  ElementFlags[ElementFlags["Variadic"] = 8] = "Variadic";
+  ElementFlags[ElementFlags["Fixed"] = 3] = "Fixed";
+  ElementFlags[ElementFlags["Variable"] = 12] = "Variable";
+  ElementFlags[ElementFlags["NonRequired"] = 14] = "NonRequired";
+  ElementFlags[ElementFlags["NonRest"] = 11] = "NonRest";
+})(ElementFlags || (ElementFlags = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/moduleKind.js
+var ModuleKind;
+(function(ModuleKind) {
+  ModuleKind[ModuleKind["None"] = 0] = "None";
+  ModuleKind[ModuleKind["CommonJS"] = 1] = "CommonJS";
+  ModuleKind[ModuleKind["AMD"] = 2] = "AMD";
+  ModuleKind[ModuleKind["UMD"] = 3] = "UMD";
+  ModuleKind[ModuleKind["System"] = 4] = "System";
+  ModuleKind[ModuleKind["ES2015"] = 5] = "ES2015";
+  ModuleKind[ModuleKind["ES2020"] = 6] = "ES2020";
+  ModuleKind[ModuleKind["ES2022"] = 7] = "ES2022";
+  ModuleKind[ModuleKind["ESNext"] = 99] = "ESNext";
+  ModuleKind[ModuleKind["Node16"] = 100] = "Node16";
+  ModuleKind[ModuleKind["Node18"] = 101] = "Node18";
+  ModuleKind[ModuleKind["Node20"] = 102] = "Node20";
+  ModuleKind[ModuleKind["NodeNext"] = 199] = "NodeNext";
+  ModuleKind[ModuleKind["Preserve"] = 200] = "Preserve";
+})(ModuleKind || (ModuleKind = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/nodeBuilderFlags.js
+var NodeBuilderFlags;
+(function(NodeBuilderFlags) {
+  NodeBuilderFlags[NodeBuilderFlags["None"] = 0] = "None";
+  NodeBuilderFlags[NodeBuilderFlags["NoTruncation"] = 1] = "NoTruncation";
+  NodeBuilderFlags[NodeBuilderFlags["WriteArrayAsGenericType"] = 2] = "WriteArrayAsGenericType";
+  NodeBuilderFlags[NodeBuilderFlags["GenerateNamesForShadowedTypeParams"] = 4] = "GenerateNamesForShadowedTypeParams";
+  NodeBuilderFlags[NodeBuilderFlags["UseStructuralFallback"] = 8] = "UseStructuralFallback";
+  NodeBuilderFlags[NodeBuilderFlags["ForbidIndexedAccessSymbolReferences"] = 16] = "ForbidIndexedAccessSymbolReferences";
+  NodeBuilderFlags[NodeBuilderFlags["WriteTypeArgumentsOfSignature"] = 32] = "WriteTypeArgumentsOfSignature";
+  NodeBuilderFlags[NodeBuilderFlags["UseFullyQualifiedType"] = 64] = "UseFullyQualifiedType";
+  NodeBuilderFlags[NodeBuilderFlags["UseOnlyExternalAliasing"] = 128] = "UseOnlyExternalAliasing";
+  NodeBuilderFlags[NodeBuilderFlags["SuppressAnyReturnType"] = 256] = "SuppressAnyReturnType";
+  NodeBuilderFlags[NodeBuilderFlags["WriteTypeParametersInQualifiedName"] = 512] = "WriteTypeParametersInQualifiedName";
+  NodeBuilderFlags[NodeBuilderFlags["MultilineObjectLiterals"] = 1024] = "MultilineObjectLiterals";
+  NodeBuilderFlags[NodeBuilderFlags["WriteClassExpressionAsTypeLiteral"] = 2048] = "WriteClassExpressionAsTypeLiteral";
+  NodeBuilderFlags[NodeBuilderFlags["UseTypeOfFunction"] = 4096] = "UseTypeOfFunction";
+  NodeBuilderFlags[NodeBuilderFlags["OmitParameterModifiers"] = 8192] = "OmitParameterModifiers";
+  NodeBuilderFlags[NodeBuilderFlags["UseAliasDefinedOutsideCurrentScope"] = 16384] = "UseAliasDefinedOutsideCurrentScope";
+  NodeBuilderFlags[NodeBuilderFlags["UseSingleQuotesForStringLiteralType"] = 268435456] = "UseSingleQuotesForStringLiteralType";
+  NodeBuilderFlags[NodeBuilderFlags["NoTypeReduction"] = 536870912] = "NoTypeReduction";
+  NodeBuilderFlags[NodeBuilderFlags["UseInstantiationExpressions"] = 1073741824] = "UseInstantiationExpressions";
+  NodeBuilderFlags[NodeBuilderFlags["OmitThisParameter"] = 33554432] = "OmitThisParameter";
+  NodeBuilderFlags[NodeBuilderFlags["WriteCallStyleSignature"] = 134217728] = "WriteCallStyleSignature";
+  NodeBuilderFlags[NodeBuilderFlags["AllowThisInObjectLiteral"] = 32768] = "AllowThisInObjectLiteral";
+  NodeBuilderFlags[NodeBuilderFlags["AllowQualifiedNameInPlaceOfIdentifier"] = 65536] = "AllowQualifiedNameInPlaceOfIdentifier";
+  NodeBuilderFlags[NodeBuilderFlags["AllowAnonymousIdentifier"] = 131072] = "AllowAnonymousIdentifier";
+  NodeBuilderFlags[NodeBuilderFlags["AllowEmptyUnionOrIntersection"] = 262144] = "AllowEmptyUnionOrIntersection";
+  NodeBuilderFlags[NodeBuilderFlags["AllowEmptyTuple"] = 524288] = "AllowEmptyTuple";
+  NodeBuilderFlags[NodeBuilderFlags["AllowUniqueESSymbolType"] = 1048576] = "AllowUniqueESSymbolType";
+  NodeBuilderFlags[NodeBuilderFlags["AllowEmptyIndexInfoType"] = 2097152] = "AllowEmptyIndexInfoType";
+  NodeBuilderFlags[NodeBuilderFlags["AllowNodeModulesRelativePaths"] = 67108864] = "AllowNodeModulesRelativePaths";
+  NodeBuilderFlags[NodeBuilderFlags["IgnoreErrors"] = 70221824] = "IgnoreErrors";
+  NodeBuilderFlags[NodeBuilderFlags["InObjectTypeLiteral"] = 4194304] = "InObjectTypeLiteral";
+  NodeBuilderFlags[NodeBuilderFlags["InTypeAlias"] = 8388608] = "InTypeAlias";
+  NodeBuilderFlags[NodeBuilderFlags["InInitialEntityName"] = 16777216] = "InInitialEntityName";
+})(NodeBuilderFlags || (NodeBuilderFlags = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/objectFlags.js
+var ObjectFlags;
+(function(ObjectFlags) {
+  ObjectFlags[ObjectFlags["None"] = 0] = "None";
+  ObjectFlags[ObjectFlags["Class"] = 1] = "Class";
+  ObjectFlags[ObjectFlags["Interface"] = 2] = "Interface";
+  ObjectFlags[ObjectFlags["Reference"] = 4] = "Reference";
+  ObjectFlags[ObjectFlags["Tuple"] = 8] = "Tuple";
+  ObjectFlags[ObjectFlags["Anonymous"] = 16] = "Anonymous";
+  ObjectFlags[ObjectFlags["Mapped"] = 32] = "Mapped";
+  ObjectFlags[ObjectFlags["Instantiated"] = 64] = "Instantiated";
+  ObjectFlags[ObjectFlags["ObjectLiteral"] = 128] = "ObjectLiteral";
+  ObjectFlags[ObjectFlags["EvolvingArray"] = 256] = "EvolvingArray";
+  ObjectFlags[ObjectFlags["ObjectLiteralPatternWithComputedProperties"] = 512] = "ObjectLiteralPatternWithComputedProperties";
+  ObjectFlags[ObjectFlags["ReverseMapped"] = 1024] = "ReverseMapped";
+  ObjectFlags[ObjectFlags["JsxAttributes"] = 2048] = "JsxAttributes";
+  ObjectFlags[ObjectFlags["JSLiteral"] = 4096] = "JSLiteral";
+  ObjectFlags[ObjectFlags["FreshLiteral"] = 8192] = "FreshLiteral";
+  ObjectFlags[ObjectFlags["ArrayLiteral"] = 16384] = "ArrayLiteral";
+  ObjectFlags[ObjectFlags["PrimitiveUnion"] = 32768] = "PrimitiveUnion";
+  ObjectFlags[ObjectFlags["ContainsWideningType"] = 65536] = "ContainsWideningType";
+  ObjectFlags[ObjectFlags["ContainsObjectOrArrayLiteral"] = 131072] = "ContainsObjectOrArrayLiteral";
+  ObjectFlags[ObjectFlags["NonInferrableType"] = 262144] = "NonInferrableType";
+  ObjectFlags[ObjectFlags["CouldContainTypeVariablesComputed"] = 524288] = "CouldContainTypeVariablesComputed";
+  ObjectFlags[ObjectFlags["CouldContainTypeVariables"] = 1048576] = "CouldContainTypeVariables";
+  ObjectFlags[ObjectFlags["MembersResolved"] = 2097152] = "MembersResolved";
+  ObjectFlags[ObjectFlags["ClassOrInterface"] = 3] = "ClassOrInterface";
+  ObjectFlags[ObjectFlags["RequiresWidening"] = 196608] = "RequiresWidening";
+  ObjectFlags[ObjectFlags["PropagatingFlags"] = 458752] = "PropagatingFlags";
+  ObjectFlags[ObjectFlags["InstantiatedMapped"] = 96] = "InstantiatedMapped";
+  ObjectFlags[ObjectFlags["InstantiationExpressionType"] = 16777216] = "InstantiationExpressionType";
+  ObjectFlags[ObjectFlags["SingleSignatureType"] = 33554432] = "SingleSignatureType";
+  ObjectFlags[ObjectFlags["ObjectTypeKindMask"] = 50332991] = "ObjectTypeKindMask";
+  ObjectFlags[ObjectFlags["ContainsSpread"] = 4194304] = "ContainsSpread";
+  ObjectFlags[ObjectFlags["ObjectRestType"] = 8388608] = "ObjectRestType";
+  ObjectFlags[ObjectFlags["IsClassInstanceClone"] = 67108864] = "IsClassInstanceClone";
+  ObjectFlags[ObjectFlags["IdenticalBaseTypeCalculated"] = 134217728] = "IdenticalBaseTypeCalculated";
+  ObjectFlags[ObjectFlags["IdenticalBaseTypeExists"] = 268435456] = "IdenticalBaseTypeExists";
+  ObjectFlags[ObjectFlags["UnresolvedMembers"] = 536870912] = "UnresolvedMembers";
+  ObjectFlags[ObjectFlags["FromTypeNode"] = 1073741824] = "FromTypeNode";
+  ObjectFlags[ObjectFlags["IsGenericTypeComputed"] = 4194304] = "IsGenericTypeComputed";
+  ObjectFlags[ObjectFlags["IsGenericObjectType"] = 8388608] = "IsGenericObjectType";
+  ObjectFlags[ObjectFlags["IsGenericIndexType"] = 16777216] = "IsGenericIndexType";
+  ObjectFlags[ObjectFlags["IsGenericType"] = 25165824] = "IsGenericType";
+  ObjectFlags[ObjectFlags["ContainsIntersections"] = 33554432] = "ContainsIntersections";
+  ObjectFlags[ObjectFlags["IsUnknownLikeUnionComputed"] = 67108864] = "IsUnknownLikeUnionComputed";
+  ObjectFlags[ObjectFlags["IsUnknownLikeUnion"] = 134217728] = "IsUnknownLikeUnion";
+  ObjectFlags[ObjectFlags["IsNeverIntersectionComputed"] = 33554432] = "IsNeverIntersectionComputed";
+  ObjectFlags[ObjectFlags["IsNeverIntersection"] = 67108864] = "IsNeverIntersection";
+  ObjectFlags[ObjectFlags["IsConstrainedTypeVariable"] = 134217728] = "IsConstrainedTypeVariable";
+})(ObjectFlags || (ObjectFlags = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/signatureFlags.js
+var SignatureFlags;
+(function(SignatureFlags) {
+  SignatureFlags[SignatureFlags["None"] = 0] = "None";
+  SignatureFlags[SignatureFlags["HasRestParameter"] = 1] = "HasRestParameter";
+  SignatureFlags[SignatureFlags["HasLiteralTypes"] = 2] = "HasLiteralTypes";
+  SignatureFlags[SignatureFlags["Construct"] = 4] = "Construct";
+  SignatureFlags[SignatureFlags["Abstract"] = 8] = "Abstract";
+  SignatureFlags[SignatureFlags["IsInnerCallChain"] = 16] = "IsInnerCallChain";
+  SignatureFlags[SignatureFlags["IsOuterCallChain"] = 32] = "IsOuterCallChain";
+  SignatureFlags[SignatureFlags["IsUntypedSignatureInJSFile"] = 64] = "IsUntypedSignatureInJSFile";
+  SignatureFlags[SignatureFlags["IsNonInferrable"] = 128] = "IsNonInferrable";
+  SignatureFlags[SignatureFlags["IsSignatureCandidateForOverloadFailure"] = 256] = "IsSignatureCandidateForOverloadFailure";
+  SignatureFlags[SignatureFlags["PropagatingFlags"] = 335] = "PropagatingFlags";
+  SignatureFlags[SignatureFlags["CallChainFlags"] = 48] = "CallChainFlags";
+})(SignatureFlags || (SignatureFlags = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/signatureKind.js
+var SignatureKind;
+(function(SignatureKind) {
+  SignatureKind[SignatureKind["Call"] = 0] = "Call";
+  SignatureKind[SignatureKind["Construct"] = 1] = "Construct";
+})(SignatureKind || (SignatureKind = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/symbolFlags.js
+var SymbolFlags;
+(function(SymbolFlags) {
+  SymbolFlags[SymbolFlags["None"] = 0] = "None";
+  SymbolFlags[SymbolFlags["FunctionScopedVariable"] = 1] = "FunctionScopedVariable";
+  SymbolFlags[SymbolFlags["BlockScopedVariable"] = 2] = "BlockScopedVariable";
+  SymbolFlags[SymbolFlags["Property"] = 4] = "Property";
+  SymbolFlags[SymbolFlags["EnumMember"] = 8] = "EnumMember";
+  SymbolFlags[SymbolFlags["Function"] = 16] = "Function";
+  SymbolFlags[SymbolFlags["Class"] = 32] = "Class";
+  SymbolFlags[SymbolFlags["Interface"] = 64] = "Interface";
+  SymbolFlags[SymbolFlags["ConstEnum"] = 128] = "ConstEnum";
+  SymbolFlags[SymbolFlags["RegularEnum"] = 256] = "RegularEnum";
+  SymbolFlags[SymbolFlags["ValueModule"] = 512] = "ValueModule";
+  SymbolFlags[SymbolFlags["NamespaceModule"] = 1024] = "NamespaceModule";
+  SymbolFlags[SymbolFlags["TypeLiteral"] = 2048] = "TypeLiteral";
+  SymbolFlags[SymbolFlags["ObjectLiteral"] = 4096] = "ObjectLiteral";
+  SymbolFlags[SymbolFlags["Method"] = 8192] = "Method";
+  SymbolFlags[SymbolFlags["Constructor"] = 16384] = "Constructor";
+  SymbolFlags[SymbolFlags["GetAccessor"] = 32768] = "GetAccessor";
+  SymbolFlags[SymbolFlags["SetAccessor"] = 65536] = "SetAccessor";
+  SymbolFlags[SymbolFlags["Signature"] = 131072] = "Signature";
+  SymbolFlags[SymbolFlags["TypeParameter"] = 262144] = "TypeParameter";
+  SymbolFlags[SymbolFlags["TypeAlias"] = 524288] = "TypeAlias";
+  SymbolFlags[SymbolFlags["ExportValue"] = 1048576] = "ExportValue";
+  SymbolFlags[SymbolFlags["Alias"] = 2097152] = "Alias";
+  SymbolFlags[SymbolFlags["Prototype"] = 4194304] = "Prototype";
+  SymbolFlags[SymbolFlags["ExportStar"] = 8388608] = "ExportStar";
+  SymbolFlags[SymbolFlags["Optional"] = 16777216] = "Optional";
+  SymbolFlags[SymbolFlags["Transient"] = 33554432] = "Transient";
+  SymbolFlags[SymbolFlags["Assignment"] = 67108864] = "Assignment";
+  SymbolFlags[SymbolFlags["ModuleExports"] = 134217728] = "ModuleExports";
+  SymbolFlags[SymbolFlags["ConstEnumOnlyModule"] = 268435456] = "ConstEnumOnlyModule";
+  SymbolFlags[SymbolFlags["ReplaceableByMethod"] = 536870912] = "ReplaceableByMethod";
+  SymbolFlags[SymbolFlags["GlobalLookup"] = 1073741824] = "GlobalLookup";
+  SymbolFlags[SymbolFlags["All"] = 536870912] = "All";
+  SymbolFlags[SymbolFlags["Enum"] = 384] = "Enum";
+  SymbolFlags[SymbolFlags["Variable"] = 3] = "Variable";
+  SymbolFlags[SymbolFlags["Value"] = 111551] = "Value";
+  SymbolFlags[SymbolFlags["Type"] = 788968] = "Type";
+  SymbolFlags[SymbolFlags["Namespace"] = 1920] = "Namespace";
+  SymbolFlags[SymbolFlags["Module"] = 1536] = "Module";
+  SymbolFlags[SymbolFlags["Accessor"] = 98304] = "Accessor";
+  SymbolFlags[SymbolFlags["FunctionScopedVariableExcludes"] = 111550] = "FunctionScopedVariableExcludes";
+  SymbolFlags[SymbolFlags["BlockScopedVariableExcludes"] = 111551] = "BlockScopedVariableExcludes";
+  SymbolFlags[SymbolFlags["ParameterExcludes"] = 111551] = "ParameterExcludes";
+  SymbolFlags[SymbolFlags["PropertyExcludes"] = 13243] = "PropertyExcludes";
+  SymbolFlags[SymbolFlags["EnumMemberExcludes"] = 900095] = "EnumMemberExcludes";
+  SymbolFlags[SymbolFlags["FunctionExcludes"] = 110991] = "FunctionExcludes";
+  SymbolFlags[SymbolFlags["ClassExcludes"] = 899503] = "ClassExcludes";
+  SymbolFlags[SymbolFlags["InterfaceExcludes"] = 788872] = "InterfaceExcludes";
+  SymbolFlags[SymbolFlags["RegularEnumExcludes"] = 899327] = "RegularEnumExcludes";
+  SymbolFlags[SymbolFlags["ConstEnumExcludes"] = 899967] = "ConstEnumExcludes";
+  SymbolFlags[SymbolFlags["ValueModuleExcludes"] = 110735] = "ValueModuleExcludes";
+  SymbolFlags[SymbolFlags["NamespaceModuleExcludes"] = 0] = "NamespaceModuleExcludes";
+  SymbolFlags[SymbolFlags["MethodExcludes"] = 103359] = "MethodExcludes";
+  SymbolFlags[SymbolFlags["GetAccessorExcludes"] = 46011] = "GetAccessorExcludes";
+  SymbolFlags[SymbolFlags["SetAccessorExcludes"] = 78779] = "SetAccessorExcludes";
+  SymbolFlags[SymbolFlags["AccessorExcludes"] = 111547] = "AccessorExcludes";
+  SymbolFlags[SymbolFlags["TypeParameterExcludes"] = 526824] = "TypeParameterExcludes";
+  SymbolFlags[SymbolFlags["TypeAliasExcludes"] = 788968] = "TypeAliasExcludes";
+  SymbolFlags[SymbolFlags["AliasExcludes"] = 2097152] = "AliasExcludes";
+  SymbolFlags[SymbolFlags["ModuleMember"] = 2623475] = "ModuleMember";
+  SymbolFlags[SymbolFlags["ExportHasLocal"] = 944] = "ExportHasLocal";
+  SymbolFlags[SymbolFlags["BlockScoped"] = 418] = "BlockScoped";
+  SymbolFlags[SymbolFlags["PropertyOrAccessor"] = 98308] = "PropertyOrAccessor";
+  SymbolFlags[SymbolFlags["ClassMember"] = 106500] = "ClassMember";
+  SymbolFlags[SymbolFlags["ExportSupportsDefaultModifier"] = 112] = "ExportSupportsDefaultModifier";
+  SymbolFlags[SymbolFlags["ExportDoesNotSupportDefaultModifier"] = -113] = "ExportDoesNotSupportDefaultModifier";
+  SymbolFlags[SymbolFlags["Classifiable"] = 2885600] = "Classifiable";
+  SymbolFlags[SymbolFlags["LateBindingContainer"] = 6256] = "LateBindingContainer";
+})(SymbolFlags || (SymbolFlags = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/typeFlags.js
+var TypeFlags;
+(function(TypeFlags) {
+  TypeFlags[TypeFlags["None"] = 0] = "None";
+  TypeFlags[TypeFlags["Any"] = 1] = "Any";
+  TypeFlags[TypeFlags["Unknown"] = 2] = "Unknown";
+  TypeFlags[TypeFlags["Undefined"] = 4] = "Undefined";
+  TypeFlags[TypeFlags["Null"] = 8] = "Null";
+  TypeFlags[TypeFlags["Void"] = 16] = "Void";
+  TypeFlags[TypeFlags["String"] = 32] = "String";
+  TypeFlags[TypeFlags["Number"] = 64] = "Number";
+  TypeFlags[TypeFlags["BigInt"] = 128] = "BigInt";
+  TypeFlags[TypeFlags["Boolean"] = 256] = "Boolean";
+  TypeFlags[TypeFlags["ESSymbol"] = 512] = "ESSymbol";
+  TypeFlags[TypeFlags["StringLiteral"] = 1024] = "StringLiteral";
+  TypeFlags[TypeFlags["NumberLiteral"] = 2048] = "NumberLiteral";
+  TypeFlags[TypeFlags["BigIntLiteral"] = 4096] = "BigIntLiteral";
+  TypeFlags[TypeFlags["BooleanLiteral"] = 8192] = "BooleanLiteral";
+  TypeFlags[TypeFlags["UniqueESSymbol"] = 16384] = "UniqueESSymbol";
+  TypeFlags[TypeFlags["EnumLiteral"] = 32768] = "EnumLiteral";
+  TypeFlags[TypeFlags["Enum"] = 65536] = "Enum";
+  TypeFlags[TypeFlags["NonPrimitive"] = 131072] = "NonPrimitive";
+  TypeFlags[TypeFlags["Never"] = 262144] = "Never";
+  TypeFlags[TypeFlags["TypeParameter"] = 524288] = "TypeParameter";
+  TypeFlags[TypeFlags["Object"] = 1048576] = "Object";
+  TypeFlags[TypeFlags["Index"] = 2097152] = "Index";
+  TypeFlags[TypeFlags["TemplateLiteral"] = 4194304] = "TemplateLiteral";
+  TypeFlags[TypeFlags["StringMapping"] = 8388608] = "StringMapping";
+  TypeFlags[TypeFlags["Substitution"] = 16777216] = "Substitution";
+  TypeFlags[TypeFlags["IndexedAccess"] = 33554432] = "IndexedAccess";
+  TypeFlags[TypeFlags["Conditional"] = 67108864] = "Conditional";
+  TypeFlags[TypeFlags["Union"] = 134217728] = "Union";
+  TypeFlags[TypeFlags["Intersection"] = 268435456] = "Intersection";
+  TypeFlags[TypeFlags["Reserved1"] = 536870912] = "Reserved1";
+  TypeFlags[TypeFlags["Reserved2"] = 1073741824] = "Reserved2";
+  TypeFlags[TypeFlags["Reserved3"] = -2147483648] = "Reserved3";
+  TypeFlags[TypeFlags["AnyOrUnknown"] = 3] = "AnyOrUnknown";
+  TypeFlags[TypeFlags["Nullable"] = 12] = "Nullable";
+  TypeFlags[TypeFlags["Literal"] = 15360] = "Literal";
+  TypeFlags[TypeFlags["Unit"] = 97292] = "Unit";
+  TypeFlags[TypeFlags["Freshable"] = 80896] = "Freshable";
+  TypeFlags[TypeFlags["StringOrNumberLiteral"] = 3072] = "StringOrNumberLiteral";
+  TypeFlags[TypeFlags["StringOrNumberLiteralOrUnique"] = 19456] = "StringOrNumberLiteralOrUnique";
+  TypeFlags[TypeFlags["DefinitelyFalsy"] = 15388] = "DefinitelyFalsy";
+  TypeFlags[TypeFlags["PossiblyFalsy"] = 15868] = "PossiblyFalsy";
+  TypeFlags[TypeFlags["Intrinsic"] = 393983] = "Intrinsic";
+  TypeFlags[TypeFlags["StringLike"] = 12583968] = "StringLike";
+  TypeFlags[TypeFlags["NumberLike"] = 67648] = "NumberLike";
+  TypeFlags[TypeFlags["BigIntLike"] = 4224] = "BigIntLike";
+  TypeFlags[TypeFlags["BooleanLike"] = 8448] = "BooleanLike";
+  TypeFlags[TypeFlags["EnumLike"] = 98304] = "EnumLike";
+  TypeFlags[TypeFlags["ESSymbolLike"] = 16896] = "ESSymbolLike";
+  TypeFlags[TypeFlags["VoidLike"] = 20] = "VoidLike";
+  TypeFlags[TypeFlags["Primitive"] = 12713980] = "Primitive";
+  TypeFlags[TypeFlags["DefinitelyNonNullable"] = 13893600] = "DefinitelyNonNullable";
+  TypeFlags[TypeFlags["DisjointDomains"] = 12812284] = "DisjointDomains";
+  TypeFlags[TypeFlags["UnionOrIntersection"] = 402653184] = "UnionOrIntersection";
+  TypeFlags[TypeFlags["StructuredType"] = 403701760] = "StructuredType";
+  TypeFlags[TypeFlags["TypeVariable"] = 34078720] = "TypeVariable";
+  TypeFlags[TypeFlags["InstantiableNonPrimitive"] = 117964800] = "InstantiableNonPrimitive";
+  TypeFlags[TypeFlags["InstantiablePrimitive"] = 14680064] = "InstantiablePrimitive";
+  TypeFlags[TypeFlags["Instantiable"] = 132644864] = "Instantiable";
+  TypeFlags[TypeFlags["StructuredOrInstantiable"] = 536346624] = "StructuredOrInstantiable";
+  TypeFlags[TypeFlags["ObjectFlagsType"] = 403963917] = "ObjectFlagsType";
+  TypeFlags[TypeFlags["Simplifiable"] = 102760448] = "Simplifiable";
+  TypeFlags[TypeFlags["Singleton"] = 394239] = "Singleton";
+  TypeFlags[TypeFlags["Narrowable"] = 536575971] = "Narrowable";
+  TypeFlags[TypeFlags["IncludesMask"] = 416808959] = "IncludesMask";
+  TypeFlags[TypeFlags["IncludesMissingType"] = 524288] = "IncludesMissingType";
+  TypeFlags[TypeFlags["IncludesNonWideningType"] = 2097152] = "IncludesNonWideningType";
+  TypeFlags[TypeFlags["IncludesWildcard"] = 33554432] = "IncludesWildcard";
+  TypeFlags[TypeFlags["IncludesEmptyObject"] = 67108864] = "IncludesEmptyObject";
+  TypeFlags[TypeFlags["IncludesInstantiable"] = 16777216] = "IncludesInstantiable";
+  TypeFlags[TypeFlags["IncludesConstrainedTypeVariable"] = 536870912] = "IncludesConstrainedTypeVariable";
+  TypeFlags[TypeFlags["IncludesError"] = 1073741824] = "IncludesError";
+  TypeFlags[TypeFlags["NotPrimitiveUnion"] = 286523411] = "NotPrimitiveUnion";
+})(TypeFlags || (TypeFlags = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/typePredicateKind.js
+var TypePredicateKind;
+(function(TypePredicateKind) {
+  TypePredicateKind[TypePredicateKind["This"] = 0] = "This";
+  TypePredicateKind[TypePredicateKind["Identifier"] = 1] = "Identifier";
+  TypePredicateKind[TypePredicateKind["AssertsThis"] = 2] = "AssertsThis";
+  TypePredicateKind[TypePredicateKind["AssertsIdentifier"] = 3] = "AssertsIdentifier";
+})(TypePredicateKind || (TypePredicateKind = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/characterCodes.js
+var CharacterCodes2;
+(function(CharacterCodes) {
+  CharacterCodes[CharacterCodes["EOF"] = -1] = "EOF";
+  CharacterCodes[CharacterCodes["nullCharacter"] = 0] = "nullCharacter";
+  CharacterCodes[CharacterCodes["maxAsciiCharacter"] = 127] = "maxAsciiCharacter";
+  CharacterCodes[CharacterCodes["lineFeed"] = 10] = "lineFeed";
+  CharacterCodes[CharacterCodes["carriageReturn"] = 13] = "carriageReturn";
+  CharacterCodes[CharacterCodes["lineSeparator"] = 8232] = "lineSeparator";
+  CharacterCodes[CharacterCodes["paragraphSeparator"] = 8233] = "paragraphSeparator";
+  CharacterCodes[CharacterCodes["nextLine"] = 133] = "nextLine";
+  CharacterCodes[CharacterCodes["space"] = 32] = "space";
+  CharacterCodes[CharacterCodes["nonBreakingSpace"] = 160] = "nonBreakingSpace";
+  CharacterCodes[CharacterCodes["enQuad"] = 8192] = "enQuad";
+  CharacterCodes[CharacterCodes["emQuad"] = 8193] = "emQuad";
+  CharacterCodes[CharacterCodes["enSpace"] = 8194] = "enSpace";
+  CharacterCodes[CharacterCodes["emSpace"] = 8195] = "emSpace";
+  CharacterCodes[CharacterCodes["threePerEmSpace"] = 8196] = "threePerEmSpace";
+  CharacterCodes[CharacterCodes["fourPerEmSpace"] = 8197] = "fourPerEmSpace";
+  CharacterCodes[CharacterCodes["sixPerEmSpace"] = 8198] = "sixPerEmSpace";
+  CharacterCodes[CharacterCodes["figureSpace"] = 8199] = "figureSpace";
+  CharacterCodes[CharacterCodes["punctuationSpace"] = 8200] = "punctuationSpace";
+  CharacterCodes[CharacterCodes["thinSpace"] = 8201] = "thinSpace";
+  CharacterCodes[CharacterCodes["hairSpace"] = 8202] = "hairSpace";
+  CharacterCodes[CharacterCodes["zeroWidthSpace"] = 8203] = "zeroWidthSpace";
+  CharacterCodes[CharacterCodes["narrowNoBreakSpace"] = 8239] = "narrowNoBreakSpace";
+  CharacterCodes[CharacterCodes["ideographicSpace"] = 12288] = "ideographicSpace";
+  CharacterCodes[CharacterCodes["mathematicalSpace"] = 8287] = "mathematicalSpace";
+  CharacterCodes[CharacterCodes["ogham"] = 5765] = "ogham";
+  CharacterCodes[CharacterCodes["replacementCharacter"] = 65533] = "replacementCharacter";
+  CharacterCodes[CharacterCodes["_"] = 95] = "_";
+  CharacterCodes[CharacterCodes["$"] = 36] = "$";
+  CharacterCodes[CharacterCodes["_0"] = 48] = "_0";
+  CharacterCodes[CharacterCodes["_1"] = 49] = "_1";
+  CharacterCodes[CharacterCodes["_2"] = 50] = "_2";
+  CharacterCodes[CharacterCodes["_3"] = 51] = "_3";
+  CharacterCodes[CharacterCodes["_4"] = 52] = "_4";
+  CharacterCodes[CharacterCodes["_5"] = 53] = "_5";
+  CharacterCodes[CharacterCodes["_6"] = 54] = "_6";
+  CharacterCodes[CharacterCodes["_7"] = 55] = "_7";
+  CharacterCodes[CharacterCodes["_8"] = 56] = "_8";
+  CharacterCodes[CharacterCodes["_9"] = 57] = "_9";
+  CharacterCodes[CharacterCodes["a"] = 97] = "a";
+  CharacterCodes[CharacterCodes["b"] = 98] = "b";
+  CharacterCodes[CharacterCodes["c"] = 99] = "c";
+  CharacterCodes[CharacterCodes["d"] = 100] = "d";
+  CharacterCodes[CharacterCodes["e"] = 101] = "e";
+  CharacterCodes[CharacterCodes["f"] = 102] = "f";
+  CharacterCodes[CharacterCodes["g"] = 103] = "g";
+  CharacterCodes[CharacterCodes["h"] = 104] = "h";
+  CharacterCodes[CharacterCodes["i"] = 105] = "i";
+  CharacterCodes[CharacterCodes["j"] = 106] = "j";
+  CharacterCodes[CharacterCodes["k"] = 107] = "k";
+  CharacterCodes[CharacterCodes["l"] = 108] = "l";
+  CharacterCodes[CharacterCodes["m"] = 109] = "m";
+  CharacterCodes[CharacterCodes["n"] = 110] = "n";
+  CharacterCodes[CharacterCodes["o"] = 111] = "o";
+  CharacterCodes[CharacterCodes["p"] = 112] = "p";
+  CharacterCodes[CharacterCodes["q"] = 113] = "q";
+  CharacterCodes[CharacterCodes["r"] = 114] = "r";
+  CharacterCodes[CharacterCodes["s"] = 115] = "s";
+  CharacterCodes[CharacterCodes["t"] = 116] = "t";
+  CharacterCodes[CharacterCodes["u"] = 117] = "u";
+  CharacterCodes[CharacterCodes["v"] = 118] = "v";
+  CharacterCodes[CharacterCodes["w"] = 119] = "w";
+  CharacterCodes[CharacterCodes["x"] = 120] = "x";
+  CharacterCodes[CharacterCodes["y"] = 121] = "y";
+  CharacterCodes[CharacterCodes["z"] = 122] = "z";
+  CharacterCodes[CharacterCodes["A"] = 65] = "A";
+  CharacterCodes[CharacterCodes["B"] = 66] = "B";
+  CharacterCodes[CharacterCodes["C"] = 67] = "C";
+  CharacterCodes[CharacterCodes["D"] = 68] = "D";
+  CharacterCodes[CharacterCodes["E"] = 69] = "E";
+  CharacterCodes[CharacterCodes["F"] = 70] = "F";
+  CharacterCodes[CharacterCodes["G"] = 71] = "G";
+  CharacterCodes[CharacterCodes["H"] = 72] = "H";
+  CharacterCodes[CharacterCodes["I"] = 73] = "I";
+  CharacterCodes[CharacterCodes["J"] = 74] = "J";
+  CharacterCodes[CharacterCodes["K"] = 75] = "K";
+  CharacterCodes[CharacterCodes["L"] = 76] = "L";
+  CharacterCodes[CharacterCodes["M"] = 77] = "M";
+  CharacterCodes[CharacterCodes["N"] = 78] = "N";
+  CharacterCodes[CharacterCodes["O"] = 79] = "O";
+  CharacterCodes[CharacterCodes["P"] = 80] = "P";
+  CharacterCodes[CharacterCodes["Q"] = 81] = "Q";
+  CharacterCodes[CharacterCodes["R"] = 82] = "R";
+  CharacterCodes[CharacterCodes["S"] = 83] = "S";
+  CharacterCodes[CharacterCodes["T"] = 84] = "T";
+  CharacterCodes[CharacterCodes["U"] = 85] = "U";
+  CharacterCodes[CharacterCodes["V"] = 86] = "V";
+  CharacterCodes[CharacterCodes["W"] = 87] = "W";
+  CharacterCodes[CharacterCodes["X"] = 88] = "X";
+  CharacterCodes[CharacterCodes["Y"] = 89] = "Y";
+  CharacterCodes[CharacterCodes["Z"] = 90] = "Z";
+  CharacterCodes[CharacterCodes["ampersand"] = 38] = "ampersand";
+  CharacterCodes[CharacterCodes["asterisk"] = 42] = "asterisk";
+  CharacterCodes[CharacterCodes["at"] = 64] = "at";
+  CharacterCodes[CharacterCodes["backslash"] = 92] = "backslash";
+  CharacterCodes[CharacterCodes["backtick"] = 96] = "backtick";
+  CharacterCodes[CharacterCodes["bar"] = 124] = "bar";
+  CharacterCodes[CharacterCodes["caret"] = 94] = "caret";
+  CharacterCodes[CharacterCodes["closeBrace"] = 125] = "closeBrace";
+  CharacterCodes[CharacterCodes["closeBracket"] = 93] = "closeBracket";
+  CharacterCodes[CharacterCodes["closeParen"] = 41] = "closeParen";
+  CharacterCodes[CharacterCodes["colon"] = 58] = "colon";
+  CharacterCodes[CharacterCodes["comma"] = 44] = "comma";
+  CharacterCodes[CharacterCodes["dot"] = 46] = "dot";
+  CharacterCodes[CharacterCodes["doubleQuote"] = 34] = "doubleQuote";
+  CharacterCodes[CharacterCodes["equals"] = 61] = "equals";
+  CharacterCodes[CharacterCodes["exclamation"] = 33] = "exclamation";
+  CharacterCodes[CharacterCodes["greaterThan"] = 62] = "greaterThan";
+  CharacterCodes[CharacterCodes["hash"] = 35] = "hash";
+  CharacterCodes[CharacterCodes["lessThan"] = 60] = "lessThan";
+  CharacterCodes[CharacterCodes["minus"] = 45] = "minus";
+  CharacterCodes[CharacterCodes["openBrace"] = 123] = "openBrace";
+  CharacterCodes[CharacterCodes["openBracket"] = 91] = "openBracket";
+  CharacterCodes[CharacterCodes["openParen"] = 40] = "openParen";
+  CharacterCodes[CharacterCodes["percent"] = 37] = "percent";
+  CharacterCodes[CharacterCodes["plus"] = 43] = "plus";
+  CharacterCodes[CharacterCodes["question"] = 63] = "question";
+  CharacterCodes[CharacterCodes["semicolon"] = 59] = "semicolon";
+  CharacterCodes[CharacterCodes["singleQuote"] = 39] = "singleQuote";
+  CharacterCodes[CharacterCodes["slash"] = 47] = "slash";
+  CharacterCodes[CharacterCodes["tilde"] = 126] = "tilde";
+  CharacterCodes[CharacterCodes["backspace"] = 8] = "backspace";
+  CharacterCodes[CharacterCodes["formFeed"] = 12] = "formFeed";
+  CharacterCodes[CharacterCodes["byteOrderMark"] = 65279] = "byteOrderMark";
+  CharacterCodes[CharacterCodes["tab"] = 9] = "tab";
+  CharacterCodes[CharacterCodes["verticalTab"] = 11] = "verticalTab";
+})(CharacterCodes2 || (CharacterCodes2 = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/commentDirectiveType.js
+var CommentDirectiveType;
+(function(CommentDirectiveType) {
+  CommentDirectiveType[CommentDirectiveType["ExpectError"] = 0] = "ExpectError";
+  CommentDirectiveType[CommentDirectiveType["Ignore"] = 1] = "Ignore";
+})(CommentDirectiveType || (CommentDirectiveType = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/internalSymbolName.js
+var InternalSymbolName;
+(function(InternalSymbolName) {
+  InternalSymbolName["Call"] = "__call";
+  InternalSymbolName["Constructor"] = "__constructor";
+  InternalSymbolName["New"] = "__new";
+  InternalSymbolName["Index"] = "__index";
+  InternalSymbolName["ExportStar"] = "__export";
+  InternalSymbolName["Global"] = "__global";
+  InternalSymbolName["Missing"] = "__missing";
+  InternalSymbolName["Type"] = "__type";
+  InternalSymbolName["Object"] = "__object";
+  InternalSymbolName["JSXAttributes"] = "__jsxAttributes";
+  InternalSymbolName["Class"] = "__class";
+  InternalSymbolName["Function"] = "__function";
+  InternalSymbolName["Computed"] = "__computed";
+  InternalSymbolName["AssignmentDeclaration"] = "__assignment";
+  InternalSymbolName["InstantiationExpression"] = "__instantiationExpression";
+  InternalSymbolName["ImportAttributes"] = "__importAttributes";
+  InternalSymbolName["ExportEquals"] = "export=";
+  InternalSymbolName["Default"] = "default";
+  InternalSymbolName["This"] = "this";
+  InternalSymbolName["ModuleExports"] = "module.exports";
+})(InternalSymbolName || (InternalSymbolName = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/languageVariant.js
+var LanguageVariant;
+(function(LanguageVariant) {
+  LanguageVariant[LanguageVariant["Standard"] = 0] = "Standard";
+  LanguageVariant[LanguageVariant["JSX"] = 1] = "JSX";
+})(LanguageVariant || (LanguageVariant = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/modifierFlags.js
+var ModifierFlags;
+(function(ModifierFlags) {
+  ModifierFlags[ModifierFlags["None"] = 0] = "None";
+  ModifierFlags[ModifierFlags["Public"] = 1] = "Public";
+  ModifierFlags[ModifierFlags["Private"] = 2] = "Private";
+  ModifierFlags[ModifierFlags["Protected"] = 4] = "Protected";
+  ModifierFlags[ModifierFlags["Readonly"] = 8] = "Readonly";
+  ModifierFlags[ModifierFlags["Override"] = 16] = "Override";
+  ModifierFlags[ModifierFlags["Export"] = 32] = "Export";
+  ModifierFlags[ModifierFlags["Abstract"] = 64] = "Abstract";
+  ModifierFlags[ModifierFlags["Ambient"] = 128] = "Ambient";
+  ModifierFlags[ModifierFlags["Static"] = 256] = "Static";
+  ModifierFlags[ModifierFlags["Accessor"] = 512] = "Accessor";
+  ModifierFlags[ModifierFlags["Async"] = 1024] = "Async";
+  ModifierFlags[ModifierFlags["Default"] = 2048] = "Default";
+  ModifierFlags[ModifierFlags["Const"] = 4096] = "Const";
+  ModifierFlags[ModifierFlags["In"] = 8192] = "In";
+  ModifierFlags[ModifierFlags["Out"] = 16384] = "Out";
+  ModifierFlags[ModifierFlags["Decorator"] = 32768] = "Decorator";
+  ModifierFlags[ModifierFlags["Deprecated"] = 65536] = "Deprecated";
+  ModifierFlags[ModifierFlags["JSDocPublic"] = 8388608] = "JSDocPublic";
+  ModifierFlags[ModifierFlags["JSDocPrivate"] = 16777216] = "JSDocPrivate";
+  ModifierFlags[ModifierFlags["JSDocProtected"] = 33554432] = "JSDocProtected";
+  ModifierFlags[ModifierFlags["JSDocReadonly"] = 67108864] = "JSDocReadonly";
+  ModifierFlags[ModifierFlags["JSDocOverride"] = 134217728] = "JSDocOverride";
+  ModifierFlags[ModifierFlags["HasComputedJSDocModifiers"] = 268435456] = "HasComputedJSDocModifiers";
+  ModifierFlags[ModifierFlags["HasComputedFlags"] = 536870912] = "HasComputedFlags";
+  ModifierFlags[ModifierFlags["SyntacticOrJSDocModifiers"] = 31] = "SyntacticOrJSDocModifiers";
+  ModifierFlags[ModifierFlags["SyntacticOnlyModifiers"] = 65504] = "SyntacticOnlyModifiers";
+  ModifierFlags[ModifierFlags["SyntacticModifiers"] = 65535] = "SyntacticModifiers";
+  ModifierFlags[ModifierFlags["JSDocCacheOnlyModifiers"] = 260046848] = "JSDocCacheOnlyModifiers";
+  ModifierFlags[ModifierFlags["JSDocOnlyModifiers"] = 65536] = "JSDocOnlyModifiers";
+  ModifierFlags[ModifierFlags["NonCacheOnlyModifiers"] = 131071] = "NonCacheOnlyModifiers";
+  ModifierFlags[ModifierFlags["AccessibilityModifier"] = 7] = "AccessibilityModifier";
+  ModifierFlags[ModifierFlags["ParameterPropertyModifier"] = 31] = "ParameterPropertyModifier";
+  ModifierFlags[ModifierFlags["NonPublicAccessibilityModifier"] = 6] = "NonPublicAccessibilityModifier";
+  ModifierFlags[ModifierFlags["TypeScriptModifier"] = 28895] = "TypeScriptModifier";
+  ModifierFlags[ModifierFlags["ExportDefault"] = 2080] = "ExportDefault";
+  ModifierFlags[ModifierFlags["All"] = 131071] = "All";
+  ModifierFlags[ModifierFlags["Modifier"] = 98303] = "Modifier";
+  ModifierFlags[ModifierFlags["JavaScript"] = 3872] = "JavaScript";
+})(ModifierFlags || (ModifierFlags = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/nodeFlags.js
+var NodeFlags;
+(function(NodeFlags) {
+  NodeFlags[NodeFlags["None"] = 0] = "None";
+  NodeFlags[NodeFlags["Let"] = 1] = "Let";
+  NodeFlags[NodeFlags["Const"] = 2] = "Const";
+  NodeFlags[NodeFlags["Using"] = 4] = "Using";
+  NodeFlags[NodeFlags["Reparsed"] = 8] = "Reparsed";
+  NodeFlags[NodeFlags["Synthesized"] = 16] = "Synthesized";
+  NodeFlags[NodeFlags["OptionalChain"] = 32] = "OptionalChain";
+  NodeFlags[NodeFlags["ExportContext"] = 64] = "ExportContext";
+  NodeFlags[NodeFlags["ContainsThis"] = 128] = "ContainsThis";
+  NodeFlags[NodeFlags["HasImplicitReturn"] = 256] = "HasImplicitReturn";
+  NodeFlags[NodeFlags["HasExplicitReturn"] = 512] = "HasExplicitReturn";
+  NodeFlags[NodeFlags["DisallowInContext"] = 1024] = "DisallowInContext";
+  NodeFlags[NodeFlags["YieldContext"] = 2048] = "YieldContext";
+  NodeFlags[NodeFlags["DecoratorContext"] = 4096] = "DecoratorContext";
+  NodeFlags[NodeFlags["AwaitContext"] = 8192] = "AwaitContext";
+  NodeFlags[NodeFlags["DisallowConditionalTypesContext"] = 16384] = "DisallowConditionalTypesContext";
+  NodeFlags[NodeFlags["ThisNodeHasError"] = 32768] = "ThisNodeHasError";
+  NodeFlags[NodeFlags["JavaScriptFile"] = 65536] = "JavaScriptFile";
+  NodeFlags[NodeFlags["ThisNodeOrAnySubNodesHasError"] = 131072] = "ThisNodeOrAnySubNodesHasError";
+  NodeFlags[NodeFlags["HasAsyncFunctions"] = 262144] = "HasAsyncFunctions";
+  NodeFlags[NodeFlags["PossiblyContainsDynamicImport"] = 524288] = "PossiblyContainsDynamicImport";
+  NodeFlags[NodeFlags["PossiblyContainsImportMeta"] = 1048576] = "PossiblyContainsImportMeta";
+  NodeFlags[NodeFlags["HasJSDoc"] = 2097152] = "HasJSDoc";
+  NodeFlags[NodeFlags["JSDoc"] = 4194304] = "JSDoc";
+  NodeFlags[NodeFlags["Ambient"] = 8388608] = "Ambient";
+  NodeFlags[NodeFlags["InWithStatement"] = 16777216] = "InWithStatement";
+  NodeFlags[NodeFlags["JsonFile"] = 33554432] = "JsonFile";
+  NodeFlags[NodeFlags["PossiblyContainsDeprecatedTag"] = 67108864] = "PossiblyContainsDeprecatedTag";
+  NodeFlags[NodeFlags["Unreachable"] = 134217728] = "Unreachable";
+  NodeFlags[NodeFlags["ReparserTransformedLiteral"] = 268435456] = "ReparserTransformedLiteral";
+  NodeFlags[NodeFlags["BlockScoped"] = 7] = "BlockScoped";
+  NodeFlags[NodeFlags["Constant"] = 6] = "Constant";
+  NodeFlags[NodeFlags["AwaitUsing"] = 6] = "AwaitUsing";
+  NodeFlags[NodeFlags["ReachabilityCheckFlags"] = 768] = "ReachabilityCheckFlags";
+  NodeFlags[NodeFlags["ReachabilityAndEmitFlags"] = 262912] = "ReachabilityAndEmitFlags";
+  NodeFlags[NodeFlags["ContextFlags"] = 25263104] = "ContextFlags";
+  NodeFlags[NodeFlags["TypeExcludesFlags"] = 10240] = "TypeExcludesFlags";
+  NodeFlags[NodeFlags["PermanentlySetIncrementalFlags"] = 1572864] = "PermanentlySetIncrementalFlags";
+  NodeFlags[NodeFlags["IdentifierHasExtendedUnicodeEscape"] = 128] = "IdentifierHasExtendedUnicodeEscape";
+  NodeFlags[NodeFlags["IdentifierIsInJSDocNamespace"] = 262144] = "IdentifierIsInJSDocNamespace";
+  NodeFlags[NodeFlags["NestedNamespace"] = 32] = "NestedNamespace";
+})(NodeFlags || (NodeFlags = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/regularExpressionFlags.js
+var RegularExpressionFlags;
+(function(RegularExpressionFlags) {
+  RegularExpressionFlags[RegularExpressionFlags["None"] = 0] = "None";
+  RegularExpressionFlags[RegularExpressionFlags["HasIndices"] = 1] = "HasIndices";
+  RegularExpressionFlags[RegularExpressionFlags["Global"] = 2] = "Global";
+  RegularExpressionFlags[RegularExpressionFlags["IgnoreCase"] = 4] = "IgnoreCase";
+  RegularExpressionFlags[RegularExpressionFlags["Multiline"] = 8] = "Multiline";
+  RegularExpressionFlags[RegularExpressionFlags["DotAll"] = 16] = "DotAll";
+  RegularExpressionFlags[RegularExpressionFlags["Unicode"] = 32] = "Unicode";
+  RegularExpressionFlags[RegularExpressionFlags["UnicodeSets"] = 64] = "UnicodeSets";
+  RegularExpressionFlags[RegularExpressionFlags["Sticky"] = 128] = "Sticky";
+  RegularExpressionFlags[RegularExpressionFlags["AnyUnicodeMode"] = 96] = "AnyUnicodeMode";
+})(RegularExpressionFlags || (RegularExpressionFlags = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/scriptKind.js
+var ScriptKind;
+(function(ScriptKind) {
+  ScriptKind[ScriptKind["Unknown"] = 0] = "Unknown";
+  ScriptKind[ScriptKind["JS"] = 1] = "JS";
+  ScriptKind[ScriptKind["JSX"] = 2] = "JSX";
+  ScriptKind[ScriptKind["TS"] = 3] = "TS";
+  ScriptKind[ScriptKind["TSX"] = 4] = "TSX";
+  ScriptKind[ScriptKind["External"] = 5] = "External";
+  ScriptKind[ScriptKind["JSON"] = 6] = "JSON";
+  ScriptKind[ScriptKind["Deferred"] = 7] = "Deferred";
+})(ScriptKind || (ScriptKind = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/scriptTarget.js
+var ScriptTarget;
+(function(ScriptTarget) {
+  ScriptTarget[ScriptTarget["ES2015"] = 2] = "ES2015";
+  ScriptTarget[ScriptTarget["ES2016"] = 3] = "ES2016";
+  ScriptTarget[ScriptTarget["ES2017"] = 4] = "ES2017";
+  ScriptTarget[ScriptTarget["ES2018"] = 5] = "ES2018";
+  ScriptTarget[ScriptTarget["ES2019"] = 6] = "ES2019";
+  ScriptTarget[ScriptTarget["ES2020"] = 7] = "ES2020";
+  ScriptTarget[ScriptTarget["ES2021"] = 8] = "ES2021";
+  ScriptTarget[ScriptTarget["ES2022"] = 9] = "ES2022";
+  ScriptTarget[ScriptTarget["ES2023"] = 10] = "ES2023";
+  ScriptTarget[ScriptTarget["ES2024"] = 11] = "ES2024";
+  ScriptTarget[ScriptTarget["ES2025"] = 12] = "ES2025";
+  ScriptTarget[ScriptTarget["ESNext"] = 99] = "ESNext";
+  ScriptTarget[ScriptTarget["JSON"] = 100] = "JSON";
+  ScriptTarget[ScriptTarget["Latest"] = 99] = "Latest";
+})(ScriptTarget || (ScriptTarget = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/syntaxKind.js
+var SyntaxKind2;
+(function(SyntaxKind) {
+  SyntaxKind[SyntaxKind["Unknown"] = 0] = "Unknown";
+  SyntaxKind[SyntaxKind["EndOfFile"] = 1] = "EndOfFile";
+  SyntaxKind[SyntaxKind["SingleLineCommentTrivia"] = 2] = "SingleLineCommentTrivia";
+  SyntaxKind[SyntaxKind["MultiLineCommentTrivia"] = 3] = "MultiLineCommentTrivia";
+  SyntaxKind[SyntaxKind["NewLineTrivia"] = 4] = "NewLineTrivia";
+  SyntaxKind[SyntaxKind["WhitespaceTrivia"] = 5] = "WhitespaceTrivia";
+  SyntaxKind[SyntaxKind["ConflictMarkerTrivia"] = 6] = "ConflictMarkerTrivia";
+  SyntaxKind[SyntaxKind["NonTextFileMarkerTrivia"] = 7] = "NonTextFileMarkerTrivia";
+  SyntaxKind[SyntaxKind["NumericLiteral"] = 8] = "NumericLiteral";
+  SyntaxKind[SyntaxKind["BigIntLiteral"] = 9] = "BigIntLiteral";
+  SyntaxKind[SyntaxKind["StringLiteral"] = 10] = "StringLiteral";
+  SyntaxKind[SyntaxKind["JsxText"] = 11] = "JsxText";
+  SyntaxKind[SyntaxKind["JsxTextAllWhiteSpaces"] = 12] = "JsxTextAllWhiteSpaces";
+  SyntaxKind[SyntaxKind["RegularExpressionLiteral"] = 13] = "RegularExpressionLiteral";
+  SyntaxKind[SyntaxKind["NoSubstitutionTemplateLiteral"] = 14] = "NoSubstitutionTemplateLiteral";
+  SyntaxKind[SyntaxKind["TemplateHead"] = 15] = "TemplateHead";
+  SyntaxKind[SyntaxKind["TemplateMiddle"] = 16] = "TemplateMiddle";
+  SyntaxKind[SyntaxKind["TemplateTail"] = 17] = "TemplateTail";
+  SyntaxKind[SyntaxKind["OpenBraceToken"] = 18] = "OpenBraceToken";
+  SyntaxKind[SyntaxKind["CloseBraceToken"] = 19] = "CloseBraceToken";
+  SyntaxKind[SyntaxKind["OpenParenToken"] = 20] = "OpenParenToken";
+  SyntaxKind[SyntaxKind["CloseParenToken"] = 21] = "CloseParenToken";
+  SyntaxKind[SyntaxKind["OpenBracketToken"] = 22] = "OpenBracketToken";
+  SyntaxKind[SyntaxKind["CloseBracketToken"] = 23] = "CloseBracketToken";
+  SyntaxKind[SyntaxKind["DotToken"] = 24] = "DotToken";
+  SyntaxKind[SyntaxKind["DotDotDotToken"] = 25] = "DotDotDotToken";
+  SyntaxKind[SyntaxKind["SemicolonToken"] = 26] = "SemicolonToken";
+  SyntaxKind[SyntaxKind["CommaToken"] = 27] = "CommaToken";
+  SyntaxKind[SyntaxKind["QuestionDotToken"] = 28] = "QuestionDotToken";
+  SyntaxKind[SyntaxKind["LessThanToken"] = 29] = "LessThanToken";
+  SyntaxKind[SyntaxKind["LessThanSlashToken"] = 30] = "LessThanSlashToken";
+  SyntaxKind[SyntaxKind["GreaterThanToken"] = 31] = "GreaterThanToken";
+  SyntaxKind[SyntaxKind["LessThanEqualsToken"] = 32] = "LessThanEqualsToken";
+  SyntaxKind[SyntaxKind["GreaterThanEqualsToken"] = 33] = "GreaterThanEqualsToken";
+  SyntaxKind[SyntaxKind["EqualsEqualsToken"] = 34] = "EqualsEqualsToken";
+  SyntaxKind[SyntaxKind["ExclamationEqualsToken"] = 35] = "ExclamationEqualsToken";
+  SyntaxKind[SyntaxKind["EqualsEqualsEqualsToken"] = 36] = "EqualsEqualsEqualsToken";
+  SyntaxKind[SyntaxKind["ExclamationEqualsEqualsToken"] = 37] = "ExclamationEqualsEqualsToken";
+  SyntaxKind[SyntaxKind["EqualsGreaterThanToken"] = 38] = "EqualsGreaterThanToken";
+  SyntaxKind[SyntaxKind["PlusToken"] = 39] = "PlusToken";
+  SyntaxKind[SyntaxKind["MinusToken"] = 40] = "MinusToken";
+  SyntaxKind[SyntaxKind["AsteriskToken"] = 41] = "AsteriskToken";
+  SyntaxKind[SyntaxKind["AsteriskAsteriskToken"] = 42] = "AsteriskAsteriskToken";
+  SyntaxKind[SyntaxKind["SlashToken"] = 43] = "SlashToken";
+  SyntaxKind[SyntaxKind["PercentToken"] = 44] = "PercentToken";
+  SyntaxKind[SyntaxKind["PlusPlusToken"] = 45] = "PlusPlusToken";
+  SyntaxKind[SyntaxKind["MinusMinusToken"] = 46] = "MinusMinusToken";
+  SyntaxKind[SyntaxKind["LessThanLessThanToken"] = 47] = "LessThanLessThanToken";
+  SyntaxKind[SyntaxKind["GreaterThanGreaterThanToken"] = 48] = "GreaterThanGreaterThanToken";
+  SyntaxKind[SyntaxKind["GreaterThanGreaterThanGreaterThanToken"] = 49] = "GreaterThanGreaterThanGreaterThanToken";
+  SyntaxKind[SyntaxKind["AmpersandToken"] = 50] = "AmpersandToken";
+  SyntaxKind[SyntaxKind["BarToken"] = 51] = "BarToken";
+  SyntaxKind[SyntaxKind["CaretToken"] = 52] = "CaretToken";
+  SyntaxKind[SyntaxKind["ExclamationToken"] = 53] = "ExclamationToken";
+  SyntaxKind[SyntaxKind["TildeToken"] = 54] = "TildeToken";
+  SyntaxKind[SyntaxKind["AmpersandAmpersandToken"] = 55] = "AmpersandAmpersandToken";
+  SyntaxKind[SyntaxKind["BarBarToken"] = 56] = "BarBarToken";
+  SyntaxKind[SyntaxKind["QuestionToken"] = 57] = "QuestionToken";
+  SyntaxKind[SyntaxKind["ColonToken"] = 58] = "ColonToken";
+  SyntaxKind[SyntaxKind["AtToken"] = 59] = "AtToken";
+  SyntaxKind[SyntaxKind["QuestionQuestionToken"] = 60] = "QuestionQuestionToken";
+  SyntaxKind[SyntaxKind["BacktickToken"] = 61] = "BacktickToken";
+  SyntaxKind[SyntaxKind["HashToken"] = 62] = "HashToken";
+  SyntaxKind[SyntaxKind["EqualsToken"] = 63] = "EqualsToken";
+  SyntaxKind[SyntaxKind["PlusEqualsToken"] = 64] = "PlusEqualsToken";
+  SyntaxKind[SyntaxKind["MinusEqualsToken"] = 65] = "MinusEqualsToken";
+  SyntaxKind[SyntaxKind["AsteriskEqualsToken"] = 66] = "AsteriskEqualsToken";
+  SyntaxKind[SyntaxKind["AsteriskAsteriskEqualsToken"] = 67] = "AsteriskAsteriskEqualsToken";
+  SyntaxKind[SyntaxKind["SlashEqualsToken"] = 68] = "SlashEqualsToken";
+  SyntaxKind[SyntaxKind["PercentEqualsToken"] = 69] = "PercentEqualsToken";
+  SyntaxKind[SyntaxKind["LessThanLessThanEqualsToken"] = 70] = "LessThanLessThanEqualsToken";
+  SyntaxKind[SyntaxKind["GreaterThanGreaterThanEqualsToken"] = 71] = "GreaterThanGreaterThanEqualsToken";
+  SyntaxKind[SyntaxKind["GreaterThanGreaterThanGreaterThanEqualsToken"] = 72] = "GreaterThanGreaterThanGreaterThanEqualsToken";
+  SyntaxKind[SyntaxKind["AmpersandEqualsToken"] = 73] = "AmpersandEqualsToken";
+  SyntaxKind[SyntaxKind["BarEqualsToken"] = 74] = "BarEqualsToken";
+  SyntaxKind[SyntaxKind["BarBarEqualsToken"] = 75] = "BarBarEqualsToken";
+  SyntaxKind[SyntaxKind["AmpersandAmpersandEqualsToken"] = 76] = "AmpersandAmpersandEqualsToken";
+  SyntaxKind[SyntaxKind["QuestionQuestionEqualsToken"] = 77] = "QuestionQuestionEqualsToken";
+  SyntaxKind[SyntaxKind["CaretEqualsToken"] = 78] = "CaretEqualsToken";
+  SyntaxKind[SyntaxKind["Identifier"] = 79] = "Identifier";
+  SyntaxKind[SyntaxKind["PrivateIdentifier"] = 80] = "PrivateIdentifier";
+  SyntaxKind[SyntaxKind["JSDocCommentTextToken"] = 81] = "JSDocCommentTextToken";
+  SyntaxKind[SyntaxKind["BreakKeyword"] = 82] = "BreakKeyword";
+  SyntaxKind[SyntaxKind["CaseKeyword"] = 83] = "CaseKeyword";
+  SyntaxKind[SyntaxKind["CatchKeyword"] = 84] = "CatchKeyword";
+  SyntaxKind[SyntaxKind["ClassKeyword"] = 85] = "ClassKeyword";
+  SyntaxKind[SyntaxKind["ConstKeyword"] = 86] = "ConstKeyword";
+  SyntaxKind[SyntaxKind["ContinueKeyword"] = 87] = "ContinueKeyword";
+  SyntaxKind[SyntaxKind["DebuggerKeyword"] = 88] = "DebuggerKeyword";
+  SyntaxKind[SyntaxKind["DefaultKeyword"] = 89] = "DefaultKeyword";
+  SyntaxKind[SyntaxKind["DeleteKeyword"] = 90] = "DeleteKeyword";
+  SyntaxKind[SyntaxKind["DoKeyword"] = 91] = "DoKeyword";
+  SyntaxKind[SyntaxKind["ElseKeyword"] = 92] = "ElseKeyword";
+  SyntaxKind[SyntaxKind["EnumKeyword"] = 93] = "EnumKeyword";
+  SyntaxKind[SyntaxKind["ExportKeyword"] = 94] = "ExportKeyword";
+  SyntaxKind[SyntaxKind["ExtendsKeyword"] = 95] = "ExtendsKeyword";
+  SyntaxKind[SyntaxKind["FalseKeyword"] = 96] = "FalseKeyword";
+  SyntaxKind[SyntaxKind["FinallyKeyword"] = 97] = "FinallyKeyword";
+  SyntaxKind[SyntaxKind["ForKeyword"] = 98] = "ForKeyword";
+  SyntaxKind[SyntaxKind["FunctionKeyword"] = 99] = "FunctionKeyword";
+  SyntaxKind[SyntaxKind["IfKeyword"] = 100] = "IfKeyword";
+  SyntaxKind[SyntaxKind["ImportKeyword"] = 101] = "ImportKeyword";
+  SyntaxKind[SyntaxKind["InKeyword"] = 102] = "InKeyword";
+  SyntaxKind[SyntaxKind["InstanceOfKeyword"] = 103] = "InstanceOfKeyword";
+  SyntaxKind[SyntaxKind["NewKeyword"] = 104] = "NewKeyword";
+  SyntaxKind[SyntaxKind["NullKeyword"] = 105] = "NullKeyword";
+  SyntaxKind[SyntaxKind["ReturnKeyword"] = 106] = "ReturnKeyword";
+  SyntaxKind[SyntaxKind["SuperKeyword"] = 107] = "SuperKeyword";
+  SyntaxKind[SyntaxKind["SwitchKeyword"] = 108] = "SwitchKeyword";
+  SyntaxKind[SyntaxKind["ThisKeyword"] = 109] = "ThisKeyword";
+  SyntaxKind[SyntaxKind["ThrowKeyword"] = 110] = "ThrowKeyword";
+  SyntaxKind[SyntaxKind["TrueKeyword"] = 111] = "TrueKeyword";
+  SyntaxKind[SyntaxKind["TryKeyword"] = 112] = "TryKeyword";
+  SyntaxKind[SyntaxKind["TypeOfKeyword"] = 113] = "TypeOfKeyword";
+  SyntaxKind[SyntaxKind["VarKeyword"] = 114] = "VarKeyword";
+  SyntaxKind[SyntaxKind["VoidKeyword"] = 115] = "VoidKeyword";
+  SyntaxKind[SyntaxKind["WhileKeyword"] = 116] = "WhileKeyword";
+  SyntaxKind[SyntaxKind["WithKeyword"] = 117] = "WithKeyword";
+  SyntaxKind[SyntaxKind["ImplementsKeyword"] = 118] = "ImplementsKeyword";
+  SyntaxKind[SyntaxKind["InterfaceKeyword"] = 119] = "InterfaceKeyword";
+  SyntaxKind[SyntaxKind["LetKeyword"] = 120] = "LetKeyword";
+  SyntaxKind[SyntaxKind["PackageKeyword"] = 121] = "PackageKeyword";
+  SyntaxKind[SyntaxKind["PrivateKeyword"] = 122] = "PrivateKeyword";
+  SyntaxKind[SyntaxKind["ProtectedKeyword"] = 123] = "ProtectedKeyword";
+  SyntaxKind[SyntaxKind["PublicKeyword"] = 124] = "PublicKeyword";
+  SyntaxKind[SyntaxKind["StaticKeyword"] = 125] = "StaticKeyword";
+  SyntaxKind[SyntaxKind["YieldKeyword"] = 126] = "YieldKeyword";
+  SyntaxKind[SyntaxKind["AbstractKeyword"] = 127] = "AbstractKeyword";
+  SyntaxKind[SyntaxKind["AccessorKeyword"] = 128] = "AccessorKeyword";
+  SyntaxKind[SyntaxKind["AsKeyword"] = 129] = "AsKeyword";
+  SyntaxKind[SyntaxKind["AssertsKeyword"] = 130] = "AssertsKeyword";
+  SyntaxKind[SyntaxKind["AssertKeyword"] = 131] = "AssertKeyword";
+  SyntaxKind[SyntaxKind["AnyKeyword"] = 132] = "AnyKeyword";
+  SyntaxKind[SyntaxKind["AsyncKeyword"] = 133] = "AsyncKeyword";
+  SyntaxKind[SyntaxKind["AwaitKeyword"] = 134] = "AwaitKeyword";
+  SyntaxKind[SyntaxKind["BooleanKeyword"] = 135] = "BooleanKeyword";
+  SyntaxKind[SyntaxKind["ConstructorKeyword"] = 136] = "ConstructorKeyword";
+  SyntaxKind[SyntaxKind["DeclareKeyword"] = 137] = "DeclareKeyword";
+  SyntaxKind[SyntaxKind["GetKeyword"] = 138] = "GetKeyword";
+  SyntaxKind[SyntaxKind["ImmediateKeyword"] = 139] = "ImmediateKeyword";
+  SyntaxKind[SyntaxKind["InferKeyword"] = 140] = "InferKeyword";
+  SyntaxKind[SyntaxKind["IntrinsicKeyword"] = 141] = "IntrinsicKeyword";
+  SyntaxKind[SyntaxKind["IsKeyword"] = 142] = "IsKeyword";
+  SyntaxKind[SyntaxKind["KeyOfKeyword"] = 143] = "KeyOfKeyword";
+  SyntaxKind[SyntaxKind["ModuleKeyword"] = 144] = "ModuleKeyword";
+  SyntaxKind[SyntaxKind["NamespaceKeyword"] = 145] = "NamespaceKeyword";
+  SyntaxKind[SyntaxKind["NeverKeyword"] = 146] = "NeverKeyword";
+  SyntaxKind[SyntaxKind["OutKeyword"] = 147] = "OutKeyword";
+  SyntaxKind[SyntaxKind["ReadonlyKeyword"] = 148] = "ReadonlyKeyword";
+  SyntaxKind[SyntaxKind["RequireKeyword"] = 149] = "RequireKeyword";
+  SyntaxKind[SyntaxKind["NumberKeyword"] = 150] = "NumberKeyword";
+  SyntaxKind[SyntaxKind["ObjectKeyword"] = 151] = "ObjectKeyword";
+  SyntaxKind[SyntaxKind["SatisfiesKeyword"] = 152] = "SatisfiesKeyword";
+  SyntaxKind[SyntaxKind["SetKeyword"] = 153] = "SetKeyword";
+  SyntaxKind[SyntaxKind["StringKeyword"] = 154] = "StringKeyword";
+  SyntaxKind[SyntaxKind["SymbolKeyword"] = 155] = "SymbolKeyword";
+  SyntaxKind[SyntaxKind["TypeKeyword"] = 156] = "TypeKeyword";
+  SyntaxKind[SyntaxKind["UndefinedKeyword"] = 157] = "UndefinedKeyword";
+  SyntaxKind[SyntaxKind["UniqueKeyword"] = 158] = "UniqueKeyword";
+  SyntaxKind[SyntaxKind["UnknownKeyword"] = 159] = "UnknownKeyword";
+  SyntaxKind[SyntaxKind["UsingKeyword"] = 160] = "UsingKeyword";
+  SyntaxKind[SyntaxKind["FromKeyword"] = 161] = "FromKeyword";
+  SyntaxKind[SyntaxKind["GlobalKeyword"] = 162] = "GlobalKeyword";
+  SyntaxKind[SyntaxKind["BigIntKeyword"] = 163] = "BigIntKeyword";
+  SyntaxKind[SyntaxKind["OverrideKeyword"] = 164] = "OverrideKeyword";
+  SyntaxKind[SyntaxKind["OfKeyword"] = 165] = "OfKeyword";
+  SyntaxKind[SyntaxKind["DeferKeyword"] = 166] = "DeferKeyword";
+  SyntaxKind[SyntaxKind["QualifiedName"] = 167] = "QualifiedName";
+  SyntaxKind[SyntaxKind["ComputedPropertyName"] = 168] = "ComputedPropertyName";
+  SyntaxKind[SyntaxKind["TypeParameter"] = 169] = "TypeParameter";
+  SyntaxKind[SyntaxKind["Parameter"] = 170] = "Parameter";
+  SyntaxKind[SyntaxKind["Decorator"] = 171] = "Decorator";
+  SyntaxKind[SyntaxKind["PropertySignature"] = 172] = "PropertySignature";
+  SyntaxKind[SyntaxKind["PropertyDeclaration"] = 173] = "PropertyDeclaration";
+  SyntaxKind[SyntaxKind["MethodSignature"] = 174] = "MethodSignature";
+  SyntaxKind[SyntaxKind["MethodDeclaration"] = 175] = "MethodDeclaration";
+  SyntaxKind[SyntaxKind["ClassStaticBlockDeclaration"] = 176] = "ClassStaticBlockDeclaration";
+  SyntaxKind[SyntaxKind["Constructor"] = 177] = "Constructor";
+  SyntaxKind[SyntaxKind["GetAccessor"] = 178] = "GetAccessor";
+  SyntaxKind[SyntaxKind["SetAccessor"] = 179] = "SetAccessor";
+  SyntaxKind[SyntaxKind["CallSignature"] = 180] = "CallSignature";
+  SyntaxKind[SyntaxKind["ConstructSignature"] = 181] = "ConstructSignature";
+  SyntaxKind[SyntaxKind["IndexSignature"] = 182] = "IndexSignature";
+  SyntaxKind[SyntaxKind["TypePredicate"] = 183] = "TypePredicate";
+  SyntaxKind[SyntaxKind["TypeReference"] = 184] = "TypeReference";
+  SyntaxKind[SyntaxKind["FunctionType"] = 185] = "FunctionType";
+  SyntaxKind[SyntaxKind["ConstructorType"] = 186] = "ConstructorType";
+  SyntaxKind[SyntaxKind["TypeQuery"] = 187] = "TypeQuery";
+  SyntaxKind[SyntaxKind["TypeLiteral"] = 188] = "TypeLiteral";
+  SyntaxKind[SyntaxKind["ArrayType"] = 189] = "ArrayType";
+  SyntaxKind[SyntaxKind["TupleType"] = 190] = "TupleType";
+  SyntaxKind[SyntaxKind["OptionalType"] = 191] = "OptionalType";
+  SyntaxKind[SyntaxKind["RestType"] = 192] = "RestType";
+  SyntaxKind[SyntaxKind["UnionType"] = 193] = "UnionType";
+  SyntaxKind[SyntaxKind["IntersectionType"] = 194] = "IntersectionType";
+  SyntaxKind[SyntaxKind["ConditionalType"] = 195] = "ConditionalType";
+  SyntaxKind[SyntaxKind["InferType"] = 196] = "InferType";
+  SyntaxKind[SyntaxKind["ParenthesizedType"] = 197] = "ParenthesizedType";
+  SyntaxKind[SyntaxKind["ThisType"] = 198] = "ThisType";
+  SyntaxKind[SyntaxKind["TypeOperator"] = 199] = "TypeOperator";
+  SyntaxKind[SyntaxKind["IndexedAccessType"] = 200] = "IndexedAccessType";
+  SyntaxKind[SyntaxKind["MappedType"] = 201] = "MappedType";
+  SyntaxKind[SyntaxKind["LiteralType"] = 202] = "LiteralType";
+  SyntaxKind[SyntaxKind["NamedTupleMember"] = 203] = "NamedTupleMember";
+  SyntaxKind[SyntaxKind["TemplateLiteralType"] = 204] = "TemplateLiteralType";
+  SyntaxKind[SyntaxKind["TemplateLiteralTypeSpan"] = 205] = "TemplateLiteralTypeSpan";
+  SyntaxKind[SyntaxKind["ImportType"] = 206] = "ImportType";
+  SyntaxKind[SyntaxKind["ObjectBindingPattern"] = 207] = "ObjectBindingPattern";
+  SyntaxKind[SyntaxKind["ArrayBindingPattern"] = 208] = "ArrayBindingPattern";
+  SyntaxKind[SyntaxKind["BindingElement"] = 209] = "BindingElement";
+  SyntaxKind[SyntaxKind["ArrayLiteralExpression"] = 210] = "ArrayLiteralExpression";
+  SyntaxKind[SyntaxKind["ObjectLiteralExpression"] = 211] = "ObjectLiteralExpression";
+  SyntaxKind[SyntaxKind["PropertyAccessExpression"] = 212] = "PropertyAccessExpression";
+  SyntaxKind[SyntaxKind["ElementAccessExpression"] = 213] = "ElementAccessExpression";
+  SyntaxKind[SyntaxKind["CallExpression"] = 214] = "CallExpression";
+  SyntaxKind[SyntaxKind["NewExpression"] = 215] = "NewExpression";
+  SyntaxKind[SyntaxKind["TaggedTemplateExpression"] = 216] = "TaggedTemplateExpression";
+  SyntaxKind[SyntaxKind["TypeAssertionExpression"] = 217] = "TypeAssertionExpression";
+  SyntaxKind[SyntaxKind["ParenthesizedExpression"] = 218] = "ParenthesizedExpression";
+  SyntaxKind[SyntaxKind["FunctionExpression"] = 219] = "FunctionExpression";
+  SyntaxKind[SyntaxKind["ArrowFunction"] = 220] = "ArrowFunction";
+  SyntaxKind[SyntaxKind["DeleteExpression"] = 221] = "DeleteExpression";
+  SyntaxKind[SyntaxKind["TypeOfExpression"] = 222] = "TypeOfExpression";
+  SyntaxKind[SyntaxKind["VoidExpression"] = 223] = "VoidExpression";
+  SyntaxKind[SyntaxKind["AwaitExpression"] = 224] = "AwaitExpression";
+  SyntaxKind[SyntaxKind["PrefixUnaryExpression"] = 225] = "PrefixUnaryExpression";
+  SyntaxKind[SyntaxKind["PostfixUnaryExpression"] = 226] = "PostfixUnaryExpression";
+  SyntaxKind[SyntaxKind["BinaryExpression"] = 227] = "BinaryExpression";
+  SyntaxKind[SyntaxKind["ConditionalExpression"] = 228] = "ConditionalExpression";
+  SyntaxKind[SyntaxKind["TemplateExpression"] = 229] = "TemplateExpression";
+  SyntaxKind[SyntaxKind["YieldExpression"] = 230] = "YieldExpression";
+  SyntaxKind[SyntaxKind["SpreadElement"] = 231] = "SpreadElement";
+  SyntaxKind[SyntaxKind["ClassExpression"] = 232] = "ClassExpression";
+  SyntaxKind[SyntaxKind["OmittedExpression"] = 233] = "OmittedExpression";
+  SyntaxKind[SyntaxKind["ExpressionWithTypeArguments"] = 234] = "ExpressionWithTypeArguments";
+  SyntaxKind[SyntaxKind["AsExpression"] = 235] = "AsExpression";
+  SyntaxKind[SyntaxKind["NonNullExpression"] = 236] = "NonNullExpression";
+  SyntaxKind[SyntaxKind["MetaProperty"] = 237] = "MetaProperty";
+  SyntaxKind[SyntaxKind["SyntheticExpression"] = 238] = "SyntheticExpression";
+  SyntaxKind[SyntaxKind["SatisfiesExpression"] = 239] = "SatisfiesExpression";
+  SyntaxKind[SyntaxKind["TemplateSpan"] = 240] = "TemplateSpan";
+  SyntaxKind[SyntaxKind["SemicolonClassElement"] = 241] = "SemicolonClassElement";
+  SyntaxKind[SyntaxKind["Block"] = 242] = "Block";
+  SyntaxKind[SyntaxKind["EmptyStatement"] = 243] = "EmptyStatement";
+  SyntaxKind[SyntaxKind["VariableStatement"] = 244] = "VariableStatement";
+  SyntaxKind[SyntaxKind["ExpressionStatement"] = 245] = "ExpressionStatement";
+  SyntaxKind[SyntaxKind["IfStatement"] = 246] = "IfStatement";
+  SyntaxKind[SyntaxKind["DoStatement"] = 247] = "DoStatement";
+  SyntaxKind[SyntaxKind["WhileStatement"] = 248] = "WhileStatement";
+  SyntaxKind[SyntaxKind["ForStatement"] = 249] = "ForStatement";
+  SyntaxKind[SyntaxKind["ForInStatement"] = 250] = "ForInStatement";
+  SyntaxKind[SyntaxKind["ForOfStatement"] = 251] = "ForOfStatement";
+  SyntaxKind[SyntaxKind["ContinueStatement"] = 252] = "ContinueStatement";
+  SyntaxKind[SyntaxKind["BreakStatement"] = 253] = "BreakStatement";
+  SyntaxKind[SyntaxKind["ReturnStatement"] = 254] = "ReturnStatement";
+  SyntaxKind[SyntaxKind["WithStatement"] = 255] = "WithStatement";
+  SyntaxKind[SyntaxKind["SwitchStatement"] = 256] = "SwitchStatement";
+  SyntaxKind[SyntaxKind["LabeledStatement"] = 257] = "LabeledStatement";
+  SyntaxKind[SyntaxKind["ThrowStatement"] = 258] = "ThrowStatement";
+  SyntaxKind[SyntaxKind["TryStatement"] = 259] = "TryStatement";
+  SyntaxKind[SyntaxKind["DebuggerStatement"] = 260] = "DebuggerStatement";
+  SyntaxKind[SyntaxKind["VariableDeclaration"] = 261] = "VariableDeclaration";
+  SyntaxKind[SyntaxKind["VariableDeclarationList"] = 262] = "VariableDeclarationList";
+  SyntaxKind[SyntaxKind["FunctionDeclaration"] = 263] = "FunctionDeclaration";
+  SyntaxKind[SyntaxKind["ClassDeclaration"] = 264] = "ClassDeclaration";
+  SyntaxKind[SyntaxKind["InterfaceDeclaration"] = 265] = "InterfaceDeclaration";
+  SyntaxKind[SyntaxKind["TypeAliasDeclaration"] = 266] = "TypeAliasDeclaration";
+  SyntaxKind[SyntaxKind["EnumDeclaration"] = 267] = "EnumDeclaration";
+  SyntaxKind[SyntaxKind["ModuleDeclaration"] = 268] = "ModuleDeclaration";
+  SyntaxKind[SyntaxKind["ModuleBlock"] = 269] = "ModuleBlock";
+  SyntaxKind[SyntaxKind["CaseBlock"] = 270] = "CaseBlock";
+  SyntaxKind[SyntaxKind["NamespaceExportDeclaration"] = 271] = "NamespaceExportDeclaration";
+  SyntaxKind[SyntaxKind["ImportEqualsDeclaration"] = 272] = "ImportEqualsDeclaration";
+  SyntaxKind[SyntaxKind["ImportDeclaration"] = 273] = "ImportDeclaration";
+  SyntaxKind[SyntaxKind["ImportClause"] = 274] = "ImportClause";
+  SyntaxKind[SyntaxKind["NamespaceImport"] = 275] = "NamespaceImport";
+  SyntaxKind[SyntaxKind["NamedImports"] = 276] = "NamedImports";
+  SyntaxKind[SyntaxKind["ImportSpecifier"] = 277] = "ImportSpecifier";
+  SyntaxKind[SyntaxKind["ExportAssignment"] = 278] = "ExportAssignment";
+  SyntaxKind[SyntaxKind["ExportDeclaration"] = 279] = "ExportDeclaration";
+  SyntaxKind[SyntaxKind["NamedExports"] = 280] = "NamedExports";
+  SyntaxKind[SyntaxKind["NamespaceExport"] = 281] = "NamespaceExport";
+  SyntaxKind[SyntaxKind["ExportSpecifier"] = 282] = "ExportSpecifier";
+  SyntaxKind[SyntaxKind["MissingDeclaration"] = 283] = "MissingDeclaration";
+  SyntaxKind[SyntaxKind["ExternalModuleReference"] = 284] = "ExternalModuleReference";
+  SyntaxKind[SyntaxKind["JsxElement"] = 285] = "JsxElement";
+  SyntaxKind[SyntaxKind["JsxSelfClosingElement"] = 286] = "JsxSelfClosingElement";
+  SyntaxKind[SyntaxKind["JsxOpeningElement"] = 287] = "JsxOpeningElement";
+  SyntaxKind[SyntaxKind["JsxClosingElement"] = 288] = "JsxClosingElement";
+  SyntaxKind[SyntaxKind["JsxFragment"] = 289] = "JsxFragment";
+  SyntaxKind[SyntaxKind["JsxOpeningFragment"] = 290] = "JsxOpeningFragment";
+  SyntaxKind[SyntaxKind["JsxClosingFragment"] = 291] = "JsxClosingFragment";
+  SyntaxKind[SyntaxKind["JsxAttribute"] = 292] = "JsxAttribute";
+  SyntaxKind[SyntaxKind["JsxAttributes"] = 293] = "JsxAttributes";
+  SyntaxKind[SyntaxKind["JsxSpreadAttribute"] = 294] = "JsxSpreadAttribute";
+  SyntaxKind[SyntaxKind["JsxExpression"] = 295] = "JsxExpression";
+  SyntaxKind[SyntaxKind["JsxNamespacedName"] = 296] = "JsxNamespacedName";
+  SyntaxKind[SyntaxKind["CaseClause"] = 297] = "CaseClause";
+  SyntaxKind[SyntaxKind["DefaultClause"] = 298] = "DefaultClause";
+  SyntaxKind[SyntaxKind["HeritageClause"] = 299] = "HeritageClause";
+  SyntaxKind[SyntaxKind["CatchClause"] = 300] = "CatchClause";
+  SyntaxKind[SyntaxKind["ImportAttributes"] = 301] = "ImportAttributes";
+  SyntaxKind[SyntaxKind["ImportAttribute"] = 302] = "ImportAttribute";
+  SyntaxKind[SyntaxKind["PropertyAssignment"] = 303] = "PropertyAssignment";
+  SyntaxKind[SyntaxKind["ShorthandPropertyAssignment"] = 304] = "ShorthandPropertyAssignment";
+  SyntaxKind[SyntaxKind["SpreadAssignment"] = 305] = "SpreadAssignment";
+  SyntaxKind[SyntaxKind["EnumMember"] = 306] = "EnumMember";
+  SyntaxKind[SyntaxKind["SourceFile"] = 307] = "SourceFile";
+  SyntaxKind[SyntaxKind["JSDocTypeExpression"] = 308] = "JSDocTypeExpression";
+  SyntaxKind[SyntaxKind["JSDocNameReference"] = 309] = "JSDocNameReference";
+  SyntaxKind[SyntaxKind["JSDocAllType"] = 310] = "JSDocAllType";
+  SyntaxKind[SyntaxKind["JSDocNullableType"] = 311] = "JSDocNullableType";
+  SyntaxKind[SyntaxKind["JSDocNonNullableType"] = 312] = "JSDocNonNullableType";
+  SyntaxKind[SyntaxKind["JSDocOptionalType"] = 313] = "JSDocOptionalType";
+  SyntaxKind[SyntaxKind["JSDocVariadicType"] = 314] = "JSDocVariadicType";
+  SyntaxKind[SyntaxKind["JSDoc"] = 315] = "JSDoc";
+  SyntaxKind[SyntaxKind["JSDocText"] = 316] = "JSDocText";
+  SyntaxKind[SyntaxKind["JSDocTypeLiteral"] = 317] = "JSDocTypeLiteral";
+  SyntaxKind[SyntaxKind["JSDocSignature"] = 318] = "JSDocSignature";
+  SyntaxKind[SyntaxKind["JSDocLink"] = 319] = "JSDocLink";
+  SyntaxKind[SyntaxKind["JSDocLinkCode"] = 320] = "JSDocLinkCode";
+  SyntaxKind[SyntaxKind["JSDocLinkPlain"] = 321] = "JSDocLinkPlain";
+  SyntaxKind[SyntaxKind["JSDocUnknownTag"] = 322] = "JSDocUnknownTag";
+  SyntaxKind[SyntaxKind["JSDocAugmentsTag"] = 323] = "JSDocAugmentsTag";
+  SyntaxKind[SyntaxKind["JSDocImplementsTag"] = 324] = "JSDocImplementsTag";
+  SyntaxKind[SyntaxKind["JSDocDeprecatedTag"] = 325] = "JSDocDeprecatedTag";
+  SyntaxKind[SyntaxKind["JSDocPublicTag"] = 326] = "JSDocPublicTag";
+  SyntaxKind[SyntaxKind["JSDocPrivateTag"] = 327] = "JSDocPrivateTag";
+  SyntaxKind[SyntaxKind["JSDocProtectedTag"] = 328] = "JSDocProtectedTag";
+  SyntaxKind[SyntaxKind["JSDocReadonlyTag"] = 329] = "JSDocReadonlyTag";
+  SyntaxKind[SyntaxKind["JSDocOverrideTag"] = 330] = "JSDocOverrideTag";
+  SyntaxKind[SyntaxKind["JSDocCallbackTag"] = 331] = "JSDocCallbackTag";
+  SyntaxKind[SyntaxKind["JSDocOverloadTag"] = 332] = "JSDocOverloadTag";
+  SyntaxKind[SyntaxKind["JSDocParameterTag"] = 333] = "JSDocParameterTag";
+  SyntaxKind[SyntaxKind["JSDocReturnTag"] = 334] = "JSDocReturnTag";
+  SyntaxKind[SyntaxKind["JSDocThisTag"] = 335] = "JSDocThisTag";
+  SyntaxKind[SyntaxKind["JSDocTypeTag"] = 336] = "JSDocTypeTag";
+  SyntaxKind[SyntaxKind["JSDocTemplateTag"] = 337] = "JSDocTemplateTag";
+  SyntaxKind[SyntaxKind["JSDocTypedefTag"] = 338] = "JSDocTypedefTag";
+  SyntaxKind[SyntaxKind["JSDocSeeTag"] = 339] = "JSDocSeeTag";
+  SyntaxKind[SyntaxKind["JSDocPropertyTag"] = 340] = "JSDocPropertyTag";
+  SyntaxKind[SyntaxKind["JSDocThrowsTag"] = 341] = "JSDocThrowsTag";
+  SyntaxKind[SyntaxKind["JSDocSatisfiesTag"] = 342] = "JSDocSatisfiesTag";
+  SyntaxKind[SyntaxKind["JSDocImportTag"] = 343] = "JSDocImportTag";
+  SyntaxKind[SyntaxKind["SyntaxList"] = 344] = "SyntaxList";
+  SyntaxKind[SyntaxKind["JSTypeAliasDeclaration"] = 345] = "JSTypeAliasDeclaration";
+  SyntaxKind[SyntaxKind["JSImportDeclaration"] = 346] = "JSImportDeclaration";
+  SyntaxKind[SyntaxKind["NotEmittedStatement"] = 347] = "NotEmittedStatement";
+  SyntaxKind[SyntaxKind["PartiallyEmittedExpression"] = 348] = "PartiallyEmittedExpression";
+  SyntaxKind[SyntaxKind["SyntheticReferenceExpression"] = 349] = "SyntheticReferenceExpression";
+  SyntaxKind[SyntaxKind["NotEmittedTypeElement"] = 350] = "NotEmittedTypeElement";
+  SyntaxKind[SyntaxKind["Count"] = 351] = "Count";
+  SyntaxKind[SyntaxKind["FirstAssignment"] = 63] = "FirstAssignment";
+  SyntaxKind[SyntaxKind["LastAssignment"] = 78] = "LastAssignment";
+  SyntaxKind[SyntaxKind["FirstCompoundAssignment"] = 64] = "FirstCompoundAssignment";
+  SyntaxKind[SyntaxKind["LastCompoundAssignment"] = 78] = "LastCompoundAssignment";
+  SyntaxKind[SyntaxKind["FirstReservedWord"] = 82] = "FirstReservedWord";
+  SyntaxKind[SyntaxKind["LastReservedWord"] = 117] = "LastReservedWord";
+  SyntaxKind[SyntaxKind["FirstKeyword"] = 82] = "FirstKeyword";
+  SyntaxKind[SyntaxKind["LastKeyword"] = 166] = "LastKeyword";
+  SyntaxKind[SyntaxKind["FirstFutureReservedWord"] = 118] = "FirstFutureReservedWord";
+  SyntaxKind[SyntaxKind["LastFutureReservedWord"] = 126] = "LastFutureReservedWord";
+  SyntaxKind[SyntaxKind["FirstTypeNode"] = 183] = "FirstTypeNode";
+  SyntaxKind[SyntaxKind["LastTypeNode"] = 206] = "LastTypeNode";
+  SyntaxKind[SyntaxKind["FirstPunctuation"] = 18] = "FirstPunctuation";
+  SyntaxKind[SyntaxKind["LastPunctuation"] = 78] = "LastPunctuation";
+  SyntaxKind[SyntaxKind["FirstToken"] = 0] = "FirstToken";
+  SyntaxKind[SyntaxKind["LastToken"] = 166] = "LastToken";
+  SyntaxKind[SyntaxKind["FirstLiteralToken"] = 8] = "FirstLiteralToken";
+  SyntaxKind[SyntaxKind["LastLiteralToken"] = 14] = "LastLiteralToken";
+  SyntaxKind[SyntaxKind["FirstTemplateToken"] = 14] = "FirstTemplateToken";
+  SyntaxKind[SyntaxKind["LastTemplateToken"] = 17] = "LastTemplateToken";
+  SyntaxKind[SyntaxKind["FirstBinaryOperator"] = 29] = "FirstBinaryOperator";
+  SyntaxKind[SyntaxKind["LastBinaryOperator"] = 78] = "LastBinaryOperator";
+  SyntaxKind[SyntaxKind["FirstStatement"] = 244] = "FirstStatement";
+  SyntaxKind[SyntaxKind["LastStatement"] = 260] = "LastStatement";
+  SyntaxKind[SyntaxKind["FirstNode"] = 167] = "FirstNode";
+  SyntaxKind[SyntaxKind["FirstJSDocNode"] = 308] = "FirstJSDocNode";
+  SyntaxKind[SyntaxKind["LastJSDocNode"] = 343] = "LastJSDocNode";
+  SyntaxKind[SyntaxKind["FirstJSDocTagNode"] = 322] = "FirstJSDocTagNode";
+  SyntaxKind[SyntaxKind["LastJSDocTagNode"] = 343] = "LastJSDocTagNode";
+  SyntaxKind[SyntaxKind["FirstContextualKeyword"] = 127] = "FirstContextualKeyword";
+  SyntaxKind[SyntaxKind["LastContextualKeyword"] = 166] = "LastContextualKeyword";
+  SyntaxKind[SyntaxKind["LastUnaryOperator"] = 54] = "LastUnaryOperator";
+  SyntaxKind[SyntaxKind["FirstTriviaToken"] = 2] = "FirstTriviaToken";
+  SyntaxKind[SyntaxKind["LastTriviaToken"] = 6] = "LastTriviaToken";
+})(SyntaxKind2 || (SyntaxKind2 = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/tokenFlags.js
+var TokenFlags;
+(function(TokenFlags) {
+  TokenFlags[TokenFlags["None"] = 0] = "None";
+  TokenFlags[TokenFlags["PrecedingLineBreak"] = 1] = "PrecedingLineBreak";
+  TokenFlags[TokenFlags["PrecedingJSDocComment"] = 2] = "PrecedingJSDocComment";
+  TokenFlags[TokenFlags["Unterminated"] = 4] = "Unterminated";
+  TokenFlags[TokenFlags["ExtendedUnicodeEscape"] = 8] = "ExtendedUnicodeEscape";
+  TokenFlags[TokenFlags["Scientific"] = 16] = "Scientific";
+  TokenFlags[TokenFlags["Octal"] = 32] = "Octal";
+  TokenFlags[TokenFlags["HexSpecifier"] = 64] = "HexSpecifier";
+  TokenFlags[TokenFlags["BinarySpecifier"] = 128] = "BinarySpecifier";
+  TokenFlags[TokenFlags["OctalSpecifier"] = 256] = "OctalSpecifier";
+  TokenFlags[TokenFlags["ContainsSeparator"] = 512] = "ContainsSeparator";
+  TokenFlags[TokenFlags["UnicodeEscape"] = 1024] = "UnicodeEscape";
+  TokenFlags[TokenFlags["ContainsInvalidEscape"] = 2048] = "ContainsInvalidEscape";
+  TokenFlags[TokenFlags["HexEscape"] = 4096] = "HexEscape";
+  TokenFlags[TokenFlags["ContainsLeadingZero"] = 8192] = "ContainsLeadingZero";
+  TokenFlags[TokenFlags["ContainsInvalidSeparator"] = 16384] = "ContainsInvalidSeparator";
+  TokenFlags[TokenFlags["PrecedingJSDocLeadingAsterisks"] = 32768] = "PrecedingJSDocLeadingAsterisks";
+  TokenFlags[TokenFlags["SingleQuote"] = 65536] = "SingleQuote";
+  TokenFlags[TokenFlags["PrecedingJSDocWithDeprecated"] = 131072] = "PrecedingJSDocWithDeprecated";
+  TokenFlags[TokenFlags["PrecedingJSDocWithSeeOrLink"] = 262144] = "PrecedingJSDocWithSeeOrLink";
+  TokenFlags[TokenFlags["BinaryOrOctalSpecifier"] = 384] = "BinaryOrOctalSpecifier";
+  TokenFlags[TokenFlags["WithSpecifier"] = 448] = "WithSpecifier";
+  TokenFlags[TokenFlags["StringLiteralFlags"] = 72716] = "StringLiteralFlags";
+  TokenFlags[TokenFlags["NumericLiteralFlags"] = 25584] = "NumericLiteralFlags";
+  TokenFlags[TokenFlags["TemplateLiteralLikeFlags"] = 7180] = "TemplateLiteralLikeFlags";
+  TokenFlags[TokenFlags["RegularExpressionLiteralFlags"] = 4] = "RegularExpressionLiteralFlags";
+  TokenFlags[TokenFlags["IsInvalid"] = 26656] = "IsInvalid";
+})(TokenFlags || (TokenFlags = {}));
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/ast/utils.js
+function unescapeLeadingUnderscores(identifier) {
+  const id = identifier;
+  return id.length >= 3 && id.charCodeAt(0) === CharacterCodes2._ && id.charCodeAt(1) === CharacterCodes2._ && id.charCodeAt(2) === CharacterCodes2._ ? id.slice(1) : id;
+}
+function cloneSourceFileData(sourceFile) {
+  return {
+    statements: sourceFile.statements,
+    endOfFileToken: sourceFile.endOfFileToken,
+    text: sourceFile.text,
+    fileName: sourceFile.fileName,
+    path: sourceFile.path,
+    languageVariant: sourceFile.languageVariant,
+    scriptKind: sourceFile.scriptKind,
+    isDeclarationFile: sourceFile.isDeclarationFile,
+    referencedFiles: sourceFile.referencedFiles,
+    typeReferenceDirectives: sourceFile.typeReferenceDirectives,
+    libReferenceDirectives: sourceFile.libReferenceDirectives,
+    imports: sourceFile.imports,
+    moduleAugmentations: sourceFile.moduleAugmentations,
+    ambientModuleNames: sourceFile.ambientModuleNames,
+    externalModuleIndicator: sourceFile.externalModuleIndicator,
+    tokenCache: undefined
+  };
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/outerExpressionKinds.js
+var OuterExpressionKinds;
+(function(OuterExpressionKinds) {
+  OuterExpressionKinds[OuterExpressionKinds["Parentheses"] = 1] = "Parentheses";
+  OuterExpressionKinds[OuterExpressionKinds["TypeAssertions"] = 2] = "TypeAssertions";
+  OuterExpressionKinds[OuterExpressionKinds["NonNullAssertions"] = 4] = "NonNullAssertions";
+  OuterExpressionKinds[OuterExpressionKinds["PartiallyEmittedExpressions"] = 8] = "PartiallyEmittedExpressions";
+  OuterExpressionKinds[OuterExpressionKinds["ExpressionsWithTypeArguments"] = 16] = "ExpressionsWithTypeArguments";
+  OuterExpressionKinds[OuterExpressionKinds["Satisfies"] = 32] = "Satisfies";
+  OuterExpressionKinds[OuterExpressionKinds["ExcludeJSDocTypeAssertion"] = 64] = "ExcludeJSDocTypeAssertion";
+  OuterExpressionKinds[OuterExpressionKinds["Assignments"] = 128] = "Assignments";
+  OuterExpressionKinds[OuterExpressionKinds["Comma"] = 256] = "Comma";
+  OuterExpressionKinds[OuterExpressionKinds["Assertions"] = 38] = "Assertions";
+  OuterExpressionKinds[OuterExpressionKinds["All"] = 63] = "All";
+  OuterExpressionKinds[OuterExpressionKinds["AllExceptAssertionsOrExpressionsWithTypeArguments"] = 9] = "AllExceptAssertionsOrExpressionsWithTypeArguments";
+  OuterExpressionKinds[OuterExpressionKinds["ExpressionTypePassthrough"] = 385] = "ExpressionTypePassthrough";
+})(OuterExpressionKinds || (OuterExpressionKinds = {}));
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/ast/is.generated.js
+function isIdentifier(node) {
+  return node.kind === SyntaxKind2.Identifier;
+}
+function isCaseBlock(node) {
+  return node.kind === SyntaxKind2.CaseBlock;
+}
+function isCatchClause(node) {
+  return node.kind === SyntaxKind2.CatchClause;
+}
+function isBlock(node) {
+  return node.kind === SyntaxKind2.Block;
+}
+function isVariableStatement(node) {
+  return node.kind === SyntaxKind2.VariableStatement;
+}
+function isVariableDeclaration(node) {
+  return node.kind === SyntaxKind2.VariableDeclaration;
+}
+function isVariableDeclarationList(node) {
+  return node.kind === SyntaxKind2.VariableDeclarationList;
+}
+function isFunctionDeclaration(node) {
+  return node.kind === SyntaxKind2.FunctionDeclaration;
+}
+function isClassDeclaration(node) {
+  return node.kind === SyntaxKind2.ClassDeclaration;
+}
+function isClassExpression(node) {
+  return node.kind === SyntaxKind2.ClassExpression;
+}
+function isInterfaceDeclaration(node) {
+  return node.kind === SyntaxKind2.InterfaceDeclaration;
+}
+function isTypeAliasDeclaration(node) {
+  switch (node.kind) {
+    case SyntaxKind2.TypeAliasDeclaration:
+    case SyntaxKind2.JSTypeAliasDeclaration:
+      return true;
+    default:
+      return false;
+  }
+}
+function isEnumDeclaration(node) {
+  return node.kind === SyntaxKind2.EnumDeclaration;
+}
+function isImportDeclaration(node) {
+  switch (node.kind) {
+    case SyntaxKind2.ImportDeclaration:
+    case SyntaxKind2.JSImportDeclaration:
+      return true;
+    default:
+      return false;
+  }
+}
+function isConstructorDeclaration(node) {
+  return node.kind === SyntaxKind2.Constructor;
+}
+function isMethodDeclaration(node) {
+  return node.kind === SyntaxKind2.MethodDeclaration;
+}
+function isStringLiteral(node) {
+  return node.kind === SyntaxKind2.StringLiteral;
+}
+function isArrowFunction(node) {
+  return node.kind === SyntaxKind2.ArrowFunction;
+}
+function isFunctionExpression(node) {
+  return node.kind === SyntaxKind2.FunctionExpression;
+}
+function isElementAccessExpression(node) {
+  return node.kind === SyntaxKind2.ElementAccessExpression;
+}
+function isCallExpression(node) {
+  return node.kind === SyntaxKind2.CallExpression;
+}
+function isNewExpression(node) {
+  return node.kind === SyntaxKind2.NewExpression;
+}
+function isExpressionWithTypeArguments(node) {
+  return node.kind === SyntaxKind2.ExpressionWithTypeArguments;
+}
+function isImportAttributes(node) {
+  return node.kind === SyntaxKind2.ImportAttributes;
+}
+function isTemplateHead(node) {
+  return node.kind === SyntaxKind2.TemplateHead;
+}
+function isJsxAttributes(node) {
+  return node.kind === SyntaxKind2.JsxAttributes;
+}
+function isJsxOpeningElement(node) {
+  return node.kind === SyntaxKind2.JsxOpeningElement;
+}
+function isJsxSelfClosingElement(node) {
+  return node.kind === SyntaxKind2.JsxSelfClosingElement;
+}
+function isJsxOpeningFragment(node) {
+  return node.kind === SyntaxKind2.JsxOpeningFragment;
+}
+function isJsxClosingFragment(node) {
+  return node.kind === SyntaxKind2.JsxClosingFragment;
+}
+function isJsxClosingElement(node) {
+  return node.kind === SyntaxKind2.JsxClosingElement;
+}
+function isSourceFile(node) {
+  return node.kind === SyntaxKind2.SourceFile;
+}
+function isExportDeclaration(node) {
+  return node.kind === SyntaxKind2.ExportDeclaration;
+}
+function isImportClause(node) {
+  return node.kind === SyntaxKind2.ImportClause;
+}
+function isTypeParameterDeclaration(node) {
+  return node.kind === SyntaxKind2.TypeParameter;
+}
+function isModuleName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.StringLiteral;
+}
+function isModuleExportName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.StringLiteral;
+}
+function isPropertyName(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind2.Identifier || kind === SyntaxKind2.StringLiteral || kind === SyntaxKind2.NoSubstitutionTemplateLiteral || kind === SyntaxKind2.NumericLiteral || kind === SyntaxKind2.ComputedPropertyName || kind === SyntaxKind2.PrivateIdentifier || kind === SyntaxKind2.BigIntLiteral;
+}
+function isModuleBody(node) {
+  return node.kind === SyntaxKind2.ModuleBlock || node.kind === SyntaxKind2.ModuleDeclaration;
+}
+function isJSDocFullName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.ModuleDeclaration;
+}
+function isModuleReference(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.QualifiedName || node.kind === SyntaxKind2.ExternalModuleReference;
+}
+function isNamedImportBindings(node) {
+  return node.kind === SyntaxKind2.NamespaceImport || node.kind === SyntaxKind2.NamedImports;
+}
+function isNamedExportBindings(node) {
+  return node.kind === SyntaxKind2.NamespaceExport || node.kind === SyntaxKind2.NamedExports;
+}
+function isMemberName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.PrivateIdentifier;
+}
+function isEntityName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.QualifiedName;
+}
+function isBindingName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.ObjectBindingPattern || node.kind === SyntaxKind2.ArrayBindingPattern;
+}
+function isJsxAttributeName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.JsxNamespacedName;
+}
+function isJsxAttributeValue(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind2.StringLiteral || kind === SyntaxKind2.JsxExpression || kind === SyntaxKind2.JsxElement || kind === SyntaxKind2.JsxSelfClosingElement || kind === SyntaxKind2.JsxFragment;
+}
+function isTemplateMiddleOrTail(node) {
+  return node.kind === SyntaxKind2.TemplateMiddle || node.kind === SyntaxKind2.TemplateTail;
+}
+function isTemplateLiteral(node) {
+  return node.kind === SyntaxKind2.TemplateExpression || node.kind === SyntaxKind2.NoSubstitutionTemplateLiteral;
+}
+function isTypePredicateParameterName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.ThisType;
+}
+function isImportAttributeName(node) {
+  return node.kind === SyntaxKind2.Identifier || node.kind === SyntaxKind2.StringLiteral;
+}
+function isFunctionBody(node) {
+  return node.kind === SyntaxKind2.Block;
+}
+function isAssignmentOperator(kind) {
+  return kind === SyntaxKind2.EqualsToken || isCompoundAssignmentOperator(kind);
+}
+function isBinaryOperator(kind) {
+  return isAssignmentOperatorOrHigher(kind) || kind === SyntaxKind2.CommaToken;
+}
+function isExponentiationOperator(kind) {
+  return kind === SyntaxKind2.AsteriskAsteriskToken;
+}
+function isMultiplicativeOperator(kind) {
+  return kind === SyntaxKind2.AsteriskToken || kind === SyntaxKind2.SlashToken || kind === SyntaxKind2.PercentToken;
+}
+function isMultiplicativeOperatorOrHigher(kind) {
+  return isExponentiationOperator(kind) || isMultiplicativeOperator(kind);
+}
+function isAdditiveOperator(kind) {
+  return kind === SyntaxKind2.PlusToken || kind === SyntaxKind2.MinusToken;
+}
+function isAdditiveOperatorOrHigher(kind) {
+  return isMultiplicativeOperatorOrHigher(kind) || isAdditiveOperator(kind);
+}
+function isShiftOperator(kind) {
+  return kind === SyntaxKind2.LessThanLessThanToken || kind === SyntaxKind2.GreaterThanGreaterThanToken || kind === SyntaxKind2.GreaterThanGreaterThanGreaterThanToken;
+}
+function isShiftOperatorOrHigher(kind) {
+  return isAdditiveOperatorOrHigher(kind) || isShiftOperator(kind);
+}
+function isRelationalOperator(kind) {
+  return kind === SyntaxKind2.LessThanToken || kind === SyntaxKind2.LessThanEqualsToken || kind === SyntaxKind2.GreaterThanToken || kind === SyntaxKind2.GreaterThanEqualsToken || kind === SyntaxKind2.InstanceOfKeyword || kind === SyntaxKind2.InKeyword;
+}
+function isRelationalOperatorOrHigher(kind) {
+  return isShiftOperatorOrHigher(kind) || isRelationalOperator(kind);
+}
+function isEqualityOperator(kind) {
+  return kind === SyntaxKind2.EqualsEqualsToken || kind === SyntaxKind2.EqualsEqualsEqualsToken || kind === SyntaxKind2.ExclamationEqualsEqualsToken || kind === SyntaxKind2.ExclamationEqualsToken;
+}
+function isEqualityOperatorOrHigher(kind) {
+  return isRelationalOperatorOrHigher(kind) || isEqualityOperator(kind);
+}
+function isBitwiseOperator(kind) {
+  return kind === SyntaxKind2.AmpersandToken || kind === SyntaxKind2.BarToken || kind === SyntaxKind2.CaretToken;
+}
+function isBitwiseOperatorOrHigher(kind) {
+  return isEqualityOperatorOrHigher(kind) || isBitwiseOperator(kind);
+}
+function isLogicalOperator(kind) {
+  return kind === SyntaxKind2.AmpersandAmpersandToken || kind === SyntaxKind2.BarBarToken;
+}
+function isLogicalOperatorOrHigher(kind) {
+  return isBitwiseOperatorOrHigher(kind) || isLogicalOperator(kind);
+}
+function isCompoundAssignmentOperator(kind) {
+  return kind === SyntaxKind2.PlusEqualsToken || kind === SyntaxKind2.MinusEqualsToken || kind === SyntaxKind2.AsteriskAsteriskEqualsToken || kind === SyntaxKind2.AsteriskEqualsToken || kind === SyntaxKind2.SlashEqualsToken || kind === SyntaxKind2.PercentEqualsToken || kind === SyntaxKind2.AmpersandEqualsToken || kind === SyntaxKind2.BarEqualsToken || kind === SyntaxKind2.CaretEqualsToken || kind === SyntaxKind2.LessThanLessThanEqualsToken || kind === SyntaxKind2.GreaterThanGreaterThanGreaterThanEqualsToken || kind === SyntaxKind2.GreaterThanGreaterThanEqualsToken || kind === SyntaxKind2.BarBarEqualsToken || kind === SyntaxKind2.AmpersandAmpersandEqualsToken || kind === SyntaxKind2.QuestionQuestionEqualsToken;
+}
+function isAssignmentOperatorOrHigher(kind) {
+  return kind === SyntaxKind2.QuestionQuestionToken || isLogicalOperatorOrHigher(kind) || isAssignmentOperator(kind);
+}
+function isJSDocNodeKind(kind) {
+  return kind >= SyntaxKind2.FirstJSDocNode && kind <= SyntaxKind2.LastJSDocNode;
+}
+function isEndOfFile(node) {
+  return node.kind === SyntaxKind2.EndOfFile;
+}
+function isDotDotDotToken(node) {
+  return node.kind === SyntaxKind2.DotDotDotToken;
+}
+function isQuestionToken(node) {
+  return node.kind === SyntaxKind2.QuestionToken;
+}
+function isExclamationToken(node) {
+  return node.kind === SyntaxKind2.ExclamationToken;
+}
+function isColonToken(node) {
+  return node.kind === SyntaxKind2.ColonToken;
+}
+function isEqualsToken(node) {
+  return node.kind === SyntaxKind2.EqualsToken;
+}
+function isAsteriskToken(node) {
+  return node.kind === SyntaxKind2.AsteriskToken;
+}
+function isEqualsGreaterThanToken(node) {
+  return node.kind === SyntaxKind2.EqualsGreaterThanToken;
+}
+function isQuestionDotToken(node) {
+  return node.kind === SyntaxKind2.QuestionDotToken;
+}
+function isAssertsKeyword(node) {
+  return node.kind === SyntaxKind2.AssertsKeyword;
+}
+function isAwaitKeyword(node) {
+  return node.kind === SyntaxKind2.AwaitKeyword;
+}
+function isBinaryOperatorToken(node) {
+  return isBinaryOperator(node.kind);
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/ast/is.js
+function isTypeNode(node) {
+  return isTypeNodeKind(node.kind);
+}
+function isTypeNodeKind(kind) {
+  return kind >= SyntaxKind2.FirstTypeNode && kind <= SyntaxKind2.LastTypeNode || kind === SyntaxKind2.AnyKeyword || kind === SyntaxKind2.UnknownKeyword || kind === SyntaxKind2.NumberKeyword || kind === SyntaxKind2.BigIntKeyword || kind === SyntaxKind2.ObjectKeyword || kind === SyntaxKind2.BooleanKeyword || kind === SyntaxKind2.StringKeyword || kind === SyntaxKind2.SymbolKeyword || kind === SyntaxKind2.VoidKeyword || kind === SyntaxKind2.UndefinedKeyword || kind === SyntaxKind2.NeverKeyword || kind === SyntaxKind2.IntrinsicKeyword || kind === SyntaxKind2.ExpressionWithTypeArguments || kind === SyntaxKind2.JSDocAllType || kind === SyntaxKind2.JSDocNullableType || kind === SyntaxKind2.JSDocNonNullableType || kind === SyntaxKind2.JSDocOptionalType || kind === SyntaxKind2.JSDocVariadicType || kind === SyntaxKind2.JSDocTypeExpression || kind === SyntaxKind2.JSDocTypeLiteral || kind === SyntaxKind2.JSDocSignature;
+}
+function isStatement(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind2.VariableStatement || kind === SyntaxKind2.EmptyStatement || kind === SyntaxKind2.ExpressionStatement || kind === SyntaxKind2.IfStatement || kind === SyntaxKind2.DoStatement || kind === SyntaxKind2.WhileStatement || kind === SyntaxKind2.ForStatement || kind === SyntaxKind2.ForInStatement || kind === SyntaxKind2.ForOfStatement || kind === SyntaxKind2.ContinueStatement || kind === SyntaxKind2.BreakStatement || kind === SyntaxKind2.ReturnStatement || kind === SyntaxKind2.WithStatement || kind === SyntaxKind2.SwitchStatement || kind === SyntaxKind2.LabeledStatement || kind === SyntaxKind2.ThrowStatement || kind === SyntaxKind2.TryStatement || kind === SyntaxKind2.DebuggerStatement || kind === SyntaxKind2.InterfaceDeclaration || kind === SyntaxKind2.TypeAliasDeclaration || kind === SyntaxKind2.EnumDeclaration || kind === SyntaxKind2.ModuleDeclaration || kind === SyntaxKind2.ImportDeclaration || kind === SyntaxKind2.ImportEqualsDeclaration || kind === SyntaxKind2.ExportDeclaration || kind === SyntaxKind2.ExportAssignment || kind === SyntaxKind2.NamespaceExportDeclaration || kind === SyntaxKind2.FunctionDeclaration || kind === SyntaxKind2.ClassDeclaration || kind === SyntaxKind2.MissingDeclaration || kind === SyntaxKind2.NotEmittedStatement || kind === SyntaxKind2.Block;
+}
+function isExpression(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind2.ConditionalExpression || kind === SyntaxKind2.YieldExpression || kind === SyntaxKind2.ArrowFunction || kind === SyntaxKind2.BinaryExpression || kind === SyntaxKind2.SpreadElement || kind === SyntaxKind2.AsExpression || kind === SyntaxKind2.OmittedExpression || kind === SyntaxKind2.SatisfiesExpression || kind === SyntaxKind2.PrefixUnaryExpression || kind === SyntaxKind2.PostfixUnaryExpression || kind === SyntaxKind2.DeleteExpression || kind === SyntaxKind2.TypeOfExpression || kind === SyntaxKind2.VoidExpression || kind === SyntaxKind2.AwaitExpression || kind === SyntaxKind2.TypeAssertionExpression || kind === SyntaxKind2.CallExpression || kind === SyntaxKind2.NewExpression || kind === SyntaxKind2.TaggedTemplateExpression || kind === SyntaxKind2.NonNullExpression || kind === SyntaxKind2.MetaProperty || kind === SyntaxKind2.JsxExpression || kind === SyntaxKind2.PropertyAccessExpression || kind === SyntaxKind2.ElementAccessExpression || kind === SyntaxKind2.FunctionExpression || kind === SyntaxKind2.ClassExpression || kind === SyntaxKind2.ParenthesizedExpression || kind === SyntaxKind2.ArrayLiteralExpression || kind === SyntaxKind2.ObjectLiteralExpression || kind === SyntaxKind2.TemplateExpression || kind === SyntaxKind2.Identifier || kind === SyntaxKind2.PrivateIdentifier || kind === SyntaxKind2.NumericLiteral || kind === SyntaxKind2.BigIntLiteral || kind === SyntaxKind2.StringLiteral || kind === SyntaxKind2.RegularExpressionLiteral || kind === SyntaxKind2.NoSubstitutionTemplateLiteral || kind === SyntaxKind2.JsxElement || kind === SyntaxKind2.JsxSelfClosingElement || kind === SyntaxKind2.JsxFragment || kind === SyntaxKind2.NullKeyword || kind === SyntaxKind2.TrueKeyword || kind === SyntaxKind2.FalseKeyword || kind === SyntaxKind2.ThisKeyword || kind === SyntaxKind2.SuperKeyword || kind === SyntaxKind2.ImportKeyword || kind === SyntaxKind2.ExpressionWithTypeArguments;
+}
+function isLeftHandSideExpression(node) {
+  return isLeftHandSideExpressionKind(skipPartiallyEmittedExpressions(node).kind);
+}
+function skipPartiallyEmittedExpressions(node) {
+  return skipOuterExpressions(node, OuterExpressionKinds.PartiallyEmittedExpressions);
+}
+function isLeftHandSideExpressionKind(kind) {
+  switch (kind) {
+    case SyntaxKind2.PropertyAccessExpression:
+    case SyntaxKind2.ElementAccessExpression:
+    case SyntaxKind2.NewExpression:
+    case SyntaxKind2.CallExpression:
+    case SyntaxKind2.JsxElement:
+    case SyntaxKind2.JsxSelfClosingElement:
+    case SyntaxKind2.JsxFragment:
+    case SyntaxKind2.TaggedTemplateExpression:
+    case SyntaxKind2.ArrayLiteralExpression:
+    case SyntaxKind2.ParenthesizedExpression:
+    case SyntaxKind2.ObjectLiteralExpression:
+    case SyntaxKind2.ClassExpression:
+    case SyntaxKind2.FunctionExpression:
+    case SyntaxKind2.Identifier:
+    case SyntaxKind2.PrivateIdentifier:
+    case SyntaxKind2.RegularExpressionLiteral:
+    case SyntaxKind2.NumericLiteral:
+    case SyntaxKind2.BigIntLiteral:
+    case SyntaxKind2.StringLiteral:
+    case SyntaxKind2.NoSubstitutionTemplateLiteral:
+    case SyntaxKind2.TemplateExpression:
+    case SyntaxKind2.FalseKeyword:
+    case SyntaxKind2.NullKeyword:
+    case SyntaxKind2.ThisKeyword:
+    case SyntaxKind2.TrueKeyword:
+    case SyntaxKind2.SuperKeyword:
+    case SyntaxKind2.NonNullExpression:
+    case SyntaxKind2.ExpressionWithTypeArguments:
+    case SyntaxKind2.MetaProperty:
+    case SyntaxKind2.ImportKeyword:
+    case SyntaxKind2.MissingDeclaration:
+      return true;
+    default:
+      return false;
+  }
+}
+function isOuterExpression(node, kinds = OuterExpressionKinds.All) {
+  switch (node.kind) {
+    case SyntaxKind2.ParenthesizedExpression:
+      if (kinds & OuterExpressionKinds.ExcludeJSDocTypeAssertion && isJSDocTypeAssertion(node)) {
+        return false;
+      }
+      return (kinds & OuterExpressionKinds.Parentheses) !== 0;
+    case SyntaxKind2.TypeAssertionExpression:
+    case SyntaxKind2.AsExpression:
+      return (kinds & OuterExpressionKinds.TypeAssertions) !== 0;
+    case SyntaxKind2.SatisfiesExpression:
+      return (kinds & (OuterExpressionKinds.ExpressionsWithTypeArguments | OuterExpressionKinds.Satisfies)) !== 0;
+    case SyntaxKind2.ExpressionWithTypeArguments:
+      return (kinds & OuterExpressionKinds.ExpressionsWithTypeArguments) !== 0;
+    case SyntaxKind2.NonNullExpression:
+      return (kinds & OuterExpressionKinds.NonNullAssertions) !== 0;
+    case SyntaxKind2.PartiallyEmittedExpression:
+      return (kinds & OuterExpressionKinds.PartiallyEmittedExpressions) !== 0;
+  }
+  return false;
+}
+function skipOuterExpressions(node, kinds = OuterExpressionKinds.All) {
+  while (isOuterExpression(node, kinds)) {
+    node = node.expression;
+  }
+  return node;
+}
+function isJSDocTypeAssertion(node) {
+  const sourceFile = node.getSourceFile();
+  if (sourceFile.scriptKind !== ScriptKind.JS && sourceFile.scriptKind !== ScriptKind.JSX) {
+    return false;
+  }
+  const expression = node.expression;
+  if (expression.kind !== SyntaxKind2.AsExpression) {
+    return false;
+  }
+  const asExpression = expression;
+  return !!asExpression.type && (asExpression.type.flags & NodeFlags.Reparsed) !== 0;
+}
+function isConciseBody(node) {
+  return node.kind === SyntaxKind2.Block || isExpression(node);
+}
+function isForInitializer(node) {
+  return node.kind === SyntaxKind2.VariableDeclarationList || isExpression(node);
+}
+function isQuestionOrExclamationToken(node) {
+  return node.kind === SyntaxKind2.QuestionToken || node.kind === SyntaxKind2.ExclamationToken;
+}
+function isReadonlyKeywordOrPlusOrMinusToken(node) {
+  return node.kind === SyntaxKind2.ReadonlyKeyword || node.kind === SyntaxKind2.PlusToken || node.kind === SyntaxKind2.MinusToken;
+}
+function isQuestionOrPlusOrMinusToken(node) {
+  return node.kind === SyntaxKind2.QuestionToken || node.kind === SyntaxKind2.PlusToken || node.kind === SyntaxKind2.MinusToken;
+}
+function isJsxTagNameExpression(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind2.ThisKeyword || kind === SyntaxKind2.Identifier || kind === SyntaxKind2.PropertyAccessExpression || kind === SyntaxKind2.JsxNamespacedName;
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/ast/visitor.generated.js
+function visitNode(node, visitor, test) {
+  if (node === undefined)
+    return;
+  const visited = visitor(node);
+  if (visited !== undefined && test !== undefined && !test(visited)) {
+    throw new Error("Visited node failed test assertion.");
+  }
+  return visited;
+}
+function visitNodes(nodes, visitor) {
+  if (nodes === undefined)
+    return;
+  const updated = visitNodesArray(nodes, visitor);
+  if (updated === nodes) {
+    return nodes;
+  }
+  return createNodeArray(updated, nodes.pos, nodes.end);
+}
+function visitNodesArray(nodes, visitor) {
+  if (nodes === undefined)
+    return;
+  let updated;
+  for (let i = 0;i < nodes.length; i++) {
+    const node = nodes[i];
+    const visited = visitor(node);
+    if (updated) {
+      if (visited)
+        updated.push(visited);
+    } else if (visited !== node) {
+      updated = [];
+      for (let j = 0;j < i; j++)
+        updated.push(nodes[j]);
+      if (visited)
+        updated.push(visited);
+    }
+  }
+  return updated ?? nodes;
+}
+var visitEachChildTable = {
+  [SyntaxKind2.QualifiedName]: (node, visitor) => {
+    const _left = visitNode(node.left, visitor, isEntityName);
+    const _right = visitNode(node.right, visitor, isIdentifier);
+    return updateQualifiedName(node, _left, _right);
+  },
+  [SyntaxKind2.ComputedPropertyName]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateComputedPropertyName(node, _expression);
+  },
+  [SyntaxKind2.Decorator]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isLeftHandSideExpression);
+    return updateDecorator(node, _expression);
+  },
+  [SyntaxKind2.IfStatement]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _thenStatement = visitNode(node.thenStatement, visitor, isStatement);
+    const _elseStatement = visitNode(node.elseStatement, visitor, isStatement);
+    return updateIfStatement(node, _expression, _thenStatement, _elseStatement);
+  },
+  [SyntaxKind2.DoStatement]: (node, visitor) => {
+    const _statement = visitNode(node.statement, visitor, isStatement);
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateDoStatement(node, _statement, _expression);
+  },
+  [SyntaxKind2.WhileStatement]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _statement = visitNode(node.statement, visitor, isStatement);
+    return updateWhileStatement(node, _expression, _statement);
+  },
+  [SyntaxKind2.ForStatement]: (node, visitor) => {
+    const _initializer = visitNode(node.initializer, visitor, isForInitializer);
+    const _condition = visitNode(node.condition, visitor, isExpression);
+    const _incrementor = visitNode(node.incrementor, visitor, isExpression);
+    const _statement = visitNode(node.statement, visitor, isStatement);
+    return updateForStatement(node, _initializer, _condition, _incrementor, _statement);
+  },
+  [SyntaxKind2.BreakStatement]: (node, visitor) => {
+    const _label = visitNode(node.label, visitor, isIdentifier);
+    return updateBreakStatement(node, _label);
+  },
+  [SyntaxKind2.ContinueStatement]: (node, visitor) => {
+    const _label = visitNode(node.label, visitor, isIdentifier);
+    return updateContinueStatement(node, _label);
+  },
+  [SyntaxKind2.ReturnStatement]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateReturnStatement(node, _expression);
+  },
+  [SyntaxKind2.WithStatement]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _statement = visitNode(node.statement, visitor, isStatement);
+    return updateWithStatement(node, _expression, _statement);
+  },
+  [SyntaxKind2.SwitchStatement]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _caseBlock = visitNode(node.caseBlock, visitor, isCaseBlock);
+    return updateSwitchStatement(node, _expression, _caseBlock);
+  },
+  [SyntaxKind2.CaseBlock]: (node, visitor) => {
+    const _clauses = visitNodes(node.clauses, visitor);
+    return updateCaseBlock(node, _clauses);
+  },
+  [SyntaxKind2.ThrowStatement]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateThrowStatement(node, _expression);
+  },
+  [SyntaxKind2.TryStatement]: (node, visitor) => {
+    const _tryBlock = visitNode(node.tryBlock, visitor, isBlock);
+    const _catchClause = visitNode(node.catchClause, visitor, isCatchClause);
+    const _finallyBlock = visitNode(node.finallyBlock, visitor, isBlock);
+    return updateTryStatement(node, _tryBlock, _catchClause, _finallyBlock);
+  },
+  [SyntaxKind2.CatchClause]: (node, visitor) => {
+    const _variableDeclaration = visitNode(node.variableDeclaration, visitor, isVariableDeclaration);
+    const _block = visitNode(node.block, visitor, isBlock);
+    return updateCatchClause(node, _variableDeclaration, _block);
+  },
+  [SyntaxKind2.LabeledStatement]: (node, visitor) => {
+    const _label = visitNode(node.label, visitor, isIdentifier);
+    const _statement = visitNode(node.statement, visitor, isStatement);
+    return updateLabeledStatement(node, _label, _statement);
+  },
+  [SyntaxKind2.ExpressionStatement]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateExpressionStatement(node, _expression);
+  },
+  [SyntaxKind2.Block]: (node, visitor) => {
+    const _statements = visitNodes(node.statements, visitor);
+    return updateBlock(node, _statements);
+  },
+  [SyntaxKind2.VariableStatement]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _declarationList = visitNode(node.declarationList, visitor, isVariableDeclarationList);
+    return updateVariableStatement(node, _modifiers, _declarationList);
+  },
+  [SyntaxKind2.VariableDeclaration]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isBindingName);
+    const _exclamationToken = visitNode(node.exclamationToken, visitor, isExclamationToken);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _initializer = visitNode(node.initializer, visitor, isExpression);
+    return updateVariableDeclaration(node, _name, _exclamationToken, _type, _initializer);
+  },
+  [SyntaxKind2.VariableDeclarationList]: (node, visitor) => {
+    const _declarations = visitNodes(node.declarations, visitor);
+    return updateVariableDeclarationList(node, _declarations);
+  },
+  [SyntaxKind2.Parameter]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _dotDotDotToken = visitNode(node.dotDotDotToken, visitor, isDotDotDotToken);
+    const _name = visitNode(node.name, visitor, isBindingName);
+    const _questionToken = visitNode(node.questionToken, visitor, isQuestionToken);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _initializer = visitNode(node.initializer, visitor, isExpression);
+    return updateParameterDeclaration(node, _modifiers, _dotDotDotToken, _name, _questionToken, _type, _initializer);
+  },
+  [SyntaxKind2.BindingElement]: (node, visitor) => {
+    const _dotDotDotToken = visitNode(node.dotDotDotToken, visitor, isDotDotDotToken);
+    const _propertyName = visitNode(node.propertyName, visitor, isPropertyName);
+    const _name = visitNode(node.name, visitor, isBindingName);
+    const _initializer = visitNode(node.initializer, visitor, isExpression);
+    return updateBindingElement(node, _dotDotDotToken, _propertyName, _name, _initializer);
+  },
+  [SyntaxKind2.MissingDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    return updateMissingDeclaration(node, _modifiers);
+  },
+  [SyntaxKind2.FunctionDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _asteriskToken = visitNode(node.asteriskToken, visitor, isAsteriskToken);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _body = visitNode(node.body, visitor, isFunctionBody);
+    return updateFunctionDeclaration(node, _modifiers, _asteriskToken, _name, _typeParameters, _parameters, _type, _body);
+  },
+  [SyntaxKind2.ClassDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _heritageClauses = visitNodes(node.heritageClauses, visitor);
+    const _members = visitNodes(node.members, visitor);
+    return updateClassDeclaration(node, _modifiers, _name, _typeParameters, _heritageClauses, _members);
+  },
+  [SyntaxKind2.ClassExpression]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _heritageClauses = visitNodes(node.heritageClauses, visitor);
+    const _members = visitNodes(node.members, visitor);
+    return updateClassExpression(node, _modifiers, _name, _typeParameters, _heritageClauses, _members);
+  },
+  [SyntaxKind2.HeritageClause]: (node, visitor) => {
+    const _types = visitNodes(node.types, visitor);
+    return updateHeritageClause(node, _types);
+  },
+  [SyntaxKind2.InterfaceDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _heritageClauses = visitNodes(node.heritageClauses, visitor);
+    const _members = visitNodes(node.members, visitor);
+    return updateInterfaceDeclaration(node, _modifiers, _name, _typeParameters, _heritageClauses, _members);
+  },
+  [SyntaxKind2.TypeAliasDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateTypeAliasDeclaration(node, _modifiers, _name, _typeParameters, _type);
+  },
+  [SyntaxKind2.EnumMember]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _initializer = visitNode(node.initializer, visitor, isExpression);
+    return updateEnumMember(node, _name, _initializer);
+  },
+  [SyntaxKind2.EnumDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _members = visitNodes(node.members, visitor);
+    return updateEnumDeclaration(node, _modifiers, _name, _members);
+  },
+  [SyntaxKind2.ModuleBlock]: (node, visitor) => {
+    const _statements = visitNodes(node.statements, visitor);
+    return updateModuleBlock(node, _statements);
+  },
+  [SyntaxKind2.ImportDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _importClause = visitNode(node.importClause, visitor, isImportClause);
+    const _moduleSpecifier = visitNode(node.moduleSpecifier, visitor, isExpression);
+    const _attributes = visitNode(node.attributes, visitor, isImportAttributes);
+    return updateImportDeclaration(node, _modifiers, _importClause, _moduleSpecifier, _attributes);
+  },
+  [SyntaxKind2.ExternalModuleReference]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateExternalModuleReference(node, _expression);
+  },
+  [SyntaxKind2.NamespaceImport]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    return updateNamespaceImport(node, _name);
+  },
+  [SyntaxKind2.NamedImports]: (node, visitor) => {
+    const _elements = visitNodes(node.elements, visitor);
+    return updateNamedImports(node, _elements);
+  },
+  [SyntaxKind2.ExportAssignment]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateExportAssignment(node, _modifiers, _type, _expression);
+  },
+  [SyntaxKind2.NamespaceExportDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    return updateNamespaceExportDeclaration(node, _modifiers, _name);
+  },
+  [SyntaxKind2.NamespaceExport]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isModuleExportName);
+    return updateNamespaceExport(node, _name);
+  },
+  [SyntaxKind2.NamedExports]: (node, visitor) => {
+    const _elements = visitNodes(node.elements, visitor);
+    return updateNamedExports(node, _elements);
+  },
+  [SyntaxKind2.ExportSpecifier]: (node, visitor) => {
+    const _propertyName = visitNode(node.propertyName, visitor, isModuleExportName);
+    const _name = visitNode(node.name, visitor, isModuleExportName);
+    return updateExportSpecifier(node, _propertyName, _name);
+  },
+  [SyntaxKind2.CallSignature]: (node, visitor) => {
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateCallSignatureDeclaration(node, _typeParameters, _parameters, _type);
+  },
+  [SyntaxKind2.ConstructSignature]: (node, visitor) => {
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateConstructSignatureDeclaration(node, _typeParameters, _parameters, _type);
+  },
+  [SyntaxKind2.Constructor]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _body = visitNode(node.body, visitor, isFunctionBody);
+    return updateConstructorDeclaration(node, _modifiers, _typeParameters, _parameters, _type, _body);
+  },
+  [SyntaxKind2.GetAccessor]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _body = visitNode(node.body, visitor, isFunctionBody);
+    return updateGetAccessorDeclaration(node, _modifiers, _name, _typeParameters, _parameters, _type, _body);
+  },
+  [SyntaxKind2.SetAccessor]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _body = visitNode(node.body, visitor, isFunctionBody);
+    return updateSetAccessorDeclaration(node, _modifiers, _name, _typeParameters, _parameters, _type, _body);
+  },
+  [SyntaxKind2.IndexSignature]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateIndexSignatureDeclaration(node, _modifiers, _parameters, _type);
+  },
+  [SyntaxKind2.MethodSignature]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _postfixToken = visitNode(node.postfixToken, visitor, isQuestionOrExclamationToken);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateMethodSignatureDeclaration(node, _modifiers, _name, _postfixToken, _typeParameters, _parameters, _type);
+  },
+  [SyntaxKind2.MethodDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _asteriskToken = visitNode(node.asteriskToken, visitor, isAsteriskToken);
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _postfixToken = visitNode(node.postfixToken, visitor, isQuestionOrExclamationToken);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _body = visitNode(node.body, visitor, isFunctionBody);
+    return updateMethodDeclaration(node, _modifiers, _asteriskToken, _name, _postfixToken, _typeParameters, _parameters, _type, _body);
+  },
+  [SyntaxKind2.PropertySignature]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _postfixToken = visitNode(node.postfixToken, visitor, isQuestionOrExclamationToken);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _initializer = visitNode(node.initializer, visitor, isExpression);
+    return updatePropertySignatureDeclaration(node, _modifiers, _name, _postfixToken, _type, _initializer);
+  },
+  [SyntaxKind2.PropertyDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _postfixToken = visitNode(node.postfixToken, visitor, isQuestionOrExclamationToken);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _initializer = visitNode(node.initializer, visitor, isExpression);
+    return updatePropertyDeclaration(node, _modifiers, _name, _postfixToken, _type, _initializer);
+  },
+  [SyntaxKind2.ClassStaticBlockDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _body = visitNode(node.body, visitor, isBlock);
+    return updateClassStaticBlockDeclaration(node, _modifiers, _body);
+  },
+  [SyntaxKind2.BinaryExpression]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _left = visitNode(node.left, visitor, isExpression);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _operatorToken = visitNode(node.operatorToken, visitor, isBinaryOperatorToken);
+    const _right = visitNode(node.right, visitor, isExpression);
+    return updateBinaryExpression(node, _modifiers, _left, _type, _operatorToken, _right);
+  },
+  [SyntaxKind2.PrefixUnaryExpression]: (node, visitor) => {
+    const _operand = visitNode(node.operand, visitor, isExpression);
+    return updatePrefixUnaryExpression(node, _operand);
+  },
+  [SyntaxKind2.PostfixUnaryExpression]: (node, visitor) => {
+    const _operand = visitNode(node.operand, visitor, isExpression);
+    return updatePostfixUnaryExpression(node, _operand);
+  },
+  [SyntaxKind2.YieldExpression]: (node, visitor) => {
+    const _asteriskToken = visitNode(node.asteriskToken, visitor, isAsteriskToken);
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateYieldExpression(node, _asteriskToken, _expression);
+  },
+  [SyntaxKind2.ArrowFunction]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _equalsGreaterThanToken = visitNode(node.equalsGreaterThanToken, visitor, isEqualsGreaterThanToken);
+    const _body = visitNode(node.body, visitor, isConciseBody);
+    return updateArrowFunction(node, _modifiers, _typeParameters, _parameters, _type, _equalsGreaterThanToken, _body);
+  },
+  [SyntaxKind2.FunctionExpression]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _asteriskToken = visitNode(node.asteriskToken, visitor, isAsteriskToken);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _body = visitNode(node.body, visitor, isFunctionBody);
+    return updateFunctionExpression(node, _modifiers, _asteriskToken, _name, _typeParameters, _parameters, _type, _body);
+  },
+  [SyntaxKind2.AsExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateAsExpression(node, _expression, _type);
+  },
+  [SyntaxKind2.SatisfiesExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateSatisfiesExpression(node, _expression, _type);
+  },
+  [SyntaxKind2.ConditionalExpression]: (node, visitor) => {
+    const _condition = visitNode(node.condition, visitor, isExpression);
+    const _questionToken = visitNode(node.questionToken, visitor, isQuestionToken);
+    const _whenTrue = visitNode(node.whenTrue, visitor, isExpression);
+    const _colonToken = visitNode(node.colonToken, visitor, isColonToken);
+    const _whenFalse = visitNode(node.whenFalse, visitor, isExpression);
+    return updateConditionalExpression(node, _condition, _questionToken, _whenTrue, _colonToken, _whenFalse);
+  },
+  [SyntaxKind2.PropertyAccessExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _questionDotToken = visitNode(node.questionDotToken, visitor, isQuestionDotToken);
+    const _name = visitNode(node.name, visitor, isMemberName);
+    return updatePropertyAccessExpression(node, _expression, _questionDotToken, _name);
+  },
+  [SyntaxKind2.ElementAccessExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _questionDotToken = visitNode(node.questionDotToken, visitor, isQuestionDotToken);
+    const _argumentExpression = visitNode(node.argumentExpression, visitor, isExpression);
+    return updateElementAccessExpression(node, _expression, _questionDotToken, _argumentExpression);
+  },
+  [SyntaxKind2.CallExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _questionDotToken = visitNode(node.questionDotToken, visitor, isQuestionDotToken);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    const _arguments = visitNodes(node.arguments, visitor);
+    return updateCallExpression(node, _expression, _questionDotToken, _typeArguments, _arguments);
+  },
+  [SyntaxKind2.NewExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    const _arguments = visitNodes(node.arguments, visitor);
+    return updateNewExpression(node, _expression, _typeArguments, _arguments);
+  },
+  [SyntaxKind2.MetaProperty]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    return updateMetaProperty(node, _name);
+  },
+  [SyntaxKind2.NonNullExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateNonNullExpression(node, _expression);
+  },
+  [SyntaxKind2.SpreadElement]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateSpreadElement(node, _expression);
+  },
+  [SyntaxKind2.TemplateExpression]: (node, visitor) => {
+    const _head = visitNode(node.head, visitor, isTemplateHead);
+    const _templateSpans = visitNodes(node.templateSpans, visitor);
+    return updateTemplateExpression(node, _head, _templateSpans);
+  },
+  [SyntaxKind2.TemplateSpan]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _literal = visitNode(node.literal, visitor, isTemplateMiddleOrTail);
+    return updateTemplateSpan(node, _expression, _literal);
+  },
+  [SyntaxKind2.TaggedTemplateExpression]: (node, visitor) => {
+    const _tag = visitNode(node.tag, visitor, isExpression);
+    const _questionDotToken = visitNode(node.questionDotToken, visitor, isQuestionDotToken);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    const _template = visitNode(node.template, visitor, isTemplateLiteral);
+    return updateTaggedTemplateExpression(node, _tag, _questionDotToken, _typeArguments, _template);
+  },
+  [SyntaxKind2.ParenthesizedExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateParenthesizedExpression(node, _expression);
+  },
+  [SyntaxKind2.ArrayLiteralExpression]: (node, visitor) => {
+    const _elements = visitNodes(node.elements, visitor);
+    return updateArrayLiteralExpression(node, _elements);
+  },
+  [SyntaxKind2.ObjectLiteralExpression]: (node, visitor) => {
+    const _properties = visitNodes(node.properties, visitor);
+    return updateObjectLiteralExpression(node, _properties);
+  },
+  [SyntaxKind2.SpreadAssignment]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateSpreadAssignment(node, _expression);
+  },
+  [SyntaxKind2.PropertyAssignment]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _postfixToken = visitNode(node.postfixToken, visitor, isQuestionOrExclamationToken);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _initializer = visitNode(node.initializer, visitor, isExpression);
+    return updatePropertyAssignment(node, _modifiers, _name, _postfixToken, _type, _initializer);
+  },
+  [SyntaxKind2.ShorthandPropertyAssignment]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isPropertyName);
+    const _postfixToken = visitNode(node.postfixToken, visitor, isQuestionOrExclamationToken);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _equalsToken = visitNode(node.equalsToken, visitor, isEqualsToken);
+    const _objectAssignmentInitializer = visitNode(node.objectAssignmentInitializer, visitor, isExpression);
+    return updateShorthandPropertyAssignment(node, _modifiers, _name, _postfixToken, _type, _equalsToken, _objectAssignmentInitializer);
+  },
+  [SyntaxKind2.DeleteExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateDeleteExpression(node, _expression);
+  },
+  [SyntaxKind2.TypeOfExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateTypeOfExpression(node, _expression);
+  },
+  [SyntaxKind2.VoidExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateVoidExpression(node, _expression);
+  },
+  [SyntaxKind2.AwaitExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateAwaitExpression(node, _expression);
+  },
+  [SyntaxKind2.TypeAssertionExpression]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateTypeAssertion(node, _type, _expression);
+  },
+  [SyntaxKind2.UnionType]: (node, visitor) => {
+    const _types = visitNodes(node.types, visitor);
+    return updateUnionTypeNode(node, _types);
+  },
+  [SyntaxKind2.IntersectionType]: (node, visitor) => {
+    const _types = visitNodes(node.types, visitor);
+    return updateIntersectionTypeNode(node, _types);
+  },
+  [SyntaxKind2.ConditionalType]: (node, visitor) => {
+    const _checkType = visitNode(node.checkType, visitor, isTypeNode);
+    const _extendsType = visitNode(node.extendsType, visitor, isTypeNode);
+    const _trueType = visitNode(node.trueType, visitor, isTypeNode);
+    const _falseType = visitNode(node.falseType, visitor, isTypeNode);
+    return updateConditionalTypeNode(node, _checkType, _extendsType, _trueType, _falseType);
+  },
+  [SyntaxKind2.TypeOperator]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateTypeOperatorNode(node, _type);
+  },
+  [SyntaxKind2.InferType]: (node, visitor) => {
+    const _typeParameter = visitNode(node.typeParameter, visitor, isTypeParameterDeclaration);
+    return updateInferTypeNode(node, _typeParameter);
+  },
+  [SyntaxKind2.ArrayType]: (node, visitor) => {
+    const _elementType = visitNode(node.elementType, visitor, isTypeNode);
+    return updateArrayTypeNode(node, _elementType);
+  },
+  [SyntaxKind2.IndexedAccessType]: (node, visitor) => {
+    const _objectType = visitNode(node.objectType, visitor, isTypeNode);
+    const _indexType = visitNode(node.indexType, visitor, isTypeNode);
+    return updateIndexedAccessTypeNode(node, _objectType, _indexType);
+  },
+  [SyntaxKind2.TypeReference]: (node, visitor) => {
+    const _typeName = visitNode(node.typeName, visitor, isEntityName);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    return updateTypeReferenceNode(node, _typeName, _typeArguments);
+  },
+  [SyntaxKind2.ExpressionWithTypeArguments]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    return updateExpressionWithTypeArguments(node, _expression, _typeArguments);
+  },
+  [SyntaxKind2.LiteralType]: (node, visitor) => {
+    const _literal = visitNode(node.literal, visitor);
+    return updateLiteralTypeNode(node, _literal);
+  },
+  [SyntaxKind2.TypePredicate]: (node, visitor) => {
+    const _assertsModifier = visitNode(node.assertsModifier, visitor, isAssertsKeyword);
+    const _parameterName = visitNode(node.parameterName, visitor, isTypePredicateParameterName);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateTypePredicateNode(node, _assertsModifier, _parameterName, _type);
+  },
+  [SyntaxKind2.ImportAttribute]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isImportAttributeName);
+    const _value = visitNode(node.value, visitor, isExpression);
+    return updateImportAttribute(node, _name, _value);
+  },
+  [SyntaxKind2.ImportAttributes]: (node, visitor) => {
+    const _attributes = visitNodes(node.attributes, visitor);
+    return updateImportAttributes(node, _attributes);
+  },
+  [SyntaxKind2.TypeQuery]: (node, visitor) => {
+    const _exprName = visitNode(node.exprName, visitor, isEntityName);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    return updateTypeQueryNode(node, _exprName, _typeArguments);
+  },
+  [SyntaxKind2.MappedType]: (node, visitor) => {
+    const _readonlyToken = visitNode(node.readonlyToken, visitor, isReadonlyKeywordOrPlusOrMinusToken);
+    const _typeParameter = visitNode(node.typeParameter, visitor, isTypeParameterDeclaration);
+    const _nameType = visitNode(node.nameType, visitor, isTypeNode);
+    const _questionToken = visitNode(node.questionToken, visitor, isQuestionOrPlusOrMinusToken);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _members = visitNodes(node.members, visitor);
+    return updateMappedTypeNode(node, _readonlyToken, _typeParameter, _nameType, _questionToken, _type, _members);
+  },
+  [SyntaxKind2.TypeLiteral]: (node, visitor) => {
+    const _members = visitNodes(node.members, visitor);
+    return updateTypeLiteralNode(node, _members);
+  },
+  [SyntaxKind2.TupleType]: (node, visitor) => {
+    const _elements = visitNodes(node.elements, visitor);
+    return updateTupleTypeNode(node, _elements);
+  },
+  [SyntaxKind2.NamedTupleMember]: (node, visitor) => {
+    const _dotDotDotToken = visitNode(node.dotDotDotToken, visitor, isDotDotDotToken);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _questionToken = visitNode(node.questionToken, visitor, isQuestionToken);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateNamedTupleMember(node, _dotDotDotToken, _name, _questionToken, _type);
+  },
+  [SyntaxKind2.OptionalType]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateOptionalTypeNode(node, _type);
+  },
+  [SyntaxKind2.RestType]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateRestTypeNode(node, _type);
+  },
+  [SyntaxKind2.ParenthesizedType]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateParenthesizedTypeNode(node, _type);
+  },
+  [SyntaxKind2.FunctionType]: (node, visitor) => {
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateFunctionTypeNode(node, _typeParameters, _parameters, _type);
+  },
+  [SyntaxKind2.ConstructorType]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateConstructorTypeNode(node, _modifiers, _typeParameters, _parameters, _type);
+  },
+  [SyntaxKind2.TemplateLiteralType]: (node, visitor) => {
+    const _head = visitNode(node.head, visitor, isTemplateHead);
+    const _templateSpans = visitNodes(node.templateSpans, visitor);
+    return updateTemplateLiteralTypeNode(node, _head, _templateSpans);
+  },
+  [SyntaxKind2.TemplateLiteralTypeSpan]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    const _literal = visitNode(node.literal, visitor, isTemplateMiddleOrTail);
+    return updateTemplateLiteralTypeSpan(node, _type, _literal);
+  },
+  [SyntaxKind2.SyntheticExpression]: (node, visitor) => {
+    const _tupleNameSource = visitNode(node.tupleNameSource, visitor);
+    return updateSyntheticExpression(node, _tupleNameSource);
+  },
+  [SyntaxKind2.PartiallyEmittedExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updatePartiallyEmittedExpression(node, _expression);
+  },
+  [SyntaxKind2.JsxElement]: (node, visitor) => {
+    const _openingElement = visitNode(node.openingElement, visitor, isJsxOpeningElement);
+    const _children = visitNodes(node.children, visitor);
+    const _closingElement = visitNode(node.closingElement, visitor, isJsxClosingElement);
+    return updateJsxElement(node, _openingElement, _children, _closingElement);
+  },
+  [SyntaxKind2.JsxAttributes]: (node, visitor) => {
+    const _properties = visitNodes(node.properties, visitor);
+    return updateJsxAttributes(node, _properties);
+  },
+  [SyntaxKind2.JsxNamespacedName]: (node, visitor) => {
+    const _namespace = visitNode(node.namespace, visitor, isIdentifier);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    return updateJsxNamespacedName(node, _namespace, _name);
+  },
+  [SyntaxKind2.JsxOpeningElement]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isJsxTagNameExpression);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    const _attributes = visitNode(node.attributes, visitor, isJsxAttributes);
+    return updateJsxOpeningElement(node, _tagName, _typeArguments, _attributes);
+  },
+  [SyntaxKind2.JsxSelfClosingElement]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isJsxTagNameExpression);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    const _attributes = visitNode(node.attributes, visitor, isJsxAttributes);
+    return updateJsxSelfClosingElement(node, _tagName, _typeArguments, _attributes);
+  },
+  [SyntaxKind2.JsxFragment]: (node, visitor) => {
+    const _openingFragment = visitNode(node.openingFragment, visitor, isJsxOpeningFragment);
+    const _children = visitNodes(node.children, visitor);
+    const _closingFragment = visitNode(node.closingFragment, visitor, isJsxClosingFragment);
+    return updateJsxFragment(node, _openingFragment, _children, _closingFragment);
+  },
+  [SyntaxKind2.JsxAttribute]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isJsxAttributeName);
+    const _initializer = visitNode(node.initializer, visitor, isJsxAttributeValue);
+    return updateJsxAttribute(node, _name, _initializer);
+  },
+  [SyntaxKind2.JsxSpreadAttribute]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateJsxSpreadAttribute(node, _expression);
+  },
+  [SyntaxKind2.JsxClosingElement]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isJsxTagNameExpression);
+    return updateJsxClosingElement(node, _tagName);
+  },
+  [SyntaxKind2.JsxExpression]: (node, visitor) => {
+    const _dotDotDotToken = visitNode(node.dotDotDotToken, visitor, isDotDotDotToken);
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    return updateJsxExpression(node, _dotDotDotToken, _expression);
+  },
+  [SyntaxKind2.SyntaxList]: (node, visitor) => {
+    const _children = visitNodesArray(node.children, visitor);
+    return updateSyntaxList(node, _children);
+  },
+  [SyntaxKind2.JSDoc]: (node, visitor) => {
+    const _comment = visitNodes(node.comment, visitor);
+    const _tags = visitNodes(node.tags, visitor);
+    return updateJSDoc(node, _comment, _tags);
+  },
+  [SyntaxKind2.JSDocTypeExpression]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateJSDocTypeExpression(node, _type);
+  },
+  [SyntaxKind2.JSDocNonNullableType]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateJSDocNonNullableType(node, _type);
+  },
+  [SyntaxKind2.JSDocNullableType]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateJSDocNullableType(node, _type);
+  },
+  [SyntaxKind2.JSDocVariadicType]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateJSDocVariadicType(node, _type);
+  },
+  [SyntaxKind2.JSDocOptionalType]: (node, visitor) => {
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateJSDocOptionalType(node, _type);
+  },
+  [SyntaxKind2.JSDocTypeTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _typeExpression = visitNode(node.typeExpression, visitor);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocTypeTag(node, _tagName, _typeExpression, _comment);
+  },
+  [SyntaxKind2.JSDocUnknownTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocUnknownTag(node, _tagName, _comment);
+  },
+  [SyntaxKind2.JSDocTemplateTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _constraint = visitNode(node.constraint, visitor);
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocTemplateTag(node, _tagName, _constraint, _typeParameters, _comment);
+  },
+  [SyntaxKind2.JSDocReturnTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _typeExpression = visitNode(node.typeExpression, visitor, isTypeNode);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocReturnTag(node, _tagName, _typeExpression, _comment);
+  },
+  [SyntaxKind2.JSDocPublicTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocPublicTag(node, _tagName, _comment);
+  },
+  [SyntaxKind2.JSDocPrivateTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocPrivateTag(node, _tagName, _comment);
+  },
+  [SyntaxKind2.JSDocProtectedTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocProtectedTag(node, _tagName, _comment);
+  },
+  [SyntaxKind2.JSDocReadonlyTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocReadonlyTag(node, _tagName, _comment);
+  },
+  [SyntaxKind2.JSDocOverrideTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocOverrideTag(node, _tagName, _comment);
+  },
+  [SyntaxKind2.JSDocDeprecatedTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocDeprecatedTag(node, _tagName, _comment);
+  },
+  [SyntaxKind2.JSDocSeeTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _nameExpression = visitNode(node.nameExpression, visitor, isTypeNode);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocSeeTag(node, _tagName, _nameExpression, _comment);
+  },
+  [SyntaxKind2.JSDocImplementsTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _className = visitNode(node.className, visitor, isExpressionWithTypeArguments);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocImplementsTag(node, _tagName, _className, _comment);
+  },
+  [SyntaxKind2.JSDocAugmentsTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _className = visitNode(node.className, visitor, isExpressionWithTypeArguments);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocAugmentsTag(node, _tagName, _className, _comment);
+  },
+  [SyntaxKind2.JSDocSatisfiesTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _typeExpression = visitNode(node.typeExpression, visitor, isTypeNode);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocSatisfiesTag(node, _tagName, _typeExpression, _comment);
+  },
+  [SyntaxKind2.JSDocThrowsTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _typeExpression = visitNode(node.typeExpression, visitor, isTypeNode);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocThrowsTag(node, _tagName, _typeExpression, _comment);
+  },
+  [SyntaxKind2.JSDocThisTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _typeExpression = visitNode(node.typeExpression, visitor, isTypeNode);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocThisTag(node, _tagName, _typeExpression, _comment);
+  },
+  [SyntaxKind2.JSDocImportTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _importClause = visitNode(node.importClause, visitor, isImportClause);
+    const _moduleSpecifier = visitNode(node.moduleSpecifier, visitor, isExpression);
+    const _attributes = visitNode(node.attributes, visitor, isImportAttributes);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocImportTag(node, _tagName, _importClause, _moduleSpecifier, _attributes, _comment);
+  },
+  [SyntaxKind2.JSDocCallbackTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _typeExpression = visitNode(node.typeExpression, visitor, isTypeNode);
+    const _name = visitNode(node.name, visitor, isJSDocFullName);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocCallbackTag(node, _tagName, _typeExpression, _name, _comment);
+  },
+  [SyntaxKind2.JSDocOverloadTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _typeExpression = visitNode(node.typeExpression, visitor, isTypeNode);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocOverloadTag(node, _tagName, _typeExpression, _comment);
+  },
+  [SyntaxKind2.JSDocTypedefTag]: (node, visitor) => {
+    const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+    const _typeExpression = visitNode(node.typeExpression, visitor);
+    const _name = visitNode(node.name, visitor, isJSDocFullName);
+    const _comment = visitNodes(node.comment, visitor);
+    return updateJSDocTypedefTag(node, _tagName, _typeExpression, _name, _comment);
+  },
+  [SyntaxKind2.JSDocSignature]: (node, visitor) => {
+    const _typeParameters = visitNodes(node.typeParameters, visitor);
+    const _parameters = visitNodes(node.parameters, visitor);
+    const _type = visitNode(node.type, visitor, isTypeNode);
+    return updateJSDocSignature(node, _typeParameters, _parameters, _type);
+  },
+  [SyntaxKind2.JSDocNameReference]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isEntityName);
+    return updateJSDocNameReference(node, _name);
+  },
+  [SyntaxKind2.SourceFile]: (node, visitor) => {
+    const _statements = visitNodes(node.statements, visitor);
+    const _endOfFileToken = visitNode(node.endOfFileToken, visitor, isEndOfFile);
+    return updateSourceFile(node, _statements, _endOfFileToken);
+  },
+  [SyntaxKind2.ModuleDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isModuleName);
+    const _body = visitNode(node.body, visitor, isModuleBody);
+    return updateModuleDeclaration(node, _modifiers, _name, _body);
+  },
+  [SyntaxKind2.ImportEqualsDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _moduleReference = visitNode(node.moduleReference, visitor, isModuleReference);
+    return updateImportEqualsDeclaration(node, _modifiers, _name, _moduleReference);
+  },
+  [SyntaxKind2.ExportDeclaration]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _exportClause = visitNode(node.exportClause, visitor, isNamedExportBindings);
+    const _moduleSpecifier = visitNode(node.moduleSpecifier, visitor, isExpression);
+    const _attributes = visitNode(node.attributes, visitor, isImportAttributes);
+    return updateExportDeclaration(node, _modifiers, _exportClause, _moduleSpecifier, _attributes);
+  },
+  [SyntaxKind2.ImportType]: (node, visitor) => {
+    const _argument = visitNode(node.argument, visitor, isTypeNode);
+    const _attributes = visitNode(node.attributes, visitor, isImportAttributes);
+    const _qualifier = visitNode(node.qualifier, visitor, isEntityName);
+    const _typeArguments = visitNodes(node.typeArguments, visitor);
+    return updateImportTypeNode(node, _argument, _attributes, _qualifier, _typeArguments);
+  },
+  [SyntaxKind2.ImportClause]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _namedBindings = visitNode(node.namedBindings, visitor, isNamedImportBindings);
+    return updateImportClause(node, _name, _namedBindings);
+  },
+  [SyntaxKind2.ImportSpecifier]: (node, visitor) => {
+    const _propertyName = visitNode(node.propertyName, visitor, isModuleExportName);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    return updateImportSpecifier(node, _propertyName, _name);
+  },
+  [SyntaxKind2.JSDocLink]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isEntityName);
+    return updateJSDocLink(node, _name);
+  },
+  [SyntaxKind2.JSDocLinkPlain]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isEntityName);
+    return updateJSDocLinkPlain(node, _name);
+  },
+  [SyntaxKind2.JSDocLinkCode]: (node, visitor) => {
+    const _name = visitNode(node.name, visitor, isEntityName);
+    return updateJSDocLinkCode(node, _name);
+  },
+  [SyntaxKind2.TypeParameter]: (node, visitor) => {
+    const _modifiers = visitNodes(node.modifiers, visitor);
+    const _name = visitNode(node.name, visitor, isIdentifier);
+    const _constraint = visitNode(node.constraint, visitor, isTypeNode);
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _defaultType = visitNode(node.defaultType, visitor, isTypeNode);
+    return updateTypeParameterDeclaration(node, _modifiers, _name, _constraint, _expression, _defaultType);
+  },
+  [SyntaxKind2.SyntheticReferenceExpression]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _thisArg = visitNode(node.thisArg, visitor, isExpression);
+    return updateSyntheticReferenceExpression(node, _expression, _thisArg);
+  },
+  [SyntaxKind2.JSDocTypeLiteral]: (node, visitor) => {
+    const _jsdocPropertyTags = visitNodesArray(node.jsdocPropertyTags, visitor);
+    return updateJSDocTypeLiteral(node, _jsdocPropertyTags);
+  },
+  [SyntaxKind2.ForInStatement]: (node, visitor) => {
+    const _awaitModifier = visitNode(node.awaitModifier, visitor, isAwaitKeyword);
+    const _initializer = visitNode(node.initializer, visitor, isForInitializer);
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _statement = visitNode(node.statement, visitor, isStatement);
+    return updateForInStatement(node, _awaitModifier, _initializer, _expression, _statement);
+  },
+  [SyntaxKind2.ForOfStatement]: (node, visitor) => {
+    const _awaitModifier = visitNode(node.awaitModifier, visitor, isAwaitKeyword);
+    const _initializer = visitNode(node.initializer, visitor, isForInitializer);
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _statement = visitNode(node.statement, visitor, isStatement);
+    return updateForOfStatement(node, _awaitModifier, _initializer, _expression, _statement);
+  },
+  [SyntaxKind2.CaseClause]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _statements = visitNodes(node.statements, visitor);
+    return updateCaseClause(node, _expression, _statements);
+  },
+  [SyntaxKind2.DefaultClause]: (node, visitor) => {
+    const _expression = visitNode(node.expression, visitor, isExpression);
+    const _statements = visitNodes(node.statements, visitor);
+    return updateDefaultClause(node, _expression, _statements);
+  },
+  [SyntaxKind2.ObjectBindingPattern]: (node, visitor) => {
+    const _elements = visitNodes(node.elements, visitor);
+    return updateObjectBindingPattern(node, _elements);
+  },
+  [SyntaxKind2.ArrayBindingPattern]: (node, visitor) => {
+    const _elements = visitNodes(node.elements, visitor);
+    return updateArrayBindingPattern(node, _elements);
+  },
+  [SyntaxKind2.JSDocParameterTag]: visitEachChildOfJSDocParameterOrPropertyTag,
+  [SyntaxKind2.JSDocPropertyTag]: visitEachChildOfJSDocParameterOrPropertyTag
+};
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/ast/visitor.js
+function visitNodeForEachChild(cbNode, node) {
+  return node ? cbNode(node) : undefined;
+}
+function visitNodesForEachChild(cbNode, cbNodes, nodes) {
+  if (!nodes)
+    return;
+  if (cbNodes)
+    return cbNodes(nodes);
+  for (const node of nodes) {
+    const result = cbNode(node);
+    if (result)
+      return result;
+  }
+  return;
+}
+function forEachChildOfJSDocParameterOrPropertyTag(data, cbNode, cbNodes) {
+  return visitNodeForEachChild(cbNode, data.tagName) || (data.isNameFirst ? visitNodeForEachChild(cbNode, data.name) || visitNodeForEachChild(cbNode, data.typeExpression) : visitNodeForEachChild(cbNode, data.typeExpression) || visitNodeForEachChild(cbNode, data.name)) || visitNodesForEachChild(cbNode, cbNodes, data.comment);
+}
+function visitEachChildOfJSDocParameterOrPropertyTag(node, visitor) {
+  const _tagName = visitNode(node.tagName, visitor, isIdentifier);
+  const _name = visitNode(node.name, visitor, isEntityName);
+  const _typeExpression = visitNode(node.typeExpression, visitor, isTypeNode);
+  const _comment = visitNodes(node.comment, visitor);
+  return node.kind === SyntaxKind2.JSDocParameterTag ? updateJSDocParameterTag(node, _tagName, _name, _typeExpression, _comment) : updateJSDocPropertyTag(node, _tagName, _name, _typeExpression, _comment);
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/ast/factory.generated.js
+class NodeObject {
+  kind;
+  flags = 0;
+  pos = -1;
+  end = -1;
+  parent = undefined;
+  _data;
+  constructor(kind, data) {
+    this.kind = kind;
+    this._data = data;
+  }
+  get ambientModuleNames() {
+    return this._data?.ambientModuleNames;
+  }
+  get argument() {
+    return this._data?.argument;
+  }
+  get argumentExpression() {
+    return this._data?.argumentExpression;
+  }
+  get arguments() {
+    return this._data?.arguments;
+  }
+  get assertsModifier() {
+    return this._data?.assertsModifier;
+  }
+  get asteriskToken() {
+    return this._data?.asteriskToken;
+  }
+  get attributes() {
+    return this._data?.attributes;
+  }
+  get awaitModifier() {
+    return this._data?.awaitModifier;
+  }
+  get block() {
+    return this._data?.block;
+  }
+  get body() {
+    return this._data?.body;
+  }
+  get caseBlock() {
+    return this._data?.caseBlock;
+  }
+  get catchClause() {
+    return this._data?.catchClause;
+  }
+  get checkType() {
+    return this._data?.checkType;
+  }
+  get children() {
+    return this._data?.children;
+  }
+  get className() {
+    return this._data?.className;
+  }
+  get clauses() {
+    return this._data?.clauses;
+  }
+  get closingElement() {
+    return this._data?.closingElement;
+  }
+  get closingFragment() {
+    return this._data?.closingFragment;
+  }
+  get colonToken() {
+    return this._data?.colonToken;
+  }
+  get comment() {
+    return this._data?.comment;
+  }
+  get condition() {
+    return this._data?.condition;
+  }
+  get constraint() {
+    return this._data?.constraint;
+  }
+  get containsOnlyTriviaWhiteSpaces() {
+    return this._data?.containsOnlyTriviaWhiteSpaces;
+  }
+  get declarationList() {
+    return this._data?.declarationList;
+  }
+  get declarations() {
+    return this._data?.declarations;
+  }
+  get defaultType() {
+    return this._data?.defaultType;
+  }
+  get dotDotDotToken() {
+    return this._data?.dotDotDotToken;
+  }
+  get elementType() {
+    return this._data?.elementType;
+  }
+  get elements() {
+    return this._data?.elements;
+  }
+  get elseStatement() {
+    return this._data?.elseStatement;
+  }
+  get endOfFileToken() {
+    return this._data?.endOfFileToken;
+  }
+  get equalsGreaterThanToken() {
+    return this._data?.equalsGreaterThanToken;
+  }
+  get equalsToken() {
+    return this._data?.equalsToken;
+  }
+  get exclamationToken() {
+    return this._data?.exclamationToken;
+  }
+  get exportClause() {
+    return this._data?.exportClause;
+  }
+  get exprName() {
+    return this._data?.exprName;
+  }
+  get expression() {
+    return this._data?.expression;
+  }
+  get extendsType() {
+    return this._data?.extendsType;
+  }
+  get externalModuleIndicator() {
+    return this._data?.externalModuleIndicator;
+  }
+  get falseType() {
+    return this._data?.falseType;
+  }
+  get fileName() {
+    return this._data?.fileName;
+  }
+  get finallyBlock() {
+    return this._data?.finallyBlock;
+  }
+  get head() {
+    return this._data?.head;
+  }
+  get heritageClauses() {
+    return this._data?.heritageClauses;
+  }
+  get importClause() {
+    return this._data?.importClause;
+  }
+  get imports() {
+    return this._data?.imports;
+  }
+  get incrementor() {
+    return this._data?.incrementor;
+  }
+  get indexType() {
+    return this._data?.indexType;
+  }
+  get initializer() {
+    return this._data?.initializer;
+  }
+  get isArrayType() {
+    return this._data?.isArrayType;
+  }
+  get isBracketed() {
+    return this._data?.isBracketed;
+  }
+  get isDeclarationFile() {
+    return this._data?.isDeclarationFile;
+  }
+  get isExportEquals() {
+    return this._data?.isExportEquals;
+  }
+  get isNameFirst() {
+    return this._data?.isNameFirst;
+  }
+  get isSpread() {
+    return this._data?.isSpread;
+  }
+  get isTypeOf() {
+    return this._data?.isTypeOf;
+  }
+  get isTypeOnly() {
+    return this._data?.isTypeOnly;
+  }
+  get jsdocPropertyTags() {
+    return this._data?.jsdocPropertyTags;
+  }
+  get keyword() {
+    return this._data?.keyword;
+  }
+  get keywordToken() {
+    return this._data?.keywordToken;
+  }
+  get label() {
+    return this._data?.label;
+  }
+  get languageVariant() {
+    return this._data?.languageVariant;
+  }
+  get left() {
+    return this._data?.left;
+  }
+  get libReferenceDirectives() {
+    return this._data?.libReferenceDirectives;
+  }
+  get literal() {
+    return this._data?.literal;
+  }
+  get members() {
+    return this._data?.members;
+  }
+  get modifiers() {
+    return this._data?.modifiers;
+  }
+  get moduleAugmentations() {
+    return this._data?.moduleAugmentations;
+  }
+  get moduleReference() {
+    return this._data?.moduleReference;
+  }
+  get moduleSpecifier() {
+    return this._data?.moduleSpecifier;
+  }
+  get multiLine() {
+    return this._data?.multiLine;
+  }
+  get name() {
+    return this._data?.name;
+  }
+  get nameExpression() {
+    return this._data?.nameExpression;
+  }
+  get nameType() {
+    return this._data?.nameType;
+  }
+  get namedBindings() {
+    return this._data?.namedBindings;
+  }
+  get namespace() {
+    return this._data?.namespace;
+  }
+  get objectAssignmentInitializer() {
+    return this._data?.objectAssignmentInitializer;
+  }
+  get objectType() {
+    return this._data?.objectType;
+  }
+  get openingElement() {
+    return this._data?.openingElement;
+  }
+  get openingFragment() {
+    return this._data?.openingFragment;
+  }
+  get operand() {
+    return this._data?.operand;
+  }
+  get operator() {
+    return this._data?.operator;
+  }
+  get operatorToken() {
+    return this._data?.operatorToken;
+  }
+  get parameterName() {
+    return this._data?.parameterName;
+  }
+  get parameters() {
+    return this._data?.parameters;
+  }
+  get path() {
+    return this._data?.path;
+  }
+  get phaseModifier() {
+    return this._data?.phaseModifier;
+  }
+  get postfixToken() {
+    return this._data?.postfixToken;
+  }
+  get properties() {
+    return this._data?.properties;
+  }
+  get propertyName() {
+    return this._data?.propertyName;
+  }
+  get qualifier() {
+    return this._data?.qualifier;
+  }
+  get questionDotToken() {
+    return this._data?.questionDotToken;
+  }
+  get questionToken() {
+    return this._data?.questionToken;
+  }
+  get rawText() {
+    return this._data?.rawText;
+  }
+  get readonlyToken() {
+    return this._data?.readonlyToken;
+  }
+  get referencedFiles() {
+    return this._data?.referencedFiles;
+  }
+  get right() {
+    return this._data?.right;
+  }
+  get scriptKind() {
+    return this._data?.scriptKind;
+  }
+  get statement() {
+    return this._data?.statement;
+  }
+  get statements() {
+    return this._data?.statements;
+  }
+  get tag() {
+    return this._data?.tag;
+  }
+  get tagName() {
+    return this._data?.tagName;
+  }
+  get tags() {
+    return this._data?.tags;
+  }
+  get template() {
+    return this._data?.template;
+  }
+  get templateFlags() {
+    return this._data?.templateFlags;
+  }
+  get templateSpans() {
+    return this._data?.templateSpans;
+  }
+  get text() {
+    return this._data?.text;
+  }
+  get thenStatement() {
+    return this._data?.thenStatement;
+  }
+  get thisArg() {
+    return this._data?.thisArg;
+  }
+  get token() {
+    return this._data?.token;
+  }
+  get tokenCache() {
+    return this._data?.tokenCache;
+  }
+  get tokenFlags() {
+    return this._data?.tokenFlags;
+  }
+  get trueType() {
+    return this._data?.trueType;
+  }
+  get tryBlock() {
+    return this._data?.tryBlock;
+  }
+  get tupleNameSource() {
+    return this._data?.tupleNameSource;
+  }
+  get type() {
+    return this._data?.type;
+  }
+  get typeArguments() {
+    return this._data?.typeArguments;
+  }
+  get typeExpression() {
+    return this._data?.typeExpression;
+  }
+  get typeName() {
+    return this._data?.typeName;
+  }
+  get typeParameter() {
+    return this._data?.typeParameter;
+  }
+  get typeParameters() {
+    return this._data?.typeParameters;
+  }
+  get typeReferenceDirectives() {
+    return this._data?.typeReferenceDirectives;
+  }
+  get types() {
+    return this._data?.types;
+  }
+  get value() {
+    return this._data?.value;
+  }
+  get variableDeclaration() {
+    return this._data?.variableDeclaration;
+  }
+  get whenFalse() {
+    return this._data?.whenFalse;
+  }
+  get whenTrue() {
+    return this._data?.whenTrue;
+  }
+  forEachChild(visitor, visitArray) {
+    const fn = forEachChildTable[this.kind];
+    return fn ? fn(this._data, visitor, visitArray) : undefined;
+  }
+  getSourceFile() {
+    let node = this;
+    while (node.parent)
+      node = node.parent;
+    return node;
+  }
+  getStart(sourceFile, includeJsDocComment) {
+    return getTokenPosOfNode(this, sourceFile ?? this.getSourceFile(), includeJsDocComment);
+  }
+  getFullStart() {
+    return this.pos;
+  }
+  getEnd() {
+    return this.end;
+  }
+  getWidth(sourceFile) {
+    return this.getEnd() - this.getStart(sourceFile);
+  }
+  getFullWidth() {
+    return this.end - this.pos;
+  }
+  getLeadingTriviaWidth(sourceFile) {
+    return this.getStart(sourceFile) - this.pos;
+  }
+  getFullText(sourceFile) {
+    return (sourceFile ?? this.getSourceFile()).text.substring(this.pos, this.end);
+  }
+  getText(sourceFile) {
+    sourceFile ??= this.getSourceFile();
+    return sourceFile.text.substring(this.getStart(sourceFile), this.end);
+  }
+}
+function isNodeArray(array) {
+  return "pos" in array && "end" in array;
+}
+function createNodeArray(elements, pos = -1, end = -1) {
+  if (isNodeArray(elements))
+    return elements;
+  const arr = elements.slice();
+  arr.pos = pos;
+  arr.end = end;
+  return arr;
+}
+var forEachChildTable = {
+  [SyntaxKind2.QualifiedName]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.left) || visitNode2(cbNode, data.right),
+  [SyntaxKind2.ComputedPropertyName]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.Decorator]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.IfStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.thenStatement) || visitNode2(cbNode, data.elseStatement),
+  [SyntaxKind2.DoStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.statement) || visitNode2(cbNode, data.expression),
+  [SyntaxKind2.WhileStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.statement),
+  [SyntaxKind2.ForStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.initializer) || visitNode2(cbNode, data.condition) || visitNode2(cbNode, data.incrementor) || visitNode2(cbNode, data.statement),
+  [SyntaxKind2.BreakStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.label),
+  [SyntaxKind2.ContinueStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.label),
+  [SyntaxKind2.ReturnStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.WithStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.statement),
+  [SyntaxKind2.SwitchStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.caseBlock),
+  [SyntaxKind2.CaseBlock]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.clauses),
+  [SyntaxKind2.ThrowStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.TryStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tryBlock) || visitNode2(cbNode, data.catchClause) || visitNode2(cbNode, data.finallyBlock),
+  [SyntaxKind2.CatchClause]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.variableDeclaration) || visitNode2(cbNode, data.block),
+  [SyntaxKind2.LabeledStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.label) || visitNode2(cbNode, data.statement),
+  [SyntaxKind2.ExpressionStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.Block]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.statements),
+  [SyntaxKind2.VariableStatement]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.declarationList),
+  [SyntaxKind2.VariableDeclaration]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name) || visitNode2(cbNode, data.exclamationToken) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.initializer),
+  [SyntaxKind2.VariableDeclarationList]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.declarations),
+  [SyntaxKind2.Parameter]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.dotDotDotToken) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.questionToken) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.initializer),
+  [SyntaxKind2.BindingElement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.dotDotDotToken) || visitNode2(cbNode, data.propertyName) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.initializer),
+  [SyntaxKind2.MissingDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers),
+  [SyntaxKind2.FunctionDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.asteriskToken) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.ClassDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.heritageClauses) || visitNodes2(cbNode, cbNodes, data.members),
+  [SyntaxKind2.ClassExpression]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.heritageClauses) || visitNodes2(cbNode, cbNodes, data.members),
+  [SyntaxKind2.HeritageClause]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.types),
+  [SyntaxKind2.InterfaceDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.heritageClauses) || visitNodes2(cbNode, cbNodes, data.members),
+  [SyntaxKind2.TypeAliasDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.JSTypeAliasDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.EnumMember]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name) || visitNode2(cbNode, data.initializer),
+  [SyntaxKind2.EnumDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.members),
+  [SyntaxKind2.ModuleBlock]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.statements),
+  [SyntaxKind2.ImportDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.importClause) || visitNode2(cbNode, data.moduleSpecifier) || visitNode2(cbNode, data.attributes),
+  [SyntaxKind2.JSImportDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.importClause) || visitNode2(cbNode, data.moduleSpecifier) || visitNode2(cbNode, data.attributes),
+  [SyntaxKind2.ExternalModuleReference]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.NamespaceImport]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name),
+  [SyntaxKind2.NamedImports]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.elements),
+  [SyntaxKind2.ExportAssignment]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.expression),
+  [SyntaxKind2.NamespaceExportDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name),
+  [SyntaxKind2.NamespaceExport]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name),
+  [SyntaxKind2.NamedExports]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.elements),
+  [SyntaxKind2.ExportSpecifier]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.propertyName) || visitNode2(cbNode, data.name),
+  [SyntaxKind2.CallSignature]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.ConstructSignature]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.Constructor]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.GetAccessor]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.SetAccessor]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.IndexSignature]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.MethodSignature]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.postfixToken) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.MethodDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.asteriskToken) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.postfixToken) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.PropertySignature]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.postfixToken) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.initializer),
+  [SyntaxKind2.PropertyDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.postfixToken) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.initializer),
+  [SyntaxKind2.ClassStaticBlockDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.BinaryExpression]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.left) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.operatorToken) || visitNode2(cbNode, data.right),
+  [SyntaxKind2.PrefixUnaryExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.operand),
+  [SyntaxKind2.PostfixUnaryExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.operand),
+  [SyntaxKind2.YieldExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.asteriskToken) || visitNode2(cbNode, data.expression),
+  [SyntaxKind2.ArrowFunction]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.equalsGreaterThanToken) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.FunctionExpression]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.asteriskToken) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.AsExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.SatisfiesExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.ConditionalExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.condition) || visitNode2(cbNode, data.questionToken) || visitNode2(cbNode, data.whenTrue) || visitNode2(cbNode, data.colonToken) || visitNode2(cbNode, data.whenFalse),
+  [SyntaxKind2.PropertyAccessExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.questionDotToken) || visitNode2(cbNode, data.name),
+  [SyntaxKind2.ElementAccessExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.questionDotToken) || visitNode2(cbNode, data.argumentExpression),
+  [SyntaxKind2.CallExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.questionDotToken) || visitNodes2(cbNode, cbNodes, data.typeArguments) || visitNodes2(cbNode, cbNodes, data.arguments),
+  [SyntaxKind2.NewExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNodes2(cbNode, cbNodes, data.typeArguments) || visitNodes2(cbNode, cbNodes, data.arguments),
+  [SyntaxKind2.MetaProperty]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name),
+  [SyntaxKind2.NonNullExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.SpreadElement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.TemplateExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.head) || visitNodes2(cbNode, cbNodes, data.templateSpans),
+  [SyntaxKind2.TemplateSpan]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.literal),
+  [SyntaxKind2.TaggedTemplateExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tag) || visitNode2(cbNode, data.questionDotToken) || visitNodes2(cbNode, cbNodes, data.typeArguments) || visitNode2(cbNode, data.template),
+  [SyntaxKind2.ParenthesizedExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.ArrayLiteralExpression]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.elements),
+  [SyntaxKind2.ObjectLiteralExpression]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.properties),
+  [SyntaxKind2.SpreadAssignment]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.PropertyAssignment]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.postfixToken) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.initializer),
+  [SyntaxKind2.ShorthandPropertyAssignment]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.postfixToken) || visitNode2(cbNode, data.type) || visitNode2(cbNode, data.equalsToken) || visitNode2(cbNode, data.objectAssignmentInitializer),
+  [SyntaxKind2.DeleteExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.TypeOfExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.VoidExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.AwaitExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.TypeAssertionExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type) || visitNode2(cbNode, data.expression),
+  [SyntaxKind2.UnionType]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.types),
+  [SyntaxKind2.IntersectionType]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.types),
+  [SyntaxKind2.ConditionalType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.checkType) || visitNode2(cbNode, data.extendsType) || visitNode2(cbNode, data.trueType) || visitNode2(cbNode, data.falseType),
+  [SyntaxKind2.TypeOperator]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.InferType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.typeParameter),
+  [SyntaxKind2.ArrayType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.elementType),
+  [SyntaxKind2.IndexedAccessType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.objectType) || visitNode2(cbNode, data.indexType),
+  [SyntaxKind2.TypeReference]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.typeName) || visitNodes2(cbNode, cbNodes, data.typeArguments),
+  [SyntaxKind2.ExpressionWithTypeArguments]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNodes2(cbNode, cbNodes, data.typeArguments),
+  [SyntaxKind2.LiteralType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.literal),
+  [SyntaxKind2.TypePredicate]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.assertsModifier) || visitNode2(cbNode, data.parameterName) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.ImportAttribute]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name) || visitNode2(cbNode, data.value),
+  [SyntaxKind2.ImportAttributes]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.attributes),
+  [SyntaxKind2.TypeQuery]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.exprName) || visitNodes2(cbNode, cbNodes, data.typeArguments),
+  [SyntaxKind2.MappedType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.readonlyToken) || visitNode2(cbNode, data.typeParameter) || visitNode2(cbNode, data.nameType) || visitNode2(cbNode, data.questionToken) || visitNode2(cbNode, data.type) || visitNodes2(cbNode, cbNodes, data.members),
+  [SyntaxKind2.TypeLiteral]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.members),
+  [SyntaxKind2.TupleType]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.elements),
+  [SyntaxKind2.NamedTupleMember]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.dotDotDotToken) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.questionToken) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.OptionalType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.RestType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.ParenthesizedType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.FunctionType]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.ConstructorType]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.TemplateLiteralType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.head) || visitNodes2(cbNode, cbNodes, data.templateSpans),
+  [SyntaxKind2.TemplateLiteralTypeSpan]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type) || visitNode2(cbNode, data.literal),
+  [SyntaxKind2.SyntheticExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tupleNameSource),
+  [SyntaxKind2.PartiallyEmittedExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.JsxElement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.openingElement) || visitNodes2(cbNode, cbNodes, data.children) || visitNode2(cbNode, data.closingElement),
+  [SyntaxKind2.JsxAttributes]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.properties),
+  [SyntaxKind2.JsxNamespacedName]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.namespace) || visitNode2(cbNode, data.name),
+  [SyntaxKind2.JsxOpeningElement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.typeArguments) || visitNode2(cbNode, data.attributes),
+  [SyntaxKind2.JsxSelfClosingElement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.typeArguments) || visitNode2(cbNode, data.attributes),
+  [SyntaxKind2.JsxFragment]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.openingFragment) || visitNodes2(cbNode, cbNodes, data.children) || visitNode2(cbNode, data.closingFragment),
+  [SyntaxKind2.JsxAttribute]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name) || visitNode2(cbNode, data.initializer),
+  [SyntaxKind2.JsxSpreadAttribute]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression),
+  [SyntaxKind2.JsxClosingElement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName),
+  [SyntaxKind2.JsxExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.dotDotDotToken) || visitNode2(cbNode, data.expression),
+  [SyntaxKind2.SyntaxList]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.children),
+  [SyntaxKind2.JSDoc]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.comment) || visitNodes2(cbNode, cbNodes, data.tags),
+  [SyntaxKind2.JSDocTypeExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.JSDocNonNullableType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.JSDocNullableType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.JSDocVariadicType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.JSDocOptionalType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.type),
+  [SyntaxKind2.JSDocTypeTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.typeExpression) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocUnknownTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocTemplateTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.constraint) || visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocReturnTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.typeExpression) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocPublicTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocPrivateTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocProtectedTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocReadonlyTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocOverrideTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocDeprecatedTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocSeeTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.nameExpression) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocImplementsTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.className) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocAugmentsTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.className) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocSatisfiesTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.typeExpression) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocThrowsTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.typeExpression) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocThisTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.typeExpression) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocImportTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.importClause) || visitNode2(cbNode, data.moduleSpecifier) || visitNode2(cbNode, data.attributes) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocCallbackTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.typeExpression) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocOverloadTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.typeExpression) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocTypedefTag]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.tagName) || visitNode2(cbNode, data.typeExpression) || visitNode2(cbNode, data.name) || visitNodes2(cbNode, cbNodes, data.comment),
+  [SyntaxKind2.JSDocSignature]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.typeParameters) || visitNodes2(cbNode, cbNodes, data.parameters) || visitNode2(cbNode, data.type),
+  [SyntaxKind2.JSDocNameReference]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name),
+  [SyntaxKind2.ModuleDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.body),
+  [SyntaxKind2.ImportEqualsDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.moduleReference),
+  [SyntaxKind2.ExportDeclaration]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.exportClause) || visitNode2(cbNode, data.moduleSpecifier) || visitNode2(cbNode, data.attributes),
+  [SyntaxKind2.ImportType]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.argument) || visitNode2(cbNode, data.attributes) || visitNode2(cbNode, data.qualifier) || visitNodes2(cbNode, cbNodes, data.typeArguments),
+  [SyntaxKind2.ImportClause]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name) || visitNode2(cbNode, data.namedBindings),
+  [SyntaxKind2.ImportSpecifier]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.propertyName) || visitNode2(cbNode, data.name),
+  [SyntaxKind2.JSDocLink]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name),
+  [SyntaxKind2.JSDocLinkPlain]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name),
+  [SyntaxKind2.JSDocLinkCode]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.name),
+  [SyntaxKind2.TypeParameter]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.modifiers) || visitNode2(cbNode, data.name) || visitNode2(cbNode, data.constraint) || visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.defaultType),
+  [SyntaxKind2.SyntheticReferenceExpression]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.thisArg),
+  [SyntaxKind2.JSDocTypeLiteral]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.jsdocPropertyTags),
+  [SyntaxKind2.ForInStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.awaitModifier) || visitNode2(cbNode, data.initializer) || visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.statement),
+  [SyntaxKind2.ForOfStatement]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.awaitModifier) || visitNode2(cbNode, data.initializer) || visitNode2(cbNode, data.expression) || visitNode2(cbNode, data.statement),
+  [SyntaxKind2.CaseClause]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNodes2(cbNode, cbNodes, data.statements),
+  [SyntaxKind2.DefaultClause]: (data, cbNode, cbNodes) => visitNode2(cbNode, data.expression) || visitNodes2(cbNode, cbNodes, data.statements),
+  [SyntaxKind2.ObjectBindingPattern]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.elements),
+  [SyntaxKind2.ArrayBindingPattern]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.elements),
+  [SyntaxKind2.JSDocParameterTag]: forEachChildOfJSDocParameterOrPropertyTag,
+  [SyntaxKind2.JSDocPropertyTag]: forEachChildOfJSDocParameterOrPropertyTag,
+  [SyntaxKind2.SourceFile]: (data, cbNode, cbNodes) => visitNodes2(cbNode, cbNodes, data.statements) || visitNode2(cbNode, data.endOfFileToken)
+};
+function visitNode2(cbNode, node) {
+  return node ? cbNode(node) : undefined;
+}
+function visitNodes2(cbNode, cbNodes, nodes) {
+  if (!nodes)
+    return;
+  if (cbNodes)
+    return cbNodes(nodes);
+  for (const node of nodes) {
+    const result = cbNode(node);
+    if (result)
+      return result;
+  }
+  return;
+}
+function createQualifiedName(left, right) {
+  return new NodeObject(SyntaxKind2.QualifiedName, {
+    left,
+    right
+  });
+}
+function createComputedPropertyName(expression) {
+  return new NodeObject(SyntaxKind2.ComputedPropertyName, {
+    expression
+  });
+}
+function createDecorator(expression) {
+  return new NodeObject(SyntaxKind2.Decorator, {
+    expression
+  });
+}
+function createIfStatement(expression, thenStatement, elseStatement) {
+  return new NodeObject(SyntaxKind2.IfStatement, {
+    expression,
+    thenStatement,
+    elseStatement
+  });
+}
+function createDoStatement(statement, expression) {
+  return new NodeObject(SyntaxKind2.DoStatement, {
+    statement,
+    expression
+  });
+}
+function createWhileStatement(expression, statement) {
+  return new NodeObject(SyntaxKind2.WhileStatement, {
+    expression,
+    statement
+  });
+}
+function createForStatement(initializer, condition, incrementor, statement) {
+  return new NodeObject(SyntaxKind2.ForStatement, {
+    initializer,
+    condition,
+    incrementor,
+    statement
+  });
+}
+function createBreakStatement(label) {
+  return new NodeObject(SyntaxKind2.BreakStatement, {
+    label
+  });
+}
+function createContinueStatement(label) {
+  return new NodeObject(SyntaxKind2.ContinueStatement, {
+    label
+  });
+}
+function createReturnStatement(expression) {
+  return new NodeObject(SyntaxKind2.ReturnStatement, {
+    expression
+  });
+}
+function createWithStatement(expression, statement) {
+  return new NodeObject(SyntaxKind2.WithStatement, {
+    expression,
+    statement
+  });
+}
+function createSwitchStatement(expression, caseBlock) {
+  return new NodeObject(SyntaxKind2.SwitchStatement, {
+    expression,
+    caseBlock
+  });
+}
+function createCaseBlock(clauses) {
+  return new NodeObject(SyntaxKind2.CaseBlock, {
+    clauses: createNodeArray(clauses)
+  });
+}
+function createThrowStatement(expression) {
+  return new NodeObject(SyntaxKind2.ThrowStatement, {
+    expression
+  });
+}
+function createTryStatement(tryBlock, catchClause, finallyBlock) {
+  return new NodeObject(SyntaxKind2.TryStatement, {
+    tryBlock,
+    catchClause,
+    finallyBlock
+  });
+}
+function createCatchClause(variableDeclaration, block) {
+  return new NodeObject(SyntaxKind2.CatchClause, {
+    variableDeclaration,
+    block
+  });
+}
+function createLabeledStatement(label, statement) {
+  return new NodeObject(SyntaxKind2.LabeledStatement, {
+    label,
+    statement
+  });
+}
+function createExpressionStatement(expression) {
+  return new NodeObject(SyntaxKind2.ExpressionStatement, {
+    expression
+  });
+}
+function createBlock(statements, multiLine) {
+  return new NodeObject(SyntaxKind2.Block, {
+    statements: createNodeArray(statements),
+    multiLine
+  });
+}
+function createVariableStatement(modifiers, declarationList) {
+  return new NodeObject(SyntaxKind2.VariableStatement, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    declarationList
+  });
+}
+function createVariableDeclaration(name, exclamationToken, type, initializer) {
+  return new NodeObject(SyntaxKind2.VariableDeclaration, {
+    name,
+    exclamationToken,
+    type,
+    initializer
+  });
+}
+function createVariableDeclarationList(declarations, flags) {
+  const node = new NodeObject(SyntaxKind2.VariableDeclarationList, {
+    declarations: createNodeArray(declarations)
+  });
+  node.flags = flags;
+  return node;
+}
+function createParameterDeclaration(modifiers, dotDotDotToken, name, questionToken, type, initializer) {
+  return new NodeObject(SyntaxKind2.Parameter, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    dotDotDotToken,
+    name,
+    questionToken,
+    type,
+    initializer
+  });
+}
+function createBindingElement(dotDotDotToken, propertyName, name, initializer) {
+  return new NodeObject(SyntaxKind2.BindingElement, {
+    dotDotDotToken,
+    propertyName,
+    name,
+    initializer
+  });
+}
+function createMissingDeclaration(modifiers) {
+  return new NodeObject(SyntaxKind2.MissingDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined
+  });
+}
+function createFunctionDeclaration(modifiers, asteriskToken, name, typeParameters, parameters, type, body) {
+  return new NodeObject(SyntaxKind2.FunctionDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    asteriskToken,
+    name,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type,
+    body
+  });
+}
+function createClassDeclaration(modifiers, name, typeParameters, heritageClauses, members) {
+  return new NodeObject(SyntaxKind2.ClassDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    heritageClauses: heritageClauses ? createNodeArray(heritageClauses) : undefined,
+    members: createNodeArray(members)
+  });
+}
+function createClassExpression(modifiers, name, typeParameters, heritageClauses, members) {
+  return new NodeObject(SyntaxKind2.ClassExpression, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    heritageClauses: heritageClauses ? createNodeArray(heritageClauses) : undefined,
+    members: createNodeArray(members)
+  });
+}
+function createHeritageClause(token, types) {
+  return new NodeObject(SyntaxKind2.HeritageClause, {
+    token,
+    types: createNodeArray(types)
+  });
+}
+function createInterfaceDeclaration(modifiers, name, typeParameters, heritageClauses, members) {
+  return new NodeObject(SyntaxKind2.InterfaceDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    heritageClauses: heritageClauses ? createNodeArray(heritageClauses) : undefined,
+    members: createNodeArray(members)
+  });
+}
+function createTypeAliasDeclaration(modifiers, name, typeParameters, type) {
+  return new NodeObject(SyntaxKind2.TypeAliasDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    type
+  });
+}
+function createEnumMember(name, initializer) {
+  return new NodeObject(SyntaxKind2.EnumMember, {
+    name,
+    initializer
+  });
+}
+function createEnumDeclaration(modifiers, name, members) {
+  return new NodeObject(SyntaxKind2.EnumDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    members: createNodeArray(members)
+  });
+}
+function createModuleBlock(statements) {
+  return new NodeObject(SyntaxKind2.ModuleBlock, {
+    statements: createNodeArray(statements)
+  });
+}
+function createImportDeclaration(modifiers, importClause, moduleSpecifier, attributes) {
+  return new NodeObject(SyntaxKind2.ImportDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    importClause,
+    moduleSpecifier,
+    attributes
+  });
+}
+function createExternalModuleReference(expression) {
+  return new NodeObject(SyntaxKind2.ExternalModuleReference, {
+    expression
+  });
+}
+function createNamespaceImport(name) {
+  return new NodeObject(SyntaxKind2.NamespaceImport, {
+    name
+  });
+}
+function createNamedImports(elements) {
+  return new NodeObject(SyntaxKind2.NamedImports, {
+    elements: createNodeArray(elements)
+  });
+}
+function createExportAssignment(modifiers, isExportEquals = false, type, expression) {
+  return new NodeObject(SyntaxKind2.ExportAssignment, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    isExportEquals,
+    type,
+    expression
+  });
+}
+function createNamespaceExportDeclaration(modifiers, name) {
+  return new NodeObject(SyntaxKind2.NamespaceExportDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name
+  });
+}
+function createNamespaceExport(name) {
+  return new NodeObject(SyntaxKind2.NamespaceExport, {
+    name
+  });
+}
+function createNamedExports(elements) {
+  return new NodeObject(SyntaxKind2.NamedExports, {
+    elements: createNodeArray(elements)
+  });
+}
+function createExportSpecifier(isTypeOnly = false, propertyName, name) {
+  return new NodeObject(SyntaxKind2.ExportSpecifier, {
+    isTypeOnly,
+    propertyName,
+    name
+  });
+}
+function createCallSignatureDeclaration(typeParameters, parameters, type) {
+  return new NodeObject(SyntaxKind2.CallSignature, {
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type
+  });
+}
+function createConstructSignatureDeclaration(typeParameters, parameters, type) {
+  return new NodeObject(SyntaxKind2.ConstructSignature, {
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type
+  });
+}
+function createConstructorDeclaration(modifiers, typeParameters, parameters, type, body) {
+  return new NodeObject(SyntaxKind2.Constructor, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type,
+    body
+  });
+}
+function createGetAccessorDeclaration(modifiers, name, typeParameters, parameters, type, body) {
+  return new NodeObject(SyntaxKind2.GetAccessor, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type,
+    body
+  });
+}
+function createSetAccessorDeclaration(modifiers, name, typeParameters, parameters, type, body) {
+  return new NodeObject(SyntaxKind2.SetAccessor, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type,
+    body
+  });
+}
+function createIndexSignatureDeclaration(modifiers, parameters, type) {
+  return new NodeObject(SyntaxKind2.IndexSignature, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    parameters: createNodeArray(parameters),
+    type
+  });
+}
+function createMethodSignatureDeclaration(modifiers, name, postfixToken, typeParameters, parameters, type) {
+  return new NodeObject(SyntaxKind2.MethodSignature, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    postfixToken,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type
+  });
+}
+function createMethodDeclaration(modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, type, body) {
+  return new NodeObject(SyntaxKind2.MethodDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    asteriskToken,
+    name,
+    postfixToken,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type,
+    body
+  });
+}
+function createPropertySignatureDeclaration(modifiers, name, postfixToken, type, initializer) {
+  return new NodeObject(SyntaxKind2.PropertySignature, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    postfixToken,
+    type,
+    initializer
+  });
+}
+function createPropertyDeclaration(modifiers, name, postfixToken, type, initializer) {
+  return new NodeObject(SyntaxKind2.PropertyDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    postfixToken,
+    type,
+    initializer
+  });
+}
+function createClassStaticBlockDeclaration(modifiers, body) {
+  return new NodeObject(SyntaxKind2.ClassStaticBlockDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    body
+  });
+}
+function createBinaryExpression(modifiers, left, type, operatorToken, right) {
+  return new NodeObject(SyntaxKind2.BinaryExpression, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    left,
+    type,
+    operatorToken,
+    right
+  });
+}
+function createPrefixUnaryExpression(operator, operand) {
+  return new NodeObject(SyntaxKind2.PrefixUnaryExpression, {
+    operator,
+    operand
+  });
+}
+function createPostfixUnaryExpression(operand, operator) {
+  return new NodeObject(SyntaxKind2.PostfixUnaryExpression, {
+    operand,
+    operator
+  });
+}
+function createYieldExpression(asteriskToken, expression) {
+  return new NodeObject(SyntaxKind2.YieldExpression, {
+    asteriskToken,
+    expression
+  });
+}
+function createArrowFunction(modifiers, typeParameters, parameters, type, equalsGreaterThanToken, body) {
+  return new NodeObject(SyntaxKind2.ArrowFunction, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type,
+    equalsGreaterThanToken,
+    body
+  });
+}
+function createFunctionExpression(modifiers, asteriskToken, name, typeParameters, parameters, type, body) {
+  return new NodeObject(SyntaxKind2.FunctionExpression, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    asteriskToken,
+    name,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type,
+    body
+  });
+}
+function createAsExpression(expression, type) {
+  return new NodeObject(SyntaxKind2.AsExpression, {
+    expression,
+    type
+  });
+}
+function createSatisfiesExpression(expression, type) {
+  return new NodeObject(SyntaxKind2.SatisfiesExpression, {
+    expression,
+    type
+  });
+}
+function createConditionalExpression(condition, questionToken, whenTrue, colonToken, whenFalse) {
+  return new NodeObject(SyntaxKind2.ConditionalExpression, {
+    condition,
+    questionToken,
+    whenTrue,
+    colonToken,
+    whenFalse
+  });
+}
+function createPropertyAccessExpression(expression, questionDotToken, name, flags) {
+  const node = new NodeObject(SyntaxKind2.PropertyAccessExpression, {
+    expression,
+    questionDotToken,
+    name
+  });
+  node.flags = flags;
+  return node;
+}
+function createElementAccessExpression(expression, questionDotToken, argumentExpression, flags) {
+  const node = new NodeObject(SyntaxKind2.ElementAccessExpression, {
+    expression,
+    questionDotToken,
+    argumentExpression
+  });
+  node.flags = flags;
+  return node;
+}
+function createCallExpression(expression, questionDotToken, typeArguments, arguments_, flags) {
+  const node = new NodeObject(SyntaxKind2.CallExpression, {
+    expression,
+    questionDotToken,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined,
+    arguments: createNodeArray(arguments_)
+  });
+  node.flags = flags;
+  return node;
+}
+function createNewExpression(expression, typeArguments, arguments_) {
+  return new NodeObject(SyntaxKind2.NewExpression, {
+    expression,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined,
+    arguments: arguments_ ? createNodeArray(arguments_) : undefined
+  });
+}
+function createMetaProperty(keywordToken, name) {
+  return new NodeObject(SyntaxKind2.MetaProperty, {
+    keywordToken,
+    name
+  });
+}
+function createNonNullExpression(expression, flags) {
+  const node = new NodeObject(SyntaxKind2.NonNullExpression, {
+    expression
+  });
+  node.flags = flags;
+  return node;
+}
+function createSpreadElement(expression) {
+  return new NodeObject(SyntaxKind2.SpreadElement, {
+    expression
+  });
+}
+function createTemplateExpression(head, templateSpans) {
+  return new NodeObject(SyntaxKind2.TemplateExpression, {
+    head,
+    templateSpans: createNodeArray(templateSpans)
+  });
+}
+function createTemplateSpan(expression, literal) {
+  return new NodeObject(SyntaxKind2.TemplateSpan, {
+    expression,
+    literal
+  });
+}
+function createTaggedTemplateExpression(tag, questionDotToken, typeArguments, template, flags) {
+  const node = new NodeObject(SyntaxKind2.TaggedTemplateExpression, {
+    tag,
+    questionDotToken,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined,
+    template
+  });
+  node.flags = flags;
+  return node;
+}
+function createParenthesizedExpression(expression) {
+  return new NodeObject(SyntaxKind2.ParenthesizedExpression, {
+    expression
+  });
+}
+function createArrayLiteralExpression(elements, multiLine) {
+  return new NodeObject(SyntaxKind2.ArrayLiteralExpression, {
+    elements: createNodeArray(elements),
+    multiLine
+  });
+}
+function createObjectLiteralExpression(properties, multiLine) {
+  return new NodeObject(SyntaxKind2.ObjectLiteralExpression, {
+    properties: createNodeArray(properties),
+    multiLine
+  });
+}
+function createSpreadAssignment(expression) {
+  return new NodeObject(SyntaxKind2.SpreadAssignment, {
+    expression
+  });
+}
+function createPropertyAssignment(modifiers, name, postfixToken, type, initializer) {
+  return new NodeObject(SyntaxKind2.PropertyAssignment, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    postfixToken,
+    type,
+    initializer
+  });
+}
+function createShorthandPropertyAssignment(modifiers, name, postfixToken, type, equalsToken, objectAssignmentInitializer) {
+  return new NodeObject(SyntaxKind2.ShorthandPropertyAssignment, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    postfixToken,
+    type,
+    equalsToken,
+    objectAssignmentInitializer
+  });
+}
+function createDeleteExpression(expression) {
+  return new NodeObject(SyntaxKind2.DeleteExpression, {
+    expression
+  });
+}
+function createTypeOfExpression(expression) {
+  return new NodeObject(SyntaxKind2.TypeOfExpression, {
+    expression
+  });
+}
+function createVoidExpression(expression) {
+  return new NodeObject(SyntaxKind2.VoidExpression, {
+    expression
+  });
+}
+function createAwaitExpression(expression) {
+  return new NodeObject(SyntaxKind2.AwaitExpression, {
+    expression
+  });
+}
+function createTypeAssertion(type, expression) {
+  return new NodeObject(SyntaxKind2.TypeAssertionExpression, {
+    type,
+    expression
+  });
+}
+function createUnionTypeNode(types) {
+  return new NodeObject(SyntaxKind2.UnionType, {
+    types: createNodeArray(types)
+  });
+}
+function createIntersectionTypeNode(types) {
+  return new NodeObject(SyntaxKind2.IntersectionType, {
+    types: createNodeArray(types)
+  });
+}
+function createConditionalTypeNode(checkType, extendsType, trueType, falseType) {
+  return new NodeObject(SyntaxKind2.ConditionalType, {
+    checkType,
+    extendsType,
+    trueType,
+    falseType
+  });
+}
+function createTypeOperatorNode(operator, type) {
+  return new NodeObject(SyntaxKind2.TypeOperator, {
+    operator,
+    type
+  });
+}
+function createInferTypeNode(typeParameter) {
+  return new NodeObject(SyntaxKind2.InferType, {
+    typeParameter
+  });
+}
+function createArrayTypeNode(elementType) {
+  return new NodeObject(SyntaxKind2.ArrayType, {
+    elementType
+  });
+}
+function createIndexedAccessTypeNode(objectType, indexType) {
+  return new NodeObject(SyntaxKind2.IndexedAccessType, {
+    objectType,
+    indexType
+  });
+}
+function createTypeReferenceNode(typeName, typeArguments) {
+  return new NodeObject(SyntaxKind2.TypeReference, {
+    typeName,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined
+  });
+}
+function createExpressionWithTypeArguments(expression, typeArguments) {
+  return new NodeObject(SyntaxKind2.ExpressionWithTypeArguments, {
+    expression,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined
+  });
+}
+function createLiteralTypeNode(literal) {
+  return new NodeObject(SyntaxKind2.LiteralType, {
+    literal
+  });
+}
+function createTypePredicateNode(assertsModifier, parameterName, type) {
+  return new NodeObject(SyntaxKind2.TypePredicate, {
+    assertsModifier,
+    parameterName,
+    type
+  });
+}
+function createImportAttribute(name, value) {
+  return new NodeObject(SyntaxKind2.ImportAttribute, {
+    name,
+    value
+  });
+}
+function createImportAttributes(token, attributes, multiLine) {
+  return new NodeObject(SyntaxKind2.ImportAttributes, {
+    token,
+    attributes: createNodeArray(attributes),
+    multiLine
+  });
+}
+function createTypeQueryNode(exprName, typeArguments) {
+  return new NodeObject(SyntaxKind2.TypeQuery, {
+    exprName,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined
+  });
+}
+function createMappedTypeNode(readonlyToken, typeParameter, nameType, questionToken, type, members) {
+  return new NodeObject(SyntaxKind2.MappedType, {
+    readonlyToken,
+    typeParameter,
+    nameType,
+    questionToken,
+    type,
+    members: members ? createNodeArray(members) : undefined
+  });
+}
+function createTypeLiteralNode(members) {
+  return new NodeObject(SyntaxKind2.TypeLiteral, {
+    members: createNodeArray(members)
+  });
+}
+function createTupleTypeNode(elements) {
+  return new NodeObject(SyntaxKind2.TupleType, {
+    elements: createNodeArray(elements)
+  });
+}
+function createNamedTupleMember(dotDotDotToken, name, questionToken, type) {
+  return new NodeObject(SyntaxKind2.NamedTupleMember, {
+    dotDotDotToken,
+    name,
+    questionToken,
+    type
+  });
+}
+function createOptionalTypeNode(type) {
+  return new NodeObject(SyntaxKind2.OptionalType, {
+    type
+  });
+}
+function createRestTypeNode(type) {
+  return new NodeObject(SyntaxKind2.RestType, {
+    type
+  });
+}
+function createParenthesizedTypeNode(type) {
+  return new NodeObject(SyntaxKind2.ParenthesizedType, {
+    type
+  });
+}
+function createFunctionTypeNode(typeParameters, parameters, type) {
+  return new NodeObject(SyntaxKind2.FunctionType, {
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type
+  });
+}
+function createConstructorTypeNode(modifiers, typeParameters, parameters, type) {
+  return new NodeObject(SyntaxKind2.ConstructorType, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type
+  });
+}
+function createTemplateLiteralTypeNode(head, templateSpans) {
+  return new NodeObject(SyntaxKind2.TemplateLiteralType, {
+    head,
+    templateSpans: createNodeArray(templateSpans)
+  });
+}
+function createTemplateLiteralTypeSpan(type, literal) {
+  return new NodeObject(SyntaxKind2.TemplateLiteralTypeSpan, {
+    type,
+    literal
+  });
+}
+function createSyntheticExpression(type, isSpread, tupleNameSource) {
+  return new NodeObject(SyntaxKind2.SyntheticExpression, {
+    type,
+    isSpread,
+    tupleNameSource
+  });
+}
+function createPartiallyEmittedExpression(expression) {
+  return new NodeObject(SyntaxKind2.PartiallyEmittedExpression, {
+    expression
+  });
+}
+function createJsxElement(openingElement, children, closingElement) {
+  return new NodeObject(SyntaxKind2.JsxElement, {
+    openingElement,
+    children: createNodeArray(children),
+    closingElement
+  });
+}
+function createJsxAttributes(properties) {
+  return new NodeObject(SyntaxKind2.JsxAttributes, {
+    properties: createNodeArray(properties)
+  });
+}
+function createJsxNamespacedName(namespace, name) {
+  return new NodeObject(SyntaxKind2.JsxNamespacedName, {
+    namespace,
+    name
+  });
+}
+function createJsxOpeningElement(tagName, typeArguments, attributes) {
+  return new NodeObject(SyntaxKind2.JsxOpeningElement, {
+    tagName,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined,
+    attributes
+  });
+}
+function createJsxSelfClosingElement(tagName, typeArguments, attributes) {
+  return new NodeObject(SyntaxKind2.JsxSelfClosingElement, {
+    tagName,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined,
+    attributes
+  });
+}
+function createJsxFragment(openingFragment, children, closingFragment) {
+  return new NodeObject(SyntaxKind2.JsxFragment, {
+    openingFragment,
+    children: createNodeArray(children),
+    closingFragment
+  });
+}
+function createJsxAttribute(name, initializer) {
+  return new NodeObject(SyntaxKind2.JsxAttribute, {
+    name,
+    initializer
+  });
+}
+function createJsxSpreadAttribute(expression) {
+  return new NodeObject(SyntaxKind2.JsxSpreadAttribute, {
+    expression
+  });
+}
+function createJsxClosingElement(tagName) {
+  return new NodeObject(SyntaxKind2.JsxClosingElement, {
+    tagName
+  });
+}
+function createJsxExpression(dotDotDotToken, expression) {
+  return new NodeObject(SyntaxKind2.JsxExpression, {
+    dotDotDotToken,
+    expression
+  });
+}
+function createSyntaxList(children) {
+  return new NodeObject(SyntaxKind2.SyntaxList, {
+    children
+  });
+}
+function createJSDoc(comment, tags) {
+  return new NodeObject(SyntaxKind2.JSDoc, {
+    comment: createNodeArray(comment),
+    tags: tags ? createNodeArray(tags) : undefined
+  });
+}
+function createJSDocTypeExpression(type) {
+  return new NodeObject(SyntaxKind2.JSDocTypeExpression, {
+    type
+  });
+}
+function createJSDocNonNullableType(type) {
+  return new NodeObject(SyntaxKind2.JSDocNonNullableType, {
+    type
+  });
+}
+function createJSDocNullableType(type) {
+  return new NodeObject(SyntaxKind2.JSDocNullableType, {
+    type
+  });
+}
+function createJSDocVariadicType(type) {
+  return new NodeObject(SyntaxKind2.JSDocVariadicType, {
+    type
+  });
+}
+function createJSDocOptionalType(type) {
+  return new NodeObject(SyntaxKind2.JSDocOptionalType, {
+    type
+  });
+}
+function createJSDocTypeTag(tagName, typeExpression, comment) {
+  return new NodeObject(SyntaxKind2.JSDocTypeTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocUnknownTag(tagName, comment) {
+  return new NodeObject(SyntaxKind2.JSDocUnknownTag, {
+    tagName,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocTemplateTag(tagName, constraint, typeParameters, comment) {
+  return new NodeObject(SyntaxKind2.JSDocTemplateTag, {
+    tagName,
+    constraint,
+    typeParameters: createNodeArray(typeParameters),
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocReturnTag(tagName, typeExpression, comment) {
+  return new NodeObject(SyntaxKind2.JSDocReturnTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocPublicTag(tagName, comment) {
+  return new NodeObject(SyntaxKind2.JSDocPublicTag, {
+    tagName,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocPrivateTag(tagName, comment) {
+  return new NodeObject(SyntaxKind2.JSDocPrivateTag, {
+    tagName,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocProtectedTag(tagName, comment) {
+  return new NodeObject(SyntaxKind2.JSDocProtectedTag, {
+    tagName,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocReadonlyTag(tagName, comment) {
+  return new NodeObject(SyntaxKind2.JSDocReadonlyTag, {
+    tagName,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocOverrideTag(tagName, comment) {
+  return new NodeObject(SyntaxKind2.JSDocOverrideTag, {
+    tagName,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocDeprecatedTag(tagName, comment) {
+  return new NodeObject(SyntaxKind2.JSDocDeprecatedTag, {
+    tagName,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocSeeTag(tagName, nameExpression, comment) {
+  return new NodeObject(SyntaxKind2.JSDocSeeTag, {
+    tagName,
+    nameExpression,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocImplementsTag(tagName, className, comment) {
+  return new NodeObject(SyntaxKind2.JSDocImplementsTag, {
+    tagName,
+    className,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocAugmentsTag(tagName, className, comment) {
+  return new NodeObject(SyntaxKind2.JSDocAugmentsTag, {
+    tagName,
+    className,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocSatisfiesTag(tagName, typeExpression, comment) {
+  return new NodeObject(SyntaxKind2.JSDocSatisfiesTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocThrowsTag(tagName, typeExpression, comment) {
+  return new NodeObject(SyntaxKind2.JSDocThrowsTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocThisTag(tagName, typeExpression, comment) {
+  return new NodeObject(SyntaxKind2.JSDocThisTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocImportTag(tagName, importClause, moduleSpecifier, attributes, comment) {
+  return new NodeObject(SyntaxKind2.JSDocImportTag, {
+    tagName,
+    importClause,
+    moduleSpecifier,
+    attributes,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocCallbackTag(tagName, typeExpression, name, comment) {
+  return new NodeObject(SyntaxKind2.JSDocCallbackTag, {
+    tagName,
+    typeExpression,
+    name,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocOverloadTag(tagName, typeExpression, comment) {
+  return new NodeObject(SyntaxKind2.JSDocOverloadTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocTypedefTag(tagName, typeExpression, name, comment) {
+  return new NodeObject(SyntaxKind2.JSDocTypedefTag, {
+    tagName,
+    typeExpression,
+    name,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocSignature(typeParameters, parameters, type) {
+  return new NodeObject(SyntaxKind2.JSDocSignature, {
+    typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+    parameters: createNodeArray(parameters),
+    type
+  });
+}
+function createJSDocNameReference(name) {
+  return new NodeObject(SyntaxKind2.JSDocNameReference, {
+    name
+  });
+}
+function createModuleDeclaration(modifiers, keyword, name, body) {
+  return new NodeObject(SyntaxKind2.ModuleDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    keyword,
+    name,
+    body
+  });
+}
+function createImportEqualsDeclaration(modifiers, isTypeOnly = false, name, moduleReference) {
+  return new NodeObject(SyntaxKind2.ImportEqualsDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    isTypeOnly,
+    name,
+    moduleReference
+  });
+}
+function createExportDeclaration(modifiers, isTypeOnly, exportClause, moduleSpecifier, attributes) {
+  return new NodeObject(SyntaxKind2.ExportDeclaration, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    isTypeOnly,
+    exportClause,
+    moduleSpecifier,
+    attributes
+  });
+}
+function createImportTypeNode(isTypeOf = false, argument, attributes, qualifier, typeArguments) {
+  return new NodeObject(SyntaxKind2.ImportType, {
+    isTypeOf,
+    argument,
+    attributes,
+    qualifier,
+    typeArguments: typeArguments ? createNodeArray(typeArguments) : undefined
+  });
+}
+function createImportClause(phaseModifier, name, namedBindings) {
+  return new NodeObject(SyntaxKind2.ImportClause, {
+    phaseModifier,
+    name,
+    namedBindings
+  });
+}
+function createImportSpecifier(isTypeOnly = false, propertyName, name) {
+  return new NodeObject(SyntaxKind2.ImportSpecifier, {
+    isTypeOnly,
+    propertyName,
+    name
+  });
+}
+function createJSDocLink(name, text) {
+  return new NodeObject(SyntaxKind2.JSDocLink, {
+    name,
+    text
+  });
+}
+function createJSDocLinkPlain(name, text) {
+  return new NodeObject(SyntaxKind2.JSDocLinkPlain, {
+    name,
+    text
+  });
+}
+function createJSDocLinkCode(name, text) {
+  return new NodeObject(SyntaxKind2.JSDocLinkCode, {
+    name,
+    text
+  });
+}
+function createTypeParameterDeclaration(modifiers, name, constraint, expression, defaultType) {
+  return new NodeObject(SyntaxKind2.TypeParameter, {
+    modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+    name,
+    constraint,
+    expression,
+    defaultType
+  });
+}
+function createSyntheticReferenceExpression(expression, thisArg) {
+  return new NodeObject(SyntaxKind2.SyntheticReferenceExpression, {
+    expression,
+    thisArg
+  });
+}
+function createJSDocTypeLiteral(jsdocPropertyTags, isArrayType) {
+  return new NodeObject(SyntaxKind2.JSDocTypeLiteral, {
+    jsdocPropertyTags,
+    isArrayType
+  });
+}
+function createForInStatement(awaitModifier, initializer, expression, statement) {
+  return new NodeObject(SyntaxKind2.ForInStatement, {
+    awaitModifier,
+    initializer,
+    expression,
+    statement
+  });
+}
+function createForOfStatement(awaitModifier, initializer, expression, statement) {
+  return new NodeObject(SyntaxKind2.ForOfStatement, {
+    awaitModifier,
+    initializer,
+    expression,
+    statement
+  });
+}
+function createCaseClause(expression, statements) {
+  return new NodeObject(SyntaxKind2.CaseClause, {
+    expression,
+    statements: createNodeArray(statements)
+  });
+}
+function createDefaultClause(expression, statements) {
+  return new NodeObject(SyntaxKind2.DefaultClause, {
+    expression,
+    statements: createNodeArray(statements)
+  });
+}
+function createObjectBindingPattern(elements) {
+  return new NodeObject(SyntaxKind2.ObjectBindingPattern, {
+    elements: createNodeArray(elements)
+  });
+}
+function createArrayBindingPattern(elements) {
+  return new NodeObject(SyntaxKind2.ArrayBindingPattern, {
+    elements: createNodeArray(elements)
+  });
+}
+function createJSDocParameterTag(tagName, name, isBracketed, typeExpression, isNameFirst, comment) {
+  return new NodeObject(SyntaxKind2.JSDocParameterTag, {
+    tagName,
+    name,
+    isBracketed,
+    typeExpression,
+    isNameFirst,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function createJSDocPropertyTag(tagName, name, isBracketed, typeExpression, isNameFirst, comment) {
+  return new NodeObject(SyntaxKind2.JSDocPropertyTag, {
+    tagName,
+    name,
+    isBracketed,
+    typeExpression,
+    isNameFirst,
+    comment: comment ? createNodeArray(comment) : undefined
+  });
+}
+function updateQualifiedName(node, left, right) {
+  return node.left !== left || node.right !== right ? createQualifiedName(left, right) : node;
+}
+function updateComputedPropertyName(node, expression) {
+  return node.expression !== expression ? createComputedPropertyName(expression) : node;
+}
+function updateDecorator(node, expression) {
+  return node.expression !== expression ? createDecorator(expression) : node;
+}
+function updateIfStatement(node, expression, thenStatement, elseStatement) {
+  return node.expression !== expression || node.thenStatement !== thenStatement || node.elseStatement !== elseStatement ? createIfStatement(expression, thenStatement, elseStatement) : node;
+}
+function updateDoStatement(node, statement, expression) {
+  return node.statement !== statement || node.expression !== expression ? createDoStatement(statement, expression) : node;
+}
+function updateWhileStatement(node, expression, statement) {
+  return node.expression !== expression || node.statement !== statement ? createWhileStatement(expression, statement) : node;
+}
+function updateForStatement(node, initializer, condition, incrementor, statement) {
+  return node.initializer !== initializer || node.condition !== condition || node.incrementor !== incrementor || node.statement !== statement ? createForStatement(initializer, condition, incrementor, statement) : node;
+}
+function updateBreakStatement(node, label) {
+  return node.label !== label ? createBreakStatement(label) : node;
+}
+function updateContinueStatement(node, label) {
+  return node.label !== label ? createContinueStatement(label) : node;
+}
+function updateReturnStatement(node, expression) {
+  return node.expression !== expression ? createReturnStatement(expression) : node;
+}
+function updateWithStatement(node, expression, statement) {
+  return node.expression !== expression || node.statement !== statement ? createWithStatement(expression, statement) : node;
+}
+function updateSwitchStatement(node, expression, caseBlock) {
+  return node.expression !== expression || node.caseBlock !== caseBlock ? createSwitchStatement(expression, caseBlock) : node;
+}
+function updateCaseBlock(node, clauses) {
+  return node.clauses !== clauses ? createCaseBlock(clauses) : node;
+}
+function updateThrowStatement(node, expression) {
+  return node.expression !== expression ? createThrowStatement(expression) : node;
+}
+function updateTryStatement(node, tryBlock, catchClause, finallyBlock) {
+  return node.tryBlock !== tryBlock || node.catchClause !== catchClause || node.finallyBlock !== finallyBlock ? createTryStatement(tryBlock, catchClause, finallyBlock) : node;
+}
+function updateCatchClause(node, variableDeclaration, block) {
+  return node.variableDeclaration !== variableDeclaration || node.block !== block ? createCatchClause(variableDeclaration, block) : node;
+}
+function updateLabeledStatement(node, label, statement) {
+  return node.label !== label || node.statement !== statement ? createLabeledStatement(label, statement) : node;
+}
+function updateExpressionStatement(node, expression) {
+  return node.expression !== expression ? createExpressionStatement(expression) : node;
+}
+function updateBlock(node, statements) {
+  return node.statements !== statements ? createBlock(statements, node.multiLine) : node;
+}
+function updateVariableStatement(node, modifiers, declarationList) {
+  return node.modifiers !== modifiers || node.declarationList !== declarationList ? createVariableStatement(modifiers, declarationList) : node;
+}
+function updateVariableDeclaration(node, name, exclamationToken, type, initializer) {
+  return node.name !== name || node.exclamationToken !== exclamationToken || node.type !== type || node.initializer !== initializer ? createVariableDeclaration(name, exclamationToken, type, initializer) : node;
+}
+function updateVariableDeclarationList(node, declarations) {
+  return node.declarations !== declarations ? createVariableDeclarationList(declarations, node.flags) : node;
+}
+function updateParameterDeclaration(node, modifiers, dotDotDotToken, name, questionToken, type, initializer) {
+  return node.modifiers !== modifiers || node.dotDotDotToken !== dotDotDotToken || node.name !== name || node.questionToken !== questionToken || node.type !== type || node.initializer !== initializer ? createParameterDeclaration(modifiers, dotDotDotToken, name, questionToken, type, initializer) : node;
+}
+function updateBindingElement(node, dotDotDotToken, propertyName, name, initializer) {
+  return node.dotDotDotToken !== dotDotDotToken || node.propertyName !== propertyName || node.name !== name || node.initializer !== initializer ? createBindingElement(dotDotDotToken, propertyName, name, initializer) : node;
+}
+function updateMissingDeclaration(node, modifiers) {
+  return node.modifiers !== modifiers ? createMissingDeclaration(modifiers) : node;
+}
+function updateFunctionDeclaration(node, modifiers, asteriskToken, name, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.asteriskToken !== asteriskToken || node.name !== name || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createFunctionDeclaration(modifiers, asteriskToken, name, typeParameters, parameters, type, body) : node;
+}
+function updateClassDeclaration(node, modifiers, name, typeParameters, heritageClauses, members) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.heritageClauses !== heritageClauses || node.members !== members ? createClassDeclaration(modifiers, name, typeParameters, heritageClauses, members) : node;
+}
+function updateClassExpression(node, modifiers, name, typeParameters, heritageClauses, members) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.heritageClauses !== heritageClauses || node.members !== members ? createClassExpression(modifiers, name, typeParameters, heritageClauses, members) : node;
+}
+function updateHeritageClause(node, types) {
+  return node.types !== types ? createHeritageClause(node.token, types) : node;
+}
+function updateInterfaceDeclaration(node, modifiers, name, typeParameters, heritageClauses, members) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.heritageClauses !== heritageClauses || node.members !== members ? createInterfaceDeclaration(modifiers, name, typeParameters, heritageClauses, members) : node;
+}
+function updateTypeAliasDeclaration(node, modifiers, name, typeParameters, type) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.type !== type ? createTypeAliasDeclaration(modifiers, name, typeParameters, type) : node;
+}
+function updateEnumMember(node, name, initializer) {
+  return node.name !== name || node.initializer !== initializer ? createEnumMember(name, initializer) : node;
+}
+function updateEnumDeclaration(node, modifiers, name, members) {
+  return node.modifiers !== modifiers || node.name !== name || node.members !== members ? createEnumDeclaration(modifiers, name, members) : node;
+}
+function updateModuleBlock(node, statements) {
+  return node.statements !== statements ? createModuleBlock(statements) : node;
+}
+function updateImportDeclaration(node, modifiers, importClause, moduleSpecifier, attributes) {
+  return node.modifiers !== modifiers || node.importClause !== importClause || node.moduleSpecifier !== moduleSpecifier || node.attributes !== attributes ? createImportDeclaration(modifiers, importClause, moduleSpecifier, attributes) : node;
+}
+function updateExternalModuleReference(node, expression) {
+  return node.expression !== expression ? createExternalModuleReference(expression) : node;
+}
+function updateNamespaceImport(node, name) {
+  return node.name !== name ? createNamespaceImport(name) : node;
+}
+function updateNamedImports(node, elements) {
+  return node.elements !== elements ? createNamedImports(elements) : node;
+}
+function updateExportAssignment(node, modifiers, type, expression) {
+  return node.modifiers !== modifiers || node.type !== type || node.expression !== expression ? createExportAssignment(modifiers, node.isExportEquals, type, expression) : node;
+}
+function updateNamespaceExportDeclaration(node, modifiers, name) {
+  return node.modifiers !== modifiers || node.name !== name ? createNamespaceExportDeclaration(modifiers, name) : node;
+}
+function updateNamespaceExport(node, name) {
+  return node.name !== name ? createNamespaceExport(name) : node;
+}
+function updateNamedExports(node, elements) {
+  return node.elements !== elements ? createNamedExports(elements) : node;
+}
+function updateExportSpecifier(node, propertyName, name) {
+  return node.propertyName !== propertyName || node.name !== name ? createExportSpecifier(node.isTypeOnly, propertyName, name) : node;
+}
+function updateCallSignatureDeclaration(node, typeParameters, parameters, type) {
+  return node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createCallSignatureDeclaration(typeParameters, parameters, type) : node;
+}
+function updateConstructSignatureDeclaration(node, typeParameters, parameters, type) {
+  return node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createConstructSignatureDeclaration(typeParameters, parameters, type) : node;
+}
+function updateConstructorDeclaration(node, modifiers, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createConstructorDeclaration(modifiers, typeParameters, parameters, type, body) : node;
+}
+function updateGetAccessorDeclaration(node, modifiers, name, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createGetAccessorDeclaration(modifiers, name, typeParameters, parameters, type, body) : node;
+}
+function updateSetAccessorDeclaration(node, modifiers, name, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createSetAccessorDeclaration(modifiers, name, typeParameters, parameters, type, body) : node;
+}
+function updateIndexSignatureDeclaration(node, modifiers, parameters, type) {
+  return node.modifiers !== modifiers || node.parameters !== parameters || node.type !== type ? createIndexSignatureDeclaration(modifiers, parameters, type) : node;
+}
+function updateMethodSignatureDeclaration(node, modifiers, name, postfixToken, typeParameters, parameters, type) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createMethodSignatureDeclaration(modifiers, name, postfixToken, typeParameters, parameters, type) : node;
+}
+function updateMethodDeclaration(node, modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.asteriskToken !== asteriskToken || node.name !== name || node.postfixToken !== postfixToken || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createMethodDeclaration(modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, type, body) : node;
+}
+function updatePropertySignatureDeclaration(node, modifiers, name, postfixToken, type, initializer) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.type !== type || node.initializer !== initializer ? createPropertySignatureDeclaration(modifiers, name, postfixToken, type, initializer) : node;
+}
+function updatePropertyDeclaration(node, modifiers, name, postfixToken, type, initializer) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.type !== type || node.initializer !== initializer ? createPropertyDeclaration(modifiers, name, postfixToken, type, initializer) : node;
+}
+function updateClassStaticBlockDeclaration(node, modifiers, body) {
+  return node.modifiers !== modifiers || node.body !== body ? createClassStaticBlockDeclaration(modifiers, body) : node;
+}
+function updateBinaryExpression(node, modifiers, left, type, operatorToken, right) {
+  return node.modifiers !== modifiers || node.left !== left || node.type !== type || node.operatorToken !== operatorToken || node.right !== right ? createBinaryExpression(modifiers, left, type, operatorToken, right) : node;
+}
+function updatePrefixUnaryExpression(node, operand) {
+  return node.operand !== operand ? createPrefixUnaryExpression(node.operator, operand) : node;
+}
+function updatePostfixUnaryExpression(node, operand) {
+  return node.operand !== operand ? createPostfixUnaryExpression(operand, node.operator) : node;
+}
+function updateYieldExpression(node, asteriskToken, expression) {
+  return node.asteriskToken !== asteriskToken || node.expression !== expression ? createYieldExpression(asteriskToken, expression) : node;
+}
+function updateArrowFunction(node, modifiers, typeParameters, parameters, type, equalsGreaterThanToken, body) {
+  return node.modifiers !== modifiers || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.equalsGreaterThanToken !== equalsGreaterThanToken || node.body !== body ? createArrowFunction(modifiers, typeParameters, parameters, type, equalsGreaterThanToken, body) : node;
+}
+function updateFunctionExpression(node, modifiers, asteriskToken, name, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.asteriskToken !== asteriskToken || node.name !== name || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createFunctionExpression(modifiers, asteriskToken, name, typeParameters, parameters, type, body) : node;
+}
+function updateAsExpression(node, expression, type) {
+  return node.expression !== expression || node.type !== type ? createAsExpression(expression, type) : node;
+}
+function updateSatisfiesExpression(node, expression, type) {
+  return node.expression !== expression || node.type !== type ? createSatisfiesExpression(expression, type) : node;
+}
+function updateConditionalExpression(node, condition, questionToken, whenTrue, colonToken, whenFalse) {
+  return node.condition !== condition || node.questionToken !== questionToken || node.whenTrue !== whenTrue || node.colonToken !== colonToken || node.whenFalse !== whenFalse ? createConditionalExpression(condition, questionToken, whenTrue, colonToken, whenFalse) : node;
+}
+function updatePropertyAccessExpression(node, expression, questionDotToken, name) {
+  return node.expression !== expression || node.questionDotToken !== questionDotToken || node.name !== name ? createPropertyAccessExpression(expression, questionDotToken, name, node.flags) : node;
+}
+function updateElementAccessExpression(node, expression, questionDotToken, argumentExpression) {
+  return node.expression !== expression || node.questionDotToken !== questionDotToken || node.argumentExpression !== argumentExpression ? createElementAccessExpression(expression, questionDotToken, argumentExpression, node.flags) : node;
+}
+function updateCallExpression(node, expression, questionDotToken, typeArguments, arguments_) {
+  return node.expression !== expression || node.questionDotToken !== questionDotToken || node.typeArguments !== typeArguments || node.arguments !== arguments_ ? createCallExpression(expression, questionDotToken, typeArguments, arguments_, node.flags) : node;
+}
+function updateNewExpression(node, expression, typeArguments, arguments_) {
+  return node.expression !== expression || node.typeArguments !== typeArguments || node.arguments !== arguments_ ? createNewExpression(expression, typeArguments, arguments_) : node;
+}
+function updateMetaProperty(node, name) {
+  return node.name !== name ? createMetaProperty(node.keywordToken, name) : node;
+}
+function updateNonNullExpression(node, expression) {
+  return node.expression !== expression ? createNonNullExpression(expression, node.flags) : node;
+}
+function updateSpreadElement(node, expression) {
+  return node.expression !== expression ? createSpreadElement(expression) : node;
+}
+function updateTemplateExpression(node, head, templateSpans) {
+  return node.head !== head || node.templateSpans !== templateSpans ? createTemplateExpression(head, templateSpans) : node;
+}
+function updateTemplateSpan(node, expression, literal) {
+  return node.expression !== expression || node.literal !== literal ? createTemplateSpan(expression, literal) : node;
+}
+function updateTaggedTemplateExpression(node, tag, questionDotToken, typeArguments, template) {
+  return node.tag !== tag || node.questionDotToken !== questionDotToken || node.typeArguments !== typeArguments || node.template !== template ? createTaggedTemplateExpression(tag, questionDotToken, typeArguments, template, node.flags) : node;
+}
+function updateParenthesizedExpression(node, expression) {
+  return node.expression !== expression ? createParenthesizedExpression(expression) : node;
+}
+function updateArrayLiteralExpression(node, elements) {
+  return node.elements !== elements ? createArrayLiteralExpression(elements, node.multiLine) : node;
+}
+function updateObjectLiteralExpression(node, properties) {
+  return node.properties !== properties ? createObjectLiteralExpression(properties, node.multiLine) : node;
+}
+function updateSpreadAssignment(node, expression) {
+  return node.expression !== expression ? createSpreadAssignment(expression) : node;
+}
+function updatePropertyAssignment(node, modifiers, name, postfixToken, type, initializer) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.type !== type || node.initializer !== initializer ? createPropertyAssignment(modifiers, name, postfixToken, type, initializer) : node;
+}
+function updateShorthandPropertyAssignment(node, modifiers, name, postfixToken, type, equalsToken, objectAssignmentInitializer) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.type !== type || node.equalsToken !== equalsToken || node.objectAssignmentInitializer !== objectAssignmentInitializer ? createShorthandPropertyAssignment(modifiers, name, postfixToken, type, equalsToken, objectAssignmentInitializer) : node;
+}
+function updateDeleteExpression(node, expression) {
+  return node.expression !== expression ? createDeleteExpression(expression) : node;
+}
+function updateTypeOfExpression(node, expression) {
+  return node.expression !== expression ? createTypeOfExpression(expression) : node;
+}
+function updateVoidExpression(node, expression) {
+  return node.expression !== expression ? createVoidExpression(expression) : node;
+}
+function updateAwaitExpression(node, expression) {
+  return node.expression !== expression ? createAwaitExpression(expression) : node;
+}
+function updateTypeAssertion(node, type, expression) {
+  return node.type !== type || node.expression !== expression ? createTypeAssertion(type, expression) : node;
+}
+function updateUnionTypeNode(node, types) {
+  return node.types !== types ? createUnionTypeNode(types) : node;
+}
+function updateIntersectionTypeNode(node, types) {
+  return node.types !== types ? createIntersectionTypeNode(types) : node;
+}
+function updateConditionalTypeNode(node, checkType, extendsType, trueType, falseType) {
+  return node.checkType !== checkType || node.extendsType !== extendsType || node.trueType !== trueType || node.falseType !== falseType ? createConditionalTypeNode(checkType, extendsType, trueType, falseType) : node;
+}
+function updateTypeOperatorNode(node, type) {
+  return node.type !== type ? createTypeOperatorNode(node.operator, type) : node;
+}
+function updateInferTypeNode(node, typeParameter) {
+  return node.typeParameter !== typeParameter ? createInferTypeNode(typeParameter) : node;
+}
+function updateArrayTypeNode(node, elementType) {
+  return node.elementType !== elementType ? createArrayTypeNode(elementType) : node;
+}
+function updateIndexedAccessTypeNode(node, objectType, indexType) {
+  return node.objectType !== objectType || node.indexType !== indexType ? createIndexedAccessTypeNode(objectType, indexType) : node;
+}
+function updateTypeReferenceNode(node, typeName, typeArguments) {
+  return node.typeName !== typeName || node.typeArguments !== typeArguments ? createTypeReferenceNode(typeName, typeArguments) : node;
+}
+function updateExpressionWithTypeArguments(node, expression, typeArguments) {
+  return node.expression !== expression || node.typeArguments !== typeArguments ? createExpressionWithTypeArguments(expression, typeArguments) : node;
+}
+function updateLiteralTypeNode(node, literal) {
+  return node.literal !== literal ? createLiteralTypeNode(literal) : node;
+}
+function updateTypePredicateNode(node, assertsModifier, parameterName, type) {
+  return node.assertsModifier !== assertsModifier || node.parameterName !== parameterName || node.type !== type ? createTypePredicateNode(assertsModifier, parameterName, type) : node;
+}
+function updateImportAttribute(node, name, value) {
+  return node.name !== name || node.value !== value ? createImportAttribute(name, value) : node;
+}
+function updateImportAttributes(node, attributes) {
+  return node.attributes !== attributes ? createImportAttributes(node.token, attributes, node.multiLine) : node;
+}
+function updateTypeQueryNode(node, exprName, typeArguments) {
+  return node.exprName !== exprName || node.typeArguments !== typeArguments ? createTypeQueryNode(exprName, typeArguments) : node;
+}
+function updateMappedTypeNode(node, readonlyToken, typeParameter, nameType, questionToken, type, members) {
+  return node.readonlyToken !== readonlyToken || node.typeParameter !== typeParameter || node.nameType !== nameType || node.questionToken !== questionToken || node.type !== type || node.members !== members ? createMappedTypeNode(readonlyToken, typeParameter, nameType, questionToken, type, members) : node;
+}
+function updateTypeLiteralNode(node, members) {
+  return node.members !== members ? createTypeLiteralNode(members) : node;
+}
+function updateTupleTypeNode(node, elements) {
+  return node.elements !== elements ? createTupleTypeNode(elements) : node;
+}
+function updateNamedTupleMember(node, dotDotDotToken, name, questionToken, type) {
+  return node.dotDotDotToken !== dotDotDotToken || node.name !== name || node.questionToken !== questionToken || node.type !== type ? createNamedTupleMember(dotDotDotToken, name, questionToken, type) : node;
+}
+function updateOptionalTypeNode(node, type) {
+  return node.type !== type ? createOptionalTypeNode(type) : node;
+}
+function updateRestTypeNode(node, type) {
+  return node.type !== type ? createRestTypeNode(type) : node;
+}
+function updateParenthesizedTypeNode(node, type) {
+  return node.type !== type ? createParenthesizedTypeNode(type) : node;
+}
+function updateFunctionTypeNode(node, typeParameters, parameters, type) {
+  return node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createFunctionTypeNode(typeParameters, parameters, type) : node;
+}
+function updateConstructorTypeNode(node, modifiers, typeParameters, parameters, type) {
+  return node.modifiers !== modifiers || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createConstructorTypeNode(modifiers, typeParameters, parameters, type) : node;
+}
+function updateTemplateLiteralTypeNode(node, head, templateSpans) {
+  return node.head !== head || node.templateSpans !== templateSpans ? createTemplateLiteralTypeNode(head, templateSpans) : node;
+}
+function updateTemplateLiteralTypeSpan(node, type, literal) {
+  return node.type !== type || node.literal !== literal ? createTemplateLiteralTypeSpan(type, literal) : node;
+}
+function updateSyntheticExpression(node, tupleNameSource) {
+  return node.tupleNameSource !== tupleNameSource ? createSyntheticExpression(node.type, node.isSpread, tupleNameSource) : node;
+}
+function updatePartiallyEmittedExpression(node, expression) {
+  return node.expression !== expression ? createPartiallyEmittedExpression(expression) : node;
+}
+function updateJsxElement(node, openingElement, children, closingElement) {
+  return node.openingElement !== openingElement || node.children !== children || node.closingElement !== closingElement ? createJsxElement(openingElement, children, closingElement) : node;
+}
+function updateJsxAttributes(node, properties) {
+  return node.properties !== properties ? createJsxAttributes(properties) : node;
+}
+function updateJsxNamespacedName(node, namespace, name) {
+  return node.namespace !== namespace || node.name !== name ? createJsxNamespacedName(namespace, name) : node;
+}
+function updateJsxOpeningElement(node, tagName, typeArguments, attributes) {
+  return node.tagName !== tagName || node.typeArguments !== typeArguments || node.attributes !== attributes ? createJsxOpeningElement(tagName, typeArguments, attributes) : node;
+}
+function updateJsxSelfClosingElement(node, tagName, typeArguments, attributes) {
+  return node.tagName !== tagName || node.typeArguments !== typeArguments || node.attributes !== attributes ? createJsxSelfClosingElement(tagName, typeArguments, attributes) : node;
+}
+function updateJsxFragment(node, openingFragment, children, closingFragment) {
+  return node.openingFragment !== openingFragment || node.children !== children || node.closingFragment !== closingFragment ? createJsxFragment(openingFragment, children, closingFragment) : node;
+}
+function updateJsxAttribute(node, name, initializer) {
+  return node.name !== name || node.initializer !== initializer ? createJsxAttribute(name, initializer) : node;
+}
+function updateJsxSpreadAttribute(node, expression) {
+  return node.expression !== expression ? createJsxSpreadAttribute(expression) : node;
+}
+function updateJsxClosingElement(node, tagName) {
+  return node.tagName !== tagName ? createJsxClosingElement(tagName) : node;
+}
+function updateJsxExpression(node, dotDotDotToken, expression) {
+  return node.dotDotDotToken !== dotDotDotToken || node.expression !== expression ? createJsxExpression(dotDotDotToken, expression) : node;
+}
+function updateSyntaxList(node, children) {
+  return node.children !== children ? createSyntaxList(children) : node;
+}
+function updateJSDoc(node, comment, tags) {
+  return node.comment !== comment || node.tags !== tags ? createJSDoc(comment, tags) : node;
+}
+function updateJSDocTypeExpression(node, type) {
+  return node.type !== type ? createJSDocTypeExpression(type) : node;
+}
+function updateJSDocNonNullableType(node, type) {
+  return node.type !== type ? createJSDocNonNullableType(type) : node;
+}
+function updateJSDocNullableType(node, type) {
+  return node.type !== type ? createJSDocNullableType(type) : node;
+}
+function updateJSDocVariadicType(node, type) {
+  return node.type !== type ? createJSDocVariadicType(type) : node;
+}
+function updateJSDocOptionalType(node, type) {
+  return node.type !== type ? createJSDocOptionalType(type) : node;
+}
+function updateJSDocTypeTag(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocTypeTag(tagName, typeExpression, comment) : node;
+}
+function updateJSDocUnknownTag(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocUnknownTag(tagName, comment) : node;
+}
+function updateJSDocTemplateTag(node, tagName, constraint, typeParameters, comment) {
+  return node.tagName !== tagName || node.constraint !== constraint || node.typeParameters !== typeParameters || node.comment !== comment ? createJSDocTemplateTag(tagName, constraint, typeParameters, comment) : node;
+}
+function updateJSDocReturnTag(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocReturnTag(tagName, typeExpression, comment) : node;
+}
+function updateJSDocPublicTag(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocPublicTag(tagName, comment) : node;
+}
+function updateJSDocPrivateTag(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocPrivateTag(tagName, comment) : node;
+}
+function updateJSDocProtectedTag(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocProtectedTag(tagName, comment) : node;
+}
+function updateJSDocReadonlyTag(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocReadonlyTag(tagName, comment) : node;
+}
+function updateJSDocOverrideTag(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocOverrideTag(tagName, comment) : node;
+}
+function updateJSDocDeprecatedTag(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocDeprecatedTag(tagName, comment) : node;
+}
+function updateJSDocSeeTag(node, tagName, nameExpression, comment) {
+  return node.tagName !== tagName || node.nameExpression !== nameExpression || node.comment !== comment ? createJSDocSeeTag(tagName, nameExpression, comment) : node;
+}
+function updateJSDocImplementsTag(node, tagName, className, comment) {
+  return node.tagName !== tagName || node.className !== className || node.comment !== comment ? createJSDocImplementsTag(tagName, className, comment) : node;
+}
+function updateJSDocAugmentsTag(node, tagName, className, comment) {
+  return node.tagName !== tagName || node.className !== className || node.comment !== comment ? createJSDocAugmentsTag(tagName, className, comment) : node;
+}
+function updateJSDocSatisfiesTag(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocSatisfiesTag(tagName, typeExpression, comment) : node;
+}
+function updateJSDocThrowsTag(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocThrowsTag(tagName, typeExpression, comment) : node;
+}
+function updateJSDocThisTag(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocThisTag(tagName, typeExpression, comment) : node;
+}
+function updateJSDocImportTag(node, tagName, importClause, moduleSpecifier, attributes, comment) {
+  return node.tagName !== tagName || node.importClause !== importClause || node.moduleSpecifier !== moduleSpecifier || node.attributes !== attributes || node.comment !== comment ? createJSDocImportTag(tagName, importClause, moduleSpecifier, attributes, comment) : node;
+}
+function updateJSDocCallbackTag(node, tagName, typeExpression, name, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.name !== name || node.comment !== comment ? createJSDocCallbackTag(tagName, typeExpression, name, comment) : node;
+}
+function updateJSDocOverloadTag(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocOverloadTag(tagName, typeExpression, comment) : node;
+}
+function updateJSDocTypedefTag(node, tagName, typeExpression, name, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.name !== name || node.comment !== comment ? createJSDocTypedefTag(tagName, typeExpression, name, comment) : node;
+}
+function updateJSDocSignature(node, typeParameters, parameters, type) {
+  return node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createJSDocSignature(typeParameters, parameters, type) : node;
+}
+function updateJSDocNameReference(node, name) {
+  return node.name !== name ? createJSDocNameReference(name) : node;
+}
+function updateModuleDeclaration(node, modifiers, name, body) {
+  return node.modifiers !== modifiers || node.name !== name || node.body !== body ? createModuleDeclaration(modifiers, node.keyword, name, body) : node;
+}
+function updateImportEqualsDeclaration(node, modifiers, name, moduleReference) {
+  return node.modifiers !== modifiers || node.name !== name || node.moduleReference !== moduleReference ? createImportEqualsDeclaration(modifiers, node.isTypeOnly, name, moduleReference) : node;
+}
+function updateExportDeclaration(node, modifiers, exportClause, moduleSpecifier, attributes) {
+  return node.modifiers !== modifiers || node.exportClause !== exportClause || node.moduleSpecifier !== moduleSpecifier || node.attributes !== attributes ? createExportDeclaration(modifiers, node.isTypeOnly, exportClause, moduleSpecifier, attributes) : node;
+}
+function updateImportTypeNode(node, argument, attributes, qualifier, typeArguments) {
+  return node.argument !== argument || node.attributes !== attributes || node.qualifier !== qualifier || node.typeArguments !== typeArguments ? createImportTypeNode(node.isTypeOf, argument, attributes, qualifier, typeArguments) : node;
+}
+function updateImportClause(node, name, namedBindings) {
+  return node.name !== name || node.namedBindings !== namedBindings ? createImportClause(node.phaseModifier, name, namedBindings) : node;
+}
+function updateImportSpecifier(node, propertyName, name) {
+  return node.propertyName !== propertyName || node.name !== name ? createImportSpecifier(node.isTypeOnly, propertyName, name) : node;
+}
+function updateJSDocLink(node, name) {
+  return node.name !== name ? createJSDocLink(name, node.text) : node;
+}
+function updateJSDocLinkPlain(node, name) {
+  return node.name !== name ? createJSDocLinkPlain(name, node.text) : node;
+}
+function updateJSDocLinkCode(node, name) {
+  return node.name !== name ? createJSDocLinkCode(name, node.text) : node;
+}
+function updateTypeParameterDeclaration(node, modifiers, name, constraint, expression, defaultType) {
+  return node.modifiers !== modifiers || node.name !== name || node.constraint !== constraint || node.expression !== expression || node.defaultType !== defaultType ? createTypeParameterDeclaration(modifiers, name, constraint, expression, defaultType) : node;
+}
+function updateSyntheticReferenceExpression(node, expression, thisArg) {
+  return node.expression !== expression || node.thisArg !== thisArg ? createSyntheticReferenceExpression(expression, thisArg) : node;
+}
+function updateJSDocTypeLiteral(node, jsdocPropertyTags) {
+  return node.jsdocPropertyTags !== jsdocPropertyTags ? createJSDocTypeLiteral(jsdocPropertyTags, node.isArrayType) : node;
+}
+function updateForInStatement(node, awaitModifier, initializer, expression, statement) {
+  return node.awaitModifier !== awaitModifier || node.initializer !== initializer || node.expression !== expression || node.statement !== statement ? createForInStatement(awaitModifier, initializer, expression, statement) : node;
+}
+function updateForOfStatement(node, awaitModifier, initializer, expression, statement) {
+  return node.awaitModifier !== awaitModifier || node.initializer !== initializer || node.expression !== expression || node.statement !== statement ? createForOfStatement(awaitModifier, initializer, expression, statement) : node;
+}
+function updateCaseClause(node, expression, statements) {
+  return node.expression !== expression || node.statements !== statements ? createCaseClause(expression, statements) : node;
+}
+function updateDefaultClause(node, expression, statements) {
+  return node.expression !== expression || node.statements !== statements ? createDefaultClause(expression, statements) : node;
+}
+function updateObjectBindingPattern(node, elements) {
+  return node.elements !== elements ? createObjectBindingPattern(elements) : node;
+}
+function updateArrayBindingPattern(node, elements) {
+  return node.elements !== elements ? createArrayBindingPattern(elements) : node;
+}
+function updateJSDocParameterTag(node, tagName, name, typeExpression, comment) {
+  return node.tagName !== tagName || node.name !== name || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocParameterTag(tagName, name, node.isBracketed, typeExpression, node.isNameFirst, comment) : node;
+}
+function updateJSDocPropertyTag(node, tagName, name, typeExpression, comment) {
+  return node.tagName !== tagName || node.name !== name || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocPropertyTag(tagName, name, node.isBracketed, typeExpression, node.isNameFirst, comment) : node;
+}
+function cloneSourceFileWithChanges(source, statements, endOfFileToken) {
+  return new NodeObject(SyntaxKind2.SourceFile, {
+    ...cloneSourceFileData(source),
+    statements: createNodeArray(statements),
+    endOfFileToken
+  });
+}
+function updateSourceFile(node, statements, endOfFileToken) {
+  return node.statements !== statements || node.endOfFileToken !== endOfFileToken ? cloneSourceFileWithChanges(node, statements, endOfFileToken) : node;
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/ast/scanner.js
+var EscapeSequenceScanningFlags = {
+  String: 1 << 0,
+  ReportErrors: 1 << 1,
+  RegularExpression: 1 << 2,
+  AnnexB: 1 << 3,
+  AnyUnicodeMode: 1 << 4,
+  AtomEscape: 1 << 5,
+  ReportInvalidEscapeErrors: 1 << 2 | 1 << 1,
+  AllowExtendedUnicodeEscape: 1 << 0 | 1 << 4
+};
+var textToKeywordObj = {
+  abstract: SyntaxKind2.AbstractKeyword,
+  accessor: SyntaxKind2.AccessorKeyword,
+  any: SyntaxKind2.AnyKeyword,
+  as: SyntaxKind2.AsKeyword,
+  asserts: SyntaxKind2.AssertsKeyword,
+  assert: SyntaxKind2.AssertKeyword,
+  bigint: SyntaxKind2.BigIntKeyword,
+  boolean: SyntaxKind2.BooleanKeyword,
+  break: SyntaxKind2.BreakKeyword,
+  case: SyntaxKind2.CaseKeyword,
+  catch: SyntaxKind2.CatchKeyword,
+  class: SyntaxKind2.ClassKeyword,
+  continue: SyntaxKind2.ContinueKeyword,
+  const: SyntaxKind2.ConstKeyword,
+  ["" + "constructor"]: SyntaxKind2.ConstructorKeyword,
+  debugger: SyntaxKind2.DebuggerKeyword,
+  declare: SyntaxKind2.DeclareKeyword,
+  default: SyntaxKind2.DefaultKeyword,
+  defer: SyntaxKind2.DeferKeyword,
+  delete: SyntaxKind2.DeleteKeyword,
+  do: SyntaxKind2.DoKeyword,
+  else: SyntaxKind2.ElseKeyword,
+  enum: SyntaxKind2.EnumKeyword,
+  export: SyntaxKind2.ExportKeyword,
+  extends: SyntaxKind2.ExtendsKeyword,
+  false: SyntaxKind2.FalseKeyword,
+  finally: SyntaxKind2.FinallyKeyword,
+  for: SyntaxKind2.ForKeyword,
+  from: SyntaxKind2.FromKeyword,
+  function: SyntaxKind2.FunctionKeyword,
+  get: SyntaxKind2.GetKeyword,
+  if: SyntaxKind2.IfKeyword,
+  implements: SyntaxKind2.ImplementsKeyword,
+  import: SyntaxKind2.ImportKeyword,
+  in: SyntaxKind2.InKeyword,
+  infer: SyntaxKind2.InferKeyword,
+  instanceof: SyntaxKind2.InstanceOfKeyword,
+  interface: SyntaxKind2.InterfaceKeyword,
+  intrinsic: SyntaxKind2.IntrinsicKeyword,
+  is: SyntaxKind2.IsKeyword,
+  keyof: SyntaxKind2.KeyOfKeyword,
+  let: SyntaxKind2.LetKeyword,
+  module: SyntaxKind2.ModuleKeyword,
+  namespace: SyntaxKind2.NamespaceKeyword,
+  never: SyntaxKind2.NeverKeyword,
+  new: SyntaxKind2.NewKeyword,
+  null: SyntaxKind2.NullKeyword,
+  number: SyntaxKind2.NumberKeyword,
+  object: SyntaxKind2.ObjectKeyword,
+  package: SyntaxKind2.PackageKeyword,
+  private: SyntaxKind2.PrivateKeyword,
+  protected: SyntaxKind2.ProtectedKeyword,
+  public: SyntaxKind2.PublicKeyword,
+  override: SyntaxKind2.OverrideKeyword,
+  out: SyntaxKind2.OutKeyword,
+  readonly: SyntaxKind2.ReadonlyKeyword,
+  require: SyntaxKind2.RequireKeyword,
+  global: SyntaxKind2.GlobalKeyword,
+  return: SyntaxKind2.ReturnKeyword,
+  satisfies: SyntaxKind2.SatisfiesKeyword,
+  set: SyntaxKind2.SetKeyword,
+  static: SyntaxKind2.StaticKeyword,
+  string: SyntaxKind2.StringKeyword,
+  super: SyntaxKind2.SuperKeyword,
+  switch: SyntaxKind2.SwitchKeyword,
+  symbol: SyntaxKind2.SymbolKeyword,
+  this: SyntaxKind2.ThisKeyword,
+  throw: SyntaxKind2.ThrowKeyword,
+  true: SyntaxKind2.TrueKeyword,
+  try: SyntaxKind2.TryKeyword,
+  type: SyntaxKind2.TypeKeyword,
+  typeof: SyntaxKind2.TypeOfKeyword,
+  undefined: SyntaxKind2.UndefinedKeyword,
+  unique: SyntaxKind2.UniqueKeyword,
+  unknown: SyntaxKind2.UnknownKeyword,
+  using: SyntaxKind2.UsingKeyword,
+  var: SyntaxKind2.VarKeyword,
+  void: SyntaxKind2.VoidKeyword,
+  while: SyntaxKind2.WhileKeyword,
+  with: SyntaxKind2.WithKeyword,
+  yield: SyntaxKind2.YieldKeyword,
+  async: SyntaxKind2.AsyncKeyword,
+  await: SyntaxKind2.AwaitKeyword,
+  of: SyntaxKind2.OfKeyword
+};
+var textToKeyword = new Map(Object.entries(textToKeywordObj));
+var textToToken = new Map(Object.entries({
+  ...textToKeywordObj,
+  "{": SyntaxKind2.OpenBraceToken,
+  "}": SyntaxKind2.CloseBraceToken,
+  "(": SyntaxKind2.OpenParenToken,
+  ")": SyntaxKind2.CloseParenToken,
+  "[": SyntaxKind2.OpenBracketToken,
+  "]": SyntaxKind2.CloseBracketToken,
+  ".": SyntaxKind2.DotToken,
+  "...": SyntaxKind2.DotDotDotToken,
+  ";": SyntaxKind2.SemicolonToken,
+  ",": SyntaxKind2.CommaToken,
+  "<": SyntaxKind2.LessThanToken,
+  ">": SyntaxKind2.GreaterThanToken,
+  "<=": SyntaxKind2.LessThanEqualsToken,
+  ">=": SyntaxKind2.GreaterThanEqualsToken,
+  "==": SyntaxKind2.EqualsEqualsToken,
+  "!=": SyntaxKind2.ExclamationEqualsToken,
+  "===": SyntaxKind2.EqualsEqualsEqualsToken,
+  "!==": SyntaxKind2.ExclamationEqualsEqualsToken,
+  "=>": SyntaxKind2.EqualsGreaterThanToken,
+  "+": SyntaxKind2.PlusToken,
+  "-": SyntaxKind2.MinusToken,
+  "**": SyntaxKind2.AsteriskAsteriskToken,
+  "*": SyntaxKind2.AsteriskToken,
+  "/": SyntaxKind2.SlashToken,
+  "%": SyntaxKind2.PercentToken,
+  "++": SyntaxKind2.PlusPlusToken,
+  "--": SyntaxKind2.MinusMinusToken,
+  "<<": SyntaxKind2.LessThanLessThanToken,
+  "</": SyntaxKind2.LessThanSlashToken,
+  ">>": SyntaxKind2.GreaterThanGreaterThanToken,
+  ">>>": SyntaxKind2.GreaterThanGreaterThanGreaterThanToken,
+  "&": SyntaxKind2.AmpersandToken,
+  "|": SyntaxKind2.BarToken,
+  "^": SyntaxKind2.CaretToken,
+  "!": SyntaxKind2.ExclamationToken,
+  "~": SyntaxKind2.TildeToken,
+  "&&": SyntaxKind2.AmpersandAmpersandToken,
+  "||": SyntaxKind2.BarBarToken,
+  "?": SyntaxKind2.QuestionToken,
+  "??": SyntaxKind2.QuestionQuestionToken,
+  "?.": SyntaxKind2.QuestionDotToken,
+  ":": SyntaxKind2.ColonToken,
+  "=": SyntaxKind2.EqualsToken,
+  "+=": SyntaxKind2.PlusEqualsToken,
+  "-=": SyntaxKind2.MinusEqualsToken,
+  "*=": SyntaxKind2.AsteriskEqualsToken,
+  "**=": SyntaxKind2.AsteriskAsteriskEqualsToken,
+  "/=": SyntaxKind2.SlashEqualsToken,
+  "%=": SyntaxKind2.PercentEqualsToken,
+  "<<=": SyntaxKind2.LessThanLessThanEqualsToken,
+  ">>=": SyntaxKind2.GreaterThanGreaterThanEqualsToken,
+  ">>>=": SyntaxKind2.GreaterThanGreaterThanGreaterThanEqualsToken,
+  "&=": SyntaxKind2.AmpersandEqualsToken,
+  "|=": SyntaxKind2.BarEqualsToken,
+  "^=": SyntaxKind2.CaretEqualsToken,
+  "||=": SyntaxKind2.BarBarEqualsToken,
+  "&&=": SyntaxKind2.AmpersandAmpersandEqualsToken,
+  "??=": SyntaxKind2.QuestionQuestionEqualsToken,
+  "@": SyntaxKind2.AtToken,
+  "#": SyntaxKind2.HashToken,
+  "`": SyntaxKind2.BacktickToken
+}));
+var charCodeToRegExpFlag = new Map([
+  [CharacterCodes2.d, RegularExpressionFlags.HasIndices],
+  [CharacterCodes2.g, RegularExpressionFlags.Global],
+  [CharacterCodes2.i, RegularExpressionFlags.IgnoreCase],
+  [CharacterCodes2.m, RegularExpressionFlags.Multiline],
+  [CharacterCodes2.s, RegularExpressionFlags.DotAll],
+  [CharacterCodes2.u, RegularExpressionFlags.Unicode],
+  [CharacterCodes2.v, RegularExpressionFlags.UnicodeSets],
+  [CharacterCodes2.y, RegularExpressionFlags.Sticky]
+]);
+var jsDocTagTerminators = new Set([" ", "\t", `
+`, "\r", "}", "*"]);
+function makeReverseMap(source) {
+  const result = [];
+  source.forEach((value, name) => {
+    result[value] = name;
+  });
+  return result;
+}
+var tokenStrings = makeReverseMap(textToToken);
+function computeLineStarts(text) {
+  const result = [];
+  let pos = 0;
+  let lineStart = 0;
+  while (pos < text.length) {
+    const ch = text.charCodeAt(pos);
+    pos++;
+    switch (ch) {
+      case CharacterCodes2.carriageReturn:
+        if (text.charCodeAt(pos) === CharacterCodes2.lineFeed) {
+          pos++;
+        }
+      case CharacterCodes2.lineFeed:
+        result.push(lineStart);
+        lineStart = pos;
+        break;
+      default:
+        if (ch > CharacterCodes2.maxAsciiCharacter && isLineBreak2(ch)) {
+          result.push(lineStart);
+          lineStart = pos;
+        }
+        break;
+    }
+  }
+  result.push(lineStart);
+  return result;
+}
+function isWhiteSpaceLike(ch) {
+  return isWhiteSpaceSingleLine(ch) || isLineBreak2(ch);
+}
+function isWhiteSpaceSingleLine(ch) {
+  return ch === CharacterCodes2.space || ch === CharacterCodes2.tab || ch === CharacterCodes2.verticalTab || ch === CharacterCodes2.formFeed || ch === CharacterCodes2.nonBreakingSpace || ch === CharacterCodes2.nextLine || ch === CharacterCodes2.ogham || ch >= CharacterCodes2.enQuad && ch <= CharacterCodes2.zeroWidthSpace || ch === CharacterCodes2.narrowNoBreakSpace || ch === CharacterCodes2.mathematicalSpace || ch === CharacterCodes2.ideographicSpace || ch === CharacterCodes2.byteOrderMark;
+}
+function isLineBreak2(ch) {
+  return ch === CharacterCodes2.lineFeed || ch === CharacterCodes2.carriageReturn || ch === CharacterCodes2.lineSeparator || ch === CharacterCodes2.paragraphSeparator;
+}
+function skipTrivia(text, pos, stopAfterLineBreak, stopAtComments, inJSDoc) {
+  if (pos < 0) {
+    return pos;
+  }
+  let canConsumeStar = false;
+  while (true) {
+    const ch = text.charCodeAt(pos);
+    switch (ch) {
+      case CharacterCodes2.carriageReturn:
+        if (text.charCodeAt(pos + 1) === CharacterCodes2.lineFeed) {
+          pos++;
+        }
+      case CharacterCodes2.lineFeed:
+        pos++;
+        if (stopAfterLineBreak) {
+          return pos;
+        }
+        canConsumeStar = !!inJSDoc;
+        continue;
+      case CharacterCodes2.tab:
+      case CharacterCodes2.verticalTab:
+      case CharacterCodes2.formFeed:
+      case CharacterCodes2.space:
+        pos++;
+        continue;
+      case CharacterCodes2.slash:
+        if (stopAtComments) {
+          break;
+        }
+        if (text.charCodeAt(pos + 1) === CharacterCodes2.slash) {
+          pos += 2;
+          while (pos < text.length) {
+            if (isLineBreak2(text.charCodeAt(pos))) {
+              break;
+            }
+            pos++;
+          }
+          canConsumeStar = false;
+          continue;
+        }
+        if (text.charCodeAt(pos + 1) === CharacterCodes2.asterisk) {
+          pos += 2;
+          while (pos < text.length) {
+            if (text.charCodeAt(pos) === CharacterCodes2.asterisk && text.charCodeAt(pos + 1) === CharacterCodes2.slash) {
+              pos += 2;
+              break;
+            }
+            pos++;
+          }
+          canConsumeStar = false;
+          continue;
+        }
+        break;
+      case CharacterCodes2.lessThan:
+      case CharacterCodes2.bar:
+      case CharacterCodes2.equals:
+      case CharacterCodes2.greaterThan:
+        if (isConflictMarkerTrivia(text, pos)) {
+          pos = scanConflictMarkerTrivia(text, pos);
+          canConsumeStar = false;
+          continue;
+        }
+        break;
+      case CharacterCodes2.hash:
+        if (pos === 0 && isShebangTrivia(text, pos)) {
+          pos = scanShebangTrivia(text, pos);
+          continue;
+        }
+        break;
+      case CharacterCodes2.asterisk:
+        if (canConsumeStar) {
+          pos++;
+          canConsumeStar = false;
+          continue;
+        }
+        break;
+      default:
+        if (ch > CharacterCodes2.maxAsciiCharacter && isWhiteSpaceLike(ch)) {
+          pos++;
+          continue;
+        }
+        break;
+    }
+    return pos;
+  }
+}
+function isConflictMarkerTrivia(text, pos) {
+  if (pos >= text.length) {
+    return false;
+  }
+  const ch = text.charCodeAt(pos);
+  if (pos === 0 || isLineBreak2(text.charCodeAt(pos - 1))) {
+    if (ch === CharacterCodes2.lessThan || ch === CharacterCodes2.greaterThan || ch === CharacterCodes2.equals) {
+      if (pos + 6 < text.length && text.charCodeAt(pos + 1) === ch && text.charCodeAt(pos + 2) === ch && text.charCodeAt(pos + 3) === ch && text.charCodeAt(pos + 4) === ch && text.charCodeAt(pos + 5) === ch && text.charCodeAt(pos + 6) === ch) {
+        return ch === CharacterCodes2.equals || text.charCodeAt(pos + 7) === CharacterCodes2.space;
+      }
+    }
+    if (ch === CharacterCodes2.bar && pos + 6 < text.length && text.charCodeAt(pos + 1) === ch && text.charCodeAt(pos + 2) === ch && text.charCodeAt(pos + 3) === ch && text.charCodeAt(pos + 4) === ch && text.charCodeAt(pos + 5) === ch && text.charCodeAt(pos + 6) === ch) {
+      return true;
+    }
+  }
+  return false;
+}
+function scanConflictMarkerTrivia(text, pos) {
+  const ch = text.charCodeAt(pos);
+  const len = text.length;
+  if (ch === CharacterCodes2.lessThan || ch === CharacterCodes2.greaterThan) {
+    while (pos < len && !isLineBreak2(text.charCodeAt(pos))) {
+      pos++;
+    }
+  } else {
+    pos += 7;
+    while (pos < len) {
+      const currentChar = text.charCodeAt(pos);
+      if ((currentChar === CharacterCodes2.equals || currentChar === CharacterCodes2.greaterThan) && isConflictMarkerTrivia(text, pos)) {
+        break;
+      }
+      pos++;
+    }
+  }
+  return pos;
+}
+function isShebangTrivia(text, pos) {
+  return pos === 0 && text.charCodeAt(0) === CharacterCodes2.hash && text.charCodeAt(1) === CharacterCodes2.exclamation;
+}
+function scanShebangTrivia(text, pos) {
+  pos += 2;
+  while (pos < text.length) {
+    if (isLineBreak2(text.charCodeAt(pos))) {
+      break;
+    }
+    pos++;
+  }
+  return pos;
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/ast/astnav.js
+function getTokenPosOfNode(node, sourceFile, includeJSDoc) {
+  if (nodeIsMissing(node)) {
+    return node.pos;
+  }
+  if (isJSDocNodeKind(node.kind) || node.kind === SyntaxKind2.JsxText) {
+    return skipTrivia(sourceFile.text, node.pos, false, true);
+  }
+  if (includeJSDoc && node.jsDoc && node.jsDoc.length > 0) {
+    return getTokenPosOfNode(node.jsDoc[0], sourceFile, false);
+  }
+  return skipTrivia(sourceFile.text, node.pos, false, false, !!(node.flags & NodeFlags.JSDoc));
+}
+function nodeIsMissing(node) {
+  return node.pos === node.end && node.pos >= 0 && node.kind !== SyntaxKind2.EndOfFile;
+}
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/protocol.generated.js
+var childProperties = {
+  [SyntaxKind2.QualifiedName]: ["left", "right"],
+  [SyntaxKind2.ComputedPropertyName]: ["expression"],
+  [SyntaxKind2.Decorator]: ["expression"],
+  [SyntaxKind2.IfStatement]: ["expression", "thenStatement", "elseStatement"],
+  [SyntaxKind2.DoStatement]: ["statement", "expression"],
+  [SyntaxKind2.WhileStatement]: ["expression", "statement"],
+  [SyntaxKind2.ForStatement]: ["initializer", "condition", "incrementor", "statement"],
+  [SyntaxKind2.ForInStatement]: ["awaitModifier", "initializer", "expression", "statement"],
+  [SyntaxKind2.ForOfStatement]: ["awaitModifier", "initializer", "expression", "statement"],
+  [SyntaxKind2.BreakStatement]: ["label"],
+  [SyntaxKind2.ContinueStatement]: ["label"],
+  [SyntaxKind2.ReturnStatement]: ["expression"],
+  [SyntaxKind2.WithStatement]: ["expression", "statement"],
+  [SyntaxKind2.SwitchStatement]: ["expression", "caseBlock"],
+  [SyntaxKind2.CaseBlock]: ["clauses"],
+  [SyntaxKind2.CaseClause]: ["expression", "statements"],
+  [SyntaxKind2.DefaultClause]: ["expression", "statements"],
+  [SyntaxKind2.ThrowStatement]: ["expression"],
+  [SyntaxKind2.TryStatement]: ["tryBlock", "catchClause", "finallyBlock"],
+  [SyntaxKind2.CatchClause]: ["variableDeclaration", "block"],
+  [SyntaxKind2.LabeledStatement]: ["label", "statement"],
+  [SyntaxKind2.ExpressionStatement]: ["expression"],
+  [SyntaxKind2.Block]: ["statements"],
+  [SyntaxKind2.VariableStatement]: ["modifiers", "declarationList"],
+  [SyntaxKind2.VariableDeclaration]: ["name", "exclamationToken", "type", "initializer"],
+  [SyntaxKind2.VariableDeclarationList]: ["declarations"],
+  [SyntaxKind2.ObjectBindingPattern]: ["elements"],
+  [SyntaxKind2.ArrayBindingPattern]: ["elements"],
+  [SyntaxKind2.Parameter]: ["modifiers", "dotDotDotToken", "name", "questionToken", "type", "initializer"],
+  [SyntaxKind2.BindingElement]: ["dotDotDotToken", "propertyName", "name", "initializer"],
+  [SyntaxKind2.MissingDeclaration]: ["modifiers"],
+  [SyntaxKind2.FunctionDeclaration]: ["modifiers", "asteriskToken", "name", "typeParameters", "parameters", "type", "body"],
+  [SyntaxKind2.ClassDeclaration]: ["modifiers", "name", "typeParameters", "heritageClauses", "members"],
+  [SyntaxKind2.ClassExpression]: ["modifiers", "name", "typeParameters", "heritageClauses", "members"],
+  [SyntaxKind2.HeritageClause]: ["types"],
+  [SyntaxKind2.InterfaceDeclaration]: ["modifiers", "name", "typeParameters", "heritageClauses", "members"],
+  [SyntaxKind2.TypeAliasDeclaration]: ["modifiers", "name", "typeParameters", "type"],
+  [SyntaxKind2.JSTypeAliasDeclaration]: ["modifiers", "name", "typeParameters", "type"],
+  [SyntaxKind2.EnumMember]: ["name", "initializer"],
+  [SyntaxKind2.EnumDeclaration]: ["modifiers", "name", "members"],
+  [SyntaxKind2.ModuleBlock]: ["statements"],
+  [SyntaxKind2.ImportDeclaration]: ["modifiers", "importClause", "moduleSpecifier", "attributes"],
+  [SyntaxKind2.JSImportDeclaration]: ["modifiers", "importClause", "moduleSpecifier", "attributes"],
+  [SyntaxKind2.ExternalModuleReference]: ["expression"],
+  [SyntaxKind2.NamespaceImport]: ["name"],
+  [SyntaxKind2.NamedImports]: ["elements"],
+  [SyntaxKind2.ExportAssignment]: ["modifiers", "type", "expression"],
+  [SyntaxKind2.NamespaceExportDeclaration]: ["modifiers", "name"],
+  [SyntaxKind2.NamespaceExport]: ["name"],
+  [SyntaxKind2.NamedExports]: ["elements"],
+  [SyntaxKind2.ExportSpecifier]: ["propertyName", "name"],
+  [SyntaxKind2.CallSignature]: ["typeParameters", "parameters", "type"],
+  [SyntaxKind2.ConstructSignature]: ["typeParameters", "parameters", "type"],
+  [SyntaxKind2.Constructor]: ["modifiers", "typeParameters", "parameters", "type", "body"],
+  [SyntaxKind2.GetAccessor]: ["modifiers", "name", "typeParameters", "parameters", "type", "body"],
+  [SyntaxKind2.SetAccessor]: ["modifiers", "name", "typeParameters", "parameters", "type", "body"],
+  [SyntaxKind2.IndexSignature]: ["modifiers", "parameters", "type"],
+  [SyntaxKind2.MethodSignature]: ["modifiers", "name", "postfixToken", "typeParameters", "parameters", "type"],
+  [SyntaxKind2.MethodDeclaration]: ["modifiers", "asteriskToken", "name", "postfixToken", "typeParameters", "parameters", "type", "body"],
+  [SyntaxKind2.PropertySignature]: ["modifiers", "name", "postfixToken", "type", "initializer"],
+  [SyntaxKind2.PropertyDeclaration]: ["modifiers", "name", "postfixToken", "type", "initializer"],
+  [SyntaxKind2.ClassStaticBlockDeclaration]: ["modifiers", "body"],
+  [SyntaxKind2.BinaryExpression]: ["modifiers", "left", "type", "operatorToken", "right"],
+  [SyntaxKind2.PrefixUnaryExpression]: ["operand"],
+  [SyntaxKind2.PostfixUnaryExpression]: ["operand"],
+  [SyntaxKind2.YieldExpression]: ["asteriskToken", "expression"],
+  [SyntaxKind2.ArrowFunction]: ["modifiers", "typeParameters", "parameters", "type", "equalsGreaterThanToken", "body"],
+  [SyntaxKind2.FunctionExpression]: ["modifiers", "asteriskToken", "name", "typeParameters", "parameters", "type", "body"],
+  [SyntaxKind2.AsExpression]: ["expression", "type"],
+  [SyntaxKind2.SatisfiesExpression]: ["expression", "type"],
+  [SyntaxKind2.ConditionalExpression]: ["condition", "questionToken", "whenTrue", "colonToken", "whenFalse"],
+  [SyntaxKind2.PropertyAccessExpression]: ["expression", "questionDotToken", "name"],
+  [SyntaxKind2.ElementAccessExpression]: ["expression", "questionDotToken", "argumentExpression"],
+  [SyntaxKind2.CallExpression]: ["expression", "questionDotToken", "typeArguments", "arguments"],
+  [SyntaxKind2.NewExpression]: ["expression", "typeArguments", "arguments"],
+  [SyntaxKind2.MetaProperty]: ["name"],
+  [SyntaxKind2.NonNullExpression]: ["expression"],
+  [SyntaxKind2.SpreadElement]: ["expression"],
+  [SyntaxKind2.TemplateExpression]: ["head", "templateSpans"],
+  [SyntaxKind2.TemplateSpan]: ["expression", "literal"],
+  [SyntaxKind2.TaggedTemplateExpression]: ["tag", "questionDotToken", "typeArguments", "template"],
+  [SyntaxKind2.ParenthesizedExpression]: ["expression"],
+  [SyntaxKind2.ArrayLiteralExpression]: ["elements"],
+  [SyntaxKind2.ObjectLiteralExpression]: ["properties"],
+  [SyntaxKind2.SpreadAssignment]: ["expression"],
+  [SyntaxKind2.PropertyAssignment]: ["modifiers", "name", "postfixToken", "type", "initializer"],
+  [SyntaxKind2.ShorthandPropertyAssignment]: ["modifiers", "name", "postfixToken", "type", "equalsToken", "objectAssignmentInitializer"],
+  [SyntaxKind2.DeleteExpression]: ["expression"],
+  [SyntaxKind2.TypeOfExpression]: ["expression"],
+  [SyntaxKind2.VoidExpression]: ["expression"],
+  [SyntaxKind2.AwaitExpression]: ["expression"],
+  [SyntaxKind2.TypeAssertionExpression]: ["type", "expression"],
+  [SyntaxKind2.UnionType]: ["types"],
+  [SyntaxKind2.IntersectionType]: ["types"],
+  [SyntaxKind2.ConditionalType]: ["checkType", "extendsType", "trueType", "falseType"],
+  [SyntaxKind2.TypeOperator]: ["type"],
+  [SyntaxKind2.InferType]: ["typeParameter"],
+  [SyntaxKind2.ArrayType]: ["elementType"],
+  [SyntaxKind2.IndexedAccessType]: ["objectType", "indexType"],
+  [SyntaxKind2.TypeReference]: ["typeName", "typeArguments"],
+  [SyntaxKind2.ExpressionWithTypeArguments]: ["expression", "typeArguments"],
+  [SyntaxKind2.LiteralType]: ["literal"],
+  [SyntaxKind2.TypePredicate]: ["assertsModifier", "parameterName", "type"],
+  [SyntaxKind2.ImportAttribute]: ["name", "value"],
+  [SyntaxKind2.ImportAttributes]: ["attributes"],
+  [SyntaxKind2.TypeQuery]: ["exprName", "typeArguments"],
+  [SyntaxKind2.MappedType]: ["readonlyToken", "typeParameter", "nameType", "questionToken", "type", "members"],
+  [SyntaxKind2.TypeLiteral]: ["members"],
+  [SyntaxKind2.TupleType]: ["elements"],
+  [SyntaxKind2.NamedTupleMember]: ["dotDotDotToken", "name", "questionToken", "type"],
+  [SyntaxKind2.OptionalType]: ["type"],
+  [SyntaxKind2.RestType]: ["type"],
+  [SyntaxKind2.ParenthesizedType]: ["type"],
+  [SyntaxKind2.FunctionType]: ["typeParameters", "parameters", "type"],
+  [SyntaxKind2.ConstructorType]: ["modifiers", "typeParameters", "parameters", "type"],
+  [SyntaxKind2.TemplateLiteralType]: ["head", "templateSpans"],
+  [SyntaxKind2.TemplateLiteralTypeSpan]: ["type", "literal"],
+  [SyntaxKind2.SyntheticExpression]: ["tupleNameSource"],
+  [SyntaxKind2.PartiallyEmittedExpression]: ["expression"],
+  [SyntaxKind2.JsxElement]: ["openingElement", "children", "closingElement"],
+  [SyntaxKind2.JsxAttributes]: ["properties"],
+  [SyntaxKind2.JsxNamespacedName]: ["namespace", "name"],
+  [SyntaxKind2.JsxOpeningElement]: ["tagName", "typeArguments", "attributes"],
+  [SyntaxKind2.JsxSelfClosingElement]: ["tagName", "typeArguments", "attributes"],
+  [SyntaxKind2.JsxFragment]: ["openingFragment", "children", "closingFragment"],
+  [SyntaxKind2.JsxAttribute]: ["name", "initializer"],
+  [SyntaxKind2.JsxSpreadAttribute]: ["expression"],
+  [SyntaxKind2.JsxClosingElement]: ["tagName"],
+  [SyntaxKind2.JsxExpression]: ["dotDotDotToken", "expression"],
+  [SyntaxKind2.SyntaxList]: ["children"],
+  [SyntaxKind2.JSDoc]: ["comment", "tags"],
+  [SyntaxKind2.JSDocTypeExpression]: ["type"],
+  [SyntaxKind2.JSDocNonNullableType]: ["type"],
+  [SyntaxKind2.JSDocNullableType]: ["type"],
+  [SyntaxKind2.JSDocVariadicType]: ["type"],
+  [SyntaxKind2.JSDocOptionalType]: ["type"],
+  [SyntaxKind2.JSDocTypeTag]: ["tagName", "typeExpression", "comment"],
+  [SyntaxKind2.JSDocUnknownTag]: ["tagName", "comment"],
+  [SyntaxKind2.JSDocTemplateTag]: ["tagName", "constraint", "typeParameters", "comment"],
+  [SyntaxKind2.JSDocReturnTag]: ["tagName", "typeExpression", "comment"],
+  [SyntaxKind2.JSDocPublicTag]: ["tagName", "comment"],
+  [SyntaxKind2.JSDocPrivateTag]: ["tagName", "comment"],
+  [SyntaxKind2.JSDocProtectedTag]: ["tagName", "comment"],
+  [SyntaxKind2.JSDocReadonlyTag]: ["tagName", "comment"],
+  [SyntaxKind2.JSDocOverrideTag]: ["tagName", "comment"],
+  [SyntaxKind2.JSDocDeprecatedTag]: ["tagName", "comment"],
+  [SyntaxKind2.JSDocSeeTag]: ["tagName", "nameExpression", "comment"],
+  [SyntaxKind2.JSDocImplementsTag]: ["tagName", "className", "comment"],
+  [SyntaxKind2.JSDocAugmentsTag]: ["tagName", "className", "comment"],
+  [SyntaxKind2.JSDocSatisfiesTag]: ["tagName", "typeExpression", "comment"],
+  [SyntaxKind2.JSDocThrowsTag]: ["tagName", "typeExpression", "comment"],
+  [SyntaxKind2.JSDocThisTag]: ["tagName", "typeExpression", "comment"],
+  [SyntaxKind2.JSDocImportTag]: ["tagName", "importClause", "moduleSpecifier", "attributes", "comment"],
+  [SyntaxKind2.JSDocCallbackTag]: ["tagName", "typeExpression", "name", "comment"],
+  [SyntaxKind2.JSDocOverloadTag]: ["tagName", "typeExpression", "comment"],
+  [SyntaxKind2.JSDocTypedefTag]: ["tagName", "typeExpression", "name", "comment"],
+  [SyntaxKind2.JSDocSignature]: ["typeParameters", "parameters", "type"],
+  [SyntaxKind2.JSDocNameReference]: ["name"],
+  [SyntaxKind2.SourceFile]: ["statements", "endOfFileToken"],
+  [SyntaxKind2.ModuleDeclaration]: ["modifiers", "name", "body"],
+  [SyntaxKind2.ImportEqualsDeclaration]: ["modifiers", "name", "moduleReference"],
+  [SyntaxKind2.ExportDeclaration]: ["modifiers", "exportClause", "moduleSpecifier", "attributes"],
+  [SyntaxKind2.ImportType]: ["argument", "attributes", "qualifier", "typeArguments"],
+  [SyntaxKind2.ImportClause]: ["name", "namedBindings"],
+  [SyntaxKind2.ImportSpecifier]: ["propertyName", "name"],
+  [SyntaxKind2.JSDocLink]: ["name"],
+  [SyntaxKind2.JSDocLinkPlain]: ["name"],
+  [SyntaxKind2.JSDocLinkCode]: ["name"],
+  [SyntaxKind2.TypeParameter]: ["modifiers", "name", "constraint", "expression", "defaultType"],
+  [SyntaxKind2.SyntheticReferenceExpression]: ["expression", "thisArg"],
+  [SyntaxKind2.JSDocTypeLiteral]: ["jsdocPropertyTags"],
+  [SyntaxKind2.JSDocParameterTag]: ["tagName", "name", "typeExpression", "comment"],
+  [SyntaxKind2.JSDocPropertyTag]: ["tagName", "name", "typeExpression", "comment"]
+};
+var singleChildNodePropertyNames = {
+  [SyntaxKind2.ComputedPropertyName]: "expression",
+  [SyntaxKind2.Decorator]: "expression",
+  [SyntaxKind2.BreakStatement]: "label",
+  [SyntaxKind2.ContinueStatement]: "label",
+  [SyntaxKind2.ReturnStatement]: "expression",
+  [SyntaxKind2.CaseBlock]: "clauses",
+  [SyntaxKind2.ThrowStatement]: "expression",
+  [SyntaxKind2.ExpressionStatement]: "expression",
+  [SyntaxKind2.Block]: "statements",
+  [SyntaxKind2.VariableDeclarationList]: "declarations",
+  [SyntaxKind2.ObjectBindingPattern]: "elements",
+  [SyntaxKind2.ArrayBindingPattern]: "elements",
+  [SyntaxKind2.MissingDeclaration]: "modifiers",
+  [SyntaxKind2.HeritageClause]: "types",
+  [SyntaxKind2.ModuleBlock]: "statements",
+  [SyntaxKind2.ExternalModuleReference]: "expression",
+  [SyntaxKind2.NamespaceImport]: "name",
+  [SyntaxKind2.NamedImports]: "elements",
+  [SyntaxKind2.NamespaceExport]: "name",
+  [SyntaxKind2.NamedExports]: "elements",
+  [SyntaxKind2.PrefixUnaryExpression]: "operand",
+  [SyntaxKind2.PostfixUnaryExpression]: "operand",
+  [SyntaxKind2.MetaProperty]: "name",
+  [SyntaxKind2.NonNullExpression]: "expression",
+  [SyntaxKind2.SpreadElement]: "expression",
+  [SyntaxKind2.ParenthesizedExpression]: "expression",
+  [SyntaxKind2.ArrayLiteralExpression]: "elements",
+  [SyntaxKind2.ObjectLiteralExpression]: "properties",
+  [SyntaxKind2.SpreadAssignment]: "expression",
+  [SyntaxKind2.DeleteExpression]: "expression",
+  [SyntaxKind2.TypeOfExpression]: "expression",
+  [SyntaxKind2.VoidExpression]: "expression",
+  [SyntaxKind2.AwaitExpression]: "expression",
+  [SyntaxKind2.UnionType]: "types",
+  [SyntaxKind2.IntersectionType]: "types",
+  [SyntaxKind2.TypeOperator]: "type",
+  [SyntaxKind2.InferType]: "typeParameter",
+  [SyntaxKind2.ArrayType]: "elementType",
+  [SyntaxKind2.LiteralType]: "literal",
+  [SyntaxKind2.ImportAttributes]: "attributes",
+  [SyntaxKind2.TypeLiteral]: "members",
+  [SyntaxKind2.TupleType]: "elements",
+  [SyntaxKind2.OptionalType]: "type",
+  [SyntaxKind2.RestType]: "type",
+  [SyntaxKind2.ParenthesizedType]: "type",
+  [SyntaxKind2.SyntheticExpression]: "tupleNameSource",
+  [SyntaxKind2.PartiallyEmittedExpression]: "expression",
+  [SyntaxKind2.JsxAttributes]: "properties",
+  [SyntaxKind2.JsxSpreadAttribute]: "expression",
+  [SyntaxKind2.JsxClosingElement]: "tagName",
+  [SyntaxKind2.SyntaxList]: "children",
+  [SyntaxKind2.JSDocTypeExpression]: "type",
+  [SyntaxKind2.JSDocNonNullableType]: "type",
+  [SyntaxKind2.JSDocNullableType]: "type",
+  [SyntaxKind2.JSDocVariadicType]: "type",
+  [SyntaxKind2.JSDocOptionalType]: "type",
+  [SyntaxKind2.JSDocNameReference]: "name",
+  [SyntaxKind2.JSDocLink]: "name",
+  [SyntaxKind2.JSDocLinkPlain]: "name",
+  [SyntaxKind2.JSDocLinkCode]: "name",
+  [SyntaxKind2.JSDocTypeLiteral]: "jsdocPropertyTags"
+};
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/protocol.js
+var PROTOCOL_VERSION = 5;
+var HEADER_OFFSET_METADATA = 0;
+var HEADER_OFFSET_HASH_LO0 = 4;
+var HEADER_OFFSET_HASH_LO1 = 8;
+var HEADER_OFFSET_HASH_HI0 = 12;
+var HEADER_OFFSET_HASH_HI1 = 16;
+var HEADER_OFFSET_PARSE_OPTIONS = 20;
+var HEADER_OFFSET_STRING_TABLE_OFFSETS = 24;
+var HEADER_OFFSET_STRING_TABLE = 28;
+var HEADER_OFFSET_EXTENDED_DATA = 32;
+var HEADER_OFFSET_STRUCTURED_DATA = 36;
+var HEADER_OFFSET_NODES = 40;
+var HEADER_SIZE = 44;
+var NODE_LEN = 28;
+var NODE_OFFSET_KIND = 0;
+var NODE_OFFSET_POS = 4;
+var NODE_OFFSET_END = 8;
+var NODE_OFFSET_NEXT = 12;
+var NODE_OFFSET_PARENT = 16;
+var NODE_OFFSET_DATA = 20;
+var NODE_OFFSET_FLAGS = 24;
+var KIND_NODE_LIST = 4294967295;
+var NODE_DATA_TYPE_CHILDREN = 0;
+var NODE_DATA_TYPE_STRING = 1073741824;
+var NODE_DATA_TYPE_EXTENDED = 2147483648;
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/encoder.generated.js
+function getNodeDataType(kind) {
+  switch (kind) {
+    case SyntaxKind2.Identifier:
+    case SyntaxKind2.PrivateIdentifier:
+    case SyntaxKind2.JsxText:
+    case SyntaxKind2.JSDocText:
+    case SyntaxKind2.JSDocLink:
+    case SyntaxKind2.JSDocLinkPlain:
+    case SyntaxKind2.JSDocLinkCode:
+      return NODE_DATA_TYPE_STRING;
+    case SyntaxKind2.StringLiteral:
+    case SyntaxKind2.NumericLiteral:
+    case SyntaxKind2.BigIntLiteral:
+    case SyntaxKind2.RegularExpressionLiteral:
+    case SyntaxKind2.NoSubstitutionTemplateLiteral:
+    case SyntaxKind2.TemplateHead:
+    case SyntaxKind2.TemplateMiddle:
+    case SyntaxKind2.TemplateTail:
+    case SyntaxKind2.SourceFile:
+      return NODE_DATA_TYPE_EXTENDED;
+    default:
+      return NODE_DATA_TYPE_CHILDREN;
+  }
+}
+function getNodeCommonData(node) {
+  switch (node.kind) {
+    case SyntaxKind2.Block:
+      return (node.multiLine ? 1 : 0) << 24;
+    case SyntaxKind2.HeritageClause:
+      return (node.token === SyntaxKind2.ImplementsKeyword ? 1 : 0) << 24;
+    case SyntaxKind2.ExportAssignment:
+      return (node.isExportEquals ? 1 : 0) << 24;
+    case SyntaxKind2.ExportSpecifier:
+      return (node.isTypeOnly ? 1 : 0) << 24;
+    case SyntaxKind2.PrefixUnaryExpression:
+      return (node.operator === SyntaxKind2.MinusToken ? 1 : node.operator === SyntaxKind2.TildeToken ? 2 : node.operator === SyntaxKind2.ExclamationToken ? 3 : node.operator === SyntaxKind2.PlusPlusToken ? 4 : node.operator === SyntaxKind2.MinusMinusToken ? 5 : 0) << 24;
+    case SyntaxKind2.PostfixUnaryExpression:
+      return (node.operator === SyntaxKind2.MinusMinusToken ? 1 : 0) << 24;
+    case SyntaxKind2.MetaProperty:
+      return (node.keywordToken === SyntaxKind2.NewKeyword ? 1 : 0) << 24;
+    case SyntaxKind2.ArrayLiteralExpression:
+      return (node.multiLine ? 1 : 0) << 24;
+    case SyntaxKind2.ObjectLiteralExpression:
+      return (node.multiLine ? 1 : 0) << 24;
+    case SyntaxKind2.TypeOperator:
+      return (node.operator === SyntaxKind2.ReadonlyKeyword ? 1 : node.operator === SyntaxKind2.UniqueKeyword ? 2 : 0) << 24;
+    case SyntaxKind2.ImportAttributes:
+      return (node.multiLine ? 1 : 0) << 24 | (node.token === SyntaxKind2.AssertKeyword ? 1 : 0) << 25;
+    case SyntaxKind2.JsxText:
+      return (node.containsOnlyTriviaWhiteSpaces ? 1 : 0) << 24;
+    case SyntaxKind2.ModuleDeclaration:
+      return (node.keyword === SyntaxKind2.NamespaceKeyword ? 1 : 0) << 24;
+    case SyntaxKind2.ImportEqualsDeclaration:
+      return (node.isTypeOnly ? 1 : 0) << 24;
+    case SyntaxKind2.ExportDeclaration:
+      return (node.isTypeOnly ? 1 : 0) << 24;
+    case SyntaxKind2.ImportType:
+      return (node.isTypeOf ? 1 : 0) << 24;
+    case SyntaxKind2.ImportClause:
+      return (node.phaseModifier === SyntaxKind2.TypeKeyword ? 1 : node.phaseModifier === SyntaxKind2.DeferKeyword ? 2 : 0) << 24;
+    case SyntaxKind2.ImportSpecifier:
+      return (node.isTypeOnly ? 1 : 0) << 24;
+    case SyntaxKind2.JSDocTypeLiteral:
+      return (node.isArrayType ? 1 : 0) << 24;
+    case SyntaxKind2.JSDocParameterTag:
+    case SyntaxKind2.JSDocPropertyTag:
+      return (node.isBracketed ? 1 : 0) << 24 | (node.isNameFirst ? 1 : 0) << 25;
+  }
+  return 0;
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/wtf8.js
+import { Buffer as Buffer2 } from "node:buffer";
+var surrogateLeadByte = 237;
+var surrogateSecondByteMin = 160;
+var surrogateSecondByteMax = 191;
+var continuationByteMin = 128;
+var continuationByteMax = 191;
+function isWtf8Surrogate(bytes, index) {
+  return index + 2 < bytes.length && bytes[index] === surrogateLeadByte && bytes[index + 1] >= surrogateSecondByteMin && bytes[index + 1] <= surrogateSecondByteMax && bytes[index + 2] >= continuationByteMin && bytes[index + 2] <= continuationByteMax;
+}
+function getSurrogateCodeUnit(bytes, index) {
+  return 53248 | (bytes[index + 1] & 63) << 6 | bytes[index + 2] & 63;
+}
+function hasSurrogateLeadByte(bytes) {
+  return Buffer2.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).indexOf(surrogateLeadByte) >= 0;
+}
+function toUint8Array(input) {
+  if (input instanceof Uint8Array) {
+    return input;
+  }
+  if (ArrayBuffer.isView(input)) {
+    return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  }
+  return new Uint8Array(input);
+}
+
+class Wtf8Decoder extends TextDecoder {
+  decode(input, options) {
+    if (input === undefined) {
+      return super.decode(input, options);
+    }
+    const bytes = toUint8Array(input);
+    if (!hasSurrogateLeadByte(bytes)) {
+      return super.decode(bytes, options);
+    }
+    const parts = [];
+    let segmentStart = 0;
+    for (let i = 0;i < bytes.length; i++) {
+      if (!isWtf8Surrogate(bytes, i)) {
+        continue;
+      }
+      if (segmentStart < i) {
+        parts.push(super.decode(bytes.subarray(segmentStart, i), options));
+      }
+      parts.push(String.fromCharCode(getSurrogateCodeUnit(bytes, i)));
+      i += 2;
+      segmentStart = i + 1;
+    }
+    if (segmentStart === 0) {
+      return super.decode(bytes, options);
+    }
+    if (segmentStart < bytes.length) {
+      parts.push(super.decode(bytes.subarray(segmentStart), options));
+    }
+    return parts.join("");
+  }
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/msgpack.js
+var MSGPACK_FIXARRAY3 = 147;
+var MSGPACK_BIN8 = 196;
+var MSGPACK_BIN16 = 197;
+var MSGPACK_BIN32 = 198;
+var MSGPACK_UINT8 = 204;
+function binHeaderSize(len) {
+  if (len < 256)
+    return 2;
+  if (len < 65536)
+    return 3;
+  return 5;
+}
+function writeBinHeader(buf, off, len) {
+  if (len < 256) {
+    buf[off++] = MSGPACK_BIN8;
+    buf[off++] = len;
+  } else if (len < 65536) {
+    buf[off++] = MSGPACK_BIN16;
+    buf[off++] = len >>> 8 & 255;
+    buf[off++] = len & 255;
+  } else {
+    buf[off++] = MSGPACK_BIN32;
+    buf[off++] = len >>> 24 & 255;
+    buf[off++] = len >>> 16 & 255;
+    buf[off++] = len >>> 8 & 255;
+    buf[off++] = len & 255;
+  }
+  return off;
+}
+var encoder = new TextEncoder;
+var decoder = new Wtf8Decoder;
+
+class MsgpackWriter {
+  buf;
+  view;
+  pos;
+  constructor(initialSize = 256) {
+    this.buf = new Uint8Array(initialSize);
+    this.view = new DataView(this.buf.buffer);
+    this.pos = 0;
+  }
+  ensure(n) {
+    if (this.pos + n > this.buf.length) {
+      let newSize = this.buf.length * 2;
+      while (newSize < this.pos + n)
+        newSize *= 2;
+      const next = new Uint8Array(newSize);
+      next.set(this.buf);
+      this.buf = next;
+      this.view = new DataView(this.buf.buffer);
+    }
+  }
+  writeArrayHeader(length) {
+    if (length <= 15) {
+      this.ensure(1);
+      this.buf[this.pos++] = 144 | length;
+    } else if (length <= 65535) {
+      this.ensure(3);
+      this.buf[this.pos++] = 220;
+      this.view.setUint16(this.pos, length, false);
+      this.pos += 2;
+    } else {
+      this.ensure(5);
+      this.buf[this.pos++] = 221;
+      this.view.setUint32(this.pos, length, false);
+      this.pos += 4;
+    }
+  }
+  writeUint(value) {
+    if (value <= 127) {
+      this.ensure(1);
+      this.buf[this.pos++] = value;
+    } else if (value <= 255) {
+      this.ensure(2);
+      this.buf[this.pos++] = 204;
+      this.buf[this.pos++] = value;
+    } else if (value <= 65535) {
+      this.ensure(3);
+      this.buf[this.pos++] = 205;
+      this.view.setUint16(this.pos, value, false);
+      this.pos += 2;
+    } else {
+      this.ensure(5);
+      this.buf[this.pos++] = 206;
+      this.view.setUint32(this.pos, value, false);
+      this.pos += 4;
+    }
+  }
+  writeString(str) {
+    const encoded = encoder.encode(str);
+    const len = encoded.length;
+    if (len <= 31) {
+      this.ensure(1 + len);
+      this.buf[this.pos++] = 160 | len;
+    } else if (len <= 255) {
+      this.ensure(2 + len);
+      this.buf[this.pos++] = 217;
+      this.buf[this.pos++] = len;
+    } else if (len <= 65535) {
+      this.ensure(3 + len);
+      this.buf[this.pos++] = 218;
+      this.view.setUint16(this.pos, len, false);
+      this.pos += 2;
+    } else {
+      this.ensure(5 + len);
+      this.buf[this.pos++] = 219;
+      this.view.setUint32(this.pos, len, false);
+      this.pos += 4;
+    }
+    this.buf.set(encoded, this.pos);
+    this.pos += len;
+  }
+  writeBool(value) {
+    this.ensure(1);
+    this.buf[this.pos++] = value ? 195 : 194;
+  }
+  finish() {
+    return this.buf.subarray(0, this.pos);
+  }
+}
+
+class MsgpackReader {
+  buf;
+  view;
+  pos;
+  constructor(data, offset = 0) {
+    this.buf = data;
+    this.view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    this.pos = offset;
+  }
+  readArrayHeader() {
+    const byte = this.buf[this.pos++];
+    if ((byte & 240) === 144)
+      return byte & 15;
+    if (byte === 220) {
+      const len = this.view.getUint16(this.pos, false);
+      this.pos += 2;
+      return len;
+    }
+    if (byte === 221) {
+      const len = this.view.getUint32(this.pos, false);
+      this.pos += 4;
+      return len;
+    }
+    throw new Error(`Expected array header, got 0x${byte.toString(16)}`);
+  }
+  readUint() {
+    const byte = this.buf[this.pos++];
+    if (byte <= 127)
+      return byte;
+    if (byte === 204)
+      return this.buf[this.pos++];
+    if (byte === 205) {
+      const val = this.view.getUint16(this.pos, false);
+      this.pos += 2;
+      return val;
+    }
+    if (byte === 206) {
+      const val = this.view.getUint32(this.pos, false);
+      this.pos += 4;
+      return val;
+    }
+    throw new Error(`Expected uint, got 0x${byte.toString(16)}`);
+  }
+  readString() {
+    const byte = this.buf[this.pos++];
+    let len;
+    if ((byte & 224) === 160) {
+      len = byte & 31;
+    } else if (byte === 217) {
+      len = this.buf[this.pos++];
+    } else if (byte === 218) {
+      len = this.view.getUint16(this.pos, false);
+      this.pos += 2;
+    } else if (byte === 219) {
+      len = this.view.getUint32(this.pos, false);
+      this.pos += 4;
+    } else {
+      throw new Error(`Expected string, got 0x${byte.toString(16)}`);
+    }
+    const str = decoder.decode(this.buf.subarray(this.pos, this.pos + len));
+    this.pos += len;
+    return str;
+  }
+  readBool() {
+    const byte = this.buf[this.pos++];
+    if (byte === 195)
+      return true;
+    if (byte === 194)
+      return false;
+    throw new Error(`Expected bool, got 0x${byte.toString(16)}`);
+  }
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/encoder.js
+var NODE_FIELDS = NODE_LEN / 4;
+var NODE_FIELD_NEXT = 3;
+var NO_STRUCTURED_DATA = 4294967295;
+
+class StringTable {
+  parts;
+  byteLen;
+  offsets;
+  constructor() {
+    this.parts = [];
+    this.byteLen = 0;
+    this.offsets = [];
+  }
+  add(text) {
+    const index = this.offsets.length;
+    const encoder = cachedEncoder();
+    const encodedLength = encoder.encode(text).length;
+    const offset = this.byteLen;
+    this.parts.push(text);
+    this.byteLen += encodedLength;
+    this.offsets.push(offset, offset + encodedLength);
+    return index;
+  }
+  encode() {
+    const encoder = cachedEncoder();
+    const dataBytes = encoder.encode(this.parts.join(""));
+    const offsetBytes = new Uint8Array(this.offsets.length * 4);
+    const view = new DataView(offsetBytes.buffer);
+    for (let i = 0;i < this.offsets.length; i++) {
+      view.setUint32(i * 4, this.offsets[i], true);
+    }
+    const result = new Uint8Array(offsetBytes.length + dataBytes.length);
+    result.set(offsetBytes, 0);
+    result.set(dataBytes, offsetBytes.length);
+    return result;
+  }
+  stringByteLength() {
+    return this.byteLen;
+  }
+  offsetsCount() {
+    return this.offsets.length;
+  }
+}
+var _encoder;
+function cachedEncoder() {
+  return _encoder ??= new TextEncoder;
+}
+function getChildrenPropertyMask(node) {
+  const kind = node.kind;
+  const props = childProperties[kind];
+  if (!props) {
+    return 0;
+  }
+  const n = node;
+  let mask = 0;
+  for (let i = 0;i < props.length; i++) {
+    const prop = props[i];
+    if (prop !== undefined && isChildPresent(n[prop])) {
+      mask |= 1 << i;
+    }
+  }
+  return mask;
+}
+function isChildPresent(v) {
+  if (v === undefined || v === null)
+    return false;
+  return true;
+}
+function recordNodeStrings(node, strs) {
+  return strs.add(node.text ?? "");
+}
+function encodeFileReferences(refs, writer) {
+  if (!refs || refs.length === 0)
+    return NO_STRUCTURED_DATA;
+  const offset = writer.finish().length;
+  writer.writeArrayHeader(refs.length);
+  for (const ref of refs) {
+    writer.writeArrayHeader(5);
+    writer.writeUint(ref.pos);
+    writer.writeUint(ref.end);
+    writer.writeString(ref.fileName);
+    writer.writeUint(ref.resolutionMode ?? 0);
+    writer.writeBool(ref.preserve ?? false);
+  }
+  return offset;
+}
+function recordExtendedData(node, strs, extendedData, structuredWriter) {
+  const offset = extendedData.length * 4;
+  if (node.kind === SyntaxKind2.SourceFile) {
+    const sf = node;
+    const textIndex = strs.add(sf.text);
+    const fileNameIndex = strs.add(sf.fileName);
+    const pathIndex = strs.add(sf.path);
+    const referencedFilesOffset = encodeFileReferences(sf.referencedFiles, structuredWriter);
+    const typeRefDirectivesOffset = encodeFileReferences(sf.typeReferenceDirectives, structuredWriter);
+    const libRefDirectivesOffset = encodeFileReferences(sf.libReferenceDirectives, structuredWriter);
+    extendedData.push(textIndex, fileNameIndex, pathIndex, sf.languageVariant, sf.scriptKind, referencedFilesOffset, typeRefDirectivesOffset, libRefDirectivesOffset, NO_STRUCTURED_DATA, NO_STRUCTURED_DATA, NO_STRUCTURED_DATA, 0);
+  } else if (node.kind === SyntaxKind2.TemplateHead || node.kind === SyntaxKind2.TemplateMiddle || node.kind === SyntaxKind2.TemplateTail) {
+    const tmpl = node;
+    const text = tmpl.text ?? "";
+    const rawText = tmpl.rawText ?? "";
+    const templateFlags = tmpl.templateFlags ?? 0;
+    const textIndex = strs.add(text);
+    const rawTextIndex = strs.add(rawText);
+    extendedData.push(textIndex, rawTextIndex, templateFlags);
+  } else {
+    const n = node;
+    const text = n.text ?? "";
+    const tokenFlags = n.tokenFlags ?? 0;
+    const textIndex = strs.add(text);
+    extendedData.push(textIndex, tokenFlags);
+  }
+  return offset;
+}
+function getNodeData(node, strs, extendedData, structuredWriter) {
+  const t = getNodeDataType(node.kind);
+  const common = getNodeCommonData(node);
+  switch (t) {
+    case NODE_DATA_TYPE_CHILDREN:
+      return t | common | getChildrenPropertyMask(node);
+    case NODE_DATA_TYPE_STRING:
+      return t | common | recordNodeStrings(node, strs);
+    case NODE_DATA_TYPE_EXTENDED:
+      return t | common | recordExtendedData(node, strs, extendedData, structuredWriter);
+    default:
+      throw new Error("unreachable");
+  }
+}
+function getChildPropertiesForNode(node) {
+  return childProperties[node.kind];
+}
+function isNodeArray2(value) {
+  return Array.isArray(value) && typeof value.pos === "number" && typeof value.end === "number";
+}
+function encodeNode(node) {
+  const strs = new StringTable;
+  const extendedDataValues = [];
+  const structuredWriter = new MsgpackWriter;
+  const nodeValues = [];
+  nodeValues.push(0, 0, 0, 0, 0, 0, 0);
+  let nodeCount = 0;
+  let parentIndex = 0;
+  let prevIndex = 0;
+  function visitNode(node) {
+    nodeCount++;
+    const currentIndex = nodeCount;
+    if (prevIndex !== 0) {
+      nodeValues[prevIndex * NODE_FIELDS + NODE_FIELD_NEXT] = currentIndex;
+    }
+    const data = getNodeData(node, strs, extendedDataValues, structuredWriter);
+    nodeValues.push(node.kind, node.pos >= 0 ? node.pos : 0, node.end >= 0 ? node.end : 0, 0, parentIndex, data, node.flags);
+    const saveParentIndex = parentIndex;
+    const savePrevIndex = prevIndex;
+    parentIndex = currentIndex;
+    prevIndex = 0;
+    visitChildren(node);
+    prevIndex = currentIndex;
+    parentIndex = saveParentIndex;
+  }
+  function visitNodeList(list) {
+    if (!list) {
+      return;
+    }
+    nodeCount++;
+    const currentIndex = nodeCount;
+    if (prevIndex !== 0) {
+      nodeValues[prevIndex * NODE_FIELDS + NODE_FIELD_NEXT] = currentIndex;
+    }
+    nodeValues.push(KIND_NODE_LIST, list.pos >= 0 ? list.pos : 0, list.end >= 0 ? list.end : 0, 0, parentIndex, list.length, 0);
+    const saveParentIndex = parentIndex;
+    parentIndex = currentIndex;
+    prevIndex = 0;
+    for (const child of list) {
+      visitNode(child);
+    }
+    prevIndex = currentIndex;
+    parentIndex = saveParentIndex;
+  }
+  function visitChildren(node) {
+    const props = getChildPropertiesForNode(node);
+    const n = node;
+    if (props) {
+      for (const propName of props) {
+        if (propName === undefined)
+          continue;
+        const child = n[propName];
+        if (child === undefined || child === null)
+          continue;
+        if (isNodeArray2(child)) {
+          visitNodeList(child);
+        } else {
+          visitNode(child);
+        }
+      }
+    }
+  }
+  nodeCount++;
+  parentIndex++;
+  const rootData = getNodeData(node, strs, extendedDataValues, structuredWriter);
+  nodeValues.push(node.kind, node.pos >= 0 ? node.pos : 0, node.end >= 0 ? node.end : 0, 0, 0, rootData, node.flags);
+  const saveParent = parentIndex;
+  prevIndex = 0;
+  parentIndex = 1;
+  visitChildren(node);
+  parentIndex = saveParent;
+  const extendedDataBytes = new Uint8Array(extendedDataValues.length * 4);
+  const extView = new DataView(extendedDataBytes.buffer);
+  for (let i = 0;i < extendedDataValues.length; i++) {
+    extView.setUint32(i * 4, extendedDataValues[i], true);
+  }
+  const structuredDataBytes = structuredWriter.finish();
+  const strsBytes = strs.encode();
+  const nodesBytes = new Uint8Array(nodeValues.length * 4);
+  const nodesView = new DataView(nodesBytes.buffer);
+  for (let i = 0;i < nodeValues.length; i++) {
+    nodesView.setUint32(i * 4, nodeValues[i] >>> 0, true);
+  }
+  const offsetStringTableOffsets = HEADER_SIZE;
+  const offsetStringTableData = HEADER_SIZE + strs.offsetsCount() * 4;
+  const offsetExtendedData = offsetStringTableData + strs.stringByteLength();
+  const offsetStructuredData = offsetExtendedData + extendedDataBytes.length;
+  const offsetNodes = offsetStructuredData + structuredDataBytes.length;
+  const header = new Uint8Array(HEADER_SIZE);
+  const headerView = new DataView(header.buffer);
+  const metadata = PROTOCOL_VERSION << 24;
+  headerView.setUint32(HEADER_OFFSET_METADATA, metadata, true);
+  headerView.setUint32(HEADER_OFFSET_STRING_TABLE_OFFSETS, offsetStringTableOffsets, true);
+  headerView.setUint32(HEADER_OFFSET_STRING_TABLE, offsetStringTableData, true);
+  headerView.setUint32(HEADER_OFFSET_EXTENDED_DATA, offsetExtendedData, true);
+  headerView.setUint32(HEADER_OFFSET_STRUCTURED_DATA, offsetStructuredData, true);
+  headerView.setUint32(HEADER_OFFSET_NODES, offsetNodes, true);
+  const result = new Uint8Array(header.length + strsBytes.length + extendedDataBytes.length + structuredDataBytes.length + nodesBytes.length);
+  result.set(header, 0);
+  result.set(strsBytes, HEADER_SIZE);
+  result.set(extendedDataBytes, offsetExtendedData);
+  result.set(structuredDataBytes, offsetStructuredData);
+  result.set(nodesBytes, offsetNodes);
+  return result;
+}
+function uint8ArrayToBase64(data) {
+  return Buffer.from(data).toString("base64");
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/node.infrastructure.js
+var popcount8 = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8];
+var NODE_DATA_TYPE_MASK = 3221225472;
+var NODE_CHILD_MASK = 255;
+var NODE_STRING_INDEX_MASK = 16777215;
+var NODE_EXTENDED_DATA_MASK = 16777215;
+function readSourceFileHash(data) {
+  const lo0 = data.getUint32(HEADER_OFFSET_HASH_LO0, true);
+  const lo1 = data.getUint32(HEADER_OFFSET_HASH_LO1, true);
+  const hi0 = data.getUint32(HEADER_OFFSET_HASH_HI0, true);
+  const hi1 = data.getUint32(HEADER_OFFSET_HASH_HI1, true);
+  return hex8(hi1) + hex8(hi0) + hex8(lo1) + hex8(lo0);
+}
+function readParseOptionsKey(data) {
+  return data.getUint32(HEADER_OFFSET_PARSE_OPTIONS, true).toString();
+}
+function hex8(n) {
+  return (n >>> 0).toString(16).padStart(8, "0");
+}
+function modifierToFlag(kind) {
+  switch (kind) {
+    case SyntaxKind2.StaticKeyword:
+      return ModifierFlags.Static;
+    case SyntaxKind2.PublicKeyword:
+      return ModifierFlags.Public;
+    case SyntaxKind2.ProtectedKeyword:
+      return ModifierFlags.Protected;
+    case SyntaxKind2.PrivateKeyword:
+      return ModifierFlags.Private;
+    case SyntaxKind2.AbstractKeyword:
+      return ModifierFlags.Abstract;
+    case SyntaxKind2.AccessorKeyword:
+      return ModifierFlags.Accessor;
+    case SyntaxKind2.ExportKeyword:
+      return ModifierFlags.Export;
+    case SyntaxKind2.DeclareKeyword:
+      return ModifierFlags.Ambient;
+    case SyntaxKind2.ConstKeyword:
+      return ModifierFlags.Const;
+    case SyntaxKind2.DefaultKeyword:
+      return ModifierFlags.Default;
+    case SyntaxKind2.AsyncKeyword:
+      return ModifierFlags.Async;
+    case SyntaxKind2.ReadonlyKeyword:
+      return ModifierFlags.Readonly;
+    case SyntaxKind2.OverrideKeyword:
+      return ModifierFlags.Override;
+    case SyntaxKind2.InKeyword:
+      return ModifierFlags.In;
+    case SyntaxKind2.OutKeyword:
+      return ModifierFlags.Out;
+    case SyntaxKind2.Decorator:
+      return ModifierFlags.Decorator;
+    default:
+      return ModifierFlags.None;
+  }
+}
+
+class RemoteNodeBase {
+  parent;
+  view;
+  index;
+  _byteIndex;
+  constructor(view, index, parent, byteIndex) {
+    this.view = view;
+    this.index = index;
+    this.parent = parent;
+    this._byteIndex = byteIndex;
+  }
+  get kind() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_KIND, true);
+  }
+  get pos() {
+    return this.view.getInt32(this._byteIndex + NODE_OFFSET_POS, true);
+  }
+  get end() {
+    return this.view.getInt32(this._byteIndex + NODE_OFFSET_END, true);
+  }
+  get next() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_NEXT, true);
+  }
+  get parentIndex() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_PARENT, true);
+  }
+  get data() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_DATA, true);
+  }
+  get dataType() {
+    return this.data & NODE_DATA_TYPE_MASK;
+  }
+  get childMask() {
+    if (this.dataType !== NODE_DATA_TYPE_CHILDREN) {
+      return -1;
+    }
+    return this.data & NODE_CHILD_MASK;
+  }
+  getFileText(start, end) {
+    return this.sourceFile._decoder.decode(new Uint8Array(this.view.buffer, this.view.byteOffset + this.sourceFile._offsetStringTable + start, end - start));
+  }
+  get sourceFile() {
+    throw new Error("sourceFile not available on base");
+  }
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/node.generated.js
+class RemoteNodeList extends Array {
+  static get [Symbol.species]() {
+    return Array;
+  }
+  parent;
+  hasTrailingComma;
+  transformFlags = 0;
+  view;
+  index;
+  _byteIndex;
+  _cursorIndex = 0;
+  _cursorNodeIndex = 0;
+  get pos() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_POS, true);
+  }
+  get end() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_END, true);
+  }
+  get next() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_NEXT, true);
+  }
+  get data() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_DATA, true);
+  }
+  sourceFile;
+  constructor(view, index, parent, sourceFile, offsetNodes) {
+    super();
+    this.view = view;
+    this.index = index;
+    this.parent = parent;
+    this.sourceFile = sourceFile;
+    this._byteIndex = offsetNodes + index * NODE_LEN;
+    this.length = this.data;
+    this._cursorNodeIndex = index + 1;
+    const length = this.length;
+    for (let i = 16;i < length; i++) {
+      Object.defineProperty(this, i, {
+        get() {
+          return this.at(i);
+        }
+      });
+    }
+  }
+  get 0() {
+    return this.at(0);
+  }
+  get 1() {
+    return this.at(1);
+  }
+  get 2() {
+    return this.at(2);
+  }
+  get 3() {
+    return this.at(3);
+  }
+  get 4() {
+    return this.at(4);
+  }
+  get 5() {
+    return this.at(5);
+  }
+  get 6() {
+    return this.at(6);
+  }
+  get 7() {
+    return this.at(7);
+  }
+  get 8() {
+    return this.at(8);
+  }
+  get 9() {
+    return this.at(9);
+  }
+  get 10() {
+    return this.at(10);
+  }
+  get 11() {
+    return this.at(11);
+  }
+  get 12() {
+    return this.at(12);
+  }
+  get 13() {
+    return this.at(13);
+  }
+  get 14() {
+    return this.at(14);
+  }
+  get 15() {
+    return this.at(15);
+  }
+  *[Symbol.iterator]() {
+    if (!this.length)
+      return;
+    let next = this.index + 1;
+    while (next) {
+      const child = this.getOrCreateChildAtNodeIndex(next);
+      next = child.next;
+      yield child;
+    }
+  }
+  forEachNode(visitNode) {
+    if (!this.length)
+      return;
+    let next = this.index + 1;
+    while (next) {
+      const child = this.getOrCreateChildAtNodeIndex(next);
+      next = child.next;
+      const result = visitNode(child);
+      if (result)
+        return result;
+    }
+  }
+  at(index) {
+    if (!Number.isInteger(index)) {
+      return;
+    }
+    if (index >= this.data || index < 0 && -index > this.data) {
+      return;
+    }
+    if (index < 0) {
+      index = this.length + index;
+    }
+    const offsetNodes = this.sourceFile._offsetNodes;
+    let i;
+    let next;
+    if (index >= this._cursorIndex) {
+      i = this._cursorIndex;
+      next = this._cursorNodeIndex;
+    } else {
+      i = 0;
+      next = this.index + 1;
+    }
+    for (;i < index; i++) {
+      next = this.view.getUint32(offsetNodes + next * NODE_LEN + NODE_OFFSET_NEXT, true);
+    }
+    this._cursorIndex = index;
+    this._cursorNodeIndex = next;
+    return this.getOrCreateChildAtNodeIndex(next);
+  }
+  getOrCreateChildAtNodeIndex(index) {
+    let child = this.sourceFile.nodes[index];
+    if (!child) {
+      const kind = this.view.getUint32(this.sourceFile._offsetNodes + index * NODE_LEN + NODE_OFFSET_KIND, true);
+      if (kind === KIND_NODE_LIST) {
+        throw new Error("NodeList cannot directly contain another NodeList");
+      }
+      const sf = this.sourceFile;
+      child = new RemoteNode(this.view, index, this.parent, sf, sf._offsetNodes);
+      sf.nodes[index] = child;
+      sf._timing?.recordMaterialization();
+    }
+    return child;
+  }
+  __print() {
+    const result = [];
+    result.push(`kind: NodeList`);
+    result.push(`index: ${this.index}`);
+    result.push(`byteIndex: ${this._byteIndex}`);
+    result.push(`length: ${this.length}`);
+    return result.join(`
+`);
+  }
+}
+
+class RemoteNode extends RemoteNodeBase {
+  static NODE_LEN = NODE_LEN;
+  get sourceFile() {
+    return this._sourceFile;
+  }
+  _sourceFile;
+  get id() {
+    return `${this.index}.${this.kind}.${this.sourceFile.path}`;
+  }
+  constructor(view, index, parent, sourceFile, offsetNodes) {
+    super(view, index, parent, offsetNodes + index * NODE_LEN);
+    this._sourceFile = sourceFile;
+  }
+  forEachChild(visitNode, visitList) {
+    if (this.hasChildren()) {
+      let next = this.index + 1;
+      do {
+        const child = this.getOrCreateChildAtNodeIndex(next);
+        if (child instanceof RemoteNodeList) {
+          if (visitList) {
+            const result = visitList(child);
+            if (result) {
+              return result;
+            }
+          } else {
+            const result = child.forEachNode(visitNode);
+            if (result) {
+              return result;
+            }
+          }
+        } else if (child.kind !== SyntaxKind2.JSDoc) {
+          const result = visitNode(child);
+          if (result) {
+            return result;
+          }
+        }
+        next = child.next;
+      } while (next);
+    }
+  }
+  get jsDoc() {
+    if (!this.hasChildren()) {
+      return;
+    }
+    let result;
+    let next = this.index + 1;
+    do {
+      const child = this.getOrCreateChildAtNodeIndex(next);
+      if (!(child instanceof RemoteNodeList) && child.kind === SyntaxKind2.JSDoc) {
+        (result ??= []).push(child);
+      }
+      next = child.next;
+    } while (next);
+    return result;
+  }
+  getSourceFile() {
+    return this.sourceFile;
+  }
+  getStart(sourceFile, includeJsDocComment) {
+    return getTokenPosOfNode(this, sourceFile ?? this.getSourceFile(), includeJsDocComment);
+  }
+  getFullStart() {
+    return this.pos;
+  }
+  getEnd() {
+    return this.end;
+  }
+  getWidth(sourceFile) {
+    return this.getEnd() - this.getStart(sourceFile);
+  }
+  getFullWidth() {
+    return this.end - this.pos;
+  }
+  getLeadingTriviaWidth(sourceFile) {
+    return this.getStart(sourceFile) - this.pos;
+  }
+  getFullText(sourceFile) {
+    return (sourceFile ?? this.getSourceFile()).text.substring(this.pos, this.end);
+  }
+  getText(sourceFile) {
+    sourceFile ??= this.getSourceFile();
+    return sourceFile.text.substring(this.getStart(sourceFile), this.end);
+  }
+  getString(index) {
+    const offsetStringTableOffsets = this.sourceFile._offsetStringTableOffsets;
+    const start = this.view.getUint32(offsetStringTableOffsets + index * 4, true);
+    const end = this.view.getUint32(offsetStringTableOffsets + (index + 1) * 4, true);
+    const offsetStringTable = this.sourceFile._offsetStringTable;
+    const text = new Uint8Array(this.view.buffer, this.view.byteOffset + offsetStringTable + start, end - start);
+    return this.sourceFile._decoder.decode(text);
+  }
+  getOrCreateChildAtNodeIndex(index) {
+    let child = this.sourceFile.nodes[index];
+    if (!child) {
+      const sf = this.sourceFile;
+      const offsetNodes = sf._offsetNodes;
+      const kind = this.view.getUint32(offsetNodes + index * NODE_LEN + NODE_OFFSET_KIND, true);
+      child = kind === KIND_NODE_LIST ? new RemoteNodeList(this.view, index, this, sf, offsetNodes) : new RemoteNode(this.view, index, this, sf, offsetNodes);
+      sf.nodes[index] = child;
+      sf._timing?.recordMaterialization();
+    }
+    return child;
+  }
+  hasChildren() {
+    if (this._byteIndex >= this.view.byteLength - NODE_LEN) {
+      return false;
+    }
+    const nextNodeParent = this.view.getUint32(this.sourceFile._offsetNodes + (this.index + 1) * NODE_LEN + NODE_OFFSET_PARENT, true);
+    return nextNodeParent === this.index;
+  }
+  getNamedChild(propertyName) {
+    const kind = this.kind;
+    const propertyNames = childProperties[kind];
+    if (!propertyNames) {
+      return;
+    }
+    const order = propertyNames.indexOf(propertyName);
+    if (order === -1) {
+      return;
+    }
+    return this.getChildAtOrder(order);
+  }
+  getChildAtOrder(order) {
+    const mask = this.childMask;
+    if (!(mask & 1 << order)) {
+      return;
+    }
+    const propertyIndex = order - popcount8[~(mask | 255 << order & 255) & 255];
+    let childIndex = this.index + 1;
+    for (let i = 0;i < propertyIndex; i++) {
+      childIndex = this.view.getUint32(this.sourceFile._offsetNodes + childIndex * NODE_LEN + NODE_OFFSET_NEXT, true);
+    }
+    return this.getOrCreateChildAtNodeIndex(childIndex);
+  }
+  __print() {
+    const result = [];
+    result.push(`index: ${this.index}`);
+    result.push(`byteIndex: ${this._byteIndex}`);
+    result.push(`kind: ${SyntaxKind2[this.kind]}`);
+    result.push(`pos: ${this.pos}`);
+    result.push(`end: ${this.end}`);
+    result.push(`next: ${this.next}`);
+    result.push(`parent: ${this.parentIndex}`);
+    result.push(`data: ${this.data.toString(2).padStart(32, "0")}`);
+    const dataType = this.dataType === NODE_DATA_TYPE_CHILDREN ? "children" : this.dataType === NODE_DATA_TYPE_STRING ? "string" : "extended";
+    result.push(`dataType: ${dataType}`);
+    if (this.dataType === NODE_DATA_TYPE_CHILDREN) {
+      result.push(`childMask: ${this.childMask.toString(2).padStart(8, "0")}`);
+      result.push(`childProperties: ${childProperties[this.kind]?.join(", ")}`);
+    }
+    return result.join(`
+`);
+  }
+  __printChildren() {
+    const result = [];
+    let next = this.index + 1;
+    while (next) {
+      const child = this.getOrCreateChildAtNodeIndex(next);
+      next = child.next;
+      result.push(child.__print());
+    }
+    return result.join(`
+
+`);
+  }
+  __printSubtree() {
+    const result = [this.__print()];
+    this.forEachChild(function visitNode(node) {
+      result.push(node.__print());
+      node.forEachChild(visitNode);
+    }, (visitList) => {
+      result.push(visitList.__print());
+    });
+    return result.join(`
+
+`);
+  }
+  get containsOnlyTriviaWhiteSpaces() {
+    return (this.data & 1 << 24) !== 0;
+  }
+  get isArrayType() {
+    return (this.data & 1 << 24) !== 0;
+  }
+  get isBracketed() {
+    return (this.data & 1 << 24) !== 0;
+  }
+  get isExportEquals() {
+    return (this.data & 1 << 24) !== 0;
+  }
+  get isNameFirst() {
+    return (this.data & 1 << 25) !== 0;
+  }
+  get isTypeOf() {
+    return (this.data & 1 << 24) !== 0;
+  }
+  get isTypeOnly() {
+    return (this.data & 1 << 24) !== 0;
+  }
+  get multiLine() {
+    return (this.data & 1 << 24) !== 0;
+  }
+  get keyword() {
+    switch (this.kind) {
+      case SyntaxKind2.ModuleDeclaration:
+        return this.data >> 24 & 1 ? SyntaxKind2.NamespaceKeyword : SyntaxKind2.ModuleKeyword;
+    }
+  }
+  get keywordToken() {
+    switch (this.kind) {
+      case SyntaxKind2.MetaProperty:
+        return this.data >> 24 & 1 ? SyntaxKind2.NewKeyword : SyntaxKind2.ImportKeyword;
+    }
+  }
+  get operator() {
+    switch (this.kind) {
+      case SyntaxKind2.PrefixUnaryExpression: {
+        const idx = this.data >> 24 & 7;
+        if (idx === 1)
+          return SyntaxKind2.MinusToken;
+        if (idx === 2)
+          return SyntaxKind2.TildeToken;
+        if (idx === 3)
+          return SyntaxKind2.ExclamationToken;
+        if (idx === 4)
+          return SyntaxKind2.PlusPlusToken;
+        if (idx === 5)
+          return SyntaxKind2.MinusMinusToken;
+        return SyntaxKind2.PlusToken;
+      }
+      case SyntaxKind2.PostfixUnaryExpression:
+        return this.data >> 24 & 1 ? SyntaxKind2.MinusMinusToken : SyntaxKind2.PlusPlusToken;
+      case SyntaxKind2.TypeOperator: {
+        const idx = this.data >> 24 & 3;
+        if (idx === 1)
+          return SyntaxKind2.ReadonlyKeyword;
+        if (idx === 2)
+          return SyntaxKind2.UniqueKeyword;
+        return SyntaxKind2.KeyOfKeyword;
+      }
+    }
+  }
+  get phaseModifier() {
+    switch (this.kind) {
+      case SyntaxKind2.ImportClause: {
+        const idx = this.data >> 24 & 3;
+        if (idx === 0)
+          return;
+        return idx === 1 ? SyntaxKind2.TypeKeyword : idx === 2 ? SyntaxKind2.DeferKeyword : undefined;
+      }
+    }
+  }
+  get token() {
+    switch (this.kind) {
+      case SyntaxKind2.HeritageClause:
+        return this.data >> 24 & 1 ? SyntaxKind2.ImplementsKeyword : SyntaxKind2.ExtendsKeyword;
+      case SyntaxKind2.ImportAttributes:
+        return this.data >> 25 & 1 ? SyntaxKind2.AssertKeyword : SyntaxKind2.WithKeyword;
+    }
+  }
+  get templateFlags() {
+    switch (this.kind) {
+      case SyntaxKind2.TemplateHead:
+      case SyntaxKind2.TemplateMiddle:
+      case SyntaxKind2.TemplateTail:
+        const extendedDataOffset = this.sourceFile._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK);
+        return this.view.getUint32(extendedDataOffset + 8, true);
+    }
+  }
+  get tokenFlags() {
+    switch (this.kind) {
+      case SyntaxKind2.StringLiteral:
+      case SyntaxKind2.NumericLiteral:
+      case SyntaxKind2.BigIntLiteral:
+      case SyntaxKind2.RegularExpressionLiteral:
+        const extendedDataOffset = this.sourceFile._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK);
+        return this.view.getUint32(extendedDataOffset + 4, true);
+      default:
+        return 0;
+    }
+  }
+  get argument() {
+    return this.getNamedChild("argument");
+  }
+  get argumentExpression() {
+    return this.getNamedChild("argumentExpression");
+  }
+  get arguments() {
+    return this.getNamedChild("arguments");
+  }
+  get assertsModifier() {
+    return this.getNamedChild("assertsModifier");
+  }
+  get asteriskToken() {
+    return this.getNamedChild("asteriskToken");
+  }
+  get attributes() {
+    return this.getNamedChild("attributes");
+  }
+  get awaitModifier() {
+    return this.getNamedChild("awaitModifier");
+  }
+  get block() {
+    return this.getNamedChild("block");
+  }
+  get body() {
+    return this.getNamedChild("body");
+  }
+  get caseBlock() {
+    return this.getNamedChild("caseBlock");
+  }
+  get catchClause() {
+    return this.getNamedChild("catchClause");
+  }
+  get checkType() {
+    return this.getNamedChild("checkType");
+  }
+  get children() {
+    return this.getNamedChild("children");
+  }
+  get className() {
+    return this.getNamedChild("className");
+  }
+  get clauses() {
+    return this.getNamedChild("clauses");
+  }
+  get closingElement() {
+    return this.getNamedChild("closingElement");
+  }
+  get closingFragment() {
+    return this.getNamedChild("closingFragment");
+  }
+  get colonToken() {
+    return this.getNamedChild("colonToken");
+  }
+  get comment() {
+    return this.getNamedChild("comment");
+  }
+  get condition() {
+    return this.getNamedChild("condition");
+  }
+  get constraint() {
+    return this.getNamedChild("constraint");
+  }
+  get declarationList() {
+    return this.getNamedChild("declarationList");
+  }
+  get declarations() {
+    return this.getNamedChild("declarations");
+  }
+  get defaultType() {
+    return this.getNamedChild("defaultType");
+  }
+  get dotDotDotToken() {
+    return this.getNamedChild("dotDotDotToken");
+  }
+  get elements() {
+    return this.getNamedChild("elements");
+  }
+  get elementType() {
+    return this.getNamedChild("elementType");
+  }
+  get elseStatement() {
+    return this.getNamedChild("elseStatement");
+  }
+  get endOfFileToken() {
+    return this.getNamedChild("endOfFileToken");
+  }
+  get equalsGreaterThanToken() {
+    return this.getNamedChild("equalsGreaterThanToken");
+  }
+  get equalsToken() {
+    return this.getNamedChild("equalsToken");
+  }
+  get exclamationToken() {
+    return this.getNamedChild("exclamationToken");
+  }
+  get exportClause() {
+    return this.getNamedChild("exportClause");
+  }
+  get expression() {
+    return this.getNamedChild("expression");
+  }
+  get exprName() {
+    return this.getNamedChild("exprName");
+  }
+  get extendsType() {
+    return this.getNamedChild("extendsType");
+  }
+  get falseType() {
+    return this.getNamedChild("falseType");
+  }
+  get finallyBlock() {
+    return this.getNamedChild("finallyBlock");
+  }
+  get head() {
+    return this.getNamedChild("head");
+  }
+  get heritageClauses() {
+    return this.getNamedChild("heritageClauses");
+  }
+  get importClause() {
+    return this.getNamedChild("importClause");
+  }
+  get incrementor() {
+    return this.getNamedChild("incrementor");
+  }
+  get indexType() {
+    return this.getNamedChild("indexType");
+  }
+  get initializer() {
+    return this.getNamedChild("initializer");
+  }
+  get jsdocPropertyTags() {
+    return this.getNamedChild("jsdocPropertyTags");
+  }
+  get label() {
+    return this.getNamedChild("label");
+  }
+  get left() {
+    return this.getNamedChild("left");
+  }
+  get literal() {
+    return this.getNamedChild("literal");
+  }
+  get members() {
+    return this.getNamedChild("members");
+  }
+  get modifiers() {
+    return this.getNamedChild("modifiers");
+  }
+  get moduleReference() {
+    return this.getNamedChild("moduleReference");
+  }
+  get moduleSpecifier() {
+    return this.getNamedChild("moduleSpecifier");
+  }
+  get name() {
+    return this.getNamedChild("name");
+  }
+  get namedBindings() {
+    return this.getNamedChild("namedBindings");
+  }
+  get nameExpression() {
+    return this.getNamedChild("nameExpression");
+  }
+  get namespace() {
+    return this.getNamedChild("namespace");
+  }
+  get nameType() {
+    return this.getNamedChild("nameType");
+  }
+  get objectAssignmentInitializer() {
+    return this.getNamedChild("objectAssignmentInitializer");
+  }
+  get objectType() {
+    return this.getNamedChild("objectType");
+  }
+  get openingElement() {
+    return this.getNamedChild("openingElement");
+  }
+  get openingFragment() {
+    return this.getNamedChild("openingFragment");
+  }
+  get operand() {
+    return this.getNamedChild("operand");
+  }
+  get operatorToken() {
+    return this.getNamedChild("operatorToken");
+  }
+  get parameterName() {
+    return this.getNamedChild("parameterName");
+  }
+  get parameters() {
+    return this.getNamedChild("parameters");
+  }
+  get postfixToken() {
+    return this.getNamedChild("postfixToken");
+  }
+  get properties() {
+    return this.getNamedChild("properties");
+  }
+  get propertyName() {
+    return this.getNamedChild("propertyName");
+  }
+  get qualifier() {
+    return this.getNamedChild("qualifier");
+  }
+  get questionDotToken() {
+    return this.getNamedChild("questionDotToken");
+  }
+  get questionToken() {
+    return this.getNamedChild("questionToken");
+  }
+  get readonlyToken() {
+    return this.getNamedChild("readonlyToken");
+  }
+  get right() {
+    return this.getNamedChild("right");
+  }
+  get statement() {
+    return this.getNamedChild("statement");
+  }
+  get statements() {
+    return this.getNamedChild("statements");
+  }
+  get tag() {
+    return this.getNamedChild("tag");
+  }
+  get tagName() {
+    return this.getNamedChild("tagName");
+  }
+  get tags() {
+    return this.getNamedChild("tags");
+  }
+  get template() {
+    return this.getNamedChild("template");
+  }
+  get templateSpans() {
+    return this.getNamedChild("templateSpans");
+  }
+  get thenStatement() {
+    return this.getNamedChild("thenStatement");
+  }
+  get thisArg() {
+    return this.getNamedChild("thisArg");
+  }
+  get trueType() {
+    return this.getNamedChild("trueType");
+  }
+  get tryBlock() {
+    return this.getNamedChild("tryBlock");
+  }
+  get tupleNameSource() {
+    return this.getNamedChild("tupleNameSource");
+  }
+  get type() {
+    return this.getNamedChild("type");
+  }
+  get typeArguments() {
+    return this.getNamedChild("typeArguments");
+  }
+  get typeExpression() {
+    return this.getNamedChild("typeExpression");
+  }
+  get typeName() {
+    return this.getNamedChild("typeName");
+  }
+  get typeParameter() {
+    return this.getNamedChild("typeParameter");
+  }
+  get typeParameters() {
+    return this.getNamedChild("typeParameters");
+  }
+  get types() {
+    return this.getNamedChild("types");
+  }
+  get value() {
+    return this.getNamedChild("value");
+  }
+  get variableDeclaration() {
+    return this.getNamedChild("variableDeclaration");
+  }
+  get whenFalse() {
+    return this.getNamedChild("whenFalse");
+  }
+  get whenTrue() {
+    return this.getNamedChild("whenTrue");
+  }
+  get text() {
+    switch (this.kind) {
+      case SyntaxKind2.Identifier:
+      case SyntaxKind2.PrivateIdentifier:
+      case SyntaxKind2.JsxText:
+      case SyntaxKind2.JSDocText:
+      case SyntaxKind2.JSDocLink:
+      case SyntaxKind2.JSDocLinkPlain:
+      case SyntaxKind2.JSDocLinkCode: {
+        const stringIndex = this.data & NODE_STRING_INDEX_MASK;
+        return this.getString(stringIndex);
+      }
+      case SyntaxKind2.StringLiteral:
+      case SyntaxKind2.NumericLiteral:
+      case SyntaxKind2.BigIntLiteral:
+      case SyntaxKind2.RegularExpressionLiteral:
+      case SyntaxKind2.NoSubstitutionTemplateLiteral:
+      case SyntaxKind2.TemplateHead:
+      case SyntaxKind2.TemplateMiddle:
+      case SyntaxKind2.TemplateTail:
+      case SyntaxKind2.SourceFile: {
+        const extendedDataOffset = this.sourceFile._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK);
+        const stringIndex = this.view.getUint32(extendedDataOffset, true);
+        return this.getString(stringIndex);
+      }
+    }
+  }
+  get rawText() {
+    switch (this.kind) {
+      case SyntaxKind2.TemplateHead:
+      case SyntaxKind2.TemplateMiddle:
+      case SyntaxKind2.TemplateTail:
+        const extendedDataOffset = this.sourceFile._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK);
+        const stringIndex = this.view.getUint32(extendedDataOffset + 4, true);
+        return this.getString(stringIndex);
+    }
+  }
+  get flags() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_FLAGS, true);
+  }
+  get modifierFlags() {
+    const mods = this.modifiers;
+    if (!mods)
+      return ModifierFlags.None;
+    let flags = ModifierFlags.None;
+    for (const mod of mods) {
+      flags |= modifierToFlag(mod.kind);
+    }
+    return flags;
+  }
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/node/node.js
+var NO_STRUCTURED_DATA2 = 4294967295;
+
+class RemoteSourceFile extends RemoteNode {
+  nodes;
+  _offsetNodes;
+  _offsetStringTableOffsets;
+  _offsetStringTable;
+  _offsetExtendedData;
+  _offsetStructuredData;
+  _decoder;
+  _timing;
+  _lineStarts;
+  _cachedText;
+  _cachedReferencedFiles;
+  _cachedTypeReferenceDirectives;
+  _cachedLibReferenceDirectives;
+  _cachedImports;
+  _cachedModuleAugmentations;
+  _cachedAmbientModuleNames;
+  constructor(data, decoder, timing) {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const offsetNodes = view.getUint32(HEADER_OFFSET_NODES, true);
+    super(view, 1, undefined, undefined, offsetNodes);
+    this._sourceFile = this;
+    this._offsetNodes = offsetNodes;
+    this._offsetStringTableOffsets = view.getUint32(HEADER_OFFSET_STRING_TABLE_OFFSETS, true);
+    this._offsetStringTable = view.getUint32(HEADER_OFFSET_STRING_TABLE, true);
+    this._offsetExtendedData = view.getUint32(HEADER_OFFSET_EXTENDED_DATA, true);
+    this._offsetStructuredData = view.getUint32(HEADER_OFFSET_STRUCTURED_DATA, true);
+    this._decoder = decoder;
+    this._timing = timing;
+    this.nodes = Array((view.byteLength - offsetNodes) / NODE_LEN);
+    this.nodes[1] = this;
+    timing?.recordSourceFileFetched(Math.max(0, this.nodes.length - 2));
+  }
+  readFileReferences(structuredDataOffset) {
+    if (structuredDataOffset === NO_STRUCTURED_DATA2) {
+      return [];
+    }
+    const buf = new Uint8Array(this.view.buffer, this.view.byteOffset, this.view.byteLength);
+    const reader = new MsgpackReader(buf, this._offsetStructuredData + structuredDataOffset);
+    const count = reader.readArrayHeader();
+    const result = [];
+    for (let i = 0;i < count; i++) {
+      reader.readArrayHeader();
+      const pos = reader.readUint();
+      const end = reader.readUint();
+      const fileName = reader.readString();
+      const resolutionMode = reader.readUint();
+      const preserve = reader.readBool();
+      result.push({ pos, end, fileName, resolutionMode, preserve });
+    }
+    return result;
+  }
+  readNodeIndexArray(structuredDataOffset) {
+    if (structuredDataOffset === NO_STRUCTURED_DATA2) {
+      return [];
+    }
+    const buf = new Uint8Array(this.view.buffer, this.view.byteOffset, this.view.byteLength);
+    const reader = new MsgpackReader(buf, this._offsetStructuredData + structuredDataOffset);
+    const count = reader.readArrayHeader();
+    const result = [];
+    for (let i = 0;i < count; i++) {
+      const nodeIndex = reader.readUint();
+      result.push(this.getOrCreateNodeAtIndex(nodeIndex));
+    }
+    return result;
+  }
+  readStringArray(structuredDataOffset) {
+    if (structuredDataOffset === NO_STRUCTURED_DATA2) {
+      return [];
+    }
+    const buf = new Uint8Array(this.view.buffer, this.view.byteOffset, this.view.byteLength);
+    const reader = new MsgpackReader(buf, this._offsetStructuredData + structuredDataOffset);
+    const count = reader.readArrayHeader();
+    const result = [];
+    for (let i = 0;i < count; i++) {
+      result.push(reader.readString());
+    }
+    return result;
+  }
+  getOrCreateNodeAtIndex(index) {
+    let node = this.nodes[index];
+    if (!node) {
+      let parentIndex = this.view.getUint32(this._offsetNodes + index * NODE_LEN + NODE_OFFSET_PARENT, true);
+      while (parentIndex !== index && this.view.getUint32(this._offsetNodes + parentIndex * NODE_LEN + NODE_OFFSET_KIND, true) === KIND_NODE_LIST) {
+        parentIndex = this.view.getUint32(this._offsetNodes + parentIndex * NODE_LEN + NODE_OFFSET_PARENT, true);
+      }
+      const parent = parentIndex === index ? this : this.getOrCreateNodeAtIndex(parentIndex);
+      node = new RemoteNode(this.view, index, parent, this, this._offsetNodes);
+      this.nodes[index] = node;
+      this._timing?.recordMaterialization();
+    }
+    return node;
+  }
+  get extendedDataOffset() {
+    return this._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK);
+  }
+  get fileName() {
+    const stringIndex = this.view.getUint32(this.extendedDataOffset + 4, true);
+    return this.getString(stringIndex);
+  }
+  get path() {
+    const stringIndex = this.view.getUint32(this.extendedDataOffset + 8, true);
+    return this.getString(stringIndex);
+  }
+  get languageVariant() {
+    return this.view.getUint32(this.extendedDataOffset + 12, true);
+  }
+  get scriptKind() {
+    return this.view.getUint32(this.extendedDataOffset + 16, true);
+  }
+  get referencedFiles() {
+    if (this._cachedReferencedFiles !== undefined)
+      return this._cachedReferencedFiles;
+    const offset = this.view.getUint32(this.extendedDataOffset + 20, true);
+    const files = this.readFileReferences(offset);
+    this._cachedReferencedFiles = files;
+    return files;
+  }
+  get typeReferenceDirectives() {
+    if (this._cachedTypeReferenceDirectives !== undefined)
+      return this._cachedTypeReferenceDirectives;
+    const offset = this.view.getUint32(this.extendedDataOffset + 24, true);
+    const directives = this.readFileReferences(offset);
+    this._cachedTypeReferenceDirectives = directives;
+    return directives;
+  }
+  get libReferenceDirectives() {
+    if (this._cachedLibReferenceDirectives !== undefined)
+      return this._cachedLibReferenceDirectives;
+    const offset = this.view.getUint32(this.extendedDataOffset + 28, true);
+    const directives = this.readFileReferences(offset);
+    this._cachedLibReferenceDirectives = directives;
+    return directives;
+  }
+  get imports() {
+    if (this._cachedImports !== undefined)
+      return this._cachedImports;
+    const offset = this.view.getUint32(this.extendedDataOffset + 32, true);
+    const imports = this.readNodeIndexArray(offset);
+    this._cachedImports = imports;
+    return imports;
+  }
+  get moduleAugmentations() {
+    if (this._cachedModuleAugmentations !== undefined)
+      return this._cachedModuleAugmentations;
+    const offset = this.view.getUint32(this.extendedDataOffset + 36, true);
+    const moduleAugmentations = this.readNodeIndexArray(offset);
+    this._cachedModuleAugmentations = moduleAugmentations;
+    return moduleAugmentations;
+  }
+  get ambientModuleNames() {
+    if (this._cachedAmbientModuleNames !== undefined)
+      return this._cachedAmbientModuleNames;
+    const offset = this.view.getUint32(this.extendedDataOffset + 40, true);
+    const names = this.readStringArray(offset);
+    this._cachedAmbientModuleNames = names;
+    return names;
+  }
+  get externalModuleIndicator() {
+    const nodeIndex = this.view.getUint32(this.extendedDataOffset + 44, true);
+    if (nodeIndex === 0)
+      return;
+    if (nodeIndex === this.index)
+      return true;
+    return this.getOrCreateNodeAtIndex(nodeIndex);
+  }
+  get isDeclarationFile() {
+    return (this.flags & NodeFlags.Ambient) !== 0;
+  }
+  get text() {
+    if (this._cachedText !== undefined)
+      return this._cachedText;
+    const text = super.text;
+    this._cachedText = text;
+    return text;
+  }
+  getLineStarts() {
+    return this._lineStarts ??= computeLineStarts(this.text ?? "");
+  }
+  getLineAndCharacterOfPosition(position) {
+    const lineStarts = this.getLineStarts();
+    const line = computeLineOfPosition(lineStarts, position);
+    return { line, character: position - lineStarts[line] };
+  }
+  getPositionOfLineAndCharacter(line, character) {
+    const lineStarts = this.getLineStarts();
+    if (line < 0 || line >= lineStarts.length) {
+      throw new Error(`Bad line number. Line: ${line}, lineStarts.length: ${lineStarts.length}`);
+    }
+    return lineStarts[line] + character;
+  }
+}
+function computeLineOfPosition(lineStarts, position) {
+  let low = 0;
+  let high = lineStarts.length - 1;
+  while (low <= high) {
+    const middle = low + (high - low >> 1);
+    const value = lineStarts[middle];
+    if (value < position) {
+      low = middle + 1;
+    } else if (value > position) {
+      high = middle - 1;
+    } else {
+      return middle;
+    }
+  }
+  return low - 1;
+}
+function parseNodeHandle(handle) {
+  const firstDot = handle.indexOf(".");
+  if (firstDot === -1) {
+    throw new Error(`Invalid node handle: ${handle}`);
+  }
+  const secondDot = handle.indexOf(".", firstDot + 1);
+  if (secondDot === -1) {
+    throw new Error(`Invalid node handle: ${handle}`);
+  }
+  return {
+    index: parseInt(handle.slice(0, firstDot), 10),
+    kind: parseInt(handle.slice(firstDot + 1, secondDot), 10),
+    path: handle.slice(secondDot + 1)
+  };
+}
+function decodeNode(data) {
+  const sf = new RemoteSourceFile(data, new Wtf8Decoder);
+  return sf;
+}
+function getNodeId(node) {
+  if (!(node instanceof RemoteNode)) {
+    throw new Error("getNodeId requires a RemoteNode");
+  }
+  return node.id;
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/path.js
+var CharacterCodesSlash = 47;
+var CharacterCodesBackslash = 92;
+var CharacterCodesColon = 58;
+var CharacterCodesPercent = 37;
+var CharacterCodes3 = 51;
+var CharacterCodesa = 97;
+var CharacterCodesz = 122;
+var CharacterCodesA = 65;
+var CharacterCodesZ = 90;
+var CharacterCodesDot = 46;
+var directorySeparator = "/";
+var altDirectorySeparator = "\\";
+var urlSchemeSeparator = "://";
+var backslashRegExp = /\\/g;
+var relativePathSegmentRegExp = /\/\/|(?:^|\/)\.\.?(?:$|\/)/;
+function isAnyDirectorySeparator(charCode) {
+  return charCode === CharacterCodesSlash || charCode === CharacterCodesBackslash;
+}
+function isVolumeCharacter(charCode) {
+  return charCode >= CharacterCodesa && charCode <= CharacterCodesz || charCode >= CharacterCodesA && charCode <= CharacterCodesZ;
+}
+function getFileUrlVolumeSeparatorEnd(url, start) {
+  const ch0 = url.charCodeAt(start);
+  if (ch0 === CharacterCodesColon)
+    return start + 1;
+  if (ch0 === CharacterCodesPercent && url.charCodeAt(start + 1) === CharacterCodes3) {
+    const ch2 = url.charCodeAt(start + 2);
+    if (ch2 === CharacterCodesa || ch2 === CharacterCodesA)
+      return start + 3;
+  }
+  return -1;
+}
+function getRootLength(path) {
+  const rootLength = getEncodedRootLength(path);
+  return rootLength < 0 ? ~rootLength : rootLength;
+}
+function getEncodedRootLength(path) {
+  if (!path)
+    return 0;
+  const ch0 = path.charCodeAt(0);
+  if (ch0 === CharacterCodesSlash || ch0 === CharacterCodesBackslash) {
+    if (path.charCodeAt(1) !== ch0)
+      return 1;
+    const p1 = path.indexOf(ch0 === CharacterCodesSlash ? directorySeparator : altDirectorySeparator, 2);
+    if (p1 < 0)
+      return path.length;
+    return p1 + 1;
+  }
+  if (isVolumeCharacter(ch0) && path.charCodeAt(1) === CharacterCodesColon) {
+    const ch2 = path.charCodeAt(2);
+    if (ch2 === CharacterCodesSlash || ch2 === CharacterCodesBackslash)
+      return 3;
+    if (path.length === 2)
+      return 2;
+  }
+  const schemeEnd = path.indexOf(urlSchemeSeparator);
+  if (schemeEnd !== -1) {
+    const authorityStart = schemeEnd + urlSchemeSeparator.length;
+    const authorityEnd = path.indexOf(directorySeparator, authorityStart);
+    if (authorityEnd !== -1) {
+      const scheme = path.slice(0, schemeEnd);
+      const authority = path.slice(authorityStart, authorityEnd);
+      if (scheme === "file" && (authority === "" || authority === "localhost") && isVolumeCharacter(path.charCodeAt(authorityEnd + 1))) {
+        const volumeSeparatorEnd = getFileUrlVolumeSeparatorEnd(path, authorityEnd + 2);
+        if (volumeSeparatorEnd !== -1) {
+          if (path.charCodeAt(volumeSeparatorEnd) === CharacterCodesSlash) {
+            return ~(volumeSeparatorEnd + 1);
+          }
+          if (volumeSeparatorEnd === path.length) {
+            return ~volumeSeparatorEnd;
+          }
+        }
+      }
+      return ~(authorityEnd + 1);
+    }
+    return ~path.length;
+  }
+  return 0;
+}
+function hasTrailingDirectorySeparator(path) {
+  return path.length > 0 && isAnyDirectorySeparator(path.charCodeAt(path.length - 1));
+}
+function removeTrailingDirectorySeparator(path) {
+  if (hasTrailingDirectorySeparator(path)) {
+    return path.substr(0, path.length - 1);
+  }
+  return path;
+}
+function ensureTrailingDirectorySeparator(path) {
+  if (!hasTrailingDirectorySeparator(path)) {
+    return path + directorySeparator;
+  }
+  return path;
+}
+function normalizeSlashes(path) {
+  return path.includes("\\") ? path.replace(backslashRegExp, directorySeparator) : path;
+}
+function combinePaths(path, ...paths) {
+  if (path)
+    path = normalizeSlashes(path);
+  for (let relativePath of paths) {
+    if (!relativePath)
+      continue;
+    relativePath = normalizeSlashes(relativePath);
+    if (!path || getRootLength(relativePath) !== 0) {
+      path = relativePath;
+    } else {
+      path = ensureTrailingDirectorySeparator(path) + relativePath;
+    }
+  }
+  return path;
+}
+function simpleNormalizePath(path) {
+  if (!relativePathSegmentRegExp.test(path)) {
+    return path;
+  }
+  let simplified = path.replace(/\/\.\//g, "/");
+  if (simplified.startsWith("./")) {
+    simplified = simplified.slice(2);
+  }
+  if (simplified !== path) {
+    path = simplified;
+    if (!relativePathSegmentRegExp.test(path)) {
+      return path;
+    }
+  }
+  return;
+}
+function getNormalizedAbsolutePath(path, currentDirectory) {
+  let rootLength = getRootLength(path);
+  if (rootLength === 0 && currentDirectory) {
+    path = combinePaths(currentDirectory, path);
+    rootLength = getRootLength(path);
+  } else {
+    path = normalizeSlashes(path);
+  }
+  const simpleNormalized = simpleNormalizePath(path);
+  if (simpleNormalized !== undefined) {
+    return simpleNormalized.length > rootLength ? removeTrailingDirectorySeparator(simpleNormalized) : simpleNormalized;
+  }
+  const length = path.length;
+  const root = path.substring(0, rootLength);
+  let normalized;
+  let index = rootLength;
+  let segmentStart = index;
+  let normalizedUpTo = index;
+  let seenNonDotDotSegment = rootLength !== 0;
+  while (index < length) {
+    segmentStart = index;
+    let ch = path.charCodeAt(index);
+    while (ch === CharacterCodesSlash && index + 1 < length) {
+      index++;
+      ch = path.charCodeAt(index);
+    }
+    if (index > segmentStart) {
+      normalized ??= path.substring(0, segmentStart - 1);
+      segmentStart = index;
+    }
+    let segmentEnd = path.indexOf(directorySeparator, index + 1);
+    if (segmentEnd === -1) {
+      segmentEnd = length;
+    }
+    const segmentLength = segmentEnd - segmentStart;
+    if (segmentLength === 1 && path.charCodeAt(index) === CharacterCodesDot) {
+      normalized ??= path.substring(0, normalizedUpTo);
+    } else if (segmentLength === 2 && path.charCodeAt(index) === CharacterCodesDot && path.charCodeAt(index + 1) === CharacterCodesDot) {
+      if (!seenNonDotDotSegment) {
+        if (normalized !== undefined) {
+          normalized += normalized.length === rootLength ? ".." : "/..";
+        } else {
+          normalizedUpTo = index + 2;
+        }
+      } else if (normalized === undefined) {
+        if (normalizedUpTo - 2 >= 0) {
+          normalized = path.substring(0, Math.max(rootLength, path.lastIndexOf(directorySeparator, normalizedUpTo - 2)));
+        } else {
+          normalized = path.substring(0, normalizedUpTo);
+        }
+      } else {
+        const lastSlash = normalized.lastIndexOf(directorySeparator);
+        if (lastSlash !== -1) {
+          normalized = normalized.substring(0, Math.max(rootLength, lastSlash));
+        } else {
+          normalized = root;
+        }
+        if (normalized.length === rootLength) {
+          seenNonDotDotSegment = rootLength !== 0;
+        }
+      }
+    } else if (normalized !== undefined) {
+      if (normalized.length !== rootLength) {
+        normalized += directorySeparator;
+      }
+      seenNonDotDotSegment = true;
+      normalized += path.substring(segmentStart, segmentEnd);
+    } else {
+      seenNonDotDotSegment = true;
+      normalizedUpTo = segmentEnd;
+    }
+    index = segmentEnd + 1;
+  }
+  return normalized ?? (length > rootLength ? removeTrailingDirectorySeparator(path) : path);
+}
+function normalizePath(path) {
+  path = normalizeSlashes(path);
+  let normalized = simpleNormalizePath(path);
+  if (normalized !== undefined) {
+    return normalized;
+  }
+  normalized = getNormalizedAbsolutePath(path, "");
+  return normalized && hasTrailingDirectorySeparator(path) ? ensureTrailingDirectorySeparator(normalized) : normalized;
+}
+function isRootedDiskPath(path) {
+  return getEncodedRootLength(path) > 0;
+}
+function toPath(fileName, basePath, getCanonicalFileName) {
+  const nonCanonicalizedPath = isRootedDiskPath(fileName) ? normalizePath(fileName) : getNormalizedAbsolutePath(fileName, basePath);
+  return getCanonicalFileName(nonCanonicalizedPath);
+}
+function createGetCanonicalFileName(useCaseSensitiveFileNames) {
+  return useCaseSensitiveFileNames ? identity : toLowerCase;
+}
+function identity(x) {
+  return x;
+}
+function toLowerCase(s) {
+  return s.toLowerCase();
+}
+var bundledScheme = "bundled:///";
+function isBundled(path) {
+  return path.startsWith(bundledScheme);
+}
+function splitVolumePath(path) {
+  if (path.length >= 2 && isVolumeCharacter(path.charCodeAt(0)) && path.charCodeAt(1) === CharacterCodesColon) {
+    return [path.substring(0, 2).toLowerCase(), path.substring(2), true];
+  }
+  return ["", path, false];
+}
+function documentURIToFileName(uri) {
+  if (isBundled(uri)) {
+    return uri;
+  }
+  if (uri.startsWith("file://")) {
+    let parsed;
+    try {
+      parsed = new URL(uri);
+    } catch {
+      throw new Error("invalid file URI: " + uri);
+    }
+    if (parsed.host !== "") {
+      return "//" + parsed.host + parsed.pathname;
+    }
+    const path = decodeURIComponent(parsed.pathname);
+    if (path.length >= 3 && path.charCodeAt(0) === CharacterCodesSlash) {
+      const [volume, rest, ok] = splitVolumePath(path.substring(1));
+      if (ok) {
+        return volume + rest;
+      }
+    }
+    return path;
+  }
+  const colonIndex = uri.indexOf(":");
+  if (colonIndex === -1) {
+    throw new Error("invalid URI: " + uri);
+  }
+  const scheme = uri.substring(0, colonIndex);
+  let path = uri.substring(colonIndex + 1);
+  let authority = "ts-nul-authority";
+  if (path.startsWith("//")) {
+    const rest = path.substring(2);
+    const slashIndex = rest.indexOf("/");
+    if (slashIndex === -1) {
+      throw new Error("invalid URI: " + uri);
+    }
+    authority = rest.substring(0, slashIndex);
+    path = rest.substring(slashIndex + 1);
+  }
+  return "^/" + scheme + "/" + authority + "/" + path;
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/proto.js
+function resolveFileName(identifier) {
+  if (typeof identifier === "string") {
+    return identifier;
+  }
+  return documentURIToFileName(identifier.uri);
+}
+function toUpdateSnapshotRequest(params) {
+  const { openProject, openProjects, ...rest } = params ?? {};
+  const mergedOpenProjects = openProject !== undefined ? [resolveFileName(openProject), ...openProjects ?? []] : openProjects;
+  return {
+    ...rest,
+    ...mergedOpenProjects !== undefined ? { openProjects: mergedOpenProjects } : {}
+  };
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/sourceFileCache.js
+function refKey(snapshotId, projectId) {
+  return `${snapshotId}:${projectId}`;
+}
+
+class SourceFileCache {
+  cache = new Map;
+  snapshotProjectPaths = new Map;
+  getRetained(path, snapshotId, projectId) {
+    const entries = this.cache.get(path);
+    if (!entries)
+      return;
+    const key = refKey(snapshotId, projectId);
+    const entry = entries.find((e) => e.refs.has(key));
+    return entry?.file;
+  }
+  set(path, file, parseOptionsKey, contentHash, snapshotId, projectId) {
+    let entries = this.cache.get(path);
+    if (!entries) {
+      entries = [];
+      this.cache.set(path, entries);
+    }
+    const ref = refKey(snapshotId, projectId);
+    const existing = entries.find((e) => e.parseOptionsKey === parseOptionsKey && e.contentHash === contentHash);
+    if (existing) {
+      existing.refs.add(ref);
+      this.trackPath(snapshotId, projectId, path);
+      return existing.file;
+    }
+    entries.push({ file, contentHash, parseOptionsKey, refs: new Set([ref]) });
+    this.trackPath(snapshotId, projectId, path);
+    return file;
+  }
+  retainForSnapshot(newSnapshotId, previousSnapshotId, changes) {
+    const prevProjectMap = this.snapshotProjectPaths.get(previousSnapshotId);
+    if (!prevProjectMap)
+      return;
+    const removedProjects = new Set(changes?.removedProjects ?? []);
+    const changedProjects = changes?.changedProjects ?? {};
+    for (const [projectId, paths] of prevProjectMap) {
+      if (removedProjects.has(projectId))
+        continue;
+      const projectChanges = changedProjects[projectId];
+      let invalidPaths;
+      if (projectChanges) {
+        invalidPaths = new Set;
+        for (const p of projectChanges.changedFiles ?? [])
+          invalidPaths.add(p);
+        for (const p of projectChanges.deletedFiles ?? [])
+          invalidPaths.add(p);
+      }
+      const prevRef = refKey(previousSnapshotId, projectId);
+      const newRef = refKey(newSnapshotId, projectId);
+      for (const path of paths) {
+        if (invalidPaths?.has(path))
+          continue;
+        const entries = this.cache.get(path);
+        if (!entries)
+          continue;
+        for (const entry of entries) {
+          if (entry.refs.has(prevRef)) {
+            entry.refs.add(newRef);
+            this.trackPath(newSnapshotId, projectId, path);
+          }
+        }
+      }
+    }
+  }
+  releaseSnapshot(snapshotId) {
+    const projectMap = this.snapshotProjectPaths.get(snapshotId);
+    if (!projectMap)
+      return;
+    for (const [projectId, paths] of projectMap) {
+      const key = refKey(snapshotId, projectId);
+      for (const path of paths) {
+        const entries = this.cache.get(path);
+        if (!entries)
+          continue;
+        for (let i = entries.length - 1;i >= 0; i--) {
+          entries[i].refs.delete(key);
+          if (entries[i].refs.size === 0) {
+            entries.splice(i, 1);
+          }
+        }
+        if (entries.length === 0) {
+          this.cache.delete(path);
+        }
+      }
+    }
+    this.snapshotProjectPaths.delete(snapshotId);
+  }
+  trackPath(snapshotId, projectId, path) {
+    let projectMap = this.snapshotProjectPaths.get(snapshotId);
+    if (!projectMap) {
+      projectMap = new Map;
+      this.snapshotProjectPaths.set(snapshotId, projectMap);
+    }
+    let paths = projectMap.get(projectId);
+    if (!paths) {
+      paths = new Set;
+      projectMap.set(projectId, paths);
+    }
+    paths.add(path);
+  }
+  clear() {
+    this.cache.clear();
+    this.snapshotProjectPaths.clear();
+  }
+  get size() {
+    return this.cache.size;
+  }
+  has(path) {
+    return this.cache.has(path);
+  }
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/fs.js
+var fsCallbackNames = ["readFile", "fileExists", "directoryExists", "getAccessibleEntries", "realpath"];
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/lib/getExePath.js
+import fs2 from "node:fs";
+import module from "node:module";
+import path3 from "node:path";
+import { fileURLToPath } from "node:url";
+function getExePath() {
+  const __dirname2 = path3.dirname(fileURLToPath(import.meta.url));
+  const normalizedDirname = __dirname2.replace(/\\/g, "/");
+  const pkg = JSON.parse(fs2.readFileSync(path3.join(__dirname2, "..", "package.json"), "utf8"));
+  const pkgName = pkg.name;
+  const baseName = pkgName.startsWith("@") ? pkgName.split("/")[1] : pkgName;
+  const expectedBinName = baseName === "typescript" ? "tsc" : "tsgo";
+  const binNames = pkg.bin && typeof pkg.bin === "object" ? Object.keys(pkg.bin) : [];
+  if (binNames.length !== 1 || binNames[0] !== expectedBinName) {
+    throw new Error(`Expected ${pkgName} to declare exactly one bin entry named ${expectedBinName}.`);
+  }
+  let binName = expectedBinName;
+  let exeDir;
+  const expectedPackage = baseName + "-" + process.platform + "-" + process.arch;
+  if (normalizedDirname.endsWith("/_packages/" + baseName + "/lib")) {
+    exeDir = path3.resolve(__dirname2, "..", "..", "..", "built", "local");
+    binName = "tsgo";
+  } else if (normalizedDirname.endsWith("/built/npm/" + baseName + "/lib")) {
+    exeDir = path3.resolve(__dirname2, "..", "..", expectedPackage, "lib");
+  } else {
+    const platformPackageName = "@typescript/" + expectedPackage;
+    try {
+      if (typeof import.meta.resolve === "undefined") {
+        const require2 = module.createRequire(import.meta.url);
+        const packageJson = require2.resolve(platformPackageName + "/package.json");
+        exeDir = path3.join(path3.dirname(packageJson), "lib");
+      } else {
+        const packageJson = import.meta.resolve(platformPackageName + "/package.json");
+        const packageJsonPath = fileURLToPath(packageJson);
+        exeDir = path3.join(path3.dirname(packageJsonPath), "lib");
+      }
+    } catch (e) {
+      throw new Error("Unable to resolve " + platformPackageName + ". Either your platform is unsupported, or you are missing the package on disk.");
+    }
+  }
+  let exe = path3.join(exeDir, binName);
+  if (process.platform === "win32") {
+    exe += ".exe";
+    if (exe.length >= 248) {
+      exe = "\\\\?\\" + exe;
+    }
+  }
+  if (!fs2.existsSync(exe)) {
+    throw new Error("Executable not found: " + exe);
+  }
+  return exe;
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/options.js
+function isSpawnOptions(options) {
+  return !("pipe" in options);
+}
+function resolveExePath(options) {
+  return options.tsserverPath ?? getExePath();
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/syncChannel.js
+import { spawn } from "node:child_process";
+import { closeSync, openSync, readSync, writeSync } from "node:fs";
+var MSG_REQUEST = 1;
+var MSG_CALL_RESPONSE = 2;
+var MSG_CALL_ERROR = 3;
+var MSG_RESPONSE = 4;
+var MSG_ERROR = 5;
+var MSG_CALL = 6;
+var sleepBuf = new Int32Array(new SharedArrayBuffer(4));
+var EMPTY_BUF = Buffer.alloc(0);
+var liveChildren = new Set;
+process.on("exit", () => {
+  for (const child of liveChildren) {
+    try {
+      child.kill();
+    } catch {}
+  }
+  liveChildren.clear();
+});
+
+class SyncRpcChannel {
+  child;
+  readFd;
+  writeFd;
+  pipeFd;
+  callbacks = new Map;
+  methodBufCache = new Map;
+  collectTiming;
+  lastBytesSent = 0;
+  lastBytesReceived = 0;
+  _msgType = 0;
+  _msgName = EMPTY_BUF;
+  _msgPayload = EMPTY_BUF;
+  headerBuf = Buffer.allocUnsafe(4);
+  readBuf = Buffer.allocUnsafe(65536);
+  readBufPos = 0;
+  readBufLen = 0;
+  writeBuf = Buffer.allocUnsafe(65536);
+  constructor(exe, args, collectTiming = false) {
+    this.collectTiming = collectTiming;
+    const isWindows = process.platform === "win32";
+    if (isWindows) {
+      const pipePath = `\\\\.\\pipe\\tsgo-sync-${process.pid}-${Date.now()}`;
+      this.child = spawn(exe, [...args, "--pipe", pipePath], {
+        stdio: ["ignore", "ignore", "inherit"]
+      });
+      let fd;
+      for (let i = 0;i < 500; i++) {
+        try {
+          fd = openSync(pipePath, "r+");
+          break;
+        } catch {
+          if (this.child.exitCode !== null) {
+            throw new Error(`Child process exited with code ${this.child.exitCode} before pipe was ready`);
+          }
+          Atomics.wait(sleepBuf, 0, 0, 10);
+        }
+      }
+      if (fd === undefined) {
+        this.child.kill();
+        throw new Error("SyncRpcChannel: timed out connecting to named pipe");
+      }
+      this.readFd = fd;
+      this.writeFd = fd;
+      this.pipeFd = fd;
+    } else {
+      this.child = spawn(exe, args, {
+        stdio: ["pipe", "pipe", "inherit"]
+      });
+      const stdout = this.child.stdout;
+      const stdin = this.child.stdin;
+      this.readFd = stdout._handle.fd;
+      this.writeFd = stdin._handle.fd;
+      if (typeof this.readFd !== "number" || this.readFd < 0 || typeof this.writeFd !== "number" || this.writeFd < 0) {
+        stdout.destroy();
+        stdin.destroy();
+        this.child.kill();
+        throw new Error("SyncRpcChannel: could not obtain pipe file descriptors.");
+      }
+      stdout._handle.setBlocking?.(true);
+      stdin._handle.setBlocking?.(true);
+      stdout.pause();
+      stdout.unref();
+      stdin.unref();
+    }
+    liveChildren.add(this.child);
+    this.child.unref();
+  }
+  requestSync(method, payload) {
+    this.ensureOpen();
+    const result = this.requestBytesSync(method, payload);
+    return result.toString("utf-8");
+  }
+  requestBinarySync(method, payload) {
+    this.ensureOpen();
+    return this.requestBytesSync(method, payload);
+  }
+  registerCallback(name, callback) {
+    this.callbacks.set(name, callback);
+  }
+  close() {
+    try {
+      liveChildren.delete(this.child);
+      if (this.pipeFd !== undefined) {
+        closeSync(this.pipeFd);
+        this.pipeFd = undefined;
+      }
+      this.child.stdout?.destroy();
+      this.child.stdin?.destroy();
+      this.child.kill();
+      this.readFd = -1;
+      this.writeFd = -1;
+    } catch {}
+  }
+  ensureOpen() {
+    if (this.readFd < 0) {
+      throw new Error("SyncRpcChannel is closed");
+    }
+  }
+  getMethodBuf(method) {
+    let buf = this.methodBufCache.get(method);
+    if (buf === undefined) {
+      buf = Buffer.from(method, "utf-8");
+      this.methodBufCache.set(method, buf);
+    }
+    return buf;
+  }
+  requestBytesSync(method, payload) {
+    const methodBuf = this.getMethodBuf(method);
+    if (this.collectTiming) {
+      this.lastBytesSent = typeof payload === "string" ? Buffer.byteLength(payload, "utf-8") : payload.length;
+      this.lastBytesReceived = 0;
+    }
+    this.writeTuple(MSG_REQUEST, methodBuf, payload);
+    for (;; ) {
+      this.readTuple();
+      switch (this._msgType) {
+        case MSG_RESPONSE: {
+          if (!methodBuf.equals(this._msgName)) {
+            throw new Error(`name mismatch for response: expected \`${method}\`, got \`${this._msgName.toString("utf-8")}\``);
+          }
+          if (this.collectTiming) {
+            this.lastBytesReceived = this._msgPayload.length;
+          }
+          return this._msgPayload;
+        }
+        case MSG_ERROR: {
+          if (methodBuf.equals(this._msgName)) {
+            throw new Error(this._msgPayload.toString("utf-8"));
+          }
+          throw new Error(`name mismatch for response: expected \`${method}\`, got \`${this._msgName.toString("utf-8")}\``);
+        }
+        case MSG_CALL: {
+          this.handleCall(this._msgName.toString("utf-8"), this._msgPayload);
+          break;
+        }
+        default:
+          throw new Error(`Invalid message type from child: ${this._msgType}`);
+      }
+    }
+  }
+  handleCall(name, payload) {
+    const cb = this.callbacks.get(name);
+    if (!cb) {
+      const errMsg = `unknown callback: \`${name}\`. Please make sure to register it on the JavaScript side before invoking it.`;
+      this.writeTuple(MSG_CALL_ERROR, Buffer.from(name, "utf-8"), Buffer.from(errMsg, "utf-8"));
+      throw new Error(`no callback named \`${name}\` found`);
+    }
+    try {
+      const result = cb(name, payload.toString("utf-8"));
+      this.writeTuple(MSG_CALL_RESPONSE, Buffer.from(name, "utf-8"), Buffer.from(result, "utf-8"));
+    } catch (e) {
+      const errMsg = String(e instanceof Error ? e.message : e).trim();
+      this.writeTuple(MSG_CALL_ERROR, Buffer.from(name, "utf-8"), Buffer.from(errMsg, "utf-8"));
+      throw new Error(`Error calling callback \`${name}\`: ${errMsg}`);
+    }
+  }
+  writeTuple(type, name, payload) {
+    const nameLen = name.length;
+    const payloadIsString = typeof payload === "string";
+    const payloadLen = payloadIsString ? Buffer.byteLength(payload, "utf-8") : payload.length;
+    const nameHdrSize = binHeaderSize(nameLen);
+    const payloadHdrSize = binHeaderSize(payloadLen);
+    const headerSize = 2 + nameHdrSize + nameLen + payloadHdrSize;
+    const totalSize = headerSize + payloadLen;
+    if (totalSize <= this.writeBuf.length) {
+      let off = 0;
+      this.writeBuf[off++] = MSGPACK_FIXARRAY3;
+      this.writeBuf[off++] = type;
+      off = writeBinHeader(this.writeBuf, off, nameLen);
+      name.copy(this.writeBuf, off);
+      off += nameLen;
+      off = writeBinHeader(this.writeBuf, off, payloadLen);
+      if (payloadLen > 0) {
+        if (payloadIsString) {
+          this.writeBuf.write(payload, off, payloadLen, "utf-8");
+        } else if (payload instanceof Buffer) {
+          payload.copy(this.writeBuf, off);
+        } else {
+          this.writeBuf.set(payload, off);
+        }
+      }
+      this.writeAllBuf(this.writeBuf, totalSize);
+    } else {
+      let off = 0;
+      this.writeBuf[off++] = MSGPACK_FIXARRAY3;
+      this.writeBuf[off++] = type;
+      off = writeBinHeader(this.writeBuf, off, nameLen);
+      name.copy(this.writeBuf, off);
+      off += nameLen;
+      off = writeBinHeader(this.writeBuf, off, payloadLen);
+      this.writeAllBuf(this.writeBuf, off);
+      if (payloadLen > 0) {
+        if (payloadIsString) {
+          this.writeAllBuf(Buffer.from(payload, "utf-8"));
+        } else {
+          this.writeAllBuf(payload);
+        }
+      }
+    }
+  }
+  readTuple() {
+    const marker = this.readByte();
+    if (marker !== MSGPACK_FIXARRAY3) {
+      throw new Error(`Expected fixed 3-element array (0x93), received: 0x${marker.toString(16)}`);
+    }
+    const tb = this.readByte();
+    if (tb <= 127) {
+      this._msgType = tb;
+    } else if (tb === MSGPACK_UINT8) {
+      this._msgType = this.readByte();
+    } else {
+      throw new Error(`Expected positive fixint or uint8 marker, received: 0x${tb.toString(16)}`);
+    }
+    this._msgName = this.readBin();
+    this._msgPayload = this.readBin();
+  }
+  readBin() {
+    const marker = this.readByte();
+    let size;
+    switch (marker) {
+      case MSGPACK_BIN8:
+        size = this.readByte();
+        break;
+      case MSGPACK_BIN16:
+        this.readExactInto(this.headerBuf, 2);
+        size = this.headerBuf[0] << 8 | this.headerBuf[1];
+        break;
+      case MSGPACK_BIN32:
+        this.readExactInto(this.headerBuf, 4);
+        size = this.headerBuf.readUInt32BE(0);
+        break;
+      default:
+        throw new Error(`Expected binary data (0xc4-0xc6), received: 0x${marker.toString(16)}`);
+    }
+    if (size === 0)
+      return EMPTY_BUF;
+    return this.readExact(size);
+  }
+  eofError() {
+    const code = this.child.exitCode;
+    const signal = this.child.signalCode;
+    const detail = signal ? `killed by signal ${signal}` : code !== null ? `exited with code ${code}` : "unknown reason";
+    return new Error(`Unexpected EOF while reading from child process (${detail})`);
+  }
+  readByte() {
+    if (this.readBufPos >= this.readBufLen) {
+      this.fillReadBuffer();
+    }
+    return this.readBuf[this.readBufPos++];
+  }
+  readExact(length) {
+    const buf = Buffer.allocUnsafeSlow(length);
+    this.readExactInto(buf, length);
+    return buf;
+  }
+  fillReadBuffer() {
+    this.readBufPos = 0;
+    this.readBufLen = 0;
+    for (;; ) {
+      try {
+        const n = readSync(this.readFd, this.readBuf, 0, this.readBuf.length, null);
+        if (n === 0) {
+          throw this.eofError();
+        }
+        this.readBufLen = n;
+        return;
+      } catch (e) {
+        if (e instanceof Error && "code" in e && (e.code === "EAGAIN" || e.code === "EWOULDBLOCK")) {
+          Atomics.wait(sleepBuf, 0, 0, 1);
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+  readExactInto(buffer, length) {
+    let pos = 0;
+    while (pos < length) {
+      const avail = this.readBufLen - this.readBufPos;
+      if (avail > 0) {
+        const toCopy = Math.min(avail, length - pos);
+        this.readBuf.copy(buffer, pos, this.readBufPos, this.readBufPos + toCopy);
+        this.readBufPos += toCopy;
+        pos += toCopy;
+      } else if (length - pos >= this.readBuf.length) {
+        try {
+          const n = readSync(this.readFd, buffer, pos, length - pos, null);
+          if (n === 0) {
+            throw this.eofError();
+          }
+          pos += n;
+        } catch (e) {
+          if (e instanceof Error && "code" in e && (e.code === "EAGAIN" || e.code === "EWOULDBLOCK")) {
+            Atomics.wait(sleepBuf, 0, 0, 1);
+            continue;
+          }
+          throw e;
+        }
+      } else {
+        this.fillReadBuffer();
+      }
+    }
+  }
+  writeAllBuf(data, length) {
+    const total = length ?? data.length;
+    let pos = 0;
+    while (pos < total) {
+      try {
+        const n = writeSync(this.writeFd, data, pos, total - pos);
+        pos += n;
+      } catch (e) {
+        if (e instanceof Error && "code" in e && (e.code === "EAGAIN" || e.code === "EWOULDBLOCK")) {
+          Atomics.wait(sleepBuf, 0, 0, 1);
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/timing.js
+var RECENT_REQUEST_CAPACITY = 5;
+function emptyAccumulators() {
+  return {
+    requestCount: 0,
+    roundTripMs: 0,
+    bytesSent: 0,
+    bytesReceived: 0,
+    serverTimeMs: 0,
+    transportOverheadMs: 0,
+    nodesMaterialized: 0,
+    sourceFilesFetched: 0,
+    nodesFetched: 0
+  };
+}
+function disabledTimingInfo() {
+  return {
+    enabled: false,
+    totals: emptyAccumulators(),
+    recentRequests: []
+  };
+}
+function combineTimingInfo(client, server) {
+  if (!client.enabled) {
+    return client;
+  }
+  const serverTimeMs = server.totals.totalProcessingTimeMs;
+  const totals = {
+    ...client.totals,
+    serverTimeMs,
+    transportOverheadMs: Math.max(0, client.totals.roundTripMs - serverTimeMs)
+  };
+  const recentRequests = client.recentRequests.map((r) => ({ ...r }));
+  const serverRecent = server.recentRequests;
+  const pairs = Math.min(recentRequests.length, serverRecent.length);
+  for (let i = 1;i <= pairs; i++) {
+    const c = recentRequests[recentRequests.length - i];
+    const s = serverRecent[serverRecent.length - i];
+    if (c.method === s.method) {
+      c.serverTimeMs = s.processingTimeMs;
+      c.transportOverheadMs = Math.max(0, c.roundTripMs - s.processingTimeMs);
+    }
+  }
+  return {
+    enabled: true,
+    totals,
+    recentRequests
+  };
+}
+
+class TimingCollector {
+  totals = emptyAccumulators();
+  ring = [];
+  head = 0;
+  record(sample) {
+    this.totals.requestCount++;
+    this.totals.roundTripMs += sample.roundTripMs;
+    this.totals.bytesSent += sample.bytesSent;
+    this.totals.bytesReceived += sample.bytesReceived;
+    const entry = {
+      method: sample.method,
+      roundTripMs: sample.roundTripMs,
+      bytesSent: sample.bytesSent,
+      bytesReceived: sample.bytesReceived,
+      timestamp: Date.now()
+    };
+    if (this.ring.length < RECENT_REQUEST_CAPACITY) {
+      this.ring.push(entry);
+    } else {
+      this.ring[this.head] = entry;
+      this.head = (this.head + 1) % RECENT_REQUEST_CAPACITY;
+    }
+  }
+  recordMaterialization() {
+    this.totals.nodesMaterialized++;
+  }
+  recordSourceFileFetched(materializableNodeCount) {
+    this.totals.sourceFilesFetched++;
+    this.totals.nodesFetched += materializableNodeCount;
+  }
+  getInfo() {
+    const recentRequests = [];
+    for (let i = 0;i < this.ring.length; i++) {
+      recentRequests.push(this.ring[(this.head + i) % this.ring.length]);
+    }
+    return {
+      enabled: true,
+      totals: { ...this.totals },
+      recentRequests
+    };
+  }
+  reset() {
+    this.totals = emptyAccumulators();
+    this.ring = [];
+    this.head = 0;
+  }
+}
+
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/sync/client.js
+class Client {
+  channel;
+  encoder = new TextEncoder;
+  timing;
+  constructor(options) {
+    if (!isSpawnOptions(options)) {
+      throw new Error("Socket connections are not yet supported in the sync client");
+    }
+    const cwd = options.cwd ?? process.cwd();
+    const args = [
+      "--api",
+      "--cwd",
+      cwd
+    ];
+    const enabledCallbacks = [];
+    if (options.fs) {
+      for (const name of fsCallbackNames) {
+        if (options.fs[name]) {
+          enabledCallbacks.push(name);
+        }
+      }
+    }
+    if (enabledCallbacks.length > 0) {
+      args.push(`--callbacks=${enabledCallbacks.join(",")}`);
+    }
+    const collectTiming = options.collectTiming ?? false;
+    if (collectTiming) {
+      args.push("--timing");
+      this.timing = new TimingCollector;
+    }
+    const channel = new SyncRpcChannel(resolveExePath(options), args, collectTiming);
+    this.channel = channel;
+    if (options.fs) {
+      for (const name of enabledCallbacks) {
+        const callback = options.fs[name];
+        channel.registerCallback(name, (_, arg) => {
+          const result = callback(JSON.parse(arg));
+          if (name === "readFile") {
+            if (result === undefined)
+              return "";
+            return JSON.stringify({ content: result });
+          }
+          return JSON.stringify(result) ?? "";
+        });
+      }
+    }
+  }
+  apiRequest(method, params) {
+    const encodedPayload = JSON.stringify(params);
+    const start = performance.now();
+    const result = this.channel.requestSync(method, encodedPayload);
+    this.recordTiming(method, start);
+    if (result.length) {
+      return JSON.parse(result);
+    }
+    return;
+  }
+  apiRequestBinary(method, params) {
+    const start = performance.now();
+    const result = this.channel.requestBinarySync(method, this.encoder.encode(JSON.stringify(params)));
+    this.recordTiming(method, start);
+    if (result.length === 0)
+      return;
+    return result;
+  }
+  echo(payload) {
+    return this.channel.requestSync("echo", payload);
+  }
+  echoBinary(payload) {
+    return this.channel.requestBinarySync("echo", payload);
+  }
+  getTimingInfo() {
+    if (!this.timing) {
+      return disabledTimingInfo();
+    }
+    const local = this.timing.getInfo();
+    const result = this.channel.requestSync("getServerTiming", "");
+    return combineTimingInfo(local, JSON.parse(result));
+  }
+  resetTimingInfo() {
+    if (!this.timing)
+      return;
+    this.timing.reset();
+    this.channel.requestSync("resetServerTiming", "");
+  }
+  getTimingCollector() {
+    return this.timing;
+  }
+  recordTiming(method, start) {
+    if (!this.timing)
+      return;
+    this.timing.record({
+      method,
+      roundTripMs: performance.now() - start,
+      bytesSent: this.channel.lastBytesSent,
+      bytesReceived: this.channel.lastBytesReceived
+    });
+  }
+  close() {
+    this.channel.close();
+  }
+}
+// ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/api/sync/api.js
+class API {
+  client;
+  sourceFileCache;
+  toPath;
+  initialized = false;
+  activeSnapshots = new Set;
+  latestSnapshot;
+  internal;
+  constructor(options = {}) {
+    this.client = new Client(options);
+    this.sourceFileCache = new SourceFileCache;
+    this.internal = new InternalAPI(this.client, () => this.ensureInitialized());
+  }
+  static fromLSPConnection(options) {
+    const api = new API(options);
+    api.ensureInitialized();
+    return api;
+  }
+  ensureInitialized() {
+    if (!this.initialized) {
+      const response = this.client.apiRequest("initialize", null);
+      const getCanonicalFileName = createGetCanonicalFileName(response.useCaseSensitiveFileNames);
+      const currentDirectory = response.currentDirectory;
+      this.toPath = (fileName) => toPath(fileName, currentDirectory, getCanonicalFileName);
+      this.initialized = true;
+    }
+  }
+  parseConfigFile(file) {
+    this.ensureInitialized();
+    return this.client.apiRequest("parseConfigFile", { file });
+  }
+  updateSnapshot(params) {
+    this.ensureInitialized();
+    const requestParams = toUpdateSnapshotRequest(params);
+    const data = this.client.apiRequest("updateSnapshot", requestParams);
+    if (this.latestSnapshot) {
+      this.sourceFileCache.retainForSnapshot(data.snapshot, this.latestSnapshot.id, data.changes);
+      if (this.latestSnapshot.isDisposed()) {
+        this.sourceFileCache.releaseSnapshot(this.latestSnapshot.id);
+      }
+    }
+    const snapshot = new Snapshot(data, this.client, this.sourceFileCache, this.toPath, () => {
+      this.activeSnapshots.delete(snapshot);
+      if (snapshot !== this.latestSnapshot) {
+        this.sourceFileCache.releaseSnapshot(snapshot.id);
+      }
+    });
+    this.latestSnapshot = snapshot;
+    this.activeSnapshots.add(snapshot);
+    return snapshot;
+  }
+  close() {
+    for (const snapshot of [...this.activeSnapshots]) {
+      snapshot.dispose();
+    }
+    if (this.latestSnapshot) {
+      this.sourceFileCache.releaseSnapshot(this.latestSnapshot.id);
+      this.latestSnapshot = undefined;
+    }
+    this.client.close();
+    this.sourceFileCache.clear();
+  }
+  clearSourceFileCache() {
+    this.sourceFileCache.clear();
+  }
+  getTimingInfo() {
+    return this.client.getTimingInfo();
+  }
+  resetTimingInfo() {
+    return this.client.resetTimingInfo();
+  }
+}
+
+class InternalAPI {
+  client;
+  ensureInitialized;
+  constructor(client, ensureInitialized) {
+    this.client = client;
+    this.ensureInitialized = ensureInitialized;
+  }
+  startCPUProfile(dir) {
+    this.ensureInitialized();
+    this.client.apiRequest("startCPUProfile", { dir });
+  }
+  stopCPUProfile() {
+    this.ensureInitialized();
+    const result = this.client.apiRequest("stopCPUProfile", null);
+    return result.file;
+  }
+  saveHeapProfile(dir) {
+    this.ensureInitialized();
+    const result = this.client.apiRequest("saveHeapProfile", { dir });
+    return result.file;
+  }
+}
+
+class Snapshot {
+  id;
+  projectMap;
+  toPath;
+  client;
+  disposed = false;
+  onDispose;
+  snapshotRegistry;
+  constructor(data, client, sourceFileCache, toPath, onDispose) {
+    this.id = data.snapshot;
+    this.client = client;
+    this.toPath = toPath;
+    this.onDispose = onDispose;
+    this.projectMap = new Map;
+    this.snapshotRegistry = new SnapshotObjectRegistry(client, this.id, (projectId) => this.projectMap.get(projectId));
+    for (const projData of data.projects) {
+      const project = new Project(projData, this.id, client, sourceFileCache, toPath, this.snapshotRegistry);
+      this.projectMap.set(toPath(projData.configFileName), project);
+    }
+  }
+  getProjects() {
+    this.ensureNotDisposed();
+    return [...this.projectMap.values()];
+  }
+  getProject(configFileName) {
+    this.ensureNotDisposed();
+    return this.projectMap.get(this.toPath(configFileName));
+  }
+  getDefaultProjectForFile(file) {
+    this.ensureNotDisposed();
+    const data = this.client.apiRequest("getDefaultProjectForFile", {
+      snapshot: this.id,
+      file
+    });
+    if (!data)
+      return;
+    return this.projectMap.get(this.toPath(data.configFileName));
+  }
+  [globalThis.Symbol.dispose]() {
+    this.dispose();
+  }
+  dispose() {
+    if (this.disposed)
+      return;
+    this.disposed = true;
+    for (const project of this.projectMap.values()) {
+      project.dispose();
+    }
+    this.projectMap.clear();
+    this.snapshotRegistry.clear();
+    this.onDispose();
+    this.client.apiRequest("release", { snapshot: this.id });
+  }
+  isDisposed() {
+    return this.disposed;
+  }
+  ensureNotDisposed() {
+    if (this.disposed) {
+      throw new Error("Snapshot is disposed");
+    }
+  }
+}
+
+class SnapshotObjectRegistry {
+  symbols = new Map;
+  client;
+  snapshotId;
+  resolveProject;
+  constructor(client, snapshotId, resolveProject) {
+    this.client = client;
+    this.snapshotId = snapshotId;
+    this.resolveProject = resolveProject;
+  }
+  getProject(projectId) {
+    return this.resolveProject(projectId);
+  }
+  getOrCreateSymbol(data) {
+    let symbol = this.symbols.get(data.id);
+    if (!symbol) {
+      symbol = new Symbol2(data, this);
+      this.symbols.set(data.id, symbol);
+    }
+    return symbol;
+  }
+  getSymbol(id) {
+    return this.symbols.get(id);
+  }
+  clear() {
+    this.symbols.clear();
+  }
+  fetchSymbol(source, method, handle, projectId) {
+    if (!handle)
+      return;
+    const cached = this.getSymbol(handle);
+    if (cached)
+      return cached;
+    const data = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: projectId,
+      objectId: source.id
+    });
+    if (!data)
+      throw new Error(`${method} returned null symbol for ${source.constructor.name} ${source.id}`);
+    return this.getOrCreateSymbol(data);
+  }
+  fetchSymbols(source, method, handles, projectId) {
+    if (handles) {
+      const result = new Array(handles.length);
+      let allCached = true;
+      for (let i = 0;i < handles.length; i++) {
+        const cached = this.getSymbol(handles[i]);
+        if (!cached) {
+          allCached = false;
+          break;
+        }
+        result[i] = cached;
+      }
+      if (allCached)
+        return result;
+    }
+    const symbolData = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: projectId,
+      objectId: source.id
+    });
+    if (symbolData == null)
+      return [];
+    else
+      return symbolData.map((data) => this.getOrCreateSymbol(data));
+  }
+}
+
+class ProjectObjectRegistry {
+  client;
+  snapshotId;
+  project;
+  snapshotRegistry;
+  types = new Map;
+  signatures = new Map;
+  constructor(client, snapshotId, project, snapshotRegistry) {
+    this.client = client;
+    this.snapshotId = snapshotId;
+    this.project = project;
+    this.snapshotRegistry = snapshotRegistry;
+  }
+  getOrCreateSymbol(data) {
+    return this.snapshotRegistry.getOrCreateSymbol(data);
+  }
+  getSymbol(id) {
+    return this.snapshotRegistry.getSymbol(id);
+  }
+  getOrCreateType(data) {
+    let type = this.types.get(data.id);
+    if (!type) {
+      type = new TypeObject(data, this);
+      this.types.set(data.id, type);
+    }
+    return type;
+  }
+  getType(id) {
+    return this.types.get(id);
+  }
+  getOrCreateSignature(data) {
+    let sig = this.signatures.get(data.id);
+    if (!sig) {
+      sig = new Signature(data, this.project, this);
+      this.signatures.set(data.id, sig);
+    }
+    return sig;
+  }
+  getSignature(id) {
+    return this.signatures.get(id);
+  }
+  clear() {
+    this.types.clear();
+    this.signatures.clear();
+  }
+  fetchType(source, method, handle) {
+    if (handle !== false) {
+      if (!handle)
+        return;
+      const cached = this.getType(handle);
+      if (cached)
+        return cached;
+    }
+    const data = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      objectId: source.id
+    });
+    if (!data)
+      throw new Error(`${method} returned null type for ${source.constructor.name} ${source.id}`);
+    return this.getOrCreateType(data);
+  }
+  fetchSymbol(source, method, handle) {
+    return this.snapshotRegistry.fetchSymbol(source, method, handle, this.project.id);
+  }
+  fetchSignature(source, method, handle) {
+    if (!handle)
+      return;
+    const cached = this.getSignature(handle);
+    if (cached)
+      return cached;
+    const data = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      objectId: source.id
+    });
+    if (!data)
+      throw new Error(`${method} returned null signature for ${source.constructor.name} ${source.id}`);
+    return this.getOrCreateSignature(data);
+  }
+  fetchTypes(source, method, handles) {
+    if (handles) {
+      const result = new Array(handles.length);
+      let allCached = true;
+      for (let i = 0;i < handles.length; i++) {
+        const cached = this.getType(handles[i]);
+        if (!cached) {
+          allCached = false;
+          break;
+        }
+        result[i] = cached;
+      }
+      if (allCached)
+        return result;
+    }
+    const typesData = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      objectId: source.id
+    });
+    if (typesData == null)
+      return [];
+    else
+      return typesData.map((data) => this.getOrCreateType(data));
+  }
+  fetchSymbols(source, method, handles) {
+    return this.snapshotRegistry.fetchSymbols(source, method, handles, this.project.id);
+  }
+  fetchBaseTypes(source) {
+    const typesData = this.client.apiRequest("getBaseTypes", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: source.id
+    });
+    if (typesData == null)
+      return [];
+    return typesData.map((data) => this.getOrCreateType(data));
+  }
+}
+
+class Project {
+  id;
+  configFileName;
+  compilerOptions;
+  rootFiles;
+  program;
+  checker;
+  emitter;
+  client;
+  constructor(data, snapshotId, client, sourceFileCache, toPath, snapshotRegistry) {
+    this.id = data.id;
+    this.configFileName = data.configFileName;
+    this.compilerOptions = data.compilerOptions;
+    this.rootFiles = data.rootFiles;
+    this.client = client;
+    this.program = new Program(snapshotId, this, client, sourceFileCache, toPath);
+    const objectRegistry = new ProjectObjectRegistry(client, snapshotId, this, snapshotRegistry);
+    this.checker = new Checker(snapshotId, this, client, objectRegistry);
+    this.emitter = new Emitter(client);
+  }
+  dispose() {
+    this.checker.dispose();
+  }
+}
+
+class Program {
+  snapshotId;
+  project;
+  client;
+  sourceFileCache;
+  toPath;
+  decoder = new Wtf8Decoder;
+  sourceFileMetadataCache = new Map;
+  constructor(snapshotId, project, client, sourceFileCache, toPath) {
+    this.snapshotId = snapshotId;
+    this.project = project;
+    this.client = client;
+    this.sourceFileCache = sourceFileCache;
+    this.toPath = toPath;
+  }
+  getCompilerOptions() {
+    return this.project.compilerOptions;
+  }
+  getSourceFile(file) {
+    const fileName = resolveFileName(file);
+    const path = this.toPath(fileName);
+    const retained = this.sourceFileCache.getRetained(path, this.snapshotId, this.project.id);
+    if (retained) {
+      return retained;
+    }
+    const binaryData = this.client.apiRequestBinary("getSourceFile", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file
+    });
+    if (!binaryData) {
+      return;
+    }
+    const view = new DataView(binaryData.buffer, binaryData.byteOffset, binaryData.byteLength);
+    const contentHash = readSourceFileHash(view);
+    const parseOptionsKey = readParseOptionsKey(view);
+    const sourceFile = new RemoteSourceFile(binaryData, this.decoder, this.client.getTimingCollector());
+    return this.sourceFileCache.set(path, sourceFile, parseOptionsKey, contentHash, this.snapshotId, this.project.id);
+  }
+  getSourceFileNames() {
+    const data = this.client.apiRequest("getSourceFileNames", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return data ?? [];
+  }
+  getSourceFileMetadata(fileName) {
+    return this.getSourceFileMetadataByPath(this.toPath(fileName));
+  }
+  getSourceFileMetadataByPath(path) {
+    let metadata = this.sourceFileMetadataCache.get(path);
+    if (metadata === undefined) {
+      metadata = this.fetchSourceFileMetadata(path);
+      this.sourceFileMetadataCache.set(path, metadata);
+    }
+    return metadata;
+  }
+  fetchSourceFileMetadata(path) {
+    const data = this.client.apiRequest("getSourceFileMetadata", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file: path
+    });
+    return data ?? undefined;
+  }
+  isSourceFileFromExternalLibrary(file) {
+    const metadata = this.getSourceFileMetadataByPath(file.path);
+    return metadata?.isFromExternalLibrary ?? false;
+  }
+  isSourceFileDefaultLibrary(file) {
+    const metadata = this.getSourceFileMetadataByPath(file.path);
+    return metadata?.isDefaultLibrary ?? false;
+  }
+  getSyntacticDiagnostics(file) {
+    const data = this.client.apiRequest("getSyntacticDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getBindDiagnostics(file) {
+    const data = this.client.apiRequest("getBindDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getSemanticDiagnostics(file) {
+    const data = this.client.apiRequest("getSemanticDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getSuggestionDiagnostics(file) {
+    const data = this.client.apiRequest("getSuggestionDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getDeclarationDiagnostics(file) {
+    const data = this.client.apiRequest("getDeclarationDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getProgramDiagnostics() {
+    const data = this.client.apiRequest("getProgramDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return data ?? [];
+  }
+  getGlobalDiagnostics() {
+    const data = this.client.apiRequest("getGlobalDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return data ?? [];
+  }
+  getConfigFileParsingDiagnostics() {
+    const data = this.client.apiRequest("getConfigFileParsingDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return data ?? [];
+  }
+}
+
+class Checker {
+  snapshotId;
+  project;
+  client;
+  objectRegistry;
+  wellKnownSymbols;
+  constructor(snapshotId, project, client, objectRegistry) {
+    this.snapshotId = snapshotId;
+    this.project = project;
+    this.client = client;
+    this.objectRegistry = objectRegistry;
+  }
+  dispose() {
+    this.objectRegistry.clear();
+  }
+  getSymbolAtLocation(nodeOrNodes) {
+    if (Array.isArray(nodeOrNodes)) {
+      const data = this.client.apiRequest("getSymbolsAtLocations", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        locations: nodeOrNodes.map((node) => getNodeId(node))
+      });
+      return data.map((d) => d ? this.objectRegistry.getOrCreateSymbol(d) : undefined);
+    }
+    const data = this.client.apiRequest("getSymbolAtLocation", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(nodeOrNodes)
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getSymbolAtPosition(file, positionOrPositions) {
+    if (typeof positionOrPositions === "number") {
+      const data = this.client.apiRequest("getSymbolAtPosition", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        file,
+        position: positionOrPositions
+      });
+      return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+    }
+    const data = this.client.apiRequest("getSymbolsAtPositions", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file,
+      positions: positionOrPositions
+    });
+    return data.map((d) => d ? this.objectRegistry.getOrCreateSymbol(d) : undefined);
+  }
+  getTypeOfSymbol(symbolOrSymbols) {
+    if (Array.isArray(symbolOrSymbols)) {
+      const data = this.client.apiRequest("getTypesOfSymbols", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        symbols: symbolOrSymbols.map((s) => s.id)
+      });
+      return data.map((d) => d ? this.objectRegistry.getOrCreateType(d) : undefined);
+    }
+    const data = this.client.apiRequest("getTypeOfSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbolOrSymbols.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getDeclaredTypeOfSymbol(symbol) {
+    const data = this.client.apiRequest("getDeclaredTypeOfSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    if (!data)
+      throw new Error(`getDeclaredTypeOfSymbol returned no type for symbol ${symbol.id}`);
+    return this.objectRegistry.getOrCreateType(data);
+  }
+  getReferencesToSymbolInFile(file, symbol) {
+    const data = this.client.apiRequest("getReferencesToSymbolInFile", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file,
+      symbol: symbol.id
+    });
+    return (data ?? []).map((h) => new NodeHandle(h, this.project));
+  }
+  getReferencedSymbolsForNode(node, position) {
+    const data = this.client.apiRequest("getReferencedSymbolsForNode", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      node: getNodeId(node),
+      position
+    });
+    return (data ?? []).map((entry) => ({
+      definition: new NodeHandle(entry.definition, this.project),
+      symbol: entry.symbol ? this.objectRegistry.getOrCreateSymbol(entry.symbol) : undefined,
+      references: (entry.references ?? []).map((h) => new NodeHandle(h, this.project))
+    }));
+  }
+  getSignatureUsage(signatureDecl) {
+    const data = this.client.apiRequest("getSignatureUsages", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signatureDecl: getNodeId(signatureDecl)
+    });
+    return (data ?? []).map((entry) => ({
+      name: new NodeHandle(entry.name, this.project),
+      call: entry.call ? new NodeHandle(entry.call, this.project) : undefined
+    }));
+  }
+  getCompletionsAtPosition(document, position, options) {
+    const data = this.client.apiRequest("getCompletionsAtPosition", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file: document,
+      position,
+      triggerCharacter: options?.triggerCharacter,
+      includeSymbol: options?.includeSymbol
+    });
+    if (!data)
+      return;
+    return {
+      isIncomplete: data.isIncomplete,
+      entries: data.entries.map((e) => ({
+        ...e,
+        symbol: e.symbol ? this.objectRegistry.getOrCreateSymbol(e.symbol) : undefined
+      }))
+    };
+  }
+  getTypeAtLocation(nodeOrNodes) {
+    if (Array.isArray(nodeOrNodes)) {
+      const data = this.client.apiRequest("getTypeAtLocations", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        locations: nodeOrNodes.map((node) => getNodeId(node))
+      });
+      return data.map((d) => d ? this.objectRegistry.getOrCreateType(d) : undefined);
+    }
+    const data = this.client.apiRequest("getTypeAtLocation", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(nodeOrNodes)
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getSignaturesOfType(type, kind) {
+    const data = this.client.apiRequest("getSignaturesOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id,
+      kind
+    });
+    return data.map((d) => this.objectRegistry.getOrCreateSignature(d));
+  }
+  getResolvedSignature(node) {
+    const data = this.client.apiRequest("getResolvedSignature", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(node)
+    });
+    return data ? this.objectRegistry.getOrCreateSignature(data) : undefined;
+  }
+  getTypeAtPosition(file, positionOrPositions) {
+    if (typeof positionOrPositions === "number") {
+      const data = this.client.apiRequest("getTypeAtPosition", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        file,
+        position: positionOrPositions
+      });
+      return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+    }
+    const data = this.client.apiRequest("getTypesAtPositions", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file,
+      positions: positionOrPositions
+    });
+    return data.map((d) => d ? this.objectRegistry.getOrCreateType(d) : undefined);
+  }
+  resolveName(name, meaning, location, excludeGlobals) {
+    const isNode = location && "kind" in location;
+    const data = this.client.apiRequest("resolveName", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      name,
+      meaning,
+      location: isNode ? getNodeId(location) : undefined,
+      file: !isNode && location ? location.document : undefined,
+      position: !isNode && location ? location.position : undefined,
+      excludeGlobals
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getResolvedSymbol(node) {
+    const text = node.text;
+    if (!text)
+      return;
+    return this.resolveName(text, SymbolFlags.Value | SymbolFlags.ExportValue, node);
+  }
+  getContextualType(node) {
+    const data = this.client.apiRequest("getContextualType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(node)
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getBaseTypeOfLiteralType(type) {
+    const data = this.client.apiRequest("getBaseTypeOfLiteralType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getNonNullableType(type) {
+    const data = this.client.apiRequest("getNonNullableType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getTypeFromTypeNode(node) {
+    const data = this.client.apiRequest("getTypeFromTypeNode", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(node)
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getWidenedType(type) {
+    const data = this.client.apiRequest("getWidenedType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getParameterType(signature, index) {
+    const data = this.client.apiRequest("getParameterType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id,
+      index
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  isArrayLikeType(type) {
+    return this.client.apiRequest("isArrayLikeType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+  }
+  isTypeAssignableTo(source, target) {
+    return this.client.apiRequest("isTypeAssignableTo", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      source: source.id,
+      target: target.id
+    });
+  }
+  getShorthandAssignmentValueSymbol(node) {
+    const data = this.client.apiRequest("getShorthandAssignmentValueSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(node)
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getTypeOfSymbolAtLocation(symbol, location) {
+    const data = this.client.apiRequest("getTypeOfSymbolAtLocation", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id,
+      location: getNodeId(location)
+    });
+    if (!data)
+      throw new Error(`getTypeOfSymbolAtLocation returned no type for symbol ${symbol.id}`);
+    return this.objectRegistry.getOrCreateType(data);
+  }
+  getIntrinsicType(method) {
+    const data = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return this.objectRegistry.getOrCreateType(data);
+  }
+  getAnyType() {
+    return this.getIntrinsicType("getAnyType");
+  }
+  getStringType() {
+    return this.getIntrinsicType("getStringType");
+  }
+  getNumberType() {
+    return this.getIntrinsicType("getNumberType");
+  }
+  getBooleanType() {
+    return this.getIntrinsicType("getBooleanType");
+  }
+  getVoidType() {
+    return this.getIntrinsicType("getVoidType");
+  }
+  getUndefinedType() {
+    return this.getIntrinsicType("getUndefinedType");
+  }
+  getNullType() {
+    return this.getIntrinsicType("getNullType");
+  }
+  getNeverType() {
+    return this.getIntrinsicType("getNeverType");
+  }
+  getUnknownType() {
+    return this.getIntrinsicType("getUnknownType");
+  }
+  getBigIntType() {
+    return this.getIntrinsicType("getBigIntType");
+  }
+  getESSymbolType() {
+    return this.getIntrinsicType("getESSymbolType");
+  }
+  typeToTypeNode(type, enclosingDeclaration, flags) {
+    const binaryData = this.client.apiRequestBinary("typeToTypeNode", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id,
+      location: enclosingDeclaration ? getNodeId(enclosingDeclaration) : undefined,
+      flags
+    });
+    if (!binaryData)
+      return;
+    return decodeNode(binaryData);
+  }
+  signatureToSignatureDeclaration(signature, kind, enclosingDeclaration, flags) {
+    const binaryData = this.client.apiRequestBinary("signatureToSignatureDeclaration", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id,
+      kind,
+      location: enclosingDeclaration ? getNodeId(enclosingDeclaration) : undefined,
+      flags
+    });
+    if (!binaryData)
+      return;
+    return decodeNode(binaryData);
+  }
+  typeToString(type, enclosingDeclaration, flags) {
+    return this.client.apiRequest("typeToString", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id,
+      location: enclosingDeclaration ? getNodeId(enclosingDeclaration) : undefined,
+      flags
+    });
+  }
+  isContextSensitive(node) {
+    return this.client.apiRequest("isContextSensitive", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(node)
+    });
+  }
+  isArrayType(type) {
+    return this.client.apiRequest("isArrayType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+  }
+  isTupleType(type) {
+    return this.client.apiRequest("isTupleType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+  }
+  getReturnTypeOfSignature(signature) {
+    const data = this.client.apiRequest("getReturnTypeOfSignature", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getRestTypeOfSignature(signature) {
+    const data = this.client.apiRequest("getRestTypeOfSignature", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getTypePredicateOfSignature(signature) {
+    const data = this.client.apiRequest("getTypePredicateOfSignature", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id
+    });
+    if (!data)
+      return;
+    return {
+      kind: data.kind,
+      parameterIndex: data.parameterIndex,
+      parameterName: data.parameterName,
+      type: data.type ? this.objectRegistry.getOrCreateType(data.type) : undefined
+    };
+  }
+  getBaseTypes(type) {
+    const data = this.client.apiRequest("getBaseTypes", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? data.map((d) => this.objectRegistry.getOrCreateType(d)) : [];
+  }
+  getApparentType(type) {
+    const data = this.client.apiRequest("getApparentType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getPropertiesOfType(type) {
+    const data = this.client.apiRequest("getPropertiesOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? data.map((d) => this.objectRegistry.getOrCreateSymbol(d)) : [];
+  }
+  getIndexInfosOfType(type) {
+    const data = this.client.apiRequest("getIndexInfosOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    if (!data)
+      return [];
+    return data.map((d) => ({
+      keyType: this.objectRegistry.getOrCreateType(d.keyType),
+      valueType: this.objectRegistry.getOrCreateType(d.valueType),
+      isReadonly: d.isReadonly ?? false,
+      declaration: d.declaration ? new NodeHandle(d.declaration, this.project) : undefined
+    }));
+  }
+  getConstraintOfTypeParameter(type) {
+    const data = this.client.apiRequest("getConstraintOfTypeParameter", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getBaseConstraintOfType(type) {
+    const data = this.client.apiRequest("getBaseConstraintOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getPropertyOfType(type, name) {
+    const data = this.client.apiRequest("getPropertyOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id,
+      name
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getConstantValue(node) {
+    const data = this.client.apiRequest("getConstantValue", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(node)
+    });
+    return data ?? undefined;
+  }
+  getSignatureFromDeclaration(node) {
+    const data = this.client.apiRequest("getSignatureFromDeclaration", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(node)
+    });
+    return data ? this.objectRegistry.getOrCreateSignature(data) : undefined;
+  }
+  getExportSpecifierLocalTargetSymbol(node) {
+    const data = this.client.apiRequest("getExportSpecifierLocalTargetSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId(node)
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getAliasedSymbol(symbol) {
+    const data = this.client.apiRequest("getAliasedSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    if (!data)
+      throw new Error(`getAliasedSymbol returned no symbol for symbol ${symbol.id}`);
+    return this.objectRegistry.getOrCreateSymbol(data);
+  }
+  getImmediateAliasedSymbol(symbol) {
+    const data = this.client.apiRequest("getImmediateAliasedSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getWellKnownSymbols() {
+    return this.wellKnownSymbols ??= this.client.apiRequest("getWellKnownSymbols", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+  }
+  isUnknownSymbol(symbol) {
+    return symbol.id === this.getWellKnownSymbols().unknown;
+  }
+  isUndefinedSymbol(symbol) {
+    return symbol.id === this.getWellKnownSymbols().undefined;
+  }
+  isArgumentsSymbol(symbol) {
+    return symbol.id === this.getWellKnownSymbols().arguments;
+  }
+  getExportsOfModule(symbol) {
+    const data = this.client.apiRequest("getExportsOfModule", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    return data ? data.map((d) => this.objectRegistry.getOrCreateSymbol(d)) : [];
+  }
+  getMemberInModuleExports(symbol, name) {
+    const data = this.client.apiRequest("getMemberInModuleExports", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id,
+      name
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getJsDocTagsOfSymbol(symbol) {
+    const data = this.client.apiRequest("getJsDocTags", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    return data ?? [];
+  }
+  getDocumentationCommentOfSymbol(symbol) {
+    return this.client.apiRequest("getDocumentationComment", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+  }
+  getTypeArguments(type) {
+    const data = this.client.apiRequest("getTypeArguments", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? data.map((d) => this.objectRegistry.getOrCreateType(d)) : [];
+  }
+}
+
+class Emitter {
+  client;
+  constructor(client) {
+    this.client = client;
+  }
+  printNode(node, options = {}) {
+    const encoded = encodeNode(node);
+    const base64 = uint8ArrayToBase64(encoded);
+    return this.client.apiRequest("printNode", {
+      data: base64,
+      ...options
+    });
+  }
+}
+
+class NodeHandle {
+  canonicalProject;
+  index;
+  kind;
+  path;
+  constructor(handle, canonicalProject) {
+    const parsed = parseNodeHandle(handle);
+    this.index = parsed.index;
+    this.kind = parsed.kind;
+    this.path = parsed.path;
+    this.canonicalProject = canonicalProject;
+  }
+  resolve(project = this.canonicalProject) {
+    const sourceFile = project.program.getSourceFile(this.path);
+    if (!sourceFile) {
+      return;
+    }
+    return sourceFile.getOrCreateNodeAtIndex(this.index);
+  }
+}
+
+class Symbol2 {
+  objectRegistry;
+  canonicalProject;
+  id;
+  escapedName;
+  name;
+  flags;
+  checkFlags;
+  declarations;
+  valueDeclaration;
+  parent;
+  exportSymbol;
+  membersCache;
+  exportsCache;
+  constructor(data, objectRegistry) {
+    this.objectRegistry = objectRegistry;
+    this.id = data.id;
+    this.escapedName = data.name;
+    this.name = unescapeLeadingUnderscores(data.name);
+    this.flags = data.flags;
+    this.checkFlags = data.checkFlags;
+    const canonicalProject = objectRegistry.getProject(data.project);
+    if (!canonicalProject) {
+      throw new Error(`Symbol ${data.id} references unknown canonical project '${data.project}'`);
+    }
+    this.canonicalProject = canonicalProject;
+    this.declarations = (data.declarations ?? []).map((d) => new NodeHandle(d, canonicalProject));
+    this.valueDeclaration = data.valueDeclaration ? new NodeHandle(data.valueDeclaration, canonicalProject) : undefined;
+    if (data.parent !== undefined)
+      this.parent = data.parent;
+    if (data.exportSymbol !== undefined)
+      this.exportSymbol = data.exportSymbol;
+  }
+  getParent() {
+    return this.objectRegistry.fetchSymbol(this, "getParentOfSymbol", this.parent, this.canonicalProject.id);
+  }
+  getMembers() {
+    return this.membersCache ??= this.fetchSymbolTable("getMembersOfSymbol");
+  }
+  getExports() {
+    return this.exportsCache ??= this.fetchSymbolTable("getExportsOfSymbol");
+  }
+  fetchSymbolTable(method) {
+    const symbols = this.objectRegistry.fetchSymbols(this, method, undefined, this.canonicalProject.id);
+    const table = new Map;
+    for (const symbol of symbols) {
+      table.set(symbol.escapedName, symbol);
+    }
+    return table;
+  }
+  getExportSymbol() {
+    if (!this.exportSymbol)
+      return this;
+    return this.objectRegistry.fetchSymbol(this, "getExportSymbolOfSymbol", this.exportSymbol, this.canonicalProject.id);
+  }
+  getJsDocTags(checker) {
+    return checker.getJsDocTagsOfSymbol(this);
+  }
+  getDocumentationComment(checker) {
+    return checker.getDocumentationCommentOfSymbol(this);
+  }
+}
+
+class TypeObject {
+  objectRegistry;
+  id;
+  flags;
+  objectFlags;
+  symbol;
+  value;
+  intrinsicName;
+  isThisType;
+  freshType;
+  regularType;
+  target;
+  typeParameters;
+  outerTypeParameters;
+  localTypeParameters;
+  aliasTypeArguments;
+  aliasSymbol;
+  elementFlags;
+  fixedLength;
+  readonly;
+  texts;
+  objectType;
+  indexType;
+  checkType;
+  extendsType;
+  baseType;
+  substConstraint;
+  trueType;
+  falseType;
+  constructor(data, objectRegistry) {
+    this.objectRegistry = objectRegistry;
+    this.id = data.id;
+    this.flags = data.flags;
+    if (data.objectFlags !== undefined)
+      this.objectFlags = data.objectFlags;
+    if (data.symbol !== undefined)
+      this.symbol = data.symbol;
+    if (data.value != null) {
+      this.value = data.flags & TypeFlags.BigIntLiteral ? BigInt(data.value) : data.value;
+    }
+    if (data.intrinsicName !== undefined)
+      this.intrinsicName = data.intrinsicName;
+    if (data.isThisType !== undefined)
+      this.isThisType = data.isThisType;
+    if (data.freshType !== undefined)
+      this.freshType = data.freshType;
+    if (data.regularType !== undefined)
+      this.regularType = data.regularType;
+    if (data.target !== undefined)
+      this.target = data.target;
+    this.typeParameters = data.typeParameters ?? [];
+    this.outerTypeParameters = data.outerTypeParameters ?? [];
+    this.localTypeParameters = data.localTypeParameters ?? [];
+    this.aliasTypeArguments = data.aliasTypeArguments ?? [];
+    if (data.aliasSymbol !== undefined)
+      this.aliasSymbol = data.aliasSymbol;
+    if (data.elementFlags !== undefined)
+      this.elementFlags = data.elementFlags;
+    if (data.fixedLength !== undefined)
+      this.fixedLength = data.fixedLength;
+    if (data.readonly !== undefined)
+      this.readonly = data.readonly;
+    if (data.texts !== undefined)
+      this.texts = data.texts;
+    if (data.objectType !== undefined)
+      this.objectType = data.objectType;
+    if (data.indexType !== undefined)
+      this.indexType = data.indexType;
+    if (data.checkType !== undefined)
+      this.checkType = data.checkType;
+    if (data.extendsType !== undefined)
+      this.extendsType = data.extendsType;
+    if (data.baseType !== undefined)
+      this.baseType = data.baseType;
+    if (data.substConstraint !== undefined)
+      this.substConstraint = data.substConstraint;
+    this.trueType = false;
+    this.falseType = false;
+  }
+  getSymbol() {
+    return this.objectRegistry.fetchSymbol(this, "getSymbolOfType", this.symbol);
+  }
+  getAliasSymbol() {
+    return this.objectRegistry.fetchSymbol(this, "getAliasSymbolOfType", this.aliasSymbol);
+  }
+  getTarget() {
+    return this.objectRegistry.fetchType(this, "getTargetOfType", this.target);
+  }
+  getFreshType() {
+    return this.objectRegistry.fetchType(this, "getFreshTypeOfType", this.freshType);
+  }
+  getRegularType() {
+    return this.objectRegistry.fetchType(this, "getRegularTypeOfType", this.regularType);
+  }
+  getTypes() {
+    if (!(this.flags & (TypeFlags.UnionOrIntersection | TypeFlags.TemplateLiteral))) {
+      return;
+    }
+    return this.objectRegistry.fetchTypes(this, "getTypesOfType");
+  }
+  getTypeParameters() {
+    return this.objectRegistry.fetchTypes(this, "getTypeParametersOfType", this.typeParameters);
+  }
+  getOuterTypeParameters() {
+    return this.objectRegistry.fetchTypes(this, "getOuterTypeParametersOfType", this.outerTypeParameters);
+  }
+  getLocalTypeParameters() {
+    return this.objectRegistry.fetchTypes(this, "getLocalTypeParametersOfType", this.localTypeParameters);
+  }
+  getAliasTypeArguments() {
+    return this.objectRegistry.fetchTypes(this, "getAliasTypeArgumentsOfType", this.aliasTypeArguments);
+  }
+  getObjectType() {
+    return this.objectRegistry.fetchType(this, "getObjectTypeOfType", this.objectType);
+  }
+  getIndexType() {
+    return this.objectRegistry.fetchType(this, "getIndexTypeOfType", this.indexType);
+  }
+  getCheckType() {
+    return this.objectRegistry.fetchType(this, "getCheckTypeOfType", this.checkType);
+  }
+  getExtendsType() {
+    return this.objectRegistry.fetchType(this, "getExtendsTypeOfType", this.extendsType);
+  }
+  getBaseType() {
+    return this.objectRegistry.fetchType(this, "getBaseTypeOfType", this.baseType);
+  }
+  getConstraint() {
+    return this.objectRegistry.fetchType(this, "getConstraintOfType", this.substConstraint);
+  }
+  getTrueType() {
+    const result = this.objectRegistry.fetchType(this, "getTrueTypeOfConditionalType", this.trueType);
+    this.trueType = result.id;
+    return result;
+  }
+  getFalseType() {
+    const result = this.objectRegistry.fetchType(this, "getFalseTypeOfConditionalType", this.falseType);
+    this.falseType = result.id;
+    return result;
+  }
+  getBaseTypes() {
+    if (!this.isClassOrInterface()) {
+      return;
+    }
+    return this.objectRegistry.fetchBaseTypes(this);
+  }
+  isClassOrInterface() {
+    return isClassOrInterfaceType(this);
+  }
+  isUnionType() {
+    return isUnionType(this);
+  }
+  isIntersectionType() {
+    return isIntersectionType(this);
+  }
+  isObjectType() {
+    return isObjectType(this);
+  }
+  isIntrinsicType() {
+    return isIntrinsicType(this);
+  }
+  isErrorType() {
+    return isErrorType(this);
+  }
+  isLiteralType() {
+    return isLiteralType(this);
+  }
+  isStringLiteralType() {
+    return isStringLiteralType(this);
+  }
+  isNumberLiteralType() {
+    return isNumberLiteralType(this);
+  }
+  isBigIntLiteralType() {
+    return isBigIntLiteralType(this);
+  }
+  isBooleanLiteralType() {
+    return isBooleanLiteralType(this);
+  }
+  isTypeReference() {
+    return isTypeReference(this);
+  }
+  isTupleType() {
+    return isTupleType(this);
+  }
+  isIndexType() {
+    return isIndexType(this);
+  }
+  isIndexedAccessType() {
+    return isIndexedAccessType(this);
+  }
+  isConditionalType() {
+    return isConditionalType(this);
+  }
+  isSubstitutionType() {
+    return isSubstitutionType(this);
+  }
+  isTemplateLiteralType() {
+    return isTemplateLiteralType(this);
+  }
+  isStringMappingType() {
+    return isStringMappingType(this);
+  }
+  isTypeParameter() {
+    return isTypeParameter(this);
+  }
+}
+function isUnionType(type) {
+  return (type.flags & TypeFlags.Union) !== 0;
+}
+function isIntersectionType(type) {
+  return (type.flags & TypeFlags.Intersection) !== 0;
+}
+function isObjectType(type) {
+  return (type.flags & TypeFlags.Object) !== 0;
+}
+function isClassOrInterfaceType(type) {
+  return isObjectType(type) && (type.objectFlags & ObjectFlags.ClassOrInterface) !== 0;
+}
+function isIntrinsicType(type) {
+  return (type.flags & TypeFlags.Intrinsic) !== 0;
+}
+function isErrorType(type) {
+  return isIntrinsicType(type) && type.intrinsicName === "error";
+}
+function isLiteralType(type) {
+  return (type.flags & TypeFlags.Literal) !== 0;
+}
+function isStringLiteralType(type) {
+  return (type.flags & TypeFlags.StringLiteral) !== 0;
+}
+function isNumberLiteralType(type) {
+  return (type.flags & TypeFlags.NumberLiteral) !== 0;
+}
+function isBigIntLiteralType(type) {
+  return (type.flags & TypeFlags.BigIntLiteral) !== 0;
+}
+function isBooleanLiteralType(type) {
+  return (type.flags & TypeFlags.BooleanLiteral) !== 0;
+}
+function isTypeReference(type) {
+  return isObjectType(type) && (type.objectFlags & ObjectFlags.Reference) !== 0;
+}
+function isTupleType(type) {
+  return isObjectType(type) && (type.objectFlags & ObjectFlags.Tuple) !== 0;
+}
+function isIndexType(type) {
+  return (type.flags & TypeFlags.Index) !== 0;
+}
+function isIndexedAccessType(type) {
+  return (type.flags & TypeFlags.IndexedAccess) !== 0;
+}
+function isConditionalType(type) {
+  return (type.flags & TypeFlags.Conditional) !== 0;
+}
+function isSubstitutionType(type) {
+  return (type.flags & TypeFlags.Substitution) !== 0;
+}
+function isTemplateLiteralType(type) {
+  return (type.flags & TypeFlags.TemplateLiteral) !== 0;
+}
+function isStringMappingType(type) {
+  return (type.flags & TypeFlags.StringMapping) !== 0;
+}
+function isTypeParameter(type) {
+  return (type.flags & TypeFlags.TypeParameter) !== 0;
+}
+
+class Signature {
+  flags;
+  objectRegistry;
+  id;
+  declaration;
+  typeParameters;
+  parameters;
+  thisParameter;
+  target;
+  constructor(data, project, objectRegistry) {
+    this.id = data.id;
+    this.flags = data.flags;
+    this.objectRegistry = objectRegistry;
+    this.declaration = data.declaration ? new NodeHandle(data.declaration, project) : undefined;
+    this.typeParameters = data.typeParameters ?? [];
+    this.parameters = data.parameters ?? [];
+    this.thisParameter = data.thisParameter;
+    this.target = data.target;
+  }
+  getTypeParameters() {
+    return this.objectRegistry.fetchTypes(this, "getTypeParametersOfSignature", this.typeParameters);
+  }
+  getParameters() {
+    return this.objectRegistry.fetchSymbols(this, "getParametersOfSignature", this.parameters);
+  }
+  getThisParameter() {
+    return this.objectRegistry.fetchSymbol(this, "getThisParameterOfSignature", this.thisParameter);
+  }
+  getTarget() {
+    return this.objectRegistry.fetchSignature(this, "getTargetOfSignature", this.target);
+  }
+  get hasRestParameter() {
+    return (this.flags & SignatureFlags.HasRestParameter) !== 0;
+  }
+  get isConstruct() {
+    return (this.flags & SignatureFlags.Construct) !== 0;
+  }
+  get isAbstract() {
+    return (this.flags & SignatureFlags.Abstract) !== 0;
+  }
+}
+
+// ../../../../omo-engine/code-graph/src/extract.ts
+var STATIC_CONFIDENCE = 1;
+var UNRESOLVED_CONFIDENCE = 0.5;
+var UNKNOWN = "unknown";
+var RECORD_ID = /^pk-[0-9a-f]{12}$/;
+var MAX_ALIAS_DEPTH = 10;
+function isTestPath(path) {
+  const normalized = path.replace(/\\/g, "/");
+  return /(^|\/)__tests__\//.test(normalized) || /\.test\.[cm]?[tj]sx?$/.test(normalized) || /\.spec\.[cm]?[tj]sx?$/.test(normalized) || /(^|\/)(test|tests)\//.test(normalized);
+}
+function toPosixPath2(value) {
+  const slashed = value.replace(/\\/g, "/");
+  return /^[a-zA-Z]:\//.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
+}
+function commonDir(paths) {
+  const [first, ...rest] = paths;
+  if (first === undefined)
+    return process.cwd().replace(/\\/g, "/");
+  const firstSegments = first.split("/").slice(0, -1);
+  let length = firstSegments.length;
+  for (const other of rest) {
+    const segments = other.split("/").slice(0, -1);
+    let shared = 0;
+    while (shared < length && shared < segments.length && firstSegments[shared] === segments[shared]) {
+      shared += 1;
+    }
+    length = shared;
+  }
+  return firstSegments.slice(0, length).join("/") || "/";
+}
+function defaultTsServerPath() {
+  const require2 = createRequire(import.meta.url);
+  const tsDir = dirname4(require2.resolve("typescript/package.json"));
+  const platformRoot = join8(tsDir, "..", "@typescript");
+  if (existsSync7(platformRoot)) {
+    const platform = `typescript-${process.platform}-${process.arch}`;
+    const names = readdirSync(platformRoot).sort();
+    const ordered = [...names.filter((name) => name === platform), ...names.filter((name) => name !== platform)];
+    for (const name of ordered) {
+      for (const binary of ["tsc.exe", "tsgo", "tsc"]) {
+        const candidate = join8(platformRoot, name, "lib", binary);
+        if (existsSync7(candidate))
+          return candidate;
+      }
+    }
+  }
+  for (const binary of process.platform === "win32" ? ["tsc.exe", "tsc"] : ["tsc"]) {
+    const candidate = join8(tsDir, "..", ".bin", binary);
+    if (existsSync7(candidate))
+      return candidate;
+  }
+  throw new Error("code-graph: TypeScript native server binary not found inside typescript@7.0.2; " + "pass IndexOptions.tsserverPath explicitly");
+}
+function isSymbolLike(value) {
+  if (typeof value !== "object" || value === null)
+    return false;
+  const candidate = value;
+  return typeof candidate.name === "string" && typeof candidate.flags === "number" && Array.isArray(candidate.declarations);
+}
+function followAlias(checker, symbol) {
+  let current = symbol;
+  for (let depth = 0;depth < MAX_ALIAS_DEPTH; depth += 1) {
+    if ((current.flags & SymbolFlags.Alias) === 0)
+      return current;
+    const next = checker.getAliasedSymbol(current);
+    if (!next || next === current)
+      return current;
+    current = next;
+  }
+  return current;
+}
+function ownerClassName(declaration) {
+  const parent = declaration.parent;
+  if (parent === undefined)
+    return;
+  if ((isClassDeclaration(parent) || isClassExpression(parent)) && parent.name && isIdentifier(parent.name)) {
+    return parent.name.text;
+  }
+  return;
+}
+function callableInitializer(decl) {
+  if (!isVariableDeclaration(decl) || decl.initializer === undefined)
+    return false;
+  return isArrowFunction(decl.initializer) || isFunctionExpression(decl.initializer);
+}
+function symbolIdForDecl(declaration, nameText, fileRel) {
+  if (isConstructorDeclaration(declaration)) {
+    const owner = ownerClassName(declaration);
+    return `fn:${owner ? `${owner}.` : ""}constructor@${fileRel}`;
+  }
+  if (isMethodDeclaration(declaration)) {
+    const owner = ownerClassName(declaration);
+    return `fn:${owner ? `${owner}.` : ""}${nameText}@${fileRel}`;
+  }
+  if (isClassDeclaration(declaration) || isClassExpression(declaration))
+    return `class:${nameText}@${fileRel}`;
+  if (isInterfaceDeclaration(declaration))
+    return `interface:${nameText}@${fileRel}`;
+  if (isEnumDeclaration(declaration))
+    return `enum:${nameText}@${fileRel}`;
+  if (isTypeAliasDeclaration(declaration))
+    return `type:${nameText}@${fileRel}`;
+  if (isFunctionDeclaration(declaration) || isFunctionExpression(declaration) || isArrowFunction(declaration)) {
+    return `fn:${nameText}@${fileRel}`;
+  }
+  return `const:${nameText}@${fileRel}`;
+}
+function isCallableDeclKind(kind) {
+  return kind === SyntaxKind2.FunctionDeclaration || kind === SyntaxKind2.FunctionExpression || kind === SyntaxKind2.ArrowFunction || kind === SyntaxKind2.MethodDeclaration || kind === SyntaxKind2.Constructor || kind === SyntaxKind2.ClassDeclaration || kind === SyntaxKind2.ClassExpression;
+}
+
+class GraphBuilder {
+  root;
+  files = new Map;
+  nodes = new Map;
+  edges = new Map;
+  callOrdinals = new Map;
+  constructor(root) {
+    this.root = root;
+  }
+  snapshot() {
+    const nodes = [...this.nodes.values()].sort((left, right) => left.id < right.id ? -1 : 1);
+    const edges = [...this.edges.values()].sort((left, right) => left.id < right.id ? -1 : 1);
+    return { nodes, edges };
+  }
+  addEntries(project, entries) {
+    const program = project.program;
+    const queue = [];
+    for (const entry of entries) {
+      const key = toPosixPath2(entry);
+      const sourceFile = program.getSourceFile(entry);
+      if (!sourceFile)
+        throw new Error(`code-graph: entry is not part of the TypeScript program: ${entry}`);
+      if (program.isSourceFileDefaultLibrary(sourceFile)) {
+        throw new Error(`code-graph: entry is a TypeScript default library file: ${entry}`);
+      }
+      queue.push(key);
+    }
+    while (queue.length > 0) {
+      const key = queue.pop();
+      if (key === undefined || this.files.has(key))
+        continue;
+      const sourceFile = program.getSourceFile(key);
+      if (!sourceFile)
+        continue;
+      if (program.isSourceFileDefaultLibrary(sourceFile) || program.isSourceFileFromExternalLibrary(sourceFile)) {
+        continue;
+      }
+      const rel = this.relOf(key);
+      const ctx = { key, rel, sourceFile, project, checker: project.checker };
+      this.files.set(key, ctx);
+      this.nodes.set(`file:${rel}`, { id: `file:${rel}`, kind: "file", file: rel, line: 1, name: rel });
+      for (const target of this.staticImportTargets(ctx)) {
+        if (!this.files.has(target))
+          queue.push(target);
+      }
+    }
+    const ordered = [...this.files.values()].sort((left, right) => left.rel < right.rel ? -1 : 1);
+    for (const ctx of ordered) {
+      const isTest = isTestPath(ctx.rel);
+      if (isTest) {
+        const fileNode = this.nodes.get(`file:${ctx.rel}`);
+        if (fileNode)
+          this.nodes.set(fileNode.id, { ...fileNode, isTest: true });
+      }
+      this.emitImports(ctx, isTest);
+      this.emitExports(ctx);
+      this.emitDefinitions(ctx);
+      this.emitCalls(ctx);
+    }
+  }
+  addKnowledgeLinks(links) {
+    for (const link of links) {
+      if (link.from.length === 0 || !RECORD_ID.test(link.recordId))
+        continue;
+      if (!Number.isFinite(link.confidence) || link.confidence < 0 || link.confidence > 1)
+        continue;
+      const id = `knowledge:${link.recordId}`;
+      const file = toPosixPath2(link.sourceFile);
+      this.nodes.set(id, { id, kind: "knowledge-link", file, line: 1, target: link.recordId, revision: link.sourceRevision });
+      const edgeId = `links:${link.from}:${link.recordId}`;
+      this.edges.set(edgeId, {
+        id: edgeId,
+        kind: "LINKS_KNOWLEDGE",
+        from: link.from,
+        to: id,
+        confidence: link.confidence,
+        ref: `${file}:1`
+      });
+    }
+  }
+  relOf(key) {
+    const rel = key.startsWith(`${this.root}/`) ? key.slice(this.root.length + 1) : key;
+    return rel;
+  }
+  lineOf(ctx, node) {
+    return ctx.sourceFile.getLineAndCharacterOfPosition(node.getStart(ctx.sourceFile)).line + 1;
+  }
+  resolveModuleKey(ctx, specifierNode) {
+    const symbol = ctx.checker.getSymbolAtLocation(specifierNode);
+    if (!symbol || (symbol.flags & SymbolFlags.Alias) !== 0)
+      return;
+    const keys = new Set;
+    for (const handle of symbol.declarations) {
+      const declaration = handle.resolve(ctx.project);
+      if (!declaration || !isSourceFile(declaration))
+        continue;
+      keys.add(toPosixPath2(declaration.fileName));
+    }
+    if (keys.size !== 1)
+      return;
+    const [key] = keys;
+    if (key === undefined)
+      return;
+    const target = ctx.project.program.getSourceFile(key);
+    if (!target)
+      return;
+    if (ctx.project.program.isSourceFileDefaultLibrary(target))
+      return;
+    return key;
+  }
+  staticImportTargets(ctx) {
+    const targets = [];
+    const visit = (node) => {
+      if (isImportDeclaration(node) || isExportDeclaration(node)) {
+        const specifier = node.moduleSpecifier;
+        if (specifier && isStringLiteral(specifier)) {
+          const key = this.resolveModuleKey(ctx, specifier);
+          if (key)
+            targets.push(key);
+        }
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+    return targets;
+  }
+  emitImports(ctx, isTest) {
+    const visit = (node) => {
+      if (isImportDeclaration(node) || isExportDeclaration(node)) {
+        const specifier = node.moduleSpecifier;
+        if (specifier && isStringLiteral(specifier)) {
+          const line = this.lineOf(ctx, specifier);
+          const key = this.resolveModuleKey(ctx, specifier);
+          const target = key === undefined ? undefined : this.files.get(key);
+          if (target) {
+            const edgeId = `imports:file:${ctx.rel}:file:${target.rel}:${line}`;
+            this.edges.set(edgeId, {
+              id: edgeId,
+              kind: "IMPORTS",
+              from: `file:${ctx.rel}`,
+              to: `file:${target.rel}`,
+              confidence: STATIC_CONFIDENCE,
+              ref: `${ctx.rel}:${line}`
+            });
+            if (isTest) {
+              const testId = `tests:file:${ctx.rel}:file:${target.rel}:${line}`;
+              this.edges.set(testId, {
+                id: testId,
+                kind: "TESTS",
+                from: `file:${ctx.rel}`,
+                to: `file:${target.rel}`,
+                confidence: STATIC_CONFIDENCE,
+                ref: `${ctx.rel}:${line}`
+              });
+            }
+          }
+        }
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitExports(ctx) {
+    if (!ctx.sourceFile.externalModuleIndicator)
+      return;
+    const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
+    if (!moduleSymbol)
+      return;
+    const raw = ctx.checker.getExportsOfModule(moduleSymbol);
+    const exported = Array.isArray(raw) ? raw.filter(isSymbolLike) : [];
+    const contractLines = this.exportContractLines(ctx);
+    for (const exportedSymbol of exported) {
+      if ((exportedSymbol.flags & SymbolFlags.ExportStar) !== 0)
+        continue;
+      if (exportedSymbol.name.startsWith("__"))
+        continue;
+      const contractId = `export:${exportedSymbol.name}@${ctx.rel}`;
+      const origin = followAlias(ctx.checker, exportedSymbol);
+      const targets = new Map;
+      for (const handle of origin.declarations) {
+        const declaration = handle.resolve(ctx.project);
+        if (!declaration)
+          continue;
+        const declFile = toPosixPath2(declaration.getSourceFile().fileName);
+        const targetCtx = this.files.get(declFile);
+        if (!targetCtx)
+          continue;
+        const nameText = this.declaredName(declaration);
+        if (!nameText)
+          continue;
+        const targetId = symbolIdForDecl(declaration, nameText, targetCtx.rel);
+        targets.set(targetId, targetId);
+      }
+      const line = contractLines.get(exportedSymbol.name) ?? 1;
+      if (targets.size === 1) {
+        const [targetId] = targets.keys();
+        if (targetId === undefined)
+          continue;
+        this.nodes.set(contractId, {
+          id: contractId,
+          kind: "export-contract",
+          file: ctx.rel,
+          line,
+          name: exportedSymbol.name,
+          target: targetId
+        });
+        const edgeId = `exports:file:${ctx.rel}:${contractId}:${targetId}`;
+        this.edges.set(edgeId, {
+          id: edgeId,
+          kind: "EXPORTS",
+          from: `file:${ctx.rel}`,
+          to: contractId,
+          confidence: STATIC_CONFIDENCE,
+          ref: `${ctx.rel}:${line}`
+        });
+      } else {
+        this.nodes.set(contractId, {
+          id: contractId,
+          kind: "export-contract",
+          file: ctx.rel,
+          line,
+          name: exportedSymbol.name
+        });
+        const candidates = targets.size > 0 ? [...targets.keys()] : [UNKNOWN];
+        for (const candidate of candidates) {
+          const edgeId = `exports:file:${ctx.rel}:${contractId}:${candidate}`;
+          this.edges.set(edgeId, {
+            id: edgeId,
+            kind: "EXPORTS",
+            from: `file:${ctx.rel}`,
+            to: candidate === UNKNOWN ? UNKNOWN : contractId,
+            confidence: UNRESOLVED_CONFIDENCE,
+            ref: `${ctx.rel}:${line}`,
+            uncertain: true
+          });
+        }
+      }
+    }
+  }
+  exportContractLines(ctx) {
+    const lines = new Map;
+    const visit = (node) => {
+      if (isExportDeclaration(node)) {
+        const clause = node.exportClause;
+        if (clause && clause.kind === SyntaxKind2.NamedExports) {
+          clause.elements.forEach((element) => {
+            const exported = element.propertyName ?? element.name;
+            const text = exported.text;
+            if (!lines.has(text))
+              lines.set(text, this.lineOf(ctx, element));
+          });
+        }
+        if (node.moduleSpecifier === undefined)
+          return;
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+    return lines;
+  }
+  declaredName(declaration) {
+    if (isConstructorDeclaration(declaration))
+      return "constructor";
+    if (isFunctionDeclaration(declaration) || isFunctionExpression(declaration) || isClassDeclaration(declaration) || isClassExpression(declaration) || isInterfaceDeclaration(declaration) || isEnumDeclaration(declaration) || isTypeAliasDeclaration(declaration) || isMethodDeclaration(declaration)) {
+      const name = declaration.name;
+      return name && isIdentifier(name) ? name.text : undefined;
+    }
+    if (isVariableDeclaration(declaration)) {
+      return isIdentifier(declaration.name) ? declaration.name.text : undefined;
+    }
+    return;
+  }
+  emitDefinitions(ctx) {
+    const define = (declaration, nameNode) => {
+      if (!isIdentifier(nameNode))
+        return;
+      const symbol = ctx.checker.getSymbolAtLocation(nameNode);
+      if (!symbol)
+        return;
+      const id = symbolIdForDecl(declaration, nameNode.text, ctx.rel);
+      const line = this.lineOf(ctx, nameNode);
+      this.nodes.set(id, { id, kind: "symbol", file: ctx.rel, line, name: symbol.name });
+      const edgeId = `defines:file:${ctx.rel}:${id}`;
+      this.edges.set(edgeId, {
+        id: edgeId,
+        kind: "DEFINES",
+        from: `file:${ctx.rel}`,
+        to: id,
+        confidence: STATIC_CONFIDENCE,
+        ref: `${ctx.rel}:${line}`
+      });
+    };
+    const visit = (node) => {
+      if (isVariableStatement(node)) {
+        for (const declaration of node.declarationList.declarations) {
+          if (isVariableDeclaration(declaration))
+            define(declaration, declaration.name);
+        }
+      } else if (isFunctionDeclaration(node) || isFunctionExpression(node) || isClassDeclaration(node) || isClassExpression(node) || isInterfaceDeclaration(node) || isEnumDeclaration(node) || isTypeAliasDeclaration(node) || isMethodDeclaration(node)) {
+        if (node.name)
+          define(node, node.name);
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitCalls(ctx) {
+    const callers = [`file:${ctx.rel}`];
+    const visit = (node) => {
+      const boundary = this.boundaryId(ctx, node);
+      if (boundary)
+        callers.push(boundary);
+      const caller = callers[callers.length - 1] ?? `file:${ctx.rel}`;
+      if (isCallExpression(node))
+        this.recordCall(ctx, node, node.expression, caller);
+      else if (isNewExpression(node))
+        this.recordCall(ctx, node, node.expression, caller);
+      else if (isJsxOpeningElement(node) || isJsxSelfClosingElement(node)) {
+        this.recordCall(ctx, node, node.tagName, caller);
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+      if (boundary)
+        callers.pop();
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  boundaryId(ctx, node) {
+    if (isConstructorDeclaration(node)) {
+      const owner = ownerClassName(node);
+      return owner ? `class:${owner}@${ctx.rel}` : `file:${ctx.rel}`;
+    }
+    if (isFunctionDeclaration(node) || isFunctionExpression(node) || isMethodDeclaration(node) || isVariableDeclaration(node)) {
+      if (!isVariableDeclaration(node) && node.name === undefined)
+        return;
+      const nameNode = isVariableDeclaration(node) ? node.name : node.name;
+      if (!nameNode || !isIdentifier(nameNode))
+        return;
+      if (isVariableDeclaration(node) && !callableInitializer(node))
+        return;
+      if (isVariableDeclaration(node))
+        return `const:${nameNode.text}@${ctx.rel}`;
+      const symbol = ctx.checker.getSymbolAtLocation(nameNode);
+      if (!symbol)
+        return;
+      return symbolIdForDecl(node, nameNode.text, ctx.rel);
+    }
+    return;
+  }
+  classifyCall(ctx, call, callee) {
+    if (callee.kind === SyntaxKind2.ImportKeyword)
+      return { kind: "unresolved" };
+    if (isIdentifier(callee) && (callee.text === "eval" || callee.text === "require")) {
+      return { kind: "unresolved" };
+    }
+    if (isNewExpression(call) && isIdentifier(callee) && callee.text === "Function") {
+      return { kind: "unresolved" };
+    }
+    if (isElementAccessExpression(callee))
+      return { kind: "unresolved" };
+    if (isFunctionExpression(callee) || isArrowFunction(callee))
+      return { kind: "skip" };
+    const symbol = ctx.checker.getSymbolAtLocation(callee);
+    if (!symbol)
+      return { kind: "unresolved" };
+    const final = followAlias(ctx.checker, symbol);
+    const inGraph = [];
+    for (const handle of final.declarations) {
+      const declaration = handle.resolve(ctx.project);
+      if (!declaration)
+        continue;
+      const declFile = toPosixPath2(declaration.getSourceFile().fileName);
+      if (this.files.has(declFile))
+        inGraph.push(declaration);
+    }
+    if (inGraph.length === 0)
+      return { kind: "skip" };
+    const callable = inGraph.filter((declaration) => isCallableDeclKind(declaration.kind) || callableInitializer(declaration));
+    if (callable.length !== inGraph.length)
+      return { kind: "unresolved" };
+    const targets = new Set;
+    for (const declaration of callable) {
+      const nameText = this.declaredName(declaration);
+      if (!nameText)
+        return { kind: "unresolved" };
+      const declFile = toPosixPath2(declaration.getSourceFile().fileName);
+      const targetCtx = this.files.get(declFile);
+      if (!targetCtx)
+        return { kind: "unresolved" };
+      targets.add(symbolIdForDecl(declaration, nameText, targetCtx.rel));
+    }
+    if (targets.size !== 1)
+      return { kind: "unresolved" };
+    const [targetId] = targets;
+    if (targetId === undefined)
+      return { kind: "unresolved" };
+    return { kind: "static", targetId };
+  }
+  recordCall(ctx, call, callee, callerId) {
+    const outcome = this.classifyCall(ctx, call, callee);
+    if (outcome.kind === "skip")
+      return;
+    const line = this.lineOf(ctx, call);
+    const ordinal = this.callOrdinals.get(ctx.key) ?? 0;
+    this.callOrdinals.set(ctx.key, ordinal + 1);
+    const callSiteId = `call:${ctx.rel}:${line}:${ordinal}`;
+    const calleeText = callee.getText().slice(0, 80);
+    this.nodes.set(callSiteId, { id: callSiteId, kind: "call-site", file: ctx.rel, line, name: calleeText });
+    if (outcome.kind === "static") {
+      const edgeId = `calls-static:${callerId}:${outcome.targetId}:${callSiteId}`;
+      this.edges.set(edgeId, {
+        id: edgeId,
+        kind: "CALLS_STATIC",
+        from: callerId,
+        to: outcome.targetId,
+        confidence: STATIC_CONFIDENCE,
+        ref: `${ctx.rel}:${line}`,
+        callSite: callSiteId
+      });
+    } else {
+      const edgeId = `calls-unresolved:${callerId}:${callSiteId}`;
+      this.edges.set(edgeId, {
+        id: edgeId,
+        kind: "CALLS_UNRESOLVED",
+        from: callerId,
+        to: UNKNOWN,
+        confidence: UNRESOLVED_CONFIDENCE,
+        ref: `${ctx.rel}:${line}`,
+        uncertain: true,
+        callSite: callSiteId
+      });
+    }
+  }
+}
+function indexFiles(entryFiles, options = {}) {
+  if (entryFiles.length === 0)
+    return { nodes: [], edges: [] };
+  const absoluteEntries = entryFiles.map((entry) => resolve4(entry));
+  const root = commonDir(absoluteEntries.map(toPosixPath2));
+  const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
+  const api = new API({ tsserverPath, cwd: root });
+  try {
+    const snapshot = api.updateSnapshot({ openFiles: absoluteEntries });
+    try {
+      const builder = new GraphBuilder(root);
+      const byProject = new Map;
+      for (const entry of absoluteEntries) {
+        const project = snapshot.getDefaultProjectForFile(entry);
+        if (!project)
+          throw new Error(`code-graph: no TypeScript project covers entry: ${entry}`);
+        const list = byProject.get(project);
+        if (list)
+          list.push(entry);
+        else
+          byProject.set(project, [entry]);
+      }
+      for (const [project, entries] of byProject)
+        builder.addEntries(project, entries);
+      builder.addKnowledgeLinks(options.knowledge ?? []);
+      return builder.snapshot();
+    } finally {
+      snapshot.dispose();
+    }
+  } finally {
+    api.close();
+  }
+}
+// ../../../../omo-engine/code-graph/src/schema.ts
+import { createHash as createHash3 } from "node:crypto";
+var STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+function sha256Hex(value) {
+  return createHash3("sha256").update(value, "utf8").digest("hex");
+}
+function computeScopeFingerprint(projectId, worktreeId, revision) {
+  return sha256Hex(`${projectId}
+${worktreeId}
+${revision}`);
+}
+// ../../../../omo-engine/code-graph/src/queries.ts
+var DEFAULT_RESULT_LIMIT = 20;
+var MAX_RESULT_LIMIT = 50;
+var DEFAULT_MAX_DEPTH = 5;
+var MAX_DEPTH_LIMIT = 10;
+var SUPPORTED_FILE = /\.[cm]?[tj]sx?$/;
+function clampLimit(limit) {
+  if (limit === undefined || !Number.isFinite(limit))
+    return DEFAULT_RESULT_LIMIT;
+  return Math.min(MAX_RESULT_LIMIT, Math.max(1, Math.floor(limit)));
+}
+function clampDepth(depth) {
+  if (depth === undefined || !Number.isFinite(depth))
+    return DEFAULT_MAX_DEPTH;
+  return Math.min(MAX_DEPTH_LIMIT, Math.max(1, Math.floor(depth)));
+}
+function scopeFromBaseline(baseline) {
+  return {
+    projectId: baseline.scope.projectId,
+    worktreeId: baseline.scope.worktreeId,
+    revision: baseline.scope.revision,
+    fingerprint: baseline.scope.fingerprint
+  };
+}
+function resolveScope(options) {
+  if (options.baseline !== undefined)
+    return scopeFromBaseline(options.baseline);
+  return options.scope;
+}
+function baseEnvelope(scope, freshness) {
+  return {
+    projectId: scope.projectId,
+    worktreeId: scope.worktreeId,
+    revision: scope.revision,
+    fingerprint: scope.fingerprint,
+    freshness
+  };
+}
+function isSupportedPath(path) {
+  const base = path.split("/").pop() ?? path;
+  if (!base.includes("."))
+    return false;
+  return SUPPORTED_FILE.test(base);
+}
+function unsupportedNote(path) {
+  return `unsupported file type: ${path} is unindexed (never analyzed)`;
+}
+function symbolFilePart(symbolId) {
+  const at = symbolId.lastIndexOf("@");
+  if (at < 0)
+    return;
+  return symbolId.slice(at + 1);
+}
+function indexedEvidence(node) {
+  return { edge: "indexed", ref: `${node.file}:${node.line}`, confidence: 1 };
+}
+function knowledgeIdsFor(snapshot, nodeIds) {
+  const byNode = new Map;
+  const knowledgeTargets = new Map;
+  for (const node of snapshot.nodes) {
+    if (node.kind === "knowledge-link" && node.target !== undefined) {
+      knowledgeTargets.set(node.id, node.target);
+    }
+  }
+  for (const edge of snapshot.edges) {
+    if (edge.kind !== "LINKS_KNOWLEDGE")
+      continue;
+    if (!nodeIds.has(edge.from))
+      continue;
+    const recordId = knowledgeTargets.get(edge.to);
+    if (recordId === undefined)
+      continue;
+    const list = byNode.get(edge.from);
+    if (list) {
+      if (!list.includes(recordId))
+        list.push(recordId);
+    } else {
+      byNode.set(edge.from, [recordId]);
+    }
+  }
+  return byNode;
+}
+function unionKnowledge(linked) {
+  const out = [];
+  for (const ids of linked.values()) {
+    for (const id of ids) {
+      if (!out.includes(id))
+        out.push(id);
+    }
+  }
+  return out;
+}
+function toItem(node, evidence, knowledge) {
+  const item = {
+    id: node.id,
+    file: node.file,
+    line: node.line,
+    evidence,
+    confidence: 1,
+    knowledgeIds: knowledge
+  };
+  return node.name === undefined ? item : { ...item, name: node.name };
+}
+function nodeItem(snapshot, node, evidence) {
+  const linked = knowledgeIdsFor(snapshot, new Set([node.id, `file:${node.file}`]));
+  const own = [...linked.get(node.id) ?? [], ...linked.get(`file:${node.file}`) ?? []].filter((id, index, all) => all.indexOf(id) === index);
+  return toItem(node, evidence.length > 0 ? evidence : [indexedEvidence(node)], own);
+}
+function unresolvedFor(snapshot, symbolId) {
+  return snapshot.edges.filter((edge) => edge.kind === "CALLS_UNRESOLVED" && edge.from === symbolId).map((edge) => `${edge.ref} calls an unknown callee (manual review, never proven)`).sort();
+}
+function search(snapshot, query, options) {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const needle = query.toLowerCase();
+  if ((query.includes("/") || query.includes("\\")) && !isSupportedPath(query)) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [],
+      unsupported: [unsupportedNote(query)],
+      items: []
+    };
+  }
+  const ranked = [];
+  for (const node of snapshot.nodes) {
+    if (node.kind !== "file" && node.kind !== "symbol")
+      continue;
+    const id = node.id.toLowerCase();
+    const name = (node.name ?? "").toLowerCase();
+    const file = node.file.toLowerCase();
+    let rank = -1;
+    if (id === needle || name === needle)
+      rank = 0;
+    else if (name.startsWith(needle))
+      rank = 1;
+    else if (name.includes(needle))
+      rank = 2;
+    else if (file.includes(needle))
+      rank = 3;
+    else if (id.includes(needle))
+      rank = 4;
+    if (rank >= 0)
+      ranked.push({ node, rank });
+  }
+  ranked.sort((left, right) => rankCompare(left, right));
+  const truncated = ranked.length > limit;
+  const items = ranked.slice(0, limit).map(({ node }) => nodeItem(snapshot, node, definesEvidence(snapshot, node)));
+  const notes = truncated ? [`truncated to ${limit} of ${ranked.length} matches`] : [];
+  return {
+    ...baseEnvelope(scope, freshness),
+    coverage: truncated ? "partial" : "indexed",
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved: notes,
+    unsupported: [],
+    items
+  };
+}
+function rankCompare(left, right) {
+  if (left.rank !== right.rank)
+    return left.rank - right.rank;
+  return left.node.id < right.node.id ? -1 : 1;
+}
+function definesEvidence(snapshot, node) {
+  if (node.kind === "file")
+    return [indexedEvidence(node)];
+  const evidence = snapshot.edges.filter((edge) => edge.kind === "DEFINES" && edge.to === node.id).map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
+  return evidence.length > 0 ? evidence : [indexedEvidence(node)];
+}
+function findNode(snapshot, id) {
+  return snapshot.nodes.find((node) => node.id === id);
+}
+function callersOf(snapshot, symbolId) {
+  const out = [];
+  for (const edge of snapshot.edges) {
+    if (edge.kind !== "CALLS_STATIC" || edge.to !== symbolId)
+      continue;
+    const caller = findNode(snapshot, edge.from);
+    if (caller !== undefined)
+      out.push({ caller, ref: edge.ref });
+  }
+  out.sort((left, right) => left.caller.id < right.caller.id ? -1 : 1);
+  return out;
+}
+function calleesOf(snapshot, symbolId) {
+  const out = [];
+  for (const edge of snapshot.edges) {
+    if (edge.kind !== "CALLS_STATIC" || edge.from !== symbolId)
+      continue;
+    const callee = findNode(snapshot, edge.to);
+    if (callee !== undefined)
+      out.push({ callee, ref: edge.ref });
+  }
+  out.sort((left, right) => left.callee.id < right.callee.id ? -1 : 1);
+  return out;
+}
+function unindexedSymbol(scope, freshness, symbolId) {
+  const filePart = symbolFilePart(symbolId);
+  const unsupported = filePart !== undefined && !isSupportedPath(filePart) ? [unsupportedNote(filePart)] : [];
+  return {
+    ...baseEnvelope(scope, freshness),
+    coverage: "unindexed",
+    truncated: false,
+    knowledgeIds: [],
+    unresolved: [`no definition for ${symbolId} in this snapshot`],
+    unsupported,
+    items: [],
+    definition: undefined,
+    callers: [],
+    callees: []
+  };
+}
+function symbolContext(snapshot, symbolId, options) {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const filePart = symbolFilePart(symbolId);
+  if (filePart !== undefined && !isSupportedPath(filePart)) {
+    const empty = {
+      ...baseEnvelope(scope, freshness),
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [],
+      unsupported: [unsupportedNote(filePart)],
+      items: [],
+      definition: undefined,
+      callers: [],
+      callees: []
+    };
+    return empty;
+  }
+  const node = findNode(snapshot, symbolId);
+  if (node === undefined || node.kind !== "symbol") {
+    return unindexedSymbol(scope, freshness, symbolId);
+  }
+  const definition = nodeItem(snapshot, node, definesEvidence(snapshot, node));
+  const callerItems = callersOf(snapshot, symbolId).map(({ caller, ref }) => nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+  const calleeItems = calleesOf(snapshot, symbolId).map(({ callee, ref }) => nodeItem(snapshot, callee, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+  const combined = [definition, ...callerItems, ...calleeItems];
+  const truncated = combined.length > limit;
+  const items = combined.slice(0, limit);
+  return {
+    ...baseEnvelope(scope, freshness),
+    coverage: truncated ? "partial" : "indexed",
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved: [
+      ...unresolvedFor(snapshot, symbolId),
+      ...truncated ? [`truncated to ${limit} of ${combined.length} rows`] : []
+    ],
+    unsupported: [],
+    items,
+    definition,
+    callers: callerItems.slice(0, limit),
+    callees: calleeItems.slice(0, limit)
+  };
+}
+function impact(snapshot, symbolId, options) {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const maxDepth = clampDepth(options.maxDepth);
+  const filePart = symbolFilePart(symbolId);
+  if (filePart !== undefined && !isSupportedPath(filePart)) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [],
+      unsupported: [unsupportedNote(filePart)],
+      items: [],
+      subject: undefined,
+      impacted: []
+    };
+  }
+  const subjectNode = findNode(snapshot, symbolId);
+  if (subjectNode === undefined) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [`no definition for ${symbolId} in this snapshot`],
+      unsupported: [],
+      items: [],
+      subject: undefined,
+      impacted: []
+    };
+  }
+  const subject = nodeItem(snapshot, subjectNode, definesEvidence(snapshot, subjectNode));
+  const impacted = [];
+  const seen = new Set([symbolId]);
+  let frontier = [symbolId];
+  let truncated = false;
+  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !truncated; depth += 1) {
+    const next = [];
+    for (const current of frontier) {
+      for (const { caller, ref } of callersOf(snapshot, current)) {
+        if (seen.has(caller.id))
+          continue;
+        seen.add(caller.id);
+        if (impacted.length >= limit) {
+          truncated = true;
+          break;
+        }
+        impacted.push(nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+        if (caller.kind === "symbol")
+          next.push(caller.id);
+      }
+      if (truncated)
+        break;
+    }
+    frontier = next;
+  }
+  const unresolved = [
+    ...unresolvedFor(snapshot, symbolId),
+    ...truncated ? [`truncated to ${limit} impacted rows`] : []
+  ];
+  return {
+    ...baseEnvelope(scope, freshness),
+    coverage: truncated ? "partial" : "indexed",
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(impacted.map((item) => item.id)))),
+    unresolved,
+    unsupported: [],
+    items: impacted,
+    subject,
+    impacted
+  };
+}
+function subjectFileFor(snapshot, target) {
+  if (!target.includes("@") && !target.startsWith("fn:") && !target.startsWith("class:") && !target.startsWith("const:")) {
+    return target;
+  }
+  const node = findNode(snapshot, target);
+  if (node !== undefined)
+    return node.file;
+  const filePart = symbolFilePart(target);
+  return filePart;
+}
+function findTests(snapshot, target, options) {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const maxDepth = clampDepth(options.maxDepth);
+  const subjectFile = subjectFileFor(snapshot, target);
+  if (subjectFile === undefined || !isSupportedPath(subjectFile)) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: subjectFile === undefined ? [`no definition for ${target} in this snapshot`] : [],
+      unsupported: subjectFile === undefined ? [] : [unsupportedNote(subjectFile)],
+      items: [],
+      subjectFile: undefined,
+      candidates: []
+    };
+  }
+  const subjectId = `file:${subjectFile}`;
+  if (findNode(snapshot, subjectId) === undefined) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [`${subjectFile} is not in this snapshot`],
+      unsupported: [],
+      items: [],
+      subjectFile: undefined,
+      candidates: []
+    };
+  }
+  const candidates = [];
+  const seen = new Set([subjectId]);
+  const visitCap = limit * 20;
+  let frontier = [{ id: subjectId, via: [] }];
+  let truncated = false;
+  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !truncated; depth += 1) {
+    const next = [];
+    for (const current of frontier) {
+      for (const edge of snapshot.edges) {
+        if (edge.to !== current.id)
+          continue;
+        if (edge.kind !== "IMPORTS" && edge.kind !== "TESTS")
+          continue;
+        const importer = findNode(snapshot, edge.from);
+        if (importer === undefined || seen.has(importer.id))
+          continue;
+        seen.add(importer.id);
+        if (seen.size > visitCap) {
+          truncated = true;
+          break;
+        }
+        const hop = { edge: edge.kind, ref: edge.ref, confidence: edge.confidence };
+        const evidence = [...current.via, hop];
+        if (importer.kind === "file" && importer.isTest === true) {
+          if (candidates.length >= limit) {
+            truncated = true;
+            break;
+          }
+          candidates.push(nodeItem(snapshot, importer, evidence));
+        } else if (importer.kind === "file") {
+          next.push({ id: importer.id, via: evidence });
+        }
+      }
+      if (truncated)
+        break;
+    }
+    frontier = next;
+  }
+  candidates.sort((left, right) => left.id < right.id ? -1 : 1);
+  return {
+    ...baseEnvelope(scope, freshness),
+    coverage: truncated ? "partial" : "indexed",
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(candidates.map((item) => item.id)))),
+    unresolved: truncated ? [`truncated to ${limit} candidate tests`] : [],
+    unsupported: [],
+    items: candidates,
+    subjectFile,
+    candidates
+  };
+}
+// ../../../../omo-engine/memory-core/src/project-knowledge/record.ts
+import { createHash as createHash4 } from "node:crypto";
+
+// ../../../../omo-engine/memory-core/src/fs/resilient.ts
+import * as fsSync from "node:fs";
+import * as fsp from "node:fs/promises";
+
+// ../../../../omo-engine/memory-core/src/fs/retry.ts
+var EINTR_RETRY_CAP = 128;
+function fsErrorCode(error) {
+  if (!(error instanceof Error) || !("code" in error))
+    return;
+  return typeof error.code === "string" ? error.code : undefined;
+}
+async function retryOnEintr(operation) {
+  for (let attempt = 0;; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (fsErrorCode(error) !== "EINTR" || attempt >= EINTR_RETRY_CAP)
+        throw error;
+    }
+  }
+}
+function retryOnEintrSync(operation) {
+  for (let attempt = 0;; attempt += 1) {
+    try {
+      return operation();
+    } catch (error) {
+      if (fsErrorCode(error) !== "EINTR" || attempt >= EINTR_RETRY_CAP)
+        throw error;
+    }
+  }
+}
+
+// ../../../../omo-engine/memory-core/src/fs/rename-contention.ts
+var CONTENTION_CODES = new Set(["EPERM", "EBUSY", "EACCES"]);
+
+// ../../../../omo-engine/memory-core/src/fs/resilient.ts
+function isFunction(value) {
+  return typeof value === "function";
+}
+function withAsyncRetry(operation) {
+  return (...args) => retryOnEintr(async () => operation(...args));
+}
+function withSyncRetry(operation) {
+  return (...args) => retryOnEintrSync(() => operation(...args));
+}
+function resilientNamespace(namespace, kind) {
+  const wrapFunction = kind === "async" ? withAsyncRetry : withSyncRetry;
+  const cache = new Map;
+  return new Proxy(namespace, {
+    get(target, property) {
+      if (cache.has(property))
+        return cache.get(property);
+      const value = Reflect.get(target, property);
+      if (!isFunction(value))
+        return value;
+      const wrapped = wrapFunction(value);
+      const native = Reflect.get(value, "native");
+      if (isFunction(native))
+        Object.assign(wrapped, { native: wrapFunction(native) });
+      cache.set(property, wrapped);
+      return wrapped;
+    }
+  });
+}
+var IDEMPOTENT_HANDLE_METHODS = new Set(["stat", "sync", "datasync", "chmod", "chown", "utimes", "truncate"]);
+var promises = resilientNamespace(fsp, "async");
+var sync = resilientNamespace(fsSync, "sync");
+var {
+  access,
+  chmod,
+  copyFile,
+  cp,
+  link,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  rmdir,
+  stat,
+  unlink
+} = promises;
+var {
+  accessSync: accessSync2,
+  chmodSync,
+  fsyncSync,
+  linkSync,
+  lstatSync: lstatSync2,
+  mkdirSync: mkdirSync5,
+  readFileSync: readFileSync5,
+  readdirSync: readdirSync2,
+  realpathSync: realpathSync4,
+  statSync: statSync3,
+  unlinkSync: unlinkSync3,
+  writeFileSync: writeFileSync4,
+  writeSync: writeSync2
+} = sync;
+
+// ../../../../omo-engine/memory-core/src/git/config-lock.ts
+var mutationQueues = new Map;
+// ../../../../omo-engine/memory-core/src/git/path-state.ts
+var INDEX_MODES = new Set(["100644", "100755"]);
+// ../../../../omo-engine/memory-core/src/sync/redact.ts
+var SECRET_VALUE_TAIL = `[^\\s"'<>,}\\])]`;
+var SECRET_PATTERN_SOURCES = [
+  ["aws_access_key", "\\bAKIA[0-9A-Z]{16}\\b", ""],
+  [
+    "credential_assignment",
+    `\\b(?:bearer|token|api[_-]?key|secret|password|passwd|pwd)\\s*[=:]\\s*${SECRET_VALUE_TAIL}{1,256}`,
+    "i"
+  ],
+  ["authorization_header", `\\bAuthorization\\s*:\\s*Bearer\\s+${SECRET_VALUE_TAIL}{1,256}`, "i"],
+  ["openai_key", "\\bsk-(?:proj-)?[-_A-Za-z0-9]+\\b", ""],
+  ["vendor_token", "\\b(?:ghp|github_pat|glpat|xox[baprs])[-_][-_A-Za-z0-9]+\\b", ""]
+];
+var SPLIT_CREDENTIAL_ASSIGNMENT_SOURCE = `(?:a\\s*u\\s*t\\s*h\\s*o\\s*r\\s*i\\s*z\\s*a\\s*t\\s*i\\s*o\\s*n|p\\s*a\\s*s\\s*s\\s*w\\s*(?:o\\s*r\\s*)?d|s\\s*e\\s*c\\s*r\\s*e\\s*t|t\\s*o\\s*k\\s*e\\s*n|a\\s*p\\s*i\\s*[_-]?\\s*k\\s*e\\s*y)\\s*[:=]\\s*${SECRET_VALUE_TAIL}{6,256}`;
+var FORMAT_CHARACTER = /\p{Cf}/u;
+function normalizeForSecretScan(text, formatCharacters) {
+  let shadow = "";
+  const map = [];
+  for (let index = 0;index < text.length; ) {
+    const code = text.codePointAt(index) ?? 0;
+    const width = code > 65535 ? 2 : 1;
+    const char = text.slice(index, index + width);
+    const control = code < 32 && code !== 10 && code !== 9;
+    if (code === 160 || formatCharacters === "separate" && (control || FORMAT_CHARACTER.test(char))) {
+      shadow += " ";
+      map.push(index);
+    } else if (!control && !FORMAT_CHARACTER.test(char)) {
+      shadow += char;
+      for (let unit = 0;unit < width; unit += 1)
+        map.push(index + unit);
+    }
+    index += width;
+  }
+  return { shadow, map };
+}
+function originalSpan({ map }, start, end) {
+  const originalStart = map[start];
+  const originalLast = map[end - 1];
+  if (originalStart === undefined || originalLast === undefined)
+    return;
+  return { start: originalStart, end: originalLast + 1 };
+}
+function patternMatches(scan, patternClass, source, flags) {
+  const found = [];
+  const pattern = new RegExp(source, `${flags}g`);
+  let match;
+  while ((match = pattern.exec(scan.shadow)) !== null) {
+    const span = originalSpan(scan, match.index, match.index + match[0].length);
+    if (span !== undefined)
+      found.push({ class: patternClass, ...span });
+  }
+  return found;
+}
+var containedByAny = (matches, span) => matches.some((existing) => existing.start <= span.start && span.end <= existing.end);
+function scanSecretLikeMaterial(value) {
+  if (!value)
+    return [];
+  const joined = normalizeForSecretScan(value, "drop");
+  const separated = normalizeForSecretScan(value, "separate");
+  const matches = [];
+  let pemOffset = 0;
+  while (true) {
+    const block = findPemBlock(joined.shadow, pemOffset);
+    if (block === undefined)
+      break;
+    const span = originalSpan(joined, block.start, block.end);
+    if (span !== undefined)
+      matches.push({ class: "pem_block", ...span });
+    pemOffset = block.end;
+  }
+  for (const [patternClass, source, flags] of SECRET_PATTERN_SOURCES)
+    matches.push(...patternMatches(joined, patternClass, source, flags));
+  for (const [patternClass, source, flags] of SECRET_PATTERN_SOURCES) {
+    for (const match of patternMatches(separated, patternClass, source, flags))
+      if (!containedByAny(matches, match))
+        matches.push(match);
+  }
+  for (const match of patternMatches(joined, "split_credential_assignment", SPLIT_CREDENTIAL_ASSIGNMENT_SOURCE, "i")) {
+    if (!containedByAny(matches, match))
+      matches.push(match);
+  }
+  return matches.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+function containsSecretLikeMaterial(value) {
+  return scanSecretLikeMaterial(value).length > 0;
+}
+function findPemBlock(value, from = 0) {
+  const begin = value.indexOf("-----BEGIN ", from);
+  if (begin < 0)
+    return;
+  const labelEnd = value.indexOf("-----", begin + 11);
+  if (labelEnd < 0 || labelEnd - (begin + 11) > 64)
+    return;
+  const label = value.slice(begin + 11, labelEnd);
+  if (label.length === 0 || /[^A-Za-z0-9 ]/.test(label))
+    return;
+  let endMarker = value.indexOf("-----END ", labelEnd + 5);
+  while (endMarker >= 0) {
+    const endLabelStart = endMarker + 9;
+    const endLabelEnd = value.indexOf("-----", endLabelStart);
+    if (endLabelEnd >= 0 && value.slice(endLabelStart, endLabelEnd) === label) {
+      return { start: begin, end: endLabelEnd + 5 };
+    }
+    endMarker = value.indexOf("-----END ", endLabelEnd >= 0 ? endLabelEnd + 5 : endLabelStart);
+  }
+  return;
+}
+
+// ../../../../omo-engine/memory-core/src/git/worktree-mutation-queue.ts
+var worktreeMutationQueues = new Map;
+// ../../../../omo-engine/memory-core/src/sync/mirror.ts
+var CONFIG_KEY = "omo.memoryRepository.url";
+var LOG_NAME = "memory-repository-push.log";
+var SYNC_PUSH_ENV = "OMO_MEMORY_PUSH_SYNC";
+var BRANCH = "main";
+function getPostCommitHookScript() {
+  return `#!/bin/sh
+# Push memory commits to the configured memory-repository mirror.
+# Installed by omo memory-core. Do not edit by hand - regenerated on startup.
+url=$(git config --local --get ${CONFIG_KEY} 2>/dev/null)
+[ -z "$url" ] && exit 0
+
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || exit 0
+[ -z "$branch" ] && exit 0
+[ "$branch" != "${BRANCH}" ] && exit 0
+
+log="$(git rev-parse --git-dir)/${LOG_NAME}"
+
+push_to_mirror() {
+  {
+    printf '\\n--- %s %s on %s ---\\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$(git rev-parse --short HEAD)" "$branch"
+    git push --quiet "$url" "$branch:$branch" 2>&1
+    echo "exit=$?"
+  } >> "$log" 2>&1
+}
+
+if [ "$${SYNC_PUSH_ENV}" = "1" ]; then
+  push_to_mirror
+  exit 0
+fi
+
+push_to_mirror &
+exit 0
+`;
+}
+
+// ../../../../omo-engine/memory-core/src/memfs/hooks-scripts.ts
+var HOOK_SECRET_PATTERNS = [
+  { class: "aws_access_key", ere: "(^|[^A-Za-z0-9_])AKIA[0-9A-Z]{16}([^A-Za-z0-9_]|$)" },
+  {
+    class: "credential_assignment",
+    ere: "(^|[^A-Za-z0-9_])([Bb][Ee][Aa][Rr][Ee][Rr]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Dd]|[Pp][Ww][Dd])[[:space:]]*[=:][[:space:]]*[^[:space:]]{1,255}"
+  },
+  {
+    class: "authorization_header",
+    ere: "(^|[^A-Za-z0-9_])[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn][[:space:]]*:[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+[^[:space:]]{1,255}"
+  },
+  { class: "openai_key", ere: "(^|[^A-Za-z0-9_])sk-(proj-)?[-_A-Za-z0-9]+([^A-Za-z0-9_-]|$)" },
+  { class: "vendor_token", ere: "(^|[^A-Za-z0-9_])(ghp|github_pat|glpat|xox[baprs])[-_][-_A-Za-z0-9]+([^A-Za-z0-9_-]|$)" }
+];
+var SECRET_SCAN_LINES = HOOK_SECRET_PATTERNS.map(({ class: patternClass, ere }) => [
+  `      if printf '%s' "$blob" | grep -E -q -e '${ere}'; then`,
+  `        printf 'memory pre-commit: %s contains secret-like content (${patternClass})\\n' "$p"`,
+  "      fi"
+].join(`
+`)).join(`
+`);
+var PRE_COMMIT_HOOK_SCRIPT = `#!/bin/sh
+# Validate frontmatter in staged memory .md files.
+# Installed by omo memory-core. Do not edit by hand - regenerated on startup.
+
+ALL_KNOWN_KEYS="description read_only limit kind aliases"
+TAB=$(printf '\\t')
+
+fm_value() {
+  # $1 = file content, $2 = key. Prints the value of a top-level frontmatter
+  # key, or nothing when the key is absent.
+  closing=$(printf '%s\\n' "$1" | tail -n +2 | grep -n '^---$' | head -1 | cut -d: -f1)
+  [ -z "$closing" ] && return 0
+  printf '%s\\n' "$1" | tail -n +2 | head -n $((closing - 1)) |
+    grep "^$2:" | head -1 | cut -d: -f2- | sed 's/^ *//;s/ *$//'
+}
+
+check_plain_scalar() {
+  # $1 = file, $2 = key, $3 = value. A quoted value is the renderer's own
+  # output; a plain value must be one that strict YAML reads back verbatim.
+  case "$3" in
+    \\"*|\\'*|"") return 0 ;;
+    *": "*|*":"|*" #"*|"#"*|"["*|"]"*|"{"*|"}"*|"&"*|"*"*|"!"*|"|"*|">"*|"%"*|"@"*|"\\\`"*|","*|"?"*|"-"|"- "*)
+      printf "  %s: '%s' is not a safe YAML plain scalar (quote it, or remove ': ' and ' #'): %s\\n" "$1" "$2" "$3"
+      ;;
+  esac
+}
+
+check_keys() {
+  # $1 = file, $2 = HEAD content, $3 = frontmatter, $4 = key policy
+  # ("contract" = memory key allowlist, "skill" = any key). Prints one error
+  # line per offending frontmatter key. Runs in a pipeline subshell, so it
+  # must never rely on assignments leaking to the caller.
+  printf '%s\\n' "$3" | while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    # Indented lines are YAML continuations of the previous key.
+    case "$line" in " "*|"$TAB"*) continue ;; esac
+
+    key=$(printf '%s\\n' "$line" | cut -d: -f1 | tr -d ' ')
+    value=$(printf '%s\\n' "$line" | cut -d: -f2- | sed 's/^ *//;s/ *$//')
+
+    if [ "$4" != skill ]; then
+      known=false
+      for k in $ALL_KNOWN_KEYS; do
+        [ "$key" = "$k" ] && known=true && break
+      done
+      if [ "$known" = false ]; then
+        printf "  %s: unknown frontmatter key '%s' (allowed: %s)\\n" "$1" "$key" "$ALL_KNOWN_KEYS"
+        continue
+      fi
+    fi
+
+    if [ "$key" != description ] && [ "$key" != aliases ] && [ "$key" != read_only ]; then
+      check_plain_scalar "$1" "$key" "$value"
+    fi
+
+    if [ "$key" = read_only ]; then
+      if [ -n "$2" ]; then
+        [ "$value" != "$(fm_value "$2" read_only)" ] &&
+          printf "  %s: 'read_only' is a protected field and cannot be changed by the agent\\n" "$1"
+      else
+        printf "  %s: 'read_only' is a protected field and cannot be set by the agent\\n" "$1"
+      fi
+    fi
+
+    # Deviation from letta: a YAML block scalar ('>' or '|', with optional
+    # chomping or indent modifiers) is rejected. letta accepted the indicator
+    # as the value, which silently stored '>' as the description.
+    if [ "$key" = description ]; then
+      case "$value" in
+        "") printf "  %s: 'description' must not be empty\\n" "$1" ;;
+        [\\>\\|]*) printf "  %s: 'description' must be a non-empty single line\\n" "$1" ;;
+        *) check_plain_scalar "$1" description "$value" ;;
+      esac
+    fi
+  done
+}
+
+check_file() {
+  # $1 = file, $2 = key policy ("contract" or "skill")
+  file="$1"
+  policy="\${2:-contract}"
+  staged=$(git show ":$file")
+
+  if [ "$(printf '%s\\n' "$staged" | head -1)" != "---" ]; then
+    printf '  %s: missing frontmatter (must start with ---)\\n' "$file"
+    return 0
+  fi
+
+  closing_line=$(printf '%s\\n' "$staged" | tail -n +2 | grep -n '^---$' | head -1 | cut -d: -f1)
+  if [ -z "$closing_line" ]; then
+    printf '  %s: frontmatter opened but never closed (missing closing ---)\\n' "$file"
+    return 0
+  fi
+
+  head_content=$(git show "HEAD:$file" 2>/dev/null || true)
+  if [ -n "$head_content" ] && [ "$(fm_value "$head_content" read_only)" = "true" ]; then
+    printf '  %s: file is read_only and cannot be modified\\n' "$file"
+    return 0
+  fi
+
+  frontmatter=$(printf '%s\\n' "$staged" | tail -n +2 | head -n $((closing_line - 1)))
+  check_keys "$file" "$head_content" "$frontmatter" "$policy"
+
+  if ! printf '%s\\n' "$frontmatter" | grep -q '^description:'; then
+    printf "  %s: missing required field 'description'\\n" "$file"
+  fi
+
+  if [ -n "$head_content" ] && [ -n "$(fm_value "$head_content" read_only)" ] &&
+    [ -z "$(fm_value "$staged" read_only)" ]; then
+    printf "  %s: 'read_only' is a protected field and cannot be removed by the agent\\n" "$file"
+  fi
+}
+
+errors=$(
+  # Skills must always be directories: skills/<name>/SKILL.md.
+  git diff --cached --name-only --diff-filter=ACMR |
+    grep -E '^(memory/)?skills/[^/]+\\.md$' |
+    while IFS= read -r skill_file; do
+      printf '  %s: invalid skill path (skills must be folders). Use skills/<name>/SKILL.md\\n' "$skill_file"
+    done
+
+  # Memory content keys are an allowlist under system/, reference/ and people/.
+  git diff --cached --name-only --diff-filter=ACM |
+    grep -E '^(memory/)?(system|reference|people)/.*\\.md$' |
+    while IFS= read -r file; do
+      check_file "$file" contract
+    done
+
+  # SKILL.md is read by the skill loader as strict YAML: same value rules,
+  # description required, any key allowed.
+  git diff --cached --name-only --diff-filter=ACM |
+    grep -E '^(memory/)?skills/.+/SKILL\\.md$' |
+    while IFS= read -r file; do
+      check_file "$file" skill
+    done
+)
+
+if [ -n "$errors" ]; then
+  echo "Frontmatter validation failed:"
+  printf '%s\\n' "$errors"
+  exit 1
+fi
+
+
+# Secret-like material backstop for hand commits (regex-only defense in depth;
+# the authoritative gates scan with evasion normalisation before this runs).
+# Content is read by blob id from the raw diff (renames shown as an add, so a
+# moved file is scanned too), so no file name (quoted,
+# non-ASCII or carrying shell metacharacters) decides what gets scanned; the
+# name is only ever printed, as data, in git's own quoting.
+secret_failed=$(
+  git diff --cached --no-renames --diff-filter=AMT --raw --no-abbrev |
+    while IFS= read -r line; do
+      meta=\${line%%"$TAB"*}
+      p=\${line#*"$TAB"}
+      set -- $meta
+      [ "$2" = "160000" ] && continue
+      blob=$(git cat-file blob "$4" 2>/dev/null) || {
+        printf 'memory pre-commit: %s could not be read for secret screening\\n' "$p"
+        continue
+      }
+${SECRET_SCAN_LINES}
+    done
+)
+if [ -n "$secret_failed" ]; then
+  printf '%s\\n' "$secret_failed"
+  exit 1
+fi
+
+exit 0
+`;
+var POST_COMMIT_HOOK_SCRIPT = getPostCommitHookScript();
+// ../../../../omo-engine/memory-core/src/memfs/frontmatter-scalar.ts
+var FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+var DOUBLE_QUOTED_JSON_RE = /^"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"$/;
+var SINGLE_QUOTED_RE = /^'(?:[^']|'')*'$/;
+function decodeQuotedScalar(raw) {
+  if (DOUBLE_QUOTED_JSON_RE.test(raw)) {
+    try {
+      const value = JSON.parse(raw);
+      return typeof value === "string" ? value : undefined;
+    } catch {
+      return;
+    }
+  }
+  if (SINGLE_QUOTED_RE.test(raw))
+    return raw.slice(1, -1).replace(/''/g, "'");
+  return;
+}
+function decodeScalarSource(raw) {
+  return decodeQuotedScalar(raw) ?? raw;
+}
+
+// ../../../../omo-engine/memory-core/src/memfs/frontmatter.ts
+class FrontmatterError extends Error {
+  name = "FrontmatterError";
+}
+var CONTRACT_KEYS = new Set(["description", "read_only", "kind", "aliases", "limit"]);
+var EXTRA_KEY_RE = /^[A-Za-z0-9_-]+$/;
+function parseMemoryFile(content) {
+  const match = content.match(FRONTMATTER_RE);
+  if (!match) {
+    throw new FrontmatterError("frontmatter: target file is missing required frontmatter");
+  }
+  const frontmatterText = match[1] ?? "";
+  const body = match[2] ?? "";
+  let description;
+  let readOnly;
+  let kind;
+  let aliases;
+  const extra = {};
+  for (const line of frontmatterText.split(/\r?\n/)) {
+    const idx = line.indexOf(":");
+    if (idx <= 0)
+      continue;
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim();
+    if (key === "description") {
+      description = decodeScalarSource(value);
+    } else if (key === "read_only") {
+      readOnly = value;
+    } else if (key === "kind") {
+      kind = decodeScalarSource(value);
+    } else if (key === "aliases") {
+      aliases = parseAliases(value, line);
+    } else if (key !== "limit" && EXTRA_KEY_RE.test(key)) {
+      extra[key] = value;
+    }
+  }
+  if (!description || !description.trim()) {
+    throw new FrontmatterError("frontmatter: target file frontmatter is missing 'description'");
+  }
+  return {
+    frontmatter: {
+      description,
+      ...readOnly !== undefined ? { read_only: readOnly } : {},
+      ...kind !== undefined ? { kind } : {},
+      ...aliases !== undefined ? { aliases } : {},
+      ...Object.keys(extra).length > 0 ? { extra } : {}
+    },
+    body
+  };
+}
+function parseAliases(value, rawLine) {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("[")) {
+    throw new FrontmatterError(`frontmatter: 'aliases' must be a JSON array of non-empty strings (line: ${rawLine})`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new FrontmatterError(`frontmatter: 'aliases' is not valid JSON (line: ${rawLine})`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new FrontmatterError(`frontmatter: 'aliases' must be a JSON array, not ${typeof parsed} (line: ${rawLine})`);
+  }
+  for (const item of parsed) {
+    if (typeof item !== "string" || item.trim() === "") {
+      throw new FrontmatterError(`frontmatter: 'aliases' array must contain only non-empty strings (line: ${rawLine})`);
+    }
+  }
+  return parsed;
+}
+// ../../../../omo-engine/memory-core/src/project-knowledge/record.ts
+var PROJECT_KNOWLEDGE_DIR = "project-knowledge";
+var RECORD_FILE_EXTENSION = ".md";
+var MAX_CLAIM_CHARS = 500;
+var STALE_AFTER_MS2 = 7 * 24 * 60 * 60 * 1000;
+function isKnowledgeCategory(value) {
+  return value === "source-verified" || value === "previously-verified" || value === "unverified-hypothesis" || value === "superseded" || value === "environment-specific";
+}
+function isValidationMethod(value) {
+  return value === "rg-resolve" || value === "test-pass" || value === "review-accept" || value === "none";
+}
+function isInvalidationCase(value) {
+  return value === "SRC-EDIT" || value === "SRC-DELETE" || value === "SYM-RENAME" || value === "HEAD-MOVE" || value === "EVID-STALE" || value === "SUPERSEDE-CHAIN" || value === "SCOPE-NARROW" || value === "SECRET-FOUND" || value === "PROV-BREAK" || value === "ENV-CHANGE";
+}
+function isRationaleKind(value) {
+  return value === "purpose" || value === "design-intent" || value === "invariant" || value === "hazard" || value === "history" || value === "cross-reference" || value === "verification-ref";
+}
+var HEX40 = /^[0-9a-f]{40}$/;
+var HEX64 = /^[0-9a-f]{64}$/;
+var RECORD_ID2 = /^pk-[0-9a-f]{12}$/;
+var PROJECT_ID = /^[^\s/]+-[0-9a-f]{8}$/;
+var SOURCE_SYMBOL = /^(?:file|fn:[^\s:]+|class:[^\s:]+|const:[^\s:]+)$/;
+var ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+var CONFIDENCE_TEXT = /^(?:0(?:\.\d{1,2})?|1(?:\.0{1,2})?)$/;
+function sha256Hex2(value) {
+  return createHash4("sha256").update(value, "utf8").digest("hex");
+}
+function computeRecordId(sourceFile, sourceSymbol, claim) {
+  return `pk-${sha256Hex2(`${sourceFile}
+${sourceSymbol}
+${claim}`).slice(0, 12)}`;
+}
+function isRecordFilePath(path) {
+  return path.startsWith(`${PROJECT_KNOWLEDGE_DIR}/`) && path.endsWith(RECORD_FILE_EXTENSION);
+}
+function isRepoRelativePath(value) {
+  if (value.length === 0 || value.startsWith("/") || value.includes("\\"))
+    return false;
+  const segments = value.split("/");
+  for (const segment of segments) {
+    if (segment.length === 0 || segment === "." || segment === "..")
+      return false;
+  }
+  return true;
+}
+function isIsoUtc(value) {
+  return ISO_UTC.test(value) && !Number.isNaN(Date.parse(value));
+}
+function isConfidenceText(value) {
+  return CONFIDENCE_TEXT.test(value);
+}
+function isNonEmptyEntry(value) {
+  return value.length > 0 && !value.includes(`
+`) && !value.includes("\r");
+}
+function decodeStringList(raw) {
+  let candidate;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(candidate))
+    return;
+  const items = [];
+  for (const entry of candidate) {
+    if (!isNonEmptyEntry(entry))
+      return;
+    items.push(entry);
+  }
+  return items;
+}
+function checkClaim(claim) {
+  if (claim.length === 0 || claim.length > MAX_CLAIM_CHARS)
+    return "invalid-claim";
+  if (claim.includes(`
+`) || claim.includes("\r"))
+    return "invalid-claim";
+  return;
+}
+function checkRationaleText(text) {
+  if (text.length === 0 || text.length > MAX_CLAIM_CHARS)
+    return "invalid-rationale-text";
+  if (text.includes(`
+`) || text.includes("\r"))
+    return "invalid-rationale-text";
+  return;
+}
+function checkRationaleNotes(notes) {
+  for (const note of notes) {
+    if (!isRationaleKind(note.kind))
+      return "invalid-rationale-kind";
+    const textFailure = checkRationaleText(note.text);
+    if (textFailure !== undefined)
+      return textFailure;
+    if (!isKnowledgeCategory(note.standing))
+      return "invalid-rationale-standing";
+    if (!isConfidenceText(String(note.confidence)))
+      return "invalid-rationale-confidence";
+  }
+  return;
+}
+function checkCommonFields(record) {
+  if (!PROJECT_ID.test(record.projectId))
+    return "invalid-project";
+  if (!isRepoRelativePath(record.sourceFile))
+    return "invalid-source-file";
+  if (!SOURCE_SYMBOL.test(record.sourceSymbol))
+    return "invalid-source-symbol";
+  if (!HEX40.test(record.sourceRevision))
+    return "invalid-source-revision";
+  if (!HEX64.test(record.fingerprint))
+    return "invalid-fingerprint";
+  if (!isIsoUtc(record.observedAt))
+    return "invalid-observed-at";
+  if (record.validatedAt !== undefined && !isIsoUtc(record.validatedAt))
+    return "invalid-validated-at";
+  if (record.validatedAt !== undefined && record.category === "unverified-hypothesis") {
+    return "entry-never-validated";
+  }
+  if (!isConfidenceText(String(record.confidence)))
+    return "invalid-confidence";
+  if (record.scope.writeScopes.some((entry) => !isNonEmptyEntry(entry)))
+    return "invalid-scope";
+  if (record.scope.runScope !== undefined && !isNonEmptyEntry(record.scope.runScope))
+    return "invalid-scope";
+  if (record.agentRole !== undefined && !isNonEmptyEntry(record.agentRole))
+    return "invalid-agent-role";
+  if (record.invalidationConditions.length === 0)
+    return "empty-invalidation-conditions";
+  if (record.invalidationConditions.some((entry) => !isInvalidationCase(entry))) {
+    return "unknown-invalidation-case";
+  }
+  if (record.supersedes !== null && !RECORD_ID2.test(record.supersedes))
+    return "invalid-supersedes";
+  if (record.rationale !== undefined) {
+    const rationaleFailure = checkRationaleNotes(record.rationale.notes);
+    if (rationaleFailure !== undefined)
+      return rationaleFailure;
+  }
+  return;
+}
+var EXTRA_KEYS = {
+  id: "pk-id",
+  projectId: "pk-project",
+  category: "pk-category",
+  sourceFile: "pk-source-file",
+  sourceSymbol: "pk-source-symbol",
+  sourceRevision: "pk-source-revision",
+  fingerprint: "pk-fingerprint",
+  observedAt: "pk-observed-at",
+  validatedAt: "pk-validated-at",
+  validationMethod: "pk-validation-method",
+  confidence: "pk-confidence",
+  writeScopes: "pk-write-scopes",
+  runScope: "pk-run-scope",
+  agentRole: "pk-agent-role",
+  invalidationConditions: "pk-invalidation-conditions",
+  supersedes: "pk-supersedes",
+  rationale: "pk-rationale"
+};
+function decodeRationaleNotes(raw) {
+  let candidate;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(candidate))
+    return;
+  const notes = [];
+  for (const entry of candidate) {
+    if (typeof entry !== "object" || entry === null)
+      return;
+    const { kind, text, standing, confidence } = entry;
+    if (typeof kind !== "string" || typeof text !== "string")
+      return;
+    if (typeof standing !== "string" || !isKnowledgeCategory(standing))
+      return;
+    if (typeof confidence !== "number" || !isConfidenceText(String(confidence)))
+      return;
+    notes.push({ kind, text, standing, confidence });
+  }
+  return notes;
+}
+function parseRecordFile(path, content) {
+  if (!isRecordFilePath(path))
+    return { kind: "dropped", reason: "not-a-record-path" };
+  let description;
+  let extra;
+  try {
+    const parsed = parseMemoryFile(content);
+    description = parsed.frontmatter.description;
+    extra = parsed.frontmatter.extra;
+  } catch {
+    return { kind: "dropped", reason: "unparseable" };
+  }
+  const claimFailure = checkClaim(description);
+  if (claimFailure !== undefined)
+    return { kind: "dropped", reason: claimFailure };
+  if (containsSecretLikeMaterial(description))
+    return { kind: "secret", reason: "secret-found" };
+  const raw = (key) => {
+    const value = extra?.[key];
+    return value === undefined ? undefined : decodeScalarSource(value);
+  };
+  const projectId = raw(EXTRA_KEYS.projectId);
+  const categoryText = raw(EXTRA_KEYS.category);
+  const sourceFile = raw(EXTRA_KEYS.sourceFile);
+  const sourceSymbol = raw(EXTRA_KEYS.sourceSymbol);
+  const sourceRevision = raw(EXTRA_KEYS.sourceRevision);
+  const fingerprint = raw(EXTRA_KEYS.fingerprint);
+  const observedAt = raw(EXTRA_KEYS.observedAt);
+  const validatedAt = raw(EXTRA_KEYS.validatedAt);
+  const methodText = raw(EXTRA_KEYS.validationMethod);
+  const confidenceText = raw(EXTRA_KEYS.confidence);
+  const scopesText = raw(EXTRA_KEYS.writeScopes);
+  const runScope = raw(EXTRA_KEYS.runScope);
+  const agentRole = raw(EXTRA_KEYS.agentRole);
+  const conditionsText = raw(EXTRA_KEYS.invalidationConditions);
+  const supersedes = raw(EXTRA_KEYS.supersedes);
+  const rationaleText = raw(EXTRA_KEYS.rationale);
+  if (projectId === undefined || categoryText === undefined || !isKnowledgeCategory(categoryText) || sourceFile === undefined || sourceSymbol === undefined || sourceRevision === undefined || fingerprint === undefined || observedAt === undefined || methodText === undefined || !isValidationMethod(methodText) || confidenceText === undefined || !isConfidenceText(confidenceText) || scopesText === undefined || conditionsText === undefined) {
+    return { kind: "dropped", reason: "missing-field" };
+  }
+  const storedId = raw(EXTRA_KEYS.id);
+  if (storedId !== computeRecordId(sourceFile, sourceSymbol, description)) {
+    return { kind: "dropped", reason: "id-mismatch" };
+  }
+  const writeScopes = decodeStringList(scopesText);
+  const invalidationConditions = decodeStringList(conditionsText);
+  if (writeScopes === undefined || invalidationConditions === undefined) {
+    return { kind: "dropped", reason: "malformed-list" };
+  }
+  let rationale;
+  if (rationaleText !== undefined) {
+    const notes = decodeRationaleNotes(rationaleText);
+    if (notes === undefined)
+      return { kind: "dropped", reason: "malformed-rationale" };
+    for (const note of notes) {
+      if (containsSecretLikeMaterial(note.text))
+        return { kind: "secret", reason: "secret-found" };
+    }
+    if (notes.length > 0)
+      rationale = { notes: [...notes] };
+  }
+  const record = {
+    id: computeRecordId(sourceFile, sourceSymbol, description),
+    projectId,
+    category: categoryText,
+    claim: description,
+    sourceFile,
+    sourceSymbol,
+    sourceRevision,
+    fingerprint,
+    observedAt,
+    validatedAt,
+    validationMethod: methodText,
+    confidence: Number(confidenceText),
+    scope: { writeScopes, runScope },
+    agentRole,
+    invalidationConditions,
+    supersedes: supersedes ?? null,
+    rationale
+  };
+  const failure = checkCommonFields(record);
+  if (failure !== undefined)
+    return { kind: "dropped", reason: failure };
+  return { kind: "record", record };
+}
+
+// ../../../../omo-engine/senpi-task/src/dag/intelligence/types.ts
+var UNDERSTANDING_LIMITS = {
+  symbols: 24,
+  impacted: 24,
+  tests: 12,
+  constraints: 8,
+  uncertainties: 24,
+  nodeSymbols: 8,
+  nodeImpacted: 4,
+  nodeTests: 4,
+  nodeConstraints: 4,
+  renderBytes: 4096
+};
+var EVIDENCE_QUERY_KINDS = [
+  "search",
+  "symbolContext",
+  "impact",
+  "findTests",
+  "detectChanges",
+  "trace"
+];
+
+// ../../../../omo-engine/senpi-task/src/dag/intelligence/node-context.ts
+var encoder2 = new TextEncoder;
+function baseNameOf(file) {
+  const parts = file.split("/");
+  const last = parts[parts.length - 1];
+  return last === undefined ? file : last;
+}
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function mentionsWholeWord(prompt, name) {
+  if (name.length === 0) {
+    return false;
+  }
+  return new RegExp(`\\b${escapeRegExp(name)}\\b`).test(prompt);
+}
+function scopeCoversFile(scope, file) {
+  if (scope.length === 0 || file.length === 0) {
+    return false;
+  }
+  if (file === scope) {
+    return true;
+  }
+  const scopePrefix = scope.endsWith("/") ? scope : `${scope}/`;
+  if (file.startsWith(scopePrefix)) {
+    return true;
+  }
+  if (scope.startsWith(`${file}/`)) {
+    return true;
+  }
+  return false;
+}
+function fileMatchesScopes(file, scopes) {
+  if (scopes === undefined) {
+    return false;
+  }
+  return scopes.some((scope) => scopeCoversFile(scope, file));
+}
+function symbolOwnMatch(symbol, node, prompt) {
+  if (fileMatchesScopes(symbol.file, node.writeScopes)) {
+    return true;
+  }
+  if (symbol.id.length > 0 && prompt.includes(symbol.id)) {
+    return true;
+  }
+  if (symbol.name !== undefined && mentionsWholeWord(prompt, symbol.name)) {
+    return true;
+  }
+  const base = baseNameOf(symbol.file);
+  if (base.length > 0 && prompt.includes(base)) {
+    return true;
+  }
+  return false;
+}
+function attributeNodeEvidence(understanding, node) {
+  const prompt = node.prompt;
+  const symbols = understanding.symbols.filter((symbol) => symbolOwnMatch(symbol, node, prompt));
+  const attributedFiles = new Set(symbols.map((symbol) => symbol.file));
+  const attributedIds = new Set(symbols.map((symbol) => symbol.id));
+  const attributedKnowledge = new Set;
+  for (const symbol of symbols) {
+    for (const id of symbol.knowledgeIds) {
+      attributedKnowledge.add(id);
+    }
+  }
+  const impacted = understanding.impacted.filter((symbol) => {
+    if (symbolOwnMatch(symbol, node, prompt)) {
+      return true;
+    }
+    return attributedFiles.has(symbol.file);
+  });
+  const expandedFiles = new Set(attributedFiles);
+  const expandedIds = new Set(attributedIds);
+  for (const symbol of impacted) {
+    expandedFiles.add(symbol.file);
+    expandedIds.add(symbol.id);
+  }
+  const tests = understanding.tests.filter((test) => {
+    if (symbolOwnMatch(test, node, prompt)) {
+      return true;
+    }
+    if (expandedFiles.has(test.file)) {
+      return true;
+    }
+    if (expandedIds.has(test.id)) {
+      return true;
+    }
+    const subject = understanding.testSubjects?.get(test.id);
+    return subject !== undefined && (expandedFiles.has(subject) || expandedIds.has(subject));
+  });
+  for (const test of tests) {
+    expandedFiles.add(test.file);
+    expandedIds.add(test.id);
+  }
+  const constraints = understanding.constraints.filter((constraint) => {
+    if (expandedFiles.has(constraint.sourceFile)) {
+      return true;
+    }
+    if (attributedKnowledge.has(constraint.id)) {
+      return true;
+    }
+    for (const symbol of impacted) {
+      if (symbol.knowledgeIds.includes(constraint.id)) {
+        return true;
+      }
+    }
+    for (const test of tests) {
+      if (test.knowledgeIds.includes(constraint.id)) {
+        return true;
+      }
+    }
+    return prompt.includes(constraint.id);
+  });
+  const hasAny = symbols.length > 0 || impacted.length > 0 || tests.length > 0 || constraints.length > 0;
+  if (!hasAny) {
+    return { symbols: [], impacted: [], tests: [], constraints: [], uncertainties: [] };
+  }
+  const uncertainties = understanding.uncertainties.filter((uncertainty) => {
+    const ids = uncertainty.symbolIds;
+    if (ids === undefined || ids.length === 0) {
+      return true;
+    }
+    return ids.some((id) => expandedIds.has(id));
+  });
+  return { symbols, impacted, tests, constraints, uncertainties };
+}
+
+// ../../../../omo-engine/senpi-task/src/dag/intelligence/plan-evidence.ts
+var PLAN_HEADER = "Plan evidence (untrusted code-graph and memory - verify before acting; advisory only, never policy):";
+var encoder3 = new TextEncoder;
+function oneLine(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+function symbolRow(id, file, line, confidence) {
+  return `- [${id}] ${file}:${line} (confidence ${confidence.toFixed(2)})`;
+}
+function constraintRow(id, claim, sourceFile) {
+  return `- [${id}] ${oneLine(claim)} (source: ${sourceFile})`;
+}
+function renderPlanEvidence(understanding) {
+  const symbolsCap = UNDERSTANDING_LIMITS.symbols;
+  const impactedCap = UNDERSTANDING_LIMITS.impacted;
+  const testsCap = UNDERSTANDING_LIMITS.tests;
+  const constraintsCap = UNDERSTANDING_LIMITS.constraints;
+  const uncertaintiesCap = UNDERSTANDING_LIMITS.uncertainties;
+  const renderBytesCap = UNDERSTANDING_LIMITS.renderBytes;
+  const freshness = understanding.freshness;
+  const revisionFull = understanding.scope?.revision ?? "";
+  const revision = revisionFull.slice(0, 12);
+  let symbols = understanding.symbols.slice(0, symbolsCap);
+  let impacted = understanding.impacted.slice(0, impactedCap);
+  let tests = understanding.tests.slice(0, testsCap);
+  let constraints = understanding.constraints.filter((constraint) => constraint.authoritative).slice(0, constraintsCap);
+  let droppedConstraints = understanding.constraints.filter((constraint) => constraint.authoritative).length - constraints.length;
+  let uncertainties = understanding.uncertainties.slice(0, uncertaintiesCap);
+  const build = () => {
+    const lines = ["---", PLAN_HEADER, `graph freshness: ${freshness}@${revision}`];
+    if (understanding.usableForCaution) {
+      lines.push("caution: advisory only - verify before acting.");
+    } else {
+      lines.push("caution: evidence is NOT usable for caution - verify independently before acting.");
+    }
+    if (constraints.length > 0) {
+      lines.push("authoritative constraints:");
+      for (const constraint of constraints) {
+        lines.push(constraintRow(constraint.id, constraint.claim, constraint.sourceFile));
+      }
+    }
+    if (droppedConstraints > 0) {
+      lines.push("authoritative constraints omitted:");
+      lines.push(`- ${droppedConstraints} authoritative constraint(s) did not fit this block; absence above is NOT evidence that none exist - re-query the knowledge store before relying on it.`);
+    }
+    if (symbols.length > 0) {
+      lines.push("confirmed symbols:");
+      for (const symbol of symbols) {
+        lines.push(symbolRow(symbol.id, symbol.file, symbol.line, symbol.confidence));
+      }
+    }
+    if (impacted.length > 0) {
+      lines.push("impacted:");
+      for (const symbol of impacted) {
+        lines.push(symbolRow(symbol.id, symbol.file, symbol.line, symbol.confidence));
+      }
+    }
+    if (tests.length > 0) {
+      lines.push("affected tests:");
+      for (const test of tests) {
+        lines.push(symbolRow(test.id, test.file, test.line, test.confidence));
+      }
+    }
+    lines.push("uncertainties:");
+    if (uncertainties.length === 0) {
+      lines.push("none");
+    } else {
+      for (const uncertainty of uncertainties) {
+        lines.push(`- [${uncertainty.kind}] ${oneLine(uncertainty.note)}`);
+      }
+    }
+    return lines.join(`
+`);
+  };
+  let text = build();
+  while (encoder3.encode(text).length > renderBytesCap && symbols.length + impacted.length + tests.length + constraints.length + uncertainties.length > 0) {
+    if (symbols.length > 0) {
+      symbols = symbols.slice(0, -1);
+    } else if (impacted.length > 0) {
+      impacted = impacted.slice(0, -1);
+    } else if (tests.length > 0) {
+      tests = tests.slice(0, -1);
+    } else if (uncertainties.length > 0) {
+      uncertainties = uncertainties.slice(0, -1);
+    } else {
+      constraints = constraints.slice(0, -1);
+      droppedConstraints += 1;
+    }
+    text = build();
+  }
+  return text;
+}
+function derivePlanHints(understanding, nodes) {
+  if (understanding.freshness === "stale" || !understanding.usableForCaution) {
+    const reason = understanding.freshness === "stale" ? "stale evidence: no scopes derived - graph freshness is stale" : "evidence is not usable for caution: no scopes derived - verify independently";
+    return { writeScopes: new Map, risks: [reason] };
+  }
+  const scopes = new Map;
+  const fileOwners = new Map;
+  const unscoped = [];
+  for (const node of nodes) {
+    const existing = node.writeScopes;
+    if (existing !== undefined && existing.length > 0) {
+      continue;
+    }
+    const attributed = attributeNodeEvidence(understanding, node);
+    const files = attributed.symbols.filter((symbol) => symbol.confidence >= 1).map((symbol) => symbol.file);
+    const unique = [...new Set(files)].sort();
+    if (unique.length === 0) {
+      unscoped.push(node.nodeId);
+      continue;
+    }
+    scopes.set(node.nodeId, unique);
+    for (const file of unique) {
+      const owners = fileOwners.get(file) ?? [];
+      owners.push(node.nodeId);
+      fileOwners.set(file, owners);
+    }
+  }
+  const risks = [];
+  const sharedFiles = [...fileOwners.entries()].filter(([, owners]) => owners.length >= 2).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  for (const [file, owners] of sharedFiles) {
+    const sorted = [...owners].sort();
+    risks.push(`shared file "${file}" across nodes: ${sorted.join(", ")}`);
+  }
+  for (const nodeId of [...unscoped].sort()) {
+    risks.push(`node "${nodeId}" left unscoped: no evidence attributed`);
+  }
+  return { writeScopes: scopes, risks };
+}
+
+// ../../../../omo-engine/senpi-task/src/dag/intelligence/understanding.ts
+var SYMBOL_ONLY = { toSymbols: true, toImpacted: false, toTests: false };
+var SYMBOL_AND_IMPACTED = { toSymbols: true, toImpacted: true, toTests: false };
+var TEST_ONLY = { toSymbols: false, toImpacted: false, toTests: true };
+var MISSING_QUERY_KINDS = ["symbolContext", "impact", "findTests", "detectChanges"];
+var KNOWLEDGE_TRUST_VALUES = [
+  "source-verified",
+  "previously-verified",
+  "unverified-hypothesis",
+  "environment-specific",
+  "superseded"
+];
+function knowledgeTrust(category) {
+  return KNOWLEDGE_TRUST_VALUES.find((value) => value === category) ?? "unverified-hypothesis";
+}
+function scopeMismatch(envelope, scope) {
+  if (envelope.projectId !== scope.projectId || envelope.worktreeId !== scope.worktreeId)
+    return "cross-project";
+  if (envelope.revision !== scope.revision)
+    return "revision-mismatch";
+  return;
+}
+function contributionsForKind(kind, queries) {
+  switch (kind) {
+    case "search":
+      return (queries.search?.items ?? []).map((item) => ({ item, flags: SYMBOL_ONLY }));
+    case "trace":
+      return (queries.trace?.items ?? []).map((item) => ({ item, flags: SYMBOL_ONLY }));
+    case "symbolContext": {
+      const envelope = queries.symbolContext;
+      if (envelope === undefined)
+        return [];
+      return [
+        ...envelope.definition === undefined ? [] : [{ item: envelope.definition, flags: SYMBOL_ONLY }],
+        ...(envelope.callers ?? []).map((item) => ({ item, flags: SYMBOL_AND_IMPACTED })),
+        ...(envelope.callees ?? []).map((item) => ({ item, flags: SYMBOL_ONLY }))
+      ];
+    }
+    case "impact": {
+      const envelope = queries.impact;
+      if (envelope === undefined)
+        return [];
+      return [
+        ...envelope.subject === undefined ? [] : [{ item: envelope.subject, flags: SYMBOL_ONLY }],
+        ...(envelope.impacted ?? []).map((item) => ({ item, flags: SYMBOL_AND_IMPACTED }))
+      ];
+    }
+    case "findTests": {
+      const envelope = queries.findTests;
+      if (envelope === undefined)
+        return [];
+      return [
+        ...(envelope.candidates ?? []).map((item) => ({ item, flags: TEST_ONLY })),
+        ...envelope.items.map((item) => ({ item, flags: TEST_ONLY }))
+      ];
+    }
+    case "detectChanges":
+      return [];
+  }
+}
+function buildTaskUnderstanding(input) {
+  const queries = input.queries ?? {};
+  const merged = new Map;
+  const order = [];
+  const symbolIds = new Set;
+  const impactedIds = new Set;
+  const testIds = new Set;
+  const advisoryIds = new Set;
+  const uncertainties = [];
+  const observations = [];
+  const changes = [];
+  const testSubjects = new Map;
+  const referencedKnowledge = [];
+  const knowledgeReferrers = new Map;
+  let keptCount = 0;
+  let staleSeen = false;
+  let scopeClean = true;
+  const trackKnowledge = (knowledgeIds, referrer) => {
+    for (const id of knowledgeIds ?? []) {
+      if (!referencedKnowledge.includes(id))
+        referencedKnowledge.push(id);
+      if (referrer === undefined)
+        continue;
+      const list = knowledgeReferrers.get(id) ?? [];
+      if (!list.includes(referrer))
+        list.push(referrer);
+      knowledgeReferrers.set(id, list);
+    }
+  };
+  const ingest = (kind, item, flags, stale) => {
+    const seen = merged.get(item.id);
+    if (seen === undefined) {
+      merged.set(item.id, {
+        id: item.id,
+        file: item.file,
+        line: item.line,
+        name: item.name,
+        confidence: item.confidence,
+        knowledgeIds: [...item.knowledgeIds ?? []],
+        sources: [kind]
+      });
+      order.push(item.id);
+    } else {
+      if (item.confidence > seen.confidence)
+        seen.confidence = item.confidence;
+      for (const knowledgeId of item.knowledgeIds ?? []) {
+        if (!seen.knowledgeIds.includes(knowledgeId))
+          seen.knowledgeIds.push(knowledgeId);
+      }
+      if (!seen.sources.includes(kind))
+        seen.sources.push(kind);
+    }
+    if (stale || item.confidence < 1) {
+      advisoryIds.add(item.id);
+      return;
+    }
+    if (flags.toSymbols)
+      symbolIds.add(item.id);
+    if (flags.toImpacted)
+      impactedIds.add(item.id);
+    if (flags.toTests)
+      testIds.add(item.id);
+  };
+  for (const kind of EVIDENCE_QUERY_KINDS) {
+    const envelope = queries[kind];
+    if (envelope === undefined) {
+      observations.push({ kind, present: false, coverage: "unindexed", truncated: false, freshness: "fresh", answered: false });
+      if (MISSING_QUERY_KINDS.includes(kind))
+        uncertainties.push({ kind: "missing-query", note: `${kind} not queried (no evidence)` });
+      continue;
+    }
+    const mismatch = scopeMismatch(envelope, input.scope);
+    if (mismatch !== undefined) {
+      scopeClean = false;
+      observations.push({
+        kind,
+        present: true,
+        coverage: envelope.coverage,
+        truncated: envelope.truncated,
+        freshness: envelope.freshness,
+        answered: false
+      });
+      uncertainties.push({
+        kind: mismatch,
+        note: mismatch === "cross-project" ? `${kind} excluded: cross-project evidence (projectId/worktreeId outside scope)` : `${kind} excluded: revision mismatch (revision outside scope)`
+      });
+      continue;
+    }
+    keptCount += 1;
+    const stale = envelope.freshness === "stale";
+    if (stale)
+      staleSeen = true;
+    const answered = envelope.coverage !== "unindexed";
+    observations.push({
+      kind,
+      present: true,
+      coverage: envelope.coverage,
+      truncated: envelope.truncated,
+      freshness: envelope.freshness,
+      answered
+    });
+    if (envelope.coverage === "unindexed") {
+      uncertainties.push({ kind: "unindexed", note: `${kind} unindexed: subject not analyzed (no answer)` });
+    } else if (envelope.coverage === "partial" || envelope.truncated) {
+      const cut = (envelope.unresolved ?? []).length > 0 ? (envelope.unresolved ?? []).join("; ") : "answer cut by limit";
+      uncertainties.push({ kind: "partial", note: `${kind} partial: ${cut}` });
+    }
+    const contributions = contributionsForKind(kind, queries);
+    const lowConfidenceIds = [];
+    for (const contribution of contributions) {
+      ingest(kind, contribution.item, contribution.flags, stale);
+      if (contribution.item.confidence < 1 && !lowConfidenceIds.includes(contribution.item.id)) {
+        lowConfidenceIds.push(contribution.item.id);
+      }
+    }
+    if (lowConfidenceIds.length > 0) {
+      uncertainties.push({
+        kind: "low-confidence",
+        note: `${kind} has ${lowConfidenceIds.length} low-confidence items (advisory only)`,
+        symbolIds: lowConfidenceIds
+      });
+    }
+    if (kind === "detectChanges") {
+      for (const change of queries.detectChanges?.changes ?? []) {
+        changes.push({ id: change.id, file: change.file, line: change.line, cause: change.cause, confidence: change.confidence });
+      }
+    }
+    if (kind === "findTests") {
+      const subjectFile = queries.findTests?.subjectFile;
+      if (subjectFile !== undefined) {
+        for (const contribution of contributions)
+          testSubjects.set(contribution.item.id, subjectFile);
+      }
+    }
+    trackKnowledge(envelope.knowledgeIds, undefined);
+    for (const base of envelope.items)
+      trackKnowledge(base.knowledgeIds, base.id);
+    for (const contribution of contributions)
+      trackKnowledge(contribution.item.knowledgeIds, contribution.item.id);
+  }
+  const toSymbol = (id) => {
+    const acc = merged.get(id);
+    if (acc === undefined)
+      return;
+    const base = {
+      id: acc.id,
+      file: acc.file,
+      line: acc.line,
+      confidence: acc.confidence,
+      knowledgeIds: [...acc.knowledgeIds],
+      sources: [...acc.sources]
+    };
+    return acc.name === undefined ? base : { ...base, name: acc.name };
+  };
+  const collect = (membership) => {
+    const out = [];
+    for (const id of order) {
+      if (!membership.has(id))
+        continue;
+      const symbol = toSymbol(id);
+      if (symbol !== undefined)
+        out.push(symbol);
+    }
+    return out;
+  };
+  const symbols = collect(symbolIds);
+  const advisorySymbols = collect(advisoryIds);
+  const impacted = collect(impactedIds);
+  const tests = collect(testIds);
+  const constraints = [];
+  const knownIds = new Set((input.knowledge ?? []).map((record) => record.id));
+  for (const record of input.knowledge ?? []) {
+    if (record.category === "superseded" || record.supersededBy !== undefined)
+      continue;
+    if (record.projectId !== undefined && record.projectId !== input.scope.projectId) {
+      uncertainties.push({ kind: "cross-project", note: `knowledge ${record.id} excluded: project scope mismatch` });
+      continue;
+    }
+    constraints.push({
+      id: record.id,
+      claim: record.claim,
+      trust: knowledgeTrust(record.category),
+      sourceFile: record.sourceFile,
+      sourceRevision: record.sourceRevision,
+      validatedAt: record.validatedAt,
+      authoritative: record.category === "source-verified" && record.sourceRevision === input.scope.revision
+    });
+  }
+  for (const id of referencedKnowledge) {
+    if (knownIds.has(id))
+      continue;
+    uncertainties.push({
+      kind: "unresolved",
+      note: `knowledge ${id} referenced by evidence but absent from input`,
+      symbolIds: [...knowledgeReferrers.get(id) ?? []]
+    });
+  }
+  const freshness = keptCount === 0 ? "unknown" : staleSeen ? "stale" : "fresh";
+  const answeredBy = new Map(observations.map((observation) => [observation.kind, observation.answered]));
+  const usableForCaution = scopeClean && freshness === "fresh" && answeredBy.get("symbolContext") === true && answeredBy.get("impact") === true;
+  const limits = { ...UNDERSTANDING_LIMITS, ...input.limits };
+  const truncationReasons = [];
+  const cut = (name, values, cap, fallback) => {
+    const limit = cap ?? fallback;
+    if (values.length <= limit)
+      return [...values];
+    truncationReasons.push(`${name} truncated to ${limit} of ${values.length}`);
+    return values.slice(0, limit);
+  };
+  const finalSymbols = cut("symbols", symbols, limits.symbols, UNDERSTANDING_LIMITS.symbols);
+  const finalAdvisory = cut("advisorySymbols", advisorySymbols, limits.symbols, UNDERSTANDING_LIMITS.symbols);
+  const finalImpacted = cut("impacted", impacted, limits.impacted, UNDERSTANDING_LIMITS.impacted);
+  const finalTests = cut("tests", tests, limits.tests, UNDERSTANDING_LIMITS.tests);
+  const finalConstraints = cut("constraints", constraints, limits.constraints, UNDERSTANDING_LIMITS.constraints);
+  const finalUncertainties = cut("uncertainties", uncertainties, limits.uncertainties, UNDERSTANDING_LIMITS.uncertainties);
+  return {
+    scope: input.scope,
+    freshness,
+    symbols: finalSymbols,
+    advisorySymbols: finalAdvisory,
+    impacted: finalImpacted,
+    tests: finalTests,
+    testSubjects,
+    changes,
+    constraints: finalConstraints,
+    uncertainties: finalUncertainties,
+    queries: observations,
+    usableForCaution,
+    truncated: truncationReasons.length > 0,
+    truncationReasons
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/cli/run/plan-evidence.ts
+var PLAN_EVIDENCE_DISABLED_ENV = "OMO_PLAN_EVIDENCE";
+var PLAN_EVIDENCE_MAX_BYTES = 4096;
+var PLAN_EVIDENCE_MAX_FILES = 2000;
+var PLAN_EVIDENCE_MAX_KEYWORDS = 8;
+var PLAN_EVIDENCE_MAX_SUBJECTS = 3;
+var SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
+var SKIPPED_DIRECTORIES = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  ".next",
+  ".turbo",
+  "vendor",
+  "__pycache__",
+  ".venv"
+]);
+var KEYWORD_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "into",
+  "when",
+  "then",
+  "than",
+  "have",
+  "has",
+  "had",
+  "will",
+  "would",
+  "should",
+  "could",
+  "make",
+  "made",
+  "need",
+  "needs",
+  "please",
+  "task",
+  "work",
+  "code",
+  "file",
+  "files",
+  "fix",
+  "update",
+  "implement",
+  "change",
+  "changes",
+  "using",
+  "use",
+  "our",
+  "your",
+  "you",
+  "are",
+  "was",
+  "were",
+  "been",
+  "being",
+  "but",
+  "not",
+  "all",
+  "any",
+  "can",
+  "may",
+  "must",
+  "about",
+  "how",
+  "name",
+  "trace",
+  "through",
+  "only",
+  "every",
+  "what",
+  "which",
+  "where",
+  "why",
+  "list",
+  "tell",
+  "before",
+  "after",
+  "state",
+  "include",
+  "including",
+  "also",
+  "them"
+]);
+function isPlanEvidenceEnabled(env) {
+  const raw = env[PLAN_EVIDENCE_DISABLED_ENV];
+  if (raw === undefined)
+    return true;
+  const normalized = raw.trim().toLowerCase();
+  return normalized !== "0" && normalized !== "false" && normalized !== "off";
+}
+function extractTaskKeywords(message, limit = PLAN_EVIDENCE_MAX_KEYWORDS) {
+  const seen = new Set;
+  const words = message.toLowerCase().match(/[a-z_][a-z0-9_.-]{2,}/g) ?? [];
+  const keywords = [];
+  const push = (word) => {
+    if (KEYWORD_STOPWORDS.has(word) || seen.has(word))
+      return;
+    seen.add(word);
+    keywords.push(word);
+  };
+  for (const word of words) {
+    push(word);
+    if (keywords.length >= limit)
+      break;
+  }
+  return keywords;
+}
+function splitHyphenatedKeywords(message) {
+  const joined = [];
+  for (const word of message.toLowerCase().match(/[a-z_][a-z0-9_]*\.[a-z0-9]+|[a-z_][a-z0-9_.-]{2,}/g) ?? []) {
+    const compact = word.replace(/-/g, "");
+    if (compact !== word)
+      joined.push(compact);
+  }
+  return joined;
+}
+async function collectSourceFiles(directory, maxFiles = PLAN_EVIDENCE_MAX_FILES) {
+  const collected = [];
+  const walk = async (current) => {
+    if (collected.length >= maxFiles)
+      return;
+    let entries;
+    try {
+      entries = await fs3.readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (collected.length >= maxFiles)
+        return;
+      if (entry.isDirectory()) {
+        if (SKIPPED_DIRECTORIES.has(entry.name))
+          continue;
+        await walk(path4.join(current, entry.name));
+        continue;
+      }
+      if (!entry.isFile())
+        continue;
+      if (!SOURCE_EXTENSIONS.has(path4.extname(entry.name)))
+        continue;
+      collected.push(path4.join(current, entry.name));
+    }
+  };
+  await walk(directory);
+  collected.sort();
+  return collected;
+}
+async function readWorktreeRevision(directory) {
+  const gitDir = await resolveGitDir(directory);
+  if (gitDir === undefined)
+    return;
+  let head;
+  try {
+    head = (await fs3.readFile(path4.join(gitDir, "HEAD"), "utf8")).trim();
+  } catch {
+    return;
+  }
+  if (!head.startsWith("ref:"))
+    return /^[0-9a-f]{7,64}$/.test(head) ? head : undefined;
+  const ref = head.slice(4).trim();
+  return await readRefValue(gitDir, ref);
+}
+async function resolveGitDir(directory) {
+  const dotGit = path4.join(directory, ".git");
+  try {
+    const stat = await fs3.stat(dotGit);
+    if (stat.isDirectory())
+      return dotGit;
+    const content = (await fs3.readFile(dotGit, "utf8")).trim();
+    if (!content.startsWith("gitdir:"))
+      return;
+    const target = content.slice("gitdir:".length).trim();
+    if (target.length === 0)
+      return;
+    return path4.isAbsolute(target) ? target : path4.resolve(directory, target);
+  } catch {
+    return;
+  }
+}
+async function refRoots(gitDir) {
+  const roots = [gitDir];
+  try {
+    const common = (await fs3.readFile(path4.join(gitDir, "commondir"), "utf8")).trim();
+    if (common.length > 0) {
+      roots.push(path4.isAbsolute(common) ? common : path4.resolve(gitDir, common));
+    }
+  } catch {
+    return roots;
+  }
+  return roots;
+}
+async function readRefValue(gitDir, ref) {
+  for (const root of await refRoots(gitDir)) {
+    try {
+      const value = (await fs3.readFile(path4.join(root, ref), "utf8")).trim();
+      if (/^[0-9a-f]{7,64}$/.test(value))
+        return value;
+    } catch {}
+    try {
+      const packed = await fs3.readFile(path4.join(root, "packed-refs"), "utf8");
+      for (const line of packed.split(`
+`)) {
+        const trimmed = line.trim();
+        if (trimmed.length === 0 || trimmed.startsWith("#") || trimmed.startsWith("^"))
+          continue;
+        const [sha, name] = trimmed.split(" ");
+        if (name === ref && sha !== undefined && /^[0-9a-f]{7,64}$/.test(sha))
+          return sha;
+      }
+    } catch {}
+  }
+  return;
+}
+async function readRecordDirectory(dir, label) {
+  let names;
+  try {
+    names = await fs3.readdir(dir);
+  } catch {
+    return { records: [], dropped: 0 };
+  }
+  const records = [];
+  let dropped = 0;
+  for (const name of names.sort()) {
+    if (!name.endsWith(RECORD_FILE_EXTENSION))
+      continue;
+    const filePath = path4.join(dir, name);
+    let content;
+    try {
+      content = await fs3.readFile(filePath, "utf8");
+    } catch {
+      dropped += 1;
+      continue;
+    }
+    const parsed = parseRecordFile(`${label}/${name}`, content);
+    if (parsed.kind !== "record") {
+      dropped += 1;
+      continue;
+    }
+    records.push({
+      id: parsed.record.id,
+      claim: parsed.record.claim,
+      category: parsed.record.category,
+      sourceFile: parsed.record.sourceFile,
+      sourceRevision: parsed.record.sourceRevision,
+      projectId: parsed.record.projectId,
+      fingerprint: parsed.record.fingerprint,
+      validatedAt: parsed.record.validatedAt,
+      supersededBy: parsed.record.supersedes ?? undefined
+    });
+  }
+  return { records, dropped };
+}
+async function loadKnowledgeRecords(directory, externalRoot) {
+  const local = await readRecordDirectory(path4.join(directory, PROJECT_KNOWLEDGE_DIR), PROJECT_KNOWLEDGE_DIR);
+  if (externalRoot === undefined)
+    return local;
+  const external = await readRecordDirectory(externalRoot, PROJECT_KNOWLEDGE_DIR);
+  if (external.records.length === 0)
+    return { records: local.records, dropped: local.dropped + external.dropped };
+  const seen = new Set(local.records.map((record) => record.id));
+  const records = [...local.records];
+  for (const record of external.records) {
+    if (seen.has(record.id))
+      continue;
+    seen.add(record.id);
+    records.push(record);
+  }
+  return { records, dropped: local.dropped + external.dropped };
+}
+function deriveProjectId(directory, explicit) {
+  if (explicit !== undefined && explicit.trim().length > 0) {
+    return explicit.trim();
+  }
+  return resolveProjectIdentity(directory).projectId;
+}
+function toItem2(item) {
+  return {
+    id: item.id,
+    file: item.file,
+    line: item.line,
+    confidence: item.confidence,
+    knowledgeIds: [...item.knowledgeIds],
+    name: item.name
+  };
+}
+function baseEnvelope2(envelope) {
+  return {
+    projectId: envelope.projectId,
+    worktreeId: envelope.worktreeId,
+    revision: envelope.revision,
+    fingerprint: envelope.fingerprint,
+    freshness: envelope.freshness,
+    coverage: envelope.coverage,
+    truncated: envelope.truncated,
+    knowledgeIds: [...envelope.knowledgeIds],
+    unresolved: [...envelope.unresolved],
+    unsupported: [...envelope.unsupported],
+    items: envelope.items.map(toItem2)
+  };
+}
+function symbolContextEnvelope(result) {
+  return {
+    ...baseEnvelope2(result),
+    definition: result.definition === undefined ? undefined : toItem2(result.definition),
+    callers: result.callers.map(toItem2),
+    callees: result.callees.map(toItem2)
+  };
+}
+function impactEnvelope(result) {
+  return {
+    ...baseEnvelope2(result),
+    subject: result.subject === undefined ? undefined : toItem2(result.subject),
+    impacted: result.impacted.map(toItem2)
+  };
+}
+function findTestsEnvelope(result) {
+  return {
+    ...baseEnvelope2(result),
+    subjectFile: result.subjectFile,
+    candidates: result.candidates.map(toItem2)
+  };
+}
+function isSubjectFile(file) {
+  return !/(^|\/)__tests__\/|\.test\.[a-z]+$|\.spec\.[a-z]+$/.test(file) && !file.endsWith(".d.ts");
+}
+function mergeSearchEnvelopes(envelopes) {
+  const first = envelopes.find((envelope) => envelope.items.length > 0) ?? envelopes[0];
+  if (first === undefined)
+    return;
+  const items = new Map;
+  for (const envelope of envelopes) {
+    for (const item of envelope.items) {
+      const existing = items.get(item.id);
+      if (existing === undefined || existing.confidence < item.confidence)
+        items.set(item.id, item);
+    }
+  }
+  return {
+    ...baseEnvelope2(first),
+    truncated: envelopes.some((envelope) => envelope.truncated),
+    items: [...items.values()].sort((left, right) => right.confidence - left.confidence).map(toItem2)
+  };
+}
+function queryOptions(scope) {
+  return { scope };
+}
+function renderBlock(understanding, scope, maxBytes) {
+  const header = `<plan-evidence source="code-graph+project-knowledge" project="${scope.projectId}" ` + `worktree="${scope.worktreeId}" revision="${scope.revision.slice(0, 12)}">`;
+  const footer = "</plan-evidence>";
+  const marker = `
+(evidence truncated to ${maxBytes} bytes)`;
+  const budget = Math.max(0, maxBytes - Buffer.byteLength(header) - Buffer.byteLength(footer) - 2);
+  let body = renderPlanEvidence(understanding);
+  if (Buffer.byteLength(body) > budget) {
+    const markerBytes = Buffer.byteLength(marker);
+    const room = Math.max(0, budget - markerBytes);
+    const trimmed = Buffer.from(body).subarray(0, room).toString("utf8");
+    body = `${trimmed}${marker}`;
+  }
+  return `${header}
+${body}
+${footer}`;
+}
+function unavailable(reason, diagnostics = {}) {
+  return {
+    status: "unavailable",
+    bytes: 0,
+    diagnostics: {
+      reason,
+      files: diagnostics.files ?? 0,
+      indexedFiles: diagnostics.indexedFiles ?? 0,
+      keywords: diagnostics.keywords ?? [],
+      subjects: diagnostics.subjects ?? [],
+      durationMs: diagnostics.durationMs ?? 0,
+      knowledgeRecords: diagnostics.knowledgeRecords ?? 0,
+      knowledgeExcluded: diagnostics.knowledgeExcluded ?? 0,
+      scope: diagnostics.scope
+    }
+  };
+}
+async function buildPlannerEvidence(options) {
+  const started = Date.now();
+  const maxBytes = options.maxBytes ?? PLAN_EVIDENCE_MAX_BYTES;
+  const keywords = [...extractTaskKeywords(options.message), ...splitHyphenatedKeywords(options.message)].slice(0, PLAN_EVIDENCE_MAX_KEYWORDS * 2);
+  if (keywords.length === 0)
+    return unavailable("no-task-keywords");
+  const revision = await readWorktreeRevision(options.directory);
+  if (revision === undefined)
+    return unavailable("revision-unresolved", { keywords });
+  const loaded = options.knowledge === undefined ? await loadKnowledgeRecords(options.directory, options.knowledgeRoot) : { records: options.knowledge, dropped: 0 };
+  const projectId = deriveProjectId(options.directory, options.projectId);
+  const worktreeId = path4.resolve(options.directory);
+  const scope = {
+    projectId,
+    worktreeId,
+    revision,
+    fingerprint: computeScopeFingerprint(projectId, worktreeId, revision)
+  };
+  const files = await collectSourceFiles(options.directory, options.maxFiles ?? PLAN_EVIDENCE_MAX_FILES);
+  if (files.length === 0)
+    return unavailable("no-source-files", { keywords, scope });
+  let snapshot;
+  try {
+    snapshot = indexFiles(files);
+  } catch {
+    return unavailable("index-failed", { keywords, scope, files: files.length });
+  }
+  if (snapshot.nodes.length === 0) {
+    return unavailable("empty-graph", { keywords, scope, files: files.length });
+  }
+  const optionsForScope = queryOptions(scope);
+  const searchEnvelopes = keywords.map((keyword) => search(snapshot, keyword, optionsForScope));
+  const searchEvidence = mergeSearchEnvelopes(searchEnvelopes);
+  if (searchEvidence === undefined || searchEvidence.items.length === 0) {
+    return unavailable("no-relevant-symbols", { keywords, scope, files: files.length });
+  }
+  const candidates = searchEvidence.items.filter((item) => item.confidence >= 1 && isSubjectFile(item.file));
+  const keywordSet = new Set(keywords);
+  const namesKeyword = (item) => {
+    const base = (item.file.split("/").pop() ?? "").toLowerCase();
+    const stem = base.replace(/\.[^.]+$/, "");
+    const name = (item.name ?? "").toLowerCase();
+    return keywordSet.has(base) || keywordSet.has(stem) || name.length > 0 && keywordSet.has(name);
+  };
+  const ranked = [...candidates].sort((left, right) => Number(namesKeyword(right)) - Number(namesKeyword(left)) || right.confidence - left.confidence);
+  const subjects = ranked.slice(0, PLAN_EVIDENCE_MAX_SUBJECTS).map((item) => item.id);
+  if (subjects.length === 0) {
+    return unavailable("no-confirmed-subject", { keywords, scope, files: files.length });
+  }
+  let contextEvidence;
+  let impactEvidence;
+  let testsEvidence;
+  for (const subject of subjects) {
+    const context = symbolContext(snapshot, subject, optionsForScope);
+    if (contextEvidence === undefined && context.definition !== undefined) {
+      contextEvidence = symbolContextEnvelope(context);
+    }
+    const reach = impact(snapshot, subject, optionsForScope);
+    if (impactEvidence === undefined || (impactEvidence.impacted ?? []).length === 0) {
+      impactEvidence = impactEnvelope(reach);
+    }
+    const tests = findTests(snapshot, subject, optionsForScope);
+    if (testsEvidence === undefined || (testsEvidence.candidates ?? []).length === 0) {
+      testsEvidence = findTestsEnvelope(tests);
+    }
+  }
+  if ((testsEvidence?.candidates ?? []).length === 0) {
+    const symbolFallbacks = searchEvidence.items.filter((item) => item.id.startsWith("fn:") && !subjects.includes(item.id));
+    for (const candidate of symbolFallbacks) {
+      const tests = findTests(snapshot, candidate.id, optionsForScope);
+      if ((tests.candidates ?? []).length > 0) {
+        testsEvidence = findTestsEnvelope(tests);
+        break;
+      }
+    }
+  }
+  const queries = {
+    search: searchEvidence,
+    symbolContext: contextEvidence,
+    impact: impactEvidence,
+    findTests: testsEvidence
+  };
+  const understanding = buildTaskUnderstanding({ scope, queries, knowledge: loaded.records });
+  const hints = derivePlanHints(understanding, []);
+  const text = renderBlock(understanding, scope, maxBytes);
+  const bytes = Buffer.byteLength(text);
+  if (bytes === 0)
+    return unavailable("empty-render", { keywords, scope, files: files.length });
+  return {
+    status: "available",
+    text,
+    bytes,
+    understanding,
+    hints,
+    diagnostics: {
+      files: files.length,
+      indexedFiles: snapshot.nodes.length,
+      keywords,
+      subjects,
+      durationMs: Date.now() - started,
+      scope,
+      knowledgeRecords: loaded.records.length,
+      knowledgeExcluded: loaded.dropped
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/plugin/hooks/planner-evidence-hook.ts
+function createPlannerEvidenceHook(deps) {
+  const build = deps.buildEvidence ?? buildPlannerEvidence;
+  return {
+    async handler(input, output) {
+      if (!isPlanEvidenceEnabled(deps.env))
+        return;
+      const message = await deps.readLastUserText(input.sessionID).catch(() => {
+        return;
+      });
+      if (message === undefined || message.trim().length === 0)
+        return;
+      const evidence = await build({ message, directory: deps.directory(), env: deps.env }).catch(() => {
+        return;
+      });
+      const text = evidence?.text;
+      if (typeof text !== "string" || text.length === 0)
+        return;
+      output.note?.(text);
+    }
+  };
+}
+
 // ../../../../omo-engine/omo-opencode/src/plugin/hooks/core-hooks.ts
 function registerHook2(registry, name, handler) {
   if (handler === null) {
@@ -15743,7 +27927,7 @@ function createMonitorStatusHook(managers) {
     output.note?.("Monitor is enabled for this session.");
   };
 }
-function createCoreHooks(_ctx, flags, managers) {
+function createCoreHooks(ctx, flags, managers) {
   const hooks = {};
   const disposables = [];
   const guard = (name, factory) => safeCreateHook(name, factory, { enabled: flags.safeHookEnabled });
@@ -15759,6 +27943,32 @@ function createCoreHooks(_ctx, flags, managers) {
   }
   if (flags.isHookEnabled("monitor-status-injector")) {
     registerHook2(hooks, "monitor-status-injector", guard("monitor-status-injector", () => createMonitorStatusHook(managers)));
+  }
+  if (flags.isHookEnabled("planner-evidence")) {
+    registerHook2(hooks, "planner-evidence", guard("planner-evidence", () => createPlannerEvidenceHook({
+      env: process.env,
+      directory: () => ctx.directory,
+      readLastUserText: async (sessionID) => {
+        const client = ctx.client;
+        if (client === undefined)
+          return;
+        const response = await client.session.messages({ path: { id: sessionID } });
+        const payload = response.data;
+        const messages = Array.isArray(payload) ? payload : Array.isArray(payload?.messages) ? payload.messages : [];
+        for (let index = messages.length - 1;index >= 0; index -= 1) {
+          const entry = messages[index];
+          const role = entry.info?.role;
+          if (role !== "user")
+            continue;
+          const parts = entry.parts ?? [];
+          const text = parts.map((part) => part.type === "text" ? part.text ?? "" : "").join(`
+`).trim();
+          if (text.length > 0)
+            return text;
+        }
+        return;
+      }
+    })));
   }
   return { hooks, disposables };
 }
@@ -15861,13 +28071,13 @@ function loadPluginConfig(directory, _context) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-handlers/agent-config-handler.ts
-import { existsSync as existsSync11, readdirSync as readdirSync2, readFileSync as readFileSync7 } from "node:fs";
+import { existsSync as existsSync13, readdirSync as readdirSync4, readFileSync as readFileSync8 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { join as join9 } from "node:path";
+import { join as join10 } from "node:path";
 
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/agent-definitions-loader.ts
-import { existsSync as existsSync8, readFileSync as readFileSync6 } from "fs";
-import { basename as basename2, extname } from "path";
+import { existsSync as existsSync10, readFileSync as readFileSync7 } from "fs";
+import { basename as basename3, extname } from "path";
 // ../../../../omo-engine/claude-code-compat-core/src/shared/plugin-identity.ts
 var LOG_FILENAME2 = "oh-my-opencode.log";
 
@@ -15898,7 +28108,7 @@ function parseToolsConfig(toolsValue) {
 }
 
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/json-agent-loader.ts
-import { existsSync as existsSync7, readFileSync as readFileSync5 } from "fs";
+import { existsSync as existsSync9, readFileSync as readFileSync6 } from "fs";
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/claude-model-mapper.ts
 var ANTHROPIC_PREFIX = "anthropic/";
 var CLAUDE_CODE_ALIAS_MAP = new Map([
@@ -15941,10 +28151,10 @@ function mapClaudeModelToOpenCode(model, anthropicProvider) {
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/json-agent-loader.ts
 function parseJsonAgentFile(filePath, scope) {
   try {
-    if (!existsSync7(filePath)) {
+    if (!existsSync9(filePath)) {
       return null;
     }
-    const content = readFileSync5(filePath, "utf-8");
+    const content = readFileSync6(filePath, "utf-8");
     const { data } = parseJsoncSafe2(content);
     if (!data) {
       return null;
@@ -15982,12 +28192,12 @@ function parseJsonAgentFile(filePath, scope) {
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/agent-definitions-loader.ts
 function parseMarkdownAgentFile(filePath, scope, anthropicProvider) {
   try {
-    if (!existsSync8(filePath)) {
+    if (!existsSync10(filePath)) {
       return null;
     }
-    const content = readFileSync6(filePath, "utf-8");
+    const content = readFileSync7(filePath, "utf-8");
     const { data, body } = parseFrontmatter(content);
-    const fileName = basename2(filePath);
+    const fileName = basename3(filePath);
     const agentName = fileName.replace(/\.md$/i, "");
     const name = data.name || agentName;
     const originalDescription = data.description || "";
@@ -16019,7 +28229,7 @@ function parseMarkdownAgentFile(filePath, scope, anthropicProvider) {
 function loadAgentDefinitions(paths, scope, anthropicProvider) {
   const result = Object.create(null);
   for (const filePath of paths) {
-    if (!existsSync8(filePath)) {
+    if (!existsSync10(filePath)) {
       log3(`[agent-definitions-loader] File not found, skipping: ${filePath}`);
       continue;
     }
@@ -16044,25 +28254,25 @@ function loadAgentDefinitions(paths, scope, anthropicProvider) {
 
 // ../../../../omo-engine/omo-opencode/src/shared/resolve-agent-definition-paths.ts
 import { homedir as homedir2 } from "node:os";
-import { existsSync as existsSync9 } from "node:fs";
-import { dirname as dirname4, isAbsolute as isAbsolute2, join as join8, resolve as resolve3 } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync as existsSync11 } from "node:fs";
+import { dirname as dirname5, isAbsolute as isAbsolute2, join as join9, resolve as resolve5 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 function resolveBundledAgentsDir() {
   if (typeof OMO_BUNDLED_AGENTS_DIR === "string" && OMO_BUNDLED_AGENTS_DIR.length > 0) {
-    return join8(dirname4(fileURLToPath(import.meta.url)), OMO_BUNDLED_AGENTS_DIR);
+    return join9(dirname5(fileURLToPath2(import.meta.url)), OMO_BUNDLED_AGENTS_DIR);
   }
   const resourcesPath = process.resourcesPath;
   if (typeof resourcesPath === "string" && resourcesPath.length > 0) {
-    const staged = join8(resourcesPath, "omo-engine", "omo-opencode", "agents");
-    if (existsSync9(staged))
+    const staged = join9(resourcesPath, "omo-engine", "omo-opencode", "agents");
+    if (existsSync11(staged))
       return staged;
   }
-  return join8(import.meta.dir, "..", "..", "agents");
+  return join9(import.meta.dir, "..", "..", "agents");
 }
 function resolveAgentDefinitionPaths(paths, baseDir, containmentDir) {
   return paths.flatMap((p) => {
-    const expanded = p.startsWith("~/") ? join8(homedir2(), p.slice(2)) : p;
-    const resolved = isAbsolute2(expanded) ? expanded : resolve3(baseDir, expanded);
+    const expanded = p.startsWith("~/") ? join9(homedir2(), p.slice(2)) : p;
+    const resolved = isAbsolute2(expanded) ? expanded : resolve5(baseDir, expanded);
     if (containmentDir !== null && !isWithinProject(resolved, containmentDir)) {
       log2(`agent_definitions path rejected (outside project boundary): ${p} -> ${resolved}`);
       return [];
@@ -16537,7 +28747,7 @@ var CATEGORY_PROMPT_APPEND_RESOLVERS = Object.fromEntries(BUILTIN_CATEGORIES.fil
 configureMigrationCategoryDefaults(DEFAULT_CATEGORIES);
 
 // ../../../../omo-engine/omo-opencode/src/plugin-handlers/agent-config-assembly.ts
-import { existsSync as existsSync10, readdirSync } from "node:fs";
+import { existsSync as existsSync12, readdirSync as readdirSync3 } from "node:fs";
 // ../../../../omo-engine/omo-opencode/src/agents/dynamic-agent-core-sections.ts
 function buildAgentIdentitySection(agentName, roleDescription) {
   return `<agent-identity>
@@ -16742,9 +28952,9 @@ function isProtectedAgentName(name, protectedNames) {
 function readBundledAgentNames() {
   try {
     const bundledDir = resolveBundledAgentsDir();
-    if (!existsSync10(bundledDir))
+    if (!existsSync12(bundledDir))
       return [...FALLBACK_BUNDLED_AGENT_NAMES];
-    const stems = readdirSync(bundledDir, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => entry.name.slice(0, -".md".length));
+    const stems = readdirSync3(bundledDir, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => entry.name.slice(0, -".md".length));
     return stems.length > 0 ? stems : [...FALLBACK_BUNDLED_AGENT_NAMES];
   } catch {
     return [...FALLBACK_BUNDLED_AGENT_NAMES];
@@ -17037,23 +29247,23 @@ function normalizeDisabledSkills(disabledSkills) {
   return new Set((disabledSkills ?? []).map((name) => name.toLowerCase()));
 }
 function claudeConfigDir() {
-  return process.env.CLAUDE_CONFIG_DIR ?? join9(homedir3(), ".claude");
+  return process.env.CLAUDE_CONFIG_DIR ?? join10(homedir3(), ".claude");
 }
 function opencodeGlobalDir() {
-  const xdg = process.env.XDG_CONFIG_HOME ?? join9(homedir3(), ".config");
-  return process.env.OPENCODE_CONFIG_DIR ?? join9(xdg, "opencode");
+  const xdg = process.env.XDG_CONFIG_HOME ?? join10(homedir3(), ".config");
+  return process.env.OPENCODE_CONFIG_DIR ?? join10(xdg, "opencode");
 }
 function collectAgentFiles(root) {
-  if (!existsSync11(root))
+  if (!existsSync13(root))
     return [];
   try {
-    return readdirSync2(root, { withFileTypes: true }).filter((entry) => entry.isFile() && AGENT_FILE_PATTERN.test(entry.name)).map((entry) => join9(root, entry.name));
+    return readdirSync4(root, { withFileTypes: true }).filter((entry) => entry.isFile() && AGENT_FILE_PATTERN.test(entry.name)).map((entry) => join10(root, entry.name));
   } catch {
     return [];
   }
 }
 function loadFileTier(root, scope, anthropicProvider) {
-  const paths = collectAgentFiles(root).filter((path) => existsSync11(path));
+  const paths = collectAgentFiles(root).filter((path) => existsSync13(path));
   if (paths.length === 0)
     return {};
   const loaded = loadAgentDefinitions(paths, scope, anthropicProvider);
@@ -17113,9 +29323,9 @@ function stripJsoncComments(content) {
 }
 function readJsonObject(path) {
   try {
-    if (!existsSync11(path))
+    if (!existsSync13(path))
       return;
-    const parsed = JSON.parse(stripJsoncComments(readFileSync7(path, "utf-8")));
+    const parsed = JSON.parse(stripJsoncComments(readFileSync8(path, "utf-8")));
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed;
     }
@@ -17143,10 +29353,10 @@ function loadAgentTiers(params) {
   const bundledPaths = collectAgentFiles(bundledDir);
   const bundled = bundledPaths.length > 0 ? mapCustomTier(loadAgentDefinitions(bundledPaths, "definition-file", params.anthropicProvider)) : {};
   const plugin = {};
-  const user = params.includeClaudeAgents ? loadFileTier(join9(claudeConfigDir(), "agents"), "user", params.anthropicProvider) : {};
-  const opencodeGlobal = loadFileTier(join9(opencodeGlobalDir(), "agents"), "opencode", undefined);
-  const project = params.includeClaudeAgents ? loadFileTier(join9(params.directory, ".claude", "agents"), "project", params.anthropicProvider) : {};
-  const opencodeProject = loadFileTier(join9(params.directory, ".opencode", "agents"), "opencode-project", undefined);
+  const user = params.includeClaudeAgents ? loadFileTier(join10(claudeConfigDir(), "agents"), "user", params.anthropicProvider) : {};
+  const opencodeGlobal = loadFileTier(join10(opencodeGlobalDir(), "agents"), "opencode", undefined);
+  const project = params.includeClaudeAgents ? loadFileTier(join10(params.directory, ".claude", "agents"), "project", params.anthropicProvider) : {};
+  const opencodeProject = loadFileTier(join10(params.directory, ".opencode", "agents"), "opencode-project", undefined);
   const definitionFiles = loadAgentDefinitionTier(params);
   const opencodeConfig = loadOpencodeConfigTier(params.directory, params.hostAgents);
   return [bundled, plugin, user, opencodeGlobal, project, opencodeProject, definitionFiles, opencodeConfig];
@@ -17154,7 +29364,7 @@ function loadAgentTiers(params) {
 function loadAgentDefinitionTier(params) {
   if (!params.agentDefinitions || params.agentDefinitions.length === 0)
     return {};
-  const resolved = resolveAgentDefinitionPaths([...params.agentDefinitions], params.directory, params.directory).filter((path) => existsSync11(path));
+  const resolved = resolveAgentDefinitionPaths([...params.agentDefinitions], params.directory, params.directory).filter((path) => existsSync13(path));
   if (resolved.length === 0)
     return {};
   return mapCustomTier(loadAgentDefinitions(resolved, "definition-file", params.anthropicProvider));
@@ -17162,10 +29372,10 @@ function loadAgentDefinitionTier(params) {
 function loadOpencodeConfigTier(directory, hostAgents) {
   const tier = {};
   const configPaths = [
-    join9(directory, ".opencode", "opencode.json"),
-    join9(directory, ".opencode", "opencode.jsonc"),
-    join9(opencodeGlobalDir(), "opencode.json"),
-    join9(opencodeGlobalDir(), "opencode.jsonc")
+    join10(directory, ".opencode", "opencode.json"),
+    join10(directory, ".opencode", "opencode.jsonc"),
+    join10(opencodeGlobalDir(), "opencode.json"),
+    join10(opencodeGlobalDir(), "opencode.jsonc")
   ];
   for (const configPath of configPaths) {
     const data = readJsonObject(configPath);
@@ -17184,8 +29394,8 @@ function loadOpencodeConfigTier(directory, hostAgents) {
     const nestedDefinitions = data.agent_definitions;
     const nestedPaths = typeof nestedDefinitions === "string" ? [nestedDefinitions] : Array.isArray(nestedDefinitions) ? nestedDefinitions.filter((entry) => typeof entry === "string") : [];
     if (nestedPaths.length > 0) {
-      const configDir = join9(configPath, "..");
-      const resolved = resolveAgentDefinitionPaths(nestedPaths, configDir, directory).filter((path) => existsSync11(path));
+      const configDir = join10(configPath, "..");
+      const resolved = resolveAgentDefinitionPaths(nestedPaths, configDir, directory).filter((path) => existsSync13(path));
       if (resolved.length > 0) {
         for (const [name, config] of Object.entries(loadAgentDefinitions(resolved, "opencode-config", undefined))) {
           if (!Object.hasOwn(tier, name))
@@ -17221,23 +29431,23 @@ function parseSkillFrontmatter(content) {
 function discoverSkillFiles(roots, scope) {
   const found = [];
   for (const root of roots) {
-    if (!existsSync11(root))
+    if (!existsSync13(root))
       continue;
     let entries;
     try {
-      entries = readdirSync2(root, { withFileTypes: true });
+      entries = readdirSync4(root, { withFileTypes: true });
     } catch {
       continue;
     }
     for (const entry of entries) {
       if (!entry.isDirectory())
         continue;
-      const skillFile = join9(root, entry.name, "SKILL.md");
-      if (!existsSync11(skillFile))
+      const skillFile = join10(root, entry.name, "SKILL.md");
+      if (!existsSync13(skillFile))
         continue;
       let description;
       try {
-        const frontmatter = parseSkillFrontmatter(readFileSync7(skillFile, "utf-8"));
+        const frontmatter = parseSkillFrontmatter(readFileSync8(skillFile, "utf-8"));
         if (frontmatter.name && frontmatter.name !== entry.name)
           continue;
         description = frontmatter.description;
@@ -17301,8 +29511,8 @@ function collectConfiguredSkillNames(skills) {
 async function discoverSkillsForPromptInjection(params) {
   const includeClaudeSkills = params.pluginConfig.claude_code?.skills ?? true;
   const fileSkills = includeClaudeSkills ? [
-    ...discoverSkillFiles([join9(params.directory, ".claude", "skills"), join9(params.directory, ".agents", "skills")], "project"),
-    ...discoverSkillFiles([join9(claudeConfigDir(), "skills")], "user")
+    ...discoverSkillFiles([join10(params.directory, ".claude", "skills"), join10(params.directory, ".agents", "skills")], "project"),
+    ...discoverSkillFiles([join10(claudeConfigDir(), "skills")], "user")
   ] : [];
   const configured = collectConfiguredSkillNames(params.pluginConfig.skills);
   const disabled = normalizeDisabledSkills([
@@ -17580,19 +29790,19 @@ function applyToolConfig(params) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-handlers/plugin-components-loader.ts
-import { existsSync as existsSync12, readdirSync as readdirSync3 } from "node:fs";
+import { existsSync as existsSync14, readdirSync as readdirSync5 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
-import { join as join10 } from "node:path";
+import { join as join11 } from "node:path";
 var DEFAULT_PLUGIN_LOAD_TIMEOUT_MS = 1e4;
 var EMPTY_INDEX = {
   commandNames: [],
   skillNames: []
 };
 function listCommandNames(root) {
-  if (!existsSync12(root))
+  if (!existsSync14(root))
     return [];
   const found = [];
-  for (const entry of readdirSync3(root, { withFileTypes: true })) {
+  for (const entry of readdirSync5(root, { withFileTypes: true })) {
     if (entry.isFile() && entry.name.endsWith(".md")) {
       found.push(entry.name.slice(0, -".md".length));
     }
@@ -17600,13 +29810,13 @@ function listCommandNames(root) {
   return found;
 }
 function listSkillNames(root) {
-  if (!existsSync12(root))
+  if (!existsSync14(root))
     return [];
   const found = [];
-  for (const entry of readdirSync3(root, { withFileTypes: true })) {
+  for (const entry of readdirSync5(root, { withFileTypes: true })) {
     if (!entry.isDirectory())
       continue;
-    if (existsSync12(join10(root, entry.name, "SKILL.md"))) {
+    if (existsSync14(join11(root, entry.name, "SKILL.md"))) {
       found.push(entry.name);
     }
   }
@@ -17614,16 +29824,16 @@ function listSkillNames(root) {
 }
 function commandRoots(directory) {
   return [
-    join10(directory, ".claude", "commands"),
-    join10(directory, ".agents", "commands"),
-    join10(homedir4(), ".claude", "commands")
+    join11(directory, ".claude", "commands"),
+    join11(directory, ".agents", "commands"),
+    join11(homedir4(), ".claude", "commands")
   ];
 }
 function skillRoots(directory) {
   return [
-    join10(directory, ".claude", "skills"),
-    join10(directory, ".agents", "skills"),
-    join10(homedir4(), ".claude", "skills")
+    join11(directory, ".claude", "skills"),
+    join11(directory, ".agents", "skills"),
+    join11(homedir4(), ".claude", "skills")
   ];
 }
 function discoverIndex(directory) {
@@ -17884,6 +30094,9 @@ function runNotActiveError(runId, status) {
 function goalNotDispatchedError(runId, goalId) {
   return new UlwUsageError(`ULW run '${runId}' has no dispatch for goal '${goalId}': dispatch the goal before recording its child result.`, "GOAL_NOT_DISPATCHED", runId);
 }
+function goalSessionMismatchError(runId, goalId, childSessionId) {
+  return new UlwUsageError(`ULW run '${runId}' never dispatched goal '${goalId}' to session '${childSessionId}': record results only from dispatched worker sessions.`, "GOAL_SESSION_MISMATCH", runId);
+}
 
 // ../../../../omo-engine/omo-opencode/src/ulw/checkpoint.ts
 function gateCheckpoint(store, runId, scope = { kind: "run" }) {
@@ -17964,7 +30177,7 @@ class UlwStore {
     return [...this.runs.values()].map((state) => state.record);
   }
   setRunStatus(runId, status, now) {
-    const state = this.requireState(runId);
+    const state = this.requireActiveState(runId);
     const at = isoNow(now ?? this.now);
     state.record = { ...state.record, status, updatedAt: at };
     return state.record;
@@ -17997,6 +30210,10 @@ class UlwStore {
       throw goalNotDispatchedError(runId, goal);
     }
     const childSessionId = requireText(input.childSessionId, "childSessionId", runId);
+    const dispatched = state.roster.get(goal) ?? [];
+    if (!dispatched.includes(childSessionId)) {
+      throw goalSessionMismatchError(runId, goal, childSessionId);
+    }
     const receipt = finishReceipt({
       goalId: goal,
       childSessionId,
@@ -18773,1421 +30990,7 @@ function resolveGateRoleName(role) {
     return name;
   throw gateRoleError(role);
 }
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/core/serverSentEvents.gen.js
-var createSseClient = ({ onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url, ...options }) => {
-  let lastEventId;
-  const sleep = sseSleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const createStream = async function* () {
-    let retryDelay = sseDefaultRetryDelay ?? 3000;
-    let attempt = 0;
-    const signal = options.signal ?? new AbortController().signal;
-    while (true) {
-      if (signal.aborted)
-        break;
-      attempt++;
-      const headers = options.headers instanceof Headers ? options.headers : new Headers(options.headers);
-      if (lastEventId !== undefined) {
-        headers.set("Last-Event-ID", lastEventId);
-      }
-      try {
-        const response = await fetch(url, { ...options, headers, signal });
-        if (!response.ok)
-          throw new Error(`SSE failed: ${response.status} ${response.statusText}`);
-        if (!response.body)
-          throw new Error("No body in SSE response");
-        const reader = response.body.pipeThrough(new TextDecoderStream).getReader();
-        let buffer = "";
-        const abortHandler = () => {
-          try {
-            reader.cancel();
-          } catch {}
-        };
-        signal.addEventListener("abort", abortHandler);
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done)
-              break;
-            buffer += value;
-            const chunks = buffer.split(`
 
-`);
-            buffer = chunks.pop() ?? "";
-            for (const chunk of chunks) {
-              const lines = chunk.split(`
-`);
-              const dataLines = [];
-              let eventName;
-              for (const line of lines) {
-                if (line.startsWith("data:")) {
-                  dataLines.push(line.replace(/^data:\s*/, ""));
-                } else if (line.startsWith("event:")) {
-                  eventName = line.replace(/^event:\s*/, "");
-                } else if (line.startsWith("id:")) {
-                  lastEventId = line.replace(/^id:\s*/, "");
-                } else if (line.startsWith("retry:")) {
-                  const parsed = Number.parseInt(line.replace(/^retry:\s*/, ""), 10);
-                  if (!Number.isNaN(parsed)) {
-                    retryDelay = parsed;
-                  }
-                }
-              }
-              let data;
-              let parsedJson = false;
-              if (dataLines.length) {
-                const rawData = dataLines.join(`
-`);
-                try {
-                  data = JSON.parse(rawData);
-                  parsedJson = true;
-                } catch {
-                  data = rawData;
-                }
-              }
-              if (parsedJson) {
-                if (responseValidator) {
-                  await responseValidator(data);
-                }
-                if (responseTransformer) {
-                  data = await responseTransformer(data);
-                }
-              }
-              onSseEvent?.({
-                data,
-                event: eventName,
-                id: lastEventId,
-                retry: retryDelay
-              });
-              if (dataLines.length) {
-                yield data;
-              }
-            }
-          }
-        } finally {
-          signal.removeEventListener("abort", abortHandler);
-          reader.releaseLock();
-        }
-        break;
-      } catch (error) {
-        onSseError?.(error);
-        if (sseMaxRetryAttempts !== undefined && attempt >= sseMaxRetryAttempts) {
-          break;
-        }
-        const backoff = Math.min(retryDelay * 2 ** (attempt - 1), sseMaxRetryDelay ?? 30000);
-        await sleep(backoff);
-      }
-    }
-  };
-  const stream = createStream();
-  return { stream };
-};
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/core/auth.gen.js
-var getAuthToken = async (auth, callback) => {
-  const token = typeof callback === "function" ? await callback(auth) : callback;
-  if (!token) {
-    return;
-  }
-  if (auth.scheme === "bearer") {
-    return `Bearer ${token}`;
-  }
-  if (auth.scheme === "basic") {
-    return `Basic ${btoa(token)}`;
-  }
-  return token;
-};
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/core/bodySerializer.gen.js
-var jsonBodySerializer = {
-  bodySerializer: (body) => JSON.stringify(body, (_key, value) => typeof value === "bigint" ? value.toString() : value)
-};
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/core/pathSerializer.gen.js
-var separatorArrayExplode = (style) => {
-  switch (style) {
-    case "label":
-      return ".";
-    case "matrix":
-      return ";";
-    case "simple":
-      return ",";
-    default:
-      return "&";
-  }
-};
-var separatorArrayNoExplode = (style) => {
-  switch (style) {
-    case "form":
-      return ",";
-    case "pipeDelimited":
-      return "|";
-    case "spaceDelimited":
-      return "%20";
-    default:
-      return ",";
-  }
-};
-var separatorObjectExplode = (style) => {
-  switch (style) {
-    case "label":
-      return ".";
-    case "matrix":
-      return ";";
-    case "simple":
-      return ",";
-    default:
-      return "&";
-  }
-};
-var serializeArrayParam = ({ allowReserved, explode, name, style, value }) => {
-  if (!explode) {
-    const joinedValues = (allowReserved ? value : value.map((v) => encodeURIComponent(v))).join(separatorArrayNoExplode(style));
-    switch (style) {
-      case "label":
-        return `.${joinedValues}`;
-      case "matrix":
-        return `;${name}=${joinedValues}`;
-      case "simple":
-        return joinedValues;
-      default:
-        return `${name}=${joinedValues}`;
-    }
-  }
-  const separator = separatorArrayExplode(style);
-  const joinedValues = value.map((v) => {
-    if (style === "label" || style === "simple") {
-      return allowReserved ? v : encodeURIComponent(v);
-    }
-    return serializePrimitiveParam({
-      allowReserved,
-      name,
-      value: v
-    });
-  }).join(separator);
-  return style === "label" || style === "matrix" ? separator + joinedValues : joinedValues;
-};
-var serializePrimitiveParam = ({ allowReserved, name, value }) => {
-  if (value === undefined || value === null) {
-    return "";
-  }
-  if (typeof value === "object") {
-    throw new Error("Deeply-nested arrays/objects aren’t supported. Provide your own `querySerializer()` to handle these.");
-  }
-  return `${name}=${allowReserved ? value : encodeURIComponent(value)}`;
-};
-var serializeObjectParam = ({ allowReserved, explode, name, style, value, valueOnly }) => {
-  if (value instanceof Date) {
-    return valueOnly ? value.toISOString() : `${name}=${value.toISOString()}`;
-  }
-  if (style !== "deepObject" && !explode) {
-    let values = [];
-    Object.entries(value).forEach(([key, v]) => {
-      values = [...values, key, allowReserved ? v : encodeURIComponent(v)];
-    });
-    const joinedValues = values.join(",");
-    switch (style) {
-      case "form":
-        return `${name}=${joinedValues}`;
-      case "label":
-        return `.${joinedValues}`;
-      case "matrix":
-        return `;${name}=${joinedValues}`;
-      default:
-        return joinedValues;
-    }
-  }
-  const separator = separatorObjectExplode(style);
-  const joinedValues = Object.entries(value).map(([key, v]) => serializePrimitiveParam({
-    allowReserved,
-    name: style === "deepObject" ? `${name}[${key}]` : key,
-    value: v
-  })).join(separator);
-  return style === "label" || style === "matrix" ? separator + joinedValues : joinedValues;
-};
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/core/utils.gen.js
-var PATH_PARAM_RE = /\{[^{}]+\}/g;
-var defaultPathSerializer = ({ path, url: _url }) => {
-  let url = _url;
-  const matches = _url.match(PATH_PARAM_RE);
-  if (matches) {
-    for (const match of matches) {
-      let explode = false;
-      let name = match.substring(1, match.length - 1);
-      let style = "simple";
-      if (name.endsWith("*")) {
-        explode = true;
-        name = name.substring(0, name.length - 1);
-      }
-      if (name.startsWith(".")) {
-        name = name.substring(1);
-        style = "label";
-      } else if (name.startsWith(";")) {
-        name = name.substring(1);
-        style = "matrix";
-      }
-      const value = path[name];
-      if (value === undefined || value === null) {
-        continue;
-      }
-      if (Array.isArray(value)) {
-        url = url.replace(match, serializeArrayParam({ explode, name, style, value }));
-        continue;
-      }
-      if (typeof value === "object") {
-        url = url.replace(match, serializeObjectParam({
-          explode,
-          name,
-          style,
-          value,
-          valueOnly: true
-        }));
-        continue;
-      }
-      if (style === "matrix") {
-        url = url.replace(match, `;${serializePrimitiveParam({
-          name,
-          value
-        })}`);
-        continue;
-      }
-      const replaceValue = encodeURIComponent(style === "label" ? `.${value}` : value);
-      url = url.replace(match, replaceValue);
-    }
-  }
-  return url;
-};
-var getUrl = ({ baseUrl, path, query, querySerializer, url: _url }) => {
-  const pathUrl = _url.startsWith("/") ? _url : `/${_url}`;
-  let url = (baseUrl ?? "") + pathUrl;
-  if (path) {
-    url = defaultPathSerializer({ path, url });
-  }
-  let search = query ? querySerializer(query) : "";
-  if (search.startsWith("?")) {
-    search = search.substring(1);
-  }
-  if (search) {
-    url += `?${search}`;
-  }
-  return url;
-};
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/client/utils.gen.js
-var createQuerySerializer = ({ allowReserved, array, object } = {}) => {
-  const querySerializer = (queryParams) => {
-    const search = [];
-    if (queryParams && typeof queryParams === "object") {
-      for (const name in queryParams) {
-        const value = queryParams[name];
-        if (value === undefined || value === null) {
-          continue;
-        }
-        if (Array.isArray(value)) {
-          const serializedArray = serializeArrayParam({
-            allowReserved,
-            explode: true,
-            name,
-            style: "form",
-            value,
-            ...array
-          });
-          if (serializedArray)
-            search.push(serializedArray);
-        } else if (typeof value === "object") {
-          const serializedObject = serializeObjectParam({
-            allowReserved,
-            explode: true,
-            name,
-            style: "deepObject",
-            value,
-            ...object
-          });
-          if (serializedObject)
-            search.push(serializedObject);
-        } else {
-          const serializedPrimitive = serializePrimitiveParam({
-            allowReserved,
-            name,
-            value
-          });
-          if (serializedPrimitive)
-            search.push(serializedPrimitive);
-        }
-      }
-    }
-    return search.join("&");
-  };
-  return querySerializer;
-};
-var getParseAs = (contentType) => {
-  if (!contentType) {
-    return "stream";
-  }
-  const cleanContent = contentType.split(";")[0]?.trim();
-  if (!cleanContent) {
-    return;
-  }
-  if (cleanContent.startsWith("application/json") || cleanContent.endsWith("+json")) {
-    return "json";
-  }
-  if (cleanContent === "multipart/form-data") {
-    return "formData";
-  }
-  if (["application/", "audio/", "image/", "video/"].some((type) => cleanContent.startsWith(type))) {
-    return "blob";
-  }
-  if (cleanContent.startsWith("text/")) {
-    return "text";
-  }
-  return;
-};
-var checkForExistence = (options, name) => {
-  if (!name) {
-    return false;
-  }
-  if (options.headers.has(name) || options.query?.[name] || options.headers.get("Cookie")?.includes(`${name}=`)) {
-    return true;
-  }
-  return false;
-};
-var setAuthParams = async ({ security, ...options }) => {
-  for (const auth of security) {
-    if (checkForExistence(options, auth.name)) {
-      continue;
-    }
-    const token = await getAuthToken(auth, options.auth);
-    if (!token) {
-      continue;
-    }
-    const name = auth.name ?? "Authorization";
-    switch (auth.in) {
-      case "query":
-        if (!options.query) {
-          options.query = {};
-        }
-        options.query[name] = token;
-        break;
-      case "cookie":
-        options.headers.append("Cookie", `${name}=${token}`);
-        break;
-      case "header":
-      default:
-        options.headers.set(name, token);
-        break;
-    }
-  }
-};
-var buildUrl = (options) => getUrl({
-  baseUrl: options.baseUrl,
-  path: options.path,
-  query: options.query,
-  querySerializer: typeof options.querySerializer === "function" ? options.querySerializer : createQuerySerializer(options.querySerializer),
-  url: options.url
-});
-var mergeConfigs2 = (a, b) => {
-  const config = { ...a, ...b };
-  if (config.baseUrl?.endsWith("/")) {
-    config.baseUrl = config.baseUrl.substring(0, config.baseUrl.length - 1);
-  }
-  config.headers = mergeHeaders(a.headers, b.headers);
-  return config;
-};
-var mergeHeaders = (...headers) => {
-  const mergedHeaders = new Headers;
-  for (const header of headers) {
-    if (!header || typeof header !== "object") {
-      continue;
-    }
-    const iterator = header instanceof Headers ? header.entries() : Object.entries(header);
-    for (const [key, value] of iterator) {
-      if (value === null) {
-        mergedHeaders.delete(key);
-      } else if (Array.isArray(value)) {
-        for (const v of value) {
-          mergedHeaders.append(key, v);
-        }
-      } else if (value !== undefined) {
-        mergedHeaders.set(key, typeof value === "object" ? JSON.stringify(value) : value);
-      }
-    }
-  }
-  return mergedHeaders;
-};
-
-class Interceptors {
-  _fns;
-  constructor() {
-    this._fns = [];
-  }
-  clear() {
-    this._fns = [];
-  }
-  getInterceptorIndex(id) {
-    if (typeof id === "number") {
-      return this._fns[id] ? id : -1;
-    } else {
-      return this._fns.indexOf(id);
-    }
-  }
-  exists(id) {
-    const index = this.getInterceptorIndex(id);
-    return !!this._fns[index];
-  }
-  eject(id) {
-    const index = this.getInterceptorIndex(id);
-    if (this._fns[index]) {
-      this._fns[index] = null;
-    }
-  }
-  update(id, fn) {
-    const index = this.getInterceptorIndex(id);
-    if (this._fns[index]) {
-      this._fns[index] = fn;
-      return id;
-    } else {
-      return false;
-    }
-  }
-  use(fn) {
-    this._fns = [...this._fns, fn];
-    return this._fns.length - 1;
-  }
-}
-var createInterceptors = () => ({
-  error: new Interceptors,
-  request: new Interceptors,
-  response: new Interceptors
-});
-var defaultQuerySerializer = createQuerySerializer({
-  allowReserved: false,
-  array: {
-    explode: true,
-    style: "form"
-  },
-  object: {
-    explode: true,
-    style: "deepObject"
-  }
-});
-var defaultHeaders = {
-  "Content-Type": "application/json"
-};
-var createConfig = (override = {}) => ({
-  ...jsonBodySerializer,
-  headers: defaultHeaders,
-  parseAs: "auto",
-  querySerializer: defaultQuerySerializer,
-  ...override
-});
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/client/client.gen.js
-var createClient = (config = {}) => {
-  let _config = mergeConfigs2(createConfig(), config);
-  const getConfig = () => ({ ..._config });
-  const setConfig = (config) => {
-    _config = mergeConfigs2(_config, config);
-    return getConfig();
-  };
-  const interceptors = createInterceptors();
-  const beforeRequest = async (options) => {
-    const opts = {
-      ..._config,
-      ...options,
-      fetch: options.fetch ?? _config.fetch ?? globalThis.fetch,
-      headers: mergeHeaders(_config.headers, options.headers),
-      serializedBody: undefined
-    };
-    if (opts.security) {
-      await setAuthParams({
-        ...opts,
-        security: opts.security
-      });
-    }
-    if (opts.requestValidator) {
-      await opts.requestValidator(opts);
-    }
-    if (opts.body && opts.bodySerializer) {
-      opts.serializedBody = opts.bodySerializer(opts.body);
-    }
-    if (opts.serializedBody === undefined || opts.serializedBody === "") {
-      opts.headers.delete("Content-Type");
-    }
-    const url = buildUrl(opts);
-    return { opts, url };
-  };
-  const request = async (options) => {
-    const { opts, url } = await beforeRequest(options);
-    const requestInit = {
-      redirect: "follow",
-      ...opts,
-      body: opts.serializedBody
-    };
-    let request = new Request(url, requestInit);
-    for (const fn of interceptors.request._fns) {
-      if (fn) {
-        request = await fn(request, opts);
-      }
-    }
-    const _fetch = opts.fetch;
-    let response = await _fetch(request);
-    for (const fn of interceptors.response._fns) {
-      if (fn) {
-        response = await fn(response, request, opts);
-      }
-    }
-    const result = {
-      request,
-      response
-    };
-    if (response.ok) {
-      if (response.status === 204 || response.headers.get("Content-Length") === "0") {
-        return opts.responseStyle === "data" ? {} : {
-          data: {},
-          ...result
-        };
-      }
-      const parseAs = (opts.parseAs === "auto" ? getParseAs(response.headers.get("Content-Type")) : opts.parseAs) ?? "json";
-      let data;
-      switch (parseAs) {
-        case "arrayBuffer":
-        case "blob":
-        case "formData":
-        case "json":
-        case "text":
-          data = await response[parseAs]();
-          break;
-        case "stream":
-          return opts.responseStyle === "data" ? response.body : {
-            data: response.body,
-            ...result
-          };
-      }
-      if (parseAs === "json") {
-        if (opts.responseValidator) {
-          await opts.responseValidator(data);
-        }
-        if (opts.responseTransformer) {
-          data = await opts.responseTransformer(data);
-        }
-      }
-      return opts.responseStyle === "data" ? data : {
-        data,
-        ...result
-      };
-    }
-    const textError = await response.text();
-    let jsonError;
-    try {
-      jsonError = JSON.parse(textError);
-    } catch {}
-    const error = jsonError ?? textError;
-    let finalError = error;
-    for (const fn of interceptors.error._fns) {
-      if (fn) {
-        finalError = await fn(error, response, request, opts);
-      }
-    }
-    finalError = finalError || {};
-    if (opts.throwOnError) {
-      throw finalError;
-    }
-    return opts.responseStyle === "data" ? undefined : {
-      error: finalError,
-      ...result
-    };
-  };
-  const makeMethod = (method) => {
-    const fn = (options) => request({ ...options, method });
-    fn.sse = async (options) => {
-      const { opts, url } = await beforeRequest(options);
-      return createSseClient({
-        ...opts,
-        body: opts.body,
-        headers: opts.headers,
-        method,
-        url
-      });
-    };
-    return fn;
-  };
-  return {
-    buildUrl,
-    connect: makeMethod("CONNECT"),
-    delete: makeMethod("DELETE"),
-    get: makeMethod("GET"),
-    getConfig,
-    head: makeMethod("HEAD"),
-    interceptors,
-    options: makeMethod("OPTIONS"),
-    patch: makeMethod("PATCH"),
-    post: makeMethod("POST"),
-    put: makeMethod("PUT"),
-    request,
-    setConfig,
-    trace: makeMethod("TRACE")
-  };
-};
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/core/params.gen.js
-var extraPrefixesMap = {
-  $body_: "body",
-  $headers_: "headers",
-  $path_: "path",
-  $query_: "query"
-};
-var extraPrefixes = Object.entries(extraPrefixesMap);
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/client.gen.js
-var client = createClient(createConfig({
-  baseUrl: "http://localhost:4096"
-}));
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/gen/sdk.gen.js
-class _HeyApiClient {
-  _client = client;
-  constructor(args) {
-    if (args?.client) {
-      this._client = args.client;
-    }
-  }
-}
-
-class Global extends _HeyApiClient {
-  event(options) {
-    return (options?.client ?? this._client).get.sse({
-      url: "/global/event",
-      ...options
-    });
-  }
-}
-
-class Project extends _HeyApiClient {
-  list(options) {
-    return (options?.client ?? this._client).get({
-      url: "/project",
-      ...options
-    });
-  }
-  current(options) {
-    return (options?.client ?? this._client).get({
-      url: "/project/current",
-      ...options
-    });
-  }
-}
-
-class Pty extends _HeyApiClient {
-  list(options) {
-    return (options?.client ?? this._client).get({
-      url: "/pty",
-      ...options
-    });
-  }
-  create(options) {
-    return (options?.client ?? this._client).post({
-      url: "/pty",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  remove(options) {
-    return (options.client ?? this._client).delete({
-      url: "/pty/{id}",
-      ...options
-    });
-  }
-  get(options) {
-    return (options.client ?? this._client).get({
-      url: "/pty/{id}",
-      ...options
-    });
-  }
-  update(options) {
-    return (options.client ?? this._client).put({
-      url: "/pty/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  connect(options) {
-    return (options.client ?? this._client).get({
-      url: "/pty/{id}/connect",
-      ...options
-    });
-  }
-}
-
-class Config extends _HeyApiClient {
-  get(options) {
-    return (options?.client ?? this._client).get({
-      url: "/config",
-      ...options
-    });
-  }
-  update(options) {
-    return (options?.client ?? this._client).patch({
-      url: "/config",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  providers(options) {
-    return (options?.client ?? this._client).get({
-      url: "/config/providers",
-      ...options
-    });
-  }
-}
-
-class Tool extends _HeyApiClient {
-  ids(options) {
-    return (options?.client ?? this._client).get({
-      url: "/experimental/tool/ids",
-      ...options
-    });
-  }
-  list(options) {
-    return (options.client ?? this._client).get({
-      url: "/experimental/tool",
-      ...options
-    });
-  }
-}
-
-class Instance extends _HeyApiClient {
-  dispose(options) {
-    return (options?.client ?? this._client).post({
-      url: "/instance/dispose",
-      ...options
-    });
-  }
-}
-
-class Path extends _HeyApiClient {
-  get(options) {
-    return (options?.client ?? this._client).get({
-      url: "/path",
-      ...options
-    });
-  }
-}
-
-class Vcs extends _HeyApiClient {
-  get(options) {
-    return (options?.client ?? this._client).get({
-      url: "/vcs",
-      ...options
-    });
-  }
-}
-
-class Session extends _HeyApiClient {
-  list(options) {
-    return (options?.client ?? this._client).get({
-      url: "/session",
-      ...options
-    });
-  }
-  create(options) {
-    return (options?.client ?? this._client).post({
-      url: "/session",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  status(options) {
-    return (options?.client ?? this._client).get({
-      url: "/session/status",
-      ...options
-    });
-  }
-  delete(options) {
-    return (options.client ?? this._client).delete({
-      url: "/session/{id}",
-      ...options
-    });
-  }
-  get(options) {
-    return (options.client ?? this._client).get({
-      url: "/session/{id}",
-      ...options
-    });
-  }
-  update(options) {
-    return (options.client ?? this._client).patch({
-      url: "/session/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  children(options) {
-    return (options.client ?? this._client).get({
-      url: "/session/{id}/children",
-      ...options
-    });
-  }
-  todo(options) {
-    return (options.client ?? this._client).get({
-      url: "/session/{id}/todo",
-      ...options
-    });
-  }
-  init(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/init",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  fork(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/fork",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  abort(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/abort",
-      ...options
-    });
-  }
-  unshare(options) {
-    return (options.client ?? this._client).delete({
-      url: "/session/{id}/share",
-      ...options
-    });
-  }
-  share(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/share",
-      ...options
-    });
-  }
-  diff(options) {
-    return (options.client ?? this._client).get({
-      url: "/session/{id}/diff",
-      ...options
-    });
-  }
-  summarize(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/summarize",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  messages(options) {
-    return (options.client ?? this._client).get({
-      url: "/session/{id}/message",
-      ...options
-    });
-  }
-  prompt(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/message",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  message(options) {
-    return (options.client ?? this._client).get({
-      url: "/session/{id}/message/{messageID}",
-      ...options
-    });
-  }
-  promptAsync(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/prompt_async",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  command(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/command",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  shell(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/shell",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  revert(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/revert",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  unrevert(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/unrevert",
-      ...options
-    });
-  }
-}
-
-class Command extends _HeyApiClient {
-  list(options) {
-    return (options?.client ?? this._client).get({
-      url: "/command",
-      ...options
-    });
-  }
-}
-
-class Oauth extends _HeyApiClient {
-  authorize(options) {
-    return (options.client ?? this._client).post({
-      url: "/provider/{id}/oauth/authorize",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  callback(options) {
-    return (options.client ?? this._client).post({
-      url: "/provider/{id}/oauth/callback",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-}
-
-class Provider extends _HeyApiClient {
-  list(options) {
-    return (options?.client ?? this._client).get({
-      url: "/provider",
-      ...options
-    });
-  }
-  auth(options) {
-    return (options?.client ?? this._client).get({
-      url: "/provider/auth",
-      ...options
-    });
-  }
-  oauth = new Oauth({ client: this._client });
-}
-
-class Find extends _HeyApiClient {
-  text(options) {
-    return (options.client ?? this._client).get({
-      url: "/find",
-      ...options
-    });
-  }
-  files(options) {
-    return (options.client ?? this._client).get({
-      url: "/find/file",
-      ...options
-    });
-  }
-  symbols(options) {
-    return (options.client ?? this._client).get({
-      url: "/find/symbol",
-      ...options
-    });
-  }
-}
-
-class File2 extends _HeyApiClient {
-  list(options) {
-    return (options.client ?? this._client).get({
-      url: "/file",
-      ...options
-    });
-  }
-  read(options) {
-    return (options.client ?? this._client).get({
-      url: "/file/content",
-      ...options
-    });
-  }
-  status(options) {
-    return (options?.client ?? this._client).get({
-      url: "/file/status",
-      ...options
-    });
-  }
-}
-
-class App extends _HeyApiClient {
-  log(options) {
-    return (options?.client ?? this._client).post({
-      url: "/log",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  agents(options) {
-    return (options?.client ?? this._client).get({
-      url: "/agent",
-      ...options
-    });
-  }
-}
-
-class Auth extends _HeyApiClient {
-  remove(options) {
-    return (options.client ?? this._client).delete({
-      url: "/mcp/{name}/auth",
-      ...options
-    });
-  }
-  start(options) {
-    return (options.client ?? this._client).post({
-      url: "/mcp/{name}/auth",
-      ...options
-    });
-  }
-  callback(options) {
-    return (options.client ?? this._client).post({
-      url: "/mcp/{name}/auth/callback",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  authenticate(options) {
-    return (options.client ?? this._client).post({
-      url: "/mcp/{name}/auth/authenticate",
-      ...options
-    });
-  }
-  set(options) {
-    return (options.client ?? this._client).put({
-      url: "/auth/{id}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-}
-
-class Mcp extends _HeyApiClient {
-  status(options) {
-    return (options?.client ?? this._client).get({
-      url: "/mcp",
-      ...options
-    });
-  }
-  add(options) {
-    return (options?.client ?? this._client).post({
-      url: "/mcp",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  connect(options) {
-    return (options.client ?? this._client).post({
-      url: "/mcp/{name}/connect",
-      ...options
-    });
-  }
-  disconnect(options) {
-    return (options.client ?? this._client).post({
-      url: "/mcp/{name}/disconnect",
-      ...options
-    });
-  }
-  auth = new Auth({ client: this._client });
-}
-
-class Lsp extends _HeyApiClient {
-  status(options) {
-    return (options?.client ?? this._client).get({
-      url: "/lsp",
-      ...options
-    });
-  }
-}
-
-class Formatter extends _HeyApiClient {
-  status(options) {
-    return (options?.client ?? this._client).get({
-      url: "/formatter",
-      ...options
-    });
-  }
-}
-
-class Control extends _HeyApiClient {
-  next(options) {
-    return (options?.client ?? this._client).get({
-      url: "/tui/control/next",
-      ...options
-    });
-  }
-  response(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/control/response",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-}
-
-class Tui extends _HeyApiClient {
-  appendPrompt(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/append-prompt",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  openHelp(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/open-help",
-      ...options
-    });
-  }
-  openSessions(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/open-sessions",
-      ...options
-    });
-  }
-  openThemes(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/open-themes",
-      ...options
-    });
-  }
-  openModels(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/open-models",
-      ...options
-    });
-  }
-  submitPrompt(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/submit-prompt",
-      ...options
-    });
-  }
-  clearPrompt(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/clear-prompt",
-      ...options
-    });
-  }
-  executeCommand(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/execute-command",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  showToast(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/show-toast",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  publish(options) {
-    return (options?.client ?? this._client).post({
-      url: "/tui/publish",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      }
-    });
-  }
-  control = new Control({ client: this._client });
-}
-
-class Event extends _HeyApiClient {
-  subscribe(options) {
-    return (options?.client ?? this._client).get.sse({
-      url: "/event",
-      ...options
-    });
-  }
-}
-
-class OpencodeClient extends _HeyApiClient {
-  postSessionIdPermissionsPermissionId(options) {
-    return (options.client ?? this._client).post({
-      url: "/session/{id}/permissions/{permissionID}",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers
-      }
-    });
-  }
-  global = new Global({ client: this._client });
-  project = new Project({ client: this._client });
-  pty = new Pty({ client: this._client });
-  config = new Config({ client: this._client });
-  tool = new Tool({ client: this._client });
-  instance = new Instance({ client: this._client });
-  path = new Path({ client: this._client });
-  vcs = new Vcs({ client: this._client });
-  session = new Session({ client: this._client });
-  command = new Command({ client: this._client });
-  provider = new Provider({ client: this._client });
-  find = new Find({ client: this._client });
-  file = new File2({ client: this._client });
-  app = new App({ client: this._client });
-  mcp = new Mcp({ client: this._client });
-  lsp = new Lsp({ client: this._client });
-  formatter = new Formatter({ client: this._client });
-  tui = new Tui({ client: this._client });
-  auth = new Auth({ client: this._client });
-  event = new Event({ client: this._client });
-}
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/error-interceptor.js
-function wrapClientError(error, response, request, opts) {
-  if (!opts?.throwOnError)
-    return error;
-  if (error instanceof Error)
-    return error;
-  if (typeof error === "object" && error !== null && Object.keys(error).length > 0) {
-    const obj = error;
-    const message = typeof obj.data?.message === "string" && obj.data.message || typeof obj.message === "string" && obj.message || typeof obj.name === "string" && obj.name || describe2(request, response);
-    return new Error(message, { cause: { body: error, status: response?.status } });
-  }
-  if (typeof error === "string" && error.length > 0) {
-    return new Error(error, { cause: { body: error, status: response?.status } });
-  }
-  const reason = response ? "(empty response body)" : "network error (no response)";
-  return new Error(`opencode server ${describe2(request, response)}: ${reason}`, {
-    cause: { body: error, status: response?.status }
-  });
-}
-function describe2(request, response) {
-  const method = request?.method ?? "?";
-  const url = request?.url ?? "?";
-  const status = response?.status;
-  const statusText = response?.statusText;
-  return `${method} ${url}${status ? " → " + status : ""}${statusText ? " " + statusText : ""}`;
-}
-
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/client.js
-function pick3(value, fallback) {
-  if (!value)
-    return;
-  if (!fallback)
-    return value;
-  if (value === fallback)
-    return fallback;
-  if (value === encodeURIComponent(fallback))
-    return fallback;
-  return value;
-}
-function rewrite(request, directory) {
-  if (request.method !== "GET" && request.method !== "HEAD")
-    return request;
-  const value = pick3(request.headers.get("x-opencode-directory"), directory);
-  if (!value)
-    return request;
-  const url = new URL(request.url);
-  if (!url.searchParams.has("directory")) {
-    url.searchParams.set("directory", value);
-  }
-  const next = new Request(url, request);
-  next.headers.delete("x-opencode-directory");
-  return next;
-}
-function createOpencodeClient(config) {
-  if (!config?.fetch) {
-    const customFetch = (req) => {
-      req.timeout = false;
-      return fetch(req);
-    };
-    config = {
-      ...config,
-      fetch: customFetch
-    };
-  }
-  if (config?.directory) {
-    config.headers = {
-      ...config.headers,
-      "x-opencode-directory": encodeURIComponent(config.directory)
-    };
-  }
-  const client = createClient(config);
-  client.interceptors.request.use((request) => rewrite(request, config?.directory));
-  client.interceptors.error.use(wrapClientError);
-  return new OpencodeClient({ client });
-}
-// ../../../../../node_modules/.bun/@opencode-ai+sdk@1.18.31/node_modules/@opencode-ai/sdk/dist/server.js
-var import_cross_spawn = __toESM(require_cross_spawn(), 1);
 // ../../../../omo-engine/omo-opencode/src/features/claude-code-session-state/state.ts
 var subagentSessions = new Set;
 var syncSubagentSessions = new Set;
@@ -20206,125 +31009,2234 @@ function getServerBasicAuthHeader() {
   const token = Buffer.from(`${username}:${password}`, "utf8").toString("base64");
   return `Basic ${token}`;
 }
-function isRequestFetch(value) {
-  return typeof value === "function";
+// ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-9rqn6x4v.js
+var __defProp = Object.defineProperty;
+var __returnValue = (v) => v;
+function __exportSetter(name, newValue) {
+  this[name] = __returnValue.bind(null, newValue);
 }
-function wrapRequestFetch(baseFetch, auth) {
-  return async (request) => {
-    const headers = new Headers(request.headers);
-    headers.set("Authorization", auth);
-    return baseFetch(new Request(request, { headers }));
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, {
+      get: all[name],
+      enumerable: true,
+      configurable: true,
+      set: __exportSetter.bind(all, name)
+    });
+};
+
+// ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-frbwqjmf.js
+var exports_shared_events = {};
+__export(exports_shared_events, {
+  SharedEvents: () => exports_shared_events,
+  make: () => make7
+});
+function make7(connect) {
+  let current;
+  const capacity = 4096;
+  function stop(connection) {
+    connection.connected = undefined;
+    connection.controller.abort();
+    if (current === connection)
+      current = undefined;
+  }
+  async function run(connection) {
+    let iterator;
+    let completion = {};
+    try {
+      if (connection.controller.signal.aborted)
+        return;
+      iterator = connect(connection.controller.signal, () => {
+        connection.subscribers.forEach((subscriber) => subscriber.activity?.());
+      })[Symbol.asyncIterator]();
+      while (!connection.controller.signal.aborted) {
+        const item = await iterator.next();
+        if (item.done || connection.controller.signal.aborted)
+          break;
+        if (item.value.type === "server.connected")
+          connection.connected = item.value;
+        connection.subscribers.forEach((subscriber) => subscriber.push(item.value));
+      }
+    } catch (error) {
+      completion = { error };
+    } finally {
+      stop(connection);
+      try {
+        await iterator?.return?.();
+      } catch (error) {
+        if (!("error" in completion))
+          completion = { error };
+      }
+      connection.subscribers.forEach((subscriber) => subscriber.finish(completion));
+    }
+  }
+  return {
+    subscribe(options) {
+      return {
+        [Symbol.asyncIterator]() {
+          const pending = [];
+          const queued = [];
+          let started = false;
+          let completion;
+          let connection;
+          function finish(result, discard = true) {
+            completion = result;
+            if (discard)
+              queued.length = 0;
+            options?.signal?.removeEventListener("abort", abort);
+            if (connection?.subscribers.delete(subscriber) && !connection.subscribers.size)
+              stop(connection);
+            pending.splice(0).forEach((request) => {
+              if ("error" in result)
+                request.reject(result.error);
+              else
+                request.resolve({ done: true, value: undefined });
+            });
+          }
+          function abort() {
+            finish({});
+          }
+          const subscriber = {
+            activity: options?.onActivity,
+            finish(result) {
+              finish(result, false);
+            },
+            push(value) {
+              if (completion)
+                return;
+              const request = pending.shift();
+              if (request) {
+                request.resolve({ done: false, value });
+                return;
+              }
+              if (queued.length === capacity) {
+                finish({ error: new Error(`Event subscriber exceeded its ${capacity}-event capacity`) });
+                return;
+              }
+              queued.push(value);
+            }
+          };
+          function start() {
+            if (completion)
+              return;
+            const fresh = !current;
+            connection = current ?? {
+              controller: new AbortController,
+              subscribers: new Set
+            };
+            current = connection;
+            connection.subscribers.add(subscriber);
+            if (connection.connected)
+              subscriber.push(connection.connected);
+            if (fresh)
+              run(connection);
+          }
+          return {
+            next() {
+              const value = queued.shift();
+              if (value)
+                return Promise.resolve({ done: false, value });
+              if (completion) {
+                if ("error" in completion)
+                  return Promise.reject(completion.error);
+                return Promise.resolve({ done: true, value: undefined });
+              }
+              if (options?.signal?.aborted) {
+                abort();
+                return Promise.resolve({ done: true, value: undefined });
+              }
+              const request = Promise.withResolvers();
+              pending.push(request);
+              if (!started) {
+                started = true;
+                options?.signal?.addEventListener("abort", abort, { once: true });
+                start();
+              }
+              return request.promise;
+            },
+            return() {
+              finish({});
+              return Promise.resolve({ done: true, value: undefined });
+            }
+          };
+        }
+      };
+    }
   };
 }
-function getInternalClient(client) {
-  if (!isRecord9(client)) {
-    return null;
+
+// ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-js54wxgp.js
+class ClientError2 extends Error {
+  reason;
+  name = "ClientError";
+  constructor(reason, options) {
+    const detail = options?.detail ?? (options?.cause instanceof Error ? options.cause.message : undefined);
+    super(detail ? `${reason}: ${detail}` : reason, options);
+    this.reason = reason;
   }
-  const internal = client["_client"];
-  return isRecord9(internal) ? internal : null;
 }
-function tryInjectViaSetConfigHeaders(internal, auth) {
-  const setConfig = internal["setConfig"];
-  if (typeof setConfig !== "function") {
-    return false;
-  }
-  setConfig({
-    headers: {
-      Authorization: auth
+
+// ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-hqeq47hr.js
+var exports_client2 = {};
+__export(exports_client2, {
+  make: () => make3
+});
+var maxSseEventBytes = 16 * 1024 * 1024;
+function make3(options) {
+  const fetch2 = options.fetch ?? globalThis.fetch;
+  const prepare = (descriptor, requestOptions) => {
+    const baseUrl = new URL(options.baseUrl);
+    if (!baseUrl.pathname.endsWith("/"))
+      baseUrl.pathname += "/";
+    const url = new URL(descriptor.path.slice(1), baseUrl);
+    for (const [key, value] of Object.entries(descriptor.query ?? {}))
+      appendQuery(url.searchParams, key, value);
+    const headers = new Headers(options.headers);
+    for (const [key, value] of Object.entries(descriptor.headers ?? {})) {
+      if (value !== undefined && value !== null)
+        headers.set(key, String(value));
     }
-  });
-  return true;
-}
-function tryInjectViaInterceptors(internal, auth) {
-  const interceptors = internal["interceptors"];
-  if (!isRecord9(interceptors)) {
-    return false;
-  }
-  const requestInterceptors = interceptors["request"];
-  if (!isRecord9(requestInterceptors)) {
-    return false;
-  }
-  const use = requestInterceptors["use"];
-  if (typeof use !== "function") {
-    return false;
-  }
-  use.call(requestInterceptors, (request) => {
-    if (!request.headers.get("Authorization")) {
-      request.headers.set("Authorization", auth);
-    }
-    return request;
-  });
-  return true;
-}
-function tryInjectViaFetchWrapper(internal, auth) {
-  const getConfig = internal["getConfig"];
-  const setConfig = internal["setConfig"];
-  if (typeof getConfig !== "function" || typeof setConfig !== "function") {
-    return false;
-  }
-  const config = getConfig();
-  if (!isRecord9(config)) {
-    return false;
-  }
-  const fetchValue = config["fetch"];
-  if (!isRequestFetch(fetchValue)) {
-    return false;
-  }
-  setConfig({
-    fetch: wrapRequestFetch(fetchValue, auth)
-  });
-  return true;
-}
-function tryInjectViaMutableInternalConfig(internal, auth) {
-  const configValue = internal["_config"];
-  if (!isRecord9(configValue)) {
-    return false;
-  }
-  const fetchValue = configValue["fetch"];
-  if (!isRequestFetch(fetchValue)) {
-    return false;
-  }
-  configValue["fetch"] = wrapRequestFetch(fetchValue, auth);
-  return true;
-}
-function tryInjectViaTopLevelFetch(client, auth) {
-  if (!isRecord9(client)) {
-    return false;
-  }
-  const fetchValue = client["fetch"];
-  if (!isRequestFetch(fetchValue)) {
-    return false;
-  }
-  client["fetch"] = wrapRequestFetch(fetchValue, auth);
-  return true;
-}
-function injectServerAuthIntoClient(client) {
-  const auth = getServerBasicAuthHeader();
-  if (!auth) {
-    return;
-  }
-  try {
-    const internal = getInternalClient(client);
-    if (internal) {
-      const injectedHeaders = tryInjectViaSetConfigHeaders(internal, auth);
-      const injectedInterceptors = tryInjectViaInterceptors(internal, auth);
-      const injectedFetch = tryInjectViaFetchWrapper(internal, auth);
-      const injectedMutable = tryInjectViaMutableInternalConfig(internal, auth);
-      const injected = injectedHeaders || injectedInterceptors || injectedFetch || injectedMutable;
-      if (!injected) {
-        log2("[opencode-server-auth] OPENCODE_SERVER_PASSWORD is set but SDK client structure is incompatible", {
-          keys: Object.keys(internal)
-        });
+    for (const [key, value] of new Headers(requestOptions?.headers))
+      headers.set(key, value);
+    if (descriptor.body !== undefined && !headers.has("content-type"))
+      headers.set("content-type", descriptor.binaryBody ? "application/octet-stream" : "application/json");
+    return {
+      url,
+      init: {
+        method: descriptor.method,
+        signal: requestOptions?.signal,
+        headers,
+        body: descriptor.body === undefined ? undefined : descriptor.binaryBody ? descriptor.body : JSON.stringify(descriptor.body)
       }
+    };
+  };
+  const execute = async (descriptor, requestOptions) => {
+    try {
+      const prepared = prepare(descriptor, requestOptions);
+      return await fetch2(prepared.url, prepared.init);
+    } catch (cause) {
+      throw new ClientError2("Transport", { cause });
+    }
+  };
+  const responseError = async (response, descriptor) => {
+    if (descriptor.declaredStatuses.includes(response.status))
+      throw declared(await json(response));
+    try {
+      await response.body?.cancel();
+    } catch {}
+    throw new ClientError2("UnexpectedStatus", { cause: { status: response.status }, detail: String(response.status) });
+  };
+  const request = async (descriptor, requestOptions) => {
+    const response = await execute(descriptor, requestOptions);
+    if (response.status !== descriptor.successStatus)
+      return responseError(response, descriptor);
+    if (descriptor.binary)
+      return new Uint8Array(await response.arrayBuffer());
+    if (descriptor.empty) {
+      try {
+        await response.body?.cancel();
+      } catch {}
       return;
     }
-    const injected = tryInjectViaTopLevelFetch(client, auth);
-    if (!injected) {
-      log2("[opencode-server-auth] OPENCODE_SERVER_PASSWORD is set but no compatible SDK client found");
+    return await json(response);
+  };
+  const sse = (descriptor, requestOptions) => ({
+    async* [Symbol.asyncIterator]() {
+      const response = await execute(descriptor, requestOptions);
+      if (response.status !== descriptor.successStatus)
+        await responseError(response, descriptor);
+      if (!isContentType(response, "text/event-stream")) {
+        try {
+          await response.body?.cancel();
+        } catch {}
+        throw new ClientError2("UnsupportedContentType", { detail: response.headers.get("content-type") });
+      }
+      if (response.body === null)
+        throw new ClientError2("MalformedResponse");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder;
+      let buffer = "";
+      try {
+        while (true) {
+          let next;
+          try {
+            next = await reader.read();
+          } catch (cause) {
+            throw new ClientError2("Transport", { cause });
+          }
+          if (!next.done)
+            requestOptions?.onActivity?.();
+          buffer += decoder.decode(next.value, { stream: !next.done });
+          if (buffer.length > maxSseEventBytes)
+            throw new ClientError2("SseEventTooLarge");
+          const trailingCarriageReturn = !next.done && buffer.endsWith("\r");
+          if (trailingCarriageReturn)
+            buffer = buffer.slice(0, -1);
+          buffer = buffer.replaceAll(`\r
+`, `
+`).replaceAll("\r", `
+`);
+          if (trailingCarriageReturn)
+            buffer += "\r";
+          if (next.done && buffer !== "")
+            buffer += `
+
+`;
+          let boundary = buffer.indexOf(`
+
+`);
+          while (boundary >= 0) {
+            const block = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const data = block.split(`
+`).flatMap((line) => line.startsWith("data:") ? [line.slice(5).trimStart()] : []).join(`
+`);
+            if (data !== "") {
+              try {
+                yield JSON.parse(data);
+              } catch (cause) {
+                throw new ClientError2("MalformedResponse", { cause });
+              }
+            }
+            boundary = buffer.indexOf(`
+
+`);
+          }
+          if (next.done)
+            return;
+        }
+      } finally {
+        try {
+          await reader.cancel();
+        } catch {}
+        reader.releaseLock();
+      }
     }
+  });
+  return {
+    server: {
+      info: (requestOptions) => request({ method: "GET", path: `/api/info`, successStatus: 200, declaredStatuses: [400, 401], empty: false }, requestOptions),
+      pair: (requestOptions) => request({ method: "POST", path: `/api/pair`, successStatus: 200, declaredStatuses: [400, 401], empty: false }, requestOptions),
+      connect: (input, requestOptions) => request({
+        method: "GET",
+        path: `/auth/connect/${encodeURIComponent(input.code)}`,
+        successStatus: 200,
+        declaredStatuses: [400, 401],
+        empty: false
+      }, requestOptions)
+    },
+    location: {
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/location`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      reload: (requestOptions) => request({
+        method: "POST",
+        path: `/api/location/reload`,
+        successStatus: 204,
+        declaredStatuses: [400, 401, 503],
+        empty: true
+      }, requestOptions)
+    },
+    agent: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/agent`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/agent/${encodeURIComponent(input.agentID)}`,
+        query: { location: input["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions)
+    },
+    plugin: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/plugin`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      check: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/plugin/check`,
+        query: { location: input?.["location"] },
+        body: { target: input?.["target"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      update: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/plugin/update`,
+        query: { location: input["location"] },
+        body: { targets: input["targets"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: true
+      }, requestOptions)
+    },
+    session: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/session`,
+        query: {
+          limit: input?.["limit"],
+          order: input?.["order"],
+          search: input?.["search"],
+          parentID: input?.["parentID"],
+          directory: input?.["directory"],
+          project: input?.["project"],
+          subpath: input?.["subpath"],
+          cursor: input?.["cursor"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401],
+        empty: false
+      }, requestOptions),
+      stats: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/experimental/session/stats`,
+        query: {
+          from: input?.["from"],
+          to: input?.["to"],
+          project: input?.["project"],
+          timezone: input?.["timezone"],
+          tools: input?.["tools"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      create: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session`,
+        body: {
+          id: input?.["id"],
+          parentID: input?.["parentID"],
+          title: input?.["title"],
+          agent: input?.["agent"],
+          model: input?.["model"],
+          location: input?.["location"],
+          metadata: input?.["metadata"],
+          permissions: input?.["permissions"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      import: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/experimental/session/import`,
+        body: { info: input["info"], messages: input["messages"], location: input["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 409],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      export: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/export`,
+        query: { sanitize: input["sanitize"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 500],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      active: (requestOptions) => request({
+        method: "GET",
+        path: `/api/session/active`,
+        successStatus: 200,
+        declaredStatuses: [400, 401],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}`,
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      remove: (input, requestOptions) => request({
+        method: "DELETE",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}`,
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      fork: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/fork`,
+        body: { before: input["before"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      switchAgent: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/agent`,
+        body: { agent: input["agent"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      switchModel: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/model`,
+        body: { model: input["model"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      update: (input, requestOptions) => request({
+        method: "PATCH",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}`,
+        body: { title: input["title"], metadata: input["metadata"], permissions: input["permissions"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      move: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/move`,
+        body: { directory: input["directory"], delivery: input["delivery"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      prompt: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/prompt`,
+        body: {
+          id: input["id"],
+          text: input["text"],
+          files: input["files"],
+          agents: input["agents"],
+          skills: input["skills"],
+          metadata: input["metadata"],
+          delivery: input["delivery"],
+          resume: input["resume"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 409],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      command: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/command`,
+        body: {
+          name: input["name"],
+          text: input["text"],
+          files: input["files"],
+          agents: input["agents"],
+          skills: input["skills"],
+          delivery: input["delivery"]
+        },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404, 500],
+        empty: true
+      }, requestOptions),
+      skill: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/skill`,
+        body: { id: input["id"], resume: input["resume"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      synthetic: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/synthetic`,
+        body: {
+          id: input["id"],
+          text: input["text"],
+          description: input["description"],
+          metadata: input["metadata"],
+          delivery: input["delivery"],
+          resume: input["resume"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 409],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      shell: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/shell`,
+        body: { id: input["id"], command: input["command"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      compact: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/compact`,
+        body: { id: input["id"], delivery: input["delivery"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 409],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      wait: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/wait`,
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: true
+      }, requestOptions),
+      revert: {
+        stage: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/revert/stage`,
+          body: { messageID: input["messageID"], files: input["files"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404, 409, 500],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        clear: (input, requestOptions) => request({
+          method: "DELETE",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/revert`,
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404, 409, 500],
+          empty: true
+        }, requestOptions),
+        commit: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/revert/commit`,
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404, 409],
+          empty: true
+        }, requestOptions)
+      },
+      context: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/context`,
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 500],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      diff: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/diff`,
+        query: { from: input["from"], to: input["to"], context: input["context"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 500],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      inbox: {
+        list: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/inbox`,
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        cancel: (input, requestOptions) => request({
+          method: "DELETE",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/inbox/${encodeURIComponent(input.inboxID)}`,
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404],
+          empty: true
+        }, requestOptions),
+        update: (input, requestOptions) => request({
+          method: "PATCH",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/inbox/${encodeURIComponent(input.inboxID)}`,
+          body: { delivery: input["delivery"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404, 409],
+          empty: true
+        }, requestOptions)
+      },
+      instructions: {
+        entry: {
+          list: (input, requestOptions) => request({
+            method: "GET",
+            path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/instructions/entries`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404],
+            empty: false
+          }, requestOptions).then((value) => value.data),
+          put: (input, requestOptions) => request({
+            method: "PUT",
+            path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/instructions/entries/${encodeURIComponent(input.key)}`,
+            body: { value: input["value"] },
+            successStatus: 204,
+            declaredStatuses: [400, 401, 404, 413],
+            empty: true
+          }, requestOptions),
+          remove: (input, requestOptions) => request({
+            method: "DELETE",
+            path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/instructions/entries/${encodeURIComponent(input.key)}`,
+            successStatus: 204,
+            declaredStatuses: [400, 401, 404],
+            empty: true
+          }, requestOptions)
+        }
+      },
+      generate: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/generate`,
+        body: { prompt: input["prompt"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      log: (input, requestOptions) => sse({
+        method: "GET",
+        path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/log`,
+        query: { after: input["after"], follow: input["follow"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      interrupt: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/interrupt`,
+        query: { resume: input["resume"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      background: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/background`,
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      message: {
+        get: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/message/${encodeURIComponent(input.messageID)}`,
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions).then((value) => value.data)
+      },
+      form: {
+        list: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/form`,
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        create: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/form`,
+          body: { id: input["id"], title: input["title"], metadata: input["metadata"], fields: input["fields"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404, 409],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        get: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/form/${encodeURIComponent(input.formID)}`,
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        reply: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/form/${encodeURIComponent(input.formID)}/reply`,
+          body: { answer: input["answer"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404, 409],
+          empty: true
+        }, requestOptions),
+        cancel: (input, requestOptions) => request({
+          method: "DELETE",
+          path: `/api/session/${encodeURIComponent(input.sessionID)}/form/${encodeURIComponent(input.formID)}`,
+          query: { message: input["message"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404, 409],
+          empty: true
+        }, requestOptions)
+      },
+      environment: (input, requestOptions) => request({
+        method: "PUT",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/environment`,
+        body: { variables: input["variables"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      view: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/view`,
+        body: { idle: input["idle"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions)
+    },
+    message: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/message`,
+        query: { limit: input["limit"], order: input["order"], cursor: input["cursor"], type: input["type"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 500],
+        empty: false
+      }, requestOptions)
+    },
+    model: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/model`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions),
+      default: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/model/default`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions)
+    },
+    generate: {
+      text: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/experimental/generate`,
+        body: { prompt: input["prompt"], model: input["model"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions).then((value) => value.data)
+    },
+    voice: {
+      session: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/experimental/voice/session`,
+        body: { model: input["model"], session: input["session"], transport: input["transport"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions).then((value) => value.data)
+    },
+    provider: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/provider`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions),
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/provider/${encodeURIComponent(input.providerID)}`,
+        query: { location: input["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions)
+    },
+    integration: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/integration`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/integration/${encodeURIComponent(input.integrationID)}`,
+        query: { location: input["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      wellknown: {
+        add: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/experimental/integration/wellknown`,
+          query: { location: input["location"] },
+          body: { url: input["url"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404],
+          empty: true
+        }, requestOptions)
+      },
+      connect: {
+        key: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/key`,
+          query: { location: input["location"] },
+          body: { key: input["key"], answer: input["answer"], label: input["label"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404],
+          empty: true
+        }, requestOptions),
+        external: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/external`,
+          query: { location: input["location"] },
+          body: { methodID: input["methodID"], answer: input["answer"], label: input["label"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404],
+          empty: true
+        }, requestOptions)
+      },
+      oauth: {
+        connect: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/oauth`,
+          query: { location: input["location"] },
+          body: { methodID: input["methodID"], answer: input["answer"], label: input["label"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions),
+        status: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/oauth/${encodeURIComponent(input.attemptID)}`,
+          query: { location: input["location"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions),
+        complete: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/oauth/${encodeURIComponent(input.attemptID)}/complete`,
+          query: { location: input["location"] },
+          body: { code: input["code"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404],
+          empty: true
+        }, requestOptions),
+        cancel: (input, requestOptions) => request({
+          method: "DELETE",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/oauth/${encodeURIComponent(input.attemptID)}`,
+          query: { location: input["location"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404],
+          empty: true
+        }, requestOptions)
+      },
+      command: {
+        connect: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/command`,
+          query: { location: input["location"] },
+          body: { methodID: input["methodID"], label: input["label"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions),
+        status: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/command/${encodeURIComponent(input.attemptID)}`,
+          query: { location: input["location"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions),
+        cancel: (input, requestOptions) => request({
+          method: "DELETE",
+          path: `/api/integration/${encodeURIComponent(input.integrationID)}/connect/command/${encodeURIComponent(input.attemptID)}`,
+          query: { location: input["location"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404],
+          empty: true
+        }, requestOptions)
+      }
+    },
+    mcp: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/mcp`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      add: (input, requestOptions) => request({
+        method: "PUT",
+        path: `/api/experimental/mcp/${encodeURIComponent(input.server)}`,
+        query: { location: input["location"] },
+        body: { config: input["config"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      remove: (input, requestOptions) => request({
+        method: "DELETE",
+        path: `/api/experimental/mcp/${encodeURIComponent(input.server)}`,
+        query: { location: input["location"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      connect: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/experimental/mcp/${encodeURIComponent(input.server)}/connect`,
+        query: { location: input["location"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      disconnect: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/experimental/mcp/${encodeURIComponent(input.server)}/disconnect`,
+        query: { location: input["location"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      resource: {
+        catalog: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/mcp/resource`,
+          query: { location: input?.["location"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions)
+      }
+    },
+    credential: {
+      list: (requestOptions) => request({ method: "GET", path: `/api/credential`, successStatus: 200, declaredStatuses: [400, 401], empty: false }, requestOptions).then((value) => value.data),
+      create: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/credential`,
+        body: {
+          id: input["id"],
+          integrationID: input["integrationID"],
+          label: input["label"],
+          value: input["value"],
+          activate: input["activate"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 409],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      update: (input, requestOptions) => request({
+        method: "PATCH",
+        path: `/api/credential/${encodeURIComponent(input.credentialID)}`,
+        body: { label: input["label"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401],
+        empty: true
+      }, requestOptions),
+      activate: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/credential/${encodeURIComponent(input.credentialID)}/activate`,
+        successStatus: 204,
+        declaredStatuses: [400, 401],
+        empty: true
+      }, requestOptions),
+      remove: (input, requestOptions) => request({
+        method: "DELETE",
+        path: `/api/credential/${encodeURIComponent(input.credentialID)}`,
+        successStatus: 204,
+        declaredStatuses: [400, 401],
+        empty: true
+      }, requestOptions)
+    },
+    project: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/project`,
+        query: { archived: input?.["archived"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      update: (input, requestOptions) => request({
+        method: "PATCH",
+        path: `/api/project/${encodeURIComponent(input.projectID)}`,
+        body: {
+          canonical: input["canonical"],
+          name: input["name"],
+          icon: input["icon"],
+          commands: input["commands"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions)
+    },
+    form: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/form`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions)
+    },
+    permission: {
+      request: {
+        list: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/permission/request`,
+          query: { location: input?.["location"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions)
+      },
+      saved: {
+        list: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/permission/saved`,
+          query: { projectID: input?.["projectID"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        remove: (input, requestOptions) => request({
+          method: "DELETE",
+          path: `/api/permission/saved/${encodeURIComponent(input.id)}`,
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404],
+          empty: true
+        }, requestOptions)
+      },
+      create: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/permission`,
+        body: {
+          id: input["id"],
+          action: input["action"],
+          resources: input["resources"],
+          save: input["save"],
+          metadata: input["metadata"],
+          source: input["source"],
+          agent: input["agent"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/permission`,
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/permission/${encodeURIComponent(input.requestID)}`,
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions).then((value) => value.data),
+      reply: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/session/${encodeURIComponent(input.sessionID)}/permission/${encodeURIComponent(input.requestID)}/reply`,
+        body: { decision: input["decision"], message: input["message"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions)
+    },
+    file: {
+      read: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/fs/read/${encodePath(input.path)}`,
+        query: { location: input["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false,
+        binary: true
+      }, requestOptions),
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/fs/list`,
+        query: { location: input?.["location"], path: input?.["path"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      find: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/fs/find`,
+        query: { location: input["location"], query: input["query"], type: input["type"], limit: input["limit"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      write: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/experimental/fs/write`,
+        query: { location: input["location"], path: input["path"] },
+        body: input["payload"],
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false,
+        binaryBody: true
+      }, requestOptions)
+    },
+    command: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/command`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions)
+    },
+    skill: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/skill`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions)
+    },
+    rpc: {
+      call: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/rpc/${encodeURIComponent(input.rpcID)}/${encodeURIComponent(input.method)}`,
+        query: { location: input["location"] },
+        body: { input: input["input"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 500],
+        empty: false
+      }, requestOptions)
+    },
+    event: {
+      subscribe: (requestOptions) => sse({ method: "GET", path: `/api/event`, successStatus: 200, declaredStatuses: [400, 401], empty: false }, requestOptions)
+    },
+    pty: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/pty`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      create: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/pty`,
+        query: { location: input?.["location"] },
+        body: {
+          command: input?.["command"],
+          args: input?.["args"],
+          cwd: input?.["cwd"],
+          title: input?.["title"],
+          env: input?.["env"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/pty/${encodeURIComponent(input.ptyID)}`,
+        query: { location: input["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      update: (input, requestOptions) => request({
+        method: "PUT",
+        path: `/api/pty/${encodeURIComponent(input.ptyID)}`,
+        query: { location: input["location"] },
+        body: { title: input["title"], size: input["size"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      remove: (input, requestOptions) => request({
+        method: "DELETE",
+        path: `/api/pty/${encodeURIComponent(input.ptyID)}`,
+        query: { location: input["location"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      connect: {
+        token: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/pty/${encodeURIComponent(input.ptyID)}/connect-token`,
+          query: { location: input["location"] },
+          headers: { "x-opencode-ticket": input["x-opencode-ticket"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 403, 404],
+          empty: false
+        }, requestOptions)
+      }
+    },
+    experimental: {
+      persistentPty: {
+        read: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/terminal/read`,
+          query: { lines: input["lines"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 503],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        list: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/terminal`,
+          successStatus: 200,
+          declaredStatuses: [400, 401, 503],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        create: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/terminal`,
+          body: {
+            command: input["command"],
+            args: input["args"],
+            cwd: input["cwd"],
+            title: input["title"],
+            env: input["env"],
+            size: input["size"]
+          },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 503],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        shutdown: (requestOptions) => request({
+          method: "POST",
+          path: `/api/experimental/persistent-pty/shutdown`,
+          successStatus: 204,
+          declaredStatuses: [400, 401, 503],
+          empty: true
+        }, requestOptions),
+        handoff: (requestOptions) => request({
+          method: "POST",
+          path: `/api/experimental/persistent-pty/handoff`,
+          successStatus: 200,
+          declaredStatuses: [400, 401, 503],
+          empty: false
+        }, requestOptions),
+        get: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/experimental/persistent-pty/${encodeURIComponent(input.ptyID)}`,
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404, 503],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        update: (input, requestOptions) => request({
+          method: "PUT",
+          path: `/api/experimental/persistent-pty/${encodeURIComponent(input.ptyID)}`,
+          body: { attachmentID: input["attachmentID"], size: input["size"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404, 503],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        snapshot: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/experimental/persistent-pty/${encodeURIComponent(input.ptyID)}/snapshot`,
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404, 503],
+          empty: false
+        }, requestOptions).then((value) => value.data),
+        remove: (input, requestOptions) => request({
+          method: "DELETE",
+          path: `/api/experimental/persistent-pty/${encodeURIComponent(input.ptyID)}`,
+          successStatus: 204,
+          declaredStatuses: [400, 401, 404, 503],
+          empty: true
+        }, requestOptions),
+        connectToken: (input, requestOptions) => request({
+          method: "POST",
+          path: `/api/experimental/persistent-pty/${encodeURIComponent(input.ptyID)}/connect-token`,
+          headers: { "x-opencode-ticket": input["x-opencode-ticket"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 403, 404, 503],
+          empty: false
+        }, requestOptions).then((value) => value.data)
+      }
+    },
+    shell: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/shell`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      create: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/shell`,
+        query: { location: input["location"] },
+        body: {
+          command: input["command"],
+          cwd: input["cwd"],
+          timeout: input["timeout"],
+          metadata: input["metadata"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/shell/${encodeURIComponent(input.id)}`,
+        query: { location: input["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      output: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/shell/${encodeURIComponent(input.id)}/output`,
+        query: { location: input["location"], cursor: input["cursor"], limit: input["limit"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      remove: (input, requestOptions) => request({
+        method: "DELETE",
+        path: `/api/shell/${encodeURIComponent(input.id)}`,
+        query: { location: input["location"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions)
+    },
+    reference: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/reference`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions)
+    },
+    worktree: {
+      list: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/worktree`,
+        query: { projectID: input["projectID"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      create: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/worktree`,
+        body: {
+          projectID: input["projectID"],
+          from: input["from"],
+          branch: input["branch"],
+          directory: input["directory"],
+          name: input["name"]
+        },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      remove: (input, requestOptions) => request({
+        method: "DELETE",
+        path: `/api/worktree`,
+        body: { projectID: input["projectID"], directory: input["directory"], force: input["force"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions),
+      refresh: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/worktree/refresh`,
+        body: { projectID: input["projectID"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions)
+    },
+    vcs: {
+      init: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/vcs/init`,
+        query: { location: input?.["location"], provider: input?.["provider"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404, 409, 501, 503],
+        empty: true
+      }, requestOptions),
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/vcs`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      base: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/vcs/base`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions),
+      status: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/vcs/status`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      branch: {
+        list: (input, requestOptions) => request({
+          method: "GET",
+          path: `/api/vcs/branch`,
+          query: { location: input?.["location"], search: input?.["search"], limit: input?.["limit"] },
+          successStatus: 200,
+          declaredStatuses: [400, 401, 404],
+          empty: false
+        }, requestOptions)
+      },
+      diff: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/vcs/diff`,
+        query: { location: input["location"], mode: input["mode"], base: input["base"], context: input["context"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions)
+    },
+    debug: {
+      location: {
+        list: (requestOptions) => request({
+          method: "GET",
+          path: `/api/debug/location`,
+          successStatus: 200,
+          declaredStatuses: [400, 401],
+          empty: false
+        }, requestOptions),
+        evict: (input, requestOptions) => request({
+          method: "DELETE",
+          path: `/api/debug/location`,
+          query: { location: input?.["location"] },
+          successStatus: 204,
+          declaredStatuses: [400, 401],
+          empty: true
+        }, requestOptions)
+      }
+    },
+    migration: {
+      v1: {
+        status: (requestOptions) => request({
+          method: "GET",
+          path: `/api/experimental/migration/v1`,
+          successStatus: 200,
+          declaredStatuses: [400, 401],
+          empty: false
+        }, requestOptions)
+      }
+    },
+    websearch: {
+      providers: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/websearch/provider`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions),
+      query: (input, requestOptions) => request({
+        method: "POST",
+        path: `/api/websearch`,
+        query: { location: input["location"] },
+        body: { query: input["query"], providerID: input["providerID"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404, 503],
+        empty: false
+      }, requestOptions)
+    },
+    config: {
+      get: (input, requestOptions) => request({
+        method: "GET",
+        path: `/api/config`,
+        query: { location: input?.["location"] },
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      shells: (requestOptions) => request({
+        method: "GET",
+        path: `/api/config/shell`,
+        successStatus: 200,
+        declaredStatuses: [400, 401, 404],
+        empty: false
+      }, requestOptions),
+      update: (input, requestOptions) => request({
+        method: "PATCH",
+        path: `/api/experimental/config`,
+        body: { shell: input["shell"] },
+        successStatus: 204,
+        declaredStatuses: [400, 401, 404],
+        empty: true
+      }, requestOptions)
+    }
+  };
+}
+function encodePath(value) {
+  return value.split("/").map(encodeURIComponent).join("/");
+}
+function appendQuery(params, key, value) {
+  if (value === undefined)
+    return;
+  if (value === null) {
+    params.append(key, "null");
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value)
+      appendQuery(params, key, item);
+    return;
+  }
+  if (typeof value === "object") {
+    for (const [child, item] of Object.entries(value))
+      appendQuery(params, `${key}[${child}]`, item);
+    return;
+  }
+  params.append(key, String(value));
+}
+async function json(response) {
+  if (!isContentType(response, "application/json") && !response.headers.get("content-type")?.includes("+json")) {
+    try {
+      await response.body?.cancel();
+    } catch {}
+    throw new ClientError2("UnsupportedContentType", { detail: response.headers.get("content-type") });
+  }
+  let text;
+  try {
+    text = await response.text();
+  } catch (cause) {
+    throw new ClientError2("Transport", { cause });
+  }
+  if (text === "")
+    throw new ClientError2("MalformedResponse");
+  try {
+    return JSON.parse(text);
+  } catch (cause) {
+    throw new ClientError2("MalformedResponse", { cause });
+  }
+}
+function declared(body) {
+  const error = Object.assign(new Error(body.message ?? body.data?.message), body);
+  if (body._tag)
+    error.name = body._tag;
+  return error;
+}
+function isContentType(response, expected) {
+  return response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() === expected;
+}
+
+// ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-vt9jbch8.js
+var isRpcError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "RpcError";
+var isRpcInternalError2 = (value) => typeof value === "object" && value !== null && ("_tag" in value) && value["_tag"] === "RpcInternalError";
+
+// ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-1y4a697q.js
+function makeRpc2(raw, events) {
+  return (definition) => {
+    const subscribe = (name, options) => {
+      if (!Object.hasOwn(definition.events, name))
+        throw new Error(`Unknown RPC event: ${definition.id}.${name}`);
+      const type = eventType(definition, name);
+      return {
+        [Symbol.asyncIterator]() {
+          const controller = new AbortController;
+          const signal = options?.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
+          const iterator = async function* () {
+            try {
+              for await (const published of events.subscribe({ signal })) {
+                if (signal.aborted)
+                  return;
+                if (published.type !== type)
+                  continue;
+                yield published;
+              }
+            } catch (error) {
+              if (!signal.aborted)
+                throw error;
+            } finally {
+              controller.abort();
+            }
+          }();
+          return {
+            next: () => iterator.next(),
+            return: () => {
+              controller.abort();
+              return iterator.return();
+            }
+          };
+        }
+      };
+    };
+    return Object.assign(Object.fromEntries(Object.keys(definition.methods).map((name) => [
+      name,
+      async (input, options) => {
+        try {
+          const result = await raw.rpc.call({
+            rpcID: definition.id,
+            method: name,
+            input,
+            location: options?.location
+          }, { signal: options?.signal, headers: options?.headers });
+          return result.output;
+        } catch (error) {
+          if (!isRpcError2(error) && !isRpcInternalError2(error))
+            throw error;
+          throw error.data === undefined ? { type: error.type, message: error.message } : { type: error.type, message: error.message, data: error.data };
+        }
+      }
+    ])), {
+      events: {
+        subscribe,
+        on: (name, handler, options) => {
+          const controller = new AbortController;
+          const signal = options?.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
+          const source = subscribe(name, { signal });
+          (async () => {
+            for await (const event of source)
+              await handler(event);
+          })().catch((error) => console.error(error));
+          return () => controller.abort();
+        }
+      }
+    });
+  };
+}
+function eventType(definition, name) {
+  return `rpc.${definition.id}.${name}`;
+}
+
+// ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-q008jpwa.js
+var exports_client = {};
+__export(exports_client, {
+  OpenCode: () => exports_client,
+  make: () => make2
+});
+function make2(options) {
+  const raw = make3(options);
+  const events = make7((signal, onActivity) => raw.event.subscribe({ signal, onActivity }));
+  return {
+    ...raw,
+    rpc: Object.assign(makeRpc2(raw, events), raw.rpc),
+    event: events
+  };
+}
+// ../../../../omo-engine/omo-opencode/src/cli/run/opencode-v2-client.ts
+var MIN_SUPPORTED_MAJOR = 2;
+var MIN_SUPPORTED_VERSION = "2.0.20";
+class V2ProtocolError extends Error {
+  status;
+  code;
+  tag;
+  constructor(message, options) {
+    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
+    this.name = "V2ProtocolError";
+    this.status = options?.status;
+    this.code = options?.code ?? "V2_PROTOCOL_ERROR";
+    this.tag = options?.tag;
+  }
+}
+
+class V2UnsupportedServerError extends V2ProtocolError {
+  constructor(version) {
+    super(`Unsupported OpenCode server version ${version}: Alcode requires OpenCode ${MIN_SUPPORTED_VERSION} or newer (major ${MIN_SUPPORTED_MAJOR}).`, {
+      code: "V2_UNSUPPORTED_SERVER"
+    });
+    this.name = "V2UnsupportedServerError";
+  }
+}
+function compareRelease(left, right) {
+  const parse = (version) => version.split(/[-+]/, 1)[0].split(".").map((part) => Number.parseInt(part, 10));
+  const leftParts = parse(left);
+  const rightParts = parse(right);
+  for (let index = 0;index < 3; index += 1) {
+    const diff = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (!Number.isNaN(diff) && diff !== 0)
+      return diff;
+  }
+  return 0;
+}
+function assertSupportedServerVersion(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/.exec(version.trim());
+  if (!match) {
+    throw new V2UnsupportedServerError(version);
+  }
+  const major = Number.parseInt(match[1] ?? "0", 10);
+  if (major !== MIN_SUPPORTED_MAJOR || compareRelease(version, MIN_SUPPORTED_VERSION) < 0) {
+    throw new V2UnsupportedServerError(version);
+  }
+}
+var serverInfoSchema = object({ version: string2() });
+var STATUS_BY_TAG = new Map([
+  ["InvalidRequestError", 400],
+  ["InvalidCursorError", 400],
+  ["FormInvalidAnswerError", 400],
+  ["UnauthorizedError", 401],
+  ["ForbiddenError", 403],
+  ["SessionNotFoundError", 404],
+  ["MessageNotFoundError", 404],
+  ["PermissionNotFoundError", 404],
+  ["FormNotFoundError", 404],
+  ["AgentNotFoundError", 404],
+  ["CommandNotFoundError", 404],
+  ["SkillNotFoundError", 404],
+  ["ProviderNotFoundError", 404],
+  ["McpServerNotFoundError", 404],
+  ["ProjectNotFoundError", 404],
+  ["FileNotFoundError", 404],
+  ["PtyNotFoundError", 404],
+  ["ShellNotFoundError", 404],
+  ["ConflictError", 409],
+  ["SessionBusyError", 409],
+  ["ServiceUnavailableError", 503],
+  ["UnknownError", 500]
+]);
+var taggedErrorSchema = object({
+  _tag: string2(),
+  message: string2().optional(),
+  ref: string2().optional()
+});
+var clientErrorValidator = object({
+  name: string2(),
+  reason: string2().optional(),
+  cause: unknown().optional()
+});
+var unexpectedStatusValidator = object({ status: number2() });
+function normalizeV2Failure(operation, error) {
+  const tagged = taggedErrorSchema.safeParse(error);
+  if (tagged.success) {
+    const status = STATUS_BY_TAG.get(tagged.data._tag);
+    throw new V2ProtocolError(`${operation} failed${status ? ` (${status})` : ""}: ${tagged.data.message ?? tagged.data._tag}`, {
+      status,
+      tag: tagged.data._tag,
+      code: status === 404 ? "V2_ROUTE_MISSING" : "V2_REQUEST_FAILED",
+      cause: error instanceof Error ? error : undefined
+    });
+  }
+  if (error instanceof Error) {
+    const parsedClientError = clientErrorValidator.safeParse(error);
+    if (parsedClientError.success && parsedClientError.data.name === "ClientError") {
+      if (parsedClientError.data.reason === "Transport") {
+        const cause = parsedClientError.data.cause;
+        throw cause instanceof Error ? cause : error;
+      }
+      const parsedStatus = unexpectedStatusValidator.safeParse(parsedClientError.data.cause);
+      const status = parsedStatus.success ? parsedStatus.data.status : undefined;
+      throw new V2ProtocolError(`${operation} failed${status ? ` (${status})` : ""}: ${parsedClientError.data.reason ?? "unexpected client failure"}`, { status, code: "V2_REQUEST_FAILED", cause: error });
+    }
+  }
+  throw error;
+}
+async function envelope(operation, run) {
+  try {
+    return { data: await run() };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    log2("[opencode-server-auth] Failed to inject server auth", { message });
+    if (error instanceof V2ProtocolError)
+      return { error };
+    try {
+      normalizeV2Failure(operation, error);
+    } catch (normalized) {
+      if (normalized instanceof V2ProtocolError)
+        return { error: normalized };
+      throw normalized;
+    }
+    throw error;
+  }
+}
+function authHeaders(password) {
+  const header = password ? `Basic ${Buffer.from(`opencode:${password}`, "utf8").toString("base64")}` : getServerBasicAuthHeader();
+  if (!header)
+    return {};
+  return { Authorization: header };
+}
+function mapPermission(permission) {
+  if (!permission)
+    return;
+  return permission.map((entry) => ({
+    action: entry.permission ?? "question",
+    resource: entry.pattern ?? "*",
+    effect: entry.action === "deny" ? "deny" : entry.action === "allow" ? "allow" : "ask"
+  }));
+}
+function mapAssistantPart(part) {
+  if (part.type !== "assistant")
+    return [];
+  if (!Array.isArray(part.content))
+    return [];
+  return part.content.map((item) => {
+    if (item.type === "text" || item.type === "reasoning") {
+      return { type: item.type, text: item.text };
+    }
+    return { type: item.type };
+  });
+}
+function mapEngineMessage(record2) {
+  if (record2.type === "assistant") {
+    return {
+      id: record2.id,
+      info: {
+        agent: record2.agent,
+        model: record2.model ? { providerID: record2.model.providerID, modelID: record2.model.id, variant: record2.model.variant } : undefined,
+        role: "assistant",
+        time: { created: record2.time.created }
+      },
+      parts: mapAssistantPart(record2)
+    };
+  }
+  if (record2.type === "user") {
+    return {
+      id: record2.id,
+      info: { role: "user", time: { created: record2.time.created } },
+      parts: []
+    };
+  }
+  return { id: record2.id, info: { role: record2.type }, parts: [] };
+}
+var TODO_TOOL_PATTERN = /^todo/i;
+function readToolText(content) {
+  const texts = [];
+  for (const item of content) {
+    if (item.type !== "text")
+      continue;
+    texts.push(item.text);
+  }
+  return texts.length > 0 ? texts.join(`
+`) : null;
+}
+var todoItemValidator = object({
+  id: string2().optional(),
+  content: string2().optional(),
+  title: string2().optional(),
+  status: string2().optional(),
+  priority: string2().optional()
+});
+var flexibleTodoListValidator = array(todoItemValidator).or(object({ todos: array(todoItemValidator) }));
+function parseTodoList(rawText, sessionID) {
+  let parsed = null;
+  try {
+    const validated = flexibleTodoListValidator.safeParse(JSON.parse(rawText));
+    if (validated.success)
+      parsed = validated.data;
+  } catch {
+    parsed = null;
+  }
+  if (!parsed) {
+    throw new V2ProtocolError(`Session ${sessionID} has todo tool output the engine cannot parse; refusing to treat todos as complete.`, { code: "V2_TODO_UNPARSEABLE" });
+  }
+  const list = Array.isArray(parsed) ? parsed : parsed.todos;
+  return list.map((entry) => ({
+    id: entry.id,
+    content: entry.content ?? entry.title ?? "",
+    status: entry.status ?? "pending",
+    priority: entry.priority ?? ""
+  }));
+}
+function createV2EngineClient(options) {
+  const baseUrl = options.baseUrl.replace(/\/$/, "");
+  const headers = { ...authHeaders(options.password) };
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const raw = exports_client.make({
+    baseUrl,
+    headers,
+    fetch: (...args) => fetchImpl(...args)
+  });
+  const withDir = (directory) => directory ? { headers: { "x-opencode-directory": encodeURIComponent(directory) } } : {};
+  const session = {
+    create: (input) => envelope("session.create", async () => {
+      const model = input.body?.model;
+      const created = await raw.session.create({
+        id: input.body?.id,
+        parentID: input.body?.parentID,
+        title: input.body?.title,
+        agent: input.body?.agent,
+        model: model?.providerID && model?.modelID ? { providerID: model.providerID, id: model.modelID } : undefined,
+        metadata: input.body?.metadata,
+        permissions: mapPermission(input.body?.permission),
+        location: input.query?.directory ? { directory: input.query.directory } : undefined
+      }, withDir(input.query?.directory));
+      return created;
+    }),
+    get: (input) => envelope("session.get", () => raw.session.get({ sessionID: input.path.id }, withDir(input.query?.directory))),
+    remove: (input) => envelope("session.remove", async () => {
+      await raw.session.remove({ sessionID: input.path.id }, withDir(input.query?.directory));
+      return null;
+    }),
+    messages: (input) => envelope("session.messages", async () => {
+      const page = await raw.message.list({ sessionID: input.path.id }, withDir(input.query?.directory));
+      const records = Array.isArray(page) ? page : page.data ?? [];
+      return records.map(mapEngineMessage);
+    }),
+    status: (input) => envelope("session.status", async () => {
+      const active = await raw.session.active(withDir(input.query?.directory));
+      const statuses = {};
+      for (const id of Object.keys(active ?? {})) {
+        if (input.query?.directory) {
+          const info = await raw.session.get({ sessionID: id }, withDir(input.query.directory));
+          if (!sameDirectory(info.location?.directory, input.query.directory))
+            continue;
+        }
+        statuses[id] = { type: "busy" };
+      }
+      return statuses;
+    }),
+    todo: (input) => envelope("session.todo", async () => {
+      const page = await raw.message.list({ sessionID: input.path.id, limit: 100 }, withDir(input.query?.directory));
+      const records = Array.isArray(page) ? page : page.data ?? [];
+      let latest = null;
+      for (const record2 of records) {
+        if (record2.type !== "assistant" || !Array.isArray(record2.content))
+          continue;
+        for (const part of record2.content) {
+          if (part.type !== "tool" || !TODO_TOOL_PATTERN.test(part.name))
+            continue;
+          if (part.state.status !== "completed" && part.state.status !== "error")
+            continue;
+          const text = readToolText(part.state.content ?? []);
+          if (text === null)
+            continue;
+          latest = parseTodoList(text, input.path.id);
+        }
+      }
+      return latest ?? [];
+    }),
+    children: (input) => envelope("session.children", async () => {
+      const page = await raw.session.list({ parentID: input.path.id, directory: input.query?.directory }, withDir(input.query?.directory));
+      const records = Array.isArray(page) ? page : page.data ?? [];
+      return records.filter((entry) => entry.id !== undefined).map((entry) => ({ id: entry.id }));
+    }),
+    synthetic: (input) => envelope("session.synthetic", () => raw.session.synthetic({
+      sessionID: input.sessionID,
+      text: input.text,
+      description: input.description,
+      resume: input.resume ?? false
+    }, withDir(input.query?.directory))),
+    interrupt: (input) => envelope("session.interrupt", () => raw.session.interrupt({ sessionID: input.sessionID }, withDir(input.query?.directory))),
+    promptAsync: (input) => envelope("session.promptAsync", async () => {
+      const parts = input.body?.parts ?? [];
+      const earlyText = parts.filter((part) => part.type === undefined || part.type === "text").map((part) => part.text).filter((partText) => partText !== undefined).join(`
+
+`);
+      if (!earlyText.trim()) {
+        throw new V2ProtocolError("session.promptAsync needs at least one text part.", {
+          code: "V2_PROMPT_EMPTY"
+        });
+      }
+      if (input.body?.agent) {
+        await raw.session.switchAgent({ sessionID: input.path.id, agent: input.body.agent }, withDir(input.query?.directory));
+      }
+      const promptModel = input.body?.model;
+      if (promptModel?.providerID && promptModel?.modelID) {
+        await raw.session.switchModel({ sessionID: input.path.id, model: { providerID: promptModel.providerID, id: promptModel.modelID } }, withDir(input.query?.directory));
+      }
+      const text = earlyText;
+      const model = input.body?.model;
+      const sent = await raw.session.prompt({
+        sessionID: input.path.id,
+        agent: input.body?.agent,
+        model: model ? { providerID: model.providerID, id: model.modelID } : undefined,
+        text
+      }, withDir(input.query?.directory));
+      return sent;
+    })
+  };
+  const app = {
+    agents: (directory) => envelope("app.agents", async () => {
+      const output = await raw.agent.list(directory ? { location: { directory } } : undefined, withDir(directory));
+      const agents = Array.isArray(output) ? output : output.data ?? [];
+      return agents.map((agent) => ({
+        name: agent.name,
+        color: agent.color
+      }));
+    })
+  };
+  const event = {
+    subscribe: (input) => subscribeTranslated(raw, input?.signal)
+  };
+  return { session, app, event };
+}
+var wireEventSchema = object({
+  type: string2(),
+  data: record(string2(), unknown()).optional()
+});
+function wireString(data, key) {
+  const parsed = string2().safeParse(data[key]);
+  return parsed.success ? parsed.data : undefined;
+}
+function sameDirectory(left, right) {
+  if (!left || !right)
+    return false;
+  const normalize = (value) => value.replace(/\\/g, "/").replace(/\/+$/, "");
+  return normalize(left) === normalize(right);
+}
+function translateV2Event(event) {
+  const data = event.data ?? {};
+  const sessionID = wireString(data, "sessionID");
+  if (!sessionID)
+    return [];
+  const base = { sessionID };
+  switch (event.type) {
+    case "session.status": {
+      const status = object({ type: string2() }).safeParse(data.status);
+      const statusType = status.success ? status.data.type : "idle";
+      const mapped = statusType === "busy" || statusType === "retry" ? statusType : "idle";
+      return [{ type: "session.status", properties: { ...base, status: { type: mapped } } }];
+    }
+    case "session.execution.started":
+      return [{ type: "session.status", properties: { ...base, status: { type: "busy" } } }];
+    case "session.execution.succeeded":
+    case "session.execution.interrupted":
+      return [{ type: "session.status", properties: { ...base, status: { type: "idle" } } }];
+    case "session.execution.failed": {
+      const failure = object({ message: string2() }).safeParse(data.error);
+      const message = failure.success ? failure.data.message : "session execution failed";
+      return [
+        { type: "session.error", properties: { ...base, error: message } },
+        { type: "session.status", properties: { ...base, status: { type: "idle" } } }
+      ];
+    }
+    case "session.step.started": {
+      const messageID = wireString(data, "assistantMessageID");
+      if (!messageID)
+        return [];
+      return [{
+        type: "message.updated",
+        properties: { info: { ...base, id: messageID, role: "assistant" } }
+      }];
+    }
+    case "session.text.started": {
+      const messageID = wireString(data, "assistantMessageID");
+      if (!messageID)
+        return [];
+      return [{
+        type: "message.part.updated",
+        properties: {
+          info: { ...base, id: messageID, role: "assistant" },
+          part: { ...base, id: `${messageID}:text`, messageID, type: "text" }
+        }
+      }];
+    }
+    case "session.text.delta": {
+      const messageID = wireString(data, "assistantMessageID");
+      const delta = wireString(data, "delta");
+      if (!messageID || !delta)
+        return [];
+      return [{
+        type: "message.part.delta",
+        properties: { ...base, messageID, partID: `${messageID}:text`, field: "text", delta }
+      }];
+    }
+    case "session.text.ended": {
+      const messageID = wireString(data, "assistantMessageID");
+      if (!messageID)
+        return [];
+      return [{
+        type: "message.part.updated",
+        properties: {
+          info: { ...base, id: messageID, role: "assistant" },
+          part: { ...base, id: `${messageID}:text`, messageID, type: "text", time: { end: Date.now() } }
+        }
+      }];
+    }
+    case "session.reasoning.started": {
+      const messageID = wireString(data, "assistantMessageID");
+      if (!messageID)
+        return [];
+      return [{
+        type: "message.part.updated",
+        properties: {
+          info: { ...base, id: messageID, role: "assistant" },
+          part: { ...base, id: `${messageID}:reasoning`, messageID, type: "reasoning" }
+        }
+      }];
+    }
+    case "session.reasoning.delta": {
+      const messageID = wireString(data, "assistantMessageID");
+      const delta = wireString(data, "delta");
+      if (!messageID || !delta)
+        return [];
+      return [{
+        type: "message.part.delta",
+        properties: { ...base, messageID, partID: `${messageID}:reasoning`, field: "text", delta }
+      }];
+    }
+    case "session.tool.called": {
+      const callID = wireString(data, "id");
+      const properties = { ...base, name: "unknown", input: data.input };
+      return [{ type: "tool.execute", properties: callID ? { ...properties, id: callID } : properties }];
+    }
+    case "session.tool.success":
+    case "session.tool.failed": {
+      const output = readToolTextFromData(data);
+      return [{ type: "tool.result", properties: { ...base, output } }];
+    }
+    default:
+      return [];
+  }
+}
+function readToolTextFromData(data) {
+  const content = Array.isArray(data.content) ? data.content : [];
+  const texts = [];
+  for (const item of content) {
+    const textPart = object({ type: string2(), text: string2() }).safeParse(item);
+    if (textPart.success && textPart.data.type === "text")
+      texts.push(textPart.data.text);
+  }
+  if (texts.length > 0)
+    return texts.join(`
+`);
+  const failure = object({ message: string2() }).safeParse(data.error);
+  if (failure.success)
+    return failure.data.message;
+  try {
+    return JSON.stringify(data.content ?? data.error ?? null);
+  } catch {
+    return "";
+  }
+}
+async function* subscribeTranslated(raw, signal) {
+  const stream = await raw.event.subscribe();
+  const iterator = stream[Symbol.asyncIterator]();
+  if (signal?.aborted) {
+    await iterator.return?.();
+    return;
+  }
+  const abortListener = () => {
+    iterator.return?.();
+  };
+  signal?.addEventListener("abort", abortListener, { once: true });
+  try {
+    while (true) {
+      const next = await iterator.next();
+      if (next.done)
+        break;
+      if (signal?.aborted)
+        break;
+      const parsed = wireEventSchema.safeParse(next.value);
+      if (!parsed.success)
+        continue;
+      for (const payload of translateV2Event(parsed.data)) {
+        yield payload;
+      }
+    }
+  } finally {
+    signal?.removeEventListener("abort", abortListener);
   }
 }
 
@@ -20343,7 +33255,7 @@ async function probe(registration) {
     registration.available = false;
     return false;
   }
-  const probeUrl = new URL("/global/health", registration.serverUrl);
+  const probeUrl = new URL("/api/info", registration.serverUrl);
   const authHeader = getServerBasicAuthHeader();
   const headers = authHeader ? { Authorization: authHeader } : {};
   try {
@@ -20368,9 +33280,30 @@ async function probe(registration) {
       registration.probeTimestamp = Date.now();
       return false;
     }
-    registration.available = response.ok;
+    if (!response.ok) {
+      registration.available = false;
+      registration.probeTimestamp = Date.now();
+      return false;
+    }
+    const versionSchema = object({ version: string2() });
+    const parsed = versionSchema.safeParse(await response.json().catch(() => null));
+    const version = parsed.success ? parsed.data.version : null;
+    try {
+      if (!version)
+        throw new Error("missing version");
+      assertSupportedServerVersion(version);
+    } catch {
+      if (!registration.warnedOnce) {
+        registration.warnedOnce = true;
+        log2("[live-server-route] listener is not a supported OpenCode 2.x server; live wake routing disabled", { version });
+      }
+      registration.available = false;
+      registration.probeTimestamp = Date.now();
+      return false;
+    }
+    registration.available = true;
     registration.probeTimestamp = Date.now();
-    return registration.available;
+    return true;
   } catch {
     registration.available = false;
     registration.probeTimestamp = Date.now();
@@ -20381,7 +33314,7 @@ async function probeSessionAffinity(registration, sessionID) {
   if (!registration.serverUrl) {
     return;
   }
-  const probeUrl = new URL(`/session/${sessionID}`, registration.serverUrl);
+  const probeUrl = new URL(`/api/session/${sessionID}`, registration.serverUrl);
   const authHeader = getServerBasicAuthHeader();
   const headers = authHeader ? { Authorization: authHeader } : {};
   try {
@@ -20463,11 +33396,10 @@ function getOrBuildLiveClient(registration) {
   if (!registration.serverUrl) {
     return;
   }
-  const client = createOpencodeClient({
+  const client = createV2EngineClient({
     baseUrl: registration.serverUrl.toString(),
-    directory: registration.directory
+    password: undefined
   });
-  injectServerAuthIntoClient(client);
   registration.liveClient = client;
   return registration.liveClient;
 }
@@ -21381,12 +34313,12 @@ ${notes.join(`
 };
 
 // ../../../../omo-engine/omo-opencode/src/shared/load-opencode-plugins.ts
-import * as fs2 from "node:fs";
-import * as path3 from "node:path";
+import * as fs4 from "node:fs";
+import * as path5 from "node:path";
 // ../../../../omo-engine/omo-opencode/src/shared/opencode-config-dir.ts
-import { existsSync as existsSync13, realpathSync as realpathSync3 } from "node:fs";
+import { existsSync as existsSync15, realpathSync as realpathSync5 } from "node:fs";
 import { homedir as homedir5 } from "node:os";
-import { join as join11, posix as posix2, resolve as resolve4, win32 } from "node:path";
+import { join as join12, posix as posix2, resolve as resolve6, win32 } from "node:path";
 var TAURI_APP_IDENTIFIER = "ai.opencode.desktop";
 var TAURI_APP_IDENTIFIER_DEV = "ai.opencode.desktop.dev";
 function isDevBuild(version) {
@@ -21398,15 +34330,15 @@ function getTauriConfigDir(identifier) {
   const platform = process.platform;
   switch (platform) {
     case "darwin":
-      return join11(homedir5(), "Library", "Application Support", identifier);
+      return join12(homedir5(), "Library", "Application Support", identifier);
     case "win32": {
-      const appData = process.env.APPDATA || join11(homedir5(), "AppData", "Roaming");
+      const appData = process.env.APPDATA || join12(homedir5(), "AppData", "Roaming");
       return win32.join(appData, identifier);
     }
     case "linux":
     default: {
-      const xdgConfig = process.env.XDG_CONFIG_HOME || join11(homedir5(), ".config");
-      return join11(xdgConfig, identifier);
+      const xdgConfig = process.env.XDG_CONFIG_HOME || join12(homedir5(), ".config");
+      return join12(xdgConfig, identifier);
     }
   }
 }
@@ -21414,11 +34346,11 @@ function resolveConfigPath(pathValue) {
   if (isWslEnvironment() && pathValue.startsWith("/")) {
     return posix2.normalize(pathValue);
   }
-  const resolvedPath = resolve4(pathValue);
-  if (!existsSync13(resolvedPath))
+  const resolvedPath = resolve6(pathValue);
+  if (!existsSync15(resolvedPath))
     return resolvedPath;
   try {
-    return realpathSync3(resolvedPath);
+    return realpathSync5(resolvedPath);
   } catch (error) {
     if (error instanceof Error) {
       return resolvedPath;
@@ -21449,8 +34381,8 @@ function getWslLinuxHomeDir(windowsConfigRoot) {
 function getCliDefaultConfigDir() {
   const envXdgConfig = process.env.XDG_CONFIG_HOME?.trim();
   const shouldIgnoreWindowsXdg = envXdgConfig !== undefined && envXdgConfig.length > 0 && isWslEnvironment() && isWindowsUserConfigRoot(envXdgConfig);
-  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join11(homedir5(), ".config");
-  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join11(xdgConfig, "opencode");
+  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join12(homedir5(), ".config");
+  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join12(xdgConfig, "opencode");
   return resolveConfigPath(configDir);
 }
 function getCliCustomConfigDir() {
@@ -21483,9 +34415,9 @@ function getOpenCodeConfigDir(options) {
   const tauriDir = process.platform === "win32" ? win32.isAbsolute(tauriDirBase) ? win32.normalize(tauriDirBase) : win32.resolve(tauriDirBase) : resolveConfigPath(tauriDirBase);
   if (checkExisting) {
     const legacyDir = getCliConfigDir();
-    const legacyConfig = join11(legacyDir, "opencode.json");
-    const legacyConfigC = join11(legacyDir, "opencode.jsonc");
-    if (existsSync13(legacyConfig) || existsSync13(legacyConfigC)) {
+    const legacyConfig = join12(legacyDir, "opencode.json");
+    const legacyConfigC = join12(legacyDir, "opencode.jsonc");
+    if (existsSync15(legacyConfig) || existsSync15(legacyConfigC)) {
       return legacyDir;
     }
   }
@@ -21495,9 +34427,9 @@ function getOpenCodeConfigPaths(options) {
   const configDir = getOpenCodeConfigDir(options);
   return {
     configDir,
-    configJson: join11(configDir, "opencode.json"),
-    configJsonc: join11(configDir, "opencode.jsonc"),
-    packageJson: join11(configDir, "package.json")
+    configJson: join12(configDir, "opencode.json"),
+    configJsonc: join12(configDir, "opencode.jsonc"),
+    packageJson: join12(configDir, "package.json")
   };
 }
 
@@ -21506,11 +34438,11 @@ var opencodePluginsCache = new Map;
 function getConfigPaths(directory) {
   const configDirs = getOpenCodeConfigDirs({ binary: "opencode" });
   return [
-    path3.join(directory, ".opencode", "opencode.json"),
-    path3.join(directory, ".opencode", "opencode.jsonc"),
+    path5.join(directory, ".opencode", "opencode.json"),
+    path5.join(directory, ".opencode", "opencode.jsonc"),
     ...configDirs.flatMap((dir) => [
-      path3.join(dir, "opencode.json"),
-      path3.join(dir, "opencode.jsonc")
+      path5.join(dir, "opencode.json"),
+      path5.join(dir, "opencode.jsonc")
     ])
   ];
 }
@@ -21523,9 +34455,9 @@ function loadOpencodePlugins(directory) {
   const seenPluginEntries = new Set;
   for (const configPath of getConfigPaths(directory)) {
     try {
-      if (!fs2.existsSync(configPath))
+      if (!fs4.existsSync(configPath))
         continue;
-      const content = fs2.readFileSync(configPath, "utf-8");
+      const content = fs4.readFileSync(configPath, "utf-8");
       const result = parseJsoncSafe2(content);
       const plugins = result.data?.plugin ?? [];
       for (const plugin of plugins) {
@@ -21622,8 +34554,8 @@ Multiple ${PLUGIN_NAME} instances can inject internal prompts into the same live
 }
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
-import { existsSync as existsSync15, readFileSync as readFileSync9 } from "node:fs";
-import { join as join13 } from "node:path";
+import { existsSync as existsSync17, readFileSync as readFileSync10 } from "node:fs";
+import { join as join14 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/plugin-entry-shape.ts
 function isPluginTupleEntry(entry) {
@@ -21639,18 +34571,18 @@ function withPluginEntryName(entry, name) {
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
 function getOpenCodeConfigPath(overrideConfigDir) {
   if (overrideConfigDir) {
-    const jsonPath = join13(overrideConfigDir, "opencode.json");
-    const jsoncPath = join13(overrideConfigDir, "opencode.jsonc");
-    if (existsSync15(jsoncPath))
+    const jsonPath = join14(overrideConfigDir, "opencode.json");
+    const jsoncPath = join14(overrideConfigDir, "opencode.jsonc");
+    if (existsSync17(jsoncPath))
       return jsoncPath;
-    if (existsSync15(jsonPath))
+    if (existsSync17(jsonPath))
       return jsonPath;
     return null;
   }
   const { configJsonc, configJson } = getOpenCodeConfigPaths({ binary: "opencode", version: null });
-  if (existsSync15(configJsonc))
+  if (existsSync17(configJsonc))
     return configJsonc;
-  if (existsSync15(configJson))
+  if (existsSync17(configJson))
     return configJson;
   return null;
 }
@@ -21668,7 +34600,7 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
     return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath: null };
   }
   try {
-    const content = readFileSync9(configPath, "utf-8");
+    const content = readFileSync10(configPath, "utf-8");
     const parseResult = parseJsoncSafe2(content);
     if (!parseResult.data) {
       return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath };
@@ -21690,49 +34622,49 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
-import { existsSync as existsSync18, readdirSync as readdirSync5 } from "node:fs";
-import { join as join15 } from "node:path";
+import { existsSync as existsSync20, readdirSync as readdirSync7 } from "node:fs";
+import { join as join16 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-workspace-migration.ts
-import { copyFileSync, existsSync as existsSync16, lstatSync as lstatSync2, mkdirSync as mkdirSync5, readdirSync as readdirSync4 } from "node:fs";
-import { dirname as dirname5, join as join14, relative as relative3 } from "node:path";
+import { copyFileSync, existsSync as existsSync18, lstatSync as lstatSync3, mkdirSync as mkdirSync6, readdirSync as readdirSync6 } from "node:fs";
+import { dirname as dirname6, join as join15, relative as relative3 } from "node:path";
 var LEGACY_WORKSPACE_DIR = ".sisyphus";
 var WORKSPACE_DIR = ".omo";
 function copyMissingEntries(legacyPath, targetPath, targetRoot, skipped) {
-  const legacyStat = lstatSync2(legacyPath);
+  const legacyStat = lstatSync3(legacyPath);
   if (legacyStat.isSymbolicLink()) {
-    skipped.push(join14(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join15(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
     return false;
   }
-  if (existsSync16(targetPath)) {
-    if (legacyStat.isDirectory() && lstatSync2(targetPath).isDirectory()) {
+  if (existsSync18(targetPath)) {
+    if (legacyStat.isDirectory() && lstatSync3(targetPath).isDirectory()) {
       let copiedChild = false;
-      for (const entry of readdirSync4(legacyPath)) {
-        copiedChild = copyMissingEntries(join14(legacyPath, entry), join14(targetPath, entry), targetRoot, skipped) || copiedChild;
+      for (const entry of readdirSync6(legacyPath)) {
+        copiedChild = copyMissingEntries(join15(legacyPath, entry), join15(targetPath, entry), targetRoot, skipped) || copiedChild;
       }
       return copiedChild;
     }
-    skipped.push(join14(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join15(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
     return false;
   }
   if (legacyStat.isDirectory()) {
-    mkdirSync5(targetPath, { recursive: true });
+    mkdirSync6(targetPath, { recursive: true });
     let copiedChild = false;
-    for (const entry of readdirSync4(legacyPath)) {
-      copiedChild = copyMissingEntries(join14(legacyPath, entry), join14(targetPath, entry), targetRoot, skipped) || copiedChild;
+    for (const entry of readdirSync6(legacyPath)) {
+      copiedChild = copyMissingEntries(join15(legacyPath, entry), join15(targetPath, entry), targetRoot, skipped) || copiedChild;
     }
     return copiedChild;
   }
-  mkdirSync5(dirname5(targetPath), { recursive: true });
+  mkdirSync6(dirname6(targetPath), { recursive: true });
   copyFileSync(legacyPath, targetPath);
   return true;
 }
 function migrateLegacyWorkspaceDirectory(directory) {
-  const legacyDirectory = join14(directory, LEGACY_WORKSPACE_DIR);
-  if (!existsSync16(legacyDirectory)) {
+  const legacyDirectory = join15(directory, LEGACY_WORKSPACE_DIR);
+  if (!existsSync18(legacyDirectory)) {
     return { migrated: false, skipped: [] };
   }
-  const targetDirectory = join14(directory, WORKSPACE_DIR);
+  const targetDirectory = join15(directory, WORKSPACE_DIR);
   const skipped = [];
   try {
     const migrated = copyMissingEntries(legacyDirectory, targetDirectory, targetDirectory, skipped);
@@ -21756,7 +34688,7 @@ function migrateLegacyWorkspaceDirectory(directory) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/shared/migrate-legacy-plugin-entry.ts
-import * as fs3 from "node:fs";
+import * as fs5 from "node:fs";
 
 // ../../../../omo-engine/omo-opencode/src/shared/plugin-entry-migrator.ts
 function isLegacyEntry(entry) {
@@ -21801,10 +34733,10 @@ function updateJsoncPluginArray(content, pluginEntries) {
   return applyEdits(content, edits);
 }
 function migrateLegacyPluginEntry(configPath) {
-  if (!fs3.existsSync(configPath))
+  if (!fs5.existsSync(configPath))
     return false;
   try {
-    const content = fs3.readFileSync(configPath, "utf-8");
+    const content = fs5.readFileSync(configPath, "utf-8");
     if (!content.includes(LEGACY_PLUGIN_NAME))
       return false;
     const parseResult = parseJsoncSafe2(content);
@@ -21817,14 +34749,14 @@ function migrateLegacyPluginEntry(configPath) {
     if (!updated || updated === content)
       return false;
     const tempPath = `${configPath}.tmp`;
-    fs3.writeFileSync(tempPath, updated, "utf-8");
-    const tempFileDescriptor = fs3.openSync(tempPath, "r+");
+    fs5.writeFileSync(tempPath, updated, "utf-8");
+    const tempFileDescriptor = fs5.openSync(tempPath, "r+");
     try {
-      fs3.fsyncSync(tempFileDescriptor);
+      fs5.fsyncSync(tempFileDescriptor);
     } finally {
-      fs3.closeSync(tempFileDescriptor);
+      fs5.closeSync(tempFileDescriptor);
     }
-    fs3.renameSync(tempPath, configPath);
+    fs5.renameSync(tempPath, configPath);
     log2("[migrateLegacyPluginEntry] Auto-migrated opencode.json plugin entry", {
       configPath,
       from: LEGACY_PLUGIN_NAME,
@@ -21872,10 +34804,10 @@ function planArtifactTouched(directory) {
   try {
     if (!directory)
       return false;
-    const plansDir = join15(directory, ".omo", "plans");
-    if (!existsSync18(plansDir))
+    const plansDir = join16(directory, ".omo", "plans");
+    if (!existsSync20(plansDir))
       return false;
-    return readdirSync5(plansDir).some((entry) => entry.endsWith(".md"));
+    return readdirSync7(plansDir).some((entry) => entry.endsWith(".md"));
   } catch {
     return false;
   }
