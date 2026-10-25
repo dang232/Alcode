@@ -65,27 +65,6 @@ type SystemRuntimeDeps = {
   clientReloadDelayMs: number;
 };
 
-const NOTIFICATION_CLAIM_TTL_MS = 10_000;
-const notificationClaims = new Map<string, number>();
-
-const claimNotification = (key: string): boolean => {
-  const now = Date.now();
-  for (const [claimKey, claimedAt] of notificationClaims) {
-    if (now - claimedAt > NOTIFICATION_CLAIM_TTL_MS) {
-      notificationClaims.delete(claimKey);
-    }
-  }
-
-  const existing = notificationClaims.get(key);
-  if (existing && now - existing <= NOTIFICATION_CLAIM_TTL_MS) {
-    return false;
-  }
-
-  notificationClaims.set(key, now);
-  return true;
-};
-
-
 const getAlcodeConfigDir = (): string => {
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA;
