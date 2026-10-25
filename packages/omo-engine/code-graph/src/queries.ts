@@ -60,6 +60,25 @@ export interface QueryEvidence {
   readonly confidence: number;
 }
 
+/** Why a search hit matched, from strongest to weakest. */
+export type SearchMatchReason =
+  | "exact-name"
+  | "exact-qualified"
+  | "prefix"
+  | "token"
+  | "substring"
+  | "fuzzy";
+
+/** Numeric tier for a {@link SearchMatchReason}: lower wins. */
+const SEARCH_RANK: Record<SearchMatchReason, number> = {
+  "exact-name": 0,
+  "exact-qualified": 1,
+  prefix: 2,
+  token: 3,
+  substring: 4,
+  fuzzy: 5,
+};
+
 /** One bounded result row: identity, source location, evidence, links. */
 export interface QueryItem {
   readonly id: string;
@@ -71,6 +90,10 @@ export interface QueryItem {
   readonly confidence: number;
   /** `pk-` record ids linked from this node via LINKS_KNOWLEDGE. */
   readonly knowledgeIds: readonly string[];
+  /** Search only: which tier produced this hit. Always set by `search`. */
+  readonly reason?: SearchMatchReason;
+  /** Search only: numeric tier (`SEARCH_RANK[reason]`); lower wins. Always set by `search`. */
+  readonly rank?: number;
 }
 
 /** Shared envelope every query returns; per-query extras extend it. */
@@ -282,9 +305,14 @@ function unresolvedFor(snapshot: GraphSnapshot, symbolId: string): string[] {
 }
 
 /**
- * Substring search over file and symbol nodes, ranked exact-first.
- * A path-shaped query with an unsupported extension reports unindexed
- * instead of searching: non-program files are never analyzed.
+ * Tiered search over file and symbol nodes: exact-name and
+ * exact-qualified outrank prefix, token/camelCase and substring matches,
+ * with a fuzzy near-miss tier last so typos still find their symbol.
+ * Every item carries its `reason` plus numeric `rank` (lower wins); ties
+ * break by reason priority (exact-name first), then the shorter file path,
+ * then the stable id. A path-shaped query with an unsupported extension
+ * reports unindexed instead of searching: non-program files are never
+ * analyzed.
  */
 export function search(
   snapshot: GraphSnapshot,
@@ -295,6 +323,19 @@ export function search(
   const freshness = options.freshness ?? "fresh";
   const limit = clampLimit(options.limit);
   const needle = query.toLowerCase();
+  if (needle.trim().length === 0) {
+    // An empty needle matches every node as a prefix tier, which would answer the
+    // whole graph behind a limit. Say so instead of returning an arbitrary slice.
+    return {
+      ...baseEnvelope(scope, freshness),
+      coverage: "indexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: ["empty query: name or path fragment required"],
+      unsupported: [],
+      items: [],
+    };
+  }
   if ((query.includes("/") || query.includes("\\")) && !isSupportedPath(query)) {
     return {
       ...baseEnvelope(scope, freshness),
@@ -306,23 +347,20 @@ export function search(
       items: [],
     };
   }
-  const ranked: { node: GraphNode; rank: number }[] = [];
+  const queryTokens = tokenizeIdentifier(query);
+  const ranked: { node: GraphNode; reason: SearchMatchReason; rank: number; distance?: number }[] = [];
   for (const node of snapshot.nodes) {
     if (node.kind !== "file" && node.kind !== "symbol") continue;
-    const id = node.id.toLowerCase();
-    const name = (node.name ?? "").toLowerCase();
-    const file = node.file.toLowerCase();
-    let rank = -1;
-    if (id === needle || name === needle) rank = 0;
-    else if (name.startsWith(needle)) rank = 1;
-    else if (name.includes(needle)) rank = 2;
-    else if (file.includes(needle)) rank = 3;
-    else if (id.includes(needle)) rank = 4;
-    if (rank >= 0) ranked.push({ node, rank });
+    const match = matchSearchTier(node, needle, queryTokens);
+    if (match !== undefined) ranked.push({ node, ...match });
   }
   ranked.sort((left, right) => rankCompare(left, right));
   const truncated = ranked.length > limit;
-  const items = ranked.slice(0, limit).map(({ node }) => nodeItem(snapshot, node, definesEvidence(snapshot, node)));
+  const items = ranked.slice(0, limit).map(({ node, reason, rank }) => ({
+    ...nodeItem(snapshot, node, definesEvidence(snapshot, node)),
+    reason,
+    rank,
+  }));
   const notes = truncated ? [`truncated to ${limit} of ${ranked.length} matches`] : [];
   return {
     ...baseEnvelope(scope, freshness),
@@ -335,31 +373,178 @@ export function search(
   };
 }
 
+/** Split an identifier or path into lowercase tokens on separators, camel humps, and letter/digit edges. */
+function tokenizeIdentifier(value: string): string[] {
+  const out: string[] = [];
+  for (const part of value.split(/[^A-Za-z0-9]+/)) {
+    if (part.length === 0) continue;
+    for (const hump of part.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/)) {
+      for (const piece of hump.split(/(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])/)) {
+        if (piece.length > 0) out.push(piece.toLowerCase());
+      }
+    }
+  }
+  return out;
+}
+
+/** True when `a` and `b` are within `maxDist` edits (early-exit Levenshtein). */
+function withinEditDistance(a: string, b: string, maxDist: number): boolean {
+  if (Math.abs(a.length - b.length) > maxDist) return false;
+  if (a === b) return true;
+  let prev: number[] = [];
+  for (let j = 0; j <= b.length; j += 1) prev.push(j);
+  for (let i = 1; i <= a.length; i += 1) {
+    const curr: number[] = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const cell = Math.min((prev[j] as number) + 1, (curr[j - 1] as number) + 1, (prev[j - 1] as number) + cost);
+      curr.push(cell);
+      if (cell < rowMin) rowMin = cell;
+    }
+    if (rowMin > maxDist) return false;
+    prev = curr;
+  }
+  return (prev[b.length] as number) <= maxDist;
+}
+
+/** First tier that matches, strongest first; undefined when nothing matches. */
+function matchSearchTier(
+  node: GraphNode,
+  needle: string,
+  queryTokens: readonly string[],
+): { reason: SearchMatchReason; rank: number; distance?: number } | undefined {
+  const nameLower = (node.name ?? "").toLowerCase();
+  const idLower = node.id.toLowerCase();
+  const fileLower = node.file.toLowerCase();
+  const baseLower = fileLower.split("/").pop() ?? fileLower;
+  if (needle.length === 0) return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (nameLower === needle) return { reason: "exact-name", rank: SEARCH_RANK["exact-name"] };
+  if (baseLower === needle) return { reason: "exact-name", rank: SEARCH_RANK["exact-name"] };
+  if (idLower === needle || `${nameLower}@${fileLower}` === needle) {
+    return { reason: "exact-qualified", rank: SEARCH_RANK["exact-qualified"] };
+  }
+  if (nameLower.startsWith(needle)) return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (baseLower.startsWith(needle)) return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (tokenMatches(node, queryTokens)) return { reason: "token", rank: SEARCH_RANK.token };
+  if (nameLower.includes(needle) || fileLower.includes(needle) || idLower.includes(needle)) {
+    return { reason: "substring", rank: SEARCH_RANK.substring };
+  }
+  const distance = fuzzyDistance(nameLower, needle);
+  if (distance !== null) return { reason: "fuzzy", rank: SEARCH_RANK.fuzzy, distance };
+  return undefined;
+}
+
+/** A query token (length 2+) is an exact or prefix hit on a name/file token. */
+function tokenMatches(node: GraphNode, queryTokens: readonly string[]): boolean {
+  const useful = queryTokens.filter((token) => token.length >= 2);
+  if (useful.length === 0) return false;
+  const targets = [...tokenizeIdentifier(node.name ?? ""), ...tokenizeIdentifier(node.file)];
+  if (targets.length === 0) return false;
+  // One direction only: the indexed token starts with the query token.
+  // The reverse (query starts with token) would promote typos such as
+  // "slugfy" (starts with the "slug" token) into the token tier and
+  // starve the fuzzy tier below it.
+  const hits = (query: string): boolean => targets.some((target) => target === query || target.startsWith(query));
+  // Every query token must hit: a multi-token query is a conjunction, never a
+  // disjunction. "operations.ts" once matched every TypeScript file through its
+  // "ts" token, which buried the file the user named under unrelated symbols.
+  return useful.every(hits);
+}
+
+/** Near-miss typo: same first letter, edit distance 1 (short) or 2 (longer). */
+/** Smallest edit distance to a name or one of its tokens, or null when nothing is close enough. */
+function fuzzyDistance(nameLower: string, needle: string): number | null {
+  if (needle.length < 3 || nameLower.length === 0) return null;
+  if (nameLower[0] !== needle[0]) return null;
+  const maxDist = needle.length <= 4 ? 1 : 2;
+  let best: number | null = null;
+  const consider = (candidate: string): void => {
+    if (candidate.length === 0 || candidate[0] !== needle[0]) return;
+    for (let distance = 1; distance <= maxDist; distance += 1) {
+      if (best !== null && distance >= best) return;
+      if (withinEditDistance(needle, candidate, distance)) {
+        best = distance;
+        return;
+      }
+    }
+  };
+  consider(nameLower);
+  for (const token of tokenizeIdentifier(nameLower)) consider(token);
+  return best;
+}
+
 function rankCompare(
-  left: { node: GraphNode; rank: number },
-  right: { node: GraphNode; rank: number },
+  left: { node: GraphNode; reason: SearchMatchReason; rank: number; distance?: number },
+  right: { node: GraphNode; reason: SearchMatchReason; rank: number; distance?: number },
 ): number {
   if (left.rank !== right.rank) return left.rank - right.rank;
-  return left.node.id < right.node.id ? -1 : 1;
+  const reasonDelta = SEARCH_RANK[left.reason] - SEARCH_RANK[right.reason];
+  if (reasonDelta !== 0) return reasonDelta;
+  // Within the fuzzy tier the closer typo wins: a distance-1 candidate must not
+  // lose to a distance-2 one merely because its path is shorter.
+  const leftDistance = left.distance ?? Number.POSITIVE_INFINITY;
+  const rightDistance = right.distance ?? Number.POSITIVE_INFINITY;
+  if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+  // A file node outranks symbols defined in it: a basename query names the file.
+  if (left.node.kind !== right.node.kind) return left.node.kind === "file" ? -1 : 1;
+  if (left.node.file.length !== right.node.file.length) return left.node.file.length - right.node.file.length;
+  if (left.node.file !== right.node.file) return left.node.file < right.node.file ? -1 : 1;
+  return left.node.id < right.node.id ? -1 : left.node.id > right.node.id ? 1 : 0;
 }
 
 function definesEvidence(snapshot: GraphSnapshot, node: GraphNode): QueryEvidence[] {
   if (node.kind === "file") return [indexedEvidence(node)];
-  const evidence = snapshot.edges
-    .filter((edge) => edge.kind === "DEFINES" && edge.to === node.id)
+  const evidence = (indexFor(snapshot).edgesByTo.get(node.id) ?? [])
+    .filter((edge) => edge.kind === "DEFINES")
     .map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
   return evidence.length > 0 ? evidence : [indexedEvidence(node)];
 }
 
+/**
+ * Per-snapshot lookup index, built once and reused for every query against that
+ * snapshot. Without it, callersOf/calleesOf ran a linear node scan inside the
+ * edge loop: on a 421k-node, 427k-edge repository that made one `context` call
+ * cost 11 s. Weak so a rebuilt snapshot is collected with its index.
+ */
+type SnapshotIndex = {
+  nodeById: Map<string, GraphNode>;
+  edgesByFrom: Map<string, GraphEdge[]>;
+  edgesByTo: Map<string, GraphEdge[]>;
+};
+
+const snapshotIndexes = new WeakMap<GraphSnapshot, SnapshotIndex>();
+
+function indexFor(snapshot: GraphSnapshot): SnapshotIndex {
+  const cached = snapshotIndexes.get(snapshot);
+  if (cached !== undefined) return cached;
+  const nodeById = new Map<string, GraphNode>();
+  for (const node of snapshot.nodes) nodeById.set(node.id, node);
+  const edgesByFrom = new Map<string, GraphEdge[]>();
+  const edgesByTo = new Map<string, GraphEdge[]>();
+  for (const edge of snapshot.edges) {
+    const from = edgesByFrom.get(edge.from);
+    if (from === undefined) edgesByFrom.set(edge.from, [edge]);
+    else from.push(edge);
+    const to = edgesByTo.get(edge.to);
+    if (to === undefined) edgesByTo.set(edge.to, [edge]);
+    else to.push(edge);
+  }
+  const built = { nodeById, edgesByFrom, edgesByTo };
+  snapshotIndexes.set(snapshot, built);
+  return built;
+}
+
 function findNode(snapshot: GraphSnapshot, id: string): GraphNode | undefined {
-  return snapshot.nodes.find((node) => node.id === id);
+  return indexFor(snapshot).nodeById.get(id);
 }
 
 function callersOf(snapshot: GraphSnapshot, symbolId: string): { caller: GraphNode; ref: string }[] {
   const out: { caller: GraphNode; ref: string }[] = [];
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "CALLS_STATIC" || edge.to !== symbolId) continue;
-    const caller = findNode(snapshot, edge.from);
+  const index = indexFor(snapshot);
+  for (const edge of index.edgesByTo.get(symbolId) ?? []) {
+    if (edge.kind !== "CALLS_STATIC") continue;
+    const caller = index.nodeById.get(edge.from);
     if (caller !== undefined) out.push({ caller, ref: edge.ref });
   }
   out.sort((left, right) => (left.caller.id < right.caller.id ? -1 : 1));
@@ -368,9 +553,10 @@ function callersOf(snapshot: GraphSnapshot, symbolId: string): { caller: GraphNo
 
 function calleesOf(snapshot: GraphSnapshot, symbolId: string): { callee: GraphNode; ref: string }[] {
   const out: { callee: GraphNode; ref: string }[] = [];
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "CALLS_STATIC" || edge.from !== symbolId) continue;
-    const callee = findNode(snapshot, edge.to);
+  const index = indexFor(snapshot);
+  for (const edge of index.edgesByFrom.get(symbolId) ?? []) {
+    if (edge.kind !== "CALLS_STATIC") continue;
+    const callee = index.nodeById.get(edge.to);
     if (callee !== undefined) out.push({ callee, ref: edge.ref });
   }
   out.sort((left, right) => (left.callee.id < right.callee.id ? -1 : 1));

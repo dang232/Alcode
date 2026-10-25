@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { indexFiles } from "./extract";
+import type { GraphSnapshot } from "./extract";
 import { computeScopeFingerprint } from "./schema";
 import {
   detectChanges,
@@ -250,4 +251,85 @@ describe("code-graph queries", () => {
     },
     TEST_TIMEOUT_MS,
   );
+
+  it("#given a typo #when search runs #then fuzzy finds the near-miss with its reason", () => {
+    // given: a symbol the old substring search could never reach
+    const snapshot: GraphSnapshot = {
+      nodes: [
+        { id: "const:slugify@utils/text.ts", kind: "symbol", file: "utils/text.ts", line: 3, name: "slugify" },
+        { id: "file:utils/text.ts", kind: "file", file: "utils/text.ts", line: 1, name: "utils/text.ts" },
+      ],
+      edges: [],
+    };
+
+    // when
+    const result = search(snapshot, "slugfy", options());
+
+    // then: the near-miss resolves with an explicit fuzzy reason and tier rank
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.items.some((item) => item.reason === "fuzzy")).toBe(true);
+    const hit = result.items.find((item) => item.id === "const:slugify@utils/text.ts");
+    expect(hit?.reason).toBe("fuzzy");
+    expect(hit?.rank).toBe(5);
+    expect(hit?.file).toBe("utils/text.ts");
+    expect(hit?.line).toBe(3);
+    expect(hit?.confidence).toBe(1);
+    expect(hit?.evidence.length).toBeGreaterThan(0);
+  });
+
+  it("#given a camelCase query #when search runs #then every query token must hit and the reason is token", () => {
+    // given: one identifier carrying both camel pieces, one carrying only one.
+    // The measured defect this pins: with any-token matching, "operations.ts"
+    // matched every TypeScript file through its "ts" token and buried the file
+    // the user named under unrelated symbols.
+    const snapshot: GraphSnapshot = {
+      nodes: [
+        { id: "const:projectModelSlug@utils/text.ts", kind: "symbol", file: "utils/text.ts", line: 3, name: "projectModelSlug" },
+        { id: "const:createProject@api/projects.ts", kind: "symbol", file: "api/projects.ts", line: 7, name: "createProject" },
+      ],
+      edges: [],
+    };
+
+    // when
+    const result = search(snapshot, "projectSlug", options());
+
+    // then: the conjunctive hit carries an explicit token reason and tier rank,
+    // and a node matching only one piece never appears.
+    expect(result.items.length).toBe(1);
+    const [only] = result.items;
+    expect(only?.id).toBe("const:projectModelSlug@utils/text.ts");
+    expect(only?.reason).toBe("token");
+    expect(only?.rank).toBe(3);
+    expect(only?.confidence).toBe(1);
+    expect(only?.evidence.length).toBeGreaterThan(0);
+  });
+
+  it("#given exact and prefix candidates #when search runs #then exact-name outranks prefix and ties prefer shorter paths", () => {
+    // given: two exact names on different paths plus a longer prefix name
+    const snapshot: GraphSnapshot = {
+      nodes: [
+        { id: "fn:foo@aaa/long-path-file.ts", kind: "symbol", file: "aaa/long-path-file.ts", line: 2, name: "foo" },
+        { id: "fn:foo@z.ts", kind: "symbol", file: "z.ts", line: 5, name: "foo" },
+        { id: "fn:foobar@z.ts", kind: "symbol", file: "z.ts", line: 9, name: "foobar" },
+      ],
+      edges: [],
+    };
+
+    // when
+    const result = search(snapshot, "foo", options());
+
+    // then: exact-name rows come first with the shorter path first, prefix last
+    expect(result.items.map((item) => item.id)).toEqual([
+      "fn:foo@z.ts",
+      "fn:foo@aaa/long-path-file.ts",
+      "fn:foobar@z.ts",
+    ]);
+    expect(result.items[0]?.reason).toBe("exact-name");
+    expect(result.items[0]?.rank).toBe(0);
+    expect(result.items[1]?.reason).toBe("exact-name");
+    expect(result.items[1]?.rank).toBe(0);
+    expect(result.items[2]?.reason).toBe("prefix");
+    expect(result.items[2]?.rank).toBe(2);
+    for (const item of result.items) expect(item.confidence).toBe(1);
+  });
 });

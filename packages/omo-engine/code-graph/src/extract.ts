@@ -51,6 +51,34 @@ import {
   isVariableStatement,
 } from "typescript/unstable/ast";
 import type { NamedExports, Node, SourceFile } from "typescript/unstable/ast";
+import {
+  MAX_CONTENT_FILE_BYTES,
+  MAX_CONTENT_TOKENS_PER_FILE,
+  contentFileLanguage,
+  contentTokenize,
+  emptyContentIndex,
+} from "./schema";
+import type { ContentIndex, ContentSkip, FileContentEntry } from "./schema";
+
+export { searchContent } from "./schema";
+export type {
+  ContentCoverage,
+  ContentIndex,
+  ContentMatchReason,
+  ContentSearchItem,
+  ContentSearchOptions,
+  ContentSearchResult,
+  ContentSkip,
+  ContentSkipReason,
+  FileContentEntry,
+} from "./schema";
+export {
+  CONTENT_DEFAULT_LIMIT,
+  CONTENT_MAX_LIMIT,
+  CONTENT_SEARCH_TIME_BUDGET_MS,
+  MAX_CONTENT_FILE_BYTES,
+  MAX_CONTENT_TOKENS_PER_FILE,
+} from "./schema";
 
 export type EdgeKind =
   | "DEFINES"
@@ -114,6 +142,12 @@ export interface GraphEdge {
 export interface GraphSnapshot {
   readonly nodes: readonly GraphNode[];
   readonly edges: readonly GraphEdge[];
+  /**
+   * Extraction-time source-content index for searchContent. Kept outside
+   * nodes/edges so existing consumers are untouched; absent only on
+   * snapshots built before content search existed.
+   */
+  readonly content?: ContentIndex;
   /**
    * Absolute directory every `file` field is relative to. Node ids are rooted
    * here, not at the project root, so any caller that needs a real path must
@@ -297,13 +331,19 @@ class GraphBuilder {
   private readonly nodes = new Map<string, GraphNode>();
   private readonly edges = new Map<string, GraphEdge>();
   private readonly callOrdinals = new Map<string, number>();
+  private readonly contentFiles = new Map<string, FileContentEntry>();
+  private readonly contentSkipped: ContentSkip[] = [];
 
   constructor(private readonly root: string) {}
 
   snapshot(): GraphSnapshot {
     const nodes = [...this.nodes.values()].sort((left, right) => (left.id < right.id ? -1 : 1));
     const edges = [...this.edges.values()].sort((left, right) => (left.id < right.id ? -1 : 1));
-    return { nodes, edges };
+    const files = [...this.contentFiles.values()].sort((left, right) => (left.file < right.file ? -1 : 1));
+    const byFile: Record<string, FileContentEntry> = {};
+    for (const entry of files) byFile[entry.file] = entry;
+    const skipped = [...this.contentSkipped].sort((left, right) => (left.file < right.file ? -1 : 1));
+    return { nodes, edges, content: { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: byFile, skipped } };
   }
 
   addEntries(project: Project, entries: readonly string[]): void {
@@ -329,6 +369,7 @@ class GraphBuilder {
       const rel = this.relOf(key);
       const ctx: FileCtx = { key, rel, sourceFile, project, checker: project.checker };
       this.files.set(key, ctx);
+      this.indexContent(ctx);
       this.nodes.set(`file:${rel}`, { id: `file:${rel}`, kind: "file", file: rel, line: 1, name: rel });
       for (const target of this.staticImportTargets(ctx)) {
         if (!this.files.has(target)) queue.push(target);
@@ -365,6 +406,57 @@ class GraphBuilder {
         ref: `${file}:1`,
       });
     }
+  }
+
+  /**
+   * Derive the bounded per-file content record from the source text the
+   * extractor already holds. Binary or oversized files are skipped with
+   * a counted record, never silently.
+   */
+  private indexContent(ctx: FileCtx): void {
+    const language = contentFileLanguage(ctx.rel);
+    const isTest = isTestPath(ctx.rel);
+    const text = ctx.sourceFile.getFullText();
+    if (text.includes("\0")) {
+      this.contentSkipped.push({ file: ctx.rel, reason: "binary", language, isTest });
+      return;
+    }
+    if (text.length > MAX_CONTENT_FILE_BYTES) {
+      this.contentSkipped.push({ file: ctx.rel, reason: "too-large", language, isTest });
+      return;
+    }
+    const lines = text.split("\n").map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
+    const perToken = new Map<string, number[]>();
+    lines.forEach((line, index) => {
+      for (const token of contentTokenize(line)) {
+        const seen = perToken.get(token);
+        if (seen) {
+          if (seen[seen.length - 1] !== index + 1) seen.push(index + 1);
+        } else {
+          perToken.set(token, [index + 1]);
+        }
+      }
+    });
+    const tokens: Record<string, readonly number[]> = {};
+    let kept = 0;
+    let tokenTruncated = false;
+    for (const [token, atLines] of perToken) {
+      if (kept >= MAX_CONTENT_TOKENS_PER_FILE) {
+        tokenTruncated = true;
+        break;
+      }
+      tokens[token] = atLines;
+      kept += 1;
+    }
+    this.contentFiles.set(ctx.rel, {
+      file: ctx.rel,
+      language,
+      isTest,
+      lines,
+      tokens,
+      tokenCount: perToken.size,
+      tokenTruncated,
+    });
   }
 
   private relOf(key: string): string {
@@ -758,7 +850,7 @@ class GraphBuilder {
 }
 
 export function indexFiles(entryFiles: readonly string[], options: IndexOptions = {}): GraphSnapshot {
-  if (entryFiles.length === 0) return { nodes: [], edges: [] };
+  if (entryFiles.length === 0) return { nodes: [], edges: [], content: emptyContentIndex() };
   const absoluteEntries = entryFiles.map((entry) => resolve(entry));
   const root = commonDir(absoluteEntries.map(toPosixPath));
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
