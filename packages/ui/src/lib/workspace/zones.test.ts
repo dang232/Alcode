@@ -9,6 +9,7 @@ import {
   zoneViewsSchema,
   settleZones,
   shownContextModes,
+  zoneOfMode,
   type ContextZonePlacement,
   type ZonedPanel,
 } from './zones';
@@ -90,5 +91,19 @@ describe('workspace zones', () => {
     expect(keepZoneViewsOnTabs(zoneViewsSchema.parse({ left: { isOpen: true, expanded: true, activeTabId: 'gone' } }), ids).left).toEqual(CLOSED_ZONE_VIEW);
     expect(keepZoneViewsOnTabs(zoneViewsSchema.parse({ bottom: { isOpen: true, expanded: false, activeTabId: 'git' } }), ids).bottom)
       .toEqual({ isOpen: true, expanded: false, activeTabId: 'git' });
+  });
+});
+
+describe('editor-side surfaces', () => {
+  test('the code graph never lands in the bottom strip, even when stored that way', () => {
+    expect(zoneOfMode({ 'code-graph': 'bottom' }, 'code-graph')).toBe('right');
+  });
+
+  test('the left zone is still a side placement and is kept', () => {
+    expect(zoneOfMode({ 'code-graph': 'left' }, 'code-graph')).toBe('left');
+  });
+
+  test('other surfaces keep the bottom zone they were placed in', () => {
+    expect(zoneOfMode({ activity: 'bottom' } as ContextZonePlacement, 'activity')).toBe('bottom');
   });
 });

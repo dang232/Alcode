@@ -15,7 +15,9 @@ type BuiltInContextSurfaceId =
   | 'notes'
   | 'context'
   | 'browser'
-  | 'chat';
+  | 'chat'
+  | 'code-graph'
+  | 'activity';
 
 export type ContextSurfaceId = BuiltInContextSurfaceId | `plugin:${string}`;
 
@@ -39,7 +41,7 @@ export type ContextSurfaceDescriptor = {
   /** Short tooltip explanation shown on the rail. */
   descriptionKey: I18nKey;
   /**
-   * Which of the two default widths the panel opens at until the user resizes
+   * Which of the default widths the panel opens at until the user resizes
    * this surface. The panel never takes more than the chat area leaves after
    * a minimum chat column, so a small window shows it narrower.
    */
@@ -48,11 +50,29 @@ export type ContextSurfaceDescriptor = {
 
 /** Default panel widths in px. Every surface, built-in or guest, uses one. */
 export const CONTEXT_SURFACE_WIDTHS = {
+  // A workspace that draws its own canvas beside an inspector: the code graph.
+  editor: 900,
   // Code side by side with the chat: files, diffs, the terminal, the walkthrough.
   wide: 640,
   // A list or a card: every other surface, guest panels included.
   regular: 540,
 } as const;
+
+/**
+ * A graph needs roughly half the editor area to keep its three regions legible,
+ * so its first open is a share of the window rather than a fixed tier. The tier
+ * stays the floor, and the panel's own clamps still keep the chat usable.
+ */
+export const CODE_GRAPH_WIDTH_RATIO = 0.5;
+export const CODE_GRAPH_WIDTH_MAX = 1400;
+
+export const defaultContextPanelWidth = (mode: ContextPanelMode, availableWidth: number | null): number => {
+  const tier = getContextSurfaceDefaultWidth(mode);
+  if (mode !== 'code-graph' || availableWidth === null || !Number.isFinite(availableWidth) || availableWidth <= 0) {
+    return tier;
+  }
+  return Math.round(Math.min(Math.max(availableWidth * CODE_GRAPH_WIDTH_RATIO, tier), CODE_GRAPH_WIDTH_MAX));
+};
 
 type ContextSurfaceWidth = keyof typeof CONTEXT_SURFACE_WIDTHS;
 
@@ -137,6 +157,24 @@ export const CONTEXT_SURFACES: readonly ContextSurfaceDescriptor[] = [
     mode: 'notes',
     icon: 'book-marked',
     labelKey: 'contextRail.surface.notes',
+    availability: 'always',
+  },
+  {
+    id: 'code-graph',
+    descriptionKey: 'codeGraph.rail.description',
+    width: 'editor',
+    mode: 'code-graph',
+    icon: 'flow-chart',
+    labelKey: 'codeGraph.rail.label',
+    availability: 'always',
+  },
+  {
+    id: 'activity',
+    descriptionKey: 'activity.rail.description',
+    width: 'wide',
+    mode: 'activity',
+    icon: 'pulse',
+    labelKey: 'activity.rail.label',
     availability: 'always',
   },
   {

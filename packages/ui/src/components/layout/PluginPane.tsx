@@ -718,12 +718,13 @@ export const PluginPane: React.FC<PluginPaneProps> = ({
           showGuestToast(request);
         },
         openUrl: openExternalUrl,
-        openSurface: (surfaceMode) => openGuestSurface({
+        openSurface: (surfaceMode, file) => openGuestSurface({
           mode: surfaceMode,
           // A status section in a chat draft without a project has no
           // directory of its own; the rail opens its panels under the chat's.
           directory: directoryRef.current || effectiveDirectoryRef.current || null,
           supported: !isVSCodeRuntime() && !isMobileSurfaceRuntime(),
+          file: file ?? null,
         }),
         writeClipboard: async (text) => {
           const result = await copyTextToClipboard(text);

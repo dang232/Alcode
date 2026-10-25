@@ -14,6 +14,8 @@ type OpenGuestSurfaceOptions = {
   directory: string | null;
   /** VS Code and mobile have no context panel for guests. */
   supported: boolean;
+  /** A project-relative file to focus when the caller opens the code graph. */
+  file?: string | null;
 };
 
 const isShown = (directory: string, mode: ContextPanelMode): boolean => {
@@ -26,10 +28,18 @@ const isShown = (directory: string, mode: ContextPanelMode): boolean => {
  * by what the panel shows afterwards. A surface already on screen stays open:
  * the rail toggles it closed, the SDK call only ever opens.
  */
-export const openGuestSurface = ({ mode, directory, supported }: OpenGuestSurfaceOptions): GuestOpenSurfaceResult => {
+export const openGuestSurface = ({ mode, directory, supported, file }: OpenGuestSurfaceOptions): GuestOpenSurfaceResult => {
   if (!supported) return { ok: false, code: 'UNSUPPORTED', message: 'This OpenChamber surface has no side panel.' };
   const key = directory ? normalizeContextPanelDirectoryKey(directory) : '';
   if (!key) return { ok: false, code: 'NO_DIRECTORY', message: 'No chat or project is open.' };
+  // A file-bearing code-graph request goes through the same action the app's own
+  // panes use, so the guest never owns a second graph selection of its own.
+  if (mode === 'code-graph' && file) {
+    useUIStore.getState().openCodeGraphAt(key, file);
+    return isShown(key, mode)
+      ? { ok: true }
+      : { ok: false, code: 'UNSUPPORTED', message: 'That surface cannot open here.' };
+  }
   if (isShown(key, mode)) return { ok: true };
   useUIStore.getState().openContextSurface(key, mode);
   return isShown(key, mode)

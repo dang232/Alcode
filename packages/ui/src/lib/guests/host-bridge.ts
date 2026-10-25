@@ -61,7 +61,7 @@ type HostBridgeEffects = {
   toast: (request: ToastRequest) => void;
   openUrl: (url: string) => Promise<boolean>;
   /** Open a context panel surface; the pane owns directory and runtime support. */
-  openSurface: (mode: ContextPanelMode) => GuestOpenSurfaceResult;
+  openSurface: (mode: ContextPanelMode, file?: string | null) => GuestOpenSurfaceResult;
   writeClipboard: (text: string) => Promise<boolean>;
   compose: (text: string, mode: 'replace' | 'append') => void;
   attach: (issue: AttachIssueRequest) => void;
@@ -307,7 +307,10 @@ export const answerGuestMessage = async (
       if (!isContextPanelMode(message.payload.surfaceId)) {
         return errorResult(message.id, 'Unknown surface.');
       }
-      const opened = effects.openSurface(message.payload.surfaceId);
+      const file = typeof message.payload.file === 'string' && message.payload.file.trim()
+        ? message.payload.file.trim().slice(0, 512)
+        : null;
+      const opened = effects.openSurface(message.payload.surfaceId, file);
       return opened.ok ? okResult(message.id) : errorResult(message.id, opened.message, opened.code);
     }
     case 'clipboard-write': {

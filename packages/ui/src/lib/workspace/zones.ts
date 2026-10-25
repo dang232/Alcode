@@ -12,6 +12,14 @@ type MovedContextZone = Exclude<ContextZone, 'right'>;
 
 export const CONTEXT_ZONES: readonly ContextZone[] = ['left', 'right', 'bottom'];
 
+/**
+ * Surfaces that open source beside themselves are read against a file, so they
+ * live beside the editor. A bottom strip under the chat composer leaves them
+ * full-width but a few hundred pixels tall, which is the one placement where a
+ * graph plus source cannot be read together.
+ */
+const EDITOR_SIDE_MODES: ReadonlySet<ContextPanelMode> = new Set<ContextPanelMode>(['code-graph']);
+
 /** Surface mode -> zone, for surfaces moved off the right. Per device. */
 export type ContextZonePlacement = Partial<Record<ContextPanelMode, MovedContextZone>>;
 
@@ -39,8 +47,10 @@ export type ZonedPanel<T extends ZonedTab = ZonedTab> = ContextZoneView & {
   zones: MovedZoneViews;
 };
 
-export const zoneOfMode = (placement: ContextZonePlacement, mode: ContextPanelMode): ContextZone =>
-  placement[mode] ?? 'right';
+export const zoneOfMode = (placement: ContextZonePlacement, mode: ContextPanelMode): ContextZone => {
+  const zone = placement[mode] ?? 'right';
+  return EDITOR_SIDE_MODES.has(mode) && zone === 'bottom' ? 'right' : zone;
+};
 
 export const getZoneView = (panel: ZonedPanel, zone: ContextZone): ContextZoneView => (
   zone === 'right'
