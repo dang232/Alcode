@@ -297,6 +297,9 @@ export type DagSelectedChecks = {
 export function selectVerificationChecks(
   scope: DagChangeScope,
   available: readonly DagVerifyCheck[],
+  // Graph assist is append-only: extra required checks join behind the selected set,
+  // deduplicated by checkId. Omitted without it, the selection reads exactly like today.
+  extraRequired?: readonly DagVerifyCheck[],
 ): DagSelectedChecks {
   const required: DagVerifyCheck[] = []
   const omitted: Array<{ readonly check: DagVerifyCheck; readonly reason: string }> = []
@@ -318,6 +321,14 @@ export function selectVerificationChecks(
     const reason = wants(check)
     if (reason === null) required.push(check)
     else omitted.push({ check, reason })
+  }
+  if (extraRequired !== undefined) {
+    const seen = new Set(required.map((check) => check.checkId))
+    for (const check of extraRequired) {
+      if (seen.has(check.checkId)) continue
+      seen.add(check.checkId)
+      required.push(check)
+    }
   }
   return { required, omitted }
 }

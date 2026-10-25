@@ -130,7 +130,45 @@ export { resolveDagNodeExecutionMode } from "./execution-mode"
 export type { DagExecutionModeSources } from "./execution-mode"
 
 export { applyDagSchedulerEvent, createDagScheduler } from "./scheduler"
-export type { DagNodeSpawnPolicy, DagNodeSpawnPolicyVerdict, DagScheduler, DagSchedulerOptions } from "./scheduler"
+export type { DagIntelligenceInput, DagNodeSpawnPolicy, DagNodeSpawnPolicyVerdict, DagScheduler, DagSchedulerOptions } from "./scheduler"
+
+export { buildTaskUnderstanding } from "./intelligence/understanding"
+export { toGraphAssist } from "./intelligence/assist"
+export type { GraphAssistBuildInput } from "./intelligence/assist"
+export { attributeNodeEvidence, buildNodeContext, renderNodeContext } from "./intelligence/node-context"
+export { applyPlanHints, derivePlanHints, renderPlanEvidence } from "./intelligence/plan-evidence"
+export { affectedTestPaths, selectImpactAwareChecks } from "./intelligence/verification-plan"
+export { deriveKnowledgeCandidate } from "./intelligence/knowledge-feedback"
+export type { KnowledgeCandidate, DeriveKnowledgeCandidateInput } from "./intelligence/knowledge-feedback"
+export type {
+  EvidenceQueryKind,
+  KnowledgeTrust,
+  NodeContextPackage,
+  NodeEvidenceInput,
+  PlanHints,
+  QueryObservation,
+  TaskUnderstanding,
+  TaskUnderstandingInput,
+  UnderstandingConstraint,
+  UnderstandingScope,
+  UnderstandingSymbol,
+  UnderstandingUncertainty,
+} from "./intelligence/types"
+
+export {
+  applyGraphSerialization,
+  isGraphSafeToParallelize,
+  recommendExtraSerialization,
+  recommendExtraVerification,
+  recommendGraphAssist,
+  withGraphAssistChecks,
+} from "./graph-assist"
+export type {
+  GraphAssistInput,
+  GraphAssistNeighbor,
+  GraphAssistRecommendation,
+  GraphImpactNeighborhood,
+} from "./graph-assist"
 
 export { persistDagNodeResult, readDagNodeResult } from "./results"
 

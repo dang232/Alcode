@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildStartSpec, type InjectedKnowledgeBlock, type InjectedKnowledgeRecord } from "./execute-spec"
+import { buildStartSpec, type InjectedGraphContext, type InjectedKnowledgeBlock, type InjectedKnowledgeRecord } from "./execute-spec"
 import { CTX, createFakeManager, makeDeps } from "./__fixtures__/task-tool-fakes"
 
 function knowledgeRecord(overrides: Partial<InjectedKnowledgeRecord> = {}): InjectedKnowledgeRecord {
@@ -68,6 +68,42 @@ describe("inject-consume", () => {
     expect(spec.prompt.indexOf("SKILL DIRECTIVE")).toBeGreaterThanOrEqual(0)
     expect(spec.prompt.indexOf("SKILL DIRECTIVE")).toBeLessThan(spec.prompt.indexOf("untrusted memory"))
     expect(spec.prompt).toContain("SKILL DIRECTIVE\n\ndo the thing")
+  })
+
+  test("#given knowledge plus a graph context #when building the worker spec #then the linked record id and freshness marker land after the knowledge suffix", () => {
+    // given queried graph rows plus a linked rationale record
+    const deps = makeDeps(createFakeManager({}))
+    const graph: InjectedGraphContext = {
+      symbols: [{ id: "fn:add@math.ts", file: "math.ts", line: 1 }],
+      impacted: [{ id: "fn:run@main.ts", file: "main.ts", line: 5 }],
+      knowledgeIds: ["pk-999999999999"],
+      freshness: "fresh",
+      revision: "a".repeat(40),
+    }
+    // when the spec is built with both blocks
+    const spec = buildStartSpec({ prompt: "do the thing" }, { category: "quick" }, CTX.sessionManager.getSessionId(), deps, CTX.cwd, undefined, block([knowledgeRecord()]), graph)
+    // then the worker prompt carries the linked record id and the freshness marker
+    expect(spec.prompt).toContain("pk-999999999999")
+    expect(spec.prompt).toContain("graph freshness: fresh")
+    // and the graph block trails the knowledge suffix, never policy position
+    expect(spec.prompt.indexOf("untrusted memory")).toBeLessThan(spec.prompt.indexOf("graph freshness: fresh"))
+    expect(spec.prompt.indexOf("fn:add@math.ts")).toBeLessThan(spec.prompt.indexOf("pk-999999999999"))
+    // and the spec still routes to the same worker
+    expect(spec.category).toBe("quick")
+    expect(spec.parent_session_id).toBe("parent-session-1")
+  })
+
+  test("#given knowledge without a graph context #when building the spec #then the prompt is byte-identical to the knowledge-only spec", () => {
+    // given the same spawn with and without graph context
+    const deps = makeDeps(createFakeManager({}))
+    const params = { prompt: "do the thing" } as const
+    const target = { category: "quick" } as const
+    const baseline = buildStartSpec(params, target, "parent", deps, "/project", undefined, block([knowledgeRecord()]))
+    // when no graph context is supplied
+    const withoutGraph = buildStartSpec(params, target, "parent", deps, "/project", undefined, block([knowledgeRecord()]), undefined)
+    // then only an explicit graph block changes the prompt
+    expect(withoutGraph.prompt).toBe(baseline.prompt)
+    expect(withoutGraph.prompt).not.toContain("graph freshness:")
   })
 
   test("#given a knowledge block #when building the spec #then every non-prompt field matches the no-knowledge spec", () => {
