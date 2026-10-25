@@ -22,6 +22,73 @@
   .dag-run-head { display: flex; align-items: center; gap: 8px; }
   .dag-run-name { font-size: 14px; font-weight: 600; margin: 0; }
   .dag-run-counts { margin: 0; color: var(--oc-muted); font-size: 12px; }
+  /* Activity timeline: one row per recorded instant. The row is a <button> for keyboard
+     access, so every box style a button normally carries is reset before the grid. */
+  .dag-activity-list { display: flex; flex-direction: column; gap: 2px; }
+  button.dag-activity-row {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    align-items: baseline;
+    gap: 2px 10px;
+    width: 100%;
+    margin: 0;
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--oc-radius);
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  button.dag-activity-row:hover { background: var(--oc-elevated); }
+  button.dag-activity-row:focus-visible { outline: none; border-color: var(--oc-focus); }
+  .dag-activity-time {
+    font-family: var(--oc-mono, monospace);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--oc-muted);
+    white-space: nowrap;
+  }
+  .dag-activity-node { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dag-activity-kind { font-size: 12px; color: var(--oc-muted); white-space: nowrap; }
+  .dag-activity-duration {
+    font-family: var(--oc-mono, monospace);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--oc-muted);
+    white-space: nowrap;
+  }
+  .dag-activity-notes { margin: 0; color: var(--oc-muted); font-size: 12px; overflow-wrap: anywhere; }
+  /* Diagnostics and flow trace: the same defect as Activity had - a <dl> whose dt/dd have no
+     rules renders as glued inline text. Both follow the .dag-details-list grid used above. */
+  .dag-diagnostics, .dag-history { display: flex; flex-direction: column; gap: 8px; }
+  .dag-diagnostics-box, .dag-flow-box { border-top: 1px solid var(--oc-border); padding-top: 12px; }
+  .dag-diagnostics-box > summary, .dag-flow-box > summary { cursor: pointer; font-weight: 600; }
+  .dag-diagnostics-list, .dag-flow-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px 12px;
+    margin: 8px 0 0;
+  }
+  .dag-diagnostics-term, .dag-flow-term {
+    margin: 0;
+    color: var(--oc-muted);
+    font-family: var(--oc-mono, monospace);
+    font-size: 12px;
+  }
+  .dag-diagnostics-value, .dag-flow-value { margin: 0; overflow-wrap: anywhere; }
+  .dag-flow-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--oc-border);
+  }
+  .dag-flow-id, .dag-flow-meta { margin: 0; color: var(--oc-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .dag-flow-id { font-family: var(--oc-mono, monospace); }
+  .dag-flow-error { margin: 8px 0 0; color: var(--oc-error); }
   .dag-graph { width: 100%; height: auto; min-height: 220px; background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); }
   .dag-graph-viewport { display: block; height: 320px; overflow: hidden; cursor: grab; touch-action: none; }
   .dag-graph-viewport:active { cursor: grabbing; }

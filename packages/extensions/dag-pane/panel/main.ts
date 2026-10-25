@@ -191,10 +191,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   const titleNode = text('h1', 'dag-title', '');
   const controls = el('div', 'dag-controls');
   const sessionSlot = el('div', 'dag-session-slot');
-  const viewSlot = el('div', 'dag-view-switcher');
   const fitSlot = el('div', 'dag-fit-slot');
   const refreshSlot = el('div', 'dag-refresh-slot');
-  controls.append(viewSlot, sessionSlot, fitSlot, refreshSlot);
+  controls.append(sessionSlot, fitSlot, refreshSlot);
   header.append(titleNode, controls);
 
   const noticeSlot = el('div', 'dag-notice-slot');
@@ -445,11 +444,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     }, { passive: false });
     viewport.addEventListener('pointerdown', (event) => {
       const pointer = event as PointerEvent;
-      try {
-        viewport.setPointerCapture(pointer.pointerId);
-      } catch {
-        // Best-effort: the drag still tracks through pointermove.
-      }
+      // Capturing on pointerdown retargets the release, and the browser then
+      // fires `click` on the viewport instead of the node group, so a plain tap
+      // never picked a task. Capture waits for a real drag instead.
       drag = { startX: pointer.clientX, startY: pointer.clientY, base: { ...view } };
       dragMoved = false;
       suppressNodeClick = false;
@@ -461,6 +458,11 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       const pointer = event as PointerEvent;
       if (!dragMoved && dragDistanceExceeded(drag.startX, drag.startY, pointer.clientX, pointer.clientY)) {
         dragMoved = true;
+        try {
+          viewport.setPointerCapture(pointer.pointerId);
+        } catch {
+          // Best-effort: the drag still tracks through pointermove.
+        }
       }
       if (dragMoved) {
         view = panView(drag.base, pointer.clientX - drag.startX, pointer.clientY - drag.startY);
@@ -769,35 +771,8 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     content.append(text('p', 'dag-activity-notes', notes.join(' · ')));
   };
 
-  const paintViewSwitcher = (): void => {
-    viewSlot.replaceChildren();
-    const runSlot = el('div', 'dag-view-button');
-    const activitySlot = el('div', 'dag-view-button');
-    const codeSlot = el('div', 'dag-view-button');
-    viewSlot.append(runSlot, activitySlot, codeSlot);
-    mountButton(runSlot, {
-      label: strings.viewRun,
-      variant: activeView === 'run' ? 'default' : 'outline',
-      size: 'sm',
-      onClick: () => switchView('run'),
-    });
-    mountButton(activitySlot, {
-      label: strings.viewActivity,
-      variant: activeView === 'activity' ? 'default' : 'outline',
-      size: 'sm',
-      onClick: () => switchView('activity'),
-    });
-    mountButton(codeSlot, {
-      label: strings.viewCode,
-      variant: activeView === 'code' ? 'default' : 'outline',
-      size: 'sm',
-      onClick: () => switchView('code'),
-    });
-  };
-
   // Content is always painted from the active view, in one place: a paint that
-  // names its own view leaves `activeView` disagreeing with the DOM, and the
-  // switcher then early-returns on every click (the pane looks frozen).
+  // names its own view leaves `activeView` disagreeing with the DOM,.
   const paintActiveView = (): void => {
     if (activeView === 'code') {
       paintCodeRoot();
@@ -817,7 +792,6 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     activeView = next;
     lastSectionKey = null;
     lastCodeKey = null;
-    paintViewSwitcher();
     paintActiveView();
   };
 
@@ -1410,11 +1384,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     let suppress = false;
     viewport.addEventListener('pointerdown', (event) => {
       const pointer = event as PointerEvent;
-      try {
-        viewport.setPointerCapture(pointer.pointerId);
-      } catch {
-        // Best-effort: the drag still tracks through pointermove.
-      }
+      // Capture waits for a real drag: capturing here retargets the release and
+      // the browser then fires `click` on the viewport, so a tap on a node would
+      // never reach the node group's own pick handler.
       drag = { startX: pointer.clientX, startY: pointer.clientY, base: { ...codeGraphView } };
       dragMoved = false;
       suppress = false;
@@ -1424,6 +1396,11 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       const pointer = event as PointerEvent;
       if (!dragMoved && dragDistanceExceeded(drag.startX, drag.startY, pointer.clientX, pointer.clientY)) {
         dragMoved = true;
+        try {
+          viewport.setPointerCapture(pointer.pointerId);
+        } catch {
+          // Best-effort: the drag still tracks through pointermove.
+        }
       }
       if (!dragMoved) return;
       codeGraphView = panView(drag.base, pointer.clientX - drag.startX, pointer.clientY - drag.startY);
@@ -1961,7 +1938,6 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   const paintChrome = (): void => {
     titleNode.textContent = strings.title;
     paintFollowHeader();
-    paintViewSwitcher();
     fitSlot.replaceChildren();
     mountButton(fitSlot, { label: strings.fit, variant: 'outline', size: 'sm', onClick: () => fitView() });
     refreshSlot.replaceChildren();
