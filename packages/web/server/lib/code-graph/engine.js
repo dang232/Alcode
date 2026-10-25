@@ -28,6 +28,8 @@ export {
   trace,
 } from '../../../../omo-engine/code-graph/src/queries.ts';
 export {
+  MAX_CONTENT_TOKENS_PER_FILE,
   STALE_AFTER_MS,
   computeScopeFingerprint,
+  searchContent,
 } from '../../../../omo-engine/code-graph/src/schema.ts';
