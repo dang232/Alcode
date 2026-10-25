@@ -15,6 +15,7 @@ import {
   computeFingerprint,
   type InvalidationCase,
   type ProjectKnowledgeRecord,
+  type RationaleNote,
 } from "./record";
 
 /**
@@ -71,10 +72,61 @@ export function evaluatePromotion(
   if (record.validationMethod === "none") failedChecks.push("method-none");
   if (!(record.confidence > 0.5)) failedChecks.push("confidence");
   if (!evidence.secretClean) failedChecks.push("secret");
+  // Rationale standing: a model-generated note is advisory until its own
+  // promotion verifies it. One unverified note blocks record promotion, so
+  // an explanation can never ride a claim's probe into verified fact.
+  if (
+    record.rationale !== undefined &&
+    record.rationale.notes.some((note) => note.standing !== "source-verified")
+  ) {
+    failedChecks.push("rationale-unverified");
+  }
   if (failedChecks.length > 0) return { outcome: "stays-hypothesis", record, failedChecks };
   return {
     outcome: "promoted",
     record: { ...record, category: "source-verified", validatedAt },
+    failedChecks,
+  };
+}
+
+export interface RationalePromotionEvidence {
+  readonly probe: HeadTreeProbe;
+  readonly secretClean: boolean;
+}
+
+export type RationalePromotionOutcome = "promoted" | "stays-hypothesis" | "refused-working-tree";
+
+export interface RationalePromotionResult {
+  readonly outcome: RationalePromotionOutcome;
+  readonly note: RationaleNote;
+  readonly failedChecks: readonly string[];
+}
+
+/**
+ * Per-note promotion gate for rationale explanations. Reuses the record trust
+ * states and the confidence grammar (`confidence` must exceed 0.5, mirroring
+ * the record gate): a model-generated note reaches `source-verified` only on
+ * live HEAD-tree evidence, never by assertion. The record gate additionally
+ * requires every attached note to hold that standing, so notes verify first
+ * and the claim's probe can never launder an unverified explanation.
+ */
+export function evaluateRationalePromotion(
+  note: RationaleNote,
+  evidence: RationalePromotionEvidence,
+): RationalePromotionResult {
+  if (evidence.probe.source !== "head-tree") {
+    return { outcome: "refused-working-tree", note, failedChecks: ["working-tree"] };
+  }
+  if (note.standing !== "unverified-hypothesis" && note.standing !== "previously-verified") {
+    return { outcome: "stays-hypothesis", note, failedChecks: ["standing-not-promotable"] };
+  }
+  const failedChecks: string[] = [];
+  if (!(note.confidence > 0.5)) failedChecks.push("confidence");
+  if (!evidence.secretClean) failedChecks.push("secret");
+  if (failedChecks.length > 0) return { outcome: "stays-hypothesis", note, failedChecks };
+  return {
+    outcome: "promoted",
+    note: { ...note, standing: "source-verified" },
     failedChecks,
   };
 }

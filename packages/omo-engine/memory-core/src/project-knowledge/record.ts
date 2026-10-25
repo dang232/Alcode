@@ -80,7 +80,62 @@ export interface KnowledgeScope {
   readonly runScope?: string;
 }
 
-/** Section 1: canonical field order 1-16. */
+/** Field 17 kinds: the closed set of rationale note slots on a record. */
+export type RationaleKind =
+  | "purpose"
+  | "design-intent"
+  | "invariant"
+  | "hazard"
+  | "history"
+  | "cross-reference"
+  | "verification-ref";
+
+export function isRationaleKind(value: string): value is RationaleKind {
+  return (
+    value === "purpose" ||
+    value === "design-intent" ||
+    value === "invariant" ||
+    value === "hazard" ||
+    value === "history" ||
+    value === "cross-reference" ||
+    value === "verification-ref"
+  );
+}
+
+/**
+ * One model-generated explanation attached to a record. `standing` reuses the
+   record trust states and `confidence` reuses the `CONFIDENCE_TEXT` grammar;
+   both are per-note so a single unverified note can never be read as fact.
+ */
+export interface RationaleNote {
+  readonly kind: RationaleKind;
+  readonly text: string;
+  readonly standing: ProjectKnowledgeCategory;
+  readonly confidence: number;
+}
+
+export interface KnowledgeRationale {
+  readonly notes: readonly RationaleNote[];
+}
+
+/**
+ * Entry-state rationale input (mirrors INV-02): notes carry no verified
+   standing. `standing` may be omitted (defaults to `unverified-hypothesis`)
+   or repeat it; anything higher refuses the write — a model-generated
+   explanation is never stored as verified fact.
+ */
+export interface NewRationaleNote {
+  readonly kind: RationaleKind;
+  readonly text: string;
+  readonly confidence: number;
+  readonly standing?: ProjectKnowledgeCategory;
+}
+
+export interface NewKnowledgeRationale {
+  readonly notes: readonly NewRationaleNote[];
+}
+
+/** Section 1: canonical field order 1-16, plus additive field 17 (rationale). */
 export interface ProjectKnowledgeRecord {
   readonly id: string;
   readonly projectId: string;
@@ -98,6 +153,13 @@ export interface ProjectKnowledgeRecord {
   readonly agentRole?: string;
   readonly invalidationConditions: readonly string[];
   readonly supersedes: string | null;
+  /**
+   * Field 17: optional rationale metadata (purpose, design intent, invariant,
+   * hazard, history, cross-references, verification refs). Purely additive:
+   * absent on old records, excluded from `computeRecordId` and
+   * `computeFingerprint`, so existing identities and bindings never shift.
+   */
+  readonly rationale?: KnowledgeRationale;
 }
 
 /** Entry-state input: no category (always `unverified-hypothesis`) and no id (recomputed). */
@@ -116,6 +178,7 @@ export interface NewKnowledgeInput {
   readonly agentRole?: string;
   readonly invalidationConditions: readonly string[];
   readonly supersedes?: string;
+  readonly rationale?: NewKnowledgeRationale;
 }
 
 export type CreateRecordResult =
@@ -199,6 +262,24 @@ function checkClaim(claim: string): string | undefined {
   return undefined;
 }
 
+function checkRationaleText(text: string): string | undefined {
+  // Rationale notes are single-statement explanations, same shape as a claim.
+  if (text.length === 0 || text.length > MAX_CLAIM_CHARS) return "invalid-rationale-text";
+  if (text.includes("\n") || text.includes("\r")) return "invalid-rationale-text";
+  return undefined;
+}
+
+function checkRationaleNotes(notes: readonly RationaleNote[]): string | undefined {
+  for (const note of notes) {
+    if (!isRationaleKind(note.kind)) return "invalid-rationale-kind";
+    const textFailure = checkRationaleText(note.text);
+    if (textFailure !== undefined) return textFailure;
+    if (!isKnowledgeCategory(note.standing)) return "invalid-rationale-standing";
+    if (!isConfidenceText(String(note.confidence))) return "invalid-rationale-confidence";
+  }
+  return undefined;
+}
+
 function checkCommonFields(record: ProjectKnowledgeRecord): string | undefined {
   if (!PROJECT_ID.test(record.projectId)) return "invalid-project";
   if (!isRepoRelativePath(record.sourceFile)) return "invalid-source-file";
@@ -219,6 +300,10 @@ function checkCommonFields(record: ProjectKnowledgeRecord): string | undefined {
     return "unknown-invalidation-case";
   }
   if (record.supersedes !== null && !RECORD_ID.test(record.supersedes)) return "invalid-supersedes";
+  if (record.rationale !== undefined) {
+    const rationaleFailure = checkRationaleNotes(record.rationale.notes);
+    if (rationaleFailure !== undefined) return rationaleFailure;
+  }
   return undefined;
 }
 
@@ -234,6 +319,26 @@ export function createRecord(input: NewKnowledgeInput): CreateRecordResult {
     runScope === undefined
       ? { writeScopes: [...input.scope.writeScopes] }
       : { writeScopes: [...input.scope.writeScopes], runScope };
+  // INV-02 for rationale: model-generated notes enter as
+  // `unverified-hypothesis`, never higher; anything else refuses the write.
+  let rationale: KnowledgeRationale | undefined;
+  if (input.rationale !== undefined && input.rationale.notes.length > 0) {
+    const notes: RationaleNote[] = [];
+    for (const note of input.rationale.notes) {
+      if (note.standing !== undefined && note.standing !== "unverified-hypothesis") {
+        return { kind: "refused", reason: "invalid-rationale-standing" };
+      }
+      if (containsSecretLikeMaterial(note.text)) return { kind: "refused", reason: "secret-found" };
+      if (!isRationaleKind(note.kind)) return { kind: "refused", reason: "invalid-rationale-kind" };
+      notes.push({
+        kind: note.kind,
+        text: note.text,
+        standing: "unverified-hypothesis",
+        confidence: note.confidence,
+      });
+    }
+    rationale = { notes };
+  }
   const record: ProjectKnowledgeRecord = {
     id: computeRecordId(input.sourceFile, input.sourceSymbol, input.claim),
     projectId: input.projectId,
@@ -251,6 +356,7 @@ export function createRecord(input: NewKnowledgeInput): CreateRecordResult {
     agentRole: input.agentRole,
     invalidationConditions: [...input.invalidationConditions],
     supersedes: input.supersedes ?? null,
+    rationale,
   };
   const failure = checkCommonFields(record);
   if (failure !== undefined) return { kind: "refused", reason: failure };
@@ -274,11 +380,14 @@ const EXTRA_KEYS = {
   agentRole: "pk-agent-role",
   invalidationConditions: "pk-invalidation-conditions",
   supersedes: "pk-supersedes",
+  rationale: "pk-rationale",
 } as const;
 
 export function renderRecordFile(record: ProjectKnowledgeRecord): string {
-  // Pairs keep the EXTRA_KEYS evidence at every entry; the four trailing fields
-  // stay absent (not empty) when unset so round-trip parsing sees no phantom keys.
+  // Pairs keep the EXTRA_KEYS evidence at every entry; the trailing optional
+  // fields stay absent (not empty) when unset so round-trip parsing sees no
+  // phantom keys. Old files predate `pk-rationale` and parse with
+  // `rationale` undefined.
   const pairs: Array<[string, string]> = [
     [EXTRA_KEYS.id, record.id],
     [EXTRA_KEYS.projectId, record.projectId],
@@ -297,10 +406,34 @@ export function renderRecordFile(record: ProjectKnowledgeRecord): string {
   if (record.scope.runScope !== undefined) pairs.push([EXTRA_KEYS.runScope, record.scope.runScope]);
   if (record.agentRole !== undefined) pairs.push([EXTRA_KEYS.agentRole, record.agentRole]);
   if (record.supersedes !== null) pairs.push([EXTRA_KEYS.supersedes, record.supersedes]);
+  if (record.rationale !== undefined) {
+    pairs.push([EXTRA_KEYS.rationale, JSON.stringify(record.rationale.notes)]);
+  }
   const extra = Object.fromEntries(pairs);
   // The claim is the description, so the memfs contract (non-empty description)
   // and this module's claim gate coincide.
   return renderMemoryFile({ description: record.claim, extra }, "");
+}
+
+/** Decodes the `pk-rationale` JSON note list; rejects anything else. */
+function decodeRationaleNotes(raw: string): readonly RationaleNote[] | undefined {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(candidate)) return undefined;
+  const notes: RationaleNote[] = [];
+  for (const entry of candidate) {
+    if (typeof entry !== "object" || entry === null) return undefined;
+    const { kind, text, standing, confidence } = entry as Record<string, unknown>;
+    if (typeof kind !== "string" || typeof text !== "string") return undefined;
+    if (typeof standing !== "string" || !isKnowledgeCategory(standing)) return undefined;
+    if (typeof confidence !== "number" || !isConfidenceText(String(confidence))) return undefined;
+    notes.push({ kind: kind as RationaleKind, text, standing, confidence });
+  }
+  return notes;
 }
 
 export type ParsedRecordFile =
@@ -343,6 +476,7 @@ export function parseRecordFile(path: string, content: string): ParsedRecordFile
   const agentRole = raw(EXTRA_KEYS.agentRole);
   const conditionsText = raw(EXTRA_KEYS.invalidationConditions);
   const supersedes = raw(EXTRA_KEYS.supersedes);
+  const rationaleText = raw(EXTRA_KEYS.rationale);
   if (
     projectId === undefined ||
     categoryText === undefined ||
@@ -371,6 +505,17 @@ export function parseRecordFile(path: string, content: string): ParsedRecordFile
   if (writeScopes === undefined || invalidationConditions === undefined) {
     return { kind: "dropped", reason: "malformed-list" };
   }
+  // Field 17 is additive: files written before it exist carry no key and load
+  // with `rationale` undefined. An empty stored list normalizes the same way.
+  let rationale: KnowledgeRationale | undefined;
+  if (rationaleText !== undefined) {
+    const notes = decodeRationaleNotes(rationaleText);
+    if (notes === undefined) return { kind: "dropped", reason: "malformed-rationale" };
+    for (const note of notes) {
+      if (containsSecretLikeMaterial(note.text)) return { kind: "secret", reason: "secret-found" };
+    }
+    if (notes.length > 0) rationale = { notes: [...notes] };
+  }
   const record: ProjectKnowledgeRecord = {
     id: computeRecordId(sourceFile, sourceSymbol, description),
     projectId,
@@ -388,6 +533,7 @@ export function parseRecordFile(path: string, content: string): ParsedRecordFile
     agentRole,
     invalidationConditions,
     supersedes: supersedes ?? null,
+    rationale,
   };
   const failure = checkCommonFields(record);
   if (failure !== undefined) return { kind: "dropped", reason: failure };
