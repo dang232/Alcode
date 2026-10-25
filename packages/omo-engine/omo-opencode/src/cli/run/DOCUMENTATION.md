@@ -5,7 +5,8 @@
 `cli/run` owns the managed request lifecycle: starting or attaching to an
 OpenCode server (`server-connection.ts`), resolving a session
 (`session-resolver.ts`), selecting the workflow (`workflow-select.ts`,
-`workflow-profile.ts`), dispatching the prompt through the async gate,
+`workflow-profile.ts`), building planner evidence for the task
+(`plan-evidence.ts`), dispatching the prompt through the async gate,
 streaming events (`event-*.ts`), polling for completion
 (`poll-for-completion.ts`, `completion.ts`), and tearing everything down
 (`runner.ts`). The 2.x wire protocol lives in exactly one module,
@@ -60,3 +61,37 @@ The 2.x prompt route has no per-prompt agent/model fields, so prompt
 input values are applied with switchAgent/switchModel first. A failed
 switch returns an error and the prompt is never sent, instead of
 silently running the wrong model.
+
+### Why planner evidence rides the prompt and nothing else
+
+`plan-evidence.ts` builds the bounded block the planning model receives:
+real code-graph queries (`indexFiles` -> `search` -> `symbolContext` /
+`impact` / `findTests`) over the run directory, plus project-knowledge
+records parsed from `project-knowledge/*.md`, narrowed to one task and
+rendered through the engine's `buildTaskUnderstanding` /
+`renderPlanEvidence` contract. It is composed into the same text part
+the run already dispatched, so the planner sees it before decomposing
+and no second request, session, index, or store is introduced.
+
+- Only non-`direct` workflow strategies build it (`preparePlannerTurn`),
+  and `OMO_PLAN_EVIDENCE=0|false|off` or `run({ planEvidence: false })`
+  turns it off. A skipped, unavailable, stale, or failing build returns
+  the original message unchanged, so the disabled path is byte-identical.
+- The block is capped (`PLAN_EVIDENCE_MAX_BYTES`, 4096) with a visible
+  truncation marker; it never exceeds the cap.
+- Evidence is advisory text. Graph edges never become `dependsOn`, scope
+  conflicts, permissions, or verification gates stay owned by the DAG
+  engine, and `applyPlanHints` still only fills empty `writeScopes`.
+- Failure is reported, never disguised: every unavailable exit names a
+  reason (`revision-unresolved`, `no-source-files`, `empty-graph`,
+  `no-relevant-symbols`, `no-confirmed-subject`, `index-failed`).
+- Knowledge can also come from a store outside the worktree:
+  `OMO_PLAN_EVIDENCE_KNOWLEDGE` names an absolute directory of
+  `project-knowledge/*.md` records (a shared or external knowledge
+  store). `resolveKnowledgeRoot` ignores a blank or relative value, so a
+  typo never widens the read; worktree records win on an id collision,
+  and every record still passes the same project, revision, trust, and
+  supersession filters before it can reach the block. This exists
+  because a memory store synced outside the repository is the normal
+  production layout, and without it the planner can only read rationale
+  that a repository commit already carries.

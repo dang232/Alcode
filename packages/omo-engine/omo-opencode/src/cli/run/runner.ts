@@ -19,6 +19,7 @@ import { isAmbiguousPostDispatchPromptFailure } from "../../shared/prompt-failur
 import { resolveRunnableRunAgent } from "./runnable-agent-resolver"
 import { buildRunnerProfileInput, buildWorkflowProfile, resolveExecutionOptions } from "./workflow-profile"
 import { selectWorkflow } from "./workflow-select"
+import { buildPromptInput, preparePlannerTurn } from "./plan-evidence"
 
 export { resolveRunAgent }
 
@@ -121,6 +122,22 @@ export async function run(options: RunOptions): Promise<number> {
       }
       const execOpts = resolveExecutionOptions(workflowDecision.strategy)
 
+      const plannerTurn = await preparePlannerTurn({
+        message,
+        directory,
+        strategy: workflowDecision.strategy,
+        enabled: options.planEvidence,
+      })
+      if (options.verbose && plannerTurn.evidence !== undefined) {
+        const diagnostics = plannerTurn.evidence.diagnostics
+        console.log(pc.dim(
+          `Plan evidence: ${plannerTurn.evidence.status}` +
+          `${diagnostics.reason === undefined ? "" : ` (${diagnostics.reason})`}` +
+          ` \u2014 files ${diagnostics.files}, symbols ${diagnostics.subjects.length}, ` +
+          `knowledge ${diagnostics.knowledgeRecords}, ${plannerTurn.evidence.bytes} bytes, ${diagnostics.durationMs}ms`,
+        ))
+      }
+
       const ctx: RunContext = {
         client,
         sessionID,
@@ -155,18 +172,14 @@ export async function run(options: RunOptions): Promise<number> {
         source: "cli-run",
         settleMs: 0,
         queueBehavior: "defer",
-        input: {
-          path: { id: sessionID },
-          body: {
-            agent: runnableAgent,
-            ...(resolvedModel ? { model: resolvedModel } : {}),
-            tools: {
-              question: false,
-            },
-            parts: [{ type: "text", text: message }],
-          },
-          query: { directory },
-        },
+        input: buildPromptInput({
+          sessionID,
+          directory,
+          message,
+          agent: runnableAgent,
+          model: resolvedModel,
+          evidence: plannerTurn.evidence,
+        }),
       })
       const promptMayHaveBeenAccepted = promptResult.status === "failed"
         && isAmbiguousPostDispatchPromptFailure(promptResult)

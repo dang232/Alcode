@@ -15,6 +15,7 @@ export interface RunOptions {
   json?: boolean
   sessionId?: string
   workflow?: string
+  planEvidence?: boolean
 }
 
 export interface ServerConnection {
