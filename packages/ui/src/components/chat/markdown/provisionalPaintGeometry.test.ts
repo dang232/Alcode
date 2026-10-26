@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, mock, test } from 'bun:test';
 import { Window } from 'happy-dom';
+import { installHappyDomNodeNameShim } from './happyDomNodeNameShim';
 import { createHighlighter } from 'shiki';
 import type { DecorateContext } from './decorate';
 
@@ -12,6 +13,7 @@ import type { DecorateContext } from './decorate';
 // layout styles, and the text of every line.
 
 const win = new Window({ url: 'https://openchamber.test/' });
+installHappyDomNodeNameShim(win);
 Object.assign(globalThis, {
   window: win,
   document: win.document,

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Window } from 'happy-dom';
+import { installHappyDomNodeNameShim } from './happyDomNodeNameShim';
 import { createHighlighter, hastToHtml } from 'shiki';
 
 // The real sanitizer and decoration on a happy-dom window, and real Shiki
 // output in the shape the worker returns: every open-fence step is compared
 // with rendering the same text in one shot.
 const win = new Window({ url: 'https://openchamber.test/' });
+installHappyDomNodeNameShim(win);
 Object.assign(globalThis, {
   window: win,
   document: win.document,

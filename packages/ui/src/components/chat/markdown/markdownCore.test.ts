@@ -324,13 +324,13 @@ describe('Markdown images', () => {
       '![vector](screens/diagram.svg)',
     ].join('\n\n'), 'label');
 
-    expect(html).toContain('data-openchamber-markdown-image-source="screens/first%20view.png">first view.png</span>');
-    expect(html).toContain(`data-openchamber-markdown-image-source="${source}">image.png</span>`);
+    expect(html).toContain('data-alcode-markdown-image-source="screens/first%20view.png">first view.png</span>');
+    expect(html).toContain(`data-alcode-markdown-image-source="${source}">image.png</span>`);
     // Remote images stay links, a badge inside a link stays a label, and an
     // unsupported format has nothing to draw.
-    expect(html).not.toContain('data-openchamber-markdown-image-source="https://');
-    expect(html).not.toContain('data-openchamber-markdown-image-source="screens/badge.png"');
-    expect(html).not.toContain('data-openchamber-markdown-image-source="screens/diagram.svg"');
+    expect(html).not.toContain('data-alcode-markdown-image-source="https://');
+    expect(html).not.toContain('data-alcode-markdown-image-source="screens/badge.png"');
+    expect(html).not.toContain('data-alcode-markdown-image-source="screens/diagram.svg"');
   });
 
   test('validates embedded image bytes against the declared MIME type', async () => {
