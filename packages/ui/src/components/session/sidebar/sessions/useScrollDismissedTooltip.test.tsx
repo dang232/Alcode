@@ -31,7 +31,7 @@ let tooltipParts: typeof import('@/components/ui/tooltip') | null = null;
 
 const Row = ({ label }: { label: string }) => {
   const tooltip = useScrollDismissedTooltip();
-  const { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } = tooltipParts!;
+  const { Tooltip, TooltipContent, TooltipTrigger } = tooltipParts!;
   return (
     <Tooltip actionsRef={tooltip.actionsRef} onOpenChange={tooltip.onOpenChange}>
       <TooltipTrigger asChild><button type="button" data-row={label}>{label}</button></TooltipTrigger>
