@@ -91,4 +91,21 @@ describe('installed skill provenance registry', () => {
     expect(isInstalledFromSource(byName, 'skill-creator', 'other', 'skills/skill-creator')).toBe(false);
     expect(isInstalledFromSource(byName, 'unrecorded', 'any', 'skills/unrecorded')).toBe(true);
   });
+
+  it('prefers ALCODE_DATA_DIR over the legacy variable', () => {
+    const alcodeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-installed-sources-alcode-'));
+    const previousAlcodeDir = process.env.ALCODE_DATA_DIR;
+    process.env.ALCODE_DATA_DIR = alcodeDir;
+    try {
+      appendInstalledSources([entry()]);
+
+      expect(fs.existsSync(path.join(alcodeDir, 'skills-installed-sources.json'))).toBe(true);
+      expect(fs.existsSync(path.join(dataDir, 'skills-installed-sources.json'))).toBe(false);
+      expect(readInstalledSources().get('skill-creator')).toHaveLength(1);
+    } finally {
+      if (previousAlcodeDir === undefined) delete process.env.ALCODE_DATA_DIR;
+      else process.env.ALCODE_DATA_DIR = previousAlcodeDir;
+      fs.rmSync(alcodeDir, { recursive: true, force: true });
+    }
+  });
 });

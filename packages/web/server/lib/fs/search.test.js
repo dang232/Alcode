@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createFsSearchRuntime } from './search.js';
+import { createFsSearchRuntime, createGitCheckIgnoreTimeoutMs } from './search.js';
 
 // i, n, d, e and x in order, each buried under filler characters with the
 // maximum gap penalty: a weak in-order subsequence of "index".
@@ -103,6 +103,25 @@ describe('filesystem search', () => {
         process.env.OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS = previousTimeout;
       }
       await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reads the git check-ignore timeout from the Alcode name first', () => {
+    const previousAlcode = process.env.ALCODE_GIT_CHECK_IGNORE_TIMEOUT_MS;
+    const previousLegacy = process.env.OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS;
+    try {
+      process.env.ALCODE_GIT_CHECK_IGNORE_TIMEOUT_MS = '10';
+      process.env.OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS = '70';
+      expect(createGitCheckIgnoreTimeoutMs()).toBe(10);
+      delete process.env.ALCODE_GIT_CHECK_IGNORE_TIMEOUT_MS;
+      expect(createGitCheckIgnoreTimeoutMs()).toBe(70);
+      delete process.env.OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS;
+      expect(createGitCheckIgnoreTimeoutMs()).toBe(2500);
+    } finally {
+      if (previousAlcode === undefined) delete process.env.ALCODE_GIT_CHECK_IGNORE_TIMEOUT_MS;
+      else process.env.ALCODE_GIT_CHECK_IGNORE_TIMEOUT_MS = previousAlcode;
+      if (previousLegacy === undefined) delete process.env.OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS;
+      else process.env.OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS = previousLegacy;
     }
   });
 });
