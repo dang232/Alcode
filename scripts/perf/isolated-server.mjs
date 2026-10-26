@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * An OpenChamber server for perf captures that shares nothing with the user's
+ * An Alcode server for perf captures that shares nothing with the user's
  * own app: its own HOME (OpenCode's sessions database), its own
- * OPENCHAMBER_DATA_DIR, an environment rebuilt from scratch so no
- * OPENCHAMBER_* / OPENCODE_* variable from the desktop app leaks in, no UI
+ * ALCODE_DATA_DIR, an environment rebuilt from scratch so no
+ * ALCODE_* / OPENCHAMBER_* / OPENCODE_* variable from the desktop app leaks in, no UI
  * password, and the fixture provider registered as the default model.
  *
  * As a command (`bun run profile:serve`) it starts the fixture provider and the
@@ -32,7 +32,7 @@ const MAC_BUNDLED_OPENCODE = "/Applications/OpenChamber.app/Contents/Resources/o
 
 const HELP = `Usage: bun run profile:serve -- [options]
 
-Starts the fixture provider and an isolated OpenChamber server on a build, and
+Starts the fixture provider and an isolated Alcode server on a build, and
 keeps them running until Ctrl-C, which stops both. Point the profile:*
 commands at the printed URL with --dir <root>/project.
 
@@ -65,7 +65,7 @@ const portInUse = (port) => new Promise((resolvePort) => {
 export const isolatedEnv = (overrides = {}) => {
   const env = {}
   for (const [key, value] of Object.entries(process.env)) {
-    if (/^(OPENCHAMBER_|OPENCODE_|ELECTRON_)/.test(key)) continue
+    if (/^(ALCODE_|OPENCHAMBER_|OPENCODE_|ELECTRON_)/.test(key)) continue
     env[key] = value
   }
   return { ...env, ...overrides }
@@ -194,8 +194,8 @@ export const startIsolatedServer = async ({ repo, dist, state, project, port, fi
     SHELL: process.env.SHELL ?? "/bin/sh",
     TMPDIR: process.env.TMPDIR ?? "/tmp",
     LANG: process.env.LANG ?? "en_US.UTF-8",
-    OPENCHAMBER_DATA_DIR: join(state, "oc-data"),
-    OPENCHAMBER_DIST_DIR: dist,
+    ALCODE_DATA_DIR: join(state, "oc-data"),
+    ALCODE_DIST_DIR: dist,
     OPENCODE_CONFIG_CONTENT: JSON.stringify(config),
   }
   if (opencodeBinary) env.OPENCODE_BINARY = opencodeBinary
