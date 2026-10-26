@@ -454,7 +454,11 @@ describe('Long paragraphs', () => {
     expect(hrefOf(html)).toBe('https://example.com/docs');
     expect(html).toContain('class="katex"');
     expect(settled.map((block) => block.html).join('')).toContain('item_1799');
-  });
+    // The quadratic-rescan guarantee is the scan count above, which is exact.
+    // Wall clock only decides whether this runs at all, so it gets real headroom
+    // instead of bun's 5 s default: 250 KB of JSON parses in ~5 s on a slow CI
+    // runner and the number must not be the thing that fails.
+  }, 120_000);
 
   test('a paragraph without `:`, `/` or `@` skips the linkify search', () => {
     // Every bold and emphasis span is an inline token, and linkify searched the
