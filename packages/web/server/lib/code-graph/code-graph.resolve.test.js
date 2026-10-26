@@ -83,10 +83,18 @@ describe('snapshot file resolution', () => {
 
   it('refuses traversal out of the snapshot root instead of reading a neighbour file', async () => {
     await runtime.readIndex(flat);
-    for (const attempt of ['../outside/secret.ts', '..\\outside\\secret.ts', '../../etc/passwd', 'math.ts/../../../outside/secret.ts']) {
+    for (const { id: attempt, reason } of [
+      { id: '../outside/secret.ts', reason: 'outside-snapshot-root' },
+      { id: '../../etc/passwd', reason: 'outside-snapshot-root' },
+      { id: 'math.ts/../../../outside/secret.ts', reason: 'outside-snapshot-root' },
+      // A backslash separates path segments only on Windows. On POSIX it is a
+      // legal filename character, so this id names nothing inside the root
+      // instead of escaping it, and the refusal reason is `missing`.
+      { id: '..\\outside\\secret.ts', reason: process.platform === 'win32' ? 'outside-snapshot-root' : 'missing' },
+    ]) {
       const result = await runtime.resolveFile(flat, attempt);
       expect(result.ok).toBe(false);
-      expect(result.reason).toBe('outside-snapshot-root');
+      expect(result.reason).toBe(reason);
     }
   }, 120_000);
 

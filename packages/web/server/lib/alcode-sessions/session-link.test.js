@@ -105,7 +105,7 @@ describe('session.link', () => {
     await linker.link({ sessionId: 's1', link: { url: 'https://gitlab.com/a/b/-/merge_requests/600', title: 'MR !600', kind: 'change', identifier: '!600' } });
     await linker.link({ sessionId: 's1', link: { url: 'https://gitlab.com/a/b/-/merge_requests/600/diffs', title: 'MR !600 review', kind: 'change', identifier: '!600' } });
 
-    expect(store.metadata.openchamber.linked_issues.map((entry) => entry.title)).toEqual(['MR !600 review']);
+    expect(store.metadata.alcode.linked_issues.map((entry) => entry.title)).toEqual(['MR !600 review']);
   });
 
   test('a bad call writes nothing', async () => {

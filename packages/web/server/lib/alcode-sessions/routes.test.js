@@ -84,6 +84,7 @@ globalThis.__openchamberResolvePrimaryWorktreeRootMock = resolvePrimaryWorktreeR
 
 globalThis.__alcodeCreateWorktreeMock = createWorktreeMock;
 globalThis.__alcodeGetWorktreeBootstrapStatusMock = getWorktreeBootstrapStatusMock;
+globalThis.__alcodeResolvePrimaryWorktreeRootMock = resolvePrimaryWorktreeRootMock;
 
 let registerOpenChamberSessionRoutes;
 let createOpenChamberSessionService;
@@ -125,7 +126,7 @@ vi.mock('@opencode/client', () => ({
 vi.mock('../git/index.js', () => ({
   createWorktree: (...args) => globalThis.__alcodeCreateWorktreeMock(...args),
   getWorktreeBootstrapStatus: (...args) => globalThis.__alcodeGetWorktreeBootstrapStatusMock(...args),
-  resolvePrimaryWorktreeRoot: async (directory) => ({ root: directory === '/repo/worktrees/side-task' ? '/repo/app' : directory }),
+  resolvePrimaryWorktreeRoot: (...args) => globalThis.__alcodeResolvePrimaryWorktreeRootMock(...args),
   // Only moving a session into a worktree reaches these; the route tests
   // inject their own through the service dependencies.
   removeWorktree: vi.fn(),
@@ -509,7 +510,7 @@ describe('alcode session routes', () => {
       expect(response.body.metadata.openchamber.linked_issues).toEqual([agentEntry, uiEntry]);
       await expect(sessionMetadataStore.get('ses_a')).resolves.toEqual(response.body.metadata);
       expect(broadcastGlobalUiEvent).toHaveBeenCalledWith({
-        type: 'openchamber:session-metadata',
+        type: 'alcode:session-metadata',
         properties: { sessionID: 'ses_a', metadata: response.body.metadata },
       });
     });
@@ -1023,7 +1024,7 @@ describe('alcode session routes', () => {
     const validateWorktreeDirectory = vi.fn(async () => ({ valid: true, insideWorktreeRoot: true }));
     const { app } = createApp({ resolveWorktreeTopLevel, validateWorktreeDirectory });
     const response = await request(app)
-      .post('/api/openchamber/sessions')
+      .post('/api/alcode/sessions')
       .send({ directory: '/repo/app', worktree: { name: 'side-task' } })
       .expect(200);
 
@@ -1037,7 +1038,7 @@ describe('alcode session routes', () => {
 
     validateWorktreeDirectory.mockResolvedValue({ valid: false, insideWorktreeRoot: false });
     const missing = await request(app)
-      .post('/api/openchamber/sessions')
+      .post('/api/alcode/sessions')
       .send({ directory: '/repo/app', worktree: { name: 'side-task' } })
       .expect(200);
     expect(missing.body.directory).toBe('/repo/worktrees/side-task');
@@ -1052,7 +1053,7 @@ describe('alcode session routes', () => {
       validateWorktreeDirectory,
     });
     await request(app)
-      .post('/api/openchamber/sessions')
+      .post('/api/alcode/sessions')
       .send({ projectId: 'proj_ai', worktree: { name: 'side-task' }, prompt: 'Run this', model: 'openai/gpt-5.5' })
       .expect(200);
 
@@ -1183,7 +1184,7 @@ describe('alcode session routes', () => {
     }));
     const { app } = createApp({ createChangeRequestWorktree });
     const response = await request(app)
-      .post('/api/openchamber/sessions')
+      .post('/api/alcode/sessions')
       .send({ directory: '/repo/app', pullRequest: 42, worktree: { name: 'review-42' }, prompt: 'Review it', model: 'openai/gpt-5.5' })
       .expect(200);
 
@@ -1203,7 +1204,7 @@ describe('alcode session routes', () => {
     const { app } = createApp({ createChangeRequestWorktree: vi.fn(async () => { throw notFound; }) });
 
     await request(app)
-      .post('/api/openchamber/sessions')
+      .post('/api/alcode/sessions')
       .send({ directory: '/repo/app', pullRequest: 42, prompt: 'Review it' })
       .expect(404, { error: 'Pull request #42 was not found in acme/app' });
 
@@ -1215,7 +1216,7 @@ describe('alcode session routes', () => {
     const { app } = createApp();
 
     await request(app)
-      .post('/api/openchamber/sessions')
+      .post('/api/alcode/sessions')
       .send({ directory: '/repo/app', pullRequest: 42 })
       .expect(501, { error: 'Worktrees from pull requests are not available here' });
 
@@ -1228,11 +1229,11 @@ describe('alcode session routes', () => {
     const { app } = createApp({ createChangeRequestWorktree });
 
     await request(app)
-      .post('/api/openchamber/sessions')
+      .post('/api/alcode/sessions')
       .send({ directory: '/repo/app', pullRequest: '#42' })
       .expect(400, { error: 'pullRequest must be a pull or merge request number, such as 42' });
     await request(app)
-      .post('/api/openchamber/sessions')
+      .post('/api/alcode/sessions')
       .send({ directory: '/repo/app', pullRequest: 42, worktree: { startRef: 'main' } })
       .expect(400, { error: 'pullRequest checks out the pull request\'s own branch; do not combine it with startRef or setUpstream' });
 
@@ -1359,7 +1360,7 @@ describe('alcode session routes', () => {
     }));
     const { app } = createApp({ sessionKnowledgeRuntime: { sync } });
     await request(app)
-      .post(`/api/openchamber/sessions/ses_source/${action}`)
+      .post(`/api/alcode/sessions/ses_source/${action}`)
       .send({ directory: '/repo/app', prompt: 'Continue', model: 'openai/gpt-5.5', agent: 'build' })
       .expect(200);
     expect(sync).toHaveBeenCalledExactlyOnceWith(targetId, '/repo/worktrees/target');
@@ -1374,7 +1375,7 @@ describe('alcode session routes', () => {
     });
     const { app } = createApp({ sessionKnowledgeRuntime: { sync } });
     await request(app)
-      .post('/api/openchamber/sessions/ses_source/send')
+      .post('/api/alcode/sessions/ses_source/send')
       .send({ directory: '/repo/app', prompt: 'Continue', model: 'openai/gpt-5.5', agent: 'build' })
       .expect(200);
     expect(sync).not.toHaveBeenCalled();

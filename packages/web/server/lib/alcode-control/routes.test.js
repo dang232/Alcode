@@ -8,7 +8,7 @@ import { registerAlcodeControlRoutes } from './routes.js';
 
 const createApp = (execute, answerPage = vi.fn()) => {
   const app = express();
-  registerAlcodeControlRoutes(app, { controlService: { execute } });
+  registerAlcodeControlRoutes(app, { controlService: { execute, answerPage } });
   return app;
 };
 
@@ -71,7 +71,7 @@ describe('page answer route', () => {
 
   it('reports a page that no longer waits as an error, never as success', async () => {
     const answerPage = vi.fn(() => {
-      throw new OpenChamberControlError('This page is no longer waiting for an answer', 404);
+      throw new AlcodeControlError('This page is no longer waiting for an answer', 404);
     });
     const response = await request(createApp(vi.fn(), answerPage))
       .post('/api/openchamber/render/answer')

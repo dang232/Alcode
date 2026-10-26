@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createOpenChamberControlService } from './service.js';
+import { createAlcodeControlService as createOpenChamberControlService } from './service.js';
 import { OpenChamberControlError } from './error.js';
 import { createMemoryProjectResolver } from '../agent-memory/project-resolution.js';
 import { createProjectIdFromPath } from '../projects/project-id.js';
