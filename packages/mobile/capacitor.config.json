@@ -1,6 +1,6 @@
 {
   "appId": "com.openchamber.app",
-  "appName": "OpenChamber",
+  "appName": "Alcode",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
