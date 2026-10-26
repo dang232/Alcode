@@ -12,6 +12,7 @@ import {
 } from './activityModel';
 import { computeFitView, graphNodeSignature, zoomGraphView, type GraphView } from './activityGraphView';
 import { exceedsDragThreshold } from '@/lib/dragGesture';
+import { useWaitingBlink } from '@/hooks/useDurationTicker';
 
 const STATE_ICON = {
   pending: null,
@@ -42,6 +43,46 @@ type Props = {
   graph: RunGraph;
   selectedId: string | null;
   onSelect: (id: string) => void;
+};
+
+/**
+ * One graph node. Its waiting dot blinks on the shared clock instead of running an
+ * infinite CSS animation: a node can sit in `running` for minutes, which the
+ * animation contract forbids for anything that stays on screen that long.
+ */
+const GraphNodeButton: React.FC<{
+  node: RunGraph['nodes'][number];
+  selected: boolean;
+  onSelect: (id: string) => void;
+}> = ({ node, selected, onSelect }) => {
+  const { t } = useI18n();
+  const blink = useWaitingBlink(node.state === 'running');
+  const icon = STATE_ICON[node.state];
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(node.id)}
+      aria-pressed={selected}
+      className={cn(
+        'absolute flex flex-col justify-center gap-0.5 rounded-md border px-2 text-start',
+        stateTone(node.state),
+        selected && 'outline outline-2 outline-[var(--status-info)]',
+      )}
+      style={{ insetInlineStart: node.x, top: node.y, width: NODE_WIDTH, height: NODE_HEIGHT }}
+    >
+      <span className="typography-ui flex items-center gap-1 truncate font-medium">
+        {node.state === 'running' && (
+          <span className={cn('inline-block h-2 w-2 shrink-0 rounded-full bg-current', blink)} aria-hidden="true" />
+        )}
+        {icon && <Icon name={icon} className="h-3.5 w-3.5 shrink-0" />}
+        <span className="truncate">{node.label}</span>
+      </span>
+      <span className="typography-micro opacity-80">
+        {t(`activity.graph.state.${node.state}`)}
+        {selected ? ` · ${t('activity.graph.selected')}` : ''}
+      </span>
+    </button>
+  );
 };
 
 /**
@@ -164,36 +205,14 @@ export const RunGraphView: React.FC<Props> = ({ graph, selectedId, onSelect }) =
               </marker>
             </defs>
           </svg>
-          {graph.nodes.map((node) => {
-            const icon = STATE_ICON[node.state];
-            const selected = node.id === selectedId;
-            return (
-              <button
-                key={node.id}
-                type="button"
-                onClick={() => onSelect(node.id)}
-                aria-pressed={selected}
-                className={cn(
-                  'absolute flex flex-col justify-center gap-0.5 rounded-md border px-2 text-start',
-                  stateTone(node.state),
-                  selected && 'outline outline-2 outline-[var(--status-info)]',
-                )}
-                style={{ insetInlineStart: node.x, top: node.y, width: NODE_WIDTH, height: NODE_HEIGHT }}
-              >
-                <span className="typography-ui flex items-center gap-1 truncate font-medium">
-                  {node.state === 'running' && (
-                    <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-current" aria-hidden="true" />
-                  )}
-                  {icon && <Icon name={icon} className="h-3.5 w-3.5 shrink-0" />}
-                  <span className="truncate">{node.label}</span>
-                </span>
-                <span className="typography-micro opacity-80">
-                  {t(`activity.graph.state.${node.state}`)}
-                  {selected ? ` · ${t('activity.graph.selected')}` : ''}
-                </span>
-              </button>
-            );
-          })}
+          {graph.nodes.map((node) => (
+            <GraphNodeButton
+              key={node.id}
+              node={node}
+              selected={node.id === selectedId}
+              onSelect={onSelect}
+            />
+          ))}
         </div>
       </div>
     </div>
