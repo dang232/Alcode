@@ -80,8 +80,8 @@ jobs:
 
   publish-npm:
     needs: create-release
-    if: ${{ github.event.inputs.finish_published_release != 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ github.event.inputs.finish_published_release != 'true' && vars.ALCODE_RELEASE_NPM == 'true' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -142,7 +142,7 @@ jobs:
           - target: aarch64-apple-darwin
             arch: arm64
             platform: darwin-aarch64
-            runner: blacksmith-6vcpu-macos-26
+            runner: macos-15
           - target: x86_64-apple-darwin
             arch: x64
             platform: darwin-x86_64
@@ -177,6 +177,9 @@ jobs:
             opencode-cli-${{ runner.os }}-${{ matrix.arch }}-
 
       - name: Install Apple Certificate
+        # A fork without an Apple Developer certificate still builds a usable,
+        # unsigned app; only signing and notarization need the secret.
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -207,6 +210,9 @@ jobs:
           # rebuild-native.mjs reads this to target the right arch when
           # cross-building (runner is arm64; x64 matrix needs the hint).
           ELECTRON_BUILDER_ARCH: ${{ matrix.arch }}
+          # Unsigned when no certificate is configured, so electron-builder does
+          # not fail looking for an identity that is not there.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.APPLE_CERTIFICATE == '' && 'false' || 'true' }}
         run: |
           bun run build:web-assets
           bun run prepare:opencode-cli
@@ -222,6 +228,7 @@ jobs:
           bun run verify:opencode-cli:packaged
 
       - name: Verify signature + entitlements + notarization
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         run: |
           set -euo pipefail
 
@@ -394,14 +401,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: blacksmith-4vcpu-ubuntu-2404
+          - runner: ubuntu-latest
             arch: x64
             host_arch: x86_64
             artifact_arch: x86_64
             deb_arch: amd64
             rpm_arch: x86_64
             manifest: latest-linux.yml
-          - runner: blacksmith-4vcpu-ubuntu-2404-arm
+          - runner: ubuntu-24.04-arm
             arch: arm64
             host_arch: aarch64
             artifact_arch: arm64
@@ -581,7 +588,7 @@ jobs:
 
   mobile-release:
     needs: create-release
-    if: ${{ github.event.inputs.dry_run != 'true' }}
+    if: ${{ github.event.inputs.dry_run != 'true' && vars.ALCODE_RELEASE_MOBILE == 'true' }}
     uses: ./.github/workflows/mobile-release.yml
     with:
       version_name: ${{ needs.create-release.outputs.version }}
