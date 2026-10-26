@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  summarize:
+  gate:
     if: github.event.comment.user.login != 'alcode-bot[bot]' && (github.event.comment.body == '@alcode-bot summarize' || startsWith(github.event.comment.body, '@alcode-bot summarize '))
     runs-on: ubuntu-latest
     permissions: {}
