@@ -494,7 +494,7 @@ jobs:
         run: |
           set -euo pipefail
           APPIMAGE="dist/Alcode-${VERSION}-linux-${ARTIFACT_ARCH}.AppImage"
-          node ./scripts/verify-update-manifest.mjs "dist/${MANIFEST}" "$APPIMAGE" "$VERSION"
+          node ./scripts/verify-update-manifest.mjs "dist/${MANIFEST}" "$VERSION" "$APPIMAGE"
 
       - name: Upload validated Linux release files
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -531,12 +531,12 @@ jobs:
           set -euo pipefail
           node packages/electron/scripts/verify-update-manifest.mjs \
             artifacts/x64/latest-linux.yml \
-            "artifacts/x64/Alcode-${VERSION}-linux-x86_64.AppImage" \
-            "$VERSION"
+            "$VERSION" \
+            "artifacts/x64/Alcode-${VERSION}-linux-x86_64.AppImage"
           node packages/electron/scripts/verify-update-manifest.mjs \
             artifacts/arm64/latest-linux-arm64.yml \
-            "artifacts/arm64/Alcode-${VERSION}-linux-arm64.AppImage" \
-            "$VERSION"
+            "$VERSION" \
+            "artifacts/arm64/Alcode-${VERSION}-linux-arm64.AppImage"
 
       - name: Upload Linux packages and manifests to release
         if: ${{ github.event.inputs.dry_run != 'true' }}
