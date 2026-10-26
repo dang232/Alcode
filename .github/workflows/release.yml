@@ -494,7 +494,9 @@ jobs:
         run: |
           set -euo pipefail
           APPIMAGE="dist/Alcode-${VERSION}-linux-${ARTIFACT_ARCH}.AppImage"
-          node ./scripts/verify-update-manifest.mjs "dist/${MANIFEST}" "$VERSION" "$APPIMAGE"
+          DEB="dist/Alcode-${VERSION}-linux-${DEB_ARCH}.deb"
+          RPM="dist/Alcode-${VERSION}-linux-${RPM_ARCH}.rpm"
+          node ./scripts/verify-update-manifest.mjs "dist/${MANIFEST}" "$VERSION" "$APPIMAGE" "$DEB" "$RPM"
 
       - name: Upload validated Linux release files
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -502,6 +504,8 @@ jobs:
           name: linux-release-${{ matrix.arch }}
           path: |
             packages/electron/dist/Alcode-${{ needs.create-release.outputs.version }}-linux-${{ matrix.artifact_arch }}.AppImage
+            packages/electron/dist/Alcode-${{ needs.create-release.outputs.version }}-linux-${{ matrix.deb_arch }}.deb
+            packages/electron/dist/Alcode-${{ needs.create-release.outputs.version }}-linux-${{ matrix.rpm_arch }}.rpm
             packages/electron/dist/${{ matrix.manifest }}
           if-no-files-found: error
           retention-days: 1
@@ -532,11 +536,15 @@ jobs:
           node packages/electron/scripts/verify-update-manifest.mjs \
             artifacts/x64/latest-linux.yml \
             "$VERSION" \
-            "artifacts/x64/Alcode-${VERSION}-linux-x86_64.AppImage"
+            "artifacts/x64/Alcode-${VERSION}-linux-x86_64.AppImage" \
+            "artifacts/x64/Alcode-${VERSION}-linux-amd64.deb" \
+            "artifacts/x64/Alcode-${VERSION}-linux-x86_64.rpm"
           node packages/electron/scripts/verify-update-manifest.mjs \
             artifacts/arm64/latest-linux-arm64.yml \
             "$VERSION" \
-            "artifacts/arm64/Alcode-${VERSION}-linux-arm64.AppImage"
+            "artifacts/arm64/Alcode-${VERSION}-linux-arm64.AppImage" \
+            "artifacts/arm64/Alcode-${VERSION}-linux-arm64.deb" \
+            "artifacts/arm64/Alcode-${VERSION}-linux-aarch64.rpm"
 
       - name: Upload Linux packages and manifests to release
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -546,8 +554,12 @@ jobs:
           draft: true
           files: |
             artifacts/x64/Alcode-${{ needs.create-release.outputs.version }}-linux-x86_64.AppImage
+            artifacts/x64/Alcode-${{ needs.create-release.outputs.version }}-linux-amd64.deb
+            artifacts/x64/Alcode-${{ needs.create-release.outputs.version }}-linux-x86_64.rpm
             artifacts/x64/latest-linux.yml
             artifacts/arm64/Alcode-${{ needs.create-release.outputs.version }}-linux-arm64.AppImage
+            artifacts/arm64/Alcode-${{ needs.create-release.outputs.version }}-linux-arm64.deb
+            artifacts/arm64/Alcode-${{ needs.create-release.outputs.version }}-linux-aarch64.rpm
             artifacts/arm64/latest-linux-arm64.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -624,8 +636,12 @@ jobs:
           const { REPOSITORY: repo, VERSION: version, RELEASE_ID: releaseId, GITHUB_TOKEN: token } = process.env;
           const expected = [
             `Alcode-${version}-linux-x86_64.AppImage`,
+            `Alcode-${version}-linux-amd64.deb`,
+            `Alcode-${version}-linux-x86_64.rpm`,
             'latest-linux.yml',
             `Alcode-${version}-linux-arm64.AppImage`,
+            `Alcode-${version}-linux-arm64.deb`,
+            `Alcode-${version}-linux-aarch64.rpm`,
             'latest-linux-arm64.yml',
           ];
           // The release is still a draft here, and the by-tag endpoint
