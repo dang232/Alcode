@@ -261,6 +261,8 @@ export const registerServerStatusRoutes = (app, dependencies) => {
   // The private relay also dials loopback, and stamps every request it forwards.
   app.get('/api/diagnostics/local-files', (req, res, next) => {
     if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket?.remoteAddress)
+      // The tunnel stamps the new header; older shells stamp the legacy one.
+      || req.headers['x-alcode-relay-connection']
       || req.headers['x-openchamber-relay-connection']
       || (tunnelAuthController?.classifyRequestScope && tunnelAuthController.classifyRequestScope(req) !== 'local')) {
       res.status(403).json({ error: 'Local diagnostics require a loopback connection' });

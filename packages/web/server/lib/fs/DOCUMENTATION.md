@@ -105,8 +105,8 @@ Both search and directory listing discard `git check-ignore` stderr at spawn.
 They consume stdout for ignore matches. Never create an unread stderr pipe:
 Git diagnostics can fill it and block the child indefinitely, so repeated
 searches accumulate live Git processes. Both also kill a `check-ignore` child
-that has not exited within `OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS` (default
-2500 ms, `0` disables it) and continue with no ignored names.
+that has not exited within `ALCODE_GIT_CHECK_IGNORE_TIMEOUT_MS` (default
+2500 ms, `0` disables it; the pre-rename `OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS` is still honored as a fallback) and continue with no ignored names.
 `git-process.test.js` exercises both
 paths with real OS pipes, twelve concurrent checks, and 2 MiB of diagnostics
 per child. Successful completion must preserve ignore filtering and reap all

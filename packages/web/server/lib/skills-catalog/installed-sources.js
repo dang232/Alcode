@@ -3,7 +3,7 @@
 // match a catalog item by source instead of by name alone. Name-only matching
 // badged every same-named entry from every curated source (#4756).
 //
-// Lives in the OpenChamber data dir as one small JSON file. Entries only add
+// Lives in the Alcode data dir as one small JSON file. Entries only add
 // a constraint: a name the registry has never heard of keeps the old name
 // match, so skills installed before this file existed, or placed on disk by
 // hand, look exactly as they did before.
@@ -16,13 +16,27 @@ import { asNonEmptyString } from '../shared/guards.js';
 const VERSION = 1;
 const FILE_NAME = 'skills-installed-sources.json';
 
-// Resolved per call so a test can point OPENCHAMBER_DATA_DIR somewhere fresh.
-const installedSourcesPath = () => path.join(
-  process.env.OPENCHAMBER_DATA_DIR
-    ? path.resolve(process.env.OPENCHAMBER_DATA_DIR)
-    : path.join(os.homedir(), '.config', 'openchamber'),
-  FILE_NAME,
-);
+// Resolved per call so a test can point a data dir somewhere fresh: an
+// explicitly set `ALCODE_DATA_DIR` wins, then an explicitly set legacy
+// `OPENCHAMBER_DATA_DIR`. With neither set, fresh installs use the Alcode
+// default while pre-rename installs keep reading their existing file in the
+// legacy default; new records always land wherever the resolved path points.
+const installedSourcesPath = () => {
+  if (process.env.ALCODE_DATA_DIR) {
+    return path.join(path.resolve(process.env.ALCODE_DATA_DIR), FILE_NAME);
+  }
+  if (process.env.OPENCHAMBER_DATA_DIR) {
+    return path.join(path.resolve(process.env.OPENCHAMBER_DATA_DIR), FILE_NAME);
+  }
+  const current = path.join(os.homedir(), '.config', 'alcode', FILE_NAME);
+  const legacy = path.join(os.homedir(), '.config', 'openchamber', FILE_NAME);
+  try {
+    if (!fs.existsSync(current) && fs.existsSync(legacy)) return legacy;
+  } catch {
+    // Fall through to the Alcode default.
+  }
+  return current;
+};
 
 const entryKey = (entry) => [entry.sourceId, entry.skillDir, entry.scope].join(' ');
 

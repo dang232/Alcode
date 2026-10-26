@@ -85,7 +85,7 @@ async function buildRelayPairingCandidate() {
   const relayKeyStore = createRelayKeyStore({
     fsPromises: fs.promises,
     path,
-    dataDir: getOpenChamberDataDir(),
+    dataDir: getAlcodeDataDir(),
     ...accessors,
   });
   const identityRuntime = createRelayIdentityRuntime({ crypto, relayKeyStore });
