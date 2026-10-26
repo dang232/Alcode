@@ -4112,3 +4112,23 @@
 - Initial public release of OpenChamber web and desktop packages in a unified monorepo.
 - Added GitHub Actions release pipeline with macOS signing/notarization, npm publish, and release asset uploads.
 - Introduced OpenCode agent chat experience with section-based navigation, theming, and session persistence.
+
+## [0.1.1] - 2026-10-26
+
+### Improvements
+
+- Agents: the control and web tools offer their documented actions again, so an agent can close a browser page it opened and move a session into a worktree.
+
+### Fixes
+
+- Chat: images pasted or dropped into a message draw in place again, and attachment chips open the file they name.
+- Chat: a rendered document keeps playback controls on the video and audio it embeds.
+- Settings: three toggles that silently never saved — open session work automatically, and the expanded bash and edit tool views — now persist.
+- Small model features: a request no longer fails the moment it starts, and a generation that runs past its budget says which model and which budget it exceeded instead of reporting an internal error.
+- Desktop: on a host build from before the rename, notifications, tray actions, the local origin and the selected runtime work again.
+- Sessions: a rejected session request now answers with its documented status instead of a generic server error, and linked issues and work metadata are read from where the app writes them.
+- Scheduled tasks: a task whose target session was deleted reports that it is gone instead of failing as a server error.
+- Session knowledge: the context cursor is recorded again, so a compaction no longer sends the same project context twice.
+- Spaces: the sandbox setup program parses again after a template literal lost its interpolation.
+- Languages: the missing German and French strings are translated, and Arabic, Hebrew, Spanish, Portuguese and Ukrainian drop keys no other language has.
+- Activity: a running dot blinks on the shared clock instead of animating forever.
