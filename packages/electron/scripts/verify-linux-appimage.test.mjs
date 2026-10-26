@@ -32,7 +32,7 @@ const createPayload = () => {
   for (const name of ['pty.node', 'sherpa-onnx.node']) {
     writeElf(path.join(root, 'resources/app.asar.unpacked/node_modules', name), 'x64');
   }
-  writeIcon(root, 'usr/share/icons/hicolor/512x512/apps/openchamber.png');
+  writeIcon(root, 'usr/share/icons/hicolor/512x512/apps/alcode.png');
   return root;
 };
 
@@ -115,17 +115,17 @@ test('accepts a scalable theme icon', () => {
   const root = createPayload();
   try {
     fs.rmSync(path.join(root, 'usr/share/icons/hicolor/512x512'), { recursive: true });
-    writeIcon(root, 'usr/share/icons/hicolor/scalable/apps/openchamber.svg');
+    writeIcon(root, 'usr/share/icons/hicolor/scalable/apps/alcode.svg');
     assert.equal(verify(root).nativeModuleCount, 2);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('fails when the theme cannot resolve Icon=openchamber', () => {
+test('fails when the theme cannot resolve Icon=alcode', () => {
   for (const relativePath of [
-    'usr/share/icons/hicolor/scalable/openchamber.svg',
-    'usr/share/icons/hicolor/1024x1024/apps/openchamber.png',
+    'usr/share/icons/hicolor/scalable/alcode.svg',
+    'usr/share/icons/hicolor/1024x1024/apps/alcode.png',
   ]) {
     const root = createPayload();
     try {
@@ -142,7 +142,7 @@ test('fails when .DirIcon is dangling', () => {
   const root = createPayload();
   try {
     fs.rmSync(path.join(root, '.DirIcon'));
-    fs.symlinkSync('usr/share/icons/hicolor/scalable/openchamber.svg', path.join(root, '.DirIcon'));
+    fs.symlinkSync('usr/share/icons/hicolor/scalable/alcode.svg', path.join(root, '.DirIcon'));
     assert.throws(() => verify(root), /\.DirIcon does not resolve/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
