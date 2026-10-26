@@ -37,6 +37,7 @@ export const ALCODE_CONTROL_ACTION_DEFINITIONS = Object.freeze([
   { action: 'session.fork', title: 'Fork a session', description: 'Fork sessionId; messageId selects the boundary; prompt is optional' },
   { action: 'session.status', title: 'Check session status', description: 'Check sessionId status; directory defaults to the current session' },
   { action: 'session.messages', title: 'Read session messages', description: 'Read text-only messages and current sessionStatus for sessionId; directory and limit 10 are defaults' },
+  { action: 'session.moveToWorktree', title: 'Move a session into a new worktree', description: 'Move sessionId (default: this session) and its carry files into a new worktree, made the way the New worktree dialog makes one; requires worktree. Nothing moves when carry cannot be applied; directory is ignored' },
   { action: 'session.link', title: 'Link a change or issue to a session', description: 'Link a change under review (pull or merge request) or an issue, on any service, to a session; requires link, sessionId defaults to the current session. Each link is added beside the others; linking one that is already there updates its title instead of adding it twice. Links are only added; the user removes them' },
   { action: 'schedule.status', title: 'Check scheduler status', description: 'Check scheduler status; no parameters', agentExposed: false },
   { action: 'schedule.list', title: 'List scheduled tasks', description: 'List tasks and scheduler status; scope with projectId or directory' },
@@ -73,7 +74,7 @@ export const OPENCHAMBER_AGENT_TOOL_ACTIONS = Object.freeze(
   OPENCHAMBER_AGENT_TOOL_ACTION_DEFINITIONS.map(({ action }) => action),
 );
 export const ALCODE_AGENT_TOOL_ACTION_DEFINITIONS = Object.freeze(
-  ALCODE_CONTROL_ACTION_DEFINITIONS.filter(({ agentExposed }) => agentExposed !== false),
+  ALCODE_CONTROL_ACTION_DEFINITIONS.filter((definition) => definition.agentExposed !== false && !isScheduleAction(definition)),
 );
 
 export const ALCODE_AGENT_TOOL_ACTIONS = Object.freeze(
@@ -115,6 +116,7 @@ export const ALCODE_WEB_ACTION_DEFINITIONS = Object.freeze([
   { action: 'browser.inspect', title: 'Read how an element renders', description: 'Read the computed styles of the element matched by selector — colours, fonts, spacing, borders — as the page actually renders them' },
   { action: 'browser.capture', title: 'Save a screenshot of the page', description: 'Save what is currently visible in the browser panel as an image file in the project and return its path, so a change can be shown rather than described. Pass label to name it (for example before-fix); the result reports the page, layout and path to reference in your answer' },
   { action: 'browser.resize', title: 'Change the page viewport', description: 'Lay the open page out at a different size; viewport is mobile, tablet, desktop, or fill to use the whole panel' },
+  { action: 'browser.close', title: 'Close a browser tab', description: 'Close a tab this session opened; without tabId, its most recent one. Never a tab the user opened' },
 ]);
 
 export const ALCODE_WEB_ACTIONS = Object.freeze(

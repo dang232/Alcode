@@ -132,11 +132,6 @@ export const createContextObligatoryRuntime = ({
     // `alcode` namespace holds, so a concurrent goal or assist write is
     // not clobbered.
     const patch = { context_obligatory_last_compaction_message_id: summary.id };
-    if (knowledge.signature) {
-      // Recorded together with the cursor: the session now carries this
-      // knowledge again, so the next send must not repeat it.
-      patch[sessionKnowledgeRuntime.metadataKey] = knowledge.signature;
-    }
     await persistContextCursor(sessionId, directory, { alcode: patch });
   };
 

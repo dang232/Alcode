@@ -403,10 +403,10 @@ const WORKTREE_BOOTSTRAP_POLL_MS = 150;
 const resolvePullRequestInput = (payload) => {
   if (payload?.pullRequest === undefined) return null;
   if (!Number.isSafeInteger(payload.pullRequest) || payload.pullRequest < 1) {
-    throw new OpenChamberControlError('pullRequest must be a pull or merge request number, such as 42', 400);
+    throw new AlcodeControlError('pullRequest must be a pull or merge request number, such as 42', 400);
   }
   if (payload.worktree?.startRef !== undefined || payload.setUpstream !== undefined) {
-    throw new OpenChamberControlError('pullRequest checks out the pull request\'s own branch; do not combine it with startRef or setUpstream', 400);
+    throw new AlcodeControlError('pullRequest checks out the pull request\'s own branch; do not combine it with startRef or setUpstream', 400);
   }
   const input = { number: payload.pullRequest };
   const name = asNonEmptyString(payload.worktree?.name);
@@ -884,11 +884,11 @@ export const createAlcodeSessionService = (dependencies) => {
    */
   const setSessionLinks = async (sessionID, payload = {}) => {
     const id = asNonEmptyString(sessionID);
-    if (!id) throw new OpenChamberControlError('a session id is required', 400);
+    if (!id) throw new AlcodeControlError('a session id is required', 400);
     // The schema decides what a link operation is; a body of any other shape
     // is a 400, not something to pre-narrow here.
     const parsed = parseLinkOperation(payload);
-    if (!parsed.ok) throw new OpenChamberControlError(parsed.error, 400);
+    if (!parsed.ok) throw new AlcodeControlError(parsed.error, 400);
     const directory = asNonEmptyString(payload?.directory) || '';
     const { metadata } = await updateMetadata(
       id,
@@ -989,7 +989,7 @@ export const createAlcodeSessionService = (dependencies) => {
       if (!(createChangeRequestWorktree instanceof Function)
         || !(worktreeBootstrapStore?.read instanceof Function)
         || !(worktreeBootstrapStore?.write instanceof Function)) {
-        throw new OpenChamberControlError('Worktrees from pull requests are not available here', 501);
+        throw new AlcodeControlError('Worktrees from pull requests are not available here', 501);
       }
       try {
         worktree = await createChangeRequestWorktree({ directory: resolvedDirectory.directory, ...pullRequestInput });
@@ -1259,7 +1259,7 @@ export const createAlcodeSessionService = (dependencies) => {
     if (!(hydrateWorktreeCheckout instanceof Function)
       || !(worktreeBootstrapStore?.read instanceof Function)
       || !(worktreeBootstrapStore?.write instanceof Function)) {
-      throw new OpenChamberControlError('Worktree checkout bootstrap is not available', 501);
+      throw new AlcodeControlError('Worktree checkout bootstrap is not available', 501);
     }
     await waitForOpenCodeReady?.(10_000, 250);
     return worktreeMover.move({
