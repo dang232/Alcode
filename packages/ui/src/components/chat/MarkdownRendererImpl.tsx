@@ -48,6 +48,7 @@ import type { RenderedCopyFormat } from './markdown/selectionMarkdown';
 import { attachInlineMarkdownImages } from './markdown/inlineMarkdownImages';
 import { attachMarkdownVideoFallback } from './markdown/markdownVideo';
 import { observeMarkdownTableWidth } from './markdown/tableWidthObserver';
+import { findTextPosition } from './markdown/textPosition';
 import { splitFrontmatter } from './markdown/frontmatter';
 import { FrontmatterProperties } from './markdown/FrontmatterProperties';
 import { createMermaidViewerRegistry, MERMAID_BLOCK_SELECTOR, shouldRefreshMermaidViewers } from './markdown/mermaidViewer';
@@ -318,6 +319,42 @@ const findBlockCodePathTokens = (container: HTMLElement): Array<{ codeBlock: HTM
   return blocks;
 };
 
+// Wraps confirmed tokens of one code block in spans carrying
+// `data-alcode-block-path-token`, which later passes treat like inline
+// code references, and marks the block scanned. A token whose text moved
+// since the scan stays text.
+const wrapBlockCodePathTokens = (
+  codeBlock: HTMLElement,
+  confirmed: Array<BlockCodePathToken & { decorate: (span: HTMLElement) => void }>,
+): void => {
+  const doc = codeBlock.ownerDocument;
+  if (confirmed.length > 0) {
+    const walker = doc.createTreeWalker(codeBlock, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node instanceof Text) textNodes.push(node);
+    }
+    const fullText = codeBlock.textContent ?? '';
+    for (const { start, end, raw, decorate } of [...confirmed].sort((left, right) => right.start - left.start)) {
+      if (fullText.slice(start, end) !== raw) continue;
+      const startPosition = findTextPosition(textNodes, start, 'right');
+      const endPosition = findTextPosition(textNodes, end, 'left');
+      if (!startPosition || !endPosition) continue;
+
+      const range = doc.createRange();
+      range.setStart(startPosition.node, startPosition.offset);
+      range.setEnd(endPosition.node, endPosition.offset);
+      const span = doc.createElement('span');
+      span.setAttribute(BLOCK_PATH_TOKEN_ATTR, 'true');
+      span.textContent = raw;
+      decorate(span);
+      range.deleteContents();
+      range.insertNode(span);
+    }
+  }
+  codeBlock.setAttribute(CODE_BLOCK_PATH_SCANNED_ATTR, 'true');
+};
+
 const getResolvedReference = (rawValue: string, effectiveDirectory: string): (ParsedFileReference & { resolvedPath: string }) | null => {
   const parsed = parseFileReference(rawValue);
   if (!parsed || !isLikelyFilePathValue(parsed.path)) {
@@ -497,9 +534,9 @@ const useFileReferenceInteractions = ({
     };
 
     const markFileLink = (candidate: HTMLElement, raw: string, targetPath: string) => {
-      setAttributeIfChanged(candidate, 'data-openchamber-file-link', 'true');
-      setAttributeIfChanged(candidate, 'data-openchamber-file-ref', raw);
-      setAttributeIfChanged(candidate, 'data-openchamber-file-path', targetPath);
+      setAttributeIfChanged(candidate, 'data-alcode-file-link', 'true');
+      setAttributeIfChanged(candidate, 'data-alcode-file-ref', raw);
+      setAttributeIfChanged(candidate, 'data-alcode-file-path', targetPath);
       setAttributeIfChanged(candidate, 'title', 'Open file');
       if (candidate.tagName.toLowerCase() !== 'a') {
         setAttributeIfChanged(candidate, 'role', 'button');
@@ -560,7 +597,7 @@ const useFileReferenceInteractions = ({
           codeBlock,
           tokens: await Promise.all(tokens.map((token) => token.target.then((targetPath) => ({ ...token, targetPath })))),
         }))),
-      ]).then(([linkResults, _blockResults]) => {
+      ]).then(([linkResults, blockResults]) => {
         if (cancelled) return;
         writeAnnotations(() => {
           for (const { candidate, resolvedPath, targetPath } of linkResults) {
@@ -569,6 +606,12 @@ const useFileReferenceInteractions = ({
             if (getResolvedReference(latestRaw, effectiveDirectory)?.resolvedPath !== resolvedPath) continue;
             if (targetPath) markFileLink(candidate, latestRaw, targetPath);
             else clearFileLinkAttributes(candidate);
+          }
+          for (const { codeBlock, tokens } of blockResults) {
+            if (!container.contains(codeBlock) || codeBlock.hasAttribute(CODE_BLOCK_PATH_SCANNED_ATTR)) continue;
+            wrapBlockCodePathTokens(codeBlock, tokens.flatMap(({ start, end, raw, targetPath }) => (
+              targetPath ? [{ start, end, raw, decorate: (span: HTMLElement) => markFileLink(span, raw, targetPath) }] : []
+            )));
           }
         });
       });

@@ -20,8 +20,8 @@ export const DOCUMENT_HTML_ALLOWED_TAGS = [
 ] as const;
 
 export const DOCUMENT_HTML_ALLOWED_ATTR = [
-  'align', 'alt', 'checked', 'class', 'colspan', 'disabled', 'height', 'href', 'media', 'open',
-  'rel', 'rowspan', 'src', 'srcset', 'start', 'target', 'title', 'type', 'width',
+  'align', 'alt', 'checked', 'class', 'colspan', 'controls', 'disabled', 'height', 'href', 'media', 'open',
+  'playsinline', 'preload', 'rel', 'rowspan', 'src', 'srcset', 'start', 'target', 'title', 'type', 'width',
   'data-md-details', 'data-oc-math', 'data-alcode-agent-mention', 'data-skill-name',
 ] as const;
 
