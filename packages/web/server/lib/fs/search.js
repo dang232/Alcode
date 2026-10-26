@@ -97,7 +97,9 @@ const fuzzyMatchScoreNormalized = (normalizedQuery, candidate) => {
 };
 
 export const createGitCheckIgnoreTimeoutMs = () => {
-  const raw = Number(process.env.OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS);
+  // The Alcode name wins; the legacy name stays as a fallback for older
+  // environments.
+  const raw = Number(process.env.ALCODE_GIT_CHECK_IGNORE_TIMEOUT_MS ?? process.env.OPENCHAMBER_GIT_CHECK_IGNORE_TIMEOUT_MS);
   if (Number.isFinite(raw) && raw >= 0) return raw;
   return 2500;
 };

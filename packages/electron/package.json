@@ -163,7 +163,7 @@
       "category": "Development",
       "maintainer": "Alcode <security@openchamber.dev>",
       "vendor": "Alcode",
-      "synopsis": "Desktop runtime for OpenChamber",
+      "synopsis": "Desktop runtime for Alcode",
       "icon": "resources/icons/app-icon.svg",
       "executableName": "alcode",
       "artifactName": "${productName}-${version}-linux-${arch}.${ext}",

@@ -244,7 +244,7 @@ export async function handleSystemBridgeMessage(
       if (!notification.success) {
         return { id, type, success: false, error: 'Invalid notification' };
       }
-      const shown = await vscode.commands.executeCommand<boolean>('openchamber.internal.showNotification', notification.data);
+      const shown = await vscode.commands.executeCommand<boolean>('alcode.internal.showNotification', notification.data);
       return { id, type, success: true, data: { shown: shown === true } };
     }
 

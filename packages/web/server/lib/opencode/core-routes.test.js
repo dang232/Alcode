@@ -71,6 +71,20 @@ describe('core-routes', () => {
     await request(app).get('/api/diagnostics/local-files').set('x-openchamber-relay-connection', 'conn-1').expect(403);
     expect(requireAuth).not.toHaveBeenCalled();
   });
+
+  it('rejects diagnostics forwarded by the private relay under the new header name', async () => {
+    const app = express();
+    const requireAuth = vi.fn((_req, _res, next) => next());
+    registerServerStatusRoutes(app, {
+      express,
+      getHealthSnapshot: () => ({}),
+      gracefulShutdown: vi.fn(),
+      tunnelAuthController: { classifyRequestScope: () => 'local' },
+      uiAuthController: { requireAuth },
+    });
+    await request(app).get('/api/diagnostics/local-files').set('x-alcode-relay-connection', 'conn-1').expect(403);
+    expect(requireAuth).not.toHaveBeenCalled();
+  });
   afterEach(() => {
     vi.useRealTimers();
   });

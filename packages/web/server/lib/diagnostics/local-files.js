@@ -226,10 +226,14 @@ const readKnownFile = async (file, source) => {
 
 /** Read only fixed application log locations. Never accept a path from the renderer. */
 export async function collectLocalFileDiagnostics({ electronLogPath, home = os.homedir(), env = process.env, webPort, journal = serverDiagnosticJournal } = {}) {
-  const dataDir = env.OPENCHAMBER_DATA_DIR || path.join(home, '.config', 'openchamber');
+  // The Alcode data dir first; the pre-rename OpenChamber dir stays as a
+  // fallback so diagnostics keep working for installs that still set the
+  // legacy variable. Callers pass process.env in production and a test env
+  // in tests.
+  const dataDir = env.ALCODE_DATA_DIR || env.OPENCHAMBER_DATA_DIR || path.join(home, '.config', 'alcode');
   const sources = [
     ...(electronLogPath ? [{ name: 'desktop', folder: path.dirname(electronLogPath), matches: (name) => /^main(?:\.\d+)?\.log$/.test(name) }] : []),
-    ...(Number.isInteger(webPort) && webPort > 0 ? [{ name: 'web', folder: path.join(dataDir, 'logs'), matches: (name) => name === `openchamber-${webPort}.log` }] : []),
+    ...(Number.isInteger(webPort) && webPort > 0 ? [{ name: 'web', folder: path.join(dataDir, 'logs'), matches: (name) => name === `alcode-${webPort}.log` || name === `openchamber-${webPort}.log` }] : []),
     ...(process.platform === 'darwin' ? [{ name: 'startup', folder: path.join(home, 'Library', 'Logs', 'OpenChamber'), matches: (name) => /^startup(?:\.err)?\.log$/.test(name) }] : []),
     { name: 'update', folder: dataDir, matches: (name) => name === 'update-install.log' },
   ];

@@ -1044,7 +1044,7 @@ be a measurement, never a disabled instrument.
 | `idle-probe.mjs` | Page-side instrumentation installed before application code runs; attributes scheduled work to the call site that scheduled it. Must never change observable behaviour. |
 | `scenario.mjs` | Shared scenario setup, currently sidebar expansion. Setup always runs before the measured window. |
 | `animation-fixture.html` | Isolated animation variants for `profile:animation`. |
-| `isolated-server.mjs` | `profile:serve`, and the server, fixture, seed-restore and bundle-check functions `profile:compare` uses. Strips `OPENCHAMBER_*`, `OPENCODE_*` and `ELECTRON_*` from every child it starts. |
+| `isolated-server.mjs` | `profile:serve`, and the server, fixture, seed-restore and bundle-check functions `profile:compare` uses. Strips `ALCODE_*`, `OPENCHAMBER_*`, `OPENCODE_*` and `ELECTRON_*` from every child it starts. |
 | `render-probe.mjs` | Page-side render attribution: React commit hook, store probe, DOM mutations per region; its summary and report. Must never change observable behaviour. |
 | `run-summary.mjs` | Reading run directories, and the one definition of a run that measured nothing and of a modified run. |
 | `compare-runs.mjs` | The before/after table over two directories of runs. |

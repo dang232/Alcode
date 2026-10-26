@@ -158,6 +158,27 @@ describe('local file diagnostics', () => {
     }
   });
 
+  it('prefers the Alcode data dir and log name with the legacy ones as fallback', async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'oc-diagnostics-'));
+    try {
+      const logs = path.join(home, 'data', 'logs');
+      await fs.mkdir(logs, { recursive: true });
+      await fs.writeFile(path.join(logs, 'alcode-3000.log'), '2026-09-28T10:00:01Z [lifecycle] health check failed\n');
+      const result = await collectLocalFileDiagnostics({
+        home,
+        env: { ALCODE_DATA_DIR: path.join(home, 'data'), OPENCHAMBER_DATA_DIR: path.join(home, 'legacy') },
+        webPort: 3000,
+        journal: createServerDiagnosticJournal(),
+      });
+      expect(result.events.map(({ source, action }) => [source, action])).toEqual([
+        ['lifecycle', 'info: health check failed'],
+      ]);
+      expect(result.coverage.find(({ source }) => source === 'web')?.status).toBe('read');
+    } finally {
+      await fs.rm(home, { recursive: true, force: true });
+    }
+  });
+
   it('reports an existing file of unclassified info as filtered, not empty or successfully read', async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), 'oc-diagnostics-'));
     try {

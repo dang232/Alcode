@@ -259,7 +259,7 @@ host.onReady((ctx) => {
 
 Alcode supplies thin, theme-aware native scrollbars inside extension documents, including nested lists, tabs, and textareas. Like the app's own, they stay hidden until you hover or scroll. The UI kit includes the same defaults for development previews. Existing installed bundles get the host stylesheet without rebuilding. Custom rendering hosts can use `GUEST_SCROLLBAR_CSS` from `@alcode/sdk`. Authors can override these default rules; an extension's CSP still applies.
 
-The kit's look comes from the OpenChamber version that runs your extension: colours, borders, corner radii, and hover, selected and focus states follow the app after an update, with no rebuild on your side. Sizes and spacing stay the ones your bundle was built with, so a layout built around them doesn't shift; they change when you rebuild against a newer SDK. The app adds its look after your document, so to restyle a kit control, use a selector more specific than the kit's, such as `#root .oc-sdk-btn`. Custom rendering hosts can use `GUEST_UI_LOOK_CSS` from `@openchamber/sdk/ui`.
+The kit's look comes from the Alcode version that runs your extension: colours, borders, corner radii, and hover, selected and focus states follow the app after an update, with no rebuild on your side. Sizes and spacing stay the ones your bundle was built with, so a layout built around them doesn't shift; they change when you rebuild against a newer SDK. The app adds its look after your document, so to restyle a kit control, use a selector more specific than the kit's, such as `#root .oc-sdk-btn`. Custom rendering hosts can use `GUEST_UI_LOOK_CSS` from `@alcode/sdk/ui`.
 
 ## Schemas
 

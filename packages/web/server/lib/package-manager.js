@@ -675,7 +675,7 @@ function normalizeTargetVersion(value) {
 // Dependencies whose install scripts pnpm 10+ blocks until approved. pnpm 11+
 // stops a global install in a terminal to ask about them. Keep in sync with
 // scripts/install.sh and with the "Ignored build scripts" list a fresh
-// `pnpm add -g @openchamber/web` prints.
+// `pnpm add -g @alcode/web` prints.
 const PNPM_BUILD_DEPENDENCIES = ['msgpackr-extract', 'node-pty'];
 // First pnpm release that accepts `--allow-build`; older ones reject it as an
 // unknown option, and pnpm 9 and older run build scripts without approval.

@@ -40,7 +40,7 @@ if (app.getVersion() !== versionBeforeRename) {
   app.setVersion(versionBeforeRename);
 }
 if (process.platform === 'linux') {
-  app.setDesktopName('openchamber.desktop');
+  app.setDesktopName('alcode.desktop');
 }
 if (isDev) {
   app.setPath('userData', path.join(app.getPath('appData'), 'Alcode Dev'));
@@ -74,7 +74,7 @@ if (shouldIgnoreLoopbackConnectionLimit({
 }
 // Development only: lets a debugger or an agent attach to the dev window over
 // CDP. Chromium binds the port to loopback.
-const devRemoteDebuggingPort = String(process.env.OPENCHAMBER_ELECTRON_REMOTE_DEBUGGING_PORT || '').trim();
+const devRemoteDebuggingPort = String(process.env.ALCODE_ELECTRON_REMOTE_DEBUGGING_PORT || process.env.OPENCHAMBER_ELECTRON_REMOTE_DEBUGGING_PORT || '').trim();
 if (isDev && /^\d+$/.test(devRemoteDebuggingPort)) {
   app.commandLine.appendSwitch('remote-debugging-port', devRemoteDebuggingPort);
 }

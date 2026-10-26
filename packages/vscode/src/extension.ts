@@ -331,7 +331,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('openchamber.internal.showNotification', showSessionNotification)
+    vscode.commands.registerCommand('alcode.internal.showNotification', showSessionNotification)
   );
 
   context.subscriptions.push(

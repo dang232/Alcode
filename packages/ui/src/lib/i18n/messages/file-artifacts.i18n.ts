@@ -291,8 +291,8 @@ export const fileArtifactsI18n = {
     'filesView.artifact.table.showTable': 'العرض كجدول',
     'filesView.artifact.table.showSource': 'عرض المصدر',
     'filesView.artifact.binary.title': 'لا توجد معاينة لهذا الملف',
-    'filesView.artifact.binary.description': 'لا يفك OpenChamber ترميز هذا النوع من الملفات. نزّله لفتحه في تطبيق آخر.',
-    'filesView.artifact.binary.descriptionWithType': 'لا يفك OpenChamber ترميز ملفات {extension}. نزّله لفتحه في تطبيق آخر.',
+    'filesView.artifact.binary.description': 'لا يفك Alcode ترميز هذا النوع من الملفات. نزّله لفتحه في تطبيق آخر.',
+    'filesView.artifact.binary.descriptionWithType': 'لا يفك Alcode ترميز ملفات {extension}. نزّله لفتحه في تطبيق آخر.',
   },
   he: {
     'filesView.artifact.image.fit': 'התאם',
@@ -312,7 +312,7 @@ export const fileArtifactsI18n = {
     'filesView.artifact.table.showTable': 'הצג כטבלה',
     'filesView.artifact.table.showSource': 'הצג מקור',
     'filesView.artifact.binary.title': 'אין תצוגה מקדימה לקובץ הזה',
-    'filesView.artifact.binary.description': 'OpenChamber לא מפענח קבצים מהסוג הזה. אפשר להוריד את הקובץ ולפתוח אותו באפליקציה אחרת.',
-    'filesView.artifact.binary.descriptionWithType': 'OpenChamber לא מפענח קבצי {extension}. אפשר להוריד את הקובץ ולפתוח אותו באפליקציה אחרת.',
+    'filesView.artifact.binary.description': 'Alcode לא מפענח קבצים מהסוג הזה. אפשר להוריד את הקובץ ולפתוח אותו באפליקציה אחרת.',
+    'filesView.artifact.binary.descriptionWithType': 'Alcode לא מפענח קבצי {extension}. אפשר להוריד את הקובץ ולפתוח אותו באפליקציה אחרת.',
   },
 } as const;

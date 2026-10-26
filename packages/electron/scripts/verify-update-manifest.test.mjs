@@ -39,9 +39,9 @@ for (const [manifestName, arch, debArch] of [
 ]) {
   test(`validates architecture-specific ${manifestName} with the AppImage, .deb and .rpm`, (t) => {
     const names = [
-      `OpenChamber-1.15.0-linux-${arch}.AppImage`,
-      `OpenChamber-1.15.0-linux-${debArch}.deb`,
-      `OpenChamber-1.15.0-linux-${arch === 'x86_64' ? 'x86_64' : 'aarch64'}.rpm`,
+      `Alcode-1.15.0-linux-${arch}.AppImage`,
+      `Alcode-1.15.0-linux-${debArch}.deb`,
+      `Alcode-1.15.0-linux-${arch === 'x86_64' ? 'x86_64' : 'aarch64'}.rpm`,
     ];
     const value = fixture(t, manifestName, names);
     const result = verifyUpdateManifest({ ...value, expectedVersion: '1.15.0' });
