@@ -135,6 +135,10 @@ jobs:
   build-desktop-electron-macos:
     needs: create-release
     runs-on: ${{ matrix.runner }}
+    # `secrets` cannot be referenced inside an `if:`, so the certificate is lifted
+    # into the job environment and every signing gate reads it from there.
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
     strategy:
       fail-fast: false
       matrix:
@@ -179,7 +183,7 @@ jobs:
       - name: Install Apple Certificate
         # A fork without an Apple Developer certificate still builds a usable,
         # unsigned app; only signing and notarization need the secret.
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: ${{ env.APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -212,7 +216,7 @@ jobs:
           ELECTRON_BUILDER_ARCH: ${{ matrix.arch }}
           # Unsigned when no certificate is configured, so electron-builder does
           # not fail looking for an identity that is not there.
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.APPLE_CERTIFICATE == '' && 'false' || 'true' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ env.APPLE_CERTIFICATE == '' && 'false' || 'true' }}
         run: |
           bun run build:web-assets
           bun run prepare:opencode-cli
@@ -228,7 +232,7 @@ jobs:
           bun run verify:opencode-cli:packaged
 
       - name: Verify signature + entitlements + notarization
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: ${{ env.APPLE_CERTIFICATE != '' }}
         run: |
           set -euo pipefail
 
