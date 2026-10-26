@@ -66,13 +66,15 @@ export const isTransientRuntimeKey = (runtimeKey: string): boolean =>
 
 const readInjectedApiBaseUrl = (): string => {
   if (typeof window === 'undefined') return '';
-  const injected = (window as typeof window & { __ALCODE_API_BASE_URL__?: string }).__ALCODE_API_BASE_URL__;
+  const win = window as typeof window & { __ALCODE_API_BASE_URL__?: string; __OPENCHAMBER_API_BASE_URL__?: string };
+  const injected = win.__ALCODE_API_BASE_URL__ ?? win.__OPENCHAMBER_API_BASE_URL__;
   return typeof injected === 'string' ? injected.trim() : '';
 };
 
 const readInjectedLocalOrigin = (): string => {
   if (typeof window === 'undefined') return '';
-  const injected = (window as typeof window & { __ALCODE_LOCAL_ORIGIN__?: string }).__ALCODE_LOCAL_ORIGIN__;
+  const win = window as typeof window & { __ALCODE_LOCAL_ORIGIN__?: string; __OPENCHAMBER_LOCAL_ORIGIN__?: string };
+  const injected = win.__ALCODE_LOCAL_ORIGIN__ ?? win.__OPENCHAMBER_LOCAL_ORIGIN__;
   return typeof injected === 'string' ? injected.trim() : '';
 };
 
@@ -108,12 +110,16 @@ let cachedRuntimeKey = '';
 let cachedActiveApiBaseUrl: string | null = null;
 let cachedRawApiBaseUrl: string | undefined;
 let cachedRawLocalOrigin: string | undefined;
+let cachedRawLegacyApiBaseUrl: string | undefined;
+let cachedRawLegacyLocalOrigin: string | undefined;
 
-const readRawRuntimeGlobal = (key: '__ALCODE_API_BASE_URL__' | '__ALCODE_LOCAL_ORIGIN__'): string | undefined => {
+const readRawRuntimeGlobal = (key: '__ALCODE_API_BASE_URL__' | '__ALCODE_LOCAL_ORIGIN__' | '__OPENCHAMBER_API_BASE_URL__' | '__OPENCHAMBER_LOCAL_ORIGIN__'): string | undefined => {
   if (typeof window === 'undefined') return undefined;
   const value = (window as typeof window & {
     __ALCODE_API_BASE_URL__?: string;
     __ALCODE_LOCAL_ORIGIN__?: string;
+    __OPENCHAMBER_API_BASE_URL__?: string;
+    __OPENCHAMBER_LOCAL_ORIGIN__?: string;
   })[key];
   return typeof value === 'string' ? value : undefined;
 };
@@ -123,10 +129,14 @@ export const getRuntimeKey = (): string => {
 
   const rawApiBaseUrl = readRawRuntimeGlobal('__ALCODE_API_BASE_URL__');
   const rawLocalOrigin = readRawRuntimeGlobal('__ALCODE_LOCAL_ORIGIN__');
+  const rawLegacyApiBaseUrl = readRawRuntimeGlobal('__OPENCHAMBER_API_BASE_URL__');
+  const rawLegacyLocalOrigin = readRawRuntimeGlobal('__OPENCHAMBER_LOCAL_ORIGIN__');
   if (
     cachedActiveApiBaseUrl === activeApiBaseUrl
     && cachedRawApiBaseUrl === rawApiBaseUrl
     && cachedRawLocalOrigin === rawLocalOrigin
+    && cachedRawLegacyApiBaseUrl === rawLegacyApiBaseUrl
+    && cachedRawLegacyLocalOrigin === rawLegacyLocalOrigin
   ) {
     return cachedRuntimeKey;
   }
@@ -138,6 +148,8 @@ export const getRuntimeKey = (): string => {
   cachedActiveApiBaseUrl = activeApiBaseUrl;
   cachedRawApiBaseUrl = rawApiBaseUrl;
   cachedRawLocalOrigin = rawLocalOrigin;
+  cachedRawLegacyApiBaseUrl = rawLegacyApiBaseUrl;
+  cachedRawLegacyLocalOrigin = rawLegacyLocalOrigin;
   return cachedRuntimeKey;
 };
 

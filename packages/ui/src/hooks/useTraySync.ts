@@ -105,12 +105,16 @@ type DesktopBridgeGlobal = {
 
 const isTrayPlatform = (): boolean => {
   if (typeof window === 'undefined') return false;
-  const platform = (window as unknown as { __ALCODE_PLATFORM__?: string }).__ALCODE_PLATFORM__;
+  const win = window as unknown as { __ALCODE_PLATFORM__?: string; __OPENCHAMBER_PLATFORM__?: string };
+  const platform = win.__ALCODE_PLATFORM__ ?? win.__OPENCHAMBER_PLATFORM__;
   return platform === 'darwin' || platform === 'win32' || platform === 'linux';
 };
 
-const isTrayEnabled = (): boolean =>
-  typeof window !== 'undefined' && window.__ALCODE_ELECTRON__?.trayEnabled !== false;
+const isTrayEnabled = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const win = window as unknown as { __ALCODE_ELECTRON__?: { trayEnabled?: boolean }; __OPENCHAMBER_ELECTRON__?: { trayEnabled?: boolean } };
+  return (win.__ALCODE_ELECTRON__ ?? win.__OPENCHAMBER_ELECTRON__)?.trayEnabled !== false;
+};
 
 const permissionLabel = (request: BlockingPermissionRequest): string => {
   const head = request.action.trim() || 'Permission';
@@ -544,7 +548,8 @@ export const useTraySync = (): void => {
 
   React.useEffect(() => {
     if (!isTrayPlatform() || !isTrayEnabled() || !canUseElectronDesktopIPC()) return;
-    const bridge = (window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal }).__ALCODE_DESKTOP__;
+    const win = window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal; __OPENCHAMBER_DESKTOP__?: DesktopBridgeGlobal };
+    const bridge = win.__ALCODE_DESKTOP__ ?? win.__OPENCHAMBER_DESKTOP__;
     const listen = bridge?.listen;
     if (typeof listen !== 'function') return;
 

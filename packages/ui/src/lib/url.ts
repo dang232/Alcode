@@ -173,7 +173,8 @@ const openValidatedExternalUrl = async (url: string): Promise<boolean> => {
     }
   }
 
-  const desktop = (window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal }).__ALCODE_DESKTOP__;
+  const desktopWindow = window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal; __OPENCHAMBER_DESKTOP__?: DesktopBridgeGlobal };
+  const desktop = desktopWindow.__ALCODE_DESKTOP__ ?? desktopWindow.__OPENCHAMBER_DESKTOP__;
   if (desktop?.openExternal) {
     try {
       await desktop.openExternal(normalizedTarget);

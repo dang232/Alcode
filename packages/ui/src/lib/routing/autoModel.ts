@@ -5,6 +5,8 @@
  */
 export const AUTO_PROVIDER_ID = 'alcode';
 export const AUTO_MODEL_ID = 'auto';
+/** Provider id an older build saved for the Auto sentinel before the rename. */
+const LEGACY_AUTO_PROVIDER_ID = 'openchamber';
 
 export const isAutoModel = (providerId: string | null | undefined, modelId: string | null | undefined): boolean =>
-  providerId === AUTO_PROVIDER_ID && modelId === AUTO_MODEL_ID;
+  (providerId === AUTO_PROVIDER_ID || providerId === LEGACY_AUTO_PROVIDER_ID) && modelId === AUTO_MODEL_ID;
