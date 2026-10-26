@@ -336,7 +336,7 @@ test('failed refreshes keep the last good snapshot and a reconnect recovers miss
   readFailed = false;
   serverContext = { ...serverContext, notes: [{ ...peerNote, body: 'Changed while disconnected' }] };
   await act(async () => {
-    TestEventSource.instances[0].onmessage?.({ data: JSON.stringify({ type: 'openchamber:event-stream-ready', properties: {} }) });
+    TestEventSource.instances[0].onmessage?.({ data: JSON.stringify({ type: 'alcode:event-stream-ready', properties: {} }) });
     await new Promise(resolve => setTimeout(resolve, 0));
   });
   expect(host.textContent).toContain('Changed while disconnected');

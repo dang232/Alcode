@@ -72,7 +72,7 @@ const PROJECT: ProjectEntry = { id: 'proj-1', path: '/repo' };
 const WORKTREE_DIRECTORY = '/home/user/.local/share/opencode/worktree/abc';
 
 const linkedIssuesMetadata: Metadata = {
-  openchamber: {
+  alcode: {
     linked_issues: [{
       id: 'openchamber/openchamber#5028',
       kind: 'issue',

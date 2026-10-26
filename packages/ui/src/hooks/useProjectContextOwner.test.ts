@@ -16,7 +16,7 @@ describe('resolveProjectContextOwner', () => {
       activeProjectId: 'alcode',
       chatDraftOpen: false,
       chatDraftTarget: 'project',
-      chatsRoot: '/Users/test/.config/openchamber/chats',
+      chatsRoot: '/Users/test/.config/alcode/chats',
     });
 
     expect(owner).toEqual({
@@ -96,13 +96,13 @@ describe('resolvePlanRequestOwner', () => {
     const { resolvePlanRequestOwner } = await import('./useProjectContextOwner');
     const other = { id: 'other', path: '/workspace/other', label: 'Other' };
     useProjectsStore.setState({ projects: [...projects, other] });
-    const openchamberId = resolveProjectContextId(projects[0]);
+    const alcodeId = resolveProjectContextId(projects[0]);
 
-    expect(resolvePlanRequestOwner('/workspace/openchamber/packages/ui', openchamberId))
-      .toEqual({ id: 'openchamber', path: '/workspace/openchamber' });
+    expect(resolvePlanRequestOwner('/workspace/alcode/packages/ui', alcodeId))
+      .toEqual({ id: 'alcode', path: '/workspace/alcode' });
     // The agent named another project than the one its session works in.
-    expect(resolvePlanRequestOwner('/workspace/openchamber', resolveProjectContextId(other)))
+    expect(resolvePlanRequestOwner('/workspace/alcode', resolveProjectContextId(other)))
       .toEqual({ id: 'other', path: '/workspace/other' });
-    expect(resolvePlanRequestOwner('/workspace/openchamber', 'path_unknown')).toBeNull();
+    expect(resolvePlanRequestOwner('/workspace/alcode', 'path_unknown')).toBeNull();
   });
 });

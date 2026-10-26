@@ -124,8 +124,14 @@ mock.module('@/components/sections/shared/SettingsSection', () => ({
   SettingsCheckboxRow: ({ children, label }: { children?: React.ReactNode; label?: React.ReactNode }) => (
     <div>{label}{children}</div>
   ),
+  // Keep this surface in step with the real module: a missing export fails at link
+  // time ("Export named ... not found") before any assertion runs.
+  SettingsInset: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SettingsGroupTitle: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   SETTINGS_CUSTOM_TRIGGER_CLASS: '',
   SETTINGS_SELECT_ROW_TRIGGER_CLASS: '',
+  SETTINGS_SELECT_SIZE: 'settings',
+  SETTINGS_FIELDS_STACK_CLASS: '',
   SETTINGS_OPTION_STACK_CLASS: '',
   SettingsChipGroup: () => null,
 }));

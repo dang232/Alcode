@@ -179,7 +179,6 @@ mock.module('@/lib/detectDevServer', () => ({
 }));
 
 const { ProjectActionsButton } = await import('./ProjectActionsButton');
-const { ProjectActionsScope } = await import('./ProjectActionsScope');
 
 describe('ProjectActionsButton lifecycle', () => {
   let windowInstance: Window;
@@ -256,11 +255,11 @@ describe('ProjectActionsButton lifecycle', () => {
     await act(async () => {
       root.render(
         React.createElement(I18nProvider, null,
-          React.createElement(ProjectActionsScope, {
+          React.createElement(ProjectActionsButton, {
             projectRef: { id: 'project-1', path: projectPath },
             directory,
             allowMobile: true,
-          }, React.createElement(ProjectActionsButton)),
+          }),
         ),
       );
     });
