@@ -2973,6 +2973,7 @@ export const dict = {
   'onboarding.localSetup.errors.detectionFailed': 'Erkennung fehlgeschlagen',
   'onboarding.localSetup.windows.title': 'Windows-Einrichtung',
   'onboarding.localSetup.windows.stepInstallWsl': 'Installieren Sie OpenCode mit dem folgenden Befehl.',
+  'onboarding.localSetup.windows.stepRunInstallInWsl': 'Führen Sie den untenstehenden Installationsbefehl in einem Windows-Terminal aus.',
   'onboarding.localSetup.windows.stepSetBinaryPath': 'Wenn Alcode OpenCode nicht automatisch erkennt, legen Sie den Binärpfad unten fest.',
   'onboarding.localSetup.intro': 'Installieren Sie die OpenCode v2 CLI, um fortzufahren.',
   "onboarding.localSetup.docs.windows": "Installationsanleitung",
