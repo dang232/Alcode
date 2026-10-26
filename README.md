@@ -2,10 +2,9 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/dang232/Alcode?style=flat&labelColor=100F0F&color=66800B)](https://github.com/dang232/Alcode/stargazers)
 [![GitHub release](https://img.shields.io/github/v/release/dang232/Alcode?style=flat&labelColor=100F0F&color=205EA6)](https://github.com/dang232/Alcode/releases/latest)
-[![Discord](https://img.shields.io/badge/Discord-join.svg?style=flat&labelColor=100F0F&color=8B7EC8&logo=discord&logoColor=FFFCF0)](https://discord.gg/ZYRSdnwwKA)
-[![Support the project](https://img.shields.io/badge/Support-Project-black?style=flat&labelColor=100F0F&color=EC8B49&logo=patreon&logoColor=FFFCF0)](https://www.patreon.com/openchamber)
+[![CI](https://img.shields.io/github/actions/workflow/status/dang232/Alcode/oc-review.yml?style=flat&labelColor=100F0F&color=66800B&label=pr%20checks)](https://github.com/dang232/Alcode/actions/workflows/oc-review.yml)
 
-<a href="https://www.blacksmith.sh/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/references/badges/blacksmith-dark.svg"><img src="docs/references/badges/blacksmith-light.svg" height="28" alt="CI powered by Blacksmith" /></picture></a>
+
 
 ## Run agent work. Keep control. Ship from anywhere.
 
@@ -81,11 +80,11 @@ Run a prompt once, daily, weekly, or on a cron schedule. Scheduled tasks can use
 
 Download the latest release from [GitHub Releases](https://github.com/dang232/Alcode/releases/latest). Desktop bundles the matching OpenCode CLI, so no separate OpenCode installation is required.
 
-Linux releases come for x86_64 and ARM64 as a `.deb` (Debian, Ubuntu), an `.rpm` (Fedora, openSUSE) and an AppImage. The packages install OpenChamber into the app menu, and in-app updates ask for your password to install the new package:
+Linux releases come for x86_64 and ARM64 as a `.deb` (Debian, Ubuntu), an `.rpm` (Fedora, openSUSE) and an AppImage. The packages install Alcode into the app menu, and in-app updates ask for your password to install the new package:
 
 ```bash
-sudo apt install ./OpenChamber-*-linux-amd64.deb    # Debian, Ubuntu
-sudo dnf install ./OpenChamber-*-linux-x86_64.rpm   # Fedora
+sudo apt install ./Alcode-*-linux-amd64.deb    # Debian, Ubuntu
+sudo dnf install ./Alcode-*-linux-x86_64.rpm   # Fedora
 ```
 
 The AppImage needs no install. Make it executable and keep it in a writable location for in-app updates; on its first start it adds itself to the app menu:
@@ -97,9 +96,36 @@ chmod +x Alcode-*.AppImage
 
 Linux AppImages require FUSE (`libfuse.so.2`). Without FUSE, run with `APPIMAGE_EXTRACT_AND_RUN=1`.
 
+### What each release contains
+
+Every tag publishes the same shape, for both architectures, as separate downloads:
+
+| Platform | Files |
+| --- | --- |
+| macOS arm64 | `Alcode-<version>-mac-arm64.dmg`, `.zip` |
+| macOS x64 | `Alcode-<version>-mac-x64.dmg`, `.zip` |
+| Windows arm64 | `Alcode-<version>-win-arm64.exe` |
+| Windows x64 | `Alcode-<version>-win-x64.exe` |
+| Linux x86_64 | `Alcode-<version>-linux-x86_64.AppImage`, `-linux-amd64.deb`, `-linux-x86_64.rpm` |
+| Linux arm64 | `Alcode-<version>-linux-arm64.AppImage`, `-linux-arm64.deb`, `-linux-aarch64.rpm` |
+
+The release also carries the updater feeds (`latest.yml`, `latest-mac.yml`, `latest-arm64.yml`, `latest-linux.yml`, `latest-linux-arm64.yml`), so an installed copy can update itself.
+
+**These builds are unsigned.** macOS shows "unidentified developer" on first open (right-click → Open, or allow it in System Settings → Privacy & Security), and Windows shows a SmartScreen prompt. Signing needs the Apple certificate and a Windows signing identity configured on the repository.
+
+npm packages and the mobile builds are not published from this repository yet; the release workflow supports both once `NPM_TOKEN` and the mobile toolchain are configured.
+
 ### VS Code
 
-Install [Alcode from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=fedaykindev.openchamber), or search for "Alcode" in Extensions.
+Build and install the extension from this repository:
+
+```bash
+bun run --cwd packages/vscode build
+bun run --cwd packages/vscode package          # writes packages/vscode/alcode-<version>.vsix
+code --install-extension packages/vscode/alcode-*.vsix
+```
+
+No marketplace listing has been published from this fork, so the extension is installed from the `.vsix` above.
 
 ### CLI for Web and PWA
 
@@ -153,9 +179,9 @@ Alcode is an independent project and is not affiliated with the OpenCode team.
 
 ## Contributing
 
-Bug fixes and small improvements are welcome as PRs. Features and behavior changes start in an [Ideas discussion](https://github.com/openchamber/openchamber/discussions/categories/ideas) so we agree on the product side before anyone writes code. Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a PR; it has the setup, the review contract, and what happens to large unplanned PRs. Documentation authoring guidance lives in [`packages/docs`](packages/docs/README.md).
+Bug fixes and small improvements are welcome as PRs. Features and behavior changes start in an [Ideas discussion](https://github.com/dang232/Alcode/discussions/categories/ideas) so we agree on the product side before anyone writes code. Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a PR; it has the setup, the review contract, and what happens to large unplanned PRs. Documentation authoring guidance lives in [`packages/docs`](packages/docs/README.md).
 
-Bugs go to [issues](https://github.com/openchamber/openchamber/issues/new/choose). Questions go to [Q&A discussions](https://github.com/openchamber/openchamber/discussions/categories/q-a).
+Bugs go to [issues](https://github.com/dang232/Alcode/issues/new/choose). Questions go to [Q&A discussions](https://github.com/dang232/Alcode/discussions/categories/q-a).
 
 ## Acknowledgments
 
