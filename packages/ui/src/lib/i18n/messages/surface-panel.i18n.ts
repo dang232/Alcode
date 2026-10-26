@@ -222,7 +222,7 @@ export const surfacePanelI18n = {
     'contextPanel.surface.canvasAria': 'الواجهة المباشرة لـ {name}',
     'contextPanel.surface.ended.service-stopped': 'توقفت خدمة الإضافة.',
     'contextPanel.surface.ended.extension-unavailable': 'الإضافة غير متاحة. تحقق من الإعدادات → الإضافات.',
-    'contextPanel.surface.ended.host-shutdown': 'يجري إيقاف OpenChamber.',
+    'contextPanel.surface.ended.host-shutdown': 'يجري إيقاف Alcode.',
   },
   he: {
     'contextPanel.surface.unavailable': 'המשטח של ההרחבה הזו אינו זמין. יש לוודא שהיא מופעלת ומאושרת בהגדרות ← הרחבות.',
@@ -238,6 +238,6 @@ export const surfacePanelI18n = {
     'contextPanel.surface.canvasAria': 'משטח חי של {name}',
     'contextPanel.surface.ended.service-stopped': 'השירות של ההרחבה הפסיק לפעול.',
     'contextPanel.surface.ended.extension-unavailable': 'ההרחבה אינה זמינה. יש לבדוק בהגדרות ← הרחבות.',
-    'contextPanel.surface.ended.host-shutdown': 'OpenChamber נסגר.',
+    'contextPanel.surface.ended.host-shutdown': 'Alcode נסגר.',
   },
 } as const;

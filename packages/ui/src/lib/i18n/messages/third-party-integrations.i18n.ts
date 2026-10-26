@@ -392,7 +392,7 @@ export const thirdPartyIntegrationI18n = {
   },
   ar: {
     'settings.integrations.thirdParty.title': 'تكاملات الجهات الخارجية',
-    'settings.integrations.thirdParty.info': 'ثبّت مكوّنًا إضافيًا لموفر، ثم أعدّ اشتراكك ليتمكن OpenChamber من استخدامه.',
+    'settings.integrations.thirdParty.info': 'ثبّت مكوّنًا إضافيًا لموفر، ثم أعدّ اشتراكك ليتمكن Alcode من استخدامه.',
     'settings.integrations.thirdParty.actions.install': 'تثبيت',
     'settings.integrations.thirdParty.actions.update': 'تحديث',
     'settings.integrations.thirdParty.actions.setup': 'إعداد',
@@ -422,7 +422,7 @@ export const thirdPartyIntegrationI18n = {
   },
   he: {
     'settings.integrations.thirdParty.title': 'שילובים של צד שלישי',
-    'settings.integrations.thirdParty.info': 'יש להתקין תוסף ספק, ואז להגדיר את המינוי כדי ש-OpenChamber יוכל להשתמש בו.',
+    'settings.integrations.thirdParty.info': 'יש להתקין תוסף ספק, ואז להגדיר את המינוי כדי ש-Alcode יוכל להשתמש בו.',
     'settings.integrations.thirdParty.actions.install': 'התקן',
     'settings.integrations.thirdParty.actions.update': 'עדכן',
     'settings.integrations.thirdParty.actions.setup': 'הגדר',

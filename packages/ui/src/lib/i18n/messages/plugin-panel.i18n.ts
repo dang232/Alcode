@@ -572,7 +572,7 @@ export const pluginPanelI18n = {
     'chat.chatInput.toast.guestCommandNothing': 'لم يجد {name} شيئًا لإرفاقه.',
     'chat.chatInput.toast.guestCommandFailed': 'تعذّر تنفيذ /{command}: {reason}',
     'chat.chatInput.toast.guestCommandUnavailable': 'لم يستجب {name}.',
-    'chat.chatInput.toast.guestUnavailableHere': 'هذه الإضافة غير متاحة هنا. افتحها في OpenChamber على الويب أو سطح المكتب.',
+    'chat.chatInput.toast.guestUnavailableHere': 'هذه الإضافة غير متاحة هنا. افتحها في Alcode على الويب أو سطح المكتب.',
   },
   he: {
     'chat.workStatus.sections.extensionBadge': 'הרחבה',
@@ -613,6 +613,6 @@ export const pluginPanelI18n = {
     'chat.chatInput.toast.guestCommandNothing': '{name} לא מצא שום דבר לצרף.',
     'chat.chatInput.toast.guestCommandFailed': '/{command} נכשל: {reason}',
     'chat.chatInput.toast.guestCommandUnavailable': '{name} לא ענה.',
-    'chat.chatInput.toast.guestUnavailableHere': 'ההרחבה הזו אינה זמינה כאן. אפשר לפתוח אותה ב-OpenChamber בגרסת הרשת או בגרסת שולחן העבודה.',
+    'chat.chatInput.toast.guestUnavailableHere': 'ההרחבה הזו אינה זמינה כאן. אפשר לפתוח אותה ב-Alcode בגרסת הרשת או בגרסת שולחן העבודה.',
   },
 } as const;
