@@ -49,6 +49,7 @@ import {
   stopProjectActionTerminalSession,
 } from '@/lib/projectActionTerminal';
 import { observeTerminalSessions } from '@/lib/terminalSessionObserver';
+import { getSelectedProjectActionId, setSelectedProjectActionId } from '@/lib/projectActionSelection';
 import type { TerminalTab } from '@/stores/useTerminalStore';
 
 type UrlWatchEntry = {
@@ -152,7 +153,9 @@ export const ProjectActionsButton = ({
   const [actions, setActions] = React.useState<AlcodeProjectAction[]>([]);
   // The last merged setup, for the trust check before a shared action runs.
   const setupRef = React.useRef<ProjectSetup | null>(null);
-  const [selectedActionId, setSelectedActionId] = React.useState<string | null>(null);
+  const [selectedActionId, setSelectedActionId] = React.useState<string | null>(
+    () => (projectRef?.id ? getSelectedProjectActionId(projectRef.id) : null),
+  );
   const [isLoading, setIsLoading] = React.useState(false);
   const urlWatchByRunKeyRef = React.useRef<Record<string, UrlWatchEntry>>({});
   const streamCleanupByRunKeyRef = React.useRef<Record<string, () => void>>({});
@@ -382,13 +385,6 @@ export const ProjectActionsButton = ({
     });
   }, []);
 
-  const selectedAction = React.useMemo(() => {
-    if (!selectedActionId) {
-      return null;
-    }
-    return actions.find((entry) => entry.id === selectedActionId) ?? null;
-  }, [actions, selectedActionId]);
-
   const autoDiscoverAction = React.useMemo<AlcodeProjectAction>(() => ({
     id: AUTO_DISCOVER_ACTION_ID,
     name: t('projectActions.actions.autoDiscover'),
@@ -398,10 +394,33 @@ export const ProjectActionsButton = ({
   }), [t]);
 
   const canUseAutoDiscover = !isMobile;
+  // The project's own actions come first, so with nothing picked yet the
+  // button offers the first of them; auto-discovery is the fallback.
   const displayActions = React.useMemo(
-    () => canUseAutoDiscover ? [autoDiscoverAction, ...actions] : actions,
+    () => canUseAutoDiscover ? [...actions, autoDiscoverAction] : actions,
     [actions, autoDiscoverAction, canUseAutoDiscover]
   );
+
+  const selectedAction = React.useMemo(() => {
+    if (!selectedActionId) {
+      return null;
+    }
+    return displayActions.find((entry) => entry.id === selectedActionId) ?? null;
+  }, [displayActions, selectedActionId]);
+
+  const runOf = React.useCallback((entry: AlcodeProjectAction) => (
+    projectActionRuns[toProjectActionRunKey(executionDirectoryFor(entry), entry.id)] ?? null
+  ), [executionDirectoryFor, projectActionRuns]);
+
+  // A running action wins over an idle pick: the row is where it gets stopped,
+  // so it must not hide behind whichever action was chosen last.
+  const shownAction = React.useMemo(() => (
+    (selectedAction && runOf(selectedAction) ? selectedAction : null)
+    ?? displayActions.find((entry) => runOf(entry) !== null)
+    ?? selectedAction
+    ?? displayActions[0]
+    ?? null
+  ), [displayActions, runOf, selectedAction]);
 
   React.useEffect(() => {
     void loadActions();
@@ -461,6 +480,10 @@ export const ProjectActionsButton = ({
       browserWindow.removeEventListener(PROJECT_ACTIONS_UPDATED_EVENT, handler);
     };
   }, [loadActions, projectId]);
+
+  React.useEffect(() => {
+    setSelectedActionId(projectId ? getSelectedProjectActionId(projectId) : null);
+  }, [projectId]);
 
   React.useEffect(() => {
     if (!selectedActionId) {
@@ -1048,7 +1071,7 @@ export const ProjectActionsButton = ({
   }, [clearExecutionUi, executionDirectoryFor, matchesActionExecution, projectActionRuns, setTabLifecycle, setTabPurpose, setTabSessionId, terminal]);
 
   const handlePrimaryClick = React.useCallback(() => {
-    const action = selectedAction ?? displayActions[0];
+    const action = shownAction;
     if (!action) {
       return;
     }
@@ -1062,7 +1085,7 @@ export const ProjectActionsButton = ({
       return;
     }
     void runAction(action);
-  }, [displayActions, executionDirectoryFor, runAction, projectActionRuns, selectedAction, stopAction]);
+  }, [executionDirectoryFor, runAction, projectActionRuns, shownAction, stopAction]);
 
   // A shared action comes from the repo: the first time one would run, the
   // trust prompt shows the team's commands; "not this time" runs nothing.
@@ -1080,6 +1103,7 @@ export const ProjectActionsButton = ({
 
   const handleSelectAction = React.useCallback((action: AlcodeProjectAction, toggleStopIfRunning = false) => {
     setSelectedActionId(action.id);
+    if (projectId) setSelectedProjectActionId(projectId, action.id);
 
     if (!toggleStopIfRunning) {
       void runActionWithTrust(action);
@@ -1096,7 +1120,7 @@ export const ProjectActionsButton = ({
       return;
     }
     void runActionWithTrust(action);
-  }, [executionDirectoryFor, runActionWithTrust, projectActionRuns, stopAction]);
+  }, [executionDirectoryFor, projectId, runActionWithTrust, projectActionRuns, stopAction]);
 
   const openProjectActionsSettings = React.useCallback(() => {
     if (!stableProjectRef?.id) {
@@ -1107,7 +1131,7 @@ export const ProjectActionsButton = ({
     setSettingsDialogOpen(true);
   }, [setSettingsDialogOpen, setSettingsPage, setSettingsProjectsSelectedId, stableProjectRef?.id]);
 
-  const previewAction = selectedAction ?? displayActions[0] ?? null;
+  const previewAction = shownAction;
   const previewRun = previewAction ? projectActionRuns[toProjectActionRunKey(executionDirectoryFor(previewAction), previewAction.id)] : null;
   const selectedRunPreviewUrl = useTerminalStore((state) => {
     if (!previewRun) return null;
@@ -1118,7 +1142,7 @@ export const ProjectActionsButton = ({
     return null;
   }
 
-  const resolvedSelected = selectedAction ?? displayActions[0] ?? null;
+  const resolvedSelected = shownAction;
   if (!resolvedSelected) {
     return null;
   }
@@ -1193,7 +1217,7 @@ export const ProjectActionsButton = ({
               <Icon name="arrow-down-s" className="h-3.5 w-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52 max-h-[70vh] overflow-y-auto">
+          <DropdownMenuContent align="end" data-work-status-popup className="w-52 max-h-[70vh] overflow-y-auto">
             <DropdownMenuItem className="flex items-center gap-2" onClick={openProjectActionsSettings}>
               <Icon name="add" className="h-4 w-4" />
               <span className="typography-ui-label text-foreground">{t('projectActions.actions.addNewAction')}</span>
@@ -1308,7 +1332,7 @@ export const ProjectActionsButton = ({
             <Icon name="arrow-down-s" className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-52 max-h-[70vh] overflow-y-auto">
+        <DropdownMenuContent align="start" data-work-status-popup className="w-52 max-h-[70vh] overflow-y-auto">
           <DropdownMenuItem className="flex items-center gap-2" onClick={openProjectActionsSettings}>
             <Icon name="add" className="h-4 w-4" />
             <span className="typography-ui-label text-foreground">{t('projectActions.actions.addNewAction')}</span>
