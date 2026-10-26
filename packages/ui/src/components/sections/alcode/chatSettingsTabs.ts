@@ -17,9 +17,13 @@ export const useChatSettingsTabStore = create<{
 
 const SEARCH_TARGET_TABS = new Map<string, ChatSettingsTab>([
   ['chat.activity-default', 'messages'],
+  ['chat.render-mode', 'messages'],
+  ['chat.streaming', 'messages'],
   ['chat.reasoning', 'messages'],
   ['chat.reasoning-traces', 'messages'],
   ['chat.tool-file-icons', 'messages'],
+  ['chat.tools-and-files', 'messages'],
+  ['chat.dotfiles', 'messages'],
   ['chat.changed-files', 'messages'],
   ['chat.streaming-auto-follow', 'messages'],
   ['chat.message-appearance', 'messages'],

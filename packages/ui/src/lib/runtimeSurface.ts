@@ -23,7 +23,7 @@ const isTouchOrCoarsePointer = (): boolean => {
 
 const hasSurfaceUrlOverride = (): boolean => {
   if (typeof window === 'undefined') return false;
-  const override = new URLSearchParams(window.location.search).get('surface');
+  const override = new URLSearchParams(window.location?.search ?? '').get('surface');
   return override === 'mobile' || override === 'desktop';
 };
 
@@ -53,7 +53,7 @@ const detectHostedSurface = (): HostedSurface => {
     return explicitSurface;
   }
 
-  const override = new URLSearchParams(window.location.search).get('surface');
+  const override = new URLSearchParams(window.location?.search ?? '').get('surface');
   if (override === 'mobile' || override === 'desktop') {
     return override;
   }

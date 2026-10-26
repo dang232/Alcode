@@ -47,7 +47,7 @@ import { useDefaultDiffViewMode } from '../useDefaultDiffViewMode';
 import { MinDurationShineText } from './MinDurationShineText';
 import { getToolIcon } from './toolPresentation';
 import { GuestToolTable } from './GuestToolTable';
-import type { JsonValue } from '@alcode/sdk';
+
 import {
     guestToolTableRows,
     guestToolHeaderReadsOutput,

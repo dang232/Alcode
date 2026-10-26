@@ -209,7 +209,12 @@ const renderMarkdownImageLabel = ({
   const label = getMarkdownImageFilename(href ?? '', text);
   const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
   const remote = isRemoteMarkdownImageSource(href ?? '');
-  const span = `<span${titleAttr} class="inline-flex items-center gap-1 align-text-bottom text-muted-foreground" data-alcode-markdown-image-label="true">${escapeAttr(label)}</span>`;
+  // A local or embedded image outside a link keeps its source, so the chat
+  // can draw it in place once the message settles (inlineMarkdownImages.ts).
+  const sourceAttr = !remote && markdownLinkDepth === 0 && isSupportedMarkdownImageSource(href ?? '')
+    ? ` data-alcode-markdown-image-source="${escapeAttr(href ?? '')}"`
+    : '';
+  const span = `<span${titleAttr} class="inline-flex items-center gap-1 align-text-bottom text-muted-foreground" data-alcode-markdown-image-label="true"${sourceAttr}>${escapeAttr(label)}</span>`;
   // A remote image becomes a link to itself, unless it already sits inside
   // one (a badge): a link cannot hold another.
   if (!remote || markdownLinkDepth > 0) return span;

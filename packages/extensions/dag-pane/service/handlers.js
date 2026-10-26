@@ -11,14 +11,21 @@
 // `service/main.js` maps HTTP onto `handleRequest`; the unit tests call it
 // directly with a stub bridge, so no server or engine is needed to prove
 // the steer/cancel wiring.
+import { execFileSync } from 'node:child_process';
 import { tmpdir as osTmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import nodeFs from 'node:fs';
+import { promises as nodeFsPromises } from 'node:fs';
+import nodePath from 'node:path';
 
 import {
   createOmoBridgeRuntime,
   defaultSnapshotPath,
 } from '../../../web/server/lib/opencode/omo-bridge-runtime.js';
+import { createCodeGraphRuntime } from '../../../web/server/lib/code-graph/runtime.js';
+import { ProjectKnowledgeStore, parseRecordFile } from '../../../omo-engine/memory-core/src/project-knowledge/record.ts';
+import { retrieveProjectKnowledge } from '../../../omo-engine/memory-core/src/project-knowledge/retrieve.ts';
+import { evaluateFreshness } from '../../../omo-engine/memory-core/src/project-knowledge/validator.ts';
 
 export const DAG_SERVICE_NAME = 'alcode-builtin-dag-pane';
 export const DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX = 'omo-dag-snapshots';
@@ -70,6 +77,54 @@ const isSafeDirectory = (value) => {
   if (text.length === 0) return false;
   if (text.split(/[\\/]+/).includes('..')) return false;
   return text.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(text) || text.startsWith('\\\\');
+};
+
+// Read-only rationale source: project-knowledge/*.md files as committed at
+// HEAD, plus the HEAD revision itself. Git failures (not a repo, no commits
+// yet, no knowledge dir) degrade to an empty file list with whatever
+// revision resolved: an empty store answers ranked [], never a fabricated
+// record. Paths from ls-tree are re-validated before `git show`, so only
+// project-knowledge markdown ever loads.
+const RATIONALE_GIT_TIMEOUT_MS = 15_000;
+
+const gitHeadText = (directory, args) => {
+  try {
+    return execFileSync('git', args, {
+      cwd: directory,
+      encoding: 'utf8',
+      timeout: RATIONALE_GIT_TIMEOUT_MS,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+};
+
+const isHeadKnowledgePath = (name) => (
+  name.startsWith('project-knowledge/')
+  && name.endsWith('.md')
+  && !name.includes('..')
+  && !name.includes('\\')
+  && !name.startsWith('/')
+);
+
+const readHeadTreeProjectKnowledge = (directory) => {
+  const revision = gitHeadText(directory, ['rev-parse', 'HEAD']);
+  if (revision === null || !/^[0-9a-f]{40}$/.test(revision)) {
+    return { revision: null, files: [] };
+  }
+  const listing = gitHeadText(directory, ['ls-tree', '-r', '--name-only', 'HEAD', '--', 'project-knowledge']);
+  if (listing === null) {
+    return { revision, files: [] };
+  }
+  const files = [];
+  for (const name of listing.split('\n').map((line) => line.trim()).filter((line) => line.length > 0)) {
+    if (!isHeadKnowledgePath(name)) continue;
+    const content = gitHeadText(directory, ['show', `HEAD:${name}`]);
+    if (content === null) continue;
+    files.push({ path: name, content });
+  }
+  return { revision, files };
 };
 
 const projectRunsDir = (directory) => (
@@ -585,7 +640,15 @@ export const createDagServiceHandlers = (dependencies = {}) => {
       snapshotDir,
       resolveEngineEntry: () => entry ?? process.env.OMO_WRAPPER_PATH ?? null,
     }),
+    codeGraphRuntime = null,
   } = dependencies;
+
+  // Read-only code-graph runtime over the real engine bundle. The service
+  // never indexes its own cwd: every request names its directory and the
+  // runtime's normalizeDirectory binds the scope (missing/not-a-directory
+  // fails before the engine runs). Overridable for tests; the default is
+  // the real engine.
+  const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime({ fsPromises: nodeFsPromises, path: nodePath });
 
   try {
     fs.mkdirSync(snapshotDir, { recursive: true });
@@ -1207,6 +1270,161 @@ export const createDagServiceHandlers = (dependencies = {}) => {
       }
       live.delete(sessionId.trim());
       return { status: 200, body: { ok: true, sessionId: sessionId.trim(), receipt } };
+    }
+    // Read-only code-graph index over the real engine runtime. Mirrors the
+    // web routes.js contract: directory scoping is explicit (a request
+    // without a directory fails loudly instead of indexing the service
+    // cwd), and a backend failure answers 5xx with the error — never an
+    // empty-fake success the pane could mistake for "no symbols here".
+    if (method === 'GET' && path === '/codegraph/index') {
+      const scoped = await codeGraph.normalizeDirectory(query?.directory);
+      if (scoped.error) {
+        return { status: scoped.status ?? 400, body: { error: scoped.error } };
+      }
+      try {
+        const refresh = query?.refresh === '1' || query?.refresh === 'true';
+        return { status: 200, body: await codeGraph.readIndex(scoped.directory, { refresh }) };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error ?? 'Failed to read code graph index');
+        const status = typeof error?.status === 'number' ? error.status : 500;
+        return { status, body: { error: message || 'Failed to read code graph index' } };
+      }
+    }
+    // Read-only code-graph query over the real engine runtime. Same scope
+    // resolution as /codegraph/index; query-shape mistakes (unknown kind,
+    // missing subject) answer 400 with the reason before/after the engine
+    // runs, and backend failures answer 5xx with the error.
+    if (method === 'GET' && path === '/codegraph/query') {
+      const scoped = await codeGraph.normalizeDirectory(query?.directory);
+      if (scoped.error) {
+        return { status: scoped.status ?? 400, body: { error: scoped.error } };
+      }
+      try {
+        const rawLimit = Number(query?.limit);
+        const result = await codeGraph.query(scoped.directory, {
+          kind: query?.kind,
+          symbol: query?.symbol,
+          query: query?.q,
+          target: query?.target,
+          file: query?.file,
+          limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+          refresh: query?.refresh === '1' || query?.refresh === 'true',
+        });
+        if (result && typeof result.error === 'string') {
+          return { status: result.status ?? 400, body: { error: result.error } };
+        }
+        return { status: 200, body: result };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error ?? 'Failed to query code graph');
+        const status = typeof error?.status === 'number' ? error.status : 500;
+        return { status, body: { error: message || 'Failed to query code graph' } };
+      }
+    }
+    // Read-only rationale over the real project-knowledge store. Lists the
+    // HEAD-tree project-knowledge/*.md files for the directory via git,
+    // loads them with ProjectKnowledgeStore.loadCommitted, ranks them with
+    // retrieveProjectKnowledge, and evaluates freshness per record against
+    // the directory HEAD revision. Empty store, cross-project query, or
+    // missing directory answers ranked [] with no fabricated text; only an
+    // unsafe directory or a backend throw fails loud.
+    if (method === 'GET' && path === '/rationale') {
+      const rationaleDirectory = asString(query?.directory);
+      const rationaleProjectId = asString(query?.projectId);
+      const rationaleQuery = asString(query?.q);
+      const rationaleScopes = asString(query?.scopes).split(',').map((scope) => scope.trim()).filter((scope) => scope.length > 0);
+      if (rationaleDirectory === '') {
+        return { status: 200, body: { projectId: rationaleProjectId || null, revision: null, ranked: [], purgedSecretIds: [] } };
+      }
+      if (!isSafeDirectory(rationaleDirectory)) {
+        return { status: 400, body: { error: 'directory must be an absolute path without .. segments.' } };
+      }
+      let directoryStat = null;
+      try {
+        directoryStat = fs.statSync(rationaleDirectory);
+      } catch {
+        directoryStat = null;
+      }
+      if (directoryStat === null || !directoryStat.isDirectory()) {
+        return { status: 200, body: { projectId: rationaleProjectId || null, revision: null, ranked: [], purgedSecretIds: [] } };
+      }
+      const headTree = readHeadTreeProjectKnowledge(rationaleDirectory);
+      if (rationaleProjectId === '' || rationaleQuery === '' || headTree.files.length === 0) {
+        return { status: 200, body: { projectId: rationaleProjectId || null, revision: headTree.revision, ranked: [], purgedSecretIds: [] } };
+      }
+      try {
+        const store = new ProjectKnowledgeStore();
+        store.loadCommitted(headTree.files);
+        const retrieval = retrieveProjectKnowledge(store.eligible(), {
+          projectId: rationaleProjectId,
+          queryTexts: [rationaleQuery],
+          nodeWriteScopes: rationaleScopes,
+          nowMs: now(),
+        });
+        const ranked = retrieval.ranked.map((entry) => {
+          const freshness = evaluateFreshness(entry.record, headTree.revision ?? entry.record.sourceRevision, now());
+          const effective = freshness.record;
+          return {
+            id: effective.id,
+            claim: effective.claim,
+            kind: entry.record.category,
+            standing: effective.category,
+            confidence: effective.confidence,
+            sourceFile: effective.sourceFile,
+            sourceSymbol: effective.sourceSymbol,
+            observedAt: effective.observedAt,
+            validationMethod: effective.validationMethod,
+            invalidationConditions: [...effective.invalidationConditions],
+            notes: (effective.rationale?.notes ?? []).map((note) => ({ ...note })),
+            freshness: { demoted: freshness.demoted, appliedCase: freshness.appliedCase },
+            scopeNote: entry.scopeNote,
+            totalScore: entry.totalScore,
+          };
+        });
+        return {
+          status: 200,
+          body: {
+            projectId: rationaleProjectId,
+            revision: headTree.revision,
+            ranked,
+            purgedSecretIds: [...retrieval.purgedSecretIds],
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error ?? 'Failed to read rationale');
+        return { status: 500, body: { error: message || 'Failed to read rationale' } };
+      }
+    }
+    // Read-only project discovery over the HEAD-tree knowledge files for
+    // the directory: which projectIds exist, without ranking anything.
+    // Validation mirrors GET /rationale exactly (blank answers an honest
+    // empty, traversal fails before git runs), and each blob's frontmatter
+    // projectId parses through parseRecordFile, so dropped/secret files
+    // never contribute an id. Answers distinct ids, sorted.
+    if (method === 'GET' && path === '/rationale/projects') {
+      const projectsDirectory = asString(query?.directory);
+      if (projectsDirectory === '') {
+        return { status: 200, body: { revision: null, projectIds: [] } };
+      }
+      if (!isSafeDirectory(projectsDirectory)) {
+        return { status: 400, body: { error: 'directory must be an absolute path without .. segments.' } };
+      }
+      let projectsStat = null;
+      try {
+        projectsStat = fs.statSync(projectsDirectory);
+      } catch {
+        projectsStat = null;
+      }
+      if (projectsStat === null || !projectsStat.isDirectory()) {
+        return { status: 200, body: { revision: null, projectIds: [] } };
+      }
+      const headTree = readHeadTreeProjectKnowledge(projectsDirectory);
+      const projectIds = [...new Set(
+        headTree.files.flatMap(({ path: recordPath, content }) => {
+          const parsed = parseRecordFile(recordPath, content);
+          return parsed.kind === 'record' ? [parsed.record.projectId] : [];
+        }),
+      )].sort();
+      return { status: 200, body: { revision: headTree.revision, projectIds } };
     }
     return { status: 404, body: { ok: false, code: 'OMO_DAG_UNKNOWN_PATH', path } };
   };

@@ -32,30 +32,53 @@ const asRecord = (value: JsonValue | undefined): Metadata | null => {
 /** Source-owned keys removed from the fork; everything else is kept as copied. */
 export function withoutSourceOwnedLinks(metadata: Metadata): Metadata {
   const namespace = asRecord(metadata.alcode);
-  if (!namespace) return metadata;
-  const next: Metadata = { ...namespace };
-  delete next.btwSessionID;
-  delete next.reviewSessionID;
-  if (next.kind === 'btw') {
-    delete next.kind;
-    delete next.originalSessionID;
-    delete next.btwBoundaryMessageID;
+  let result = metadata;
+  if (namespace) {
+    const next: Metadata = { ...namespace };
+    delete next.btwSessionID;
+    delete next.reviewSessionID;
+    if (next.kind === 'btw') {
+      delete next.kind;
+      delete next.originalSessionID;
+      delete next.btwBoundaryMessageID;
+    }
+    // A fork of a scheduled run is the user's own work, In work included.
+    if (next.kind === 'scheduled') delete next.kind;
+    // A fork usually tries another path; it must not pursue the source's goal in
+    // parallel, so an active goal arrives paused and the user resumes it.
+    const goal = asRecord(next.goal);
+    const pausedGoal = goal?.status === 'active';
+    if (goal && pausedGoal) {
+      next.goal = { ...goal, status: 'paused', statusReason: 'paused in fork' };
+    }
+    if (pausedGoal || Object.keys(next).length !== Object.keys(namespace).length) {
+      result = { ...metadata };
+      if (Object.keys(next).length > 0) {
+        result.alcode = next;
+      } else {
+        delete result.alcode;
+      }
+    }
   }
-  // A fork of a scheduled run is the user's own work, In work included.
-  if (next.kind === 'scheduled') delete next.kind;
-  // A fork usually tries another path; it must not pursue the source's goal in
-  // parallel, so an active goal arrives paused and the user resumes it.
-  const goal = asRecord(next.goal);
-  const pausedGoal = goal?.status === 'active';
-  if (goal && pausedGoal) {
-    next.goal = { ...goal, status: 'paused', statusReason: 'paused in fork' };
-  }
-  if (!pausedGoal && Object.keys(next).length === Object.keys(namespace).length) return metadata;
+  return withoutLegacyScheduledMarker(result);
+}
+
+/**
+ * The scheduler still marks runs under the pre-rename namespace
+ * (`packages/web/server/lib/scheduled-tasks/runtime.js` writes
+ * `{ openchamber: { kind: 'scheduled' } }`). A fork of one is the user's own
+ * work, so that marker goes too.
+ */
+function withoutLegacyScheduledMarker(metadata: Metadata): Metadata {
+  const legacy = asRecord(metadata.openchamber);
+  if (legacy?.kind !== 'scheduled') return metadata;
+  const rest: Metadata = { ...legacy };
+  delete rest.kind;
   const result: Metadata = { ...metadata };
-  if (Object.keys(next).length > 0) {
-    result.alcode = next;
+  if (Object.keys(rest).length > 0) {
+    result.openchamber = rest;
   } else {
-    delete result.alcode;
+    delete result.openchamber;
   }
   return result;
 }

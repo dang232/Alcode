@@ -127,6 +127,7 @@ import { createProjectConfigRuntime } from './lib/projects/project-config.js';
 import { ensureChatsDir, migrateLegacyUserDirs } from './lib/data-dir-migration.js';
 import { createProjectContextRuntime } from './lib/project-context/runtime.js';
 import { createAgentMemoryRuntime } from './lib/agent-memory/runtime.js';
+import { createCodeGraphRuntime } from './lib/code-graph/runtime.js';
 import { createAgentMemoryActions } from './lib/agent-memory/actions.js';
 import { createMemoryProjectResolver } from './lib/agent-memory/project-resolution.js';
 import { isAgentMemoryFeatureAvailable } from './lib/agent-memory/feature-flag.js';
@@ -668,6 +669,14 @@ const agentMemoryRuntime = createAgentMemoryRuntime({
   projectsDirPath: ALCODE_PROJECTS_CONFIG_DIR,
   userConfigRoot: ALCODE_USER_CONFIG_ROOT,
 });
+
+/**
+ * Site code-graph index: real engine snapshots per project directory. No
+ * settings gate — the index is derived from files already on disk, so
+ * there is nothing to switch off. Missing engine support degrades per
+ * request, never at startup (see lib/code-graph/DOCUMENTATION.md).
+ */
+const codeGraphRuntime = createCodeGraphRuntime({ fsPromises, path });
 
 /**
  * One switch for everything memory-related. It gates the tool, these routes,
@@ -2706,6 +2715,7 @@ async function main(options = {}) {
     projectContextRuntime,
     agentMemoryRuntime,
     isAgentMemoryEnabled,
+    codeGraphRuntime,
     sessionKnowledgeRuntime,
     scheduledTasksRuntime,
     scheduledTaskService,

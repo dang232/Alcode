@@ -324,13 +324,13 @@ describe('Markdown images', () => {
       '![vector](screens/diagram.svg)',
     ].join('\n\n'), 'label');
 
-    expect(html).toContain('data-openchamber-markdown-image-source="screens/first%20view.png">first view.png</span>');
-    expect(html).toContain(`data-openchamber-markdown-image-source="${source}">image.png</span>`);
+    expect(html).toContain('data-alcode-markdown-image-source="screens/first%20view.png">first view.png</span>');
+    expect(html).toContain(`data-alcode-markdown-image-source="${source}">image.png</span>`);
     // Remote images stay links, a badge inside a link stays a label, and an
     // unsupported format has nothing to draw.
-    expect(html).not.toContain('data-openchamber-markdown-image-source="https://');
-    expect(html).not.toContain('data-openchamber-markdown-image-source="screens/badge.png"');
-    expect(html).not.toContain('data-openchamber-markdown-image-source="screens/diagram.svg"');
+    expect(html).not.toContain('data-alcode-markdown-image-source="https://');
+    expect(html).not.toContain('data-alcode-markdown-image-source="screens/badge.png"');
+    expect(html).not.toContain('data-alcode-markdown-image-source="screens/diagram.svg"');
   });
 
   test('validates embedded image bytes against the declared MIME type', async () => {
@@ -454,7 +454,11 @@ describe('Long paragraphs', () => {
     expect(hrefOf(html)).toBe('https://example.com/docs');
     expect(html).toContain('class="katex"');
     expect(settled.map((block) => block.html).join('')).toContain('item_1799');
-  });
+    // The quadratic-rescan guarantee is the scan count above, which is exact.
+    // Wall clock only decides whether this runs at all, so it gets real headroom
+    // instead of bun's 5 s default: 250 KB of JSON parses in ~5 s on a slow CI
+    // runner and the number must not be the thing that fails.
+  }, 120_000);
 
   test('a paragraph without `:`, `/` or `@` skips the linkify search', () => {
     // Every bold and emphasis span is an inline token, and linkify searched the

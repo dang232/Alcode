@@ -40,7 +40,7 @@ describe('macOS startup service', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-startup-'));
     const platform = Object.getOwnPropertyDescriptor(process, 'platform');
     const previousDataDir = process.env.OPENCHAMBER_DATA_DIR;
-    const plistPath = path.join(home, 'Library', 'LaunchAgents', 'dev.openchamber.web.plist');
+    const plistPath = path.join(home, 'Library', 'LaunchAgents', 'dev.alcode.web.plist');
     const writeFileSync = fs.writeFileSync;
     const stopBeforeLaunchctl = new Error('Stop before activating launchd');
 
@@ -70,7 +70,7 @@ describe('macOS startup service', () => {
   it('leaves what OpenChamber put into the enabling shell out of the service environment', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-startup-'));
     const platform = Object.getOwnPropertyDescriptor(process, 'platform');
-    const plistPath = path.join(home, 'Library', 'LaunchAgents', 'dev.openchamber.web.plist');
+    const plistPath = path.join(home, 'Library', 'LaunchAgents', 'dev.alcode.web.plist');
     const writeFileSync = fs.writeFileSync;
     const stopBeforeLaunchctl = new Error('Stop before activating launchd');
     // The shell of a desktop app's terminal, or an agent's: the user's own
@@ -100,7 +100,7 @@ describe('macOS startup service', () => {
         if (file === plistPath) throw stopBeforeLaunchctl;
       });
 
-      expect(() => enableStartupService({ port: 3000, host: '0.0.0.0', uiPassword: 'service-password' })).toThrow(stopBeforeLaunchctl);
+      expect(() => enableStartupService({ port: 3000, host: '0.0.0.0' })).toThrow(stopBeforeLaunchctl);
       const plist = fs.readFileSync(plistPath, 'utf8');
       for (const key of ['OPENCHAMBER_RUNTIME', 'OPENCHAMBER_SKIP_API_COMPRESSION', 'OPENCODE_SERVER_PASSWORD', INJECTED_ENV_KEY]) {
         expect(plist).not.toContain(`<key>${key}</key>`);
@@ -108,7 +108,6 @@ describe('macOS startup service', () => {
       for (const key of Object.keys(theirs)) {
         expect(plist).toContain(`<key>${key}</key>`);
       }
-      expect(plist).toContain('<string>service-password</string>');
       expect(plist).not.toContain('desktop-password');
     } finally {
       vi.restoreAllMocks();

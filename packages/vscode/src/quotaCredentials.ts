@@ -6,7 +6,7 @@ import { fetchExeDevUsage } from './exeDevQuota';
 
 export type ManagedProvider = 'exe-dev' | 'cursor' | 'zenmux';
 type ManagedCredential = Record<string, string>;
-const providers = new Set<ManagedProvider>(['exe-dev', 'ollama-cloud', 'cursor', 'zenmux']);
+const providers = new Set<ManagedProvider>(['exe-dev', 'cursor', 'zenmux']);
 const directory = () => path.join(process.env.ALCODE_DATA_DIR ? path.resolve(process.env.ALCODE_DATA_DIR) : path.join(os.homedir(), '.config', 'alcode'), 'quota');
 const target = (provider: ManagedProvider) => {
   if (!providers.has(provider)) throw new Error('Unsupported credential provider');

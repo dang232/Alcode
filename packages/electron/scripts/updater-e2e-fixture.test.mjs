@@ -27,10 +27,8 @@ test('stages architecture-specific generic updater fixtures with valid metadata'
       artifactPaths: [result.artifactPath],
       expectedVersion: '1.15.1',
     }), {
-      name: 'Alcode-1.15.1-linux-arm64.AppImage',
-      size: 16,
       version: '1.15.1',
-      artifacts: [{ name: 'OpenChamber-1.15.1-linux-arm64.AppImage', size: 16 }],
+      artifacts: [{ name: 'Alcode-1.15.1-linux-arm64.AppImage', size: 16 }],
     });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

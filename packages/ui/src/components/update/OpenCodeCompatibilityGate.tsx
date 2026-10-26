@@ -1,11 +1,12 @@
 import * as React from 'react';
 import { AlcodeLogo } from '@/components/ui/AlcodeLogo';
-import { AppStartupOverlay } from '@/components/ui/AppStartupOverlay';
+
 import { Icon } from '@/components/icon/Icon';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { DesktopHostSwitcherInline } from '@/components/desktop/DesktopHostSwitcher';
 import { useI18n } from '@/lib/i18n';
+import { isDesktopLocalOriginActive, isDesktopShell } from '@/lib/desktop';
 import { subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import { recoverOpenCode, type OpenCodeCompatibility } from '@/lib/opencode/compatibility';
 import { runCompatibilityCheck, takeCompatibilityCheck, type CompatibilityCheck } from './openCodeCompatibilityCheck';
@@ -25,9 +26,17 @@ export const OpenCodeCompatibilityGate: React.FC<React.PropsWithChildren<{ enabl
   const [operation, setOperation] = React.useState<'install-v2' | 'reconnect' | null>(null);
   const [failed, setFailed] = React.useState(false);
   const generation = React.useRef(0);
+  // A managed desktop answers from its native preflight instead of the
+  // compatibility endpoint. While that verdict is in flight the app must not
+  // bootstrap against an unknown OpenCode, so the gate withholds the children
+  // (and keeps the loading splash) until this runtime's check settles.
+  const [awaitingPreflight, setAwaitingPreflight] = React.useState(
+    () => enabled && isDesktopShell() && isDesktopLocalOriginActive(),
+  );
 
   React.useEffect(() => {
     if (!enabled) return;
+    if (isDesktopShell() && isDesktopLocalOriginActive()) setAwaitingPreflight(true);
     let mounted = true;
     const check = async (request: CompatibilityCheck) => {
       const revision = ++generation.current;
@@ -37,6 +46,8 @@ export const OpenCodeCompatibilityGate: React.FC<React.PropsWithChildren<{ enabl
       } catch {
         // An unavailable host or an older Alcode host keeps its existing
         // connection UI. Failed reads never dismiss a known incompatible CLI.
+      } finally {
+        if (mounted && revision === generation.current) setAwaitingPreflight(false);
       }
     };
     void check(takeCompatibilityCheck());
@@ -75,7 +86,10 @@ export const OpenCodeCompatibilityGate: React.FC<React.PropsWithChildren<{ enabl
     }
   };
 
-  if (!enabled || compatibility?.state !== 'incompatible') return <>{children}</>;
+  if (!enabled || compatibility?.state !== 'incompatible') {
+    if (awaitingPreflight && compatibility === null) return null;
+    return <>{children}</>;
+  }
   const external = compatibility.installation === 'external';
   const bundled = compatibility.installation === 'bundled';
   // A 2.x below the minimum needs an update, not the v1 → v2 move.

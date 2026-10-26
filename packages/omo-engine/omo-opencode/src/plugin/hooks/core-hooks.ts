@@ -17,6 +17,7 @@ import type {
 } from "../../plugin-types";
 import { log } from "../../shared/logger";
 import { safeCreateHook } from "../../shared/safe-create-hook";
+import { createPlannerEvidenceHook } from "./planner-evidence-hook";
 
 /** Registry plus cleanup callbacks produced by this tier. */
 export interface CoreHookGroup {
@@ -108,7 +109,7 @@ function createMonitorStatusHook(managers: OmoHookManagers): OmoHookHandler | nu
 }
 
 export function createCoreHooks(
-  _ctx: OmoPluginContext,
+  ctx: OmoPluginContext,
   flags: OmoHookFlags,
   managers: OmoHookManagers,
 ): CoreHookGroup {
@@ -138,6 +139,42 @@ export function createCoreHooks(
       hooks,
       "monitor-status-injector",
       guard("monitor-status-injector", () => createMonitorStatusHook(managers)),
+    );
+  }
+
+  if (flags.isHookEnabled("planner-evidence")) {
+    registerHook(
+      hooks,
+      "planner-evidence",
+      guard("planner-evidence", () =>
+        createPlannerEvidenceHook({
+          env: process.env,
+          directory: () => ctx.directory,
+          readLastUserText: async (sessionID) => {
+            const client = ctx.client;
+            if (client === undefined) return undefined;
+            const response = await client.session.messages({ path: { id: sessionID } });
+            const payload = response.data as unknown;
+            const messages: readonly unknown[] = Array.isArray(payload)
+              ? payload
+              : Array.isArray((payload as { messages?: readonly unknown[] } | undefined)?.messages)
+                ? ((payload as { messages: readonly unknown[] }).messages)
+                : [];
+            for (let index = messages.length - 1; index >= 0; index -= 1) {
+              const entry = messages[index];
+              const role = (entry as { info?: { role?: string } }).info?.role;
+              if (role !== "user") continue;
+              const parts = (entry as { parts?: readonly unknown[] }).parts ?? [];
+              const text = parts
+                .map((part) => (part as { type?: string; text?: string }).type === "text" ? (part as { text?: string }).text ?? "" : "")
+                .join("\n")
+                .trim();
+              if (text.length > 0) return text;
+            }
+            return undefined;
+          },
+        }),
+      ),
     );
   }
 

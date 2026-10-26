@@ -1,9 +1,11 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { Window } from 'happy-dom';
+import { installHappyDomNodeNameShim } from './happyDomNodeNameShim';
 
 // The real sanitizer on a happy-dom window: these tests count the work each
 // stage does and compare the HTML the same pipeline produces either way.
 const win = new Window({ url: 'https://openchamber.test/' });
+installHappyDomNodeNameShim(win);
 Object.assign(globalThis, {
   window: win,
   document: win.document,

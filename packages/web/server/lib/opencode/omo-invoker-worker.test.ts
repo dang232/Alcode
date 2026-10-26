@@ -172,6 +172,28 @@ describe('worker job mode (stdin parse)', () => {
     expect(JSON.parse(readFileSync(callFile, 'utf8'))).toMatchObject({ ...job, json: true });
   }, 30000);
 
+  it('workflow round-trips trimmed to run() when provided', async () => {
+    const { root, barrelPath } = makeEngineRoot();
+    const callFile = join(root, 'call.json');
+    const result = await runWorker(
+      ['--engine-root', root, '--barrel-path', barrelPath],
+      `${JSON.stringify({ message: 'Continue', workflow: '  plan-then-execute  ' })}\n`,
+      { OMO_WORKER_CALL_FILE: callFile },
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(readFileSync(callFile, 'utf8'))).toMatchObject({ message: 'Continue', workflow: 'plan-then-execute', json: true });
+  }, 30000);
+
+  it('blank workflow fails closed with a stderr reason', async () => {
+    const { root, barrelPath } = makeEngineRoot();
+    const result = await runWorker(
+      ['--engine-root', root, '--barrel-path', barrelPath],
+      `${JSON.stringify({ message: 'hi', workflow: '   ' })}\n`,
+    );
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('[omo-invoker-worker]');
+  }, 30000);
+
   it('leading blank lines are skipped, the first job line wins', async () => {
     const { root, barrelPath } = makeEngineRoot();
     const callFile = join(root, 'call.json');

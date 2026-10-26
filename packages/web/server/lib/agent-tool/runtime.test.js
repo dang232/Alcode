@@ -172,10 +172,10 @@ describe('managed agent tool runtime', () => {
     const server = await new Promise((resolve) => {
       const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
     });
-    const originalUrl = process.env.OPENCHAMBER_AGENT_TOOL_URL;
-    const originalToken = process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-    process.env.OPENCHAMBER_AGENT_TOOL_URL = `http://127.0.0.1:${server.address().port}/api/openchamber/agent-tool`;
-    process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = prepared.OPENCHAMBER_AGENT_TOOL_TOKEN;
+    const originalUrl = process.env.ALCODE_AGENT_TOOL_URL;
+    const originalToken = process.env.ALCODE_AGENT_TOOL_TOKEN;
+    process.env.ALCODE_AGENT_TOOL_URL = `http://127.0.0.1:${server.address().port}/api/alcode/agent-tool`;
+    process.env.ALCODE_AGENT_TOOL_TOKEN = prepared.ALCODE_AGENT_TOOL_TOKEN;
     const call = async (action, parameters = {}) => JSON.parse((await tools.openchamber_knowledge.execute(
       { action, parameters }, { sessionID: 'ses_caller', progress: async () => {} },
     )).content);
@@ -228,13 +228,13 @@ describe('managed agent tool runtime', () => {
       expect((await call('show', { kind: 'plan', id: planId })).ok).toBe(false);
       expect(await projectContextRuntime.readContext(owner)).toMatchObject({ notes: [], plans: [], todos: [{ text: 'UI item' }] });
       expect(onChanged.mock.calls.every(([projectId]) => projectId === owner)).toBe(true);
-      process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = 'wrong-token';
+      process.env.ALCODE_AGENT_TOOL_TOKEN = 'wrong-token';
       expect((await call('list')).ok).toBe(false);
     } finally {
-      if (originalUrl === undefined) delete process.env.OPENCHAMBER_AGENT_TOOL_URL;
-      else process.env.OPENCHAMBER_AGENT_TOOL_URL = originalUrl;
-      if (originalToken === undefined) delete process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-      else process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = originalToken;
+      if (originalUrl === undefined) delete process.env.ALCODE_AGENT_TOOL_URL;
+      else process.env.ALCODE_AGENT_TOOL_URL = originalUrl;
+      if (originalToken === undefined) delete process.env.ALCODE_AGENT_TOOL_TOKEN;
+      else process.env.ALCODE_AGENT_TOOL_TOKEN = originalToken;
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
   });
@@ -251,8 +251,8 @@ describe('managed agent tool runtime', () => {
     expect(Object.keys(parameters).sort()).toEqual(['body', 'completed', 'directory', 'expected', 'id', 'kind', 'projectId']);
     expect(parameters.kind.enum).toEqual(['note', 'todo', 'plan']);
     expect(parameters.completed.type).toBe('boolean');
-    expect(tools.openchamber.input.properties.action.oneOf.map((entry) => entry.const)).not.toContain('knowledge.list');
-    for (const tool of ['openchamber', 'openchamber_web', 'openchamber_memory']) {
+    expect(tools.alcode.input.properties.action.oneOf.map((entry) => entry.const)).not.toContain('knowledge.list');
+    for (const tool of ['alcode', 'alcode_web', 'alcode_memory']) {
       for (const field of ['kind', 'expected', 'completed']) {
         expect(tools[tool].input.properties.parameters.properties).not.toHaveProperty(field);
       }
@@ -293,13 +293,13 @@ describe('managed agent tool runtime', () => {
     await runtime.materializePlugin({});
     const tool = await loadTools(dataDir, 'worktree-intro');
 
-    expect(tool.openchamber.description).toContain('Whether that fits depends on how the user works');
-    expect(tool.openchamber.description).toContain('such as a pull request of its own');
+    expect(tool.alcode.description).toContain('Whether that fits depends on how the user works');
+    expect(tool.alcode.description).toContain('such as a pull request of its own');
     // OpenCode's own worktree_create makes a detached copy of the current commit.
-    expect(tool.openchamber.description).toContain('Unlike git worktree add, the session moves along');
-    expect(tool.openchamber.description).not.toContain('without asking');
-    expect(tool.openchamber.input.properties.action.oneOf.map((entry) => entry.const)).toContain('session.moveToWorktree');
-    expect(tool.openchamber.input.properties.parameters.properties.carry).toEqual(expect.objectContaining({ type: 'array' }));
+    expect(tool.alcode.description).toContain('Unlike git worktree add, the session moves along');
+    expect(tool.alcode.description).not.toContain('without asking');
+    expect(tool.alcode.input.properties.action.oneOf.map((entry) => entry.const)).toContain('session.moveToWorktree');
+    expect(tool.alcode.input.properties.parameters.properties.carry).toEqual(expect.objectContaining({ type: 'array' }));
   });
 
   it('materializes the plugin and mints a per-child callback token', async () => {
@@ -320,15 +320,15 @@ describe('managed agent tool runtime', () => {
     }
     expect(source).not.toContain('"schedule.status"');
     const tool = await loadTools(dataDir, 'schema');
-    expect(tool.openchamber.description).toContain('A dispatch returns at once');
-    expect(tool.openchamber.description).toContain('returnResult brings its final answer back here');
+    expect(tool.alcode.description).toContain('A dispatch returns at once');
+    expect(tool.alcode.description).toContain("the session's final answer then arrives in this session as a message when it finishes");
     expect(tool.alcode.description).toContain('A dispatch returns at once');
     expect(tool.alcode.description).toContain('final answer then arrives in this session as a message');
     // Agents also have OpenCode's own subagent tool; the line between the two is drawn up front.
     expect(tool.alcode.description).toContain('use the subagent tool');
     expect(tool.alcode.input.properties.action.oneOf).toContainEqual({
       const: 'session.messages',
-      description: 'Text messages and sessionStatus of sessionId',
+      description: 'Read text-only messages and current sessionStatus for sessionId; directory and limit 10 are defaults',
     });
     // An agent never blocks on a session: no wait or timeout in its schema.
     const controlParameters = tool.alcode.input.properties.parameters.properties;
@@ -444,15 +444,15 @@ describe('managed agent tool runtime', () => {
     expect(tools.openchamber_render.input.properties.action).toEqual({ type: 'string', description: expect.stringContaining('render.page: ') });
     expect(tools.openchamber_render.input.required).toEqual([]);
     // A tool with several actions keeps its strict list.
-    expect(tools.openchamber.input.properties.action.oneOf.length).toBeGreaterThan(1);
-    expect(tools.openchamber.input.required).toEqual(['action']);
+    expect(tools.alcode.input.properties.action.oneOf.length).toBeGreaterThan(1);
+    expect(tools.alcode.input.required).toEqual(['action']);
 
     const sent = [];
     const originalFetch = globalThis.fetch;
-    const originalUrl = process.env.OPENCHAMBER_AGENT_TOOL_URL;
-    const originalToken = process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-    process.env.OPENCHAMBER_AGENT_TOOL_URL = prepared.OPENCHAMBER_AGENT_TOOL_URL;
-    process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = prepared.OPENCHAMBER_AGENT_TOOL_TOKEN;
+    const originalUrl = process.env.ALCODE_AGENT_TOOL_URL;
+    const originalToken = process.env.ALCODE_AGENT_TOOL_TOKEN;
+    process.env.ALCODE_AGENT_TOOL_URL = prepared.ALCODE_AGENT_TOOL_URL;
+    process.env.ALCODE_AGENT_TOOL_TOKEN = prepared.ALCODE_AGENT_TOOL_TOKEN;
     globalThis.fetch = async (_endpoint, init) => {
       sent.push(JSON.parse(init.body));
       return new Response(JSON.stringify({ schemaVersion: 1, ok: true, action: 'render.page', data: {} }));
@@ -468,8 +468,8 @@ describe('managed agent tool runtime', () => {
       await tools.openchamber_render.execute({ parameters: { html: '<p>c</p>', title: 'Bare' } }, context);
     } finally {
       globalThis.fetch = originalFetch;
-      process.env.OPENCHAMBER_AGENT_TOOL_URL = originalUrl;
-      process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = originalToken;
+      process.env.ALCODE_AGENT_TOOL_URL = originalUrl;
+      process.env.ALCODE_AGENT_TOOL_TOKEN = originalToken;
     }
 
     expect(sent[0].input).toEqual({ action: 'render.page', html: '<p>a</p>', title: 'Commits' });
@@ -484,10 +484,10 @@ describe('managed agent tool runtime', () => {
 
     const sent = [];
     const originalFetch = globalThis.fetch;
-    const originalUrl = process.env.OPENCHAMBER_AGENT_TOOL_URL;
-    const originalToken = process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-    process.env.OPENCHAMBER_AGENT_TOOL_URL = prepared.OPENCHAMBER_AGENT_TOOL_URL;
-    process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = prepared.OPENCHAMBER_AGENT_TOOL_TOKEN;
+    const originalUrl = process.env.ALCODE_AGENT_TOOL_URL;
+    const originalToken = process.env.ALCODE_AGENT_TOOL_TOKEN;
+    process.env.ALCODE_AGENT_TOOL_URL = prepared.ALCODE_AGENT_TOOL_URL;
+    process.env.ALCODE_AGENT_TOOL_TOKEN = prepared.ALCODE_AGENT_TOOL_TOKEN;
     globalThis.fetch = async (_endpoint, init) => {
       sent.push(JSON.parse(init.body));
       return new Response(JSON.stringify({ schemaVersion: 1, ok: true, action: 'session.list', data: {} }));
@@ -497,32 +497,32 @@ describe('managed agent tool runtime', () => {
     try {
       const call = (tool, input) => tools[tool].execute(input, context);
       // Real booleans travel unchanged in both shapes.
-      await call('openchamber', { action: 'session.list', parameters: { withStatus: true } });
-      await call('openchamber', { action: 'session.list', parameters: { withStatus: false } });
-      await call('openchamber', { action: 'session.list', withStatus: true });
-      await call('openchamber', { action: 'session.list', withStatus: false });
+      await call('alcode', { action: 'session.list', parameters: { withStatus: true } });
+      await call('alcode', { action: 'session.list', parameters: { withStatus: false } });
+      await call('alcode', { action: 'session.list', withStatus: true });
+      await call('alcode', { action: 'session.list', withStatus: false });
       // Exactly the stringified "true"/"false" spellings are normalized.
-      await call('openchamber', { action: 'session.list', parameters: { withStatus: 'true' } });
-      await call('openchamber', { action: 'session.list', parameters: { withStatus: 'false' } });
-      await call('openchamber', { action: 'session.list', withStatus: 'true' });
-      await call('openchamber', { action: 'session.list', withStatus: 'false' });
+      await call('alcode', { action: 'session.list', parameters: { withStatus: 'true' } });
+      await call('alcode', { action: 'session.list', parameters: { withStatus: 'false' } });
+      await call('alcode', { action: 'session.list', withStatus: 'true' });
+      await call('alcode', { action: 'session.list', withStatus: 'false' });
       // The field names come from the calling tool's own schema, so other
       // tools' booleans normalize there too, not only `completed`.
-      await call('openchamber_web', { action: 'browser.type', parameters: { selector: '#q', value: 'x', submit: 'true' } });
+      await call('alcode_web', { action: 'browser.type', parameters: { selector: '#q', value: 'x', submit: 'true' } });
       await call('openchamber_knowledge', { action: 'knowledge.save', parameters: { kind: 'todo', id: 't1', completed: 'false' } });
       // Every other spelling or value keeps its identity for the strict check.
       for (const value of ['TRUE', 'False', 'yes', '1', 1, 0, null]) {
-        await call('openchamber', { action: 'session.list', parameters: { withStatus: value } });
+        await call('alcode', { action: 'session.list', parameters: { withStatus: value } });
       }
       // A boolean another tool declares is not a field of this tool, so it is
       // left alone here.
-      await call('openchamber_web', { action: 'browser.type', parameters: { selector: '#q', value: 'x', withStatus: 'true' } });
+      await call('alcode_web', { action: 'browser.type', parameters: { selector: '#q', value: 'x', withStatus: 'true' } });
     } finally {
       globalThis.fetch = originalFetch;
-      if (originalUrl === undefined) delete process.env.OPENCHAMBER_AGENT_TOOL_URL;
-      else process.env.OPENCHAMBER_AGENT_TOOL_URL = originalUrl;
-      if (originalToken === undefined) delete process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-      else process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = originalToken;
+      if (originalUrl === undefined) delete process.env.ALCODE_AGENT_TOOL_URL;
+      else process.env.ALCODE_AGENT_TOOL_URL = originalUrl;
+      if (originalToken === undefined) delete process.env.ALCODE_AGENT_TOOL_TOKEN;
+      else process.env.ALCODE_AGENT_TOOL_TOKEN = originalToken;
     }
 
     expect(sent.slice(0, 8).map(({ input }) => input.withStatus)).toEqual([true, false, true, false, true, false, true, false]);
@@ -589,9 +589,9 @@ describe('managed agent tool runtime', () => {
     await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: false, includeRender: true });
     const tool = await loadTools(dataDir, 'render');
 
-    expect(Object.keys(tool)).toEqual(['openchamber', 'openchamber_render']);
+    expect(Object.keys(tool)).toEqual(['alcode', 'openchamber_render']);
     expect(Object.keys(tool.openchamber_render.input.properties.parameters.properties).sort()).toEqual(['awaitAnswer', 'html', 'title']);
-    expect(Object.keys(tool.openchamber.input.properties.parameters.properties)).not.toContain('html');
+    expect(Object.keys(tool.alcode.input.properties.parameters.properties)).not.toContain('html');
     // How to write the page rides on its input, which no client cuts short.
     expect(tool.openchamber_render.input.properties.parameters.properties.html.description).toContain('--chart-1');
     expect(tool.openchamber_render.description).toContain('add no outer card, border or banner title');
@@ -615,14 +615,14 @@ describe('managed agent tool runtime', () => {
     await prepareManagedEnv(runtime, { includeControl: true, includeSchedule: true, includeWeb: false, includeMemory: false });
     const tools = await loadTools(dataDir, 'schedule');
 
-    expect(Object.keys(tools)).toEqual(['openchamber', 'openchamber_schedule']);
+    expect(Object.keys(tools)).toEqual(['alcode', 'openchamber_schedule']);
     const scheduleActions = tools.openchamber_schedule.input.properties.action.oneOf.map((entry) => entry.const);
     expect(scheduleActions).toEqual(['schedule.list', 'schedule.create', 'schedule.update', 'schedule.run', 'schedule.delete', 'schedule.toggle']);
-    expect(tools.openchamber.input.properties.action.oneOf.map((entry) => entry.const).filter((action) => action.startsWith('schedule.'))).toEqual([]);
+    expect(tools.alcode.input.properties.action.oneOf.map((entry) => entry.const).filter((action) => action.startsWith('schedule.'))).toEqual([]);
     const scheduleParameters = tools.openchamber_schedule.input.properties.parameters.properties;
     expect(Object.keys(scheduleParameters)).toEqual(expect.arrayContaining(['taskId', 'daily', 'cron', 'prompt', 'model', 'projectId']));
     for (const field of ['taskId', 'daily', 'cron', 'disabled', 'targetSessionId']) {
-      expect(tools.openchamber.input.properties.parameters.properties).not.toHaveProperty(field);
+      expect(tools.alcode.input.properties.parameters.properties).not.toHaveProperty(field);
     }
     expect(scheduleParameters.disabled.type).toBe('boolean');
 
@@ -635,7 +635,7 @@ describe('managed agent tool runtime', () => {
     const listed = await runtime.execute({ tool: 'openchamber_schedule', input: { action: 'list' }, sessionID: 'ses_a' });
     expect(listed.ok).toBe(true);
     expect(executeAction).toHaveBeenCalledWith('schedule.list', expect.anything(), undefined, expect.anything());
-    const refused = await runtime.execute({ tool: 'openchamber', input: { action: 'schedule.list' }, sessionID: 'ses_a' });
+    const refused = await runtime.execute({ tool: 'alcode', input: { action: 'schedule.list' }, sessionID: 'ses_a' });
     expect(refused.ok).toBe(false);
   });
 
@@ -644,7 +644,7 @@ describe('managed agent tool runtime', () => {
     await prepareManagedEnv(runtime, { includeSchedule: true, includeKnowledge: true, includeNotify: true, includeRender: true });
     const tools = await loadTools(dataDir, 'description-length');
 
-    expect(Object.keys(tools).sort()).toEqual(['openchamber', 'openchamber_knowledge', 'openchamber_memory', 'openchamber_notify', 'openchamber_render', 'openchamber_schedule', 'openchamber_web']);
+    expect(Object.keys(tools).sort()).toEqual(['alcode', 'alcode_memory', 'alcode_notify', 'alcode_web', 'openchamber_knowledge', 'openchamber_render', 'openchamber_schedule']);
     for (const tool of Object.values(tools)) {
       // Claude Code before 2.1.296 cuts an MCP tool description at 2048
       // characters, and the plugin runs whichever CLI the user installed.
@@ -666,10 +666,10 @@ describe('managed agent tool runtime', () => {
     const server = await new Promise((resolve) => {
       const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
     });
-    const originalUrl = process.env.OPENCHAMBER_AGENT_TOOL_URL;
-    const originalToken = process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-    process.env.OPENCHAMBER_AGENT_TOOL_URL = `http://127.0.0.1:${server.address().port}/api/openchamber/agent-tool`;
-    process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = prepared.OPENCHAMBER_AGENT_TOOL_TOKEN;
+    const originalUrl = process.env.ALCODE_AGENT_TOOL_URL;
+    const originalToken = process.env.ALCODE_AGENT_TOOL_TOKEN;
+    process.env.ALCODE_AGENT_TOOL_URL = `http://127.0.0.1:${server.address().port}/api/alcode/agent-tool`;
+    process.env.ALCODE_AGENT_TOOL_TOKEN = prepared.ALCODE_AGENT_TOOL_TOKEN;
     const ask = (id, awaitAnswer = true) => tools.openchamber_render.execute(
       { action: 'render.page', parameters: { html: '<p>Pick</p>', title: 'Pick a layout', awaitAnswer } },
       { sessionID: 'ses_caller', id, signal: new AbortController().signal, progress: async () => {} },
@@ -680,7 +680,7 @@ describe('managed agent tool runtime', () => {
       await vi.waitFor(() => service.answerPage({ sessionId: 'ses_caller', callId: 'call_1', summary: 'Layout B', data: { layout: 'b' } }));
       const result = await answered;
       expect(JSON.parse(result.content)).toMatchObject({ ok: true, data: { answer: { answered: true, summary: 'Layout B', data: { layout: 'b' } } } });
-      expect(result.metadata.openchamber).toMatchObject({ ok: true, answer: { answered: true, summary: 'Layout B', data: { layout: 'b' } } });
+      expect(result.metadata.alcode).toMatchObject({ ok: true, answer: { answered: true, summary: 'Layout B', data: { layout: 'b' } } });
       // Bun would otherwise end the waiting request after about six minutes;
       // a page that only shows keeps the default.
       expect(fetchSpy.mock.lastCall?.[1]).toMatchObject({ timeout: false });
@@ -700,10 +700,10 @@ describe('managed agent tool runtime', () => {
         .toThrow(expect.objectContaining({ statusCode: 404 })));
     } finally {
       fetchSpy.mockRestore();
-      if (originalUrl === undefined) delete process.env.OPENCHAMBER_AGENT_TOOL_URL;
-      else process.env.OPENCHAMBER_AGENT_TOOL_URL = originalUrl;
-      if (originalToken === undefined) delete process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-      else process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = originalToken;
+      if (originalUrl === undefined) delete process.env.ALCODE_AGENT_TOOL_URL;
+      else process.env.ALCODE_AGENT_TOOL_URL = originalUrl;
+      if (originalToken === undefined) delete process.env.ALCODE_AGENT_TOOL_TOKEN;
+      else process.env.ALCODE_AGENT_TOOL_TOKEN = originalToken;
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
   });
@@ -1093,11 +1093,11 @@ describe('session.link parameter normalization', () => {
     const server = await new Promise((resolve) => {
       const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
     });
-    const previousUrl = process.env.OPENCHAMBER_AGENT_TOOL_URL;
-    const previousToken = process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-    process.env.OPENCHAMBER_AGENT_TOOL_URL = `http://127.0.0.1:${server.address().port}/api/openchamber/agent-tool`;
-    process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = prepared.OPENCHAMBER_AGENT_TOOL_TOKEN;
-    const call = (action, input = {}) => tools.openchamber.execute(
+    const previousUrl = process.env.ALCODE_AGENT_TOOL_URL;
+    const previousToken = process.env.ALCODE_AGENT_TOOL_TOKEN;
+    process.env.ALCODE_AGENT_TOOL_URL = `http://127.0.0.1:${server.address().port}/api/alcode/agent-tool`;
+    process.env.ALCODE_AGENT_TOOL_TOKEN = prepared.ALCODE_AGENT_TOOL_TOKEN;
+    const call = (action, input = {}) => tools.alcode.execute(
       { action, ...input },
       { sessionID: 'ses_caller', progress: async () => {} },
     );
@@ -1134,10 +1134,10 @@ describe('session.link parameter normalization', () => {
       await call('session.create', { parameters: { title: '[]', prompt: '{"task":"summarize"}' } });
       expect(forwarded()).toMatchObject({ title: '[]', prompt: '{"task":"summarize"}' });
     } finally {
-      if (previousUrl === undefined) delete process.env.OPENCHAMBER_AGENT_TOOL_URL;
-      else process.env.OPENCHAMBER_AGENT_TOOL_URL = previousUrl;
-      if (previousToken === undefined) delete process.env.OPENCHAMBER_AGENT_TOOL_TOKEN;
-      else process.env.OPENCHAMBER_AGENT_TOOL_TOKEN = previousToken;
+      if (previousUrl === undefined) delete process.env.ALCODE_AGENT_TOOL_URL;
+      else process.env.ALCODE_AGENT_TOOL_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.ALCODE_AGENT_TOOL_TOKEN;
+      else process.env.ALCODE_AGENT_TOOL_TOKEN = previousToken;
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
   });

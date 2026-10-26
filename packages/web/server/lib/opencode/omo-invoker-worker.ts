@@ -22,6 +22,7 @@ const jobSchema = z.object({
   wrapperArgv: z.array(z.string()).optional(),
   agent: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1).optional(),
+  workflow: z.string().trim().min(1).optional(),
   directory: z.string().trim().min(1).optional(),
   sessionId: z.string().trim().min(1).optional(),
   port: z.number().int().min(1).max(65535).optional(),
@@ -34,6 +35,7 @@ interface RunOptions {
   message: string;
   agent?: string;
   model?: string;
+  workflow?: string;
   directory?: string;
   sessionId?: string;
   port?: number;
@@ -222,7 +224,7 @@ const readJob = async (): Promise<Job> => {
     fail("job on stdin is not valid JSON");
   }
   const parsedJob = jobSchema.safeParse(raw);
-  if (!parsedJob.success) fail("job needs a non-empty message with optional kind/agent/model/directory/sessionId/port/attach/wrapperEntry/wrapperArgv");
+  if (!parsedJob.success) fail("job needs a non-empty message with optional kind/agent/model/workflow/directory/sessionId/port/attach/wrapperEntry/wrapperArgv");
   return parsedJob.data;
 };
 
@@ -333,6 +335,7 @@ try {
   const runOptions: RunOptions = { message: job.message, json: true };
   if (job.agent !== undefined) runOptions.agent = job.agent;
   if (job.model !== undefined) runOptions.model = job.model;
+  if (job.workflow !== undefined) runOptions.workflow = job.workflow;
   if (job.directory !== undefined) runOptions.directory = job.directory;
   if (job.sessionId !== undefined) runOptions.sessionId = job.sessionId;
   if (job.port !== undefined) runOptions.port = job.port;

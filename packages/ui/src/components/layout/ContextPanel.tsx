@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { ContextMenuItem, ContextMenuSeparator } from '@/components/ui/context-menu';
 import { SortableTabsStrip } from '@/components/ui/sortable-tabs-strip';
 import { PullRequestView } from '@/components/views/PullRequestView';
+import { CodeGraphPanel } from '@/components/code-graph/CodeGraphPanel';
+import { ActivityPanel } from '@/components/activity/ActivityPanel';
 import { TrackerItemView } from '@/components/views/TrackerItemView';
 import { trackerTargetOfUrl } from '@/components/sourceBoard/openTrackerItem';
 import { lazyWithChunkRecovery } from '@/lib/chunkLoadRecovery';
@@ -28,27 +30,26 @@ import { useBrowserFaviconStore } from '@/stores/useBrowserFaviconStore';
 import { clampContextEditorTreeWidth, isTrackerBranchTab, useUIStore, type ContextPanelMode } from '@/stores/useUIStore';
 import { useGitStatus } from '@/stores/useGitStore';
 import { useChildStoreManager } from '@/sync/sync-context';
+import { useSessionUIStore } from '@/sync/session-ui-store';
+import { resolveActivityConversationId } from './activityConversation';
 import { useSessionTurnActivity } from '@/sync/global-session-status';
 import { SessionActivityIndicator } from '@/components/session/SessionActivityIndicator';
 import { ContextPanelContent } from './ContextSidebarTab';
 import { browserUrlLabel } from '@/lib/browser/url';
-import { registerBrowserOpener, registerSleepingBrowserTab, setShownBrowserTab } from '@/lib/browser/controlClient';
+import { registerBrowserOpener, registerSleepingBrowserTab } from '@/lib/browser/controlClient';
 import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
 import { Icon } from "@/components/icon/Icon";
 import type { IconName } from "@/components/icon/icons";
 import { GuestIcon } from './GuestRailIcon';
 import { useGuestsStore } from '@/lib/guests/store';
 import { FALLBACK_GUEST_ICON } from '@/lib/guests/icon';
-import { guestHasSharedSurface, guestSurfaceDocking, type GuestSurfaceDocking } from '@/lib/guests/surfaces';
-import { isPluginContextPanelMode, pluginIdFromMode, type PluginContextPanelMode } from '@/lib/surfaces/modes';
-import { CONTEXT_SURFACE_WIDTHS, getContextSurfaceDefaultWidth } from '@/lib/surfaces/registry';
+import { isPluginContextPanelMode, pluginIdFromMode } from '@/lib/surfaces/modes';
+import { CONTEXT_SURFACE_WIDTHS, defaultContextPanelWidth, getContextSurfaceDefaultWidth } from '@/lib/surfaces/registry';
 import { beginLayoutAnimation, cancelWhenLayoutSettled, LAYOUT_ANIMATION_EASING, runWhenLayoutSettled } from '@/lib/layoutAnimation';
 import { useLayoutAnimationMs } from '@/hooks/useLayoutAnimationMs';
 import { WORK_STATUS_COLUMN_WIDTH } from '@/components/chat/work-status/useWorkStatusVisibility';
 import { setWorkStatusHost, useRightSlotStore } from './rightSlot';
-import { GUEST_SURFACE_DOCK_SIZE_MIN } from '@alcode/sdk';
-import { isEditorEventTarget } from '@/lib/editorFocus';
-import { isTerminalEventTarget } from '@/lib/terminalFocus';
+
 import { changeRequestCopy } from '@/lib/source-control/changeRequestCopy';
 import { ContextPanelHeaderSlotProvider } from './contextPanelHeaderSlot';
 import { CLOSED_ZONE_VIEW, getZoneView, isZoneShown, resolveZoneActiveTab, type ContextZone } from '@/lib/workspace/zones';
@@ -129,6 +130,8 @@ const getModeLabel = (
   if (mode === 'git') return t('layout.rightSidebar.git');
   if (mode === 'pr') return t('contextPanel.mode.pr');
   if (mode === 'notes') return t('contextRail.surface.notes');
+  if (mode === 'code-graph') return t('codeGraph.rail.label');
+  if (mode === 'activity') return t('activity.rail.label');
   if (mode === 'terminal') return t('layout.mainTab.terminal');
   if (isPluginContextPanelMode(mode)) {
     const guest = useGuestsStore.getState().guests.find((entry) => entry.id === pluginIdFromMode(mode));
@@ -156,9 +159,10 @@ const getFileNameFromPath = (path: string | null): string | null => {
 };
 
 const getTabLabel = (
-  tab: { mode: ContextPanelMode; label: string | null; targetPath: string | null; dedupeKey?: string; sessionTitleFallback?: string | null; stagedDiff?: boolean },
+  tab: { mode: ContextPanelMode; label: string | null; targetPath: string | null; targetDirectory?: string | null; dedupeKey?: string; sessionTitleFallback?: string | null; stagedDiff?: boolean },
   sessionTitleById: ReadonlyMap<string, string>,
-  t: TranslateFn
+  t: TranslateFn,
+  fallbackDirectory?: string | null
 ): string => {
   if (tab.mode === 'chat') {
     const sessionID = getSessionIDFromDedupeKey(tab.dedupeKey);
@@ -187,6 +191,13 @@ const getTabLabel = (
 
   if (tab.label) {
     return tab.label;
+  }
+
+  if (tab.mode === 'code-graph') {
+    const directory = tab.targetDirectory ?? fallbackDirectory ?? null;
+    const project = getFileNameFromPath(directory);
+    const baseLabel = t('codeGraph.rail.label');
+    return project ? `${baseLabel} — ${project}` : baseLabel;
   }
 
   if (tab.mode === 'file') {
@@ -247,6 +258,13 @@ const getTabIcon = (
 
   if (tab.mode === 'terminal') {
     return <Icon name="terminal-box" className="h-3.5 w-3.5" />;
+  }
+
+  if (tab.mode === 'code-graph') {
+    return <Icon name="flow-chart" className="h-3.5 w-3.5" />;
+  }
+  if (tab.mode === 'activity') {
+    return <Icon name="pulse" className="h-3.5 w-3.5" />;
   }
 
   if (tab.mode === 'context') {
@@ -322,7 +340,6 @@ const useSessionTitleMap = (sessionIDs: readonly string[]): ReadonlyMap<string, 
   );
 };
 
-
 const truncateTabLabel = (value: string, maxChars: number): string => {
   if (value.length <= maxChars) {
     return value;
@@ -331,7 +348,6 @@ const truncateTabLabel = (value: string, maxChars: number): string => {
   return `${value.slice(0, maxChars - 3)}...`;
 };
 
-
 // Dragging a header moves its surface once the pointer has travelled this far.
 const HEADER_DRAG_DISTANCE_PX = 8;
 const HEADER_DRAG_EXCLUDED = 'button, a, input, textarea, select, label, [role="button"], [role="tab"], [role="combobox"], [role="switch"], [role="slider"], [data-sortable-tab-id], [contenteditable="true"]';
@@ -339,7 +355,7 @@ const HEADER_DRAG_EXCLUDED = 'button, a, input, textarea, select, label, [role="
 // Surfaces rendered by the zone itself and remounted on every switch; the
 // rest stay alive in ContextSurfacePanes.
 const isRemountedSurface = (mode: ContextPanelMode): boolean => (
-  mode === 'context' || mode === 'git' || mode === 'pr' || mode === 'notes'
+  mode === 'context' || mode === 'git' || mode === 'pr' || mode === 'notes' || mode === 'code-graph' || mode === 'activity'
 );
 
 const CONTEXT_PANEL_DEFAULT_HEIGHT = 320;
@@ -406,6 +422,7 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
   const { t, direction } = useI18n();
   const isRtl = direction === 'rtl';
   const effectiveDirectory = useEffectiveDirectory() ?? '';
+  const codeGraphFocusByDirectory = useUIStore((state) => state.codeGraphFocusByDirectory);
   const repositoryProvider = useRepositoryReferenceProvider(effectiveDirectory || null);
   // Tab names in this repository's words: a GitLab project's change request tab is a merge request.
   const tabT = React.useCallback<TranslateFn>(
@@ -480,6 +497,8 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
   const tabs = React.useMemo(() => panelState?.tabs ?? [], [panelState?.tabs]);
   // This zone's tab: one of its own surfaces, never one placed elsewhere.
   const activeTab = panelState ? resolveZoneActiveTab(panelState, placement, zone) : null;
+  const codeGraphDirectory = activeTab?.targetDirectory ?? effectiveDirectory;
+  const codeGraphFocus = codeGraphDirectory ? codeGraphFocusByDirectory[codeGraphDirectory] ?? null : null;
   const zoneView = panelState ? getZoneView(panelState, zone) : CLOSED_ZONE_VIEW;
   const workStatusReserved = useRightSlotStore((state) => state.workStatusReserved);
   const chatCovered = useRightSlotStore((state) => state.chatCovered);
@@ -505,11 +524,12 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
   const manualSize = activeModeForWidth
     ? (isVertical ? panelState?.heightByMode?.[activeModeForWidth] : panelState?.widthByMode?.[activeModeForWidth])
     : undefined;
+  const windowWidth = typeof window === 'undefined' ? null : window.innerWidth;
   const desiredSize = isTreeOnly
     ? contextEditorTreeWidth
     : isVertical
       ? clampHeight(manualSize ?? CONTEXT_PANEL_DEFAULT_HEIGHT, Number.POSITIVE_INFINITY)
-      : clampWidth(manualSize ?? (activeModeForWidth ? getContextSurfaceDefaultWidth(activeModeForWidth) : CONTEXT_PANEL_DEFAULT_WIDTH), Number.POSITIVE_INFINITY);
+      : clampWidth(manualSize ?? (activeModeForWidth ? defaultContextPanelWidth(activeModeForWidth, windowWidth) : CONTEXT_PANEL_DEFAULT_WIDTH), Number.POSITIVE_INFINITY);
   const clampSize = React.useCallback((next: number, available: number | null) => (
     isVertical ? clampHeight(next, maxPanelHeight(available)) : clampWidth(next, maxPanelWidth(available))
   ), [isVertical]);
@@ -803,7 +823,7 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
       .map((tab) => getRelativePathLabel(tab.targetPath, effectiveDirectory)));
     return activeModeTabs.map((tab) => {
       const branchTab = isTrackerBranchTab(tab);
-      const rawLabel = branchTab ? trackerBranch || t('contextPanel.tracker.branchTab') : getTabLabel(tab, sessionTitleById, tabT);
+      const rawLabel = branchTab ? trackerBranch || t('contextPanel.tracker.branchTab') : getTabLabel(tab, sessionTitleById, tabT, effectiveDirectory);
       const label = truncateTabLabel(rawLabel, CONTEXT_TAB_LABEL_MAX_CHARS);
       const tabPathLabel = getRelativePathLabel(tab.targetPath, effectiveDirectory);
       return {
@@ -818,6 +838,16 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
       };
     });
   }, [activeModeTabs, effectiveDirectory, faviconByOrigin, sessionTitleById, t, tabT, trackerBranch]);
+
+  const activityPanelDirectory = activeTab?.targetDirectory ?? effectiveDirectory;
+  const followedSessionId = useSessionUIStore((state) => state.currentSessionId);
+  const followedSessionDirectory = useSessionUIStore((state) => state.currentSessionDirectory);
+  const activityConversationId = resolveActivityConversationId({
+    ownerSessionId: activeTab?.ownerSessionId ?? null,
+    currentSessionId: followedSessionId,
+    currentSessionDirectory: followedSessionDirectory,
+    panelDirectory: activityPanelDirectory,
+  });
 
   const activeNonChatContent = activeTab?.mode === 'context'
         ? <ContextPanelHeaderSlotProvider value={headerSlotEl}><ContextPanelContent /></ContextPanelHeaderSlotProvider>
@@ -840,6 +870,17 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
                     : <PullRequestView />)
             : activeTab?.mode === 'notes'
                 ? <ProjectContextPanel />
+            : activeTab?.mode === 'code-graph'
+                ? (
+                  <ContextPanelHeaderSlotProvider value={headerSlotEl}>
+                    <CodeGraphPanel
+                      directory={codeGraphDirectory}
+                      focusFile={codeGraphFocus}
+                    />
+                  </ContextPanelHeaderSlotProvider>
+                )
+            : activeTab?.mode === 'activity'
+                ? <ContextPanelHeaderSlotProvider value={headerSlotEl}><ActivityPanel directory={activityPanelDirectory} conversationId={activityConversationId} /></ContextPanelHeaderSlotProvider>
             : null;
 
   const browserTabs = React.useMemo(
@@ -869,42 +910,6 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
       }));
     return () => unregister.forEach((release) => release());
   }, [browserTabs, loadedBrowserTabs, wakeBrowserTab]);
-  const diffTabs = React.useMemo(
-    () => tabs.filter((tab) => tab.mode === 'diff'),
-    [tabs],
-  );
-  const terminalTab = React.useMemo(
-    () => tabs.find((tab) => tab.mode === 'terminal') ?? null,
-    [tabs],
-  );
-  // Keep-alive: the walkthrough holds reading progress and scroll position that
-  // a remount would silently throw away.
-  const hasWalkthroughTab = React.useMemo(
-    () => tabs.some((tab) => tab.mode === 'walkthrough'),
-    [tabs],
-  );
-  const pluginTabs = React.useMemo(
-    () => tabs.filter((tab) => isPluginContextPanelMode(tab.mode)),
-    [tabs],
-  );
-  const guests = useGuestsStore((state) => state.guests);
-  const surfaceGuestIds = React.useMemo(
-    () => new Set(guests.filter(guestHasSharedSurface).map((guest) => guest.id)),
-    [guests],
-  );
-  // Surface extensions that also ship a page: it is docked to one edge of the picture.
-  const surfaceDockings = React.useMemo(() => {
-    const dockings = new Map<string, GuestSurfaceDocking>();
-    for (const guest of guests) {
-      const docking = guestSurfaceDocking(guest);
-      if (docking) dockings.set(guest.id, docking);
-    }
-    return dockings;
-  }, [guests]);
-  const hasFileTabs = React.useMemo(
-    () => tabs.some((tab) => tab.mode === 'file'),
-    [tabs],
-  );
 
   const isFileTabActive = activeTab?.mode === 'file';
 
@@ -1056,7 +1061,7 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-3 group-has-[[data-context-panel-toolbar]]/panel-header:hidden">
           {activeTab ? getTabIcon(activeTab, faviconByOrigin) : null}
           <span className="truncate typography-ui-label text-foreground">
-            {activeTab ? getModeLabel(activeTab.mode, tabT) : null}
+            {activeTab ? getTabLabel(activeTab, sessionTitleById, tabT, effectiveDirectory) : null}
           </span>
         </div>
         {/* The active surface's own toolbar lands here (contextPanelHeaderSlot). */}

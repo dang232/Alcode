@@ -1,6 +1,6 @@
 {
   "name": "@alcode/web",
-  "version": "2.1.1",
+  "version": "0.1.0",
   "private": false,
   "type": "module",
   "main": "./server/index.js",

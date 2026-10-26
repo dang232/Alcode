@@ -1,10 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import {
-  CONTEXT_SURFACES,
-  getVisibleContextRailSurfaces,
-  WALKTHROUGH_MIN_WIDTH,
-} from './registry';
+import { CONTEXT_SURFACES, CONTEXT_SURFACE_WIDTHS, defaultContextPanelWidth, getVisibleContextRailSurfaces, WALKTHROUGH_MIN_WIDTH } from './registry';
 
 const baseOptions = {
   railOrder: [],
@@ -23,6 +19,35 @@ describe('getVisibleContextRailSurfaces', () => {
     expect(
       getVisibleContextRailSurfaces({ ...baseOptions, screenWidth: WALKTHROUGH_MIN_WIDTH }).some((s) => s.id === 'walkthrough'),
     ).toBe(true);
+  });
+
+  test('the code graph opens at about half the window on first open', () => {
+    const wide = defaultContextPanelWidth('code-graph', 2558);
+    expect(wide).toBeGreaterThanOrEqual(Math.round(2558 * 0.45));
+    expect(wide).toBeLessThanOrEqual(Math.round(2558 * 0.55));
+    // Below roughly 1800px of window the surface tier is the floor, not the ratio.
+    expect(defaultContextPanelWidth('code-graph', 1200)).toBe(CONTEXT_SURFACE_WIDTHS.editor);
+    // A narrow window never falls below the surface tier; the panel clamps keep the chat usable.
+    expect(defaultContextPanelWidth('code-graph', 900)).toBe(CONTEXT_SURFACE_WIDTHS.editor);
+    expect(defaultContextPanelWidth('code-graph', null)).toBe(CONTEXT_SURFACE_WIDTHS.editor);
+    // Every other surface keeps its fixed tier.
+    expect(defaultContextPanelWidth('notes', 2558)).toBe(CONTEXT_SURFACE_WIDTHS.regular);
+    expect(defaultContextPanelWidth('activity', 2558)).toBe(CONTEXT_SURFACE_WIDTHS.wide);
+  });
+
+  test('offers the code graph surface on the rail by default', () => {
+    const surface = CONTEXT_SURFACES.find((entry) => entry.id === 'code-graph');
+    expect(surface?.availability).toBe('always');
+    expect(surface?.mode).toBe('code-graph');
+    expect(getVisibleContextRailSurfaces(baseOptions).some((entry) => entry.id === 'code-graph')).toBe(true);
+  });
+
+  test('code-graph opens at the full workspace width with its neighbours unchanged', () => {
+    const widthById = new Map(CONTEXT_SURFACES.map((surface) => [surface.id, surface.width]));
+    expect(widthById.get('code-graph')).toBe('editor');
+    expect(widthById.get('notes')).toBe('regular');
+    expect(CONTEXT_SURFACE_WIDTHS.editor).toBeGreaterThan(CONTEXT_SURFACE_WIDTHS.wide);
+    expect(widthById.get('activity')).toBe('wide');
   });
 
   test('offers no browser surface inside VS Code', () => {

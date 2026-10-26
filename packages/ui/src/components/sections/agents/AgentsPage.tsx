@@ -13,7 +13,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ModelSelector } from './ModelSelector';
 import { SettingsColorField } from '@/components/sections/shared/SettingsColorField';
 import { configuredAgentColor } from '@/lib/agentColors';
-import { isAgentHexColor } from './isAgentHexColor';
+
 import { useI18n } from '@/lib/i18n';
 import { formatModelSelection, parseModelIdentifier, parseModelSelection } from '@/lib/modelIdentifier';
 import { findCatalogModel } from '@/lib/opencode/model';

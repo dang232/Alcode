@@ -68,19 +68,22 @@ type ElectronRuntimeGlobal = {
 
 const getElectronRuntime = (): ElectronRuntimeGlobal | null => {
   if (typeof window === 'undefined') return null;
-  return (window as unknown as { __ALCODE_ELECTRON__?: ElectronRuntimeGlobal }).__ALCODE_ELECTRON__ ?? null;
+  const win = window as unknown as { __ALCODE_ELECTRON__?: ElectronRuntimeGlobal; __OPENCHAMBER_ELECTRON__?: ElectronRuntimeGlobal };
+  return win.__ALCODE_ELECTRON__ ?? win.__OPENCHAMBER_ELECTRON__ ?? null;
 };
 
 const getDesktopBridge = (): DesktopBridgeGlobal | null => {
   if (typeof window === 'undefined') return null;
-  return (window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal }).__ALCODE_DESKTOP__ ?? null;
+  const win = window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal; __OPENCHAMBER_DESKTOP__?: DesktopBridgeGlobal };
+  return win.__ALCODE_DESKTOP__ ?? win.__OPENCHAMBER_DESKTOP__ ?? null;
 };
 
 export const isElectronShell = (): boolean => getElectronRuntime()?.runtime === 'electron';
 
 const getElectronPlatform = (): string | null => {
   if (typeof window === 'undefined') return null;
-  const platform = (window as unknown as { __ALCODE_PLATFORM__?: string }).__ALCODE_PLATFORM__;
+  const win = window as unknown as { __ALCODE_PLATFORM__?: string; __OPENCHAMBER_PLATFORM__?: string };
+  const platform = win.__ALCODE_PLATFORM__ ?? win.__OPENCHAMBER_PLATFORM__;
   return typeof platform === 'string' ? platform : null;
 };
 
@@ -435,7 +438,9 @@ export const isDesktopLocalOriginActive = (): boolean => {
     return true;
   }
 
-  const local = typeof window.__ALCODE_LOCAL_ORIGIN__ === 'string' ? window.__ALCODE_LOCAL_ORIGIN__ : '';
+  const localWindow = window as unknown as { __ALCODE_LOCAL_ORIGIN__?: string; __OPENCHAMBER_LOCAL_ORIGIN__?: string };
+  const injectedLocal = localWindow.__ALCODE_LOCAL_ORIGIN__ ?? localWindow.__OPENCHAMBER_LOCAL_ORIGIN__;
+  const local = typeof injectedLocal === 'string' ? injectedLocal : '';
   const localUrl = parseUrl(local);
   const runtimeApiUrl = parseUrl(getRuntimeApiBaseUrl());
 

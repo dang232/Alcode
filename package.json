@@ -1,6 +1,6 @@
 {
   "name": "alcode-monorepo",
-  "version": "2.1.1",
+  "version": "0.1.0",
   "description": "Alcode monorepo workspace for web, ui, and desktop runtimes",
   "private": true,
   "type": "module",
@@ -42,6 +42,7 @@
     "lint:electron": "bun run --cwd packages/electron lint",
     "lint:mobile": "bun run --cwd packages/mobile lint",
     "lint:anti-slop": "oxlint -c oxlint.anti-slop.config.ts",
+    "bench:code-graph": "bun scripts/qa/code-graph-search/bench.mjs",
     "check:changed": "node scripts/check-changed.mjs",
     "test": "node scripts/run-isolated-tests.mjs scripts && bun run --cwd packages/sdk test && bun run --cwd packages/ui test && bun run --cwd packages/vscode test && bun run --cwd packages/electron test && bun run --cwd packages/web test",
     "clean": "node scripts/clean.mjs",
@@ -199,6 +200,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.21",
     "babel-plugin-react-compiler": "^1.0.0",
+    "bun-types": "1.4.3",
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",
     "cross-env": "^7.0.3",

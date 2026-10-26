@@ -243,7 +243,7 @@ describe('docker place: create', () => {
       '--env', 'OPENCODE_DISABLE_AUTOUPDATE=1',
       '--env', 'ALCODE_RELAY_HOST=off',
       '--env', 'ALCODE_SPACE_IDLE_STOP_FILE=/home/space/.alcode-space/idle-stop.json',
-      '--env', 'OPENCHAMBER_SPACE_PERMISSION_DEFAULT_FILE=/home/space/.openchamber-space/permission-default.json',
+      '--env', 'OPENCHAMBER_SPACE_PERMISSION_DEFAULT_FILE=/home/space/.alcode-space/permission-default.json',
       SPACE_BASE_IMAGE,
       '/bin/sh', '-c',
       'while [ ! -s /home/space/.alcode-space/token ]; do /bin/sleep 0.2; done; ALCORE_JWT_SECRET="$(/bin/cat /home/space/.alcode-space/token)"; export ALCORE_JWT_SECRET; exec alcode serve --foreground --api-only --host 127.0.0.1 --port 27600',

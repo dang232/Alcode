@@ -4,12 +4,15 @@
 // platform node binary) and kills it through the REAL bridge `cancelRun`,
 // so the test proves steer starts a process and cancel terminates it.
 import { describe, expect, test, afterEach } from 'bun:test';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import nodeFs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { cancelRun } from '../../../web/server/lib/opencode/omo-bridge-runtime.js';
+import { createRecord, renderRecordFile } from '../../../omo-engine/memory-core/src/project-knowledge/record.ts';
+import { evaluatePromotion } from '../../../omo-engine/memory-core/src/project-knowledge/validator.ts';
 import { createDagServiceHandlers } from './handlers.js';
 import { parseManifest } from '../../../sdk/src/parse.ts';
 import { parseSnapshotDoc } from '../panel/dag-view.ts';
@@ -125,11 +128,11 @@ describe('dag guest manifest compat', () => {
     }
   });
 
-  test('the shipped manifest keeps both blocks and the new spelling wins', () => {
+  test('the shipped manifest ships only the alcode block', () => {
     const shipped = JSON.parse(nodeFs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(shipped.openchamber).toBeUndefined();
     expect(shipped.alcode.contributes.panel.id).toBe('alcode-builtin-dag-pane');
-    expect(shipped.alcode.engines).toEqual({ alcode: '>=1.22.0' });
-    expect(shipped.openchamber.contributes.panel.id).toBe('openchamber-builtin-dag-pane');
+    expect(shipped.alcode.engines).toEqual({ alcode: '>=0.0.1' });
     const parsed = parseManifest(shipped);
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
@@ -1003,4 +1006,432 @@ describe('project-scoped chat-run persistence', () => {
     const parsed = parseSnapshotDoc(live.body);
     expect(parsed.ok).toBe(true);
   });
+});
+
+// Read-only code-graph routes: the real engine runtime, directory-scoped.
+// The first five cases run the real engine over a two-file fixture
+// checkout (math.ts defines `add`, main.ts calls it); the last pins the
+// 5xx-never-fake-empty contract with a throwing runtime.
+describe('dag service code-graph routes', () => {
+  const MATH_TS = 'export function add(left: number, right: number): number {\n  return left + right;\n}\n';
+  const MAIN_TS = 'import { add } from "./math";\n\nexport function run(): number {\n  return add(1, 2);\n}\n';
+
+  const makeFixtureDir = () => {
+    const dir = nodeFs.mkdtempSync(join(tmpdir(), 'dag-cg-'));
+    scratchDirs.push(dir);
+    nodeFs.writeFileSync(join(dir, 'math.ts'), MATH_TS);
+    nodeFs.writeFileSync(join(dir, 'main.ts'), MAIN_TS);
+    return dir;
+  };
+
+  // Default wiring is the real engine: no bridge override, no runtime stub.
+  const codeGraphHandlers = () => createDagServiceHandlers({ fs: nodeFs, snapshotDir: makeSnapshotDir() });
+
+  test('index answers the real shape for a fixture directory', async () => {
+    const { handleRequest } = codeGraphHandlers();
+    const answer = await handleRequest({ method: 'GET', path: '/codegraph/index', query: { directory: makeFixtureDir() } });
+    expect(answer.status).toBe(200);
+    expect(answer.body.nodeCount).toBeGreaterThan(2);
+    expect(answer.body.edgeCount).toBeGreaterThan(0);
+    expect(answer.body.entryCount).toBe(2);
+  });
+
+  test('index and query refuse a missing directory instead of indexing the service cwd', async () => {
+    const { handleRequest } = codeGraphHandlers();
+    const index = await handleRequest({ method: 'GET', path: '/codegraph/index', query: {} });
+    expect(index.status).toBe(400);
+    expect(index.body.error).toContain('directory is required');
+    const query = await handleRequest({ method: 'GET', path: '/codegraph/query', query: { kind: 'search', q: 'add' } });
+    expect(query.status).toBe(400);
+    expect(query.body.error).toContain('directory is required');
+  });
+
+  test('query validation answers 400 for unknown kinds and missing subjects', async () => {
+    const { handleRequest } = codeGraphHandlers();
+    const directory = makeFixtureDir();
+    const unknown = await handleRequest({ method: 'GET', path: '/codegraph/query', query: { directory, kind: 'callers' } });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error).toContain('kind must be');
+    const noSymbol = await handleRequest({ method: 'GET', path: '/codegraph/query', query: { directory, kind: 'context' } });
+    expect(noSymbol.status).toBe(400);
+    expect(noSymbol.body.error).toContain('symbol is required');
+    const noQuery = await handleRequest({ method: 'GET', path: '/codegraph/query', query: { directory, kind: 'search' } });
+    expect(noQuery.status).toBe(400);
+    expect(noQuery.body.error).toContain('query is required');
+    const noTarget = await handleRequest({ method: 'GET', path: '/codegraph/query', query: { directory, kind: 'tests' } });
+    expect(noTarget.status).toBe(400);
+    expect(noTarget.body.error).toContain('target is required');
+  });
+
+  test('search round-trips real engine refs against the fixture directory', async () => {
+    const { handleRequest } = codeGraphHandlers();
+    const answer = await handleRequest({
+      method: 'GET', path: '/codegraph/query',
+      query: { directory: makeFixtureDir(), kind: 'search', q: 'add' },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body.coverage).toBe('indexed');
+    const ids = (answer.body.items ?? []).map((item) => item.id);
+    expect(ids).toContain('fn:add@math.ts');
+  });
+
+  test('index and query carry the freshness binding the panel renders', async () => {
+    const { handleRequest } = codeGraphHandlers();
+    const directory = makeFixtureDir();
+    const index = await handleRequest({ method: 'GET', path: '/codegraph/index', query: { directory } });
+    expect(index.status).toBe(200);
+    expect(index.body.freshness).toBe('fresh');
+    expect(index.body.projectId).toMatch(/^[^\s/]+-[0-9a-f]{8}$/);
+    expect(index.body.revision).toMatch(/^[0-9a-f]{40}$/);
+    expect(index.body.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(typeof index.body.observedAtMs).toBe('number');
+    expect(index.body.staleAfterMs).toBe(7 * 24 * 60 * 60 * 1000);
+    const query = await handleRequest({ method: 'GET', path: '/codegraph/query', query: { directory, kind: 'search', q: 'add' } });
+    expect(query.status).toBe(200);
+    expect(query.body.freshness).toBe('fresh');
+    expect(query.body.revision).toBe(index.body.revision);
+    expect(query.body.fingerprint).toBe(index.body.fingerprint);
+  });
+
+// Read-only rationale route: real git HEAD-tree reads through the actual
+// memory-core project-knowledge modules. Every fixture repo is a real git
+// checkout; records are built through createRecord/renderRecordFile (and
+// evaluatePromotion for the verified one) and committed under
+// project-knowledge/, so the route proves the full HEAD-tree round trip.
+describe('dag service rationale route', () => {
+  const SOURCE_TS = 'export function add(left: number, right: number): number {\n  return left + right;\n}\n';
+
+  const gitIn = (dir, args) => execFileSync('git', args, {
+    cwd: dir, encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
+
+  const commitAll = (dir, message) => {
+    gitIn(dir, ['add', '-A']);
+    gitIn(dir, ['-c', 'user.name=dag-test', '-c', 'user.email=dag-test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', message]);
+    return gitIn(dir, ['rev-parse', 'HEAD']);
+  };
+
+  const initRepo = () => {
+    const dir = nodeFs.mkdtempSync(join(tmpdir(), 'dag-rat-'));
+    scratchDirs.push(dir);
+    gitIn(dir, ['init']);
+    gitIn(dir, ['config', 'user.name', 'dag-test']);
+    gitIn(dir, ['config', 'user.email', 'dag-test@example.com']);
+    gitIn(dir, ['config', 'commit.gpgsign', 'false']);
+    return dir;
+  };
+
+  const makeKnowledgeRepo = () => {
+    const dir = initRepo();
+    nodeFs.writeFileSync(join(dir, 'math.ts'), SOURCE_TS);
+    const sourceHead = commitAll(dir, 'source');
+    const blob = createHash('sha256').update(nodeFs.readFileSync(join(dir, 'math.ts'))).digest('hex');
+    const projectId = 'fixture-abcdef12';
+    const hypothesis = createRecord({
+      projectId,
+      claim: 'add returns the sum of its two arguments',
+      sourceFile: 'math.ts',
+      sourceSymbol: 'fn:add',
+      sourceRevision: sourceHead,
+      sourceBlobSha256: blob,
+      observedAt: '2026-10-20T00:00:00.000Z',
+      validationMethod: 'rg-resolve',
+      confidence: 0.7,
+      scope: { writeScopes: ['math'] },
+      invalidationConditions: ['SRC-EDIT'],
+      rationale: { notes: [{ kind: 'purpose', text: 'add exists to total two numbers', confidence: 0.6 }] },
+    });
+    expect(hypothesis.kind).toBe('created');
+    if (hypothesis.kind !== 'created') throw new Error('hypothesis record refused');
+    const base = createRecord({
+      projectId,
+      claim: 'math.ts exports the add helper',
+      sourceFile: 'math.ts',
+      sourceSymbol: 'file',
+      sourceRevision: sourceHead,
+      sourceBlobSha256: blob,
+      observedAt: '2026-10-20T00:00:00.000Z',
+      validationMethod: 'rg-resolve',
+      confidence: 0.8,
+      scope: { writeScopes: ['math'] },
+      invalidationConditions: ['SRC-EDIT'],
+    });
+    expect(base.kind).toBe('created');
+    if (base.kind !== 'created') throw new Error('base record refused');
+    const promoted = evaluatePromotion(base.record, {
+      probe: { source: 'head-tree', revision: sourceHead, symbolResolved: true, blobSha256: blob, revisionReachable: true },
+      secretClean: true,
+    }, '2026-10-21T00:00:00.000Z');
+    expect(promoted.outcome).toBe('promoted');
+    nodeFs.mkdirSync(join(dir, 'project-knowledge'), { recursive: true });
+    nodeFs.writeFileSync(join(dir, 'project-knowledge', `${hypothesis.record.id}.md`), renderRecordFile(hypothesis.record));
+    nodeFs.writeFileSync(join(dir, 'project-knowledge', `${promoted.record.id}.md`), renderRecordFile(promoted.record));
+    const knowledgeHead = commitAll(dir, 'knowledge');
+    return { dir, projectId, sourceHead, knowledgeHead, hypothesisId: hypothesis.record.id, verifiedId: promoted.record.id };
+  };
+
+  const rationaleHandlers = () => createDagServiceHandlers({ fs: nodeFs, snapshotDir: makeSnapshotDir() });
+
+  test('serves real ranked records with provenance from the HEAD tree', async () => {
+    const repo = makeKnowledgeRepo();
+    const { handleRequest } = rationaleHandlers();
+    const answer = await handleRequest({
+      method: 'GET', path: '/rationale',
+      query: { directory: repo.dir, projectId: repo.projectId, q: 'add', scopes: 'math' },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body.projectId).toBe(repo.projectId);
+    expect(answer.body.revision).toBe(repo.knowledgeHead);
+    expect(answer.body.revision).toMatch(/^[0-9a-f]{40}$/);
+    const byId = new Map(answer.body.ranked.map((entry) => [entry.id, entry]));
+    const hyp = byId.get(repo.hypothesisId);
+    expect(hyp.claim).toBe('add returns the sum of its two arguments');
+    expect(hyp.kind).toBe('unverified-hypothesis');
+    expect(hyp.standing).toBe('unverified-hypothesis');
+    expect(hyp.confidence).toBe(0.7);
+    expect(hyp.sourceFile).toBe('math.ts');
+    expect(hyp.sourceSymbol).toBe('fn:add');
+    expect(hyp.observedAt).toBe('2026-10-20T00:00:00.000Z');
+    expect(hyp.validationMethod).toBe('rg-resolve');
+    expect(hyp.invalidationConditions).toEqual(['SRC-EDIT']);
+    expect(hyp.notes).toEqual([{ kind: 'purpose', text: 'add exists to total two numbers', standing: 'unverified-hypothesis', confidence: 0.6 }]);
+    expect(hyp.freshness).toEqual({ demoted: false, appliedCase: null });
+    expect(hyp.scopeNote).toBe('in-scope');
+    expect(typeof hyp.totalScore).toBe('number');
+    const verified = byId.get(repo.verifiedId);
+    expect(verified.claim).toBe('math.ts exports the add helper');
+    expect(verified.kind).toBe('source-verified');
+    // The knowledge commit moved HEAD past the pinned source revision, so
+    // the verified record demotes against the directory HEAD.
+    expect(verified.standing).toBe('previously-verified');
+    expect(verified.freshness).toEqual({ demoted: true, appliedCase: 'HEAD-MOVE' });
+  }, 30000);
+
+  test('an empty store answers ranked [] with the HEAD revision', async () => {
+    const dir = initRepo();
+    nodeFs.writeFileSync(join(dir, 'math.ts'), SOURCE_TS);
+    const head = commitAll(dir, 'source');
+    const { handleRequest } = rationaleHandlers();
+    const answer = await handleRequest({
+      method: 'GET', path: '/rationale',
+      query: { directory: dir, projectId: 'fixture-abcdef12', q: 'add' },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body.revision).toBe(head);
+    expect(answer.body.ranked).toEqual([]);
+    expect(answer.body.purgedSecretIds).toEqual([]);
+  }, 30000);
+
+  test('a cross-project query answers ranked [] without leaking records', async () => {
+    const repo = makeKnowledgeRepo();
+    const { handleRequest } = rationaleHandlers();
+    const answer = await handleRequest({
+      method: 'GET', path: '/rationale',
+      query: { directory: repo.dir, projectId: 'other-12345678', q: 'add', scopes: 'math' },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body.revision).toBe(repo.knowledgeHead);
+    expect(answer.body.ranked).toEqual([]);
+  }, 30000);
+
+  test('a missing directory answers ranked [] with no fabricated text', async () => {
+    const { handleRequest } = rationaleHandlers();
+    const blank = await handleRequest({ method: 'GET', path: '/rationale', query: {} });
+    expect(blank.status).toBe(200);
+    expect(blank.body.ranked).toEqual([]);
+    expect(blank.body.revision).toBeNull();
+    const gone = await handleRequest({
+      method: 'GET', path: '/rationale',
+      query: { directory: join(tmpdir(), 'dag-rat-no-such-dir'), projectId: 'fixture-abcdef12', q: 'add' },
+    });
+    expect(gone.status).toBe(200);
+    expect(gone.body.ranked).toEqual([]);
+    expect(gone.body.revision).toBeNull();
+    const traversal = await handleRequest({
+      method: 'GET', path: '/rationale',
+      query: { directory: '../escape', projectId: 'fixture-abcdef12', q: 'add' },
+    });
+    expect(traversal.status).toBe(400);
+  });
+
+  test('a directory that is not a git checkout answers ranked []', async () => {
+    const dir = nodeFs.mkdtempSync(join(tmpdir(), 'dag-rat-plain-'));
+    scratchDirs.push(dir);
+    const { handleRequest } = rationaleHandlers();
+    const answer = await handleRequest({
+      method: 'GET', path: '/rationale',
+      query: { directory: dir, projectId: 'fixture-abcdef12', q: 'add' },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body.revision).toBeNull();
+    expect(answer.body.ranked).toEqual([]);
+  });
+
+  test('uncommitted working-tree knowledge never enters the ranked results', async () => {
+    const repo = makeKnowledgeRepo();
+    const { handleRequest } = rationaleHandlers();
+    const query = { directory: repo.dir, projectId: repo.projectId, q: 'add', scopes: 'math' };
+    const before = await handleRequest({ method: 'GET', path: '/rationale', query });
+    expect(before.status).toBe(200);
+    const count = before.body.ranked.length;
+    expect(count).toBeGreaterThan(0);
+    nodeFs.writeFileSync(join(repo.dir, 'project-knowledge', 'pk-000000000000.md'), '---\ndescription: uncommitted draft\n---\n');
+    const after = await handleRequest({ method: 'GET', path: '/rationale', query });
+    expect(after.status).toBe(200);
+    expect(after.body.ranked.length).toBe(count);
+    expect(after.body.ranked.some((entry) => entry.claim === 'uncommitted draft')).toBe(false);
+  }, 30000);
+});
+
+  test('backend failure answers 5xx with the error, never a fake empty index', async () => {
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: makeSnapshotDir(),
+      codeGraphRuntime: {
+        normalizeDirectory: async (directory) => ({ directory }),
+        readIndex: async () => { throw new Error('code-graph: no TypeScript server binary'); },
+        query: async () => { throw new Error('engine exploded'); },
+      },
+    });
+    const index = await handleRequest({ method: 'GET', path: '/codegraph/index', query: { directory: '/proj/a' } });
+    expect(index.status).toBe(500);
+    expect(index.body.error).toContain('no TypeScript server binary');
+    expect(index.body.nodeCount).toBeUndefined();
+    const query = await handleRequest({ method: 'GET', path: '/codegraph/query', query: { directory: '/proj/a', kind: 'search', q: 'add' } });
+    expect(query.status).toBe(500);
+    expect(query.body.error).toContain('engine exploded');
+    expect(query.body.coverage).toBeUndefined();
+  });
+});
+
+// Read-only project discovery: GET /rationale/projects lists the distinct
+// projectIds parsed from the HEAD-tree project-knowledge/*.md frontmatter
+// via the real parseRecordFile. Fixtures are real git checkouts; records
+// are built through the real createRecord/renderRecordFile and committed
+// under project-knowledge/, so the route proves the full HEAD-tree round
+// trip including dedupe, sort order, and honest empties.
+describe('dag service rationale projects route', () => {
+  const SOURCE_TS = 'export function add(left: number, right: number): number {\n  return left + right;\n}\n';
+
+  const gitIn = (dir, args) => execFileSync('git', args, {
+    cwd: dir, encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
+
+  const commitAll = (dir, message) => {
+    gitIn(dir, ['add', '-A']);
+    gitIn(dir, ['-c', 'user.name=dag-test', '-c', 'user.email=dag-test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', message]);
+    return gitIn(dir, ['rev-parse', 'HEAD']);
+  };
+
+  const initRepo = () => {
+    const dir = nodeFs.mkdtempSync(join(tmpdir(), 'dag-projids-'));
+    scratchDirs.push(dir);
+    gitIn(dir, ['init']);
+    gitIn(dir, ['config', 'user.name', 'dag-test']);
+    gitIn(dir, ['config', 'user.email', 'dag-test@example.com']);
+    gitIn(dir, ['config', 'commit.gpgsign', 'false']);
+    return dir;
+  };
+
+  const makeRecord = (dir, sourceHead, blob, projectId, claim) => {
+    const built = createRecord({
+      projectId,
+      claim,
+      sourceFile: 'math.ts',
+      sourceSymbol: 'fn:add',
+      sourceRevision: sourceHead,
+      sourceBlobSha256: blob,
+      observedAt: '2026-10-20T00:00:00.000Z',
+      validationMethod: 'rg-resolve',
+      confidence: 0.7,
+      scope: { writeScopes: ['math'] },
+      invalidationConditions: ['SRC-EDIT'],
+    });
+    expect(built.kind).toBe('created');
+    if (built.kind !== 'created') throw new Error(`record refused for ${projectId}`);
+    nodeFs.writeFileSync(join(dir, 'project-knowledge', `${built.record.id}.md`), renderRecordFile(built.record));
+    return built.record.id;
+  };
+
+  // Two projectIds across three records (alpha appears twice, proving
+  // dedupe); beta sorts after alpha, proving sort order.
+  const makeTwoProjectRepo = () => {
+    const dir = initRepo();
+    nodeFs.writeFileSync(join(dir, 'math.ts'), SOURCE_TS);
+    const sourceHead = commitAll(dir, 'source');
+    const blob = createHash('sha256').update(nodeFs.readFileSync(join(dir, 'math.ts'))).digest('hex');
+    nodeFs.mkdirSync(join(dir, 'project-knowledge'), { recursive: true });
+    makeRecord(dir, sourceHead, blob, 'alpha-abcdef12', 'add returns the sum of its two arguments');
+    makeRecord(dir, sourceHead, blob, 'alpha-abcdef12', 'math.ts exports the add helper');
+    makeRecord(dir, sourceHead, blob, 'beta-12345678', 'add handles negative operands');
+    const knowledgeHead = commitAll(dir, 'knowledge');
+    return { dir, knowledgeHead };
+  };
+
+  const projectsHandlers = () => createDagServiceHandlers({ fs: nodeFs, snapshotDir: makeSnapshotDir() });
+
+  test('lists distinct sorted projectIds from the HEAD tree', async () => {
+    const repo = makeTwoProjectRepo();
+    const { handleRequest } = projectsHandlers();
+    const answer = await handleRequest({ method: 'GET', path: '/rationale/projects', query: { directory: repo.dir } });
+    expect(answer.status).toBe(200);
+    expect(answer.body.revision).toBe(repo.knowledgeHead);
+    expect(answer.body.revision).toMatch(/^[0-9a-f]{40}$/);
+    expect(answer.body.projectIds).toEqual(['alpha-abcdef12', 'beta-12345678']);
+  }, 30000);
+
+  test('blank and missing directories answer honest empties', async () => {
+    const { handleRequest } = projectsHandlers();
+    const blank = await handleRequest({ method: 'GET', path: '/rationale/projects', query: {} });
+    expect(blank.status).toBe(200);
+    expect(blank.body).toEqual({ revision: null, projectIds: [] });
+    const gone = await handleRequest({
+      method: 'GET', path: '/rationale/projects',
+      query: { directory: join(tmpdir(), 'dag-projids-no-such-dir') },
+    });
+    expect(gone.status).toBe(200);
+    expect(gone.body).toEqual({ revision: null, projectIds: [] });
+  });
+
+  test('traversal answers 400 before git runs', async () => {
+    const { handleRequest } = projectsHandlers();
+    const answer = await handleRequest({
+      method: 'GET', path: '/rationale/projects',
+      query: { directory: '../escape' },
+    });
+    expect(answer.status).toBe(400);
+  });
+
+  test('a directory that is not a git checkout answers an honest empty', async () => {
+    const dir = nodeFs.mkdtempSync(join(tmpdir(), 'dag-projids-plain-'));
+    scratchDirs.push(dir);
+    const { handleRequest } = projectsHandlers();
+    const answer = await handleRequest({ method: 'GET', path: '/rationale/projects', query: { directory: dir } });
+    expect(answer.status).toBe(200);
+    expect(answer.body).toEqual({ revision: null, projectIds: [] });
+  });
+
+  test('a repo without knowledge answers [] with the HEAD revision', async () => {
+    const dir = initRepo();
+    nodeFs.writeFileSync(join(dir, 'math.ts'), SOURCE_TS);
+    const head = commitAll(dir, 'source');
+    const { handleRequest } = projectsHandlers();
+    const answer = await handleRequest({ method: 'GET', path: '/rationale/projects', query: { directory: dir } });
+    expect(answer.status).toBe(200);
+    expect(answer.body.revision).toBe(head);
+    expect(answer.body.projectIds).toEqual([]);
+  }, 30000);
+
+  test('uncommitted working-tree knowledge never enters the project list', async () => {
+    const repo = makeTwoProjectRepo();
+    const { handleRequest } = projectsHandlers();
+    const query = { directory: repo.dir };
+    const before = await handleRequest({ method: 'GET', path: '/rationale/projects', query });
+    expect(before.status).toBe(200);
+    expect(before.body.projectIds).toEqual(['alpha-abcdef12', 'beta-12345678']);
+    nodeFs.writeFileSync(join(repo.dir, 'project-knowledge', 'pk-000000000000.md'), '---\ndescription: uncommitted draft\n---\n');
+    const after = await handleRequest({ method: 'GET', path: '/rationale/projects', query });
+    expect(after.status).toBe(200);
+    expect(after.body.projectIds).toEqual(['alpha-abcdef12', 'beta-12345678']);
+  }, 30000);
 });

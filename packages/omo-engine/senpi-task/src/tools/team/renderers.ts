@@ -1,12 +1,12 @@
 import type { Theme, ThemeColor, ToolRenderResultOptions } from "@code-yeongyu/senpi"
 
-import { piTui } from "../../lazy/pi-tui"
 import {
   ELLIPSIS,
   excerptRendererText,
   joinRendererTokens,
   normalizeRendererText,
   optionalRendererText,
+  truncateToWidthOrFallback,
 } from "../../renderer-text"
 import { formatTargetWithModel } from "../../status-line"
 import { statusThemeColor } from "../task/renderers"
@@ -41,11 +41,10 @@ const SUBJECT_EXCERPT_MAX = 48
 const REASON_EXCERPT_MAX = 120
 
 function component(rows: readonly Row[], theme: TeamRenderTheme): RenderComponent {
-  const { truncateToWidth } = piTui()
   return {
     render: (width: number): string[] => {
       if (width <= 0) return rows.map(() => "")
-      return rows.map((row) => truncateToWidth(theme.fg(row.color, row.text), width, ELLIPSIS))
+      return rows.map((row) => truncateToWidthOrFallback(theme.fg(row.color, row.text), width, ELLIPSIS))
     },
     invalidate: (): void => {},
   }

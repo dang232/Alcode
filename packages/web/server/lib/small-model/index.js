@@ -31,6 +31,11 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 const TIMEOUT_PER_TOKEN_MS = 40;
 const TIMEOUT_MAX_MS = 900_000;
 
+/** Whole-second rendering of a generation budget for the timeout error. */
+const formatBudgetForMessage = (budgetMs) => (
+  budgetMs >= 1000 ? `${Math.round(budgetMs / 1000)}s` : `${budgetMs}ms`
+);
+
 /** Budget for a prompt of `promptChars` characters (~4 chars/token, as for the input clamp). */
 export const generationBudgetMs = (promptChars) => Math.min(
   TIMEOUT_MAX_MS,
@@ -403,7 +408,7 @@ export async function generateSmallModelText({ prompt, system, maxOutputTokens, 
     if (responseSchema) sections.push(buildSchemaInstruction(responseSchema));
     const fullPrompt = sections.join('\n\n');
 
-    const generationOptions = requestOptions({ timeoutMs, signal });
+    const generationOptions = requestOptions({ timeoutMs, promptChars: fullPrompt.length, signal });
     const unavailableMessage = `Model unavailable: ${resolved.providerID}/${resolved.modelID}`;
     const send = async () => {
       const result = await client.generate.text(
@@ -433,16 +438,22 @@ export async function generateSmallModelText({ prompt, system, maxOutputTokens, 
       }
     };
 
-    let text = await sendWithCatalogRetry();
-
-    if (responseSchema) {
+    // A blown deadline (not caller cancellation) is the documented 504,
+    // naming the model and the budget, wherever in generation it fired.
+    const blownDeadlineError = () => Object.assign(
+      new Error(`${resolved.providerID}/${resolved.modelID} did not finish within the ${formatBudgetForMessage(generationOptions.budgetMs)} budget for this prompt size`),
+      { statusCode: 504, code: 'generation-timeout', providerID: resolved.providerID, modelID: resolved.modelID },
+    );
+    const runGeneration = async () => {
+      const first = await sendWithCatalogRetry();
+      if (!responseSchema) return first;
       // One retry: a model that ignored the shape once often honours it on a
       // second pass, and the alternative is failing a walkthrough over a stray
       // sentence of preamble.
-      let json = extractJsonText(text);
+      let json = extractJsonText(first);
       if (json === null) {
-        text = await sendWithCatalogRetry();
-        json = extractJsonText(text);
+        const second = await sendWithCatalogRetry();
+        json = extractJsonText(second);
       }
       if (json === null) {
         throw Object.assign(
@@ -450,7 +461,15 @@ export async function generateSmallModelText({ prompt, system, maxOutputTokens, 
           { statusCode: 422, code: 'structured-output-unsupported', providerID: resolved.providerID, modelID: resolved.modelID },
         );
       }
-      text = json;
+      return json;
+    };
+
+    let text;
+    try {
+      text = await runGeneration();
+    } catch (error) {
+      if (!signal?.aborted && generationOptions.deadline.aborted) throw blownDeadlineError();
+      throw error;
     }
 
     return {

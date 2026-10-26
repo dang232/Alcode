@@ -168,7 +168,7 @@ export const createScheduledTaskService = (dependencies) => {
     }
     if (result.skipped) throw new AlcodeControlError('Task not found or disabled', 404);
     if (!result.ok) {
-      throw new AlcodeControlError(result.error || 'Task run failed', 500, { task: result.task });
+      throw new AlcodeControlError(result.error || 'Task run failed', result.statusCode ?? 500, { task: result.task });
     }
     const response = {
       task: result.task,

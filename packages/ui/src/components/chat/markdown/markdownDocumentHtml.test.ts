@@ -1,10 +1,12 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { Window } from 'happy-dom';
+import { installHappyDomNodeNameShim } from './happyDomNodeNameShim';
 
 // Real DOMPurify on a happy-dom window. One caveat shapes the cases below:
 // under happy-dom, DOMPurify stops visiting the siblings that follow an element
 // it removed, which browsers do not do. Each payload therefore stands alone.
 const dom = new Window({ url: 'http://preview.test' });
+installHappyDomNodeNameShim(dom);
 Object.assign(globalThis, {
   window: dom,
   document: dom.document,
@@ -88,7 +90,7 @@ describe('document raw HTML', () => {
 
   test('draws a remote clip in output only when asked, and a local one as its label', () => {
     expect(renderMarkdownSync('![demo.mp4](https://cdn.test/a)', 'label')).toContain('<video src="https://cdn.test/a" title="demo.mp4" controls="" preload="none" playsinline="">');
-    expect(renderMarkdownSync('![demo](./out/demo.mp4)', 'label')).toContain('data-openchamber-markdown-image-source="./out/demo.mp4"');
+    expect(renderMarkdownSync('![demo](./out/demo.mp4)', 'label')).toContain('data-alcode-markdown-image-source="./out/demo.mp4"');
   });
 
   test('gives a raw video controls and drops autoplay', () => {

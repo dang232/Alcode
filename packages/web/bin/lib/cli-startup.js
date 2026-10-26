@@ -300,7 +300,9 @@ function runStartupCommand(command, args, options = {}) {
     stdio: options.stdio || 'pipe',
     windowsHide: true,
   });
-  if (result.error) {
+  // Best effort means best effort: a missing helper binary (no launchctl off
+  // macOS, no systemctl off Linux) fails the same way a refused stop does.
+  if (result.error && options.allowFailure !== true) {
     throw result.error;
   }
   if (result.status !== 0 && options.allowFailure !== true) {

@@ -32,6 +32,24 @@ const inside = async (root, relative) => {
   return resolved;
 };
 
+// Windows refuses to rename a directory a live process still serves, so a second `electron:dev` boot
+// next to a running instance failed the whole build. Replace the tree in place instead: every file
+// is written from the fully-built staging copy, so the output is identical without moving the
+// directory the running server holds open.
+const WINDOWS_LOCKED_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const replaceTreeInPlace = async (from, to) => {
+  await fs.mkdir(to, { recursive: true });
+  for (const entry of await fs.readdir(from, { withFileTypes: true })) {
+    const source = path.join(from, entry.name);
+    const target = path.join(to, entry.name);
+    if (entry.isDirectory()) {
+      await replaceTreeInPlace(source, target);
+      continue;
+    }
+    await fs.copyFile(source, target);
+  }
+};
+
 export const buildBuiltInExtensions = async ({ sourceRoot = path.join(repoRoot, 'packages/extensions'), outDir = DEFAULT_BUILTIN_ROOT } = {}) => {
   outDir = path.resolve(outDir);
   sourceRoot = await fs.realpath(sourceRoot);
@@ -87,7 +105,14 @@ export const buildBuiltInExtensions = async ({ sourceRoot = path.join(repoRoot, 
     // mkdtemp creates an owner-only directory; runtime may use a different UID.
     await fs.chmod(staging, 0o755);
     try { await fs.rename(outDir, previous); movedPrevious = true; }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    catch (error) {
+      if (error.code !== 'ENOENT' && WINDOWS_LOCKED_CODES.has(error.code)) {
+        console.warn(`[extensions:build] ${outDir} is held open by a running instance; updating it in place.`);
+        await replaceTreeInPlace(staging, outDir);
+        return registry;
+      }
+      if (error.code !== 'ENOENT') throw error;
+    }
     try { await fs.rename(staging, outDir); }
     catch (error) {
       if (movedPrevious) await fs.rename(previous, outDir);

@@ -38,6 +38,15 @@ export function loadPiTui(): Promise<PiTuiModule> {
 }
 
 /**
+ * Non-throwing probe for non-interactive callers (tool result paths such as batch progress)
+ * that have no render lifecycle owner to await loadPiTui(). Returns undefined when the barrel
+ * was never warmed or cannot load here; text helpers degrade to width-approximate output.
+ */
+export function tryPiTui(): PiTuiModule | undefined {
+  return sharedState().module
+}
+
+/**
  * Synchronous access to the loaded pi-tui namespace. Only valid after a caller that owns the
  * render lifecycle awaited loadPiTui() (composeOmoSenpiExtension does so before registering any
  * component); the throw below marks a missed warm-up, which is a programming error rather than a

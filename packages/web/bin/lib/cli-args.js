@@ -80,7 +80,7 @@ const COMMAND_OWNED_FLAGS = new Map([
   ['token-file', TUNNEL], ['token-stdin', TUNNEL], ['connect-ttl', TUNNEL], ['session-ttl', TUNNEL],
   ['show-secrets', TUNNEL], ['dry-run', TUNNEL], ['force', TUNNEL],
   ['lines', LOGS], ['no-follow', LOGS],
-  ['snapshot-dir', DAG], ['attach', DAG],
+  ['snapshot-dir', DAG], ['attach', DAG], ['workflow', DAG],
 ]);
 
 function parseArgs(argv = process.argv.slice(2)) {
@@ -144,6 +144,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     withStatus: false,
     snapshotDir: undefined,
     attach: undefined,
+    workflow: undefined,
   };
 
   const removedFlagErrors = [];
@@ -474,6 +475,12 @@ function parseArgs(argv = process.argv.slice(2)) {
         const { value, nextIndex } = consumeValue(i, inlineValue);
         i = nextIndex;
         if (value !== undefined) options.attach = value;
+        break;
+      }
+      case 'workflow': {
+        const { value, nextIndex } = consumeValue(i, inlineValue);
+        i = nextIndex;
+        if (value !== undefined) options.workflow = value;
         break;
       }
       case 'no-env-snapshot':

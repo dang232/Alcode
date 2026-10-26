@@ -626,7 +626,7 @@ describe('fs rename', () => {
       resolveProjectDirectory: async () => ({ directory: '/repo' }),
       buildAugmentedPath: () => '/usr/bin',
       resolveGitBinaryForSpawn: () => 'git',
-      openchamberUserConfigRoot: '/home/user/.config',
+      alcodeUserConfigRoot: '/home/user/.config',
     });
     return getRoute('POST', '/api/fs/rename');
   };
@@ -868,7 +868,7 @@ describe('fs rename on a real disk', () => {
       resolveProjectDirectory: async () => ({ directory: repo }),
       buildAugmentedPath: () => '/usr/bin',
       resolveGitBinaryForSpawn: () => 'git',
-      openchamberUserConfigRoot: '/home/user/.config',
+      alcodeUserConfigRoot: '/home/user/.config',
     });
     const route = getRoute('POST', '/api/fs/rename');
     rename = async (oldPath, newPath) => {
@@ -2173,7 +2173,7 @@ describe('fs stat directory error handling', () => {
       resolveProjectDirectory: async () => ({ directory: '/repo' }),
       buildAugmentedPath: () => '/usr/bin',
       resolveGitBinaryForSpawn: () => 'git',
-      openchamberUserConfigRoot: '/home/user/.config',
+      alcodeUserConfigRoot: '/home/user/.config',
     });
     const handler = getRoute('POST', '/api/fs/directory-stats');
 
@@ -2333,10 +2333,10 @@ describe('fs managed chats root', () => {
       });
 
       const res = createMockResponse();
-      await mkdir({ body: { path: '/home/user/.config/openchamber/chats/2026-10-12/session-a' } }, res);
+      await mkdir({ body: { path: '/home/user/.config/alcode/chats/2026-10-12/session-a' } }, res);
 
       expect(res.statusCode).toBe(200);
-      expect(mkdirCalls).toEqual(['/home/user/.config/openchamber/chats/2026-10-12/session-a']);
+      expect(mkdirCalls).toEqual(['/home/user/.config/alcode/chats/2026-10-12/session-a']);
     });
 
     it('allows mkdir inside the canonical chats root', async () => {
@@ -2738,7 +2738,7 @@ describe('GET /api/fs/find-in-files', () => {
       buildAugmentedPath: () => '/usr/bin',
       resolveGitBinaryForSpawn: () => 'git',
       resolveRipgrepBinary: createRipgrepResolver({ fs: fs.default, path }).resolveRipgrepBinary,
-      openchamberUserConfigRoot: '/home/user/.config',
+      alcodeUserConfigRoot: '/home/user/.config',
       ...overrides,
     });
     const route = getRoute('GET', '/api/fs/find-in-files');

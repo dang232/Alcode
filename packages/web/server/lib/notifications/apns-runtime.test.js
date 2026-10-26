@@ -229,7 +229,7 @@ describe('apns runtime relay mode (default)', () => {
   it('seals the richer phone text when one is given, and sends it nowhere else', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ok: true, results: [] }));
     vi.stubGlobal('fetch', fetchMock);
-    process.env.OPENCHAMBER_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
+    process.env.ALCODE_PUSH_RELAY_URL = 'https://relay.test/v1/push/send';
     const pushKey = crypto.randomBytes(32).toString('base64');
 
     const runtime = createApnsRuntime(makeDeps());

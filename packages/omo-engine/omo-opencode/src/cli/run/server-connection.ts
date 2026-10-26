@@ -1,11 +1,12 @@
-import { createOpencode as createOpencodeSdk, createOpencodeClient as createOpencodeClientSdk } from "@opencode-ai/sdk"
 import pc from "picocolors"
 import type { ServerConnection } from "./types"
-import { injectServerAuthIntoClient } from "../../shared/opencode-server-auth"
 import { getAvailableServerPort, isPortAvailable, DEFAULT_SERVER_PORT } from "../../shared/port-utils"
 import { withWorkingOpencodePath } from "./opencode-binary-resolver"
-
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0"])
+import {
+  createV2EngineClient,
+  spawnManagedV2Server,
+  type ManagedV2Server,
+} from "./opencode-v2-client"
 
 export type ServerConnectionOptions = {
   port?: number
@@ -13,44 +14,20 @@ export type ServerConnectionOptions = {
   signal: AbortSignal
 }
 
-type OpencodeServer<TClient> = {
-  client: TClient
-  server: {
-    url: string
-    close: () => void
-  }
-}
-
 export type ServerConnectionDeps<TClient> = {
-  createOpencode: (options: { signal: AbortSignal, port: number, hostname: string }) => Promise<OpencodeServer<TClient>>
-  createOpencodeClient: (options: { baseUrl: string }) => TClient
-  injectServerAuthIntoClient: (client: TClient) => void
+  spawnManagedServer: (options: { port: number, signal: AbortSignal }) => Promise<ManagedV2Server>
+  createEngineClient: (options: { baseUrl: string, password?: string }) => TClient
   isPortAvailable: (port: number, hostname?: string) => Promise<boolean>
   getAvailableServerPort: (preferredPort?: number, hostname?: string) => Promise<{ port: number, wasAutoSelected: boolean }>
-  withWorkingOpencodePath: (
-    startServer: () => Promise<OpencodeServer<TClient>>,
-  ) => Promise<OpencodeServer<TClient>>
+  withWorkingOpencodePath: <T>(startServer: () => Promise<T>) => Promise<T>
 }
 
 const defaultDeps: ServerConnectionDeps<ServerConnection["client"]> = {
-  createOpencode: createOpencodeSdk,
-  createOpencodeClient: createOpencodeClientSdk,
-  injectServerAuthIntoClient,
+  spawnManagedServer: (options) => spawnManagedV2Server(options),
+  createEngineClient: (options) => createV2EngineClient(options),
   isPortAvailable,
   getAvailableServerPort,
   withWorkingOpencodePath,
-}
-
-function isLoopbackAttachUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url)
-    return LOOPBACK_HOSTS.has(parsed.hostname)
-  } catch (error) {
-    if (!(error instanceof TypeError)) {
-      throw error
-    }
-    return false
-  }
 }
 
 function isPortStartFailure(error: unknown, port: number): boolean {
@@ -74,13 +51,13 @@ async function startServer<TClient>(
   deps: ServerConnectionDeps<TClient>,
 ): Promise<{ client: TClient, cleanup: () => void }> {
   const { signal, port } = options
-  const { client, server } = await deps.withWorkingOpencodePath(() =>
-    deps.createOpencode({ signal, port, hostname: "127.0.0.1" }),
+  const managed = await deps.withWorkingOpencodePath(() =>
+    deps.spawnManagedServer({ port, signal }),
   )
 
-  deps.injectServerAuthIntoClient(client)
-  console.log(pc.dim("Server listening at"), pc.cyan(server.url))
-  return { client, cleanup: () => server.close() }
+  const client = deps.createEngineClient({ baseUrl: managed.baseUrl, password: managed.password })
+  console.log(pc.dim("Server listening at"), pc.cyan(managed.baseUrl))
+  return { client, cleanup: () => { void managed.stop() } }
 }
 
 export async function createServerConnectionWithDeps<TClient>(
@@ -91,10 +68,7 @@ export async function createServerConnectionWithDeps<TClient>(
 
   if (attach !== undefined) {
     console.log(pc.dim("Attaching to existing server at"), pc.cyan(attach))
-    const client = deps.createOpencodeClient({ baseUrl: attach })
-    if (isLoopbackAttachUrl(attach)) {
-      deps.injectServerAuthIntoClient(client)
-    }
+    const client = deps.createEngineClient({ baseUrl: attach })
     return { client, cleanup: () => {} }
   }
 
@@ -120,15 +94,13 @@ export async function createServerConnectionWithDeps<TClient>(
         }
 
         console.log(pc.dim("Port"), pc.cyan(port.toString()), pc.dim("became occupied, attaching to existing server"))
-        const client = deps.createOpencodeClient({ baseUrl: `http://127.0.0.1:${port}` })
-        deps.injectServerAuthIntoClient(client)
+        const client = deps.createEngineClient({ baseUrl: `http://127.0.0.1:${port}` })
         return { client, cleanup: () => {} }
       }
     }
 
     console.log(pc.dim("Port"), pc.cyan(port.toString()), pc.dim("is occupied, attaching to existing server"))
-    const client = deps.createOpencodeClient({ baseUrl: `http://127.0.0.1:${port}` })
-    deps.injectServerAuthIntoClient(client)
+    const client = deps.createEngineClient({ baseUrl: `http://127.0.0.1:${port}` })
     return { client, cleanup: () => {} }
   }
 
@@ -149,8 +121,7 @@ export async function createServerConnectionWithDeps<TClient>(
     }
 
     console.log(pc.dim("Port range exhausted, attaching to existing server on"), pc.cyan(DEFAULT_SERVER_PORT.toString()))
-    const client = deps.createOpencodeClient({ baseUrl: `http://127.0.0.1:${DEFAULT_SERVER_PORT}` })
-    deps.injectServerAuthIntoClient(client)
+    const client = deps.createEngineClient({ baseUrl: `http://127.0.0.1:${DEFAULT_SERVER_PORT}` })
     return { client, cleanup: () => {} }
   }
 

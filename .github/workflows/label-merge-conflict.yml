@@ -12,7 +12,7 @@ permissions: {}
 jobs:
   label:
     # No bot app secret on this repo: skip instead of failing red.
-    if: ${{ github.repository == 'dang232/Alcode' && secrets.OC_REVIEW_APP_ID != '' }}
+    if: ${{ github.repository == 'dang232/Alcode' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

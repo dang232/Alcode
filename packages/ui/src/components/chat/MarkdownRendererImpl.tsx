@@ -288,12 +288,12 @@ const extractHrefFileReferenceCandidate = (anchor: HTMLAnchorElement): string | 
 // repeated on the same element. When the renderer replaces the `<code>` subtree
 // (e.g. on content change during streaming), the new element lacks the marker and
 // will be rescanned on the next mutation-observer callback.
-// (Implemented below by findBlockCodePathTokens plus the confirmed-token wrapper.)
+// (Implemented below by findBlockCodePathTokens.)
 // The path-like tokens of each code block not scanned yet. Reads text only:
 // code is full of things shaped like paths (`console.log`, `this.state`),
 // and wrapping each one on mount restyled the block and re-serialized it for
 // assistive technology. A token becomes a span only once its file is
-// confirmed (`wrapBlockCodePathTokens`).
+// confirmed.
 interface BlockCodePathToken {
   start: number;
   end: number;
@@ -320,7 +320,7 @@ const findBlockCodePathTokens = (container: HTMLElement): Array<{ codeBlock: HTM
 };
 
 // Wraps confirmed tokens of one code block in spans carrying
-// `data-openchamber-block-path-token`, which later passes treat like inline
+// `data-alcode-block-path-token`, which later passes treat like inline
 // code references, and marks the block scanned. A token whose text moved
 // since the scan stays text.
 const wrapBlockCodePathTokens = (
@@ -534,9 +534,9 @@ const useFileReferenceInteractions = ({
     };
 
     const markFileLink = (candidate: HTMLElement, raw: string, targetPath: string) => {
-      setAttributeIfChanged(candidate, 'data-openchamber-file-link', 'true');
-      setAttributeIfChanged(candidate, 'data-openchamber-file-ref', raw);
-      setAttributeIfChanged(candidate, 'data-openchamber-file-path', targetPath);
+      setAttributeIfChanged(candidate, 'data-alcode-file-link', 'true');
+      setAttributeIfChanged(candidate, 'data-alcode-file-ref', raw);
+      setAttributeIfChanged(candidate, 'data-alcode-file-path', targetPath);
       setAttributeIfChanged(candidate, 'title', 'Open file');
       if (candidate.tagName.toLowerCase() !== 'a') {
         setAttributeIfChanged(candidate, 'role', 'button');
@@ -606,6 +606,12 @@ const useFileReferenceInteractions = ({
             if (getResolvedReference(latestRaw, effectiveDirectory)?.resolvedPath !== resolvedPath) continue;
             if (targetPath) markFileLink(candidate, latestRaw, targetPath);
             else clearFileLinkAttributes(candidate);
+          }
+          for (const { codeBlock, tokens } of blockResults) {
+            if (!container.contains(codeBlock) || codeBlock.hasAttribute(CODE_BLOCK_PATH_SCANNED_ATTR)) continue;
+            wrapBlockCodePathTokens(codeBlock, tokens.flatMap(({ start, end, raw, targetPath }) => (
+              targetPath ? [{ start, end, raw, decorate: (span: HTMLElement) => markFileLink(span, raw, targetPath) }] : []
+            )));
           }
         });
       });
@@ -1405,7 +1411,6 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     if (!effectiveDirectory) return;
     openContextPreview(effectiveDirectory, url);
   }, [effectiveDirectory, openContextPreview]);
-
 
   useMermaidInlineInteractions({
     containerRef,

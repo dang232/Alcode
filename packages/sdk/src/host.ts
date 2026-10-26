@@ -162,11 +162,12 @@ export type HostClient = {
    */
   openCommit: (sha: string) => Promise<void>;
   /**
-   * Show a context panel surface (`git`, or `plugin:<panel id>`). Resolves once
-   * it is on screen; one already open stays open. No chat or project yet is
+   * Show a context panel surface (`git`, `code-graph`, or `plugin:<panel id>`).
+   * Resolves once it is on screen; one already open stays open. `file` focuses
+   * a code-graph open on that project-relative path. No chat or project yet is
    * `NO_DIRECTORY`, a surface that cannot open here `UNSUPPORTED`.
    */
-  openSurface: (surfaceId: string) => Promise<void>;
+  openSurface: (surfaceId: string, options?: { file?: string }) => Promise<void>;
   writeClipboard: (text: string) => Promise<void>;
   compose: (request: ComposeRequest) => Promise<void>;
   attach: (request: AttachIssueRequest) => Promise<void>;
@@ -945,12 +946,12 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       id: nextId(ids),
       payload: { sha },
     }) : Promise.reject(new HostRequestError('HOST_REJECTED', 'Commit id must be 7 to 64 hex characters.'))),
-    openSurface: (surfaceId) => request({
+    openSurface: (surfaceId, options) => request({
       channel: ALCODE_SDK_CHANNEL,
       v: ALCODE_SDK_API_VERSION,
       type: 'open-surface',
       id: nextId(ids),
-      payload: { surfaceId },
+      payload: { surfaceId, ...(options?.file ? { file: options.file } : {}) },
     }),
     writeClipboard: (text) => request({
       channel: ALCODE_SDK_CHANNEL,

@@ -17,6 +17,9 @@ import { createCliPostHog, getPostHogDistinctId } from "../../shared/posthog"
 import { dispatchInternalPrompt, isInternalPromptDispatchAccepted } from "../../shared/prompt-async-gate"
 import { isAmbiguousPostDispatchPromptFailure } from "../../shared/prompt-failure-classifier"
 import { resolveRunnableRunAgent } from "./runnable-agent-resolver"
+import { buildRunnerProfileInput, buildWorkflowProfile, resolveExecutionOptions } from "./workflow-profile"
+import { selectWorkflow } from "./workflow-select"
+import { buildPromptInput, preparePlannerTurn } from "./plan-evidence"
 
 export { resolveRunAgent }
 
@@ -94,12 +97,45 @@ export async function run(options: RunOptions): Promise<number> {
         sessionId: options.sessionId,
         directory,
       })
-      const runnableAgent = await resolveRunnableRunAgent(client, resolvedAgent, pluginConfig)
+      const runnableAgent = await resolveRunnableRunAgent(client, resolvedAgent, pluginConfig, directory)
 
       console.log(pc.dim(`Session: ${sessionID}`))
 
       if (resolvedModel) {
         console.log(pc.dim(`Model: ${resolvedModel.providerID}/${resolvedModel.modelID}`))
+      }
+
+      const profileInput = buildRunnerProfileInput({
+        message,
+        sessionId: sessionID,
+        requestedAgent: options.agent,
+        resolvedAgent,
+        requestedModel: options.model,
+        resolvedModel,
+        directory,
+        explicitMode: options.workflow,
+      })
+      const enriched = buildWorkflowProfile(profileInput)
+      const workflowDecision = selectWorkflow(enriched.profile)
+      if (options.verbose) {
+        console.log(pc.dim(`Workflow: ${workflowDecision.strategy} \u2014 ${workflowDecision.reason} [${enriched.basis.join(", ")}]`))
+      }
+      const execOpts = resolveExecutionOptions(workflowDecision.strategy)
+
+      const plannerTurn = await preparePlannerTurn({
+        message,
+        directory,
+        strategy: workflowDecision.strategy,
+        enabled: options.planEvidence,
+      })
+      if (options.verbose && plannerTurn.evidence !== undefined) {
+        const diagnostics = plannerTurn.evidence.diagnostics
+        console.log(pc.dim(
+          `Plan evidence: ${plannerTurn.evidence.status}` +
+          `${diagnostics.reason === undefined ? "" : ` (${diagnostics.reason})`}` +
+          ` \u2014 files ${diagnostics.files}, symbols ${diagnostics.subjects.length}, ` +
+          `knowledge ${diagnostics.knowledgeRecords}, ${plannerTurn.evidence.bytes} bytes, ${diagnostics.durationMs}ms`,
+        ))
       }
 
       const ctx: RunContext = {
@@ -108,14 +144,27 @@ export async function run(options: RunOptions): Promise<number> {
         directory,
         abortController,
         verbose: options.verbose ?? false,
+        workflowDecision,
       }
-      const events = await client.event.subscribe({ query: { directory } })
+      // The workflow decision selects downstream behavior: direct runs skip
+      // the meaningful-work gate while exploratory/planned runs enforce it.
+      // (Provably identical to execOpts.requireMeaningfulWork: the execution
+      // table maps direct -> false and every other strategy -> true.)
+      const requireMeaningfulWork = workflowDecision.strategy !== "direct"
+      const events = await client.event.subscribe({ signal: abortController.signal })
       const eventState = createEventState()
-      eventState.agentColorsByName = await loadAgentProfileColors(client)
-      const eventProcessor = processEvents(ctx, events.stream, eventState).catch(
+      eventState.agentColorsByName = await loadAgentProfileColors(client, directory)
+      const eventProcessor = processEvents(ctx, events, eventState).catch(
         () => {},
       )
 
+      if (
+        (workflowDecision.strategy === "high-assurance" ||
+          workflowDecision.strategy === "bounded-recovery") &&
+        workflowDecision.gates.length === 0
+      ) {
+        throw new Error("gated strategies must never run gateless")
+      }
       const promptResult = await dispatchInternalPrompt({
         mode: "async",
         client,
@@ -123,18 +172,14 @@ export async function run(options: RunOptions): Promise<number> {
         source: "cli-run",
         settleMs: 0,
         queueBehavior: "defer",
-        input: {
-          path: { id: sessionID },
-          body: {
-            agent: runnableAgent,
-            ...(resolvedModel ? { model: resolvedModel } : {}),
-            tools: {
-              question: false,
-            },
-            parts: [{ type: "text", text: message }],
-          },
-          query: { directory },
-        },
+        input: buildPromptInput({
+          sessionID,
+          directory,
+          message,
+          agent: runnableAgent,
+          model: resolvedModel,
+          evidence: plannerTurn.evidence,
+        }),
       })
       const promptMayHaveBeenAccepted = promptResult.status === "failed"
         && isAmbiguousPostDispatchPromptFailure(promptResult)
@@ -152,7 +197,8 @@ export async function run(options: RunOptions): Promise<number> {
       }
       await waitForPromptStart(ctx, eventState, abortController)
       const exitCode = await pollForCompletion(ctx, eventState, abortController, {
-        requireMeaningfulWork: true,
+        requireMeaningfulWork,
+        requiredConsecutive: execOpts.requiredConsecutive,
       })
 
       abortController.abort()

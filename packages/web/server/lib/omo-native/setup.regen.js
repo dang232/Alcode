@@ -80,7 +80,12 @@ const specifiers = new Set(
     (match) => match[1],
   ),
 );
-const leaked = [...specifiers].filter((spec) => {
+// Engine sources now embed regex literals like /from\s*"..."/ whose own text contains the same
+// `from` + quote shape, so the scan can capture a fragment spanning punctuation and newlines.
+// Only specifier-shaped tokens can leak into a consumer: a capture carrying whitespace, brackets or
+// quotes is scanner noise, never an import specifier.
+const SPECIFIER_SHAPE = /^[^\s"'`(){}[\]]+$/;
+const leaked = [...specifiers].filter((spec) => SPECIFIER_SHAPE.test(spec)).filter((spec) => {
   if (spec.startsWith('node:')) return false;
   // Bare core imports (`fs`, `os`, `path`, …) resolve in plain Node exactly
   // like their `node:`-prefixed twins; only non-core specifiers leak.

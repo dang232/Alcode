@@ -40,7 +40,7 @@ import { readTabletLayout, useOrientation, useTabletLayout } from '@/lib/device'
 import { useHardwareKeyboard } from '@/lib/hardwareKeyboard';
 import { useI18n } from '@/lib/i18n';
 import { subscribeAlcodeEvents } from '@/lib/alcodeEvents';
-import { runtimeFetch } from '@/lib/runtime-fetch';
+
 import { getRuntimeApiBaseUrl, subscribeRuntimeEndpointChanged, switchRuntimeEndpoint, MOBILE_DISCONNECTED_RUNTIME_KEY } from '@/lib/runtime-switch';
 import { subscribeActiveRelayTunnelStatus } from '@/lib/relay/runtime-tunnel';
 import { isRelayLimitReached } from '@/lib/relay/tunnel-client';

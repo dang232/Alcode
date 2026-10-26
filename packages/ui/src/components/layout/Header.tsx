@@ -15,11 +15,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 import { useUIStore } from '@/stores/useUIStore';
-import { useContextWindowLimits } from '@/hooks/useContextWindowLimits';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useSessionWorktreeStore } from '@/sync/session-worktree-store';
 import { formatSessionWorktreeBadge } from '@/sync/session-worktree-contract';
-import { useGlobalSessionStatus, useSessionMessagesResolved } from '@/sync/sync-context';
+import { useGlobalSessionStatus } from '@/sync/sync-context';
 import { useDirectoryStore as useAppDirectoryStore } from '@/stores/useDirectoryStore';
 import { isChatDirectoryForHome } from '@/lib/chatDirectories';
 import { useSessionMessageRecordsForExport } from '@/sync/use-sync';
@@ -40,8 +39,6 @@ import {
 
 import {
 } from '@/components/ui/collapsible';
-import type { SessionContextUsage } from '@/stores/types/sessionTypes';
-import { isSameContextUsage } from '@/stores/utils/tokenUtils';
 import { SpaceAccessButton } from '@/components/session/spaces/SpaceAccessButton';
 import { SpaceApplyButton } from '@/components/session/spaces/SpaceApplyButton';
 import { useDraftSpaceTarget } from '@/lib/spaces/useDraftSpaceTarget';
@@ -88,14 +85,11 @@ import { findWorktreeHoldingDirectory } from '@/lib/worktrees/worktreePaths';
 // open or while what it controls is on, and no hover fill.
 const DESKTOP_HEADER_ICON_BUTTON_CLASS = 'app-region-no-drag inline-flex h-6 w-6 items-center justify-center gap-2 rounded-md typography-ui-label font-medium text-muted-foreground hover:text-foreground data-[popup-open]:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 transition-colors';
 
-
 const normalize = (value: string): string => {
   if (!value) return '';
   const replaced = value.replace(/\\/g, '/');
   return replaced === '/' ? '/' : replaced.replace(/\/+$/, '');
 };
-
-
 
 type HeaderSessionSnapshot = {
   title: string | null;
@@ -113,10 +107,8 @@ export const Header: React.FC = () => {
   const layoutAnimationMs = useLayoutAnimationMs();
   const sessionTabsEnabled = useUIStore((state) => state.sessionTabsEnabled);
 
-  const getContextUsage = useSessionUIStore((state) => state.getContextUsage);
   const isNewSessionDraftOpen = useSessionUIStore((state) => Boolean(state.newSessionDraft?.open));
   const currentSessionId = useSessionUIStore((state) => state.currentSessionId);
-  const currentSessionMessagesResolved = useSessionMessagesResolved(currentSessionId ?? '');
   const currentSessionStatus = useGlobalSessionStatus(currentSessionId ?? '');
   const isCurrentSessionMovingToWorktree = useIsSessionWorktreeMovePending(currentSessionId ?? '');
   const currentGlobalSession = useGlobalSessionsStore(useShallow(React.useCallback(
@@ -213,33 +205,12 @@ export const Header: React.FC = () => {
     setIsDesktopApp(isDesktopShell());
   }, []);
 
-  const { context: contextLimit, output: outputLimit } = useContextWindowLimits(currentSessionId);
-  const contextUsage = getContextUsage(contextLimit, outputLimit);
-  const [stableDesktopContextUsage, setStableDesktopContextUsage] = React.useState<SessionContextUsage | null>(null);
-  const isContextUsageResolvedForSession = !currentSessionId || currentSessionMessagesResolved;
-
-  useEffect(() => {
-    if (!currentSessionId) {
-      setStableDesktopContextUsage((prev) => (prev === null ? prev : null));
-      return;
-    }
-
-    if (contextUsage) {
-      setStableDesktopContextUsage((prev) => (isSameContextUsage(prev, contextUsage) ? prev : contextUsage));
-      return;
-    }
-
-    if (isContextUsageResolvedForSession) {
-      setStableDesktopContextUsage((prev) => (prev === null ? prev : null));
-    }
-  }, [contextUsage, currentSessionId, isContextUsageResolvedForSession]);
-
   const [currentInstanceLabel, setCurrentInstanceLabel] = React.useState('Local');
   const [currentInstanceIsLocal, setCurrentInstanceIsLocal] = React.useState(true);
-  const [remoteUpdateDialogOpen, setRemoteUpdateDialogOpen] = React.useState(false);
-  const [remoteUpdateInfo, setRemoteUpdateInfo] = React.useState<UpdateInfo | null>(null);
-  const [remoteUpdateChecking, setRemoteUpdateChecking] = React.useState(false);
-  const [remoteUpdateError, setRemoteUpdateError] = React.useState<string | null>(null);
+  const [_remoteUpdateDialogOpen, setRemoteUpdateDialogOpen] = React.useState(false);
+  const [, setRemoteUpdateInfo] = React.useState<UpdateInfo | null>(null);
+  const [_remoteUpdateChecking, setRemoteUpdateChecking] = React.useState(false);
+  const [_remoteUpdateError, setRemoteUpdateError] = React.useState<string | null>(null);
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
   // While the work-status panel is on screen it already reports the project
   // and the branch — three paces away in the same window. The meta row under
@@ -266,9 +237,6 @@ export const Header: React.FC = () => {
     }
     setWorkStatusPanelEnabled(!workStatusPanelEnabled);
   }, [setWorkStatusOverlayOpen, setWorkStatusPanelEnabled, workStatusOverlayOpen, workStatusPanelEnabled, workStatusPanelFits]);
-  const showDesktopHeaderContextUsage = !isVSCode
-    && !workStatusPanelVisible
-    && !!stableDesktopContextUsage;
 
   const refreshCurrentInstanceLabel = React.useCallback(async () => {
     if (typeof window === 'undefined' || !isDesktopApp) {
@@ -388,20 +356,11 @@ export const Header: React.FC = () => {
     };
   }, [checkRemoteInstanceUpdate, currentInstanceIsLocal, currentInstanceLabel, isDesktopApp]);
 
-  const openRemoteInstanceUpdate = React.useCallback(() => {
-    if (remoteUpdateInfo?.available) {
-      setRemoteUpdateDialogOpen(true);
-      return;
-    }
-    void checkRemoteInstanceUpdate();
-  }, [checkRemoteInstanceUpdate, remoteUpdateInfo?.available]);
-
   useQuotaAutoRefresh();
 
   React.useEffect(() => {
     void loadQuotaSettings();
   }, [loadQuotaSettings]);
-
 
   const currentSessionSnapshot = currentSessionId
     ? currentGlobalSession ?? null
@@ -562,8 +521,6 @@ export const Header: React.FC = () => {
   const showHeaderMetaRow = !isChatContext && !workStatusPanelVisible
     && Boolean(activeProjectLabel || currentBranchLabel || (!isNewSessionDraftOpen && worktreeBadgeKind));
 
-
-
   const currentSessionTitle = React.useMemo(() => {
     if (!currentSessionId) {
       return activeProjectLabel ?? 'Alcode';
@@ -585,7 +542,6 @@ export const Header: React.FC = () => {
   const hasProjects = useProjectsStore((state) => state.projects.length > 0);
   const [pendingHeaderRetentionAction, setPendingHeaderRetentionAction] = React.useState<{ action: 'archive' | 'delete'; sessionId: string } | null>(null);
   const headerRenameFormRef = React.useRef<HTMLFormElement | null>(null);
-
 
   const beginHeaderSessionRename = React.useCallback(() => {
     if (!currentSessionId) return;
@@ -812,7 +768,6 @@ export const Header: React.FC = () => {
     return null;
   }, [guestPage, isArchiveSurfaceOpen, isIntegrationsCatalogSurfaceOpen, overviewRunTitle, runOverviewKey, isScheduledSurfaceOpen, isSourceBoardSurfaceOpen, isUsageStatsSurfaceOpen, spacesSurfaceProjectId, surfaceProjectLabel, t, worktreesSurfaceProjectId]);
 
-
   const currentSessionOpenDirectory = sessionDirectory || normalize(selectedSessionDirectory || '') || worktreeDirectory;
 
   // The header's Mini Chat button opens whatever is on screen: the new-session
@@ -854,9 +809,6 @@ export const Header: React.FC = () => {
       console.warn('[header] failed to open session mini chat window', error);
     });
   }, []);
-
-
-
 
   const desktopHeaderIconButtonClass = DESKTOP_HEADER_ICON_BUTTON_CLASS;
   // Clearance for the OS window controls (macOS traffic lights /
@@ -1076,9 +1028,6 @@ export const Header: React.FC = () => {
     }
   }, [isDesktopApp]);
 
-
-
-
   useKeybinds({
     rename_current_session: () => {
       if (!currentSessionId || isMobile) return false;
@@ -1101,7 +1050,6 @@ export const Header: React.FC = () => {
       <SpaceAccessButton directory={openDirectory} className={cn(DESKTOP_HEADER_ICON_BUTTON_CLASS, 'text-muted-foreground hover:text-foreground')} iconClassName="h-4 w-4" />
     </>
   );
-
 
   const renderSessionTabMenu = React.useCallback(({ session, open, isActive, select, closeOtherTabs, components }: SessionTabMenuArgs) => {
     const { Item, Separator } = components;

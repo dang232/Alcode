@@ -28,7 +28,8 @@ export const LOCAL_HOST_ID = 'local';
  */
 export const getLocalDesktopOrigin = (): string => {
   if (typeof window === 'undefined') return '';
-  return window.__ALCODE_LOCAL_ORIGIN__ || window.location.origin;
+  const win = window as typeof window & { __ALCODE_LOCAL_ORIGIN__?: string; __OPENCHAMBER_LOCAL_ORIGIN__?: string };
+  return win.__ALCODE_LOCAL_ORIGIN__ ?? win.__OPENCHAMBER_LOCAL_ORIGIN__ ?? '';
 };
 
 /**

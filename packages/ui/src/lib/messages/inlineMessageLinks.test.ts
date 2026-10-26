@@ -15,7 +15,7 @@ describe('attachment citation links', () => {
         const link = { filename: 'notes:v2.txt', iconId: 'txt', openable: true };
         const href = buildAttachmentHref(link);
 
-        expect(href.startsWith('#openchamber-attachment-open:')).toBe(true);
+        expect(href.startsWith('#alcode-attachment-open:')).toBe(true);
         expect(parseAttachmentHref(href)).toEqual(link);
         expect(parseAttachmentHref(buildAttachmentHref({ ...link, openable: false }))?.openable).toBeUndefined();
     });

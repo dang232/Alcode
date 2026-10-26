@@ -42,14 +42,14 @@ export function isDoneSuggested(session: Session | null | undefined): boolean {
   return work?.state === 'open' && isHintCurrent(session, work.suggestDoneAt);
 }
 
-const reviewOfferSchema = z.object({ openchamber: z.object({ reviewOffer: z.object({ at: z.number() }) }) });
+const reviewOfferSchema = z.object({ alcode: z.object({ reviewOffer: z.object({ at: z.number() }) }) });
 
 /**
  * Whether Jev's "changes are ready to look over" offer is current: the same
  * freshness rule, and a current done hint takes the slot instead.
  */
 export function isReviewSuggested(session: Session | null | undefined): boolean {
-  const offeredAt = reviewOfferSchema.safeParse(session?.metadata).data?.openchamber.reviewOffer.at;
+  const offeredAt = reviewOfferSchema.safeParse(session?.metadata).data?.alcode.reviewOffer.at;
   return isHintCurrent(session, offeredAt) && !isDoneSuggested(session);
 }
 

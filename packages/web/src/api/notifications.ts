@@ -239,12 +239,22 @@ const notifyWithWebAPI = async (payload?: NotificationPayload): Promise<boolean>
   }
 };
 
-const notifyWithDesktop = async (payload?: NotificationPayload): Promise<boolean> => {
-  if (typeof window === 'undefined') {
-    return false;
-  }
+type DesktopBridgeWindow = {
+  __ALCODE_DESKTOP__?: DesktopBridgeGlobal;
+  __OPENCHAMBER_DESKTOP__?: DesktopBridgeGlobal;
+};
 
-  const desktop = (window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal }).__ALCODE_DESKTOP__;
+// The preload mirrors the bridge under both spellings, so UI bundles from
+// either side of the rename resolve it. The new name wins.
+const getDesktopBridge = (): DesktopBridgeGlobal | null => {
+  if (typeof window === 'undefined') return null;
+  const desktop = (window as unknown as DesktopBridgeWindow).__ALCODE_DESKTOP__
+    ?? (window as unknown as DesktopBridgeWindow).__OPENCHAMBER_DESKTOP__;
+  return desktop ?? null;
+};
+
+const notifyWithDesktop = async (payload?: NotificationPayload): Promise<boolean> => {
+  const desktop = getDesktopBridge();
   if (!desktop?.invoke) {
     return false;
   }
@@ -275,11 +285,8 @@ export const createWebNotificationsAPI = (): NotificationsAPI => ({
     return (await notifyWithDesktop(payload)) || (await notifyWithWebAPI(payload));
   },
   canNotify: () => {
-    if (typeof window !== 'undefined') {
-      const desktop = (window as unknown as { __ALCODE_DESKTOP__?: DesktopBridgeGlobal }).__ALCODE_DESKTOP__;
-      if (desktop?.invoke) {
-        return true;
-      }
+    if (getDesktopBridge()?.invoke) {
+      return true;
     }
     return typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false;
   },

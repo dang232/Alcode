@@ -1,8 +1,7 @@
 import React from 'react';
 import { toast } from '@/components/ui';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Icon } from '@/components/icon/Icon';
+
 import {
   cancelPasskeyCeremony,
   defaultPasskeyStatus,
@@ -11,7 +10,6 @@ import {
   getPasskeySupportState,
   isPasskeyCeremonyAbort,
   registerCurrentDevicePasskey,
-  renameStoredPasskey,
   resetAllAuth,
   revokeStoredPasskey,
   type PasskeyStatus,
@@ -41,11 +39,6 @@ export const PasskeySettings: React.FC = () => {
   const [isRegistering, setIsRegistering] = React.useState(false);
   const [revokingId, setRevokingId] = React.useState<string | null>(null);
   const [isResetting, setIsResetting] = React.useState(false);
-  const [renamingId, setRenamingId] = React.useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = React.useState('');
-  const [isRenaming, setIsRenaming] = React.useState(false);
-  const renameCancelledRef = React.useRef(false);
-  const renameSubmittingRef = React.useRef(false);
   const [passkeys, setPasskeys] = React.useState<StoredPasskey[]>([]);
   const [status, setStatus] = React.useState<PasskeyStatus>(defaultPasskeyStatus);
   const [errorMessage, setErrorMessage] = React.useState('');
@@ -164,57 +157,6 @@ export const PasskeySettings: React.FC = () => {
       setRevokingId(null);
     }
   }, [loadPasskeys, t]);
-
-  const startRenamePasskey = React.useCallback((passkey: StoredPasskey) => {
-    renameCancelledRef.current = false;
-    setRenameDraft(passkey.customLabel ?? '');
-    setRenamingId(passkey.id);
-  }, []);
-
-  const cancelRenamePasskey = React.useCallback(() => {
-    renameCancelledRef.current = true;
-    setRenameDraft('');
-    setRenamingId(null);
-  }, []);
-
-  const submitRenamePasskey = React.useCallback(async (passkey: StoredPasskey) => {
-    if (renameCancelledRef.current) {
-      renameCancelledRef.current = false;
-      return;
-    }
-    if (renameSubmittingRef.current) {
-      return;
-    }
-    // Opening the editor and leaving it unchanged is not a rename.
-    if (renameDraft.trim() === (passkey.customLabel ?? '')) {
-      setRenamingId((current) => (current === passkey.id ? null : current));
-      return;
-    }
-
-    renameSubmittingRef.current = true;
-    setIsRenaming(true);
-    setErrorMessage('');
-
-    try {
-      const updated = await renameStoredPasskey(passkey.id, renameDraft);
-      if (updated) {
-        setPasskeys((current) => current.map((item) => (item.id === passkey.id ? updated : item)));
-      } else {
-        await loadPasskeys();
-      }
-      // Only close the editor for this row; another row may have opened
-      // while the save was in flight.
-      setRenamingId((current) => (current === passkey.id ? null : current));
-      toast.success(t('settings.openchamber.passkeys.toast.renamed'));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : t('settings.openchamber.passkeys.toast.renameFailed');
-      setErrorMessage(message);
-      toast.error(message);
-    } finally {
-      renameSubmittingRef.current = false;
-      setIsRenaming(false);
-    }
-  }, [loadPasskeys, renameDraft, t]);
 
   const handleResetAllAuth = React.useCallback(async () => {
     setIsResetting(true);

@@ -12,8 +12,6 @@ import { useI18n } from '@/lib/i18n';
 import { getDesktopAppVersion } from '@/lib/desktopNative';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 
-const VERSION_SLOT = '\u0000';
-
 interface AboutDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -145,21 +143,6 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
       cancelled = true;
     };
   }, [open, showDiagnostics]);
-
-  // Both rows render from the first frame so the dialog height stays put while versions load.
-  const renderVersionRow = (labelKey: 'aboutDialog.alcodeVersionLabel' | 'aboutDialog.openCodeVersionLabel', value: string | null | undefined) => {
-    if (value !== undefined) {
-      return <p>{t(labelKey, { version: value ?? t('settings.openchamber.about.state.unknown') })}</p>;
-    }
-    const [before, after = ''] = t(labelKey, { version: VERSION_SLOT }).split(VERSION_SLOT);
-    return (
-      <p className="flex items-center justify-center">
-        <span className="whitespace-pre">{before}</span>
-        <Icon name="loader" className="size-3.5 animate-spin" />
-        <span className="whitespace-pre">{after}</span>
-      </p>
-    );
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

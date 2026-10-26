@@ -2662,7 +2662,7 @@ export const RemoteInstancesPage: React.FC = () => {
             />
           </div>
           {alcoreSecretMissing ? (
-            <p className="typography-micro text-[var(--status-error)] md:pl-[16rem]">
+            <p className="typography-micro text-[var(--status-error)] md:ps-[16rem]">
               {t('settings.remoteInstances.page.field.alcoreSecretMissingForLan')}
             </p>
           ) : null}

@@ -15,6 +15,7 @@
  */
 import { isRecord } from '../shared/guards.js';
 
+const KNOWLEDGE_METADATA_KEY = 'knowledge_context_delivered';
 const PINS_METADATA_KEY = 'project_context_pins';
 
 /**
@@ -412,7 +413,6 @@ export const createSessionKnowledgeRuntime = (dependencies) => {
     // The next send writes the changed pin set; the merge patch leaves
     // neighbouring state alone.
     await persistSessionMetadata(sessionId, directory, {
-      openchamber: { [PINS_METADATA_KEY]: { ...pins, [key]: [...next] } },
       alcode: {
         [PINS_METADATA_KEY]: { ...pins, [key]: [...next] },
         [KNOWLEDGE_METADATA_KEY]: '',
@@ -441,8 +441,14 @@ export const createSessionKnowledgeRuntime = (dependencies) => {
     collect,
     collectSummary,
     collectSummaryForSession,
+    resolvePending,
+    resolvePendingForSession,
     sync,
+    recordDelivered,
+    readDeliveredSignature,
     readPins,
     setPin,
+    metadataKey: KNOWLEDGE_METADATA_KEY,
+    pinsMetadataKey: PINS_METADATA_KEY,
   };
 };

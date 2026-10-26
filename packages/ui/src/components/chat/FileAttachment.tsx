@@ -552,12 +552,6 @@ interface FilePart {
   source?: Record<string, unknown>;
 }
 
-const GITHUB_ISSUE_LINK_MIME = 'application/vnd.github.issue-link';
-const GITLAB_ISSUE_LINK_MIME = 'application/vnd.alcode.gitlab-issue-link';
-const GITHUB_PR_LINK_MIME = 'application/vnd.github.pull-request-link';
-const LINEAR_ISSUE_LINK_MIME = 'application/vnd.alcode.linear-issue-link';
-const GUEST_ISSUE_LINK_MIME = 'application/vnd.alcode.guest-issue-link';
-const GUEST_PR_LINK_MIME = 'application/vnd.alcode.guest-pr-link';
 
 const issueLinkIcon = (kind: IssueLinkKind): 'github' | 'gitlab' | 'git-pull-request' | 'linear' | 'attachment-2' => {
   if (kind === 'github-pr' || kind === 'guest-pr') return 'git-pull-request';

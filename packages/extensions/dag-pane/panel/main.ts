@@ -16,12 +16,15 @@ import { mountBadge } from '@alcode/sdk/ui';
 import { mountBanner } from '@alcode/sdk/ui';
 import { mountButton } from '@alcode/sdk/ui';
 import { mountEmpty } from '@alcode/sdk/ui';
-
 import { mountSpinner } from '@alcode/sdk/ui';
 import { mountTextField } from '@alcode/sdk/ui';
 
-import { isWireRecord, keepStoredRunModel, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave } from './dag-view.ts';
+import { isWireRecord, keepStoredRunModel, mergeRunModelPost, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave } from './dag-view.ts';
+import { buildFileQuery, buildSearchQuery, buildSymbolQueries, buildCodeGraphModel, classifyCodeItemId, codeGraphLayoutSpec, formatFreshnessChip, resolveCodeIndexStatus, resolveCodeQueryStatus, taskToCodeSource } from './code-view.ts';
+import { buildRationaleProjectsQuery, buildRationaleQuery, formatRationaleProvenance, rationaleBadgesFor, resolveRationaleStatus, shouldRenderRationale } from './rationale-view.ts';
+import { buildActivityTimeline, formatClock, formatDuration, rowNodeId } from './activity-view.ts';
 import { stringsFor, type DagPaneStrings } from './strings.ts';
+import { anchorView, computeFit, defaultView, dragDistanceExceeded, nextZoomScale, panView, viewTransform, type View } from './viewport.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const NODE_WIDTH = 132;
@@ -127,6 +130,49 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let selectedNodeId: string | null = null;
   let wrapperEntry = '';
+  // Zoom/pan view state (RunGraph port): one translate + one uniform scale
+  // shared by every painted graph. It lives outside the render section key,
+  // so wheel/pan ticks mutate only the world `transform` in place.
+  let view: View = defaultView();
+  let lastFitExtents: string | null = null;
+  let lastGraphSizes: { width: number; height: number }[] = [];
+  let viewportEls: SVGElement[] = [];
+  let worldEls: SVGElement[] = [];
+  let drag: { startX: number; startY: number; base: View } | null = null;
+  let dragMoved = false;
+  let suppressNodeClick = false;
+  // Run/Code switcher state: one content area, switched from the header
+  // controls (no second panel). The Run graph, zoom math, and data paths
+  // below are untouched; the Code branch below owns its own states.
+  let activeView: 'run' | 'activity' | 'code' = 'run';
+  let lastCodeKey: string | null = null;
+  // Code view caches: directory-scoped, refreshed only on directory change,
+  // manual retry, or a new task label — never on the 4s Run poll.
+  let codeGen = 0;
+  let codeIndexDir = '';
+  let codeIndexBody: Record<string, JsonValue> | null = null;
+  let codeIndexError: string | null = null;
+  let codeIndexLoading = false;
+  let codeSearchInput = '';
+  let codeSearchResult: Record<string, JsonValue> | null = null;
+  let codeSearchError: string | null = null;
+  let codeSearchLoading = false;
+  let codeDetailTitle: string | null = null;
+  let codeDetailGroups: { title: string; body: Record<string, JsonValue> | null; error: string | null }[] = [];
+  let codeDetailError: string | null = null;
+  let codeDetailLoading = false;
+  // Dependency graph for the selected subject: the payload the runtime
+  // returned for it, the node the user inspected, and this graph's own
+  // viewport so the Code zoom never inherits the Run zoom.
+  let codeGraphBody: Record<string, JsonValue> | null = null;
+  let codeGraphSubject: string | null = null;
+  let codeGraphSelectedId: string | null = null;
+  let codeGraphView: View = defaultView();
+  let rationaleLoading = false;
+  let rationaleError: string | null = null;
+  let rationaleLoaded = false;
+  let rationaleTaskLabel = '';
+  let rationaleRanked: Record<string, JsonValue>[] = [];
   // Diagnostics debugger state: live values from the last refresh, never prose.
   let paneDirectory: string | null = null;
   let statusReachable = false;
@@ -145,8 +191,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   const titleNode = text('h1', 'dag-title', '');
   const controls = el('div', 'dag-controls');
   const sessionSlot = el('div', 'dag-session-slot');
+  const fitSlot = el('div', 'dag-fit-slot');
   const refreshSlot = el('div', 'dag-refresh-slot');
-  controls.append(sessionSlot, refreshSlot);
+  controls.append(sessionSlot, fitSlot, refreshSlot);
   header.append(titleNode, controls);
 
   const noticeSlot = el('div', 'dag-notice-slot');
@@ -162,9 +209,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   let historyEntries: { sessionId: string; label: string; status: string; updatedAt: string | null }[] = [];
   let historyError: string | null = null;
 
-  root.append(header, noticeSlot, content, historyRoot, steerBar, diagRoot);
+  root.append(header, noticeSlot, content, steerBar, historyRoot, diagRoot);
 
-  let sectionHandles: { dispose(): void }[] = [];
+  const sectionHandles: { dispose(): void }[] = [];
   let noticeHandle: { dispose(): void } | null = null;
 
   const clearSection = (): void => {
@@ -229,18 +276,74 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     sessionSlot.append(wrap);
   };
 
+  // Applies the shared view to every live world layer without touching the
+  // render section key: wheel/pan ticks mutate only `transform` in place.
+  const applyView = (): void => {
+    const transform = viewTransform(view);
+    for (const world of worldEls) {
+      world.setAttribute('transform', transform);
+    }
+  };
+
+  const currentExtentsKey = (): string => (
+    lastGraphSizes.map((size) => `${size.width}x${size.height}`).join('|')
+  );
+
+  // Shrink-only fit of the first painted graph into its viewport, shared by
+  // every world layer. No-op until layout gives the viewport a real rect.
+  const fitView = (): void => {
+    const viewport = viewportEls[0];
+    const size = lastGraphSizes[0];
+    if (!viewport || !size) {
+      return;
+    }
+    const rect = viewport.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) {
+      return;
+    }
+    view = computeFit(rect.width, rect.height, size.width, size.height);
+    lastFitExtents = currentExtentsKey();
+    applyView();
+  };
+
   const paintGraph = (run: DagRunView): void => {
     const byId = new Map(run.nodes.map((node) => [node.id, node]));
     const columns = columnsForRun(run);
     const rows = Math.max(...columns.map((column) => column.length));
     const width = columns.length * (NODE_WIDTH + COLUMN_GAP) + COLUMN_GAP;
     const height = rows * (NODE_HEIGHT + ROW_GAP) + ROW_GAP;
-    const svg = svgEl('svg', {
-      viewBox: `0 0 ${width} ${height}`,
-      role: 'img',
+    lastGraphSizes.push({ width, height });
+    // Legend: DOM above the viewport, outside the zoom transform, so
+    // swatches and text never scale with the graph.
+    const bar = el('div', 'dag-graph-bar');
+    const legend = el('div', 'dag-legend');
+    const legendStates: [string, string][] = [
+      ['pending', strings.legendPending],
+      ['running', strings.legendRunning],
+      ['completed', strings.legendCompleted],
+      ['failed', strings.legendFailed],
+      ['blocked', strings.legendBlocked],
+    ];
+    for (const [state, label] of legendStates) {
+      const item = el('span', 'dag-legend-item');
+      const dot = el('span', 'dag-legend-dot');
+      dot.setAttribute('aria-hidden', 'true');
+      dot.style.background = stateColorVar(state);
+      item.append(dot, text('span', 'dag-legend-label', label));
+      legend.append(item);
+    }
+    bar.append(legend);
+    content.append(bar);
+    // Outer viewport (the pan/zoom frame) plus the single transformed world
+    // wrapper. Node/edge coordinates stay in world units; the width/height
+    // extent math above is unchanged, only the viewBox scaling is gone.
+    const viewport = svgEl('svg', {
+      role: 'application',
       'aria-label': run.name,
+      tabindex: '0',
     });
-    svg.classList.add('dag-graph');
+    viewport.classList.add('dag-graph', 'dag-graph-viewport');
+    const world = svgEl('g', { class: 'dag-world', transform: viewTransform(view) });
     const positions = new Map<string, { x: number; y: number }>();
     columns.forEach((column, columnIndex) => {
       column.forEach((id, rowIndex) => {
@@ -256,7 +359,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       if (!from || !to) {
         continue;
       }
-      svg.append(svgEl('line', {
+      world.append(svgEl('line', {
         x1: String(from.x + NODE_WIDTH),
         y1: String(from.y + NODE_HEIGHT / 2),
         x2: String(to.x),
@@ -304,9 +407,15 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       });
       state.textContent = node.state;
       group.append(label, state);
+      // A drag that moved past the threshold owns the gesture: its trailing
+      // click never picks the node. Taps and still drags pick as before.
       const pick = (): void => {
+        if (suppressNodeClick) {
+          suppressNodeClick = false;
+          return;
+        }
         selectedNodeId = id;
-        paintContent(currentRuns);
+        paintActiveView();
       };
       group.addEventListener('click', pick);
       group.addEventListener('keydown', (event) => {
@@ -315,9 +424,60 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
           pick();
         }
       });
-      svg.append(group);
+      world.append(group);
     }
-    content.append(svg);
+    viewport.append(world);
+    content.append(viewport);
+    viewportEls.push(viewport);
+    worldEls.push(world);
+    viewport.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const wheel = event as WheelEvent;
+      const rect = viewport.getBoundingClientRect();
+      view = anchorView(
+        view,
+        wheel.clientX - rect.left,
+        wheel.clientY - rect.top,
+        nextZoomScale(view.scale, wheel.deltaY),
+      );
+      applyView();
+    }, { passive: false });
+    viewport.addEventListener('pointerdown', (event) => {
+      const pointer = event as PointerEvent;
+      // Capturing on pointerdown retargets the release, and the browser then
+      // fires `click` on the viewport instead of the node group, so a plain tap
+      // never picked a task. Capture waits for a real drag instead.
+      drag = { startX: pointer.clientX, startY: pointer.clientY, base: { ...view } };
+      dragMoved = false;
+      suppressNodeClick = false;
+    });
+    viewport.addEventListener('pointermove', (event) => {
+      if (!drag) {
+        return;
+      }
+      const pointer = event as PointerEvent;
+      if (!dragMoved && dragDistanceExceeded(drag.startX, drag.startY, pointer.clientX, pointer.clientY)) {
+        dragMoved = true;
+        try {
+          viewport.setPointerCapture(pointer.pointerId);
+        } catch {
+          // Best-effort: the drag still tracks through pointermove.
+        }
+      }
+      if (dragMoved) {
+        view = panView(drag.base, pointer.clientX - drag.startX, pointer.clientY - drag.startY);
+        applyView();
+      }
+    });
+    const endDrag = (): void => {
+      if (drag !== null && dragMoved) {
+        suppressNodeClick = true;
+      }
+      drag = null;
+      dragMoved = false;
+    };
+    viewport.addEventListener('pointerup', endDrag);
+    viewport.addEventListener('pointercancel', endDrag);
   };
 
   let currentRuns: DagRunView[] = [];
@@ -361,8 +521,12 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     }
     lastSectionKey = sectionKey;
     clearSection();
+    viewportEls = [];
+    worldEls = [];
+    lastGraphSizes = [];
     currentRuns = runs;
     if (runs.length === 0) {
+      lastFitExtents = null;
       sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
       return;
     }
@@ -383,12 +547,32 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       paintGraph(run);
       paintDetails(run);
     }
+    // The view survives data refresh: fit only on first paint or when the
+    // graph extents changed, otherwise re-apply the surviving transform to
+    // the rebuilt world layers. The view never joins the section key above.
+    if (lastFitExtents === null || lastFitExtents !== currentExtentsKey()) {
+      fitView();
+    } else {
+      applyView();
+    }
   };
 
   // Paint one run list with the live indicator derived from its states.
+  // In Code view the same tick re-renders the Code root from cache (no
+  // refetch: the Code loaders fire only on directory/label change or retry).
   const paintRunList = (runs: DagRunView[]): void => {
     headerLive = runs.some((run) => run.status === 'running' || run.status === 'pending');
     paintFollowHeader();
+    if (activeView === 'code') {
+      currentRuns = runs;
+      paintCodeRoot();
+      return;
+    }
+    if (activeView === 'activity') {
+      currentRuns = runs;
+      paintActivityRoot();
+      return;
+    }
     paintContent(runs);
   };
 
@@ -529,6 +713,917 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       return;
     }
     paintRunList(outcome.view.runs);
+  };
+
+  // Code view: one content area shared with the Run view, switched by the
+  // header switcher. Reads /codegraph/index first (freshness chip), then
+  // /codegraph/query for search / symbol / file subjects, then the
+  // rationale section (/rationale/projects, one /rationale per project with
+  // the task label as q). Every fetch below is generation-guarded and
+  // repaints only the Code root; the Run graph, zoom, polling, session
+  // follow, history, steer/cancel, and diagnostics paths are untouched.
+  const answerError = (answer: ServiceAnswer): string => (
+    isWireRecord(answer.body) ? (wireString(answer.body.error) ?? `http ${answer.status}`) : `http ${answer.status}`
+  );
+
+  // Activity: a chronological timeline of what THIS run actually recorded. It never reshapes the
+  // graph and never invents events; the facts the snapshot cannot carry are named at the bottom.
+  const paintActivityRoot = (): void => {
+    clearSection();
+    const run = currentRuns.find((entry) => entry.nodes.some((node) => node.id === selectedNodeId)) ?? currentRuns[0];
+    if (run === undefined) {
+      sectionHandles.push(mountEmpty(content, { title: strings.activityEmptyTitle, body: strings.activityEmptyBody }));
+      return;
+    }
+    const timeline = buildActivityTimeline({ runs: currentRuns }, run.runId);
+    const head = el('div', 'dag-run-head');
+    head.append(text('h2', 'dag-run-name', strings.activityTitle));
+    const badgeSlot = el('span', 'dag-run-badge');
+    head.append(badgeSlot);
+    content.append(head);
+    sectionHandles.push(mountBadge(badgeSlot, { label: run.name, tone: 'neutral' }));
+    if (timeline.rows.length === 0) {
+      sectionHandles.push(mountEmpty(content, { title: strings.activityEmptyTitle, body: strings.activityEmptyBody }));
+    } else {
+      const list = el('div', 'dag-activity-list');
+      for (const row of timeline.rows) {
+        const item = el('button', 'dag-activity-row') as HTMLButtonElement;
+        item.type = 'button';
+        item.dataset['activityRow'] = row.id;
+        item.dataset['nodeId'] = row.nodeId;
+        item.append(text('span', 'dag-activity-time', formatClock(row.at)));
+        item.append(text('span', 'dag-activity-node', row.nodeLabel));
+        item.append(text('span', 'dag-activity-kind', row.kind === 'node-started' ? 'started' : row.state));
+        item.append(text('span', 'dag-activity-duration', formatDuration(row.durationMs)));
+        item.addEventListener('click', () => {
+          selectedNodeId = rowNodeId(row);
+          switchView('run');
+        });
+        list.append(item);
+      }
+      content.append(list);
+    }
+    const notes: string[] = [];
+    if (timeline.withoutTimestamps > 0) {
+      notes.push(`${timeline.withoutTimestamps} node(s) without timestamps`);
+    }
+    notes.push(`${strings.activityUnavailable} ${timeline.unavailable.join(', ')}`);
+    content.append(text('p', 'dag-activity-notes', notes.join(' · ')));
+  };
+
+  // Content is always painted from the active view, in one place: a paint that
+  // names its own view leaves `activeView` disagreeing with the DOM,.
+  const paintActiveView = (): void => {
+    if (activeView === 'code') {
+      paintCodeRoot();
+      return;
+    }
+    if (activeView === 'activity') {
+      paintActivityRoot();
+      return;
+    }
+    paintContent(currentRuns);
+  };
+
+  const switchView = (next: 'run' | 'activity' | 'code'): void => {
+    // A click always shows the view it names. The old guard returned early when
+    // the stored view already matched, so a paint that had diverged from it left
+    // every tab silently doing nothing — the pane read as frozen.
+    activeView = next;
+    lastSectionKey = null;
+    lastCodeKey = null;
+    paintActiveView();
+  };
+
+  // The task label for rationale q and task-to-code: the selected node's
+  // label. Empty when nothing is selected — rationale then ranks nothing
+  // and task-to-code renders its honest unavailable state.
+  const currentTaskLabel = (): string => {
+    for (const run of currentRuns) {
+      const node = run.nodes.find((entry) => entry.id === selectedNodeId);
+      if (node) {
+        return node.label;
+      }
+    }
+    return '';
+  };
+
+  const loadCodeIndex = async (gen: number): Promise<void> => {
+    const dir = paneDirectory;
+    if (dir === null) {
+      return;
+    }
+    codeIndexLoading = true;
+    let answer: ServiceAnswer;
+    try {
+      answer = await serviceCall('GET', '/codegraph/index', { directory: dir });
+    } catch (error) {
+      if (gen !== codeGen) {
+        return;
+      }
+      codeIndexLoading = false;
+      codeIndexError = error instanceof Error ? error.message : String(error);
+      if (activeView === 'code') {
+        paintCodeRoot();
+      }
+      return;
+    }
+    if (gen !== codeGen) {
+      return;
+    }
+    codeIndexLoading = false;
+    if (answer.status >= 400) {
+      codeIndexBody = null;
+      codeIndexError = answerError(answer);
+    } else if (isWireRecord(answer.body)) {
+      codeIndexBody = answer.body;
+      codeIndexError = null;
+    } else {
+      codeIndexBody = null;
+      codeIndexError = 'unreadable';
+    }
+    if (activeView === 'code') {
+      paintCodeRoot();
+    }
+  };
+
+  const runCodeSearch = async (token: string): Promise<void> => {
+    const dir = paneDirectory;
+    if (dir === null || token.trim() === '') {
+      return;
+    }
+    const gen = ++codeGen;
+    codeSearchLoading = true;
+    codeSearchError = null;
+    codeSearchResult = null;
+    codeDetailTitle = null;
+    codeDetailGroups = [];
+    codeDetailError = null;
+    codeGraphBody = null;
+    codeGraphSubject = null;
+    codeGraphSelectedId = null;
+    if (activeView === 'code') {
+      paintCodeRoot();
+    }
+    try {
+      const built = buildSearchQuery(dir, token);
+      const answer = await serviceCall('GET', built.path, built.query);
+      if (gen !== codeGen) {
+        return;
+      }
+      codeSearchLoading = false;
+      if (answer.status >= 400) {
+        codeSearchError = answerError(answer);
+      } else if (isWireRecord(answer.body)) {
+        codeSearchResult = answer.body;
+      } else {
+        codeSearchError = 'unreadable';
+      }
+    } catch (error) {
+      if (gen !== codeGen) {
+        return;
+      }
+      codeSearchLoading = false;
+      codeSearchError = error instanceof Error ? error.message : String(error);
+    }
+    if (activeView === 'code') {
+      paintCodeRoot();
+    }
+  };
+
+  // A symbol select fires context + impact + tests (one query each, same
+  // symbol subject); a file select fires the single file projection for
+  // the `file:<rel>` id minus its prefix. Anything else renders as-is.
+  // The newest subject owns the graph: the first answer that carries one
+  // wins, and a subject with none keeps the absence (the painter states it).
+  const captureCodeGraph = (subject: string, bodies: (Record<string, JsonValue> | null)[]): void => {
+    let picked: Record<string, JsonValue> | null = null;
+    for (const body of bodies) {
+      if (body !== null && isWireRecord(body.graph)) {
+        picked = body;
+        break;
+      }
+    }
+    codeGraphBody = picked;
+    codeGraphSubject = subject;
+    codeGraphSelectedId = null;
+    codeGraphView = defaultView();
+  };
+
+  const selectCodeItem = (id: string): void => {
+    const dir = paneDirectory;
+    if (dir === null) {
+      return;
+    }
+    const itemKind = classifyCodeItemId(id);
+    if (itemKind === 'other') {
+      return;
+    }
+    const gen = ++codeGen;
+    codeDetailTitle = id;
+    codeDetailLoading = true;
+    codeDetailError = null;
+    codeDetailGroups = [];
+    if (activeView === 'code') {
+      paintCodeRoot();
+    }
+    void (async (): Promise<void> => {
+      try {
+        if (itemKind === 'symbol') {
+          const queries = buildSymbolQueries(dir, id);
+          const titles = ['context', 'impact', 'tests'];
+          const groups: { title: string; body: Record<string, JsonValue> | null; error: string | null }[] = [];
+          for (let index = 0; index < queries.length; index += 1) {
+            const answer = await serviceCall('GET', queries[index].path, queries[index].query);
+            if (gen !== codeGen) {
+              return;
+            }
+            if (answer.status >= 400) {
+              groups.push({ title: titles[index], body: null, error: answerError(answer) });
+            } else {
+              groups.push({ title: titles[index], body: isWireRecord(answer.body) ? answer.body : null, error: null });
+            }
+          }
+          if (gen !== codeGen) {
+            return;
+          }
+          codeDetailGroups = groups;
+          captureCodeGraph(id, groups.map((group) => group.body));
+        } else {
+          const built = buildFileQuery(dir, id.slice('file:'.length));
+          const answer = await serviceCall('GET', built.path, built.query);
+          if (gen !== codeGen) {
+            return;
+          }
+          if (answer.status >= 400) {
+            codeDetailGroups = [{ title: 'file', body: null, error: answerError(answer) }];
+            captureCodeGraph(id, []);
+          } else {
+            const body = isWireRecord(answer.body) ? answer.body : null;
+            codeDetailGroups = [{ title: 'file', body, error: null }];
+            captureCodeGraph(id, [body]);
+          }
+        }
+      } catch (error) {
+        if (gen !== codeGen) {
+          return;
+        }
+        codeDetailError = error instanceof Error ? error.message : String(error);
+      }
+      codeDetailLoading = false;
+      if (activeView === 'code') {
+        paintCodeRoot();
+      }
+    })();
+  };
+
+  const loadRationale = async (gen: number, dir: string, taskLabel: string): Promise<void> => {
+    rationaleLoading = true;
+    rationaleError = null;
+    rationaleLoaded = false;
+    try {
+      const projectsBuilt = buildRationaleProjectsQuery(dir);
+      const projectsAnswer = await serviceCall('GET', projectsBuilt.path, projectsBuilt.query);
+      if (gen !== codeGen) {
+        return;
+      }
+      if (projectsAnswer.status >= 400) {
+        rationaleLoading = false;
+        rationaleError = answerError(projectsAnswer);
+        if (activeView === 'code') {
+          paintCodeRoot();
+        }
+        return;
+      }
+      const ids: string[] = [];
+      if (isWireRecord(projectsAnswer.body) && Array.isArray(projectsAnswer.body.projectIds)) {
+        for (const entry of projectsAnswer.body.projectIds) {
+          if (typeof entry === 'string' && entry.length > 0) {
+            ids.push(entry);
+          }
+        }
+      }
+      // One rank query per project with the task label as q. A failed
+      // project is skipped without erasing the records already ranked.
+      const ranked: Record<string, JsonValue>[] = [];
+      for (const projectId of ids) {
+        const built = buildRationaleQuery(dir, projectId, taskLabel);
+        const answer = await serviceCall('GET', built.path, built.query);
+        if (gen !== codeGen) {
+          return;
+        }
+        if (answer.status >= 400 || !isWireRecord(answer.body) || !Array.isArray(answer.body.ranked)) {
+          continue;
+        }
+        for (const entry of answer.body.ranked) {
+          if (isWireRecord(entry)) {
+            ranked.push(entry);
+          }
+        }
+      }
+      if (gen !== codeGen) {
+        return;
+      }
+      rationaleRanked = ranked;
+      rationaleTaskLabel = taskLabel;
+      rationaleLoaded = true;
+      rationaleLoading = false;
+    } catch (error) {
+      if (gen !== codeGen) {
+        return;
+      }
+      rationaleLoading = false;
+      rationaleError = error instanceof Error ? error.message : String(error);
+    }
+    if (activeView === 'code') {
+      paintCodeRoot();
+    }
+  };
+
+  // Cache guard: fire the index load on directory change (clearing
+  // directory-scoped caches first) and the rationale load on a new task
+  // label. Steady 4s polls find warm caches and fetch nothing.
+  const ensureCodeLoaded = (): void => {
+    const dir = paneDirectory;
+    if (dir === null || activeView !== 'code') {
+      return;
+    }
+    const label = currentTaskLabel();
+    const directoryChanged = codeIndexDir !== dir;
+    const needIndex = directoryChanged || (codeIndexBody === null && codeIndexError === null && !codeIndexLoading);
+    const needRationale = directoryChanged || (!rationaleLoading && (!rationaleLoaded || rationaleTaskLabel !== label));
+    if (!needIndex && !needRationale) {
+      return;
+    }
+    const gen = ++codeGen;
+    if (needIndex) {
+      if (directoryChanged) {
+        codeIndexDir = dir;
+        codeIndexBody = null;
+        codeIndexError = null;
+        codeSearchResult = null;
+        codeSearchError = null;
+        codeDetailTitle = null;
+        codeDetailGroups = [];
+        codeDetailError = null;
+        rationaleLoaded = false;
+        rationaleRanked = [];
+        rationaleError = null;
+      }
+      void loadCodeIndex(gen);
+    }
+    if (needRationale) {
+      void loadRationale(gen, dir, label);
+    }
+  };
+
+  type CodeItemRow = { id: string; file: string | null; line: number | null };
+
+  const codeItemsOf = (body: Record<string, JsonValue> | null): CodeItemRow[] => {
+    if (body === null || !Array.isArray(body.items)) {
+      return [];
+    }
+    const rows: CodeItemRow[] = [];
+    for (const entry of body.items) {
+      if (!isWireRecord(entry)) {
+        continue;
+      }
+      const id = wireString(entry.id);
+      if (id === null) {
+        continue;
+      }
+      rows.push({
+        id,
+        file: wireString(entry.file),
+        line: typeof entry.line === 'number' && Number.isFinite(entry.line) ? entry.line : null,
+      });
+    }
+    return rows;
+  };
+
+  const paintCodeItemList = (parent: HTMLElement, body: Record<string, JsonValue> | null): void => {
+    const status = resolveCodeQueryStatus({ error: null, result: body === null ? null : { coverage: body.coverage, items: body.items } });
+    if (status === 'loading') {
+      parent.append(text('p', 'dag-code-loading', strings.codeLoading));
+      return;
+    }
+    const rows = codeItemsOf(body);
+    if (rows.length === 0) {
+      parent.append(text('p', 'dag-code-no-matches', strings.codeNoMatches));
+      return;
+    }
+    const list = el('div', 'dag-code-results');
+    for (const row of rows) {
+      const item = el('div', 'dag-code-item');
+      if (classifyCodeItemId(row.id) === 'other') {
+        item.append(text('span', 'dag-code-item-id', row.id));
+      } else {
+        const slot = el('div', 'dag-code-item-button');
+        item.append(slot);
+        const label = row.file !== null ? `${row.id} · ${row.file}${row.line !== null ? `:${row.line}` : ''}` : row.id;
+        const id = row.id;
+        sectionHandles.push(mountButton(slot, {
+          label,
+          variant: 'ghost',
+          size: 'sm',
+          onClick: () => selectCodeItem(id),
+        }));
+      }
+      if (row.file !== null) {
+        item.append(text('span', 'dag-code-item-file', row.line !== null ? `${row.file}:${row.line}` : row.file));
+      }
+      list.append(item);
+    }
+    parent.append(list);
+  };
+
+  const paintRationaleSection = (parent: HTMLElement): void => {
+    const status = resolveRationaleStatus({
+      connected: statusReachable,
+      error: rationaleError,
+      loaded: rationaleLoaded,
+      ranked: rationaleRanked,
+    });
+    // Empty ranks render NOTHING: no header, no container, no fallback
+    // text — an empty rank simply leaves no section behind.
+    if (status === 'empty') {
+      return;
+    }
+    if (status === 'disconnected') {
+      sectionHandles.push(mountBanner(parent, { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody }));
+      return;
+    }
+    if (status === 'loading') {
+      parent.append(text('p', 'dag-rationale-loading', strings.rationaleLoading));
+      return;
+    }
+    if (status === 'error') {
+      sectionHandles.push(mountBanner(parent, {
+        tone: 'error',
+        title: strings.rationaleErrorTitle,
+        body: rationaleError ?? undefined,
+        action: { label: strings.retry, onClick: () => { rationaleError = null; rationaleLoaded = false; lastCodeKey = null; paintCodeRoot(); } },
+      }));
+      return;
+    }
+    if (!shouldRenderRationale(rationaleRanked)) {
+      return;
+    }
+    const section = el('section', 'dag-rationale');
+    section.append(text('h3', 'dag-rationale-title', strings.rationaleTitle));
+    for (const record of rationaleRanked) {
+      // Persisted records stay in a bordered recorded container; the
+      // model-generated notes below render outside it, never as fact.
+      const box = el('div', 'dag-recorded');
+      box.append(text('span', 'dag-recorded-tag', strings.rationaleRecorded));
+      box.append(text('p', 'dag-recorded-claim', wireString(record.claim) ?? '—'));
+      const badgeRow = el('div', 'dag-recorded-badges');
+      if (typeof record.kind === 'string' && record.kind.length > 0) {
+        badgeRow.append(text('span', 'dag-badge dag-badge-kind', record.kind));
+      }
+      if (typeof record.standing === 'string' && record.standing.length > 0) {
+        badgeRow.append(text('span', 'dag-badge dag-badge-standing', record.standing));
+      }
+      for (const badge of rationaleBadgesFor(record)) {
+        badgeRow.append(text('span', 'dag-badge', badge));
+      }
+      box.append(badgeRow);
+      const list = el('dl', 'dag-recorded-list');
+      for (const [term, value] of formatRationaleProvenance(record)) {
+        list.append(text('dt', 'dag-recorded-term', term), text('dd', 'dag-recorded-value', value));
+      }
+      box.append(list);
+      section.append(box);
+      const notes = Array.isArray(record.notes) ? record.notes.filter(isWireRecord) : [];
+      if (notes.length > 0) {
+        const generated = el('div', 'dag-rationale-generated');
+        for (const note of notes) {
+          generated.append(text('p', 'dag-rationale-note', `${wireString(note.kind) ?? 'note'}: ${wireString(note.text) ?? ''}`));
+        }
+        section.append(generated);
+      }
+    }
+    parent.append(section);
+  };
+
+  // Render-on-change like the Run view: identical ticks skip the teardown
+  // so the search field keeps focus and text across the 4s polls.
+  const codeStateKey = (): string => {
+    const runsKey = currentRuns.map((run) => [run.runId, run.nodes.map((node) => [node.id, node.label])]);
+    return JSON.stringify({
+      dir: paneDirectory,
+      runs: runsKey,
+      sel: selectedNodeId,
+      idx: codeIndexBody,
+      idxErr: codeIndexError,
+      idxLoading: codeIndexLoading,
+      q: codeSearchInput,
+      qRes: codeSearchResult,
+      qErr: codeSearchError,
+      qLoading: codeSearchLoading,
+      detail: codeDetailTitle,
+      groups: codeDetailGroups,
+      graph: codeGraphBody,
+      graphSel: codeGraphSelectedId,
+      graphSubject: codeGraphSubject,
+      detailErr: codeDetailError,
+      detailLoading: codeDetailLoading,
+      ratLoading: rationaleLoading,
+      ratErr: rationaleError,
+      ratLoaded: rationaleLoaded,
+      ratLabel: rationaleTaskLabel,
+      rat: rationaleRanked,
+      reachable: statusReachable,
+    });
+  };
+
+  const impactSummary = (nodeId: string): string => {
+    for (const group of codeDetailGroups) {
+      if (group.title !== 'impact') continue;
+      const items = group.body?.items;
+      if (!Array.isArray(items)) continue;
+      const own = items.filter((item) => isWireRecord(item) && wireString(item.id) === nodeId).length;
+      return `${items.length}${own > 0 ? ` (${nodeId})` : ''}`;
+    }
+    return '—';
+  };
+
+  /**
+   * The Code view's dependency graph: a real ego-graph painted as an SVG the
+   * user can fit, zoom, pan, and inspect. Absence is stated, never an empty
+   * canvas — a subject whose answer carried no graph says so by name.
+   */
+  const paintCodeGraphSection = (parent: HTMLElement): void => {
+    if (codeGraphSubject === null) {
+      return;
+    }
+    const box = el('div', 'dag-code-graph');
+    const head = el('div', 'dag-code-graph-head');
+    head.append(text('h3', 'dag-code-graph-title', strings.codeGraphTitle));
+    const model = buildCodeGraphModel(codeGraphBody);
+    if (model === null) {
+      box.append(head, text('p', 'dag-code-graph-empty', strings.codeGraphEmpty));
+      parent.append(box);
+      return;
+    }
+    const spec = codeGraphLayoutSpec(model);
+    head.append(text('span', 'dag-code-graph-counts', `${strings.codeGraphEdges} ${model.edges.length}`));
+    const fitSlot = el('div', 'dag-code-graph-fit');
+    head.append(fitSlot);
+    box.append(head);
+    if (model.truncated) {
+      box.append(text('p', 'dag-code-graph-note', strings.codeGraphTruncated));
+    }
+    const viewport = svgEl('svg', { role: 'application', 'aria-label': strings.codeGraphTitle, tabindex: '0' });
+    viewport.classList.add('dag-graph', 'dag-graph-viewport', 'dag-code-graph-canvas');
+    viewport.setAttribute('data-subject', model.subjectId);
+    const world = svgEl('g', { class: 'dag-world', transform: viewTransform(codeGraphView) });
+    const confidence = new Map<string, number>();
+    for (const edge of spec.edges) {
+      world.append(svgEl('line', {
+        class: 'dag-code-graph-edge',
+        'data-edge-kind': edge.kind,
+        'data-edge-from': edge.from,
+        'data-edge-to': edge.to,
+        x1: String(edge.x1),
+        y1: String(edge.y1),
+        x2: String(edge.x2),
+        y2: String(edge.y2),
+        stroke: 'var(--oc-border)',
+        'stroke-width': '1.5',
+      }));
+      world.append(svgEl('polygon', {
+        points: `${edge.x2},${edge.y2} ${edge.x2 - 7},${edge.y2 - 3.5} ${edge.x2 - 7},${edge.y2 + 3.5}`,
+        fill: 'var(--oc-border)',
+      }));
+      confidence.set(edge.from, Math.max(confidence.get(edge.from) ?? 0, edge.confidence));
+      confidence.set(edge.to, Math.max(confidence.get(edge.to) ?? 0, edge.confidence));
+    }
+    for (const node of spec.nodes) {
+      const group = svgEl('g', {
+        class: 'dag-code-graph-node',
+        'data-node-id': node.id,
+        'data-node-kind': node.kind,
+        tabindex: '0',
+        role: 'button',
+      });
+      const selected = codeGraphSelectedId === node.id;
+      group.append(svgEl('rect', {
+        x: String(node.x),
+        y: String(node.y),
+        width: String(node.width),
+        height: String(node.height),
+        rx: 'var(--oc-radius)',
+        fill: node.subject || selected ? 'var(--oc-selection)' : 'var(--oc-elevated)',
+        stroke: selected || node.subject ? 'var(--oc-primary)' : 'var(--oc-border)',
+        'stroke-width': selected || node.subject ? '2.5' : '1.5',
+      }));
+      const label = svgEl('text', { x: String(node.x + 10), y: String(node.y + 18), fill: 'var(--oc-text)', 'font-size': '12' });
+      label.textContent = node.label;
+      const kind = svgEl('text', { x: String(node.x + 10), y: String(node.y + 34), fill: 'var(--oc-muted)', 'font-size': '10' });
+      kind.textContent = node.kind;
+      group.append(label, kind);
+      const pick = (): void => {
+        codeGraphSelectedId = node.id;
+        lastCodeKey = null;
+        paintCodeRoot();
+      };
+      group.addEventListener('click', pick);
+      group.addEventListener('keydown', (event) => {
+        if (event instanceof KeyboardEvent && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          pick();
+        }
+      });
+      world.append(group);
+    }
+    viewport.append(world);
+    box.append(viewport);
+    const apply = (): void => {
+      world.setAttribute('transform', viewTransform(codeGraphView));
+    };
+    const fit = (): void => {
+      const rect = viewport.getBoundingClientRect();
+      codeGraphView = computeFit(
+        rect.width > 0 ? rect.width : 720,
+        rect.height > 0 ? rect.height : 320,
+        spec.width,
+        spec.height,
+      );
+      apply();
+    };
+    const refit = (): void => {
+      // First paint runs before the browser lays the canvas out, so the fit
+      // it computes from zero width centres nothing; one frame later the
+      // measured box is real. Both paths stay, so a host without rAF still fits.
+      fit();
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(fit);
+      }
+    };
+    sectionHandles.push(mountButton(fitSlot, {
+      label: strings.codeGraphFit,
+      variant: 'outline',
+      size: 'sm',
+      onClick: fit,
+    }));
+    viewport.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const wheel = event as WheelEvent;
+      const rect = viewport.getBoundingClientRect();
+      codeGraphView = anchorView(
+        codeGraphView,
+        wheel.clientX - rect.left,
+        wheel.clientY - rect.top,
+        nextZoomScale(codeGraphView.scale, wheel.deltaY),
+      );
+      apply();
+    }, { passive: false });
+    let drag: { startX: number; startY: number; base: View } | null = null;
+    let dragMoved = false;
+    let suppress = false;
+    viewport.addEventListener('pointerdown', (event) => {
+      const pointer = event as PointerEvent;
+      // Capture waits for a real drag: capturing here retargets the release and
+      // the browser then fires `click` on the viewport, so a tap on a node would
+      // never reach the node group's own pick handler.
+      drag = { startX: pointer.clientX, startY: pointer.clientY, base: { ...codeGraphView } };
+      dragMoved = false;
+      suppress = false;
+    });
+    viewport.addEventListener('pointermove', (event) => {
+      if (drag === null) return;
+      const pointer = event as PointerEvent;
+      if (!dragMoved && dragDistanceExceeded(drag.startX, drag.startY, pointer.clientX, pointer.clientY)) {
+        dragMoved = true;
+        try {
+          viewport.setPointerCapture(pointer.pointerId);
+        } catch {
+          // Best-effort: the drag still tracks through pointermove.
+        }
+      }
+      if (!dragMoved) return;
+      codeGraphView = panView(drag.base, pointer.clientX - drag.startX, pointer.clientY - drag.startY);
+      apply();
+    });
+    const endDrag = (): void => {
+      if (drag !== null && dragMoved) suppress = true;
+      drag = null;
+      dragMoved = false;
+    };
+    viewport.addEventListener('pointerup', endDrag);
+    viewport.addEventListener('pointercancel', endDrag);
+    viewport.addEventListener('click', (event) => {
+      if (!suppress) return;
+      suppress = false;
+      event.stopPropagation();
+    }, true);
+    box.append(text('p', 'dag-code-graph-hint', strings.codeGraphHint));
+    const selectedNode = spec.nodes.find((node) => node.id === codeGraphSelectedId) ?? null;
+    if (selectedNode !== null) {
+      const inspector = el('dl', 'dag-code-inspect');
+      const row = (label: string, value: string): void => {
+        inspector.append(text('dt', 'dag-code-inspect-key', label), text('dd', 'dag-code-inspect-value', value));
+      };
+      row(strings.codeGraphInspectSymbol, selectedNode.id);
+      row(
+        strings.codeGraphInspectPath,
+        selectedNode.file === null ? '—' : `${selectedNode.file}${selectedNode.line === null ? '' : `:${selectedNode.line}`}`,
+      );
+      row(strings.codeGraphInspectConfidence, String(confidence.get(selectedNode.id) ?? 1));
+      row(strings.codeGraphInspectImpact, impactSummary(selectedNode.id));
+      box.append(inspector);
+    }
+    parent.append(box);
+    refit();
+  };
+
+  const paintCodeRoot = (): void => {
+    ensureCodeLoaded();
+    const key = codeStateKey();
+    if (key === lastCodeKey) {
+      return;
+    }
+    lastCodeKey = key;
+    clearSection();
+    viewportEls = [];
+    worldEls = [];
+    lastGraphSizes = [];
+    const section = el('section', 'dag-code');
+    const header = el('div', 'dag-code-header');
+    header.append(text('h2', 'dag-code-title', strings.codeTitle));
+    const openSlot = el('div', 'dag-code-open-graph');
+    header.append(openSlot);
+    section.append(header);
+    // The canonical Code Graph tab owns the graph and its selection. This pane
+    // only routes: the same file/symbol lands there through the host's
+    // openSurface channel, so the guest never keeps a second graph selection.
+    // Task-to-code navigates ONLY from recorded engine rows: the current
+    // run nodes. Any other selection (or none) renders the honest
+    // unavailable state while normal exploration stays offered below.
+    const rows = currentRuns.flatMap((run) => run.nodes.map((node) => ({ id: node.id, label: node.label })));
+    const source = taskToCodeSource(rows, selectedNodeId);
+    const focusFileForGraph = (): string | null => {
+      const id = codeGraphSelectedId ?? codeGraphSubject;
+      if (id !== null) {
+        if (id.startsWith('file:')) return id.slice('file:'.length);
+        const at = id.lastIndexOf('@');
+        if (at > -1) return id.slice(at + 1);
+      }
+      const token = source.token;
+      return token !== null && token.includes('/') ? token : null;
+    };
+    sectionHandles.push(mountButton(openSlot, {
+      label: strings.codeOpenInGraph,
+      size: 'sm',
+      onClick: () => {
+        const file = focusFileForGraph();
+        void host.openSurface('code-graph', file === null ? undefined : { file });
+      },
+    }));
+    if (source.available && source.token !== null) {
+      const jump = el('div', 'dag-code-jump');
+      jump.append(text('span', 'dag-code-jump-label', source.token));
+      const jumpSlot = el('div', 'dag-code-jump-button');
+      jump.append(jumpSlot);
+      section.append(jump);
+      const token = source.token;
+      sectionHandles.push(mountButton(jumpSlot, {
+        label: strings.codeSearchButton,
+        size: 'sm',
+        onClick: () => {
+          codeSearchInput = token;
+          void runCodeSearch(token);
+        },
+      }));
+    } else {
+      const unavailable = el('div', 'dag-code-unavailable');
+      unavailable.append(text('p', 'dag-code-unavailable-title', strings.codeTaskUnavailableTitle));
+      unavailable.append(text('p', 'dag-code-unavailable-body', strings.codeTaskUnavailableBody));
+      const runSlot = el('div', 'dag-code-unavailable-button');
+      unavailable.append(runSlot);
+      section.append(unavailable);
+      sectionHandles.push(mountButton(runSlot, {
+        label: strings.viewRun,
+        variant: 'outline',
+        size: 'sm',
+        onClick: () => switchView('run'),
+      }));
+    }
+    // Index block: freshness chip first, then the honest state.
+    const dir = paneDirectory;
+    if (dir === null) {
+      sectionHandles.push(mountEmpty(section, { title: strings.codeEmptyTitle, body: strings.codeEmptyBody }));
+    } else {
+      const indexStatus = resolveCodeIndexStatus({ connected: statusReachable, error: codeIndexError, index: codeIndexBody });
+      if (indexStatus === 'disconnected') {
+        sectionHandles.push(mountBanner(section, { tone: 'warning', title: strings.offlineTitle, body: strings.offlineBody }));
+      } else if (indexStatus === 'loading') {
+        const spinSlot = el('div', 'dag-code-loading');
+        spinSlot.append(text('span', 'dag-code-loading-label', strings.codeLoading));
+        section.append(spinSlot);
+        sectionHandles.push(mountSpinner(spinSlot, {}));
+      } else if (indexStatus === 'error') {
+        sectionHandles.push(mountBanner(section, {
+          tone: 'error',
+          title: strings.codeErrorTitle,
+          body: codeIndexError ?? undefined,
+          action: { label: strings.retry, onClick: () => { codeIndexError = null; codeIndexBody = null; lastCodeKey = null; paintCodeRoot(); } },
+        }));
+      } else if (indexStatus === 'empty') {
+        sectionHandles.push(mountEmpty(section, { title: strings.codeEmptyTitle, body: strings.codeEmptyBody }));
+      } else {
+        const chipBody: Record<string, JsonValue> = codeIndexBody ?? {};
+        const chip = formatFreshnessChip(chipBody);
+        const chipNode = el('div', 'dag-freshness-chip');
+        chipNode.textContent = chip.text;
+        chipNode.title = `revision ${chip.revision} · fingerprint ${chip.fingerprint}`;
+        section.append(chipNode);
+        const nodeCount = typeof chipBody.nodeCount === 'number' ? chipBody.nodeCount : null;
+        const edgeCount = typeof chipBody.edgeCount === 'number' ? chipBody.edgeCount : null;
+        const entryCount = typeof chipBody.entryCount === 'number' ? chipBody.entryCount : null;
+        section.append(text(
+          'p',
+          'dag-freshness-counts',
+          `nodes ${nodeCount ?? '—'} · edges ${edgeCount ?? '—'} · entries ${entryCount ?? '—'}`,
+        ));
+        if (indexStatus === 'stale') {
+          section.append(text('p', 'dag-code-stale', strings.codeStale));
+          const retrySlot = el('div', 'dag-code-stale-button');
+          section.append(retrySlot);
+          sectionHandles.push(mountButton(retrySlot, {
+            label: strings.retry,
+            variant: 'outline',
+            size: 'sm',
+            onClick: () => { codeIndexError = null; codeIndexBody = null; lastCodeKey = null; paintCodeRoot(); },
+          }));
+        }
+      }
+      // Exploration: manual search plus result/detail browsing. Symbol
+      // rows fire context + impact + tests on select; file rows fire the
+      // file query; other ids render as-is with no invented follow-up.
+      const searchBar = el('div', 'dag-code-search');
+      const fieldSlot = el('div', 'dag-code-search-field');
+      searchBar.append(fieldSlot);
+      const searchSlot = el('div', 'dag-code-search-button');
+      searchBar.append(searchSlot);
+      section.append(searchBar);
+      sectionHandles.push(mountTextField(fieldSlot, {
+        placeholder: strings.codeSearchPlaceholder,
+        value: codeSearchInput,
+        onChange: (value: string) => {
+          codeSearchInput = value;
+        },
+      }));
+      sectionHandles.push(mountButton(searchSlot, {
+        label: strings.codeSearchButton,
+        size: 'sm',
+        onClick: () => void runCodeSearch(codeSearchInput),
+      }));
+      paintCodeGraphSection(section);
+      const queryStatus = resolveCodeQueryStatus({
+        error: codeSearchError,
+        result: codeSearchLoading
+          ? null
+          : codeSearchResult === null && codeSearchError === null
+            ? null
+            : codeSearchResult,
+      });
+      if (codeSearchLoading) {
+        section.append(text('p', 'dag-code-loading', strings.codeLoading));
+      } else if (queryStatus === 'error') {
+        sectionHandles.push(mountBanner(section, {
+          tone: 'error',
+          title: strings.codeErrorTitle,
+          body: codeSearchError ?? undefined,
+          action: { label: strings.retry, onClick: () => void runCodeSearch(codeSearchInput) },
+        }));
+      } else if (codeSearchResult !== null || codeSearchError !== null) {
+        paintCodeItemList(section, codeSearchResult);
+      }
+      if (codeDetailLoading) {
+        section.append(text('p', 'dag-code-loading', strings.codeLoading));
+      } else if (codeDetailError !== null) {
+        sectionHandles.push(mountBanner(section, {
+          tone: 'error',
+          title: strings.codeErrorTitle,
+          body: codeDetailError,
+        }));
+      } else {
+        for (const group of codeDetailGroups) {
+          const groupBox = el('div', 'dag-code-group');
+          groupBox.append(text('h3', 'dag-code-detail-title', group.title));
+          if (group.error !== null) {
+            groupBox.append(text('p', 'dag-code-group-error', group.error));
+          } else {
+            paintCodeItemList(groupBox, group.body);
+          }
+          section.append(groupBox);
+        }
+      }
+    }
+    paintRationaleSection(section);
+    content.append(section);
   };
 
   // Probe body summary for Diagnostics: code, flags, entry, and the
@@ -843,6 +1938,8 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   const paintChrome = (): void => {
     titleNode.textContent = strings.title;
     paintFollowHeader();
+    fitSlot.replaceChildren();
+    mountButton(fitSlot, { label: strings.fit, variant: 'outline', size: 'sm', onClick: () => fitView() });
     refreshSlot.replaceChildren();
     mountButton(refreshSlot, { label: strings.refresh, variant: 'outline', size: 'sm', onClick: () => void refresh() });
     steerFieldSlot.replaceChildren();
@@ -864,6 +1961,10 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       size: 'sm',
       onClick: () => void cancel(),
     });
+    if (activeView === 'code') {
+      lastCodeKey = null;
+      paintCodeRoot();
+    }
   };
 
   const steer = async (): Promise<void> => {
@@ -951,12 +2052,14 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   void host.onSession((session) => {
     const id = session?.id ?? null;
     const title = session?.title ?? null;
-    if (id !== hostSessionId || title !== hostTitle) {
-      // A chat switch rebinds immediately: invalidate in-flight answers,
-      // drop the previous graph, and show a spinner until fresh data lands.
-      // A stale answer for the old conversation never paints over this.
+    const retitled = title !== hostTitle;
+    hostTitle = title;
+    // Only a different conversation rebinds: it invalidates in-flight answers,
+    // drops the previous run, and shows a spinner until fresh data lands. A
+    // retitled conversation keeps its graph, selection, and zoom — the engine
+    // retitles as a turn progresses, and that must not blank what is on screen.
+    if (id !== hostSessionId) {
       hostSessionId = id;
-      hostTitle = title;
       refreshGen += 1;
       if (!keepStoredRunModel(runModelConversation, id)) {
         runModelDoc = null;
@@ -964,6 +2067,16 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       }
       selectedNodeId = null;
       lastSectionKey = null;
+      lastCodeKey = null;
+      codeGen += 1;
+      view = defaultView();
+      lastFitExtents = null;
+      lastGraphSizes = [];
+      viewportEls = [];
+      worldEls = [];
+      drag = null;
+      dragMoved = false;
+      suppressNodeClick = false;
       headerLive = false;
       paintFollowHeader();
       clearSection();
@@ -972,6 +2085,8 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       } else {
         sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
       }
+    } else if (retitled) {
+      paintFollowHeader();
     }
     void refresh();
   });
@@ -981,8 +2096,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   // own effect), so it is kept; refreshRuns paints it only when its
   // conversation is the active one.
   void host.onRunModel((model) => {
-    runModelDoc = model.snapshot;
-    runModelConversation = model.conversationId;
+    const merged = mergeRunModelPost({ conversationId: runModelConversation, snapshot: runModelDoc }, model);
+    runModelDoc = merged.snapshot;
+    runModelConversation = merged.conversationId;
     void refresh();
   });
 };

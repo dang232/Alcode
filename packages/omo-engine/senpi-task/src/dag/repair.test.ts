@@ -16,6 +16,7 @@ import {
   buildVerificationRecord,
   verificationRecordKey,
   type DagVerificationRecord,
+  type DagVerificationRecordInput,
   type DagVerifyCheck,
   type DagVerifyCommandResult,
   type DagVerifyRunner,
@@ -45,7 +46,7 @@ function commandResult(overrides: Partial<DagVerifyCommandResult> = {}): DagVeri
   }
 }
 
-function failedRecord(overrides: Partial<DagVerificationRecord> = {}): DagVerificationRecord {
+function failedRecord(overrides: Partial<DagVerificationRecordInput> = {}): DagVerificationRecord {
   return buildVerificationRecord({
     runId: "run-1",
     parentSessionId: "ses-parent",

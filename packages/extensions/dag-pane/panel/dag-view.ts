@@ -297,6 +297,22 @@ export const resolveSelectedSession = ({ hostSessionId, current, sessions }: {
 // conversation. The panel holds the stored post and paints it only when its
 // conversation is the active one, so an early post survives the bind; a
 // switch to a different conversation still clears a stale post.
+/**
+ * A run-model post carries a snapshot or a null for its conversation. A null
+ * post for the conversation already stored means "no update right now" — the
+ * host's derived document is momentarily empty while the engine streams — so
+ * the stored doc is kept and a visible run never blanks. A post for a
+ * different conversation replaces both fields, null included.
+ */
+export const mergeRunModelPost = (
+  stored: { conversationId: string | null; snapshot: JsonValue | null },
+  post: { conversationId: string; snapshot: JsonValue | null },
+): { conversationId: string | null; snapshot: JsonValue | null } => (
+  post.snapshot !== null || post.conversationId !== stored.conversationId
+    ? { conversationId: post.conversationId, snapshot: post.snapshot }
+    : stored
+);
+
 export const keepStoredRunModel = (
   storedConversationId: string | null,
   sessionId: string | null,

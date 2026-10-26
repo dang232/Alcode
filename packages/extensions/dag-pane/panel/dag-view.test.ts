@@ -4,7 +4,7 @@
 // proves the pane renders what the adapter actually writes.
 import { describe, expect, test } from 'bun:test';
 
-import { keepStoredRunModel, parseSnapshotDoc, resolveSelectedSession } from './dag-view.ts';
+import { keepStoredRunModel, mergeRunModelPost, parseSnapshotDoc, resolveSelectedSession } from './dag-view.ts';
 import { DAG_PANE_LOCALES, stringsFor } from './strings.ts';
 import fixture from '../../../web/server/lib/opencode/omo-bridge-fixture.json';
 
@@ -154,5 +154,31 @@ describe('keepStoredRunModel', () => {
     expect(keepStoredRunModel(null, 'ses_b')).toBe(false);
     expect(keepStoredRunModel('ses_a', null)).toBe(false);
     expect(keepStoredRunModel(null, null)).toBe(false);
+  });
+});
+
+describe('mergeRunModelPost', () => {
+  const doc = { schemaVersion: 1, sessionId: 'ses_a', runs: [] };
+
+  test('a null post for the stored conversation keeps the visible run', () => {
+    const stored = { conversationId: 'ses_a', snapshot: doc };
+    expect(mergeRunModelPost(stored, { conversationId: 'ses_a', snapshot: null })).toBe(stored);
+  });
+
+  test('a null post for another conversation replaces the stored doc', () => {
+    const merged = mergeRunModelPost(
+      { conversationId: 'ses_a', snapshot: doc },
+      { conversationId: 'ses_b', snapshot: null },
+    );
+    expect(merged).toEqual({ conversationId: 'ses_b', snapshot: null });
+  });
+
+  test('a real post always replaces what was stored', () => {
+    const next = { schemaVersion: 1, sessionId: 'ses_a', runs: [{ run_id: 'r2' }] };
+    const merged = mergeRunModelPost(
+      { conversationId: 'ses_a', snapshot: doc },
+      { conversationId: 'ses_a', snapshot: next },
+    );
+    expect(merged.snapshot).toEqual(next);
   });
 });

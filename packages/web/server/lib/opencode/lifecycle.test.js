@@ -1116,7 +1116,7 @@ describe('OpenCode lifecycle', () => {
     expect(runtime.getManagedOpenCodeProcessEnv().DATABASE_URL).toBe('postgres://db');
     // The replaced values are recorded as OpenChamber's; the user's are not.
     const injected = injectedEnvKeys(options.env);
-    for (const key of ['OPENCODE_PASSWORD', 'OPENCODE_SERVER_PASSWORD', 'OPENCHAMBER_AGENT_TOOL_TOKEN']) {
+    for (const key of ['OPENCODE_PASSWORD', 'OPENCODE_SERVER_PASSWORD', 'ALCODE_AGENT_TOOL_TOKEN']) {
       expect(injected.has(key)).toBe(true);
     }
     expect(injected.has('DATABASE_URL')).toBe(false);

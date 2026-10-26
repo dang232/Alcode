@@ -19,19 +19,13 @@ import { useI18n } from '@/lib/i18n';
 import { loadDesktopSettings, updateDesktopSettings } from '@/lib/persistence';
 import { getRuntimeApiBaseUrl } from '@/lib/runtime-switch';
 import { formatShortcutForDisplay, getCustomizableShortcutActions, UNASSIGNED_SHORTCUT } from '@/lib/shortcuts';
-import {
-  SettingsSection,
-  SettingsCheckboxRow,
-  SettingsStackedField,
-  SETTINGS_OPTION_STACK_CLASS,
-  SettingsFieldRow,
-} from '@/components/sections/shared/SettingsSection';
+import { SettingsSection, SettingsCheckboxRow, SETTINGS_OPTION_STACK_CLASS, SettingsFieldRow } from '@/components/sections/shared/SettingsSection';
 import { useEnterprisePolicyStore } from '@/stores/useEnterprisePolicyStore';
 import { useUIStore } from '@/stores/useUIStore';
 
 import { ShortcutRecordingDialog } from './ShortcutRecordingDialog';
 
-import { saveDesktopRestartDrafts, useDesktopRestartDrafts } from './desktopRestartDrafts';
+
 
 /**
  * Who may open the desktop app over the network: the UI password and access

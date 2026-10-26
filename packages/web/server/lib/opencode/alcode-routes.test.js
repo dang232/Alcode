@@ -210,7 +210,7 @@ describe('Alcode desktop host update route', () => {
       install: vi.fn(async () => ({ available: true, version: '1.17.1', installBlocked: 'desktop-host' })),
       restart: vi.fn(),
     };
-    const { app } = createApp({ environment: { OPENCHAMBER_RUNTIME: 'desktop' }, desktopUpdater });
+    const { app } = createApp({ environment: { ALCODE_RUNTIME: 'desktop' }, desktopUpdater });
 
     await request(app).post('/api/openchamber/update-install').expect(409, {
       code: 'DESKTOP_UPDATE_LOCAL_ONLY',

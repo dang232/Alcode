@@ -136,8 +136,8 @@ describe('OpenCode Go quota provider (VS Code parity)', () => {
     const result = await fetchQuotaForProvider('opencode-go');
 
     assert.equal(result.ok, true);
-    assert.equal((request?.headers as Record<string, string>).Authorization, 'Bearer test-token');
-    assert.equal((request?.headers as Record<string, string>)['x-opencode-session'], 'alcode-usage');
+    assert.equal((request!.headers as Record<string, string>).Authorization, 'Bearer test-token');
+    assert.equal((request!.headers as Record<string, string>)['x-opencode-session'], 'alcode-usage');
     assert.equal(result.usage!.windows['5h']!.usedPercent, 25);
     assert.throws(() => fs.statSync(legacyPath));
   });

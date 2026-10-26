@@ -2,6 +2,8 @@ import { settingsDict } from './fr.settings';
 import { linearIssuePickerI18n } from './linear-issue-picker.i18n';
 import { referencePickerI18n } from './reference-picker.i18n';
 import { sessionMenuHintsI18n } from './session-menu-hints.i18n';
+import { codeGraphI18n } from './code-graph.i18n';
+import { activityI18n } from './activity.i18n';
 import { projectKnowledgeI18n } from './project-knowledge.i18n';
 import { linearPanelI18n } from './linear-panel.i18n';
 import { routingI18n } from './routing.i18n';
@@ -136,6 +138,8 @@ export const dict = {
   ...linearIssuePickerI18n.fr,
   ...referencePickerI18n.fr,
   ...sessionMenuHintsI18n.fr,
+  ...codeGraphI18n.fr,
+  ...activityI18n.fr,
   ...projectKnowledgeI18n.fr,
   ...linearPanelI18n.fr,
   ...routingI18n.fr,
@@ -301,8 +305,8 @@ export const dict = {
   'sessions.scheduledTasks.dialog.loopFile.note': 'Gérée par le fichier de boucle {file}',
   'sessions.scheduledTasks.dialog.loopFile.toggleDisabled': "L'activation est contrôlée par le fichier de boucle ; définissez enabled dans le frontmatter Markdown",
   'sessions.scheduledTasks.dialog.loopFile.actionsDisabled': 'Les tâches de boucle sont configurées dans leur fichier Markdown .agents/loops',
-  'sessions.scheduledTasks.dialog.loopFile.enableOnThisComputer': 'From this repository. Enable to run it on this computer.',
-  'sessions.scheduledTasks.dialog.loopFile.changedSinceEnabled': 'Changed since you enabled it. Enable again to run it.',
+  'sessions.scheduledTasks.dialog.loopFile.enableOnThisComputer': 'Depuis ce dépôt. Activez pour l’exécuter sur cet ordinateur.',
+  'sessions.scheduledTasks.dialog.loopFile.changedSinceEnabled': 'Modifié depuis votre activation. Activez à nouveau pour l’exécuter.',
   'sessions.scheduledTasks.editor.title.edit': 'Modifier une tâche planifiée',
   'sessions.scheduledTasks.editor.title.new': 'Nouvelle tâche planifiée',
   'sessions.scheduledTasks.editor.description': 'Planifiez un prompt pour une session nouvelle ou existante.',
@@ -2928,6 +2932,7 @@ export const dict = {
   'onboarding.localSetup.windows.title': 'Configuration de Windows (WSL recommandé)',
   'onboarding.localSetup.windows.stepInstallWsl': 'Installez WSL (si nécessaire) avec',
   'onboarding.localSetup.windows.stepInstallWslSuffix': 'dans PowerShell.',
+  'onboarding.localSetup.windows.stepRunInstallInWsl': 'Exécutez la commande d’installation ci-dessous dans un terminal Windows.',
   'onboarding.localSetup.windows.stepSetBinaryPath': 'Si Alcode ne détecte pas automatiquement OpenCode, définissez le chemin binaire ci-dessous.',
   'onboarding.localSetup.intro': 'Installez OpenCode v2 CLI pour continuer.',
   "onboarding.localSetup.docs.windows": "Guide d’installation",

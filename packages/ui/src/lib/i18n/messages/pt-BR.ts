@@ -3,6 +3,8 @@ import { settingsDict } from './pt-BR.settings';
 import { linearIssuePickerI18n } from './linear-issue-picker.i18n';
 import { referencePickerI18n } from './reference-picker.i18n';
 import { sessionMenuHintsI18n } from './session-menu-hints.i18n';
+import { codeGraphI18n } from './code-graph.i18n';
+import { activityI18n } from './activity.i18n';
 import { projectKnowledgeI18n } from './project-knowledge.i18n';
 import { linearPanelI18n } from './linear-panel.i18n';
 import { routingI18n } from './routing.i18n';
@@ -148,6 +150,8 @@ export const dict: Record<I18nKey, string> = {
   ...linearIssuePickerI18n['pt-BR'],
   ...referencePickerI18n['pt-BR'],
   ...sessionMenuHintsI18n['pt-BR'],
+  ...codeGraphI18n['pt-BR'],
+  ...activityI18n['pt-BR'],
   ...projectKnowledgeI18n['pt-BR'],
   ...linearPanelI18n['pt-BR'],
   ...routingI18n['pt-BR'],
@@ -447,10 +451,6 @@ export const dict: Record<I18nKey, string> = {
   "sessions.scheduledTasks.dialog.toast.runFailed": "Não foi possível executar a tarefa",
   "sessions.scheduledTasks.dialog.confirm.deleteTask": "Excluir tarefa agendada \"{taskName}\"?",
   'sessions.scheduledTasks.dialog.confirm.deleteLoopFile': 'Excluir a tarefa de loop “{taskName}” e seu arquivo Markdown?',
-  'sessions.scheduledTasks.dialog.status.queued': 'Queued',
-  'sessions.scheduledTasks.dialog.status.sent': 'Sent',
-  'sessions.scheduledTasks.dialog.status.skipped': 'Skipped',
-  'sessions.scheduledTasks.dialog.status.cancelled': 'Cancelled',
   "sessions.scheduledTasks.dialog.schedule.daily": "Todos os dias {time}",
   "sessions.scheduledTasks.dialog.schedule.dailyWithTimezone": "Todos os dias {time} ({timezone})",
   "sessions.scheduledTasks.dialog.schedule.weekly": "Toda semana {days} {time}",
@@ -478,6 +478,10 @@ export const dict: Record<I18nKey, string> = {
   "sessions.scheduledTasks.dialog.status.error": "Erro",
   "sessions.scheduledTasks.dialog.status.running": "Em execução",
   "sessions.scheduledTasks.dialog.status.idle": "Inativo",
+  "sessions.scheduledTasks.dialog.status.queued": "Na fila",
+  "sessions.scheduledTasks.dialog.status.sent": "Enviado",
+  "sessions.scheduledTasks.dialog.status.skipped": "Ignorado",
+  "sessions.scheduledTasks.dialog.status.cancelled": "Cancelado",
   "sessions.scheduledTasks.dialog.nextRun.label": "Próximo",
   "sessions.scheduledTasks.dialog.lastRun.label": "Última execução",
   "sessions.scheduledTasks.dialog.lastRun.runningNow": "em execução agora",
@@ -491,15 +495,15 @@ export const dict: Record<I18nKey, string> = {
   'sessions.scheduledTasks.dialog.loopFile.actionsDisabled': 'Tarefas de loop são configuradas no arquivo Markdown .agents/loops',
   'sessions.scheduledTasks.dialog.loopFile.enableOnThisComputer': 'Deste repositório. Ative para executar neste computador.',
   'sessions.scheduledTasks.dialog.loopFile.changedSinceEnabled': 'Alterado desde que você ativou. Ative de novo para executar.',
-  'sessions.scheduledTasks.editor.description': 'Schedule a prompt for a new or existing session.',
-  'sessions.scheduledTasks.editor.sessionMode': 'Session mode',
-  'sessions.scheduledTasks.editor.newSession': 'New session',
-  'sessions.scheduledTasks.editor.existingSession': 'Existing session',
-  'sessions.scheduledTasks.editor.targetSession': 'Target session',
-  'sessions.scheduledTasks.editor.targetHint': 'Waits in the message queue until the session is idle. Use defaults keeps the target session selection.',
+  'sessions.scheduledTasks.editor.description': 'Agende um prompt para uma sessão nova ou existente.',
+  'sessions.scheduledTasks.editor.sessionMode': 'Modo de sessão',
+  'sessions.scheduledTasks.editor.newSession': 'Nova sessão',
+  'sessions.scheduledTasks.editor.existingSession': 'Sessão existente',
+  'sessions.scheduledTasks.editor.targetSession': 'Sessão de destino',
+  'sessions.scheduledTasks.editor.targetHint': 'Aguarda na fila de mensagens até que a sessão esteja inativa. Usar os padrões mantém a seleção da sessão de destino.',
   'sessions.scheduledTasks.editor.targetLoadFailed': 'Couldn\'t load this project\'s sessions.',
   'sessions.scheduledTasks.editor.targetRetry': 'Try again',
-  'sessions.scheduledTasks.editor.targetRequired': 'Select a target session.',
+  'sessions.scheduledTasks.editor.targetRequired': 'Selecione uma sessão de destino.',
   "sessions.scheduledTasks.editor.title.edit": "Editar tarefa agendada",
   "sessions.scheduledTasks.editor.title.new": "Nova tarefa agendada",
   "sessions.scheduledTasks.editor.taskName.label": "Nome da tarefa",

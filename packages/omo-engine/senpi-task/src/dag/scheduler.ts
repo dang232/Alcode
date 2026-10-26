@@ -20,6 +20,17 @@ import {
 } from "./events"
 import { createDagJournal, subscribeDagJournal, type DagJournal, type DagJournalListener } from "./journal"
 import { applyDagRunMutation, nodeFingerprintFromInput, skipDuplicateTerminalTransition, type DagMaterializeSkills, type DagPersistedNode, type DagRunRecordV1 } from "./manager"
+import {
+  applyGraphSerialization,
+  recommendExtraVerification,
+  recommendGraphAssist,
+  withGraphAssistChecks,
+  type GraphAssistInput,
+} from "./graph-assist"
+import { toGraphAssist } from "./intelligence/assist"
+import { productionKnowledgeHook } from "./intelligence/knowledge-lifecycle"
+import { attributeNodeEvidence, buildNodeContext } from "./intelligence/node-context"
+import type { TaskUnderstanding } from "./intelligence/types"
 import { retryDagNodes, type DagRetryOptions, type DagRunReentry } from "./node-retry"
 import { sendToDagNode, type DagNodeSendResult } from "./node-send"
 import type { OwnedStartResult } from "./owner"
@@ -97,6 +108,28 @@ export type DagSchedulerOptions = {
   readonly verifyRunner?: DagVerifyRunner
   readonly verifyProjectDir?: string
   readonly verifyChecks?: readonly DagVerifyCheck[]
+  // Knowledge lifecycle (slice 9.6/9.7): called once per ACCEPTED run completion, after the
+  // completed event is durable. Left undefined it defaults to the production hook; `null`
+  // disables it outright. A throwing or failing hook can never flip the accepted outcome.
+  readonly knowledgeHook?: AcceptedRunKnowledgeHook | null
+  // Store configuration for the default hook. Tests inject a disposable root here instead of
+  // relying on the process env, and the hook itself refuses to write under a test runtime that
+  // names no store.
+  readonly knowledgeStoreEnv?: Readonly<Record<string, string | undefined>>
+  // Conservative graph assist: an impact neighborhood that may only recommend MORE caution
+  // (extra serialization, extra verification checks). Absent, admission and gates behave
+  // exactly like today; present, it can only hold back nodes or append checks, never admit
+  // past a writeScopes conflict or drop a required check.
+  readonly graphAssist?: GraphAssistInput
+  readonly intelligence?: DagIntelligenceInput
+}
+
+// Opt-in engine intelligence: the host supplies the task understanding it built from real code-graph
+// queries, and the scheduler derives admission caution, per-node worker context, and required
+// impact checks from it. Absent, every path below reads exactly like the pre-slice-9 engine.
+export type DagIntelligenceInput = {
+  readonly understanding: TaskUnderstanding
+  readonly candidateChecks?: readonly DagVerifyCheck[]
 }
 
 // Harness-injected gate for agent-routed nodes, evaluated once per admission before startOwned:
@@ -176,6 +209,9 @@ type SchedulerContext = {
   readonly verifyRunner?: DagVerifyRunner
   readonly verifyProjectDir?: string
   readonly verifyChecks: readonly DagVerifyCheck[]
+  readonly knowledgeHook?: AcceptedRunKnowledgeHook
+  readonly graphAssist?: GraphAssistInput
+  readonly intelligence?: DagIntelligenceInput
   readonly definitionNodes: ReadonlyMap<DagNodeId, DagPersistedNode>
   readonly executionMode?: Omit<DagExecutionModeSources, "route">
   readonly ancestry?: { readonly depth: number }
@@ -236,6 +272,17 @@ export function createDagScheduler(options: DagSchedulerOptions): DagScheduler {
     now,
     skipDuplicate: skipDuplicateTerminalTransition,
   })
+  const intelligence = options.intelligence
+  const knowledgeHook = options.knowledgeHook === null
+    ? undefined
+    : options.knowledgeHook ?? productionKnowledgeHook(options.knowledgeStoreEnv ?? process.env)
+  const graphAssist = options.graphAssist ?? (intelligence === undefined
+    ? undefined
+    : toGraphAssist({
+        understanding: intelligence.understanding,
+        nodeSymbols: intelligenceNodeSymbols(intelligence.understanding, options.initialRecord.definition.nodes),
+        candidateChecks: intelligence.candidateChecks,
+      }))
   const context: SchedulerContext = {
     taskManager: options.taskManager,
     journal,
@@ -243,6 +290,9 @@ export function createDagScheduler(options: DagSchedulerOptions): DagScheduler {
     verifyRunner: options.verifyRunner,
     verifyProjectDir: options.verifyProjectDir,
     verifyChecks: options.verifyChecks === undefined ? [] : [...options.verifyChecks],
+    ...(knowledgeHook === undefined ? {} : { knowledgeHook }),
+    graphAssist,
+    intelligence,
     definitionNodes: new Map(options.initialRecord.definition.nodes.map((node) => [node.id as DagNodeId, node])),
     ...(options.executionMode === undefined ? {} : { executionMode: options.executionMode }),
     ...(options.ancestry === undefined ? {} : { ancestry: options.ancestry }),
@@ -598,8 +648,35 @@ async function runFrontier(context: SchedulerContext): Promise<DagRunRecordV1> {
     context.journal.append(dagRunFailedEvent({ error, counts: countNodes(snapshot.nodes) }))
   } else {
     context.journal.append(dagRunCompletedEvent({ counts: countNodes(snapshot.nodes) }))
+    await notifyAcceptedRun(context, context.journal.snapshot())
   }
   return context.journal.snapshot()
+}
+
+export type AcceptedRunKnowledgeHook = (input: {
+  readonly snapshot: DagRunRecordV1
+  readonly store: DagFileStore
+  readonly revision: string
+  readonly at: string
+  readonly directory: string
+}) => Promise<void> | void
+
+async function notifyAcceptedRun(context: SchedulerContext, snapshot: DagRunRecordV1): Promise<void> {
+  const hook = context.knowledgeHook
+  const scope = context.intelligence?.understanding?.scope
+  const revision = scope?.revision
+  if (hook === undefined || revision === undefined) return
+  try {
+    await hook({
+      snapshot,
+      store: context.store,
+      revision,
+      at: new Date(context.now()).toISOString(),
+      directory: context.verifyProjectDir ?? scope?.worktreeId ?? process.cwd(),
+    })
+  } catch {
+    // Knowledge generation is optional: it never changes the accepted run's outcome.
+  }
 }
 
 // Run acceptance gate (slice 4): after every node is terminal, run-level
@@ -616,7 +693,20 @@ async function evaluateRunGate(
     const checks = context.definitionNodes.get(node.id)?.verify ?? []
     for (const check of checks) requirements.push({ check, nodeId: node.id })
   }
-  for (const check of context.verifyChecks) requirements.push({ check })
+  // Graph assist is append-only: candidate checks join behind the base run-level plan, so
+  // the mandatory gate reads byte-identical requirements without graph input.
+  const graphExtraChecks = context.graphAssist === undefined
+    ? EMPTY_GRAPH_CANDIDATE_CHECKS
+    : recommendExtraVerification({
+        neighborhood: context.graphAssist.neighborhood,
+        nodeSymbols: context.graphAssist.nodeSymbols,
+        available: context.graphAssist.candidateChecks ?? EMPTY_GRAPH_CANDIDATE_CHECKS,
+      }).extraChecks
+  const runChecks = withGraphAssistChecks(
+    withGraphAssistChecks(context.verifyChecks, context.intelligence?.candidateChecks ?? EMPTY_GRAPH_CANDIDATE_CHECKS),
+    graphExtraChecks,
+  )
+  for (const check of runChecks) requirements.push({ check })
   const runner = context.verifyRunner
   const projectDir = context.verifyProjectDir
   if (requirements.length > 0 && (runner === undefined || projectDir === undefined)) {
@@ -629,7 +719,7 @@ async function evaluateRunGate(
   const collected = readRunVerificationRecords(context.store, snapshot.runId)
   const records = new Map(collected.records)
   const malformed = [...collected.malformed]
-  for (const check of context.verifyChecks) {
+  for (const check of runChecks) {
     if (runner === undefined || projectDir === undefined) {
       return {
         code: "verification_failed",
@@ -704,6 +794,12 @@ async function evaluateRunGate(
 // lands here, so run evidence and node evidence cannot overwrite each other.
 const RUN_LEVEL_SEGMENT = "run"
 
+// Shared empty graph-assist inputs: the append-only merges treat these as the identity, so
+// runs without graph input allocate nothing and read byte-identical requirements.
+const EMPTY_GRAPH_EXTRA_SERIALIZED: readonly DagNodeId[] = []
+const EMPTY_GRAPH_NODE_SYMBOLS: ReadonlyMap<DagNodeId, readonly string[]> = new Map()
+const EMPTY_GRAPH_CANDIDATE_CHECKS: readonly DagVerifyCheck[] = []
+
 // Conflict-aware admission (slice 3): a runnable node whose writeScopes intersect
 // the scopes of a running/scheduled node, or of a node admitted earlier in the
 // same pass, stays pending and is reconsidered on the next pass. Scopes are
@@ -753,7 +849,22 @@ async function admitFrontier(context: SchedulerContext): Promise<boolean> {
         !deniedIds.has(node.id) &&
         isRunnable(snapshot, node.id))
       .map((node) => node.id)
-    const { admittable, conflicted } = partitionConflicts(snapshot, runnable)
+    const baseAdmission = partitionConflicts(snapshot, runnable)
+    // Graph assist is append-only: it may hold back further nodes, never release one the
+    // writeScopes partition parked. Without graph input the merge is the identity.
+    const graphExtraSerialized = context.graphAssist === undefined
+      ? EMPTY_GRAPH_EXTRA_SERIALIZED
+      : recommendGraphAssist({
+          neighborhood: context.graphAssist.neighborhood,
+          admittable: baseAdmission.admittable,
+          nodeSymbols: context.graphAssist.nodeSymbols ?? EMPTY_GRAPH_NODE_SYMBOLS,
+          availableChecks: context.graphAssist.candidateChecks ?? EMPTY_GRAPH_CANDIDATE_CHECKS,
+        }).extraSerialized
+    const { admittable, conflicted } = applyGraphSerialization(
+      baseAdmission.admittable,
+      baseAdmission.conflicted,
+      graphExtraSerialized,
+    )
     if (denied.length === 0 && admittable.length === 0 && conflicted.length === 0) return true
 
     for (const nodeId of admittable) transition(context, nodeId, "scheduled", { kind: "scheduled" })
@@ -1202,12 +1313,30 @@ function dagNodeExecutionMode(
   return mode === undefined ? {} : { execution_mode: mode }
 }
 
+function intelligenceNodeSymbols(
+  understanding: TaskUnderstanding,
+  nodes: readonly DagPersistedNode[],
+): ReadonlyMap<DagNodeId, readonly string[]> {
+  const byNode = new Map<DagNodeId, readonly string[]>()
+  for (const node of nodes) {
+    const attributed = attributeNodeEvidence(understanding, {
+      nodeId: node.id,
+      prompt: node.effectivePrompt,
+      writeScopes: node.writeScopes,
+    })
+    // SAFETY: compileDag brands every declared node id as DagNodeId when it builds the run record,
+    // so the persisted definition's ids are the same brand the map is keyed by.
+    byNode.set(node.id as DagNodeId, attributed.symbols.map((symbol) => symbol.id))
+  }
+  return byNode
+}
+
 function startSpec(context: SchedulerContext, nodeId: DagNodeId): ManagerStartSpec {
   const record = context.journal.snapshot()
   const node = nodeById(record, nodeId)
   const persisted = context.definitionNodes.get(nodeId)
   if (persisted === undefined) throw new Error(`missing persisted definition for DAG node "${nodeId}"`)
-  const spec: ManagerStartSpec = {
+  let spec: ManagerStartSpec = {
     prompt: persisted.effectivePrompt,
     ...(persisted.task_summary === undefined ? {} : { task_summary: persisted.task_summary }),
     parent_session_id: record.parentSessionId,
@@ -1220,6 +1349,17 @@ function startSpec(context: SchedulerContext, nodeId: DagNodeId): ManagerStartSp
     name: node.id,
     ...(persisted.description === undefined ? {} : { description: persisted.description }),
     run_in_background: true,
+  }
+  if (context.intelligence !== undefined) {
+    const nodeContext = buildNodeContext({
+      understanding: context.intelligence.understanding,
+      node: {
+        nodeId: node.id,
+        prompt: persisted.effectivePrompt,
+        writeScopes: persisted.writeScopes,
+      },
+    })
+    if (nodeContext !== undefined) spec = { ...spec, prompt: spec.prompt + nodeContext.text }
   }
   if (node.route.kind !== "category" && context.nodeSpawnPolicy !== undefined) {
     const verdict = context.nodeSpawnPolicy({

@@ -23,11 +23,17 @@ const sameOrigin = (left: string, right: string): boolean => {
 declare global {
   interface Window {
     __ALCODE_API_BASE_URL__?: string;
+    __OPENCHAMBER_API_BASE_URL__?: string;
     __ALCODE_CLIENT_TOKEN__?: string;
+    __OPENCHAMBER_CLIENT_TOKEN__?: string;
     __ALCODE_RUNTIME_HEADERS__?: Record<string, string>;
+    __OPENCHAMBER_RUNTIME_HEADERS__?: Record<string, string>;
     __ALCODE_LOCAL_ORIGIN__?: string;
+    __OPENCHAMBER_LOCAL_ORIGIN__?: string;
     __ALCODE_RELAY_HOST_ID__?: string;
+    __OPENCHAMBER_RELAY_HOST_ID__?: string;
     __ALCODE_EXPLICIT_RUNTIME__?: boolean;
+    __OPENCHAMBER_EXPLICIT_RUNTIME__?: boolean;
   }
 }
 
@@ -43,13 +49,16 @@ type RuntimeBootstrapConfig = {
 export const readRuntimeBootstrapConfig = (): RuntimeBootstrapConfig => {
   const readString = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 
+  // Native hosts inject every runtime global under both the current __ALCODE_*
+  // name and its pre-rename __OPENCHAMBER_* twin, so the new name always wins
+  // but an older window still resolves the same values.
   return {
-    apiBaseUrl: readString(window.__ALCODE_API_BASE_URL__),
-    clientToken: readString(window.__ALCODE_CLIENT_TOKEN__),
-    localOrigin: readString(window.__ALCODE_LOCAL_ORIGIN__),
-    runtimeHeaders: window.__ALCODE_RUNTIME_HEADERS__,
-    relayHostId: readString(window.__ALCODE_RELAY_HOST_ID__),
-    explicitRuntime: window.__ALCODE_EXPLICIT_RUNTIME__ === true,
+    apiBaseUrl: readString(window.__ALCODE_API_BASE_URL__ ?? window.__OPENCHAMBER_API_BASE_URL__),
+    clientToken: readString(window.__ALCODE_CLIENT_TOKEN__ ?? window.__OPENCHAMBER_CLIENT_TOKEN__),
+    localOrigin: readString(window.__ALCODE_LOCAL_ORIGIN__ ?? window.__OPENCHAMBER_LOCAL_ORIGIN__),
+    runtimeHeaders: window.__ALCODE_RUNTIME_HEADERS__ ?? window.__OPENCHAMBER_RUNTIME_HEADERS__,
+    relayHostId: readString(window.__ALCODE_RELAY_HOST_ID__ ?? window.__OPENCHAMBER_RELAY_HOST_ID__),
+    explicitRuntime: (window.__ALCODE_EXPLICIT_RUNTIME__ ?? window.__OPENCHAMBER_EXPLICIT_RUNTIME__) === true,
   };
 };
 

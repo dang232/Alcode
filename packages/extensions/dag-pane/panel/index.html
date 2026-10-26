@@ -18,15 +18,88 @@
   .dag-title { font-size: 15px; font-weight: 650; margin: 0; }
   .dag-controls { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
   .dag-notice-slot:empty { display: none; }
-  .dag-content { display: flex; flex-direction: column; gap: 12px; }
+  .dag-content { display: flex; flex-direction: column; gap: 12px; flex: 1 1 auto; min-height: 0; overflow-x: auto; }
   .dag-run-head { display: flex; align-items: center; gap: 8px; }
   .dag-run-name { font-size: 14px; font-weight: 600; margin: 0; }
   .dag-run-counts { margin: 0; color: var(--oc-muted); font-size: 12px; }
-  .dag-graph { width: 100%; height: auto; background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); }
+  /* Activity timeline: one row per recorded instant. The row is a <button> for keyboard
+     access, so every box style a button normally carries is reset before the grid. */
+  .dag-activity-list { display: flex; flex-direction: column; gap: 2px; }
+  button.dag-activity-row {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    align-items: baseline;
+    gap: 2px 10px;
+    width: 100%;
+    margin: 0;
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--oc-radius);
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  button.dag-activity-row:hover { background: var(--oc-elevated); }
+  button.dag-activity-row:focus-visible { outline: none; border-color: var(--oc-focus); }
+  .dag-activity-time {
+    font-family: var(--oc-mono, monospace);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--oc-muted);
+    white-space: nowrap;
+  }
+  .dag-activity-node { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dag-activity-kind { font-size: 12px; color: var(--oc-muted); white-space: nowrap; }
+  .dag-activity-duration {
+    font-family: var(--oc-mono, monospace);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--oc-muted);
+    white-space: nowrap;
+  }
+  .dag-activity-notes { margin: 0; color: var(--oc-muted); font-size: 12px; overflow-wrap: anywhere; }
+  /* Diagnostics and flow trace: the same defect as Activity had - a <dl> whose dt/dd have no
+     rules renders as glued inline text. Both follow the .dag-details-list grid used above. */
+  .dag-diagnostics, .dag-history { display: flex; flex-direction: column; gap: 8px; }
+  .dag-diagnostics-box, .dag-flow-box { border-top: 1px solid var(--oc-border); padding-top: 12px; }
+  .dag-diagnostics-box > summary, .dag-flow-box > summary { cursor: pointer; font-weight: 600; }
+  .dag-diagnostics-list, .dag-flow-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px 12px;
+    margin: 8px 0 0;
+  }
+  .dag-diagnostics-term, .dag-flow-term {
+    margin: 0;
+    color: var(--oc-muted);
+    font-family: var(--oc-mono, monospace);
+    font-size: 12px;
+  }
+  .dag-diagnostics-value, .dag-flow-value { margin: 0; overflow-wrap: anywhere; }
+  .dag-flow-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--oc-border);
+  }
+  .dag-flow-id, .dag-flow-meta { margin: 0; color: var(--oc-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .dag-flow-id { font-family: var(--oc-mono, monospace); }
+  .dag-flow-error { margin: 8px 0 0; color: var(--oc-error); }
+  .dag-graph { width: 100%; height: auto; min-height: 220px; background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); }
+  .dag-graph-viewport { display: block; height: 320px; overflow: hidden; cursor: grab; touch-action: none; }
+  .dag-graph-viewport:active { cursor: grabbing; }
+  .dag-graph-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dag-legend { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dag-legend-item { display: inline-flex; align-items: center; gap: 4px; color: var(--oc-muted); font-size: 12px; }
+  .dag-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .dag-node { cursor: pointer; }
   .dag-node:focus-visible { outline: none; }
   .dag-node:focus-visible rect { stroke: var(--oc-focus); stroke-width: 2.5; }
-  .dag-details { background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); padding: 12px; }
+  .dag-details { background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); padding: 12px; max-height: 32vh; overflow: auto; }
   .dag-details-title { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
   .dag-details-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
   .dag-details-term { color: var(--oc-muted); font-family: var(--oc-mono, monospace); font-size: 12px; }
@@ -47,6 +120,56 @@
   .dag-follow-title { font-weight: 600; overflow-wrap: anywhere; }
   .dag-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--oc-border); flex: none; }
   .dag-live-on { background: var(--oc-success); }
+  .dag-view-switcher { display: flex; align-items: end; gap: 8px; }
+  .dag-view-button { display: flex; }
+  .dag-code { display: flex; flex-direction: column; gap: 12px; }
+  .dag-code-title { font-size: 14px; font-weight: 600; margin: 0; }
+  .dag-code-jump { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); padding: 12px; }
+  .dag-code-jump-label { font-family: var(--oc-mono, monospace); font-size: 12px; overflow-wrap: anywhere; }
+  .dag-code-unavailable { background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); padding: 12px; }
+  .dag-code-unavailable-title { font-weight: 600; margin: 0 0 4px; }
+  .dag-code-unavailable-body { margin: 0 0 8px; color: var(--oc-muted); font-size: 12px; }
+  .dag-freshness-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); padding: 8px 12px; font-family: var(--oc-mono, monospace); font-size: 12px; overflow-wrap: anywhere; }
+  .dag-freshness-counts { margin: 0; color: var(--oc-muted); font-size: 12px; }
+  .dag-code-stale { margin: 0; color: var(--oc-muted); font-size: 12px; }
+  .dag-code-search { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+  .dag-code-search-field { flex: 1 1 200px; min-width: 160px; }
+  .dag-code-search-button { display: flex; }
+.dag-code-graph { display: flex; flex-direction: column; gap: 8px; }
+  .dag-code-graph-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dag-code-graph-title { font-size: 13px; font-weight: 600; margin: 0; }
+  .dag-code-graph-counts { color: var(--oc-muted); font-size: 12px; }
+  .dag-code-graph-fit { display: flex; }
+  .dag-code-graph-empty { margin: 0; color: var(--oc-muted); font-size: 12px; }
+  .dag-code-graph-note { margin: 0; color: var(--oc-muted); font-size: 12px; }
+  .dag-code-graph-hint { margin: 0; color: var(--oc-muted); font-size: 11px; }
+  .dag-code-graph-node { cursor: pointer; }
+  .dag-code-graph-node:focus-visible rect { stroke: var(--oc-focus); stroke-width: 2.5; }
+  .dag-code-inspect { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); padding: 10px 12px; }
+  .dag-code-inspect-key { color: var(--oc-muted); font-size: 11px; margin: 0; }
+  .dag-code-inspect-value { font-family: var(--oc-mono, monospace); font-size: 11px; margin: 0; overflow-wrap: anywhere; }
+  .dag-code-results { display: flex; flex-direction: column; gap: 8px; }
+  .dag-code-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dag-code-item-id { font-family: var(--oc-mono, monospace); font-size: 12px; overflow-wrap: anywhere; }
+  .dag-code-item-file { color: var(--oc-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .dag-code-group { display: flex; flex-direction: column; gap: 8px; background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); padding: 12px; }
+  .dag-code-detail-title { font-size: 13px; font-weight: 600; margin: 0; font-family: var(--oc-mono, monospace); }
+  .dag-code-group-error { color: var(--oc-error); margin: 0; }
+  .dag-code-no-matches, .dag-code-loading { color: var(--oc-muted); }
+  .dag-code-loading { display: flex; align-items: center; gap: 8px; }
+  .dag-rationale { display: flex; flex-direction: column; gap: 8px; }
+  .dag-rationale-title { font-size: 13px; font-weight: 600; margin: 0; }
+  .dag-recorded { border: 1px solid var(--oc-primary); border-radius: var(--oc-radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; background: var(--oc-elevated); }
+  .dag-recorded-tag { font-size: 12px; font-weight: 600; color: var(--oc-muted); }
+  .dag-recorded-claim { margin: 0; overflow-wrap: anywhere; }
+  .dag-recorded-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .dag-badge { display: inline-flex; align-items: center; background: var(--oc-elevated); border: 1px solid var(--oc-border); border-radius: var(--oc-radius); padding: 4px 8px; font-size: 12px; font-family: var(--oc-mono, monospace); }
+  .dag-recorded-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+  .dag-recorded-term { color: var(--oc-muted); font-family: var(--oc-mono, monospace); font-size: 12px; }
+  .dag-recorded-value { margin: 0; overflow-wrap: anywhere; }
+  .dag-rationale-generated { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; }
+  .dag-rationale-note { margin: 0; color: var(--oc-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .dag-rationale-loading { color: var(--oc-muted); }
 </style>
 </head>
 <body>

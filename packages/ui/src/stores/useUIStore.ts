@@ -867,6 +867,10 @@ interface UIStore {
   mobileWorkspaceHiddenTabs: string[];
   /** Surfaces the user moved off the right zone, per device (lib/workspace/zones.ts). */
   contextSurfaceZones: ContextZonePlacement;
+  /** The file the code-graph tab should focus, per project directory. */
+  codeGraphFocusByDirectory: Record<string, string | null>;
+  /** What the code-graph tab was showing, per project directory: restored on reopen. */
+  codeGraphStateByDirectory: Record<string, { mode: string; query: string | null; selectedId: string | null }>;
   contextEditorTreeVisible: boolean;
   /** Which side of the file surface its tree column docks to. */
   fileTreeSide: 'left' | 'right';
@@ -1177,6 +1181,12 @@ interface UIStore {
   toggleContextEditor: () => void;
   setContextEditorTreeWidth: (width: number) => void;
   openContextSurface: (directory: string, mode: ContextPanelMode) => void;
+  /**
+   * Opens the code-graph surface as its own tab, focused on one file: the way a
+   * run's linked evidence reaches the graph without a second graph instance.
+   */
+  openCodeGraphAt: (directory: string, file?: string | null) => void;
+  setCodeGraphState: (directory: string, patch: { mode?: string; query?: string | null; selectedId?: string | null }) => void;
   openContextPanelTab: (directory: string, tab: ContextPanelTabDescriptor, options?: { reveal?: boolean }) => void;
   /**
    * Opens an issue, pull or merge request or Linear issue in the panel's
@@ -1471,6 +1481,8 @@ export const useUIStore = create<UIStore>()(
         mobileWorkspaceTabOrder: [],
         mobileWorkspaceHiddenTabs: [],
         contextSurfaceZones: {},
+        codeGraphFocusByDirectory: {},
+        codeGraphStateByDirectory: {},
         contextEditorTreeVisible: true,
         fileTreeSide: 'right',
         contextEditorVisible: true,
@@ -1787,6 +1799,31 @@ export const useUIStore = create<UIStore>()(
           state.openContextPanelTab(normalizedDirectory, { mode });
         },
 
+        setCodeGraphState: (directory, patch) => {
+          const key = String(directory ?? '').trim();
+          if (!key) {
+            return;
+          }
+          set((state) => {
+            const previous = state.codeGraphStateByDirectory[key] ?? { mode: 'explore', query: null, selectedId: null };
+            const next = { ...previous, ...patch };
+            if (previous.mode === next.mode && previous.query === next.query && previous.selectedId === next.selectedId) {
+              return {};
+            }
+            return { codeGraphStateByDirectory: { ...state.codeGraphStateByDirectory, [key]: next } };
+          });
+        },
+
+        openCodeGraphAt: (directory, file) => {
+          const key = String(directory ?? '').trim();
+          if (!key) {
+            return;
+          }
+          set((state) => ({
+            codeGraphFocusByDirectory: { ...state.codeGraphFocusByDirectory, [key]: file ?? null },
+          }));
+          get().openContextSurface(key, 'code-graph');
+        },
         openContextPanelTab: (directory, tab, options) => {
           const normalizedDirectory = normalizeDirectoryPath((directory || '').trim());
           if (!normalizedDirectory) {
@@ -3684,6 +3721,7 @@ export const useUIStore = create<UIStore>()(
           mobileWorkspaceTabOrder: state.mobileWorkspaceTabOrder,
           mobileWorkspaceHiddenTabs: state.mobileWorkspaceHiddenTabs,
           contextSurfaceZones: state.contextSurfaceZones,
+          codeGraphStateByDirectory: state.codeGraphStateByDirectory,
           contextEditorTreeVisible: state.contextEditorTreeVisible,
           fileTreeSide: state.fileTreeSide,
           contextEditorVisible: state.contextEditorVisible,

@@ -18,7 +18,11 @@ const collectSpecifiers = (text) =>
     [
       ...text.matchAll(/from\s*["']([^"']+)["']/g),
       ...text.matchAll(/import\s*\(\s*["']([^"']+)["']\s*\)/g),
-    ].map((match) => match[1]),
+    ]
+      .map((match) => match[1])
+      // Engine sources embed regex literals whose text repeats the `from` + quote shape, so the scan
+      // can capture punctuation-and-newline fragments. Only a specifier-shaped token can leak.
+      .filter((spec) => /^[^\s"'`(){}[\]]+$/.test(spec)),
   );
 
 // Bare core imports (`fs`, `os`, `path`, …) resolve in plain Node exactly

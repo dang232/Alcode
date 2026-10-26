@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Window } from 'happy-dom';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useScrollDismissedTooltip } from './useScrollDismissedTooltip';
 
-const DOM_GLOBAL_NAMES = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'getComputedStyle', 'ResizeObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'IS_REACT_ACT_ENVIRONMENT'] as const;
+const DOM_GLOBAL_NAMES = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'localStorage', 'getComputedStyle', 'ResizeObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'IS_REACT_ACT_ENVIRONMENT'] as const;
 const installDom = () => {
   const win = new Window({ url: 'http://localhost' });
   const previous = DOM_GLOBAL_NAMES.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
   const values = { window: win, document: win.document, navigator: win.navigator, Node: win.Node, Element: win.Element,
-    HTMLElement: win.HTMLElement, getComputedStyle: win.getComputedStyle.bind(win), ResizeObserver: win.ResizeObserver,
+    HTMLElement: win.HTMLElement, localStorage: win.localStorage,
+    getComputedStyle: win.getComputedStyle.bind(win), ResizeObserver: win.ResizeObserver,
     requestAnimationFrame: win.requestAnimationFrame.bind(win), cancelAnimationFrame: win.cancelAnimationFrame.bind(win), IS_REACT_ACT_ENVIRONMENT: true };
   for (const name of DOM_GLOBAL_NAMES) Object.defineProperty(globalThis, name, { value: values[name], configurable: true, writable: true });
   const container = document.createElement('div');
@@ -24,8 +24,14 @@ const installDom = () => {
   } };
 };
 
+// Base UI reads DOM capability when its tooltip module first evaluates, so it
+// has to load after the happy-dom globals exist — a static import would lock
+// it to the bare bun globals and hover would never open a tooltip.
+let tooltipParts: typeof import('@/components/ui/tooltip') | null = null;
+
 const Row = ({ label }: { label: string }) => {
   const tooltip = useScrollDismissedTooltip();
+  const { Tooltip, TooltipContent, TooltipTrigger } = tooltipParts!;
   return (
     <Tooltip actionsRef={tooltip.actionsRef} onOpenChange={tooltip.onOpenChange}>
       <TooltipTrigger asChild><button type="button" data-row={label}>{label}</button></TooltipTrigger>
@@ -42,9 +48,11 @@ describe('session row tooltips while the list scrolls', () => {
 
   beforeEach(async () => {
     dom = installDom();
+    tooltipParts = await import('@/components/ui/tooltip');
+    const { TooltipProvider } = tooltipParts;
     root = createRoot(dom.container);
     await act(async () => root.render(
-      <TooltipProvider delay={0} closeDelay={0}>
+      <TooltipProvider delay={30} closeDelay={0}>
         <div data-list="">
           <Row label="first" />
           <Row label="second" />
@@ -68,7 +76,8 @@ describe('session row tooltips while the list scrolls', () => {
       element.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }));
       element.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
       element.dispatchEvent(new window.MouseEvent('mousemove', { bubbles: true }));
-      await wait(20);
+      // The tooltip waits out its hover delay before it opens.
+      await wait(400);
     });
   };
   const scroll = async (selector: string) => {
