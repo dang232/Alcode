@@ -64,9 +64,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Quit',
   },
   ar: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'جارٍ الاتصال بـ {host}…',
-    'about': 'حول OpenChamber',
+    'about': 'حول Alcode',
     'checkForUpdates': 'البحث عن تحديثات',
     'settings': 'الإعدادات',
     'reloadWebview': 'إعادة تحميل Webview',
@@ -320,9 +320,9 @@ export const MENU_LOCALE_DICTIONARIES = {
     'quit': 'Quitter',
   },
   he: {
-    'app.name': 'OpenChamber',
+    'app.name': 'Alcode',
     'splash.connectingTo': 'מתחבר אל {host}…',
-    'about': 'אודות OpenChamber',
+    'about': 'אודות Alcode',
     'checkForUpdates': 'חיפוש עדכונים',
     'settings': 'הגדרות',
     'reloadWebview': 'טעינה מחדש של Webview',

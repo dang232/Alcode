@@ -33,6 +33,23 @@ test('skips malformed candidates and rejects a link with none left', () => {
   assert.equal(parsePairingDeepLink(pairing([badRelay, relayCandidate]))?.target, 'relay://srv_abc');
 });
 
+test('parses the current scheme the same way as the pre-rename one', () => {
+  const legacy = pairing([relayCandidate]);
+  const current = legacy.replace('openchamber://', 'alcode://');
+  assert.deepEqual(parsePairingDeepLink(current, { protocol: 'alcode' }), {
+    label: 'Studio Mac',
+    fingerprint: '',
+    target: 'relay://srv_abc',
+  });
+  assert.equal(parsePairingDeepLink(legacy, { protocol: 'alcode' }), null);
+  assert.equal(parsePairingDeepLink(current), null);
+});
+
+test('falls back to the product name when the payload names no label', () => {
+  const parsed = parsePairingDeepLink(pairing([relayCandidate], { label: '' }));
+  assert.equal(parsed?.label, 'Alcode');
+});
+
 test('rejects expired, secretless, and foreign links', () => {
   const now = Date.parse('2026-10-08T12:00:00Z');
   assert.equal(parsePairingDeepLink(pairing([relayCandidate], { expiresAt: '2026-10-08T11:59:00Z' }), { now }), null);

@@ -1549,7 +1549,7 @@ const inheritUserShellEnv = async () => {
 
 const shouldSkipLocalServer = async () => {
   await inheritUserShellEnv();
-  return process.env.ALCODE_SKIP_LOCAL_SERVER === '1';
+  return process.env.ALCODE_SKIP_LOCAL_SERVER === '1' || process.env.OPENCHAMBER_SKIP_LOCAL_SERVER === '1';
 };
 
 const spawnLocalServer = async () => {
@@ -2189,7 +2189,10 @@ const dispatchDeepLink = (link) => {
   if (!link) return;
   log.info('[electron] dispatching deep-link', { type: link.type, valueLen: link.value?.length || 0 });
   if (link.type === 'connect') {
-    const pairing = parsePairingDeepLink(link.raw, { protocol: DEEP_LINK_PROTOCOL });
+    // Pre-rename servers and invites still circulate `openchamber://connect`
+    // links; both schemes were accepted at the door, so both parse the same way.
+    const pairing = parsePairingDeepLink(link.raw, { protocol: DEEP_LINK_PROTOCOL })
+      ?? parsePairingDeepLink(link.raw, { protocol: LEGACY_DEEP_LINK_PROTOCOL });
     if (pairing) {
       void confirmConnectDeepLink({
         serverUrl: pairing.target,
@@ -2496,7 +2499,7 @@ const showQuakeWindow = (browserWindow, heightFraction) => {
     })();
   }
   try {
-    // macOS: a hotkey pressed from another app leaves OpenChamber in the
+    // macOS: a hotkey pressed from another app leaves Alcode in the
     // background, where show/focus alone do not bring it forward.
     if (process.platform === 'darwin') app.focus({ steal: true });
     if (browserWindow.isMinimized()) browserWindow.restore();
@@ -3438,7 +3441,7 @@ const showSplashConnecting = (hostLabel) => {
 // environment and no remote or SSH default instance. Those keep the splash
 // until resolved, because it reports the connection attempt.
 const isPlainLocalBoot = () => {
-  if (normalizeHostUrl(process.env.OPENCHAMBER_SERVER_URL || '')) return false;
+  if (normalizeHostUrl(process.env.ALCODE_SERVER_URL || process.env.OPENCHAMBER_SERVER_URL || '')) return false;
   const { defaultHostId } = readDesktopHostsConfig();
   return !defaultHostId || defaultHostId === LOCAL_HOST_ID;
 };
@@ -3452,7 +3455,7 @@ const resolveInitialUrl = async ({ onPlainLocalBoot = null } = {}) => {
   const skipLocalServer = await shouldSkipLocalServer();
   for (const line of describeStartupEnvironmentOverrides({
     skipLocalServer,
-    serverUrl: process.env.OPENCHAMBER_SERVER_URL,
+    serverUrl: process.env.ALCODE_SERVER_URL || process.env.OPENCHAMBER_SERVER_URL,
   })) {
     log.warn(`[startup] ${line}`);
   }
@@ -3497,7 +3500,7 @@ const resolveInitialUrl = async ({ onPlainLocalBoot = null } = {}) => {
   let requestHeaders = {};
   let remoteProbe = null;
 
-  const envTarget = normalizeHostUrl(process.env.ALCODE_SERVER_URL || '');
+  const envTarget = normalizeHostUrl(process.env.ALCODE_SERVER_URL || process.env.OPENCHAMBER_SERVER_URL || '');
   let config = readDesktopHostsConfig();
   // A default SSH instance is reachable only through its tunnel: open it
   // before the probe, and boot Local when it cannot be opened.
@@ -5187,7 +5190,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       const nextConfigInput = args.input || args.config || {};
       await writeDesktopHostsConfig(nextConfigInput);
       const updatedConfig = readDesktopHostsConfig();
-      const envTarget = normalizeHostUrl(process.env.ALCODE_SERVER_URL || '');
+      const envTarget = normalizeHostUrl(process.env.ALCODE_SERVER_URL || process.env.OPENCHAMBER_SERVER_URL || '');
       if (Object.prototype.hasOwnProperty.call(nextConfigInput, 'localClientToken') && isLocalRuntimeUrl(state.apiBaseUrl || state.sidecarUrl || state.localOrigin || '')) {
         state.clientToken = readDesktopLocalClientToken();
       }
