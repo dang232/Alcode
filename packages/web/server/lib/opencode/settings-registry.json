@@ -367,6 +367,12 @@
     "showTurnChangedFiles": {
       "scope": "profile"
     },
+    "showExpandedBashTools": {
+      "scope": "profile"
+    },
+    "showExpandedEditTools": {
+      "scope": "profile"
+    },
     "toolJsonViewMode": {
       "scope": "profile"
     },
@@ -600,6 +606,9 @@
     "sessionWorkEnabled": {
       "scope": "profile"
     },
+    "sessionWorkAutoOpen": {
+      "scope": "profile"
+    },
     "sessionReviewOfferEnabled": {
       "scope": "profile",
       "surfaces": [
@@ -775,6 +784,10 @@
       "local": true
     },
     "contextSurfaceZones": {
+      "scope": "device",
+      "local": true
+    },
+    "codeGraphStateByDirectory": {
       "scope": "device",
       "local": true
     },
