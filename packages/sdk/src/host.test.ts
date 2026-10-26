@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
 import { connectHost, HostRequestError, type HostFrame } from './host.ts';
 import {
   GUEST_ATTACH_TITLE_MAX,
