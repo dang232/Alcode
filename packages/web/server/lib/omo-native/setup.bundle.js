@@ -24923,6 +24923,31 @@ class Signature {
   }
 }
 
+// ../../../../omo-engine/code-graph/src/schema.ts
+import { createHash as createHash3 } from "node:crypto";
+var STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+function sha256Hex(value) {
+  return createHash3("sha256").update(value, "utf8").digest("hex");
+}
+function computeScopeFingerprint(projectId, worktreeId, revision) {
+  return sha256Hex(`${projectId}
+${worktreeId}
+${revision}`);
+}
+var MAX_CONTENT_TOKENS_PER_FILE = 5000;
+var MAX_CONTENT_FILE_BYTES = 256 * 1024;
+function emptyContentIndex() {
+  return { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: {}, skipped: [] };
+}
+function contentTokenize(text) {
+  return text.toLowerCase().match(/[a-z0-9_$]+/g) ?? [];
+}
+function contentFileLanguage(file) {
+  const base = file.split("/").pop() ?? file;
+  const dot = base.lastIndexOf(".");
+  return dot < 0 ? "unknown" : base.slice(dot + 1).toLowerCase();
+}
+
 // ../../../../omo-engine/code-graph/src/extract.ts
 var STATIC_CONFIDENCE = 1;
 var UNRESOLVED_CONFIDENCE = 0.5;
@@ -25040,13 +25065,20 @@ class GraphBuilder {
   nodes = new Map;
   edges = new Map;
   callOrdinals = new Map;
+  contentFiles = new Map;
+  contentSkipped = [];
   constructor(root) {
     this.root = root;
   }
   snapshot() {
     const nodes = [...this.nodes.values()].sort((left, right) => left.id < right.id ? -1 : 1);
     const edges = [...this.edges.values()].sort((left, right) => left.id < right.id ? -1 : 1);
-    return { nodes, edges };
+    const files = [...this.contentFiles.values()].sort((left, right) => left.file < right.file ? -1 : 1);
+    const byFile = {};
+    for (const entry of files)
+      byFile[entry.file] = entry;
+    const skipped = [...this.contentSkipped].sort((left, right) => left.file < right.file ? -1 : 1);
+    return { nodes, edges, content: { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: byFile, skipped } };
   }
   addEntries(project, entries) {
     const program = project.program;
@@ -25074,6 +25106,7 @@ class GraphBuilder {
       const rel = this.relOf(key);
       const ctx = { key, rel, sourceFile, project, checker: project.checker };
       this.files.set(key, ctx);
+      this.indexContent(ctx);
       this.nodes.set(`file:${rel}`, { id: `file:${rel}`, kind: "file", file: rel, line: 1, name: rel });
       for (const target of this.staticImportTargets(ctx)) {
         if (!this.files.has(target))
@@ -25113,6 +25146,53 @@ class GraphBuilder {
         ref: `${file}:1`
       });
     }
+  }
+  indexContent(ctx) {
+    const language = contentFileLanguage(ctx.rel);
+    const isTest = isTestPath(ctx.rel);
+    const text = ctx.sourceFile.getFullText();
+    if (text.includes("\x00")) {
+      this.contentSkipped.push({ file: ctx.rel, reason: "binary", language, isTest });
+      return;
+    }
+    if (text.length > MAX_CONTENT_FILE_BYTES) {
+      this.contentSkipped.push({ file: ctx.rel, reason: "too-large", language, isTest });
+      return;
+    }
+    const lines = text.split(`
+`).map((line) => line.endsWith("\r") ? line.slice(0, -1) : line);
+    const perToken = new Map;
+    lines.forEach((line, index) => {
+      for (const token of contentTokenize(line)) {
+        const seen = perToken.get(token);
+        if (seen) {
+          if (seen[seen.length - 1] !== index + 1)
+            seen.push(index + 1);
+        } else {
+          perToken.set(token, [index + 1]);
+        }
+      }
+    });
+    const tokens = {};
+    let kept = 0;
+    let tokenTruncated = false;
+    for (const [token, atLines] of perToken) {
+      if (kept >= MAX_CONTENT_TOKENS_PER_FILE) {
+        tokenTruncated = true;
+        break;
+      }
+      tokens[token] = atLines;
+      kept += 1;
+    }
+    this.contentFiles.set(ctx.rel, {
+      file: ctx.rel,
+      language,
+      isTest,
+      lines,
+      tokens,
+      tokenCount: perToken.size,
+      tokenTruncated
+    });
   }
   relOf(key) {
     const rel = key.startsWith(`${this.root}/`) ? key.slice(this.root.length + 1) : key;
@@ -25502,7 +25582,7 @@ class GraphBuilder {
 }
 function indexFiles(entryFiles, options = {}) {
   if (entryFiles.length === 0)
-    return { nodes: [], edges: [] };
+    return { nodes: [], edges: [], content: emptyContentIndex() };
   const absoluteEntries = entryFiles.map((entry) => resolve4(entry));
   const root = commonDir(absoluteEntries.map(toPosixPath2));
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
@@ -25525,7 +25605,7 @@ function indexFiles(entryFiles, options = {}) {
       for (const [project, entries] of byProject)
         builder.addEntries(project, entries);
       builder.addKnowledgeLinks(options.knowledge ?? []);
-      return builder.snapshot();
+      return { ...builder.snapshot(), root };
     } finally {
       snapshot.dispose();
     }
@@ -25533,18 +25613,15 @@ function indexFiles(entryFiles, options = {}) {
     api.close();
   }
 }
-// ../../../../omo-engine/code-graph/src/schema.ts
-import { createHash as createHash3 } from "node:crypto";
-var STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
-function sha256Hex(value) {
-  return createHash3("sha256").update(value, "utf8").digest("hex");
-}
-function computeScopeFingerprint(projectId, worktreeId, revision) {
-  return sha256Hex(`${projectId}
-${worktreeId}
-${revision}`);
-}
 // ../../../../omo-engine/code-graph/src/queries.ts
+var SEARCH_RANK = {
+  "exact-name": 0,
+  "exact-qualified": 1,
+  prefix: 2,
+  token: 3,
+  substring: 4,
+  fuzzy: 5
+};
 var DEFAULT_RESULT_LIMIT = 20;
 var MAX_RESULT_LIMIT = 50;
 var DEFAULT_MAX_DEPTH = 5;
@@ -25660,6 +25737,17 @@ function search(snapshot, query, options) {
   const freshness = options.freshness ?? "fresh";
   const limit = clampLimit(options.limit);
   const needle = query.toLowerCase();
+  if (needle.trim().length === 0) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      coverage: "indexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: ["empty query: name or path fragment required"],
+      unsupported: [],
+      items: []
+    };
+  }
   if ((query.includes("/") || query.includes("\\")) && !isSupportedPath(query)) {
     return {
       ...baseEnvelope(scope, freshness),
@@ -25671,30 +25759,22 @@ function search(snapshot, query, options) {
       items: []
     };
   }
+  const queryTokens = tokenizeIdentifier(query);
   const ranked = [];
   for (const node of snapshot.nodes) {
     if (node.kind !== "file" && node.kind !== "symbol")
       continue;
-    const id = node.id.toLowerCase();
-    const name = (node.name ?? "").toLowerCase();
-    const file = node.file.toLowerCase();
-    let rank = -1;
-    if (id === needle || name === needle)
-      rank = 0;
-    else if (name.startsWith(needle))
-      rank = 1;
-    else if (name.includes(needle))
-      rank = 2;
-    else if (file.includes(needle))
-      rank = 3;
-    else if (id.includes(needle))
-      rank = 4;
-    if (rank >= 0)
-      ranked.push({ node, rank });
+    const match = matchSearchTier(node, needle, queryTokens);
+    if (match !== undefined)
+      ranked.push({ node, ...match });
   }
   ranked.sort((left, right) => rankCompare(left, right));
   const truncated = ranked.length > limit;
-  const items = ranked.slice(0, limit).map(({ node }) => nodeItem(snapshot, node, definesEvidence(snapshot, node)));
+  const items = ranked.slice(0, limit).map(({ node, reason, rank }) => ({
+    ...nodeItem(snapshot, node, definesEvidence(snapshot, node)),
+    reason,
+    rank
+  }));
   const notes = truncated ? [`truncated to ${limit} of ${ranked.length} matches`] : [];
   return {
     ...baseEnvelope(scope, freshness),
@@ -25706,26 +25786,166 @@ function search(snapshot, query, options) {
     items
   };
 }
+function tokenizeIdentifier(value) {
+  const out = [];
+  for (const part of value.split(/[^A-Za-z0-9]+/)) {
+    if (part.length === 0)
+      continue;
+    for (const hump of part.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/)) {
+      for (const piece of hump.split(/(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])/)) {
+        if (piece.length > 0)
+          out.push(piece.toLowerCase());
+      }
+    }
+  }
+  return out;
+}
+function withinEditDistance(a, b, maxDist) {
+  if (Math.abs(a.length - b.length) > maxDist)
+    return false;
+  if (a === b)
+    return true;
+  let prev = [];
+  for (let j = 0;j <= b.length; j += 1)
+    prev.push(j);
+  for (let i = 1;i <= a.length; i += 1) {
+    const curr = [i];
+    let rowMin = i;
+    for (let j = 1;j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const cell = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      curr.push(cell);
+      if (cell < rowMin)
+        rowMin = cell;
+    }
+    if (rowMin > maxDist)
+      return false;
+    prev = curr;
+  }
+  return prev[b.length] <= maxDist;
+}
+function matchSearchTier(node, needle, queryTokens) {
+  const nameLower = (node.name ?? "").toLowerCase();
+  const idLower = node.id.toLowerCase();
+  const fileLower = node.file.toLowerCase();
+  const baseLower = fileLower.split("/").pop() ?? fileLower;
+  if (needle.length === 0)
+    return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (nameLower === needle)
+    return { reason: "exact-name", rank: SEARCH_RANK["exact-name"] };
+  if (baseLower === needle)
+    return { reason: "exact-name", rank: SEARCH_RANK["exact-name"] };
+  if (idLower === needle || `${nameLower}@${fileLower}` === needle) {
+    return { reason: "exact-qualified", rank: SEARCH_RANK["exact-qualified"] };
+  }
+  if (nameLower.startsWith(needle))
+    return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (baseLower.startsWith(needle))
+    return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (tokenMatches(node, queryTokens))
+    return { reason: "token", rank: SEARCH_RANK.token };
+  if (nameLower.includes(needle) || fileLower.includes(needle) || idLower.includes(needle)) {
+    return { reason: "substring", rank: SEARCH_RANK.substring };
+  }
+  const distance = fuzzyDistance(nameLower, needle);
+  if (distance !== null)
+    return { reason: "fuzzy", rank: SEARCH_RANK.fuzzy, distance };
+  return;
+}
+function tokenMatches(node, queryTokens) {
+  const useful = queryTokens.filter((token) => token.length >= 2);
+  if (useful.length === 0)
+    return false;
+  const targets = [...tokenizeIdentifier(node.name ?? ""), ...tokenizeIdentifier(node.file)];
+  if (targets.length === 0)
+    return false;
+  const hits = (query) => targets.some((target) => target === query || target.startsWith(query));
+  return useful.every(hits);
+}
+function fuzzyDistance(nameLower, needle) {
+  if (needle.length < 3 || nameLower.length === 0)
+    return null;
+  if (nameLower[0] !== needle[0])
+    return null;
+  const maxDist = needle.length <= 4 ? 1 : 2;
+  let best = null;
+  const consider = (candidate) => {
+    if (candidate.length === 0 || candidate[0] !== needle[0])
+      return;
+    for (let distance = 1;distance <= maxDist; distance += 1) {
+      if (best !== null && distance >= best)
+        return;
+      if (withinEditDistance(needle, candidate, distance)) {
+        best = distance;
+        return;
+      }
+    }
+  };
+  consider(nameLower);
+  for (const token of tokenizeIdentifier(nameLower))
+    consider(token);
+  return best;
+}
 function rankCompare(left, right) {
   if (left.rank !== right.rank)
     return left.rank - right.rank;
-  return left.node.id < right.node.id ? -1 : 1;
+  const reasonDelta = SEARCH_RANK[left.reason] - SEARCH_RANK[right.reason];
+  if (reasonDelta !== 0)
+    return reasonDelta;
+  const leftDistance = left.distance ?? Number.POSITIVE_INFINITY;
+  const rightDistance = right.distance ?? Number.POSITIVE_INFINITY;
+  if (leftDistance !== rightDistance)
+    return leftDistance - rightDistance;
+  if (left.node.kind !== right.node.kind)
+    return left.node.kind === "file" ? -1 : 1;
+  if (left.node.file.length !== right.node.file.length)
+    return left.node.file.length - right.node.file.length;
+  if (left.node.file !== right.node.file)
+    return left.node.file < right.node.file ? -1 : 1;
+  return left.node.id < right.node.id ? -1 : left.node.id > right.node.id ? 1 : 0;
 }
 function definesEvidence(snapshot, node) {
   if (node.kind === "file")
     return [indexedEvidence(node)];
-  const evidence = snapshot.edges.filter((edge) => edge.kind === "DEFINES" && edge.to === node.id).map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
+  const evidence = (indexFor(snapshot).edgesByTo.get(node.id) ?? []).filter((edge) => edge.kind === "DEFINES").map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
   return evidence.length > 0 ? evidence : [indexedEvidence(node)];
 }
+var snapshotIndexes = new WeakMap;
+function indexFor(snapshot) {
+  const cached = snapshotIndexes.get(snapshot);
+  if (cached !== undefined)
+    return cached;
+  const nodeById = new Map;
+  for (const node of snapshot.nodes)
+    nodeById.set(node.id, node);
+  const edgesByFrom = new Map;
+  const edgesByTo = new Map;
+  for (const edge of snapshot.edges) {
+    const from = edgesByFrom.get(edge.from);
+    if (from === undefined)
+      edgesByFrom.set(edge.from, [edge]);
+    else
+      from.push(edge);
+    const to = edgesByTo.get(edge.to);
+    if (to === undefined)
+      edgesByTo.set(edge.to, [edge]);
+    else
+      to.push(edge);
+  }
+  const built = { nodeById, edgesByFrom, edgesByTo };
+  snapshotIndexes.set(snapshot, built);
+  return built;
+}
 function findNode(snapshot, id) {
-  return snapshot.nodes.find((node) => node.id === id);
+  return indexFor(snapshot).nodeById.get(id);
 }
 function callersOf(snapshot, symbolId) {
   const out = [];
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "CALLS_STATIC" || edge.to !== symbolId)
+  const index = indexFor(snapshot);
+  for (const edge of index.edgesByTo.get(symbolId) ?? []) {
+    if (edge.kind !== "CALLS_STATIC")
       continue;
-    const caller = findNode(snapshot, edge.from);
+    const caller = index.nodeById.get(edge.from);
     if (caller !== undefined)
       out.push({ caller, ref: edge.ref });
   }
@@ -25734,10 +25954,11 @@ function callersOf(snapshot, symbolId) {
 }
 function calleesOf(snapshot, symbolId) {
   const out = [];
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "CALLS_STATIC" || edge.from !== symbolId)
+  const index = indexFor(snapshot);
+  for (const edge of index.edgesByFrom.get(symbolId) ?? []) {
+    if (edge.kind !== "CALLS_STATIC")
       continue;
-    const callee = findNode(snapshot, edge.to);
+    const callee = index.nodeById.get(edge.to);
     if (callee !== undefined)
       out.push({ callee, ref: edge.ref });
   }
