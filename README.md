@@ -20,8 +20,8 @@ Start agent work, see what changed, and take it through review and release. Your
 ![VS Code Extension](packages/vscode/extension.jpg)
 
 <p>
-<img src="docs/references/pwa_chat_example.png" width="45%" alt="Alcode PWA chat">
-<img src="docs/references/pwa_diff_example.png" width="45%" alt="Alcode PWA diff review">
+<img src="docs/references/mobile/chat_dark.png" width="45%" alt="Alcode chat on mobile">
+<img src="docs/references/mobile/context_usage_dark.png" width="45%" alt="Alcode context usage on mobile">
 </p>
 
 </details>
@@ -133,7 +133,7 @@ Requires Node.js 24.14+. CLI/Web and VS Code use your installed [OpenCode CLI](h
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dang232/Alcode/main/scripts/install.sh | bash
-alcode --ui-password be-creative-here
+alcode serve
 ```
 
 Common operations:
@@ -148,7 +148,7 @@ alcode stop
 alcode update
 ```
 
-Alcode binds to localhost by default. Use `--lan` only on a trusted network and protect browser access with `--ui-password`.
+Alcode binds to `127.0.0.1` by default; `--lan` binds `0.0.0.0` so other devices on your network can reach it. Browser access runs through a sign-in session, with its lifetime set by `ALCODE_UI_SESSION_TTL_HOURS` and `ALCODE_UI_TRUSTED_SESSION_TTL_DAYS`.
 
 ## Guides
 
@@ -187,6 +187,8 @@ Bugs go to [issues](https://github.com/dang232/Alcode/issues/new/choose). Questi
 
 Special thanks to:
 
+- [OpenChamber](https://github.com/openchamber/openchamber), the project Alcode is forked from: the desktop, web, VS Code and mobile surfaces, the runtime contract and most of the design start there
+- [Oh My OpenAgent (OmO)](https://github.com/code-yeongyu/oh-my-openagent), the agent orchestration and skills runtime the engine packages in `packages/omo-engine` are built on
 - [OpenCode](https://opencode.ai) for the API and open-source architecture Alcode builds on
 - [Pierre](https://pierrejs-docs.vercel.app/) for the diff viewer and syntax highlighting
 - The [T3 Code](https://github.com/pingdotgg/t3code) team for their browser adapter for [libghostty-vt](https://github.com/ghostty-org/ghostty), which our terminal is built on
