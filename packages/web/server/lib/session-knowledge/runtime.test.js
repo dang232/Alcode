@@ -80,7 +80,7 @@ const createEntriesStub = ({ fail = new Set() } = {}) => {
 };
 
 const pinnedStore = () => createMetadataStub({
-  ses_a: { openchamber: { project_context_pins: PINS } },
+  ses_a: { alcode: { project_context_pins: PINS } },
 });
 
 describe('writing the knowledge into a session', () => {

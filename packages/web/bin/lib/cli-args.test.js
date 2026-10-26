@@ -1,12 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { parseArgs } from './cli-args.js';
-import { INJECTED_ENV_KEY, assignInjectedEnv } from '../../server/lib/injected-env.js';
 
-describe('parseArgs ui password default', () => {
+describe('parseArgs ui password removal', () => {
   const previous = {
     OPENCHAMBER_UI_PASSWORD: process.env.OPENCHAMBER_UI_PASSWORD,
-    [INJECTED_ENV_KEY]: process.env[INJECTED_ENV_KEY],
   };
 
   afterEach(() => {
@@ -16,20 +14,18 @@ describe('parseArgs ui password default', () => {
     }
   });
 
-  it('takes a password the user exported', () => {
-    delete process.env[INJECTED_ENV_KEY];
+  it('takes no UI password default from the environment', () => {
     process.env.OPENCHAMBER_UI_PASSWORD = 'theirs';
 
-    expect(parseArgs(['serve']).options.uiPassword).toBe('theirs');
+    const parsed = parseArgs(['serve']);
+    expect('uiPassword' in parsed.options).toBe(false);
+    expect(parsed.removedFlagErrors).toEqual([]);
   });
 
-  it('ignores a password OpenChamber put into the shell', () => {
-    delete process.env[INJECTED_ENV_KEY];
-    delete process.env.OPENCHAMBER_UI_PASSWORD;
-    assignInjectedEnv(process.env, { OPENCHAMBER_UI_PASSWORD: 'the-desktop-apps' });
-
-    expect(parseArgs(['serve']).options.uiPassword).toBeUndefined();
-    expect(parseArgs(['serve', '--ui-password', 'chosen']).options.uiPassword).toBe('chosen');
+  it('rejects --ui-password with a pointer to Alcore login', () => {
+    expect(parseArgs(['serve', '--ui-password', 'chosen']).removedFlagErrors).toEqual([
+      '`--ui-password` was removed. Browser auth now uses Alcore login.',
+    ]);
   });
 });
 

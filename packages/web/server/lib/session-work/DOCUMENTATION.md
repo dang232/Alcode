@@ -31,7 +31,7 @@ Small Model is worth waking.
 - `doneAt` once the user closed it
 - `suggestDoneAt` while Jev thinks the last turn closed the work out
 
-`metadata.openchamber.reviewOffer`: `{ at }` while Jev thinks the last turn
+`metadata.alcode.reviewOffer`: `{ at }` while Jev thinks the last turn
 handed over changes the user could look over. It lives outside `work` so it
 needs neither the In work block nor a session in work.
 

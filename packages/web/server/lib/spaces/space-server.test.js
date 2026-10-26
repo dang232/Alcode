@@ -104,7 +104,7 @@ describe('space server channel: default permission mode', () => {
 
     expect(calls).toEqual([{
       spaceId: ID,
-      argv: ['/bin/sh', '-c', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; umask 077; mkdir -p /home/space/.openchamber-space && chmod 700 /home/space/.openchamber-space && cat > /home/space/.openchamber-space/permission-default.json.new && mv /home/space/.openchamber-space/permission-default.json.new /home/space/.openchamber-space/permission-default.json'],
+      argv: ['/bin/sh', '-c', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; umask 077; mkdir -p /home/space/.alcode-space && chmod 700 /home/space/.alcode-space && cat > /home/space/.alcode-space/permission-default.json.new && mv /home/space/.alcode-space/permission-default.json.new /home/space/.alcode-space/permission-default.json'],
       options: { stdin: '{"mode":"auto"}' },
     }]);
   });
