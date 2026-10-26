@@ -396,15 +396,15 @@ describe('parseQueuedItemInput', () => {
 });
 
 describe('a message queued as a goal', () => {
-  const previousDataDir = process.env.OPENCHAMBER_DATA_DIR;
+  const previousDataDir = process.env.ALCODE_DATA_DIR;
   afterEach(() => {
-    if (previousDataDir === undefined) delete process.env.OPENCHAMBER_DATA_DIR;
-    else process.env.OPENCHAMBER_DATA_DIR = previousDataDir;
+    if (previousDataDir === undefined) delete process.env.ALCODE_DATA_DIR;
+    else process.env.ALCODE_DATA_DIR = previousDataDir;
   });
 
   it('starts the goal when that message goes out, not with the message before it', async () => {
     const goalsDataDir = makeDataDir();
-    process.env.OPENCHAMBER_DATA_DIR = goalsDataDir;
+    process.env.ALCODE_DATA_DIR = goalsDataDir;
     const persisted = [];
     const { runtime, openCode, emit } = createRuntime({
       persistSessionGoal: async (sessionID, directory, goal) => {
@@ -444,7 +444,7 @@ describe('a message queued as a goal', () => {
   });
 
   it('admits nothing when the goal cannot be saved, so a retry cannot duplicate the context', async () => {
-    process.env.OPENCHAMBER_DATA_DIR = makeDataDir();
+    process.env.ALCODE_DATA_DIR = makeDataDir();
     const { runtime, openCode, emit } = createRuntime({
       retryDelayMs: () => 60_000,
       persistSessionGoal: async () => { throw new Error('metadata store down'); },
@@ -458,7 +458,7 @@ describe('a message queued as a goal', () => {
   });
 
   it('uses the objective the arming flow supplied', async () => {
-    process.env.OPENCHAMBER_DATA_DIR = makeDataDir();
+    process.env.ALCODE_DATA_DIR = makeDataDir();
     const persisted = [];
     const { runtime, emit } = createRuntime({
       persistSessionGoal: async (_sessionID, _directory, goal) => { persisted.push(goal); },
@@ -468,7 +468,7 @@ describe('a message queued as a goal', () => {
     emit({ type: 'session.status', properties: { sessionID: SESSION, status: { type: 'idle' } } });
     await settle();
     expect(persisted).toHaveLength(1);
-    expect(fs.readFileSync(path.join(process.env.OPENCHAMBER_DATA_DIR, 'goals', `${SESSION}.md`), 'utf8')).toBe('the whole plan');
+    expect(fs.readFileSync(path.join(process.env.ALCODE_DATA_DIR, 'goals', `${SESSION}.md`), 'utf8')).toBe('the whole plan');
   });
 });
 

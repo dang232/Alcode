@@ -498,7 +498,7 @@ describe('notifications for a chat of an isolated space', () => {
   it('stays quiet while a goal in the space\'s own record is active', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { runtime, emitDesktopNotification } = makeSpaceRuntime({
-      inside: insideAnswers({ metadata: { openchamber: { goal: { id: 'g', status: 'active', objective: 'x' } } } }),
+      inside: insideAnswers({ metadata: { alcode: { goal: { id: 'g', status: 'active', objective: 'x' } } } }),
     });
 
     await runtime.maybeSendPushForTrigger(stepStarted(SESSION, 'msg_1'), { spaceId: SPACE });

@@ -403,7 +403,7 @@ describe('resolveGitHubPrStatus when GitHub refuses the repository', () => {
     response: { status, data: { message } },
   });
   const octokit = (token, get) => ({
-    openChamberCacheIdentity: getOctokitCacheIdentity(createOctokit(token, `${token}-account`)),
+    alcodeCacheIdentity: getOctokitCacheIdentity(createOctokit(token, `${token}-account`)),
     rest: { repos: { get }, pulls: { list: async () => ({ data: [] }) } },
   });
 
@@ -508,7 +508,7 @@ const createForkNetworkOctokit = ({ suffix, historicalPr, forkHistoricalPr = nul
   const parent = { owner: `upstream-${suffix}`, repo: `app-${suffix}` };
   const contributor = { owner: `contributor-${suffix}`, repo: `app-${suffix}` };
   const octokit = {
-    openChamberCacheIdentity: getOctokitCacheIdentity(createOctokit(`token-${suffix}`, `account-${suffix}`)),
+    alcodeCacheIdentity: getOctokitCacheIdentity(createOctokit(`token-${suffix}`, `account-${suffix}`)),
     rest: {
       repos: {
         get: async ({ owner, repo }) => {
