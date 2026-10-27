@@ -3,6 +3,8 @@ import { createRipgrepResolver } from '../fs/ripgrep.js';
 import { registerEnvironmentRoutes } from '../environment/routes.js';
 import { registerQuotaRoutes } from '../quota/routes.js';
 import { createTokenpanelQuotaRuntime } from '../tokenpanel/tokenpanel-quota.js';
+import { createTokenpanelPlanRuntime } from '../tokenpanel/tokenpanel-plan.js';
+import { createTokenpanelEntitlementsRuntime } from '../tokenpanel/tokenpanel-entitlements.js';
 import { sharedUserTokenStore } from '../user-tokens/user-token-store.js';
 import { registerSmallModelRoutes } from '../small-model/routes.js';
 import { registerWalkthroughRoutes } from '../walkthrough/routes.js';
@@ -459,6 +461,19 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     // The store is the desktop-login singleton (capture and presentation
     // share one keychain); the subject resolver binds reads to the caller.
     createTokenpanelQuotaRuntime({
+      userTokenStore: sharedUserTokenStore(),
+      resolveSubject: (req) => uiAuthController?.resolveRequestAlcoreSub?.(req) ?? '',
+    }).registerRoutes(app);
+    // The account panel's live dynamic-plan read shares the quota path's
+    // store (one keychain) and subject binding; see tokenpanel-plan.js.
+    createTokenpanelPlanRuntime({
+      userTokenStore: sharedUserTokenStore(),
+      resolveSubject: (req) => uiAuthController?.resolveRequestAlcoreSub?.(req) ?? '',
+    }).registerRoutes(app);
+    // The account panel's per-metric entitlements read shares the quota
+    // path's store (one keychain) and subject binding; see
+    // tokenpanel-entitlements.js.
+    createTokenpanelEntitlementsRuntime({
       userTokenStore: sharedUserTokenStore(),
       resolveSubject: (req) => uiAuthController?.resolveRequestAlcoreSub?.(req) ?? '',
     }).registerRoutes(app);
