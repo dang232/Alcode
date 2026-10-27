@@ -16,7 +16,10 @@ import { useAuthSessionStore } from '@/lib/runtime-auth-expiry';
 import { toast } from '@/components/ui';
 import { parseAccountSession, type AccountSession } from './accountSession';
 import { useAccountQuota } from './accountQuota';
+import { useAccountEntitlements } from './accountEntitlements';
+import { useAccountPlan } from './accountPlan';
 import { AccountQuotaSection } from './accountQuotaSection';
+import { AccountProviderLimits } from './accountProviderLimits';
 
 // Header account surface (all runtimes except VS Code, where auth is
 // skipped). Reads the existing desktop-auth session shape only:
@@ -106,8 +109,24 @@ export const AccountProfile: React.FC = () => {
   }, []);
 
   const quotaSubject = session !== null && session.status === 'signed-in' ? session.subject : null;
-  const { quota, refresh: refreshQuota } = useAccountQuota(isVSCode ? null : quotaSubject);
-
+  // Readiness mirrors what the /api gate accepts: the auth-session store
+  // must consider the session usable AND the parsed session must carry an
+  // identity to query. Until both hold the quota hook performs no fetch.
+  const quotaReady = authState === 'ok' && quotaSubject !== null && quotaSubject !== '';
+  const { status: quotaStatus, refresh: refreshQuota, lastUpdated: quotaUpdatedAt, isRefreshing: quotaRefreshing } =
+    useAccountQuota(isVSCode ? null : quotaSubject, isVSCode ? false : quotaReady);
+  const {
+    entitlements: entitlementsStatus,
+    refresh: refreshEntitlements,
+    lastUpdated: entitlementsUpdatedAt,
+    isRefreshing: entitlementsRefreshing,
+  } = useAccountEntitlements(isVSCode ? null : quotaSubject, isVSCode ? false : quotaReady);
+  const {
+    plan: planStatus,
+    refresh: refreshPlan,
+    lastUpdated: planUpdatedAt,
+    isRefreshing: planRefreshing,
+  } = useAccountPlan(isVSCode ? null : quotaSubject, isVSCode ? false : quotaReady);
   const handleSignOut = React.useCallback(async () => {
     if (signingOut) return;
     setSigningOut(true);
@@ -118,11 +137,29 @@ export const AccountProfile: React.FC = () => {
     }
   }, [signingOut, t]);
 
+  const composedLastUpdated = (() => {
+    const stamps = [quotaUpdatedAt, entitlementsUpdatedAt, planUpdatedAt].filter(
+      (stamp): stamp is number => typeof stamp === 'number' && Number.isFinite(stamp),
+    );
+    if (stamps.length === 0) return null;
+    return Math.max(...stamps);
+  })();
+
+  const handleQuotaRefresh = React.useCallback(() => {
+    refreshQuota();
+    refreshEntitlements();
+    refreshPlan();
+  }, [refreshQuota, refreshEntitlements, refreshPlan]);
+
   const handleQuotaOpenChange = React.useCallback(
     (nextOpen: boolean) => {
-      if (nextOpen) refreshQuota();
+      if (nextOpen) {
+        refreshQuota();
+        refreshEntitlements();
+        refreshPlan();
+      }
     },
-    [refreshQuota],
+    [refreshQuota, refreshEntitlements, refreshPlan],
   );
 
   if (isVSCode) return null;
@@ -175,31 +212,27 @@ export const AccountProfile: React.FC = () => {
             <span className="truncate">{label}</span>
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64 p-0">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <AccountAvatar
-              displayName={session.displayName}
-              avatarUrl={session.avatarUrl}
-              initials={session.initials}
-              size="lg"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="truncate typography-ui-label font-medium text-foreground">{label}</div>
-              {session.email ? (
-                <div className="truncate typography-micro text-muted-foreground">{session.email}</div>
-              ) : null}
-              {session.tier ? (
-                <span
-                  data-testid="account-tier"
-                  className="mt-1 inline-block rounded-full border border-border px-2 py-px typography-micro text-muted-foreground"
-                >
-                  {session.tier}
-                </span>
-              ) : null}
-            </div>
+        <DropdownMenuContent
+          align="end"
+          className="w-[34rem] max-w-[min(34rem,calc(100vw-2rem))] overflow-x-hidden overflow-y-auto p-0"
+          style={{ maxHeight: 'calc(100dvh - 0.5rem)' }}
+        >
+          <AccountQuotaSection
+            status={quotaStatus}
+            entitlements={entitlementsStatus}
+            plan={planStatus}
+            onRefresh={handleQuotaRefresh}
+            needsSession={!quotaReady}
+            displayName={session.displayName}
+            email={session.email}
+            avatarUrl={session.avatarUrl}
+            initials={session.initials}
+            lastUpdated={composedLastUpdated}
+            isRefreshing={quotaRefreshing || entitlementsRefreshing || planRefreshing}
+          />
+          <div className="px-4 pb-1">
+            <AccountProviderLimits />
           </div>
-          <DropdownMenuSeparator />
-          <AccountQuotaSection quota={quota} onRefresh={refreshQuota} />
           <DropdownMenuSeparator />
           <div className="p-2">
             <Button
@@ -211,6 +244,7 @@ export const AccountProfile: React.FC = () => {
               disabled={signingOut}
               onClick={() => void handleSignOut().catch(() => toast.error(t('sessionAuth.error.networkRetry')))}
             >
+              <Icon name="arrow-right" className="size-4 rtl:rotate-180" />
               <span>{t('header.account.signOut')}</span>
             </Button>
           </div>
