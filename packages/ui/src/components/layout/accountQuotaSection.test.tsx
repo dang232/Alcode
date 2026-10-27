@@ -89,7 +89,7 @@ const containers: HTMLElement[] = [];
 const renderSection = (
   status: AccountQuotaStatus | null,
   entitlements?: AccountEntitlementsStatus | null,
-  extras: { onRefresh?: () => void; needsSession?: boolean; lastUpdated?: number | null; isRefreshing?: boolean; plan?: AccountPlanStatus | null } = {},
+  extras: { onRefresh?: () => void; needsSession?: boolean; lastUpdated?: number | null; isRefreshing?: boolean; plan?: AccountPlanStatus | null; quotaFailed?: boolean } = {},
 ) => {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -107,6 +107,7 @@ const renderSection = (
       email: 'ada@example.com',
       lastUpdated: extras.lastUpdated ?? null,
       isRefreshing: extras.isRefreshing ?? false,
+      quotaFailed: extras.quotaFailed ?? false,
     }),
   )));
   return container;
@@ -474,6 +475,22 @@ test('loading renders the loading notice with no refresh control', () => {
   expect(container.querySelector('[data-quota-state]')?.getAttribute('data-quota-state')).toBe('loading');
   expect(container.textContent).toContain('Quota…');
   expect(container.querySelector('[data-testid="account-quota-refresh"]')).toBeNull();
+});
+
+test('a failed read names the failure instead of spinning on the loading label', () => {
+  let calls = 0;
+  const container = renderSection(null, undefined, { quotaFailed: true, onRefresh: () => { calls += 1; } });
+  // A read that answered nothing is a failure, not a read still in flight:
+  // the panel names it and keeps the retry reachable.
+  expect(container.querySelector('[data-quota-state]')?.getAttribute('data-quota-state')).toBe('unavailable');
+  expect(container.textContent).toContain('Quota unavailable');
+  expect(container.textContent).not.toContain('Quota…');
+  const button = container.querySelector('[data-testid="account-quota-refresh"]');
+  expect(button).not.toBeNull();
+  act(() => {
+    button?.dispatchEvent(new Event('click', { bubbles: true }));
+  });
+  expect(calls).toBe(1);
 });
 
 test('a missing UI session names the action instead of spinning forever', () => {

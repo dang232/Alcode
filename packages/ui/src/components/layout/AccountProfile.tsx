@@ -113,7 +113,7 @@ export const AccountProfile: React.FC = () => {
   // must consider the session usable AND the parsed session must carry an
   // identity to query. Until both hold the quota hook performs no fetch.
   const quotaReady = authState === 'ok' && quotaSubject !== null && quotaSubject !== '';
-  const { status: quotaStatus, refresh: refreshQuota, lastUpdated: quotaUpdatedAt, isRefreshing: quotaRefreshing } =
+  const { status: quotaStatus, refresh: refreshQuota, lastUpdated: quotaUpdatedAt, isRefreshing: quotaRefreshing, failed: quotaFailed } =
     useAccountQuota(isVSCode ? null : quotaSubject, isVSCode ? false : quotaReady);
   const {
     entitlements: entitlementsStatus,
@@ -229,6 +229,7 @@ export const AccountProfile: React.FC = () => {
             initials={session.initials}
             lastUpdated={composedLastUpdated}
             isRefreshing={quotaRefreshing || entitlementsRefreshing || planRefreshing}
+            quotaFailed={quotaFailed}
           />
           <div className="px-4 pb-1">
             <AccountProviderLimits />

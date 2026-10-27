@@ -320,9 +320,14 @@ describe('useAccountQuota readiness', () => {
   const seen: Array<AccountQuotaStatus | null> = [];
   let latestRefresh: () => void = () => {};
 
+  // A read that answers nothing must reach the panel as a failure; these keep
+  // both halves of that state so the assertion covers the hook, not just the view.
+  const seenFailed: boolean[] = [];
+
   const Probe: React.FC<{ subject: string | null; ready: boolean }> = ({ subject, ready }) => {
-    const { status, refresh } = useAccountQuota(subject, ready);
+    const { status, refresh, failed } = useAccountQuota(subject, ready);
     seen.push(status);
+    seenFailed.push(failed);
     latestRefresh = refresh;
     return null;
   };
@@ -366,6 +371,7 @@ describe('useAccountQuota readiness', () => {
       return respondWith(String(input));
     }) as typeof fetch;
     seen.length = 0;
+    seenFailed.length = 0;
     latestRefresh = () => {};
     const { createRoot } = await import('react-dom/client');
     const container = document.createElement('div');
@@ -453,6 +459,9 @@ describe('useAccountQuota readiness', () => {
       await renderProbe('auth_user_1', true);
       expect(requests).toHaveLength(1);
       expect(seen.at(-1)).toBeNull();
+      // A rejected read is reported as a failure, so the panel can name it
+      // instead of showing a loading label that never resolves.
+      expect(seenFailed.at(-1)).toBe(true);
     } finally {
       await teardown(root);
     }

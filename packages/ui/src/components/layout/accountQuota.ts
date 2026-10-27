@@ -241,12 +241,19 @@ interface AccountQuotaStatusRead {
   lastUpdated: number | null;
   /** True while a quota read is in flight (initial, periodic, or manual). */
   isRefreshing: boolean;
+  /**
+   * True when the most recent read came back with nothing usable. Without it a
+   * failed read is indistinguishable from one still in flight, and the panel
+   * stays on its loading label forever instead of saying the read failed.
+   */
+  failed: boolean;
 }
 
 export const useAccountQuota = (authUserId: string | null, ready: boolean): AccountQuotaStatusRead => {
   const [status, setStatus] = React.useState<AccountQuotaStatus | null>(null);
   const [lastUpdated, setLastUpdated] = React.useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
   const mountedRef = React.useRef(true);
   React.useEffect(() => {
     mountedRef.current = true;
@@ -281,15 +288,23 @@ export const useAccountQuota = (authUserId: string | null, ready: boolean): Acco
     let settled = false;
     const controller = new AbortController();
     setStatus(null);
+    setFailed(false);
     if (mountedRef.current) setIsRefreshing(true);
     void fetchAccountQuotaStatus(authUserId, controller.signal)
       .then((next) => {
-        if (!settled && next !== null) {
+        if (settled) return;
+        if (next !== null) {
           setStatus(next);
           setLastUpdated(Date.now());
+        } else if (mountedRef.current) {
+          // A read that answers nothing is a failure the panel must be able to
+          // name; keeping status null alone reads exactly like "still loading".
+          setFailed(true);
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!settled && mountedRef.current) setFailed(true);
+      })
       .finally(() => {
         if (!settled && mountedRef.current) setIsRefreshing(false);
       });
@@ -323,5 +338,5 @@ export const useAccountQuota = (authUserId: string | null, ready: boolean): Acco
       unsubscribe();
     };
   }, [authUserId, ready]);
-  return { status, refresh, lastUpdated, isRefreshing };
+  return { status, refresh, lastUpdated, isRefreshing, failed };
 };

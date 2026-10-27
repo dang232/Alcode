@@ -148,6 +148,12 @@ export const AccountQuotaSection: React.FC<{
   lastUpdated?: number | null;
   /** True while a quota, plan, or entitlements read is in flight; drives the refresh affordance. */
   isRefreshing?: boolean;
+  /**
+   * The last quota read failed. Distinguishes a failed read from one still in
+   * flight so the panel can name the failure instead of showing a loading label
+   * that never resolves.
+   */
+  quotaFailed?: boolean;
 }> = ({
   status,
   entitlements,
@@ -160,9 +166,12 @@ export const AccountQuotaSection: React.FC<{
   initials = '',
   lastUpdated = null,
   isRefreshing = false,
+  quotaFailed = false,
 }) => {
   const { t } = useI18n();
-  const quotaState = status === null ? (needsSession ? 'unlinked' : 'loading') : status.link;
+  const quotaState = status === null
+    ? (needsSession ? 'unlinked' : quotaFailed ? 'unavailable' : 'loading')
+    : status.link;
   const linked = status !== null && status.link === 'linked' ? status : null;
   const entLinked = entitlements !== undefined && entitlements !== null && entitlements.link === 'linked'
     ? entitlements
@@ -464,6 +473,17 @@ export const AccountQuotaSection: React.FC<{
       {status === null && needsSession ? (
         <div className="typography-micro mt-3 text-muted-foreground">
           {t('header.account.quota.state.signInRequired')}
+        </div>
+      ) : status === null && quotaFailed ? (
+        // A read that failed is not a read still in flight: name it, keep the
+        // retry within reach, and never leave the loading label on screen.
+        <div className="mt-3 flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="typography-micro min-w-0 flex-1 text-muted-foreground">
+              {t('header.account.quotaUnavailable')}
+            </div>
+            <RefreshButton isRefreshing={isRefreshing} onRefresh={onRefresh} />
+          </div>
         </div>
       ) : status === null ? (
         <div className="typography-micro mt-3 text-muted-foreground">{t('header.account.quotaLoading')}</div>
