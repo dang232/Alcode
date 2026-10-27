@@ -56,6 +56,9 @@
     "yaml": "^2.8.1",
     "zod": "^4.3.6"
   },
+  "optionalDependencies": {
+    "@napi-rs/keyring": "^2.1.2"
+  },
   "devDependencies": {
     "@base-ui/react": "^1.4.0",
     "@codemirror/lang-cpp": "^6.0.3",

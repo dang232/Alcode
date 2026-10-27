@@ -29,15 +29,15 @@ const memoryTokenStore = ({ pairs = {}, refreshImpl = null } = {}) => {
   const calls = { read: [], refreshed: [], cleared: [] };
   return {
     calls,
-    readPair: async (sub) => {
+    get: async (sub) => {
       calls.read.push(sub);
       const found = held.get(sub);
       return found ? { ...found } : null;
     },
-    savePair: async (sub, pair) => {
+    set: async (sub, pair) => {
       held.set(sub, { ...pair });
     },
-    clearPair: async (sub) => {
+    clear: async (sub) => {
       calls.cleared.push(sub);
       held.delete(sub);
     },
@@ -734,6 +734,42 @@ describe('alcore provider constants', () => {
     expect(ALCORE_PROVIDER_ID).toBe('alcore');
     expect(ALCORE_PROVIDER_PACKAGE).toBe('aisdk:@ai-sdk/openai-compatible');
     expect(ALCORE_ENV_CREDENTIAL).toBe('ALCORE_USER_TOKEN');
+  });
+});
+
+describe('alcore CredentialStore migration (get/clear, no behaviour change)', () => {
+  test('catalog read and sign-out clear use only the new get/clear names', async () => {
+    // A strict store exposing exactly the CredentialStore shape: any
+    // lingering call under a removed name would throw a TypeError here.
+    const held = new Map([['user-1', { accessToken: 'user-access-1', refreshToken: 'user-refresh-1' }]]);
+    const calls = { got: [], cleared: [] };
+    const strictStore = {
+      get: async (sub) => {
+        calls.got.push(sub);
+        const found = held.get(sub);
+        return found ? { ...found } : null;
+      },
+      set: async (sub, pair) => { held.set(sub, { ...pair }); },
+      clear: async (sub) => { calls.cleared.push(sub); held.delete(sub); },
+      refreshAccessToken: async () => { throw Object.assign(new Error('no refresh'), { code: 'USER_TOKEN_NO_REFRESH' }); },
+    };
+    const wired = createAlcoreProviderRuntime({
+      userTokenStore: strictStore,
+      upsertProviderConfig: () => ({}),
+      removeProviderConfig: async () => true,
+      serviceFetch: async () => okResponse(OPENAI_LIST),
+      env: {},
+      credentialWait: async () => undefined,
+    });
+    // The injected shape matches the real CredentialStore exactly.
+    expect(Object.keys(strictStore).sort()).toEqual(['clear', 'get', 'refreshAccessToken', 'set']);
+    // Read path uses get().
+    const catalog = await wired.fetchAlcoreCatalog('user-1');
+    expect(catalog.models).toHaveLength(2);
+    expect(calls.got).toEqual(['user-1']);
+    // Clear path uses clear().
+    await wired.clearOnSignOut('user-1');
+    expect(calls.cleared).toEqual(['user-1']);
   });
 });
 

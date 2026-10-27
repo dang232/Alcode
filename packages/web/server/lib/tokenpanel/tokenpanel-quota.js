@@ -47,6 +47,8 @@
 // inherit the shared-UI behavior wherever this server runs.
 import { z } from 'zod';
 
+import { hasTokenPersistFailed as defaultHasPersistFailed } from '../desktop-auth/desktop-auth.js';
+
 export const TOKENPANEL_DEFAULT_BASE = 'https://alcore.io.vn';
 export const TOKENPANEL_QUOTA_PATH = '/admin/ide/quota';
 export const TOKENPANEL_QUOTA_CACHE_TTL_MS = 60_000;
@@ -102,6 +104,13 @@ export const createTokenpanelQuotaRuntime = ({
   // Shared keychain store (production wiring passes the singleton; tests
   // inject a memory fake). Null reads as "no stored pairs".
   userTokenStore = null,
+  // Persist-failure signal for the status route (production default: the
+  // desktop-auth in-module flag — a `set()` that threw at login capture
+  // records the subject there — so no wiring change is needed: both
+  // runtimes share the module instance in one process. Tests inject a
+  // stub). Receives the subject only, never tokens; a throwing probe
+  // reads as "no failure" and falls through to the tier check.
+  hasPersistFailed = defaultHasPersistFailed,
   // Resolves the caller's own Alcore sub for the self-only check
   // (production: uiAuthController.resolveRequestAlcoreSub). A throwing or
   // non-string answer reads as unknown identity and fails closed.
@@ -130,7 +139,7 @@ export const createTokenpanelQuotaRuntime = ({
   const readStoredAccess = async (authUserId) => {
     if (userTokenStore === null || userTokenStore === undefined) return '';
     try {
-      const pair = await userTokenStore.readPair(authUserId);
+      const pair = await userTokenStore.get(authUserId);
       return z.object({ accessToken: z.string() }).safeParse(pair).data?.accessToken ?? '';
     } catch {
       return '';
@@ -140,7 +149,7 @@ export const createTokenpanelQuotaRuntime = ({
   const clearStoredPair = async (authUserId) => {
     if (userTokenStore === null || userTokenStore === undefined) return;
     try {
-      await userTokenStore.clearPair(authUserId);
+      await userTokenStore.clear(authUserId);
     } catch {
       // Best-effort: the session-expired answer below is what matters.
     }
@@ -269,25 +278,96 @@ export const createTokenpanelQuotaRuntime = ({
     return { status: 503, body: { error: 'tokenpanel_unavailable' } };
   };
 
+  // Persistence label the status route reports. 'ephemeral' when a persist
+  // has failed for the current subject (the desktop-auth capture `set()`
+  // threw — the pair lives in memory only until restart), else durable
+  // only when the user-token store exposes a passing isDurable() probe
+  // (OS-keychain seam available plus a persisted write round-trip); every
+  // other shape — null store, missing predicate, throwing probe, false —
+  // reads as ephemeral. The link/action mapping is unchanged (Phase 1):
+  // this label rides along on every link state. Never throws.
+  const resolvePersistence = (sub) => {
+    try {
+      if (typeof hasPersistFailed === 'function' && hasPersistFailed(sub) === true) {
+        return 'ephemeral';
+      }
+    } catch {
+      // Fall through to the tier check: a failing probe must never fail
+      // a read and never mask a durable store.
+    }
+    try {
+      if (userTokenStore !== null && userTokenStore !== undefined
+        && typeof userTokenStore.isDurable === 'function'
+        && userTokenStore.isDurable() === true) {
+        return 'durable';
+      }
+    } catch {
+      // Fall through to ephemeral: durability must never fail a read.
+    }
+    return 'ephemeral';
+  };
+
+  // Fixed server mapping for GET /api/tokenpanel/status (no client
+  // inference). The shared resolveQuotaBody above is the single resolve
+  // path: success (live or stale:true) -> linked with quota present;
+  // NOT_CONFIGURED -> unlinked/sign_in; SESSION_EXPIRED or FORBIDDEN ->
+  // expired/sign_in; REJECTED, TRANSIENT, MISCONFIGURED, INVALID_REQUEST,
+  // unknown, 5xx, 429, network, malformed body -> upstream_error/retry.
+  // FORBIDDEN from the shared resolver is mapped here for contract
+  // completeness; over HTTP it surfaces as the 403 self-only answer
+  // below before the resolver runs.
+  const mapStatusError = (error) => {
+    if (error instanceof TokenpanelQuotaError) {
+      if (error.code === 'TOKENPANEL_NOT_CONFIGURED') return { link: 'unlinked', action: 'sign_in' };
+      if (error.code === 'TOKENPANEL_SESSION_EXPIRED' || error.code === 'TOKENPANEL_FORBIDDEN') {
+        return { link: 'expired', action: 'sign_in' };
+      }
+    }
+    return { link: 'upstream_error', action: 'retry' };
+  };
+
+  const resolveRouteSubject = async (req) => {
+    try {
+      const resolved = await resolveSubject(req);
+      return z.string().safeParse(resolved).data ?? '';
+    } catch {
+      return '';
+    }
+  };
+
   const registerRoutes = (app) => {
     app.get('/api/tokenpanel/quota', async (req, res) => {
       const candidate = authUserIdSchema.safeParse(req?.query?.authUserId);
       if (!candidate.success) {
         return res.status(400).json({ error: 'invalid_request' });
       }
-      let subject = '';
-      try {
-        const resolved = await resolveSubject(req);
-        subject = z.string().safeParse(resolved).data ?? '';
-      } catch {
-        subject = '';
-      }
+      const subject = await resolveRouteSubject(req);
       try {
         const resolved = await resolveQuotaBody(candidate.data, subject);
         return res.json(resolved.body);
       } catch (error) {
         const mapped = errorOf(error);
         return res.status(mapped.status).json(mapped.body);
+      }
+    });
+
+    app.get('/api/tokenpanel/status', async (req, res) => {
+      const candidate = authUserIdSchema.safeParse(req?.query?.authUserId);
+      if (!candidate.success) {
+        return res.status(400).json({ error: 'invalid_request' });
+      }
+      const subject = await resolveRouteSubject(req);
+      const caller = z.string().safeParse(subject).data ?? '';
+      if (caller === '' || caller !== candidate.data) {
+        return res.status(403).json({ error: 'tokenpanel_forbidden' });
+      }
+      const persistence = resolvePersistence(candidate.data);
+      try {
+        const resolved = await resolveQuotaBody(candidate.data, subject);
+        return res.json({ link: 'linked', persistence, quota: resolved.body });
+      } catch (error) {
+        const mapped = mapStatusError(error);
+        return res.json({ link: mapped.link, persistence, action: mapped.action });
       }
     });
   };
