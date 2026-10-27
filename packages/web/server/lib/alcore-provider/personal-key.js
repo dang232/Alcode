@@ -196,7 +196,7 @@ export const createPersonalKeyRuntime = ({
   const readStoredAccess = async (sub) => {
     if (userTokenStore === null || userTokenStore === undefined) return '';
     try {
-      const pair = await userTokenStore.readPair(sub);
+      const pair = await userTokenStore.get(sub);
       const access = z.object({ accessToken: z.string() }).safeParse(pair).data?.accessToken ?? '';
       return access.trim();
     } catch {

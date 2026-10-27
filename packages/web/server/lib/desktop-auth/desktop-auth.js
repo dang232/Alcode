@@ -187,6 +187,51 @@ const googleCompleteSchema = z.object({
 
 const badRequest = (res, error) => res.status(400).json({ error });
 
+// Persist-failure visibility (CredentialStore migration).
+//
+// The CredentialStore factory (`user-token-store.js`) has tier `keychain` |
+// `encrypted-file` | `memory` chosen ONCE at creation, with `isDurable()
+// === tier !== 'memory'`. A durable tier can still fail on a single write
+// (locked keychain, unwritable disk): the store keeps serving from its
+// memory working set, so the login stands, but the session is ephemeral —
+// a restart loses the pair.
+//
+// `persistFailedSubjects` records subjects whose last capture `set()`
+// threw, so the TokenPanel status route can report persistence
+// 'ephemeral' for exactly those subjects even when the store tier is
+// durable (`tokenpanel-quota.js` reads `hasTokenPersistFailed`, injected
+// with this module's function as its default). A later successful `set()`
+// for the same subject clears the entry: the pair is durable again.
+// Production may ALSO pass `onTokenPersistFailure(sub)` to
+// `createDesktopAuthRuntime`; it receives the verified subject only —
+// never tokens — and a throwing callback never fails the login. Both the
+// in-module flag and the callback record the same failure; either is
+// sufficient for the status route.
+const persistFailedSubjects = new Set();
+
+export const hasTokenPersistFailed = (sub) => {
+  try {
+    const id = z.string().trim().min(1).safeParse(sub).data;
+    if (id === undefined) return false;
+    return persistFailedSubjects.has(id);
+  } catch {
+    return false;
+  }
+};
+
+// Test seam: drop one subject (or every subject when called with no valid
+// subject) from the persist-failure set so persist-failure tests stay
+// isolated without re-importing this module.
+export const clearTokenPersistFailed = (sub) => {
+  try {
+    const id = z.string().trim().min(1).safeParse(sub).data;
+    if (id === undefined) persistFailedSubjects.clear();
+    else persistFailedSubjects.delete(id);
+  } catch {
+    try { persistFailedSubjects.clear(); } catch { /* never throw */ }
+  }
+};
+
 export const createDesktopAuthRuntime = ({
   uiAuthController,
   alcoreSecret,
@@ -202,6 +247,12 @@ export const createDesktopAuthRuntime = ({
   // subject only — never tokens. Null disables the hook. A throwing hook
   // never fails the login it follows.
   onLoginTokens = null,
+  // Persist-failure hook (production: the app may wire the TokenPanel
+  // status path to the same signal). Receives the verified subject only
+  // — never tokens. Null (default) keeps the in-module
+  // `persistFailedSubjects` flag as the only record. A throwing callback
+  // never fails the login it follows.
+  onTokenPersistFailure = null,
 } = {}) => {
   const serviceBase = resolveServiceBase(authServiceBase);
   const pendingGoogle = new Map();
@@ -303,9 +354,32 @@ export const createDesktopAuthRuntime = ({
       const id = z.string().trim().min(1).safeParse(sub).data ?? '';
       const access = String(accessToken ?? '').trim();
       if (id === '' || access === '') return;
-      await userTokenStore.savePair(id, { accessToken: access, refreshToken });
+      await userTokenStore.set(id, { accessToken: access, refreshToken });
+      try {
+        persistFailedSubjects.delete(id);
+      } catch {
+        // Best-effort: the healed write above is what matters.
+      }
     } catch {
-      // Storage failure must not fail a proven login.
+      // Storage failure must not fail a proven login. It must not stay
+      // silent either: one fixed-literal warning (no interpolated values,
+      // so no token, fragment, or length can ever reach the log) plus the
+      // ephemeral record the status route reads.
+      try {
+        const id = z.string().trim().min(1).safeParse(sub).data;
+        if (id !== undefined) persistFailedSubjects.add(id);
+      } catch {
+        // Best-effort: the warning below is what matters.
+      }
+      try {
+        if (onTokenPersistFailure !== null && onTokenPersistFailure !== undefined) {
+          const id = z.string().trim().min(1).safeParse(sub).data ?? '';
+          if (id !== '') await onTokenPersistFailure(id);
+        }
+      } catch {
+        // A failing persist-failure hook must not fail a proven login.
+      }
+      console.warn('desktop-auth: user-tokens persist failed (storage unavailable); session is ephemeral');
     }
   };
 
@@ -782,5 +856,8 @@ ${detailLine}
     // Test seams (not routes).
     _pendingGoogle: pendingGoogle,
     _sweepGoogle: sweepGoogle,
+    // Persist-failure record for the status route (same function as the
+    // module export; per-runtime alias so tests need not re-import).
+    hasTokenPersistFailed,
   };
 };

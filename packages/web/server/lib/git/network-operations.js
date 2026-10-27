@@ -2473,7 +2473,12 @@ export function createNetworkOperations({
     }
     return registerWithAudit(plans);
   };
-  const plan = (request) => planWithDeadline(request, Date.now() + timeoutMs);
+  // `options.timeoutMs` lets a caller give planning its own budget instead of
+  // sharing one deadline with execution: a tiny service-wide timeout used to
+  // let planning itself expire, which surfaced as a thrown TIMEOUT where the
+  // execute path reports a cancelled outcome.
+  const plan = (request, options = {}) =>
+    planWithDeadline(request, Date.now() + (options.timeoutMs ?? timeoutMs));
   const auditedStarts = new Map();
   const auditedExecutions = new Map();
   const executeOperation = (operationId, deadline) => {

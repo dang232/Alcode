@@ -278,7 +278,7 @@ export const createAlcoreProviderRuntime = ({
   const readStoredAccess = async (sub) => {
     if (userTokenStore === null || userTokenStore === undefined) return '';
     try {
-      const pair = await userTokenStore.readPair(sub);
+      const pair = await userTokenStore.get(sub);
       const access = z.object({ accessToken: z.string() }).safeParse(pair).data?.accessToken ?? '';
       return access.trim();
     } catch {
@@ -595,7 +595,7 @@ export const createAlcoreProviderRuntime = ({
   };
 
   // Best-effort teardown on global sign-out. Revokes the minted personal
-  // key id FIRST (the caller's Bearer is still keychained here — clearPair
+  // key id FIRST (the caller's Bearer is still keychained here — clear
   // runs below — and the revoke is what turns a sign-out into a dead
   // provider key), then drops the ambient credential and every OpenCode
   // `alcore` credential; the pair and the config entry follow when present.
@@ -637,7 +637,7 @@ export const createAlcoreProviderRuntime = ({
     if (id === undefined) return outcome;
     if (userTokenStore !== null && userTokenStore !== undefined) {
       try {
-        await userTokenStore.clearPair(id);
+        await userTokenStore.clear(id);
         outcome.cleared = true;
       } catch {
         // Best-effort: the serving path is what matters, and sign-out

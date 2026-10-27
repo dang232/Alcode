@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createDesktopAuthRuntime } from './desktop-auth.js';
+import {
+  clearTokenPersistFailed,
+  createDesktopAuthRuntime,
+  hasTokenPersistFailed,
+} from './desktop-auth.js';
 
 // Desktop sign-in proxies translate Alcore auth-service pairs into IDE UI
 // sessions through the existing session handler. The service is stubbed;
@@ -45,6 +49,7 @@ const createHarness = ({
   alcoreSecret = 'test-alcore-secret-32-chars-long!!',
   userTokenStore = null,
   onLoginTokens = null,
+  onTokenPersistFailure = null,
 } = {}) => {
   const routes = new Map();
   const seenSessions = [];
@@ -53,9 +58,9 @@ const createHarness = ({
   const tokenSaves = [];
   const tokenStore = userTokenStore ?? {
     saves: tokenSaves,
-    savePair: async (sub, pair) => { tokenSaves.push({ sub, pair }); },
-    readPair: async () => null,
-    clearPair: async () => {},
+    set: async (sub, pair) => { tokenSaves.push({ sub, pair }); },
+    get: async () => null,
+    clear: async () => {},
     refreshAccessToken: async () => { throw new Error('refresh not stubbed'); },
   };
   const serviceFetch = async (url, init) => {
@@ -82,6 +87,7 @@ const createHarness = ({
     serviceFetch,
     userTokenStore: tokenStore,
     onLoginTokens,
+    onTokenPersistFailure,
   });
   runtime.registerRoutes(
     {
@@ -901,9 +907,9 @@ describe('desktop login keychain capture', () => {
     const h = createHarness({
       serviceImpl: async () => h.serviceJson(200, { ...SERVICE_PAIR, access_token: access }),
       userTokenStore: {
-        savePair: async () => { throw new Error('keychain locked'); },
-        readPair: async () => null,
-        clearPair: async () => {},
+        set: async () => { throw new Error('keychain locked'); },
+        get: async () => null,
+        clear: async () => {},
         refreshAccessToken: async () => { throw new Error('refresh not stubbed'); },
       },
     });
@@ -1007,5 +1013,113 @@ describe('desktop auth tunnel scope', () => {
     }
     expect(h.serviceCalls).toHaveLength(0);
     expect(h.seenSessions).toHaveLength(0);
+  });
+});
+
+describe('desktop login persist-failure surfacing (CredentialStore migration)', () => {
+  const jwtAccess = (sub) => `header.${Buffer.from(JSON.stringify({ sub, sid: 'sess-1' })).toString('base64url')}.sig`;
+  const ACCESS = jwtAccess('persist-subject-1');
+  const REFRESH = 'persist-refresh-token-9f8e7d6c5b4a';
+
+  test('a store whose set() throws warns exactly once with no token material and records ephemeral', async () => {
+    clearTokenPersistFailed();
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args.map((part) => String(part)).join(' ')); };
+    try {
+      const persisted = [];
+      const h = createHarness({
+        serviceImpl: async () => h.serviceJson(200, { ...SERVICE_PAIR, access_token: ACCESS, refresh_token: REFRESH }),
+        userTokenStore: {
+          set: async (sub, pair) => { persisted.push({ sub, pair }); throw new Error('disk full'); },
+          get: async () => null,
+          clear: async () => {},
+          refreshAccessToken: async () => { throw new Error('refresh not stubbed'); },
+        },
+      });
+      const { res } = await h.call('POST', '/api/auth/desktop/email/login', {
+        body: { email: 'a@example.test', password: 's3cret!!' },
+      });
+      // The proven login stands even though the persist failed.
+      expect(res.statusCode).toBe(200);
+      expect(h.seenSessions).toHaveLength(1);
+      // Exactly one warning, naming the storage failure with no token material.
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('persist');
+      expect(warnings[0]).not.toContain(ACCESS);
+      expect(warnings[0]).not.toContain(REFRESH);
+      expect(warnings[0]).not.toContain(ACCESS.slice(0, 8));
+      expect(warnings[0]).not.toContain(REFRESH.slice(0, 8));
+      expect(warnings[0]).not.toContain(String(ACCESS.length));
+      // The session is recorded ephemeral so the status route reports it.
+      expect(hasTokenPersistFailed('persist-subject-1')).toBe(true);
+      expect(h.runtime.hasTokenPersistFailed('persist-subject-1')).toBe(true);
+    } finally {
+      console.warn = originalWarn;
+      clearTokenPersistFailed();
+    }
+  });
+
+  test('a persist failure notifies the wired callback with the subject only', async () => {
+    clearTokenPersistFailed();
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args.map((part) => String(part)).join(' ')); };
+    try {
+      const seen = [];
+      const h = createHarness({
+        serviceImpl: async () => h.serviceJson(200, { ...SERVICE_PAIR, access_token: ACCESS, refresh_token: REFRESH }),
+        userTokenStore: {
+          set: async () => { throw new Error('locked'); },
+          get: async () => null,
+          clear: async () => {},
+          refreshAccessToken: async () => { throw new Error('refresh not stubbed'); },
+        },
+        onTokenPersistFailure: async (sub) => { seen.push(sub); },
+      });
+      const { res } = await h.call('POST', '/api/auth/desktop/email/login', {
+        body: { email: 'a@example.test', password: 's3cret!!' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(seen).toEqual(['persist-subject-1']);
+      expect(warnings).toHaveLength(1);
+    } finally {
+      console.warn = originalWarn;
+      clearTokenPersistFailed();
+    }
+  });
+
+  test('a successful capture heals the ephemeral record', async () => {
+    clearTokenPersistFailed();
+    try {
+      let shouldThrow = true;
+      const h = createHarness({
+        serviceImpl: async () => h.serviceJson(200, { ...SERVICE_PAIR, access_token: ACCESS, refresh_token: REFRESH }),
+        userTokenStore: {
+          set: async () => { if (shouldThrow) throw new Error('locked'); },
+          get: async () => null,
+          clear: async () => {},
+          refreshAccessToken: async () => { throw new Error('refresh not stubbed'); },
+        },
+      });
+      const warnings = [];
+      const originalWarn = console.warn;
+      console.warn = (...args) => { warnings.push(args.map((part) => String(part)).join(' ')); };
+      try {
+        await h.call('POST', '/api/auth/desktop/email/login', {
+          body: { email: 'a@example.test', password: 's3cret!!' },
+        });
+      } finally {
+        console.warn = originalWarn;
+      }
+      expect(hasTokenPersistFailed('persist-subject-1')).toBe(true);
+      shouldThrow = false;
+      await h.call('POST', '/api/auth/desktop/email/login', {
+        body: { email: 'a@example.test', password: 's3cret!!' },
+      });
+      expect(hasTokenPersistFailed('persist-subject-1')).toBe(false);
+    } finally {
+      clearTokenPersistFailed();
+    }
   });
 });

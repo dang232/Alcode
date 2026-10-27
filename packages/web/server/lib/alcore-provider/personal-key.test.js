@@ -43,7 +43,7 @@ const memoryTokenStore = ({ pairs = {}, refreshImpl = null } = {}) => {
   const calls = { read: [], refreshed: [] };
   return {
     calls,
-    readPair: async (sub) => {
+    get: async (sub) => {
       calls.read.push(sub);
       const found = held.get(sub);
       return found ? { ...found } : null;
@@ -147,7 +147,7 @@ describe('personal-key mint', () => {
       },
     });
     const cleared = [];
-    store.clearPair = async (sub) => { cleared.push(sub); };
+    store.clear = async (sub) => { cleared.push(sub); };
     const { serviceFetch } = stubFetch(async () => okResponse({ error: 'x' }, 401));
     const runtime = createPersonalKeyRuntime({ serviceFetch, userTokenStore: store, env: {} });
     await expect(runtime.mintPersonalKey('user-1')).rejects.toMatchObject({ code: 'PERSONAL_KEY_SESSION_EXPIRED' });
@@ -341,5 +341,32 @@ describe('key-id stores', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('personal-key CredentialStore migration (get, no behaviour change)', () => {
+  test('mint reads through only the new get() name', async () => {
+    const held = new Map([['user-1', { accessToken: 'user-access-1', refreshToken: 'user-refresh-1' }]]);
+    const calls = { got: [] };
+    const strictStore = {
+      get: async (sub) => {
+        calls.got.push(sub);
+        const found = held.get(sub);
+        return found ? { ...found } : null;
+      },
+      refreshAccessToken: async () => { throw Object.assign(new Error('no refresh'), { code: 'USER_TOKEN_NO_REFRESH' }); },
+    };
+    // The injected shape carries no removed names.
+    expect(Object.keys(strictStore).sort()).toEqual(['get', 'refreshAccessToken']);
+    const runtime = createPersonalKeyRuntime({
+      serviceFetch: async () => okResponse(MINT_ANSWER, 201),
+      userTokenStore: strictStore,
+      env: {},
+    });
+    const minted = await runtime.mintPersonalKey('user-1');
+    expect(minted.key).toBe(MINT_ANSWER.key);
+    // mintPersonalKey reads the stored access, then withOneRefresh reads it
+    // again for the attempt: both go through get().
+    expect(calls.got).toEqual(['user-1', 'user-1']);
   });
 });
