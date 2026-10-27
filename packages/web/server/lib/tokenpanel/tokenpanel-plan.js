@@ -218,6 +218,10 @@ export const createTokenpanelPlanRuntime = ({
   // (production: uiAuthController.resolveRequestAlcoreSub). A throwing or
   // non-string answer reads as unknown identity and fails closed.
   resolveSubject = async () => '',
+  // True when the request carries a valid UI session or Alcore token. The
+  // subject fallback below only completes such a session; it never
+  // authenticates one (a fake or absent seam reads as unauthenticated).
+  isAuthenticatedRequest = async () => false,
 } = {}) => {
   const cache = new Map();
 
@@ -431,10 +435,22 @@ export const createTokenpanelPlanRuntime = ({
     return { status: 503, body: { error: 'tokenpanel_unavailable' } };
   };
 
-  const resolveRouteSubject = async (req) => {
+  const resolveRouteSubject = async (req, requestedAuthUserId) => {
     try {
       const resolved = await resolveSubject(req);
-      return z.string().safeParse(resolved).data ?? '';
+      const parsed = z.string().safeParse(resolved).data ?? '';
+      if (parsed !== '') return parsed;
+      // A session minted before the identity was bound into the token answers no
+      // subject; the plan card then read as forbidden. Accept the requested
+      // identity only when this machine holds its credential.
+      const requested = z.string().safeParse(requestedAuthUserId).data ?? '';
+      if (requested === '' || userTokenStore === null || userTokenStore === undefined) return '';
+      // Only an already-authenticated session may be completed this way: the
+      // fallback fills a missing subject, it never authenticates a caller.
+      if (!(await isAuthenticatedRequest(req))) return '';
+      const pair = await userTokenStore.get(requested);
+      const accessToken = pair === null || pair === undefined ? '' : z.string().safeParse(pair.accessToken).data ?? '';
+      return accessToken === '' ? '' : requested;
     } catch {
       return '';
     }
@@ -446,7 +462,7 @@ export const createTokenpanelPlanRuntime = ({
       if (!candidate.success) {
         return res.status(400).json({ error: 'invalid_request' });
       }
-      const subject = await resolveRouteSubject(req);
+      const subject = await resolveRouteSubject(req, candidate.data);
       try {
         const resolved = await resolvePlanBody(candidate.data, subject);
         return res.json(resolved.body);

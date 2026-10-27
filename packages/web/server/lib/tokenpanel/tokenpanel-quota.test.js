@@ -406,6 +406,7 @@ describe('tokenpanel status route', () => {
     isDurable,
     hasPersistFailed,
     store = null,
+    authenticated = false,
   } = {}) => {
     let at = nowValue ?? Date.now();
     const handlers = new Map();
@@ -417,6 +418,7 @@ describe('tokenpanel status route', () => {
       now: () => at,
       userTokenStore: tokens,
       resolveSubject: async () => subject,
+      isAuthenticatedRequest: async () => authenticated,
       ...(hasPersistFailed === undefined ? {} : { hasPersistFailed }),
     });
     runtime.registerRoutes({ get: (path, handler) => handlers.set(`GET ${path}`, handler) });
@@ -753,6 +755,49 @@ describe('tokenpanel status route', () => {
       expect(res.statusCode).toBe(403);
       expect(res.body).toEqual({ error: 'tokenpanel_forbidden' });
     }
+  });
+
+  test('an authenticated session with no bound subject is completed from the stored credential', async () => {
+    // Sessions minted before the identity was signed into the token carry no
+    // subject; the account panel used to read them as forbidden and stay
+    // "Quota unavailable" even though the credential was right there.
+    const h = createBothHarness({
+      subject: '',
+      authenticated: true,
+      serviceImpl: (url, init, serviceJson) => serviceJson(200, LIVE_BODY),
+    });
+
+    const res = await h.callStatus({ authUserId: 'user-1' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.link).toBe('linked');
+    expect(res.body.quota).toEqual({ ...LIVE_BODY, source: 'live', stale: false });
+  });
+
+  test('an unauthenticated request stays forbidden even when the credential exists', async () => {
+    const h = createBothHarness({
+      subject: '',
+      authenticated: false,
+      serviceImpl: () => { throw new Error('must not be called'); },
+    });
+
+    const res = await h.callStatus({ authUserId: 'user-1' });
+
+    expect(res.statusCode).toBe(403);
+    expect(h.tokens.calls.read).toHaveLength(0);
+  });
+
+  test('an authenticated session naming an identity this machine has no credential for stays forbidden', async () => {
+    const h = createBothHarness({
+      subject: '',
+      authenticated: true,
+      pairs: {},
+      serviceImpl: () => { throw new Error('must not be called'); },
+    });
+
+    const res = await h.callStatus({ authUserId: 'user-1' });
+
+    expect(res.statusCode).toBe(403);
   });
 
   test('malformed identity answers 400 before any resolve', async () => {

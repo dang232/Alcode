@@ -115,6 +115,10 @@ export const createTokenpanelQuotaRuntime = ({
   // (production: uiAuthController.resolveRequestAlcoreSub). A throwing or
   // non-string answer reads as unknown identity and fails closed.
   resolveSubject = async () => '',
+  // True when the request carries a valid UI session or Alcore token. The
+  // subject fallback below only completes such a session; it never
+  // authenticates one (a fake or absent seam reads as unauthenticated).
+  isAuthenticatedRequest = async () => false,
 } = {}) => {
   const cache = new Map();
 
@@ -326,10 +330,25 @@ export const createTokenpanelQuotaRuntime = ({
     return { link: 'upstream_error', action: 'retry' };
   };
 
-  const resolveRouteSubject = async (req) => {
+  const resolveRouteSubject = async (req, requestedAuthUserId) => {
     try {
       const resolved = await resolveSubject(req);
-      return z.string().safeParse(resolved).data ?? '';
+      const parsed = z.string().safeParse(resolved).data ?? '';
+      if (parsed !== '') return parsed;
+      // Compatibility for a session minted before the identity was bound into
+      // the token: it still authenticates, but it carries no subject, which used
+      // to answer 403 and left the account panel permanently unavailable. The
+      // fallback is not client input taken on trust — it applies only when this
+      // machine holds the credential for that exact identity, so the caller can
+      // name someone the machine is already signed into and nobody else.
+      const requested = z.string().safeParse(requestedAuthUserId).data ?? '';
+      if (requested === '' || userTokenStore === null || userTokenStore === undefined) return '';
+      // Only an already-authenticated session may be completed this way: the
+      // fallback fills a missing subject, it never authenticates a caller.
+      if (!(await isAuthenticatedRequest(req))) return '';
+      const pair = await userTokenStore.get(requested);
+      const accessToken = pair === null || pair === undefined ? '' : z.string().safeParse(pair.accessToken).data ?? '';
+      return accessToken === '' ? '' : requested;
     } catch {
       return '';
     }
@@ -341,7 +360,7 @@ export const createTokenpanelQuotaRuntime = ({
       if (!candidate.success) {
         return res.status(400).json({ error: 'invalid_request' });
       }
-      const subject = await resolveRouteSubject(req);
+      const subject = await resolveRouteSubject(req, candidate.data);
       try {
         const resolved = await resolveQuotaBody(candidate.data, subject);
         return res.json(resolved.body);
@@ -356,7 +375,7 @@ export const createTokenpanelQuotaRuntime = ({
       if (!candidate.success) {
         return res.status(400).json({ error: 'invalid_request' });
       }
-      const subject = await resolveRouteSubject(req);
+      const subject = await resolveRouteSubject(req, candidate.data);
       const caller = z.string().safeParse(subject).data ?? '';
       if (caller === '' || caller !== candidate.data) {
         return res.status(403).json({ error: 'tokenpanel_forbidden' });

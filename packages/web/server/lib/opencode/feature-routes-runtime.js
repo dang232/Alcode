@@ -463,12 +463,26 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     createTokenpanelQuotaRuntime({
       userTokenStore: sharedUserTokenStore(),
       resolveSubject: (req) => uiAuthController?.resolveRequestAlcoreSub?.(req) ?? '',
+      isAuthenticatedRequest: async (req) => {
+        try {
+          return (await uiAuthController?.resolveAuthContext?.(req)) !== null;
+        } catch {
+          return false;
+        }
+      },
     }).registerRoutes(app);
     // The account panel's live dynamic-plan read shares the quota path's
     // store (one keychain) and subject binding; see tokenpanel-plan.js.
     createTokenpanelPlanRuntime({
       userTokenStore: sharedUserTokenStore(),
       resolveSubject: (req) => uiAuthController?.resolveRequestAlcoreSub?.(req) ?? '',
+      isAuthenticatedRequest: async (req) => {
+        try {
+          return (await uiAuthController?.resolveAuthContext?.(req)) !== null;
+        } catch {
+          return false;
+        }
+      },
     }).registerRoutes(app);
     // The account panel's per-metric entitlements read shares the quota
     // path's store (one keychain) and subject binding; see
@@ -476,6 +490,13 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     createTokenpanelEntitlementsRuntime({
       userTokenStore: sharedUserTokenStore(),
       resolveSubject: (req) => uiAuthController?.resolveRequestAlcoreSub?.(req) ?? '',
+      isAuthenticatedRequest: async (req) => {
+        try {
+          return (await uiAuthController?.resolveAuthContext?.(req)) !== null;
+        } catch {
+          return false;
+        }
+      },
     }).registerRoutes(app);
     registerSmallModelRoutes(app, { getSmallModelService });
     registerSessionGoalRoutes(app);
