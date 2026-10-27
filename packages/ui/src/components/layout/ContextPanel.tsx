@@ -11,6 +11,7 @@ import { ActivityPanel } from '@/components/activity/ActivityPanel';
 import { TrackerItemView } from '@/components/views/TrackerItemView';
 import { trackerTargetOfUrl } from '@/components/sourceBoard/openTrackerItem';
 import { lazyWithChunkRecovery } from '@/lib/chunkLoadRecovery';
+import { resolveCodeGraphDirectory } from '@/lib/codeGraphDirectory';
 import { getDisambiguatingFolders } from '@/lib/path-utils';
 
 // Heavy views stay on-demand (same as MainLayout): importing GitView or the
@@ -29,6 +30,7 @@ import { useI18n } from '@/lib/i18n';
 import { useBrowserFaviconStore } from '@/stores/useBrowserFaviconStore';
 import { clampContextEditorTreeWidth, isTrackerBranchTab, useUIStore, type ContextPanelMode } from '@/stores/useUIStore';
 import { useGitStatus } from '@/stores/useGitStore';
+import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useChildStoreManager } from '@/sync/sync-context';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { resolveActivityConversationId } from './activityConversation';
@@ -423,6 +425,8 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
   const isRtl = direction === 'rtl';
   const effectiveDirectory = useEffectiveDirectory() ?? '';
   const codeGraphFocusByDirectory = useUIStore((state) => state.codeGraphFocusByDirectory);
+  const projects = useProjectsStore((state) => state.projects);
+  const activeProjectId = useProjectsStore((state) => state.activeProjectId);
   const repositoryProvider = useRepositoryReferenceProvider(effectiveDirectory || null);
   // Tab names in this repository's words: a GitLab project's change request tab is a merge request.
   const tabT = React.useCallback<TranslateFn>(
@@ -497,7 +501,14 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
   const tabs = React.useMemo(() => panelState?.tabs ?? [], [panelState?.tabs]);
   // This zone's tab: one of its own surfaces, never one placed elsewhere.
   const activeTab = panelState ? resolveZoneActiveTab(panelState, placement, zone) : null;
-  const codeGraphDirectory = activeTab?.targetDirectory ?? effectiveDirectory;
+  const codeGraphResolution = resolveCodeGraphDirectory({
+    tabTargetDirectory: activeTab?.targetDirectory ?? null,
+    sessionDirectory: effectiveDirectory,
+    projects,
+    activeProjectId,
+  });
+  const codeGraphDirectory = codeGraphResolution.directory ?? '';
+  const codeGraphDirectorySource = codeGraphResolution.source;
   const codeGraphFocus = codeGraphDirectory ? codeGraphFocusByDirectory[codeGraphDirectory] ?? null : null;
   const zoneView = panelState ? getZoneView(panelState, zone) : CLOSED_ZONE_VIEW;
   const workStatusReserved = useRightSlotStore((state) => state.workStatusReserved);
@@ -1061,8 +1072,13 @@ export const ContextPanel: React.FC<{ zone?: ContextZone }> = ({ zone = 'right' 
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-3 group-has-[[data-context-panel-toolbar]]/panel-header:hidden">
           {activeTab ? getTabIcon(activeTab, faviconByOrigin) : null}
           <span className="truncate typography-ui-label text-foreground">
-            {activeTab ? getTabLabel(activeTab, sessionTitleById, tabT, effectiveDirectory) : null}
+            {activeTab ? getTabLabel(activeTab, sessionTitleById, tabT, codeGraphDirectory || effectiveDirectory) : null}
           </span>
+          {activeTab?.mode === 'code-graph' && codeGraphDirectory ? (
+            <span dir="ltr" data-testid="code-graph-directory" data-directory-source={codeGraphDirectorySource} title={codeGraphDirectory} className="typography-ui-label max-w-48 truncate text-muted-foreground">
+              {codeGraphDirectory}
+            </span>
+          ) : null}
         </div>
         {/* The active surface's own toolbar lands here (contextPanelHeaderSlot). */}
         <div ref={registerHeaderSlot} className="flex min-w-0 flex-1 items-stretch ps-1.5 empty:hidden" />
