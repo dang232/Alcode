@@ -23,17 +23,25 @@ Compatibility: upgrading renames the cookie for any explicit-port host, so alrea
 
 ## Session profile read-through
 
-A login-time `profile` in the session body (`{ name?, picture?, email? }`,
-passed by the desktop completion path) is bound to the issued session —
-the cookie token, plus the desktop client id when one is minted alongside
-— in a TTL-bounded in-memory map (2000 keys max, swept on write, expired
-with the owning session, cleared on global sign-out and dispose). `GET
-/auth/session` then carries `alcore: { sub, name?, picture?, email? }` on
-cookie and client sessions, which the header account surface parses; every
-other shape is byte-identical to before. Validation, cookies, JWTs, TTLs,
-rate limits, and client issuance are untouched: a missing or malformed
-profile answers exactly the old shape. The sub link is always
-server-verified; display fields are bound to that verified sub.
+A login-time `profile` in the session body (`{ name?, picture?, email?,
+tier? }`, passed by the desktop completion path) is bound to the issued
+session — the cookie token, plus the desktop client id when one is minted
+alongside — in a TTL-bounded in-memory map (2000 keys max, swept on write,
+expired with the owning session, cleared on global sign-out and dispose).
+`GET /auth/session` then carries `alcore: { sub, name?, picture?, email?,
+tier? }` on cookie and client sessions, which the header account surface
+parses; every other shape is byte-identical to before. Validation,
+cookies, JWTs, TTLs, rate limits, and client issuance are untouched: a
+missing or malformed profile answers exactly the old shape. The sub link
+is always server-verified; display fields are bound to that verified sub.
+
+Tier is a plain passthrough string for the existing tier badge: the
+profile's first present valid value among `tier`, `plan`, `planName`
+wins, trimmed, 1–64 chars. A malformed tier value is dropped field-wise
+without dropping the rest of the profile, and a profile with no tier
+emits no `tier` key at all (absent, never an empty string). Alcode
+interprets no plan semantics — no limits, prices, windows, or upgrades —
+it only surfaces the label the auth service already sent at login.
 
 ## Request subject seam
 
@@ -78,3 +86,16 @@ untouched.
   - `beginAuthentication(req)`
   - `finishAuthentication(payload)`
   - `dispose()`
+
+## Session identity durability (2026-10-27)
+
+The session cookie is an HS256 JWT signed with `~/.config/alcode/jwt-secret`, so it outlives the process. The login profile
+(`sub`, `name`, `email`, `picture`) previously lived only in an in-memory `Map`, which meant a restart left a valid cookie answering
+`{ authenticated: true }` with no identity at all — the popover then read as "signed out" while the cookie was still good.
+
+The identity is now minted into the signed token as `prof` (bounded: sub <= 128, name <= 120, email <= 254, picture <= 2048, and
+dropped to `{ sub }` if the claim set would exceed 1200 characters). `readSessionProfileFor` falls back to those claims for tokens
+that already passed `jwtVerify` in the same request, so a restart cannot strip the identity while a forged token still bakes nothing.
+
+Tests: `ui-auth.test.js` — "keeps the signed-in identity after a restart, when only the signed cookie survives" and
+"does not invent an identity for a session that never carried one".

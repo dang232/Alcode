@@ -566,6 +566,81 @@ describe('ui auth session profile read-through', () => {
     expect(status.body).toEqual({ authenticated: true, alcore: { sub: 'user-9', name: 'Ada' } });
   });
 
+  it('passes a profile tier through to the session payload', async () => {
+    const createUiAuth = await loadCreateUiAuth();
+    const auth = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
+    const issued = await loginRes(auth, {
+      alcoreToken: mintAlcoreToken({ sub: 'user-9' }),
+      profile: { ...PROFILE, tier: 'pro' },
+    });
+    expect(issued.statusCode).toBe(200);
+    const status = await statusRes(auth, { cookie: cookieOf(issued) });
+    expect(status.body).toEqual({
+      authenticated: true,
+      alcore: { sub: 'user-9', email: 'ada@example.test', name: 'Ada Lovelace', picture: 'https://example.test/ada.png', tier: 'pro' },
+    });
+  });
+
+  it('accepts planName as a tier alias', async () => {
+    const createUiAuth = await loadCreateUiAuth();
+    const auth = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
+    const issued = await loginRes(auth, {
+      alcoreToken: mintAlcoreToken({ sub: 'user-9' }),
+      profile: { name: 'Ada', planName: '  team  ' },
+    });
+    expect(issued.statusCode).toBe(200);
+    const status = await statusRes(auth, { cookie: cookieOf(issued) });
+    expect(status.body).toEqual({ authenticated: true, alcore: { sub: 'user-9', name: 'Ada', tier: 'team' } });
+  });
+
+  it('drops a malformed tier while name/email survive', async () => {
+    const createUiAuth = await loadCreateUiAuth();
+    const auth = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
+    for (const tier of ['', '   ', 'x'.repeat(65), 42, null, {}, ['pro']]) {
+      const issued = await loginRes(auth, {
+        alcoreToken: mintAlcoreToken({ sub: 'user-9' }),
+        profile: { name: 'Ada', email: 'ada@example.test', tier },
+      });
+      expect(issued.statusCode).toBe(200);
+      const status = await statusRes(auth, { cookie: cookieOf(issued) });
+      expect(status.body).toEqual({
+        authenticated: true,
+        alcore: { sub: 'user-9', email: 'ada@example.test', name: 'Ada' },
+      });
+    }
+  });
+
+  it('emits no tier key when the profile carries none', async () => {
+    const createUiAuth = await loadCreateUiAuth();
+    const auth = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
+    const issued = await loginRes(auth, {
+      alcoreToken: mintAlcoreToken({ sub: 'user-9' }),
+      profile: PROFILE,
+    });
+    expect(issued.statusCode).toBe(200);
+    const status = await statusRes(auth, { cookie: cookieOf(issued) });
+    expect(status.body).toEqual({
+      authenticated: true,
+      alcore: { sub: 'user-9', email: 'ada@example.test', name: 'Ada Lovelace', picture: 'https://example.test/ada.png' },
+    });
+    expect('tier' in status.body.alcore).toBe(false);
+  });
+
+  it('keeps the name/picture/email whitelist behaviour', async () => {
+    const createUiAuth = await loadCreateUiAuth();
+    const auth = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
+    const issued = await loginRes(auth, {
+      alcoreToken: mintAlcoreToken({ sub: 'user-9' }),
+      profile: { ...PROFILE, tier: 'pro', role: 'admin', sub: 'spoofed' },
+    });
+    expect(issued.statusCode).toBe(200);
+    const status = await statusRes(auth, { cookie: cookieOf(issued) });
+    expect(status.body).toEqual({
+      authenticated: true,
+      alcore: { sub: 'user-9', email: 'ada@example.test', name: 'Ada Lovelace', picture: 'https://example.test/ada.png', tier: 'pro' },
+    });
+  });
+
   it('carries the profile on the desktop client token status', async () => {
     const createUiAuth = await loadCreateUiAuth();
     const auth = createUiAuth({
@@ -761,5 +836,55 @@ describe('ui auth login rate limit', () => {
     } finally {
       auth.dispose();
     }
+  });
+});
+
+describe('ui auth identity durability', () => {
+  it('keeps the signed-in identity after a restart, when only the signed cookie survives', async () => {
+    const createUiAuth = await loadCreateUiAuth();
+    const loginAuth = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
+    const loginRes = createResponse();
+    await loginAuth.handleSessionCreate({
+      method: 'POST',
+      headers: {},
+      body: {
+        alcoreToken: mintAlcoreToken({ sub: 'user-restart' }),
+        trustDevice: true,
+        profile: { name: 'dang ngo', email: 'dang@example.com', picture: 'https://example.com/a.png' },
+      },
+    }, loginRes);
+    const cookie = String(loginRes.getHeader('set-cookie') || '').split(';', 1)[0];
+    expect(cookie.startsWith('oc_ui_session=')).toBe(true);
+
+    const firstRes = createResponse();
+    await loginAuth.handleSessionStatus({ method: 'GET', path: '/auth/session', headers: { cookie } }, firstRes);
+    expect(firstRes.body?.alcore).toMatchObject({ sub: 'user-restart', name: 'dang ngo' });
+
+    // A fresh instance is the restart: same persisted signing secret, empty in-memory bindings.
+    const restarted = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
+    const afterRes = createResponse();
+    await restarted.handleSessionStatus({ method: 'GET', path: '/auth/session', headers: { cookie } }, afterRes);
+    expect(afterRes.body?.alcore).toMatchObject({
+      sub: 'user-restart',
+      name: 'dang ngo',
+      email: 'dang@example.com',
+      picture: 'https://example.com/a.png',
+    });
+  });
+
+  it('does not invent an identity for a session that never carried one', async () => {
+    const createUiAuth = await loadCreateUiAuth();
+    const auth = createUiAuth({ alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER });
+    const loginRes = createResponse();
+    await auth.handleSessionCreate({
+      method: 'POST',
+      headers: {},
+      body: { alcoreToken: mintAlcoreToken({ sub: 'user-noprofile' }) },
+    }, loginRes);
+    const cookie = String(loginRes.getHeader('set-cookie') || '').split(';', 1)[0];
+    const res = createResponse();
+    await auth.handleSessionStatus({ method: 'GET', path: '/auth/session', headers: { cookie } }, res);
+    expect(res.body).toMatchObject({ authenticated: true });
+    expect(res.body?.alcore).toBeUndefined();
   });
 });

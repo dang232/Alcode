@@ -567,6 +567,7 @@ const serviceVerifiedIdentitySchema = z.object({
 const sessionProfileNameField = z.string().trim().min(1).max(256);
 const sessionProfilePictureField = z.string().trim().min(1).max(2048).refine((url) => url.startsWith('https://'));
 const sessionProfileEmailField = z.string().trim().toLowerCase().email().max(254);
+const sessionProfileTierField = z.string().trim().min(1).max(64);
 const sessionProfileBodySchema = z.object({ profile: z.object({}).passthrough().optional() });
 const SESSION_PROFILE_MAX_KEYS = 2000;
 
@@ -583,6 +584,20 @@ const readSessionProfile = (req) => {
   if (picture.success && picture.data.picture !== undefined) record.picture = picture.data.picture;
   const email = z.object({ email: sessionProfileEmailField.optional() }).safeParse(holder);
   if (email.success && email.data.email !== undefined) record.email = email.data.email;
+  // Tier passthrough (no plan semantics): first present valid value among
+  // tier/plan/planName wins; a malformed alias is skipped without dropping
+  // the rest of the profile.
+  if (holder !== null && typeof holder === 'object') {
+    const candidates = [holder.tier, holder.plan, holder.planName];
+    for (const candidate of candidates) {
+      if (candidate === undefined) continue;
+      const parsed = sessionProfileTierField.safeParse(candidate);
+      if (parsed.success) {
+        record.tier = parsed.data;
+        break;
+      }
+    }
+  }
   return Object.keys(record).length === 0 ? null : record;
 };
 
@@ -690,6 +705,41 @@ export const createUiAuth = ({
   // Read-only enrichment for GET /auth/session; never consulted by any
   // validation path.
   const sessionProfiles = new Map();
+  // Claims of the most recently VERIFIED session tokens, keyed by the token
+  // string. This is the restart-proof half of the profile: the cookie is a
+  // signed JWT that outlives the process, while `sessionProfiles` above does
+  // not, so a restart used to leave a valid cookie answering
+  // `{ authenticated: true }` with no identity at all. Entries are only ever
+  // written after jwtVerify succeeds, so a value here is exactly as trustworthy
+  // as the map.
+  const verifiedSessionClaims = new Map();
+  const VERIFIED_CLAIMS_MAX_KEYS = 512;
+  const rememberVerifiedClaims = (token, payload) => {
+    if (typeof token !== 'string' || token === '') return;
+    if (verifiedSessionClaims.size >= VERIFIED_CLAIMS_MAX_KEYS) {
+      const oldest = verifiedSessionClaims.keys().next();
+      if (!oldest.done) verifiedSessionClaims.delete(oldest.value);
+    }
+    verifiedSessionClaims.set(token, payload);
+  };
+  const sessionProfileFromClaims = (payload) => {
+    if (payload === null || typeof payload !== 'object') return null;
+    const prof = payload.prof;
+    if (prof === null || typeof prof !== 'object') return null;
+    const sub = typeof prof.sub === 'string' ? prof.sub.trim() : '';
+    if (sub === '' || sub.length > 128) return null;
+    const record = { sub };
+    if (typeof prof.name === 'string' && prof.name.trim() !== '' && prof.name.length <= 120) {
+      record.name = prof.name.trim();
+    }
+    if (typeof prof.email === 'string' && prof.email.trim() !== '' && prof.email.length <= 254) {
+      record.email = prof.email.trim();
+    }
+    if (typeof prof.picture === 'string' && prof.picture.length <= 2048) {
+      record.picture = prof.picture;
+    }
+    return record;
+  };
 
   const sweepSessionProfiles = (at) => {
     for (const [binding, entry] of sessionProfiles) {
@@ -712,7 +762,13 @@ export const createUiAuth = ({
 
   const readSessionProfileFor = (binding) => {
     const entry = sessionProfiles.get(binding);
-    if (!entry) return null;
+    if (!entry) {
+      // Fall back to the identity signed into the token itself. Only tokens
+      // that passed jwtVerify are in this map, so this is the same trust level
+      // as the binding above and survives a process restart.
+      const claims = verifiedSessionClaims.get(binding);
+      return claims === undefined ? null : sessionProfileFromClaims(claims);
+    }
     if (entry.expiresAt <= Date.now()) {
       sessionProfiles.delete(binding);
       return null;
@@ -725,6 +781,7 @@ export const createUiAuth = ({
     if (record.email !== undefined) alcore.email = record.email;
     if (record.name !== undefined) alcore.name = record.name;
     if (record.picture !== undefined) alcore.picture = record.picture;
+    if (record.tier !== undefined) alcore.tier = record.tier;
     return alcore;
   };
 
@@ -855,23 +912,32 @@ export const createUiAuth = ({
     res.setHeader('Set-Cookie', header);
   };
 
-  const isSessionValid = async (token) => {
+  const verifySessionClaims = async (token) => {
     if (!token) {
-      return false;
+      return null;
     }
     try {
       const { jwtVerify } = await loadJose();
-      await jwtVerify(token, jwtSecret);
-      return true;
+      const { payload } = await jwtVerify(token, jwtSecret);
+      if (payload !== null && typeof payload === 'object') rememberVerifiedClaims(token, payload);
+      return payload ?? null;
     } catch {
-      return false;
+      return null;
     }
   };
 
-  const issueSession = async (req, res, { trustDevice = false } = {}) => {
+  const isSessionValid = async (token) => (await verifySessionClaims(token)) !== null;
+
+  const issueSession = async (req, res, { trustDevice = false, profile = null } = {}) => {
     const ttlMs = resolveSessionTtlMs(trustDevice);
     const { SignJWT } = await loadJose();
-    const token = await new SignJWT({ type: 'ui-session' })
+    // The identity rides inside the signed token so a restart cannot strip it;
+    // it is bounded here because a cookie is not a place for arbitrary input.
+    const prof = profile === null ? null : sessionProfileFromClaims({ prof: profile });
+    const claims = prof === null
+      ? { type: 'ui-session' }
+      : { type: 'ui-session', prof: JSON.stringify({ ...prof }).length <= 1200 ? prof : { sub: prof.sub } };
+    const token = await new SignJWT(claims)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime(ttlMs / 1000 + 's')
@@ -1109,10 +1175,14 @@ export const createUiAuth = ({
     }
     const loginProfile = readSessionProfile(req);
     if (loginProfile !== null) {
-      const bindings = [sessionToken];
+      const profileRecord = { sub: alcore.sub, ...loginProfile };
+      // Re-issue with the identity signed in, then bind both tokens so the
+      // in-memory path keeps working exactly as before.
+      const profiledToken = await issueSession(req, res, { trustDevice, profile: profileRecord });
+      const bindings = [sessionToken, profiledToken];
       const clientBinding = clientBindingOf(clientTokenResult);
       if (clientBinding !== null) bindings.push(clientBinding);
-      rememberSessionProfile(bindings, { sub: alcore.sub, ...loginProfile }, ttlMs);
+      rememberSessionProfile(bindings, profileRecord, ttlMs);
     }
     res.setHeader('Cache-Control', 'no-store');
     res.json({
