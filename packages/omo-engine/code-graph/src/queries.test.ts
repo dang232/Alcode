@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { indexFiles } from "./extract";
-import type { GraphSnapshot } from "./extract";
+import type { GraphEdge, GraphNode, GraphSnapshot } from "./extract";
 import { computeScopeFingerprint } from "./schema";
 import {
   detectChanges,
@@ -24,6 +24,7 @@ import {
   search,
   symbolContext,
   trace,
+  type ImpactSummary,
   type QueryOptions,
 } from "./queries";
 
@@ -87,6 +88,42 @@ describe("code-graph queries", () => {
       expect(run?.evidence.some((entry) => entry.edge === "CALLS_STATIC")).toBe(true);
       for (const item of result.items) expect(item.confidence).toBe(1);
       expect(result.items.some((item) => item.id === "unknown")).toBe(false);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a wall-clock budget already spent #when impact runs #then the answer says time stopped the walk",
+    () => {
+      // given
+      const snapshot = indexFiles(fixture("main.ts", "reexport.ts", "main.test.ts"));
+
+      // when: zero budget, so the walk may not start at all
+      const result = impact(snapshot, "fn:add@math.ts", { ...options(), maxQueryMs: 0 });
+
+      // then
+      expect(result.completeness).toBe("truncated");
+      expect(result.completenessReason).toBe("time-budget");
+      expect(result.unresolved.some((line) => line.includes("time budget"))).toBe(true);
+      expect(result.impacted.length).toBe(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given an explored-edge budget #when the walk exceeds it #then the answer says the budget stopped it",
+    () => {
+      // given
+      const snapshot = indexFiles(fixture("main.ts", "reexport.ts", "main.test.ts"));
+
+      // when: one explored edge is less than this symbol's caller fan-out
+      const result = impact(snapshot, "fn:add@math.ts", { ...options(), maxExploredEdges: 1 });
+
+      // then: the cut is named, counted, and never reported as a complete answer
+      expect(result.completeness).toBe("truncated");
+      expect(result.completenessReason).toBe("edge-budget");
+      expect(result.unresolved.some((line) => line.includes("edge budget"))).toBe(true);
+      expect(result.impacted.length).toBeLessThanOrEqual(1);
     },
     TEST_TIMEOUT_MS,
   );
@@ -239,7 +276,10 @@ describe("code-graph queries", () => {
 
       // then: bounded with the cut named, never the whole graph
       expect(result.items).toHaveLength(1);
-      expect(result.coverage).toBe("partial");
+      // coverage describes the INDEX (this one is whole); the cut is reported by
+      // truncated + completeness, so a limit must not read as a partly analysed project.
+      expect(result.coverage).toBe("indexed");
+      expect(result.completeness).toBe("truncated");
       expect(result.truncated).toBe(true);
       expect(result.unresolved.some((note) => note.includes("truncated to 1"))).toBe(true);
 
@@ -331,5 +371,180 @@ describe("code-graph queries", () => {
     expect(result.items[2]?.reason).toBe("prefix");
     expect(result.items[2]?.rank).toBe(2);
     for (const item of result.items) expect(item.confidence).toBe(1);
+  });
+});
+
+describe("code-graph query totals and summaries", () => {
+  const sym = (id: string, file: string, line = 1): GraphNode => ({
+    id,
+    kind: "symbol",
+    file,
+    line,
+    name: id.split("@")[0]?.replace(/^(fn|class|const):/, ""),
+  });
+  const fileNode = (file: string, isTest = false): GraphNode => {
+    const node: GraphNode = {
+      id: `file:${file}`,
+      kind: "file",
+      file,
+      line: 1,
+      name: file,
+    };
+    return isTest ? { ...node, isTest: true } : node;
+  };
+  const staticCall = (from: string, to: string, ref: string, n: number): GraphEdge => ({
+    id: `call-${n}`,
+    kind: "CALLS_STATIC",
+    from,
+    to,
+    confidence: 1,
+    ref,
+  });
+  const testsEdge = (from: string, to: string, ref: string, n: number): GraphEdge => ({
+    id: `tests-${n}`,
+    kind: "TESTS",
+    from,
+    to,
+    confidence: 1,
+    ref,
+  });
+
+  // given: a subject with two static callers in different modules, one covered by a test
+  const snapshot: GraphSnapshot = {
+    nodes: [
+      sym("fn:core@lib/core.ts", "lib/core.ts", 2),
+      sym("fn:use@lib/use.ts", "lib/use.ts", 3),
+      sym("fn:naked@app/naked.ts", "app/naked.ts", 5),
+      fileNode("lib/core.ts"),
+      fileNode("lib/use.ts"),
+      fileNode("app/naked.ts"),
+      fileNode("lib/use.test.ts", true),
+    ],
+    edges: [
+      staticCall("fn:use@lib/use.ts", "fn:core@lib/core.ts", "lib/use.ts:3", 1),
+      staticCall("fn:naked@app/naked.ts", "fn:core@lib/core.ts", "app/naked.ts:5", 2),
+      testsEdge("file:lib/use.test.ts", "file:lib/use.ts", "lib/use.test.ts:1", 3),
+    ],
+  };
+
+  it("#given callers #when impact runs #then totals count the whole walked set and the summary is honest", () => {
+    // when
+    const result = impact(snapshot, "fn:core@lib/core.ts", options());
+
+    // then: every dependent walked before the display cut
+    expect(result.totals?.displayed).toBe(2);
+    expect(result.totals?.known).toBe(2);
+    expect(result.totals?.hidden).toBe(0);
+    expect(result.totals?.byDepth).toEqual([{ depth: 1, count: 2 }]);
+    expect(result.completeness).toBe("complete");
+    expect(result.completenessReason).toBeUndefined();
+
+    // then: the structured summary the client renders verbatim
+    const summary: ImpactSummary = result.summary;
+    expect(summary.subjectIds).toEqual(["fn:core@lib/core.ts"]);
+    expect(summary.dependentFiles).toBe(2);
+    expect(summary.dependentSymbols).toBe(2);
+    expect(summary.modules).toEqual([
+      { module: "app", count: 1 },
+      { module: "lib", count: 1 },
+    ]);
+    expect(summary.testsFound).toBe(0);
+    expect(summary.callersWithoutTestPath).toBe(1);
+    expect(summary.unresolvedEdges).toBe(0);
+    expect(summary.completeness).toBe("complete");
+  });
+
+  it("#given callers and callees #when symbolContext runs #then the neighbourhood summary counts the full sets", () => {
+    // when
+    const result = symbolContext(snapshot, "fn:core@lib/core.ts", options());
+
+    // then: definition plus both callers, all counted before the cut
+    expect(result.totals?.displayed).toBe(3);
+    expect(result.totals?.known).toBe(3);
+    expect(result.totals?.hidden).toBe(0);
+    expect(result.totals?.byDepth).toEqual([
+      { depth: 0, count: 1 },
+      { depth: 1, count: 2 },
+    ]);
+    expect(result.completeness).toBe("complete");
+
+    // then: the definition leads the ranked rows, the rest follow by id
+    expect(result.items.map((item) => item.id)).toEqual([
+      "fn:core@lib/core.ts",
+      "fn:naked@app/naked.ts",
+      "fn:use@lib/use.ts",
+    ]);
+    expect(result.summary).toEqual({
+      subjectId: "fn:core@lib/core.ts",
+      depth: 1,
+      incoming: 2,
+      outgoing: 0,
+      tests: 0,
+      modulesTouched: ["app", "lib"],
+    });
+  });
+
+  it("#given a static caller #when trace runs #then the summary names hops and no alternative paths", () => {
+    // when
+    const result = trace(snapshot, "fn:use@lib/use.ts", "fn:core@lib/core.ts", options());
+
+    // then
+    expect(result.summary).toEqual({ found: true, hops: 1, alternativePaths: null });
+    expect(result.totals?.displayed).toBe(2);
+    expect(result.totals?.known).toBe(2);
+    expect(result.totals?.hidden).toBe(0);
+    expect(result.completeness).toBe("complete");
+
+    // when: the same node traces to itself
+    const self = trace(snapshot, "fn:core@lib/core.ts", "fn:core@lib/core.ts", options());
+
+    // then
+    expect(self.summary).toEqual({ found: true, hops: 0, alternativePaths: null, reason: "same-node" });
+  });
+
+  it("#given more candidates than the limit #when findTests runs #then totals count every candidate", () => {
+    // given: two test files importing the same subject file
+    const tested: GraphSnapshot = {
+      nodes: [fileNode("src/core.ts"), fileNode("src/a.test.ts", true), fileNode("src/b.test.ts", true)],
+      edges: [
+        { id: "import-1", kind: "IMPORTS", from: "file:src/a.test.ts", to: "file:src/core.ts", confidence: 1, ref: "src/a.test.ts:1" },
+        { id: "import-2", kind: "IMPORTS", from: "file:src/b.test.ts", to: "file:src/core.ts", confidence: 1, ref: "src/b.test.ts:2" },
+      ],
+    };
+
+    // when
+    const result = findTests(tested, "src/core.ts", options({ limit: 1 }));
+
+    // then: one row returned, both candidates counted
+    expect(result.candidates).toHaveLength(1);
+    expect(result.totals?.displayed).toBe(1);
+    expect(result.totals?.known).toBe(2);
+    expect(result.totals?.hidden).toBe(1);
+    expect(result.completeness).toBe("truncated");
+    expect(result.completenessReason).toBe("result-limit");
+  });
+
+  it("#given a whole index #when search runs #then totals count every match before the cut", () => {
+    // given
+    const searched: GraphSnapshot = {
+      nodes: [
+        sym("fn:alpha@a.ts", "a.ts"),
+        sym("fn:alphabet@b.ts", "b.ts"),
+        sym("fn:beta@c.ts", "c.ts"),
+      ],
+      edges: [],
+    };
+
+    // when
+    const result = search(searched, "alpha", options({ limit: 1 }));
+
+    // then: one row shown, both matches counted with their kinds
+    expect(result.items).toHaveLength(1);
+    expect(result.totals?.displayed).toBe(1);
+    expect(result.totals?.known).toBe(2);
+    expect(result.totals?.hidden).toBe(1);
+    expect(result.totals?.byKind).toEqual([{ kind: "indexed", count: 1 }]);
+    expect(result.completeness).toBe("truncated");
+    expect(result.completenessReason).toBe("result-limit");
   });
 });

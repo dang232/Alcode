@@ -13,6 +13,7 @@ export type {
   EdgeKind,
   NodeKind,
   InvalidationCause,
+  DroppedFile,
   GraphNode,
   GraphEdge,
   GraphSnapshot,
@@ -109,3 +110,21 @@ export {
   findTests,
   detectChanges,
 } from "./queries";
+
+export type {
+  SnapshotManifest,
+  SnapshotShard,
+  ParseSnapshotManifest,
+  ParseSnapshotShard,
+} from "./snapshot-store";
+export {
+  SNAPSHOT_STORE_VERSION,
+  UNATTRIBUTED_SHARD,
+  splitSnapshotIntoShards,
+  createSnapshotManifest,
+  serializeSnapshotShard,
+  serializeSnapshotManifest,
+  parseSnapshotManifest,
+  parseSnapshotShard,
+  joinSnapshotShards,
+} from "./snapshot-store";

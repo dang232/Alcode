@@ -50,7 +50,7 @@ import {
   isVariableDeclaration,
   isVariableStatement,
 } from "typescript/unstable/ast";
-import type { NamedExports, Node, SourceFile } from "typescript/unstable/ast";
+import type { Node, SourceFile } from "typescript/unstable/ast";
 import {
   MAX_CONTENT_FILE_BYTES,
   MAX_CONTENT_TOKENS_PER_FILE,
@@ -151,9 +151,18 @@ export interface GraphSnapshot {
   /**
    * Absolute directory every `file` field is relative to. Node ids are rooted
    * here, not at the project root, so any caller that needs a real path must
-   * join against this and never against the workspace directory.
+   * join against this and never against the workspace directory. When
+   * `IndexOptions.rootDir` is set this is that normalized root (so ids read
+   * `apps/...` even when only `apps/...` files were indexed); otherwise it
+   * is the legacy `commonDir(entryFiles)`.
    */
   readonly root?: string;
+  /**
+   * Entry and transitively discovered files refused for sitting outside
+   * `IndexOptions.rootDir`, each with its reason. Absent on snapshots
+   * built without `rootDir` and on legacy snapshots predating this field.
+   */
+  readonly dropped?: readonly DroppedFile[];
 }
 
 /** Advisory pointer to a ProjectKnowledgeRecord. The graph stores only the id triple, never the record body. */
@@ -170,6 +179,38 @@ export interface IndexOptions {
   readonly tsserverPath?: string;
   /** Advisory knowledge pointers, emitted as LINKS_KNOWLEDGE edges (link-only). */
   readonly knowledge?: readonly KnowledgeLinkInput[];
+  /**
+   * Repository root every `file` id and stored file path is relative to
+   * (POSIX, e.g. `apps/api/src/x.ts`). A nested index root then keeps the
+   * repository id space, so an import that resolves outside the indexed
+   * files still lands on an id the resolver can find. When omitted, the
+   * legacy `commonDir(entryFiles)` behaviour applies unchanged.
+   */
+  readonly rootDir?: string;
+  /**
+   * Real work-completion reporter, called from inside the synchronous build.
+   * A caller that must keep its own event loop free (the server's index worker)
+   * needs progress that describes phases actually finished — the number of
+   * projects analysed so far — not a percentage invented from a timer.
+   * Called on the indexing thread, so a reporter must not block.
+   */
+  readonly onProgress?: (event: IndexProgressEvent) => void;
+}
+
+/** One measured step of a build: nothing here is extrapolated. */
+export interface IndexProgressEvent {
+  readonly phase: "program" | "projects" | "edges" | "done";
+  /** Entry files handed to the build. */
+  readonly files: number;
+  /** Projects whose entries have been analysed, and how many there are. */
+  readonly projectsDone: number;
+  readonly projectsTotal: number;
+}
+
+/** A file refused during extraction because it sits outside `IndexOptions.rootDir`. */
+export interface DroppedFile {
+  readonly file: string;
+  readonly reason: "outside-root";
 }
 
 const STATIC_CONFIDENCE = 1;
@@ -191,6 +232,10 @@ export function isTestPath(path: string): boolean {
 
 function toPosixPath(value: string): string {
   const slashed = value.replace(/\\/g, "/");
+  // Only separators and the drive-letter case are normalized. The rest of
+  // the path keeps its original case: filesystems and checkouts can hold
+  // two files whose names differ only by case, so lowercasing the whole
+  // path would merge distinct files into one id.
   return /^[a-zA-Z]:\//.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
 }
 
@@ -238,16 +283,6 @@ function defaultTsServerPath(): string {
   throw new Error(
     "code-graph: TypeScript native server binary not found inside typescript@7.0.2; " +
       "pass IndexOptions.tsserverPath explicitly",
-  );
-}
-
-function isSymbolLike(value: unknown): value is TsSymbol {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as { readonly name?: unknown; readonly flags?: unknown; readonly declarations?: unknown };
-  return (
-    typeof candidate.name === "string" &&
-    typeof candidate.flags === "number" &&
-    Array.isArray(candidate.declarations)
   );
 }
 
@@ -333,8 +368,18 @@ class GraphBuilder {
   private readonly callOrdinals = new Map<string, number>();
   private readonly contentFiles = new Map<string, FileContentEntry>();
   private readonly contentSkipped: ContentSkip[] = [];
+  private readonly droppedKeys = new Set<string>();
+  readonly dropped: DroppedFile[] = [];
 
-  constructor(private readonly root: string) {}
+  constructor(
+    private readonly root: string,
+    /**
+     * Rip out nothing silently: outside-root files are refused with a
+     * recorded reason instead of falling back to an absolute-path id the
+     * resolver cannot find. False (legacy) keeps the old absolute fallback.
+     */
+    private readonly strictRoot = false,
+  ) {}
 
   snapshot(): GraphSnapshot {
     const nodes = [...this.nodes.values()].sort((left, right) => (left.id < right.id ? -1 : 1));
@@ -367,6 +412,10 @@ class GraphBuilder {
         continue;
       }
       const rel = this.relOf(key);
+      if (rel === undefined) {
+        this.dropOutsideRoot(key);
+        continue;
+      }
       const ctx: FileCtx = { key, rel, sourceFile, project, checker: project.checker };
       this.files.set(key, ctx);
       this.indexContent(ctx);
@@ -394,7 +443,8 @@ class GraphBuilder {
       if (link.from.length === 0 || !RECORD_ID.test(link.recordId)) continue;
       if (!Number.isFinite(link.confidence) || link.confidence < 0 || link.confidence > 1) continue;
       const id = `knowledge:${link.recordId}`;
-      const file = toPosixPath(link.sourceFile);
+      const file = this.linkFileOf(link.sourceFile);
+      if (file === undefined) continue;
       this.nodes.set(id, { id, kind: "knowledge-link", file, line: 1, target: link.recordId, revision: link.sourceRevision });
       const edgeId = `links:${link.from}:${link.recordId}`;
       this.edges.set(edgeId, {
@@ -459,9 +509,47 @@ class GraphBuilder {
     });
   }
 
-  private relOf(key: string): string {
-    const rel = key.startsWith(`${this.root}/`) ? key.slice(this.root.length + 1) : key;
+  /**
+   * The single normalization point for file identity: forward slashes (via
+   * `toPosixPath` on every key), no leading `./`, no drive prefix, no `..`
+   * segment. Absolute resolved keys under the root slice to a repo-relative
+   * id; anything else is legacy callers' absolute fallback, or — under
+   * `strictRoot` — an outside-root refusal (`undefined`), never a silent
+   * re-root onto an id the resolver cannot find.
+   */
+  private relOf(key: string): string | undefined {
+    const prefix = `${this.root}/`;
+    if (!key.startsWith(prefix)) return this.strictRoot ? undefined : key;
+    const rel = key.slice(prefix.length);
+    if (rel.length === 0 || rel.split("/").includes("..")) return undefined;
     return rel;
+  }
+
+  /** Record an outside-root file once, so the refusal is visible, not silent. */
+  private dropOutsideRoot(key: string): void {
+    if (this.droppedKeys.has(key)) return;
+    this.droppedKeys.add(key);
+    this.dropped.push({ file: key, reason: "outside-root" });
+  }
+
+  /**
+   * Advisory link paths follow the same id space: relativized under the
+   * root when absolute, kept as-is when already root-relative, refused
+   * (`undefined`) otherwise.
+   */
+  private linkFileOf(sourceFile: string): string | undefined {
+    const posix = toPosixPath(sourceFile);
+    if (!this.strictRoot) return posix;
+    const prefix = `${this.root}/`;
+    if (posix.startsWith(prefix)) {
+      const rel = posix.slice(prefix.length);
+      if (rel.length > 0 && !rel.split("/").includes("..")) return rel;
+      return undefined;
+    }
+    if (posix.startsWith("/") || /^[a-z]:\//.test(posix) || posix.split("/").includes("..")) {
+      return undefined;
+    }
+    return posix.replace(/^\.\//, "");
   }
 
   private lineOf(ctx: FileCtx, node: Node): number {
@@ -559,8 +647,7 @@ class GraphBuilder {
     if (!ctx.sourceFile.externalModuleIndicator) return;
     const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
     if (!moduleSymbol) return;
-    const raw: unknown = ctx.checker.getExportsOfModule(moduleSymbol);
-    const exported: readonly TsSymbol[] = Array.isArray(raw) ? raw.filter(isSymbolLike) : [];
+    const exported = ctx.checker.getExportsOfModule(moduleSymbol);
     const contractLines = this.exportContractLines(ctx);
     for (const exportedSymbol of exported) {
       if ((exportedSymbol.flags & SymbolFlags.ExportStar) !== 0) continue;
@@ -634,7 +721,7 @@ class GraphBuilder {
       if (isExportDeclaration(node)) {
         const clause = node.exportClause;
         if (clause && clause.kind === SyntaxKind.NamedExports) {
-          (clause as NamedExports).elements.forEach((element) => {
+          clause.elements.forEach((element) => {
             const exported = element.propertyName ?? element.name;
             const text = exported.text;
             if (!lines.has(text)) lines.set(text, this.lineOf(ctx, element));
@@ -852,13 +939,60 @@ class GraphBuilder {
 export function indexFiles(entryFiles: readonly string[], options: IndexOptions = {}): GraphSnapshot {
   if (entryFiles.length === 0) return { nodes: [], edges: [], content: emptyContentIndex() };
   const absoluteEntries = entryFiles.map((entry) => resolve(entry));
-  const root = commonDir(absoluteEntries.map(toPosixPath));
+  if (options.rootDir === undefined) {
+    // Legacy path: `commonDir(entryFiles)` identity, byte-identical to before.
+    const root = commonDir(absoluteEntries.map(toPosixPath));
+    const { snapshot } = buildGraph(absoluteEntries, root, false, options);
+    return { ...snapshot, root };
+  }
+  // Repo-root-relative identity: every file id and stored file path is
+  // POSIX relative to rootDir, so a nested index root keeps the repository
+  // id space and cross-package imports land inside it. Module resolution is
+  // untouched: the compiler's own resolution already crosses packages once
+  // the root is right (proven by the cross-package fixture below).
+  const root = toPosixPath(resolve(options.rootDir));
+  const prefix = `${root}/`;
+  const inside: string[] = [];
+  const entryDropped: DroppedFile[] = [];
+  const seenDropped = new Set<string>();
+  for (const entry of absoluteEntries) {
+    const key = toPosixPath(entry);
+    const rel = key.startsWith(prefix) ? key.slice(prefix.length) : undefined;
+    if (rel !== undefined && rel.length > 0 && !rel.split("/").includes("..")) {
+      inside.push(entry);
+    } else if (!seenDropped.has(key)) {
+      seenDropped.add(key);
+      entryDropped.push({ file: key, reason: "outside-root" });
+    }
+  }
+  if (inside.length === 0) {
+    return { nodes: [], edges: [], content: emptyContentIndex(), root, dropped: entryDropped };
+  }
+  const { snapshot, dropped } = buildGraph(inside, root, true, options);
+  const mergedByFile = new Map<string, DroppedFile>();
+  for (const drop of [...entryDropped, ...dropped]) {
+    if (!mergedByFile.has(drop.file)) mergedByFile.set(drop.file, drop);
+  }
+  const merged = [...mergedByFile.values()].sort((left, right) => (left.file < right.file ? -1 : 1));
+  return { ...snapshot, root, dropped: merged };
+}
+
+function buildGraph(
+  absoluteEntries: readonly string[],
+  root: string,
+  strictRoot: boolean,
+  options: IndexOptions,
+) {
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
+  const report = options.onProgress;
   const api = new API({ tsserverPath, cwd: root });
   try {
-    const snapshot = api.updateSnapshot({ openFiles: absoluteEntries });
+    const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
+    // Program construction is the expensive step and it completes in one call,
+    // so this is the first moment a true count exists.
+    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0 });
     try {
-      const builder = new GraphBuilder(root);
+      const builder = new GraphBuilder(root, strictRoot);
       const byProject = new Map<Project, string[]>();
       for (const entry of absoluteEntries) {
         const project = snapshot.getDefaultProjectForFile(entry);
@@ -867,9 +1001,18 @@ export function indexFiles(entryFiles: readonly string[], options: IndexOptions 
         if (list) list.push(entry);
         else byProject.set(project, [entry]);
       }
-      for (const [project, entries] of byProject) builder.addEntries(project, entries);
+      const projectsTotal = byProject.size;
+      let projectsDone = 0;
+      for (const [project, entries] of byProject) {
+        builder.addEntries(project, entries);
+        projectsDone += 1;
+        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+      }
+      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
       builder.addKnowledgeLinks(options.knowledge ?? []);
-      return { ...builder.snapshot(), root };
+      const snapshotOut = builder.snapshot();
+      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal });
+      return { snapshot: snapshotOut, dropped: builder.dropped };
     } finally {
       snapshot.dispose();
     }

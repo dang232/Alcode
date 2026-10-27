@@ -15,6 +15,25 @@ The public API is the barrel at `src/index.ts`.
 
 ## Invariants
 
+- Every query answer carries `totals { displayed, known, hidden }`. `known` is the size of the
+  result the walk established before any display limit; it is `null` when the index cannot support
+  an honest count (a truncated walk). A caller renders `displayed` and `known` separately, never a
+  slice dressed as a set.
+- `completeness` (`complete | partial | truncated`) with `completenessReason` describes **this
+  answer**; `coverage` (`indexed | partial | unindexed`) describes **the index it was read from**.
+  A row limit or a depth budget is never reported through `coverage` - doing that once made every
+  truncated answer claim the project itself was only partly analysed.
+- `depth` is traversal, not rows: `impact`/`symbolContext` walk the whole reachable set up to
+  `maxDepth`, count it, then cut the returned rows to `limit`.
+- Ranking is deterministic and lives here, not in a UI: distance from subject, then confidence
+descending, then kind priority `TESTS > IMPORTS > CALLS_STATIC > CALLS_UNRESOLVED`, then id.
+- `findUnreferenced` reports **potentially** unreferenced files and exports. It never says dead
+  code: entry-like files are counted into `excludedEntryLike` rather than listed, and the summary
+  carries `unanalyzedNote` because non-TypeScript files and framework conventions are outside the
+  analysed edge set.
+
+## Invariants (package shape)
+
 - Stay harness-neutral. Production code and package dependencies must not
   import Senpi, Pi, OpenCode adapters, or other harness-specific packages.
 - The barrel is the only public surface. Consumers import
