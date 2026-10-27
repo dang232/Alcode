@@ -2691,7 +2691,10 @@ process.exit(safe ? 0 : 1);
 
   it('reports a confirmed fetch timeout as cancelled with TIMEOUT', async () => {
     const setupValue = setup({ spawnResults: [{ manual: true }], timeoutMs: 1 });
-    const plan = await setupValue.service.plan(request('fetch'));
+    // Planning gets its own budget: with a shared 1ms deadline the plan phase
+    // itself could expire and throw, instead of the execute phase reporting the
+    // cancelled outcome this test is about.
+    const plan = await setupValue.service.plan(request('fetch'), { timeoutMs: 60_000 });
     await expect(setupValue.service.execute(plan.operationId)).resolves.toMatchObject({
       state: 'cancelled', error: { code: 'TIMEOUT' },
     });
