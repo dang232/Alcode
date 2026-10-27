@@ -109,6 +109,32 @@ describe('query shape', () => {
     expect(received.queryInput).toMatchObject({ kind: 'impact', symbol: 'fn:add@math.ts', limit: 5 });
   });
 
+  it('defaults the neighbourhood depth to 1 when the UI sends none', async () => {
+    const { app, received } = createApp();
+
+    await request(app).get('/api/code-graph/query?directory=acme&kind=impact&symbol=fn%3Aadd%40math.ts');
+
+    expect(received.queryInput).toMatchObject({ kind: 'impact', depth: 1 });
+  });
+
+  it('forwards the depth ask to the runtime for context/impact/trace', async () => {
+    const { app, received } = createApp();
+
+    await request(app).get('/api/code-graph/query?directory=acme&kind=impact&symbol=fn%3Aadd%40math.ts&depth=3');
+
+    expect(received.queryInput).toMatchObject({ kind: 'impact', depth: 3 });
+  });
+
+  it('clamps depth to the 1..3 neighbourhood range', async () => {
+    const { app, received } = createApp();
+
+    await request(app).get('/api/code-graph/query?directory=acme&kind=trace&from=a&to=b&depth=99');
+    expect(received.queryInput).toMatchObject({ depth: 3 });
+
+    await request(app).get('/api/code-graph/query?directory=acme&kind=trace&from=a&to=b&depth=0');
+    expect(received.queryInput).toMatchObject({ depth: 1 });
+  });
+
   it('passes the explore kind through to the runtime', async () => {
     const { app, received } = createApp();
 

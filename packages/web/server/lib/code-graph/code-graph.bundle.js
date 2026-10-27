@@ -9913,12 +9913,6 @@ function defaultTsServerPath() {
   }
   throw new Error("code-graph: TypeScript native server binary not found inside typescript@7.0.2; " + "pass IndexOptions.tsserverPath explicitly");
 }
-function isSymbolLike(value) {
-  if (typeof value !== "object" || value === null)
-    return false;
-  const candidate = value;
-  return typeof candidate.name === "string" && typeof candidate.flags === "number" && Array.isArray(candidate.declarations);
-}
 function followAlias(checker, symbol) {
   let current = symbol;
   for (let depth = 0;depth < MAX_ALIAS_DEPTH; depth += 1) {
@@ -9973,14 +9967,18 @@ function isCallableDeclKind(kind) {
 
 class GraphBuilder {
   root;
+  strictRoot;
   files = new Map;
   nodes = new Map;
   edges = new Map;
   callOrdinals = new Map;
   contentFiles = new Map;
   contentSkipped = [];
-  constructor(root) {
+  droppedKeys = new Set;
+  dropped = [];
+  constructor(root, strictRoot = false) {
     this.root = root;
+    this.strictRoot = strictRoot;
   }
   snapshot() {
     const nodes = [...this.nodes.values()].sort((left, right) => left.id < right.id ? -1 : 1);
@@ -10016,6 +10014,10 @@ class GraphBuilder {
         continue;
       }
       const rel = this.relOf(key);
+      if (rel === undefined) {
+        this.dropOutsideRoot(key);
+        continue;
+      }
       const ctx = { key, rel, sourceFile, project, checker: project.checker };
       this.files.set(key, ctx);
       this.indexContent(ctx);
@@ -10046,7 +10048,9 @@ class GraphBuilder {
       if (!Number.isFinite(link.confidence) || link.confidence < 0 || link.confidence > 1)
         continue;
       const id = `knowledge:${link.recordId}`;
-      const file = toPosixPath(link.sourceFile);
+      const file = this.linkFileOf(link.sourceFile);
+      if (file === undefined)
+        continue;
       this.nodes.set(id, { id, kind: "knowledge-link", file, line: 1, target: link.recordId, revision: link.sourceRevision });
       const edgeId = `links:${link.from}:${link.recordId}`;
       this.edges.set(edgeId, {
@@ -10107,8 +10111,35 @@ class GraphBuilder {
     });
   }
   relOf(key) {
-    const rel = key.startsWith(`${this.root}/`) ? key.slice(this.root.length + 1) : key;
+    const prefix = `${this.root}/`;
+    if (!key.startsWith(prefix))
+      return this.strictRoot ? undefined : key;
+    const rel = key.slice(prefix.length);
+    if (rel.length === 0 || rel.split("/").includes(".."))
+      return;
     return rel;
+  }
+  dropOutsideRoot(key) {
+    if (this.droppedKeys.has(key))
+      return;
+    this.droppedKeys.add(key);
+    this.dropped.push({ file: key, reason: "outside-root" });
+  }
+  linkFileOf(sourceFile) {
+    const posix = toPosixPath(sourceFile);
+    if (!this.strictRoot)
+      return posix;
+    const prefix = `${this.root}/`;
+    if (posix.startsWith(prefix)) {
+      const rel = posix.slice(prefix.length);
+      if (rel.length > 0 && !rel.split("/").includes(".."))
+        return rel;
+      return;
+    }
+    if (posix.startsWith("/") || /^[a-z]:\//.test(posix) || posix.split("/").includes("..")) {
+      return;
+    }
+    return posix.replace(/^\.\//, "");
   }
   lineOf(ctx, node) {
     return ctx.sourceFile.getLineAndCharacterOfPosition(node.getStart(ctx.sourceFile)).line + 1;
@@ -10208,8 +10239,7 @@ class GraphBuilder {
     const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
     if (!moduleSymbol)
       return;
-    const raw = ctx.checker.getExportsOfModule(moduleSymbol);
-    const exported = Array.isArray(raw) ? raw.filter(isSymbolLike) : [];
+    const exported = ctx.checker.getExportsOfModule(moduleSymbol);
     const contractLines = this.exportContractLines(ctx);
     for (const exportedSymbol of exported) {
       if ((exportedSymbol.flags & SymbolFlags.ExportStar) !== 0)
@@ -10496,13 +10526,47 @@ function indexFiles(entryFiles, options = {}) {
   if (entryFiles.length === 0)
     return { nodes: [], edges: [], content: emptyContentIndex() };
   const absoluteEntries = entryFiles.map((entry) => resolve(entry));
-  const root = commonDir(absoluteEntries.map(toPosixPath));
+  if (options.rootDir === undefined) {
+    const root = commonDir(absoluteEntries.map(toPosixPath));
+    const { snapshot } = buildGraph(absoluteEntries, root, false, options);
+    return { ...snapshot, root };
+  }
+  const root = toPosixPath(resolve(options.rootDir));
+  const prefix = `${root}/`;
+  const inside = [];
+  const entryDropped = [];
+  const seenDropped = new Set;
+  for (const entry of absoluteEntries) {
+    const key = toPosixPath(entry);
+    const rel = key.startsWith(prefix) ? key.slice(prefix.length) : undefined;
+    if (rel !== undefined && rel.length > 0 && !rel.split("/").includes("..")) {
+      inside.push(entry);
+    } else if (!seenDropped.has(key)) {
+      seenDropped.add(key);
+      entryDropped.push({ file: key, reason: "outside-root" });
+    }
+  }
+  if (inside.length === 0) {
+    return { nodes: [], edges: [], content: emptyContentIndex(), root, dropped: entryDropped };
+  }
+  const { snapshot, dropped } = buildGraph(inside, root, true, options);
+  const mergedByFile = new Map;
+  for (const drop of [...entryDropped, ...dropped]) {
+    if (!mergedByFile.has(drop.file))
+      mergedByFile.set(drop.file, drop);
+  }
+  const merged = [...mergedByFile.values()].sort((left, right) => left.file < right.file ? -1 : 1);
+  return { ...snapshot, root, dropped: merged };
+}
+function buildGraph(absoluteEntries, root, strictRoot, options) {
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
+  const report = options.onProgress;
   const api = new API({ tsserverPath, cwd: root });
   try {
-    const snapshot = api.updateSnapshot({ openFiles: absoluteEntries });
+    const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
+    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0 });
     try {
-      const builder = new GraphBuilder(root);
+      const builder = new GraphBuilder(root, strictRoot);
       const byProject = new Map;
       for (const entry of absoluteEntries) {
         const project = snapshot.getDefaultProjectForFile(entry);
@@ -10514,10 +10578,18 @@ function indexFiles(entryFiles, options = {}) {
         else
           byProject.set(project, [entry]);
       }
-      for (const [project, entries] of byProject)
+      const projectsTotal = byProject.size;
+      let projectsDone = 0;
+      for (const [project, entries] of byProject) {
         builder.addEntries(project, entries);
+        projectsDone += 1;
+        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+      }
+      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
       builder.addKnowledgeLinks(options.knowledge ?? []);
-      return { ...builder.snapshot(), root };
+      const snapshotOut = builder.snapshot();
+      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal });
+      return { snapshot: snapshotOut, dropped: builder.dropped };
     } finally {
       snapshot.dispose();
     }
@@ -10536,6 +10608,9 @@ var SEARCH_RANK = {
 };
 var DEFAULT_RESULT_LIMIT = 20;
 var MAX_RESULT_LIMIT = 50;
+var MAX_EXPLORED_EDGES = 20000;
+var DEFAULT_QUERY_BUDGET_MS = 2000;
+var MAX_QUERY_BUDGET_MS = 60000;
 var DEFAULT_MAX_DEPTH = 5;
 var MAX_DEPTH_LIMIT = 10;
 var SUPPORTED_FILE = /\.[cm]?[tj]sx?$/;
@@ -10548,6 +10623,162 @@ function clampDepth(depth) {
   if (depth === undefined || !Number.isFinite(depth))
     return DEFAULT_MAX_DEPTH;
   return Math.min(MAX_DEPTH_LIMIT, Math.max(1, Math.floor(depth)));
+}
+function clampExploredEdges(value) {
+  if (value === undefined || !Number.isFinite(value))
+    return MAX_EXPLORED_EDGES;
+  return Math.min(MAX_EXPLORED_EDGES, Math.max(1, Math.floor(value)));
+}
+function clampQueryBudgetMs(value) {
+  if (value === undefined || !Number.isFinite(value))
+    return DEFAULT_QUERY_BUDGET_MS;
+  return Math.min(MAX_QUERY_BUDGET_MS, Math.max(0, Math.floor(value)));
+}
+var KIND_PRIORITY = {
+  TESTS: 0,
+  IMPORTS: 1,
+  CALLS_STATIC: 2,
+  CALLS_UNRESOLVED: 3
+};
+function kindRank(edge) {
+  return KIND_PRIORITY[edge] ?? 4;
+}
+var CONFIRMED_EVIDENCE_KINDS = new Set([
+  "DEFINES",
+  "EXPORTS",
+  "IMPORTS",
+  "CALLS_STATIC",
+  "TESTS"
+]);
+function verdictForEvidenceKind(edge) {
+  return CONFIRMED_EVIDENCE_KINDS.has(edge) ? "confirmed" : "inferred";
+}
+function dedupeById(items) {
+  const seen = new Set;
+  const kept = [];
+  for (const item of items) {
+    if (seen.has(item.id))
+      continue;
+    seen.add(item.id);
+    kept.push(item);
+  }
+  return { items: kept, dropped: items.length - kept.length };
+}
+function duplicatesExtra(dropped) {
+  return dropped > 0 ? { duplicatesDropped: dropped } : {};
+}
+function ambiguousExtra(items) {
+  const seen = new Map;
+  for (const item of items) {
+    if (item.name === undefined || item.name === "")
+      continue;
+    const first = seen.get(item.name);
+    if (first === undefined) {
+      seen.set(item.name, item.id);
+    } else if (first !== item.id) {
+      return { ambiguousNames: true };
+    }
+  }
+  return;
+}
+function primaryKind(item) {
+  return item.evidence[0]?.edge ?? "indexed";
+}
+function compareRows(depthA, a, depthB, b) {
+  if (depthA !== depthB)
+    return depthA - depthB;
+  if (a.confidence !== b.confidence)
+    return b.confidence - a.confidence;
+  const kindDelta = kindRank(primaryKind(a)) - kindRank(primaryKind(b));
+  if (kindDelta !== 0)
+    return kindDelta;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+function byKindFor(items) {
+  const counts = new Map;
+  for (const item of items) {
+    const kind = primaryKind(item);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((left, right) => kindRank(left[0]) - kindRank(right[0]) || (left[0] < right[0] ? -1 : 1)).map(([kind, count]) => ({ kind, count }));
+}
+function indexTruncationNote(snapshot) {
+  const dropped = snapshot.dropped ?? [];
+  if (dropped.length > 0) {
+    const named = dropped.slice(0, 3).map((entry) => entry.file).join(", ");
+    const rest = dropped.length > 3 ? ` and ${dropped.length - 3} more` : "";
+    return `index truncated: ${dropped.length} file(s) excluded from the snapshot (${named}${rest})`;
+  }
+  const content = snapshot.content;
+  if (content === undefined)
+    return;
+  if (content.skipped.length > 0) {
+    return `index truncated: ${content.skipped.length} file(s) skipped from the content index (binary or too large to index)`;
+  }
+  const capped = Object.values(content.files).filter((entry) => entry.tokenTruncated).length;
+  if (capped > 0) {
+    return `index truncated: ${capped} file(s) hit the per-file token cap (${content.tokenCap})`;
+  }
+  return;
+}
+function indexCoverage(snapshot) {
+  return indexTruncationNote(snapshot) === undefined ? "indexed" : "partial";
+}
+function decideCompleteness(flags) {
+  if (flags.unsupported)
+    return { completeness: "partial", completenessReason: "unsupported-files" };
+  if (flags.excluded)
+    return { completeness: "partial", completenessReason: "index-excluded" };
+  if (flags.indexPartial)
+    return { completeness: "partial", completenessReason: "index-truncated" };
+  if (flags.timeBudget === true)
+    return { completeness: "truncated", completenessReason: "time-budget" };
+  if (flags.edgeBudget === true)
+    return { completeness: "truncated", completenessReason: "edge-budget" };
+  if (flags.depthBudget)
+    return { completeness: "truncated", completenessReason: "depth-budget" };
+  if (flags.unresolvedEdges)
+    return { completeness: "partial", completenessReason: "unresolved-edges" };
+  if (flags.cut)
+    return { completeness: "truncated", completenessReason: "result-limit" };
+  return { completeness: "complete" };
+}
+function moduleFor(file) {
+  const slash = file.indexOf("/");
+  return slash < 0 ? "(root)" : file.slice(0, slash);
+}
+function moduleCounts(items) {
+  const counts = new Map;
+  for (const item of items) {
+    const module = moduleFor(item.file);
+    counts.set(module, (counts.get(module) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0)).map(([module, count]) => ({ module, count }));
+}
+function hasTestPath(snapshot, item) {
+  if (isTestPath(item.file))
+    return true;
+  const index = indexFor(snapshot);
+  const direct = index.edgesByTo.get(item.id) ?? [];
+  if (direct.some((edge) => edge.kind === "TESTS"))
+    return true;
+  const fileEdges = index.edgesByTo.get(`file:${item.file}`) ?? [];
+  return fileEdges.some((edge) => edge.kind === "TESTS");
+}
+function emptyImpactSummary(subjectIds, completeness) {
+  return {
+    subjectIds,
+    dependentFiles: 0,
+    dependentSymbols: 0,
+    modules: [],
+    testsFound: 0,
+    callersWithoutTestPath: 0,
+    unresolvedEdges: 0,
+    completeness
+  };
+}
+function unresolvedEdgesFrom(snapshot, nodeId) {
+  return (indexFor(snapshot).edgesByFrom.get(nodeId) ?? []).filter((edge) => edge.kind === "CALLS_UNRESOLVED");
 }
 function scopeFromBaseline(baseline) {
   return {
@@ -10632,7 +10863,9 @@ function toItem(node, evidence, knowledge) {
     line: node.line,
     evidence,
     confidence: 1,
-    knowledgeIds: knowledge
+    knowledgeIds: knowledge,
+    verdict: verdictForEvidenceKind(evidence[0]?.edge ?? "indexed"),
+    isTest: isTestPath(node.file)
   };
   return node.name === undefined ? item : { ...item, name: node.name };
 }
@@ -10652,23 +10885,32 @@ function search(snapshot, query, options) {
   if (needle.trim().length === 0) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
+      query,
       coverage: "indexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: ["empty query: name or path fragment required"],
       unsupported: [],
-      items: []
+      items: [],
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      completeness: "complete"
     };
   }
   if ((query.includes("/") || query.includes("\\")) && !isSupportedPath(query)) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
+      query,
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [],
       unsupported: [unsupportedNote(query)],
-      items: []
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files"
     };
   }
   const queryTokens = tokenizeIdentifier(query);
@@ -10681,22 +10923,44 @@ function search(snapshot, query, options) {
       ranked.push({ node, ...match });
   }
   ranked.sort((left, right) => rankCompare(left, right));
-  const truncated = ranked.length > limit;
-  const items = ranked.slice(0, limit).map(({ node, reason, rank }) => ({
+  const eligible = options.excludeTests === true ? ranked.filter(({ node }) => !isTestPath(node.file)) : ranked;
+  const hiddenTests = ranked.length - eligible.length;
+  const truncated = eligible.length > limit;
+  const deduped = dedupeById(eligible.slice(0, limit).map(({ node, reason, rank }) => ({
     ...nodeItem(snapshot, node, definesEvidence(snapshot, node)),
     reason,
     rank
-  }));
-  const notes = truncated ? [`truncated to ${limit} of ${ranked.length} matches`] : [];
-  return {
+  })));
+  const items = deduped.items;
+  const indexNote = indexTruncationNote(snapshot);
+  const notes = truncated ? [`truncated to ${limit} of ${eligible.length} matches`] : [];
+  if (indexNote !== undefined)
+    notes.push(indexNote);
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  const envelope = {
     ...baseEnvelope(scope, freshness),
-    coverage: truncated ? "partial" : "indexed",
+    suggestedMode: "explore",
+    query,
+    ...duplicatesExtra(deduped.dropped),
+    ...ambiguousExtra(items),
+    shownOf: { candidates: { shown: items.length, total: eligible.length } },
+    coverage: indexCoverage(snapshot),
     truncated,
     knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
     unresolved: notes,
     unsupported: [],
-    items
+    items,
+    totals: indexNote !== undefined ? { displayed: items.length, known: null, hidden: null, byKind: byKindFor(items) } : { displayed: items.length, known: eligible.length, hidden: eligible.length - items.length, byKind: byKindFor(items) },
+    ...decided
   };
+  return hiddenTests > 0 ? { ...envelope, hiddenTestCount: hiddenTests } : envelope;
 }
 function tokenizeIdentifier(value) {
   const out = [];
@@ -10880,17 +11144,36 @@ function calleesOf(snapshot, symbolId) {
 function unindexedSymbol(scope, freshness, symbolId) {
   const filePart = symbolFilePart(symbolId);
   const unsupported = filePart !== undefined && !isSupportedPath(filePart) ? [unsupportedNote(filePart)] : [];
+  const decided = decideCompleteness({
+    unsupported: unsupported.length > 0,
+    excluded: unsupported.length === 0,
+    indexPartial: false,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: false
+  });
   return {
     ...baseEnvelope(scope, freshness),
+    suggestedMode: "explore",
     coverage: "unindexed",
     truncated: false,
     knowledgeIds: [],
     unresolved: [`no definition for ${symbolId} in this snapshot`],
     unsupported,
     items: [],
+    totals: { displayed: 0, known: null, hidden: null },
+    ...decided,
     definition: undefined,
     callers: [],
-    callees: []
+    callees: [],
+    summary: {
+      subjectId: null,
+      depth: 1,
+      incoming: 0,
+      outgoing: 0,
+      tests: 0,
+      modulesTouched: []
+    }
   };
 }
 function symbolContext(snapshot, symbolId, options) {
@@ -10901,15 +11184,27 @@ function symbolContext(snapshot, symbolId, options) {
   if (filePart !== undefined && !isSupportedPath(filePart)) {
     const empty = {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [],
       unsupported: [unsupportedNote(filePart)],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files",
       definition: undefined,
       callers: [],
-      callees: []
+      callees: [],
+      summary: {
+        subjectId: null,
+        depth: 1,
+        incoming: 0,
+        outgoing: 0,
+        tests: 0,
+        modulesTouched: []
+      }
     };
     return empty;
   }
@@ -10920,23 +11215,77 @@ function symbolContext(snapshot, symbolId, options) {
   const definition = nodeItem(snapshot, node, definesEvidence(snapshot, node));
   const callerItems = callersOf(snapshot, symbolId).map(({ caller, ref }) => nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
   const calleeItems = calleesOf(snapshot, symbolId).map(({ callee, ref }) => nodeItem(snapshot, callee, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
-  const combined = [definition, ...callerItems, ...calleeItems];
-  const truncated = combined.length > limit;
-  const items = combined.slice(0, limit);
+  const ranked = [
+    { item: definition, depth: 0 },
+    ...callerItems.map((item) => ({ item, depth: 1 })),
+    ...calleeItems.map((item) => ({ item, depth: 1 }))
+  ].sort((left, right) => compareRows(left.depth, left.item, right.depth, right.item));
+  const seenIds = new Set;
+  const uniqueRanked = ranked.filter((entry) => {
+    if (seenIds.has(entry.item.id))
+      return false;
+    seenIds.add(entry.item.id);
+    return true;
+  });
+  const dropped = ranked.length - uniqueRanked.length;
+  const truncated = uniqueRanked.length > limit;
+  const items = uniqueRanked.slice(0, limit).map((entry) => entry.item);
+  const indexNote = indexTruncationNote(snapshot);
+  const subjectUnresolved = unresolvedFor(snapshot, symbolId);
+  const unresolved = [
+    ...subjectUnresolved,
+    ...indexNote === undefined ? [] : [indexNote],
+    ...truncated ? [`truncated to ${limit} of ${uniqueRanked.length} rows`] : []
+  ];
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: subjectUnresolved.length > 0,
+    cut: truncated
+  });
+  const neighbourhood = [definition, ...callerItems, ...calleeItems];
+  const testFiles = new Set;
+  for (const row of neighbourhood) {
+    if (isTestPath(row.file))
+      testFiles.add(row.file);
+  }
+  const modulesTouched = [...new Set(neighbourhood.map((row) => moduleFor(row.file)))].sort();
+  const depthCounts = new Map;
+  for (const entry of uniqueRanked)
+    depthCounts.set(entry.depth, (depthCounts.get(entry.depth) ?? 0) + 1);
+  const byDepth = [...depthCounts.entries()].sort((left, right) => left[0] - right[0]).map(([depth, count]) => ({ depth, count }));
+  const callers = callerItems.slice(0, limit);
+  const callees = calleeItems.slice(0, limit);
   return {
     ...baseEnvelope(scope, freshness),
-    coverage: truncated ? "partial" : "indexed",
+    suggestedMode: "explore",
+    ...duplicatesExtra(dropped),
+    ...ambiguousExtra(items),
+    shownOf: {
+      callers: { shown: callers.length, total: callerItems.length },
+      callees: { shown: callees.length, total: calleeItems.length }
+    },
+    coverage: indexCoverage(snapshot),
     truncated,
     knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
-    unresolved: [
-      ...unresolvedFor(snapshot, symbolId),
-      ...truncated ? [`truncated to ${limit} of ${combined.length} rows`] : []
-    ],
+    unresolved,
     unsupported: [],
     items,
+    totals: indexNote !== undefined ? { displayed: items.length, known: null, hidden: null, byDepth, byKind: byKindFor(items) } : { displayed: items.length, known: uniqueRanked.length, hidden: uniqueRanked.length - items.length, byDepth, byKind: byKindFor(items) },
+    ...decided,
     definition,
-    callers: callerItems.slice(0, limit),
-    callees: calleeItems.slice(0, limit)
+    callers,
+    callees,
+    summary: {
+      subjectId: symbolId,
+      depth: 1,
+      incoming: callerItems.length,
+      outgoing: calleeItems.length,
+      tests: testFiles.size,
+      modulesTouched
+    }
   };
 }
 function impact(snapshot, symbolId, options) {
@@ -10948,69 +11297,156 @@ function impact(snapshot, symbolId, options) {
   if (filePart !== undefined && !isSupportedPath(filePart)) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "impact",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [],
       unsupported: [unsupportedNote(filePart)],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files",
       subject: undefined,
-      impacted: []
+      impacted: [],
+      summary: emptyImpactSummary([symbolId], "partial")
     };
   }
   const subjectNode = findNode(snapshot, symbolId);
   if (subjectNode === undefined) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "impact",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [`no definition for ${symbolId} in this snapshot`],
       unsupported: [],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "index-excluded",
       subject: undefined,
-      impacted: []
+      impacted: [],
+      summary: emptyImpactSummary([symbolId], "partial")
     };
   }
   const subject = nodeItem(snapshot, subjectNode, definesEvidence(snapshot, subjectNode));
-  const impacted = [];
+  const walked = [];
   const seen = new Set([symbolId]);
+  const exploredCap = clampExploredEdges(options.maxExploredEdges);
+  const deadlineMs = Date.now() + clampQueryBudgetMs(options.maxQueryMs);
+  let explored = 0;
+  let edgeBudgetHit = false;
+  let timeBudgetHit = false;
   let frontier = [symbolId];
-  let truncated = false;
-  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !truncated; depth += 1) {
+  for (let depth = 1;depth <= maxDepth && frontier.length > 0; depth += 1) {
+    if (Date.now() >= deadlineMs) {
+      timeBudgetHit = true;
+      break;
+    }
     const next = [];
     for (const current of frontier) {
       for (const { caller, ref } of callersOf(snapshot, current)) {
+        explored += 1;
+        if (explored > exploredCap) {
+          edgeBudgetHit = true;
+          break;
+        }
         if (seen.has(caller.id))
           continue;
         seen.add(caller.id);
-        if (impacted.length >= limit) {
-          truncated = true;
-          break;
-        }
-        impacted.push(nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+        walked.push({
+          item: nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]),
+          depth
+        });
         if (caller.kind === "symbol")
           next.push(caller.id);
       }
-      if (truncated)
+      if (edgeBudgetHit)
         break;
     }
+    if (edgeBudgetHit)
+      break;
     frontier = next;
   }
+  const depthBudgetHit = frontier.some((id) => callersOf(snapshot, id).some(({ caller }) => !seen.has(caller.id)));
+  walked.sort((left, right) => compareRows(left.depth, left.item, right.depth, right.item));
+  const truncated = walked.length > limit;
+  const returned = walked.slice(0, limit);
+  const impacted = returned.map((entry) => entry.item);
+  const depthCounts = new Map;
+  for (const entry of walked)
+    depthCounts.set(entry.depth, (depthCounts.get(entry.depth) ?? 0) + 1);
+  const byDepth = [...depthCounts.entries()].sort((left, right) => left[0] - right[0]).map(([depth, count]) => ({ depth, count }));
+  const visitedIds = [symbolId, ...walked.map((entry) => entry.item.id)];
+  const unresolvedNotes = [];
+  let unresolvedEdges = 0;
+  for (const id of visitedIds) {
+    const edges = unresolvedEdgesFrom(snapshot, id);
+    unresolvedEdges += edges.length;
+    for (const edge of edges) {
+      unresolvedNotes.push(`${edge.ref} calls an unknown callee (manual review, never proven)`);
+    }
+  }
+  unresolvedNotes.sort();
+  const indexNote = indexTruncationNote(snapshot);
   const unresolved = [
-    ...unresolvedFor(snapshot, symbolId),
-    ...truncated ? [`truncated to ${limit} impacted rows`] : []
+    ...unresolvedNotes,
+    ...indexNote === undefined ? [] : [indexNote],
+    ...edgeBudgetHit ? [`edge budget ${exploredCap} stopped the walk after ${explored - 1} caller edges; more dependents may exist`] : [],
+    ...timeBudgetHit ? [`time budget ${clampQueryBudgetMs(options.maxQueryMs)} ms stopped the walk; more dependents may exist`] : [],
+    ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callers still unexplored`] : [],
+    ...truncated ? [`truncated to ${limit} of ${walked.length} impacted rows`] : []
   ];
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    edgeBudget: edgeBudgetHit,
+    timeBudget: timeBudgetHit,
+    depthBudget: depthBudgetHit,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  const allDependents = walked.map((entry) => entry.item);
+  const dependentFiles = new Set(allDependents.map((item) => item.file));
+  const testFiles = new Set;
+  let callersWithoutTestPath = 0;
+  for (const item of allDependents) {
+    if (isTestPath(item.file))
+      testFiles.add(item.file);
+    if (!hasTestPath(snapshot, item))
+      callersWithoutTestPath += 1;
+  }
+  const dedupedImpacted = dedupeById(impacted);
+  const uniqueImpacted = [...dedupedImpacted.items];
   return {
     ...baseEnvelope(scope, freshness),
-    coverage: truncated ? "partial" : "indexed",
+    suggestedMode: "impact",
+    ...duplicatesExtra(dedupedImpacted.dropped),
+    ...ambiguousExtra(uniqueImpacted),
+    shownOf: { impacted: { shown: uniqueImpacted.length, total: walked.length } },
+    coverage: indexCoverage(snapshot),
     truncated,
-    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(impacted.map((item) => item.id)))),
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(uniqueImpacted.map((item) => item.id)))),
     unresolved,
     unsupported: [],
-    items: impacted,
+    items: uniqueImpacted,
+    totals: indexNote !== undefined ? { displayed: uniqueImpacted.length, known: null, hidden: null, byDepth, byKind: byKindFor(uniqueImpacted) } : { displayed: uniqueImpacted.length, known: walked.length, hidden: walked.length - uniqueImpacted.length, byDepth, byKind: byKindFor(uniqueImpacted) },
+    ...decided,
     subject,
-    impacted
+    impacted: uniqueImpacted,
+    summary: {
+      subjectIds: [symbolId],
+      dependentFiles: dependentFiles.size,
+      dependentSymbols: allDependents.filter((item) => !item.id.startsWith("file:")).length,
+      modules: moduleCounts(allDependents),
+      testsFound: testFiles.size,
+      callersWithoutTestPath,
+      unresolvedEdges,
+      completeness: decided.completeness
+    }
   };
 }
 function trace(snapshot, fromId, toId, options) {
@@ -11023,13 +11459,23 @@ function trace(snapshot, fromId, toId, options) {
     if (filePart !== undefined && !isSupportedPath(filePart)) {
       return {
         ...baseEnvelope(scope, freshness),
+        suggestedMode: "trace",
         coverage: "unindexed",
         truncated: false,
         knowledgeIds: [],
         unresolved: [],
         unsupported: [unsupportedNote(filePart)],
         items: [],
-        path: []
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial",
+        completenessReason: "unsupported-files",
+        path: [],
+        summary: {
+          found: false,
+          hops: null,
+          alternativePaths: null,
+          reason: id === fromId ? "start-unresolved" : "destination-unresolved"
+        }
       };
     }
   }
@@ -11039,26 +11485,41 @@ function trace(snapshot, fromId, toId, options) {
     const missing = fromNode === undefined ? fromId : toId;
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [`no definition for ${missing} in this snapshot`],
       unsupported: [],
       items: [],
-      path: []
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      completeness: "partial",
+      completenessReason: "index-excluded",
+      path: [],
+      summary: {
+        found: false,
+        hops: null,
+        alternativePaths: null,
+        reason: fromNode === undefined ? "start-unresolved" : "destination-unresolved"
+      }
     };
   }
   if (fromId === toId) {
     const self = nodeItem(snapshot, fromNode, [indexedEvidence(fromNode)]);
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
+      ...ambiguousExtra([self]),
       coverage: "indexed",
       truncated: false,
       knowledgeIds: [...self.knowledgeIds],
       unresolved: [],
       unsupported: [],
       items: [self],
-      path: []
+      totals: { displayed: 1, known: 1, hidden: 0, byKind: byKindFor([self]) },
+      completeness: "complete",
+      path: [],
+      summary: { found: true, hops: 0, alternativePaths: null, reason: "same-node" }
     };
   }
   const parents = new Map;
@@ -11090,28 +11551,69 @@ function trace(snapshot, fromId, toId, options) {
     }
     frontier = next;
   }
+  const indexNote = indexTruncationNote(snapshot);
   if (abandoned && !found) {
+    const decided = decideCompleteness({
+      unsupported: false,
+      excluded: false,
+      indexPartial: indexNote !== undefined,
+      depthBudget: false,
+      unresolvedEdges: false,
+      cut: true
+    });
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
       coverage: "partial",
       truncated: true,
       knowledgeIds: [],
-      unresolved: [`trace abandoned: call frontier exceeded ${visitCap} nodes (bounded, never the whole graph)`],
+      unresolved: [
+        `trace abandoned: call frontier exceeded ${visitCap} nodes (bounded, never the whole graph)`,
+        ...indexNote === undefined ? [] : [indexNote]
+      ],
       unsupported: [],
       items: [],
-      path: []
+      totals: { displayed: 0, known: null, hidden: null },
+      ...decided,
+      path: [],
+      summary: { found: false, hops: null, alternativePaths: null, reason: "budget-exhausted" }
     };
   }
   if (!found) {
+    let blockedEdge;
+    for (const id of seen) {
+      blockedEdge = unresolvedEdgesFrom(snapshot, id)[0];
+      if (blockedEdge !== undefined)
+        break;
+    }
+    const depthBudgetHit = frontier.length > 0;
+    const reason = blockedEdge !== undefined ? "blocked-by-unresolved" : depthBudgetHit ? "budget-exhausted" : "no-path-in-graph";
+    const decided = decideCompleteness({
+      unsupported: false,
+      excluded: false,
+      indexPartial: indexNote !== undefined,
+      depthBudget: depthBudgetHit && blockedEdge === undefined,
+      unresolvedEdges: blockedEdge !== undefined,
+      cut: false
+    });
     return {
       ...baseEnvelope(scope, freshness),
-      coverage: "indexed",
-      truncated: false,
+      suggestedMode: "trace",
+      coverage: indexCoverage(snapshot),
+      truncated: depthBudgetHit,
       knowledgeIds: [],
-      unresolved: [`no static call path from ${fromId} to ${toId} (never guessed)`],
+      unresolved: [
+        blockedEdge === undefined && !depthBudgetHit ? `no static call path from ${fromId} to ${toId} (never guessed)` : `no static call path from ${fromId} to ${toId} within budget (never guessed)`,
+        ...blockedEdge === undefined ? [] : [`${blockedEdge.ref} calls an unknown callee (manual review, never proven)`],
+        ...indexNote === undefined ? [] : [indexNote],
+        ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callees still unexplored`] : []
+      ],
       unsupported: [],
       items: [],
-      path: []
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      ...decided,
+      path: [],
+      summary: { found: false, hops: null, alternativePaths: null, reason }
     };
   }
   const chain = [toId];
@@ -11132,15 +11634,37 @@ function trace(snapshot, fromId, toId, options) {
     const step = path.find((entry) => entry.from === node.id || entry.to === node.id);
     return nodeItem(snapshot, node, step ? [{ edge: "CALLS_STATIC", ref: step.ref, confidence: 1 }] : [indexedEvidence(node)]);
   });
+  const foundNotes = unresolvedFor(snapshot, fromId);
+  const foundDecided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: false
+  });
+  const dedupedFound = dedupeById(items);
+  const uniqueFound = [...dedupedFound.items];
   return {
     ...baseEnvelope(scope, freshness),
+    suggestedMode: "trace",
+    ...duplicatesExtra(dedupedFound.dropped),
+    ...ambiguousExtra(uniqueFound),
     coverage: "indexed",
     truncated: false,
-    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
-    unresolved: unresolvedFor(snapshot, fromId),
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(uniqueFound.map((item) => item.id)))),
+    unresolved: [...foundNotes, ...indexNote === undefined ? [] : [indexNote]],
     unsupported: [],
-    items,
-    path
+    items: uniqueFound,
+    totals: {
+      displayed: uniqueFound.length,
+      known: indexNote === undefined ? uniqueFound.length : null,
+      hidden: indexNote === undefined ? 0 : null,
+      byKind: byKindFor(uniqueFound)
+    },
+    ...foundDecided,
+    path,
+    summary: { found: true, hops: path.length, alternativePaths: null }
   };
 }
 function subjectFileFor(snapshot, target) {
@@ -11160,14 +11684,19 @@ function findTests(snapshot, target, options) {
   const maxDepth = clampDepth(options.maxDepth);
   const subjectFile = subjectFileFor(snapshot, target);
   if (subjectFile === undefined || !isSupportedPath(subjectFile)) {
+    const unsupportedInput = subjectFile !== undefined;
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: subjectFile === undefined ? [`no definition for ${target} in this snapshot`] : [],
       unsupported: subjectFile === undefined ? [] : [unsupportedNote(subjectFile)],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: unsupportedInput ? "unsupported-files" : "index-excluded",
       subjectFile: undefined,
       candidates: []
     };
@@ -11176,76 +11705,417 @@ function findTests(snapshot, target, options) {
   if (findNode(snapshot, subjectId) === undefined) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [`${subjectFile} is not in this snapshot`],
       unsupported: [],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "index-excluded",
       subjectFile: undefined,
       candidates: []
     };
   }
-  const candidates = [];
+  const walked = [];
   const seen = new Set([subjectId]);
-  const visitCap = limit * 20;
+  const deadlineMs = Date.now() + clampQueryBudgetMs(options.maxQueryMs);
+  let timeBudgetHit = false;
   let frontier = [{ id: subjectId, via: [] }];
-  let truncated = false;
-  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !truncated; depth += 1) {
+  for (let depth = 1;depth <= maxDepth && frontier.length > 0; depth += 1) {
+    if (Date.now() >= deadlineMs) {
+      timeBudgetHit = true;
+      break;
+    }
     const next = [];
     for (const current of frontier) {
-      for (const edge of snapshot.edges) {
-        if (edge.to !== current.id)
-          continue;
+      for (const edge of indexFor(snapshot).edgesByTo.get(current.id) ?? []) {
         if (edge.kind !== "IMPORTS" && edge.kind !== "TESTS")
           continue;
-        const importer = findNode(snapshot, edge.from);
+        const importer = indexFor(snapshot).nodeById.get(edge.from);
         if (importer === undefined || seen.has(importer.id))
           continue;
         seen.add(importer.id);
-        if (seen.size > visitCap) {
-          truncated = true;
-          break;
-        }
         const hop = { edge: edge.kind, ref: edge.ref, confidence: edge.confidence };
         const evidence = [...current.via, hop];
         if (importer.kind === "file" && importer.isTest === true) {
-          if (candidates.length >= limit) {
-            truncated = true;
-            break;
-          }
-          candidates.push(nodeItem(snapshot, importer, evidence));
+          walked.push({ item: nodeItem(snapshot, importer, evidence), depth });
         } else if (importer.kind === "file") {
           next.push({ id: importer.id, via: evidence });
         }
       }
-      if (truncated)
-        break;
     }
     frontier = next;
   }
-  candidates.sort((left, right) => left.id < right.id ? -1 : 1);
+  const depthBudgetHit = frontier.some((entry) => (indexFor(snapshot).edgesByTo.get(entry.id) ?? []).some((edge) => (edge.kind === "IMPORTS" || edge.kind === "TESTS") && !seen.has(edge.from)));
+  walked.sort((left, right) => compareRows(left.depth, left.item, right.depth, right.item));
+  const truncated = walked.length > limit;
+  const dedupedCandidates = dedupeById(walked.slice(0, limit).map((entry) => entry.item));
+  const candidates = [...dedupedCandidates.items];
+  const indexNote = indexTruncationNote(snapshot);
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    timeBudget: timeBudgetHit,
+    depthBudget: depthBudgetHit,
+    unresolvedEdges: false,
+    cut: truncated
+  });
   return {
     ...baseEnvelope(scope, freshness),
-    coverage: truncated ? "partial" : "indexed",
+    suggestedMode: "explore",
+    ...duplicatesExtra(dedupedCandidates.dropped),
+    ...ambiguousExtra(candidates),
+    shownOf: { candidates: { shown: candidates.length, total: walked.length } },
+    coverage: indexCoverage(snapshot),
     truncated,
     knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(candidates.map((item) => item.id)))),
-    unresolved: truncated ? [`truncated to ${limit} candidate tests`] : [],
+    unresolved: [
+      ...indexNote === undefined ? [] : [indexNote],
+      ...timeBudgetHit ? [`time budget ${clampQueryBudgetMs(options.maxQueryMs)} ms stopped the walk; more candidates may exist`] : [],
+      ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with importers still unexplored`] : [],
+      ...truncated ? [`truncated to ${limit} of ${walked.length} candidate tests`] : []
+    ],
     unsupported: [],
     items: candidates,
+    totals: indexNote !== undefined ? { displayed: candidates.length, known: null, hidden: null, byKind: byKindFor(candidates) } : { displayed: candidates.length, known: walked.length, hidden: walked.length - candidates.length, byKind: byKindFor(candidates) },
+    ...decided,
     subjectFile,
     candidates
   };
 }
+function entryBasename(file) {
+  const base = file.split("/").pop() ?? file;
+  const stem = (base.split(".")[0] ?? base).toLowerCase();
+  return stem === "main" || stem === "index" || stem === "cli";
+}
+function isEntryLikeFile(file) {
+  if (isTestPath(file))
+    return true;
+  if (file.endsWith(".sh"))
+    return true;
+  return entryBasename(file);
+}
+var UNANALYZED_NOTE = "non-TypeScript files are not analysed; entry points, framework conventions, " + "CLI registries, schedulers and build config can reach a file outside the analysed " + "edge set, so every candidate is only potentially unreferenced, never proven unused.";
+function findUnreferenced(snapshot, options) {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const index = indexFor(snapshot);
+  const analysedIds = new Set(snapshot.nodes.map((node) => node.id));
+  const excludedFiles = new Set;
+  let analyzedFiles = 0;
+  const all = [];
+  for (const node of snapshot.nodes) {
+    if (node.kind === "file")
+      analyzedFiles += 1;
+    if (node.kind !== "file" && node.kind !== "export-contract")
+      continue;
+    if (isEntryLikeFile(node.file)) {
+      excludedFiles.add(node.file);
+      continue;
+    }
+    const inboundIds = node.kind === "export-contract" && node.target !== undefined && node.target !== "unknown" ? [node.id, node.target] : [node.id];
+    const inbound = inboundIds.flatMap((id) => index.edgesByTo.get(id) ?? []).filter((edge) => !inboundIds.includes(edge.from) && analysedIds.has(edge.from));
+    const inboundImports = inbound.filter((edge) => edge.kind === "IMPORTS").length;
+    const inboundCalls = inbound.filter((edge) => edge.kind === "CALLS_STATIC" || edge.kind === "CALLS_UNRESOLVED").length;
+    if (inboundImports > 0 || inboundCalls > 0)
+      continue;
+    const inboundTests = inbound.filter((edge) => edge.kind === "TESTS").length;
+    const inboundKnowledge = inbound.filter((edge) => edge.kind === "LINKS_KNOWLEDGE").length;
+    const exported = inbound.some((edge) => edge.kind === "EXPORTS");
+    const candidate = {
+      id: node.id,
+      file: node.file,
+      line: node.line,
+      kind: node.kind === "file" ? "file" : "symbol",
+      inboundImports,
+      inboundCalls,
+      inboundTests,
+      inboundKnowledge,
+      reason: exported ? "only-exported" : "no-inbound-edges"
+    };
+    all.push(node.name === undefined ? candidate : { ...candidate, name: node.name });
+  }
+  all.sort((left, right) => {
+    const leftTotal = left.inboundImports + left.inboundCalls + left.inboundTests + left.inboundKnowledge;
+    const rightTotal = right.inboundImports + right.inboundCalls + right.inboundTests + right.inboundKnowledge;
+    if (leftTotal !== rightTotal)
+      return leftTotal - rightTotal;
+    if (left.file !== right.file)
+      return left.file < right.file ? -1 : 1;
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+  const kept = all.slice(0, limit);
+  const truncated = all.length > limit;
+  const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const items = kept.map((candidate) => {
+    const node = byId.get(candidate.id);
+    if (node === undefined) {
+      return {
+        id: candidate.id,
+        file: candidate.file,
+        line: candidate.line,
+        evidence: [{ edge: "indexed", ref: `${candidate.file}:${candidate.line}`, confidence: 1 }],
+        confidence: 1,
+        knowledgeIds: [],
+        verdict: verdictForEvidenceKind("indexed"),
+        isTest: isTestPath(candidate.file)
+      };
+    }
+    const exportEvidence = (index.edgesByTo.get(node.id) ?? []).filter((edge) => edge.kind === "EXPORTS" && edge.from !== node.id && analysedIds.has(edge.from)).map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
+    const evidence = exportEvidence.length > 0 ? exportEvidence : [indexedEvidence(node)];
+    const linked = knowledgeIdsFor(snapshot, new Set([node.id, `file:${node.file}`]));
+    const own = [...linked.get(node.id) ?? [], ...linked.get(`file:${node.file}`) ?? []].filter((id, at, seen) => seen.indexOf(id) === at);
+    const entry = {
+      id: node.id,
+      file: node.file,
+      line: node.line,
+      evidence,
+      confidence: 1,
+      knowledgeIds: own,
+      verdict: verdictForEvidenceKind(evidence[0]?.edge ?? "indexed"),
+      isTest: isTestPath(node.file)
+    };
+    return node.name === undefined ? entry : { ...entry, name: node.name };
+  });
+  const indexNote = indexTruncationNote(snapshot);
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  return {
+    ...baseEnvelope(scope, freshness),
+    suggestedMode: "explore",
+    ...ambiguousExtra(items),
+    shownOf: { candidates: { shown: items.length, total: all.length } },
+    coverage: indexCoverage(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved: [
+      ...indexNote === undefined ? [] : [indexNote, "unanalyzed content cannot be judged: references may arrive from outside the analysed edge set"],
+      ...truncated ? [`truncated to ${limit} of ${all.length} candidates`] : []
+    ],
+    unsupported: [],
+    items,
+    totals: { displayed: items.length, known: all.length, hidden: all.length - items.length },
+    ...decided,
+    candidates: kept,
+    summary: {
+      analyzedFiles,
+      unanalyzedNote: UNANALYZED_NOTE,
+      candidatesTotal: all.length,
+      excludedEntryLike: excludedFiles.size
+    }
+  };
+}
+// ../../../../omo-engine/code-graph/src/snapshot-store.ts
+var SNAPSHOT_STORE_VERSION = 1;
+var UNATTRIBUTED_SHARD = "__unattributed__";
+function fileOfNodeId(id) {
+  if (id.startsWith("file:"))
+    return id.slice("file:".length);
+  const at = id.lastIndexOf("@");
+  if (at < 0)
+    return null;
+  const withLine = id.slice(at + 1);
+  const colon = withLine.lastIndexOf(":");
+  const file = colon < 0 ? withLine : withLine.slice(0, colon);
+  return file.length > 0 ? file : null;
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function splitSnapshotIntoShards(snapshot) {
+  const order = [];
+  const seenInOrder = new Set;
+  const nodesByFile = new Map;
+  const edgesByFile = new Map;
+  const register = (key) => {
+    if (seenInOrder.has(key))
+      return;
+    seenInOrder.add(key);
+    order.push(key);
+  };
+  for (const node of snapshot.nodes) {
+    const key = fileOfNodeId(node.id) ?? UNATTRIBUTED_SHARD;
+    register(key);
+    const bucket = nodesByFile.get(key);
+    if (bucket)
+      bucket.push(node);
+    else
+      nodesByFile.set(key, [node]);
+  }
+  for (const edge of snapshot.edges) {
+    const key = fileOfNodeId(edge.from) ?? UNATTRIBUTED_SHARD;
+    register(key);
+    const bucket = edgesByFile.get(key);
+    if (bucket)
+      bucket.push(edge);
+    else
+      edgesByFile.set(key, [edge]);
+  }
+  const contentFiles = snapshot.content?.files ?? {};
+  for (const file of Object.keys(contentFiles)) {
+    if (!nodesByFile.has(file) && !edgesByFile.has(file))
+      order.push(file);
+  }
+  return order.map((file) => {
+    const nodes = nodesByFile.get(file) ?? [];
+    const edges = edgesByFile.get(file) ?? [];
+    const content = contentFiles[file];
+    return content === undefined ? { file, nodes, edges } : { file, nodes, edges, content };
+  });
+}
+function createSnapshotManifest(snapshot, meta) {
+  return {
+    version: SNAPSHOT_STORE_VERSION,
+    scope: meta.scope,
+    observedAtMs: meta.observedAtMs,
+    entryCap: meta.entryCap,
+    entryCount: meta.entryCount,
+    root: snapshot.root ?? null,
+    nodeCount: snapshot.nodes.length,
+    edgeCount: snapshot.edges.length,
+    contentTokenCap: snapshot.content?.tokenCap ?? null,
+    contentSkipped: snapshot.content?.skipped ?? [],
+    dropped: snapshot.dropped ?? [],
+    shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file)
+  };
+}
+function serializeSnapshotShard(shard) {
+  return JSON.stringify(shard);
+}
+function serializeSnapshotManifest(manifest) {
+  return JSON.stringify(manifest);
+}
+function parseSnapshotManifest(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "corrupt", reason: "manifest is not JSON" };
+  }
+  if (!isRecord(parsed))
+    return { kind: "corrupt", reason: "manifest is not an object" };
+  if (parsed.version !== SNAPSHOT_STORE_VERSION) {
+    return { kind: "corrupt", reason: `unsupported manifest version: ${String(parsed.version)}` };
+  }
+  const scope = parsed.scope;
+  if (!isRecord(scope))
+    return { kind: "corrupt", reason: "manifest has no scope" };
+  const scopeKeys = ["projectId", "worktreeId", "revision", "fingerprint"];
+  for (const key of scopeKeys) {
+    if (typeof scope[key] !== "string" || String(scope[key]).length === 0) {
+      return { kind: "corrupt", reason: `scope.${key} is missing` };
+    }
+  }
+  if (!Array.isArray(parsed.shards) || parsed.shards.some((entry) => typeof entry !== "string")) {
+    return { kind: "corrupt", reason: "manifest shards are not a string list" };
+  }
+  if (!Number.isFinite(parsed.nodeCount) || !Number.isFinite(parsed.edgeCount)) {
+    return { kind: "corrupt", reason: "manifest counts are not numbers" };
+  }
+  return {
+    kind: "manifest",
+    manifest: {
+      version: SNAPSHOT_STORE_VERSION,
+      scope: {
+        projectId: String(scope.projectId),
+        worktreeId: String(scope.worktreeId),
+        revision: String(scope.revision),
+        fingerprint: String(scope.fingerprint)
+      },
+      observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
+      entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
+      entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
+      root: typeof parsed.root === "string" ? parsed.root : null,
+      nodeCount: Number(parsed.nodeCount),
+      edgeCount: Number(parsed.edgeCount),
+      contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
+      contentSkipped: Array.isArray(parsed.contentSkipped) ? parsed.contentSkipped : [],
+      dropped: Array.isArray(parsed.dropped) ? parsed.dropped : [],
+      shards: parsed.shards
+    }
+  };
+}
+function parseSnapshotShard(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "corrupt", reason: "shard is not JSON" };
+  }
+  if (!isRecord(parsed))
+    return { kind: "corrupt", reason: "shard is not an object" };
+  if (typeof parsed.file !== "string")
+    return { kind: "corrupt", reason: "shard has no file" };
+  if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
+    return { kind: "corrupt", reason: "shard has no node/edge arrays" };
+  }
+  const shard = {
+    file: parsed.file,
+    nodes: parsed.nodes,
+    edges: parsed.edges,
+    ...isRecord(parsed.content) ? { content: parsed.content } : {}
+  };
+  return { kind: "shard", shard };
+}
+function joinSnapshotShards(manifest, shards) {
+  if (shards.length !== manifest.shards.length) {
+    return { kind: "torn", reason: `expected ${manifest.shards.length} shards, found ${shards.length}` };
+  }
+  const nodes = [];
+  const edges = [];
+  const files = {};
+  for (const shard of shards) {
+    for (const node of shard.nodes)
+      nodes.push(node);
+    for (const edge of shard.edges)
+      edges.push(edge);
+    if (shard.content !== undefined)
+      files[shard.file] = shard.content;
+  }
+  if (nodes.length !== manifest.nodeCount || edges.length !== manifest.edgeCount) {
+    return {
+      kind: "torn",
+      reason: `shard totals ${nodes.length}/${edges.length} do not match manifest ${manifest.nodeCount}/${manifest.edgeCount}`
+    };
+  }
+  const snapshot = {
+    nodes,
+    edges,
+    ...manifest.root === null ? {} : { root: manifest.root },
+    ...manifest.contentTokenCap === null ? {} : { content: { tokenCap: manifest.contentTokenCap, files, skipped: manifest.contentSkipped } },
+    ...manifest.dropped.length > 0 ? { dropped: manifest.dropped } : {}
+  };
+  return { kind: "snapshot", snapshot };
+}
 export {
   MAX_CONTENT_TOKENS_PER_FILE,
+  SNAPSHOT_STORE_VERSION,
   STALE_AFTER_MS,
   computeScopeFingerprint,
+  createSnapshotManifest,
   findTests,
+  findUnreferenced,
   impact,
   indexFiles,
+  joinSnapshotShards,
+  parseSnapshotManifest,
+  parseSnapshotShard,
   search,
   searchContent,
+  serializeSnapshotManifest,
+  serializeSnapshotShard,
+  splitSnapshotIntoShards,
   symbolContext,
   trace
 };

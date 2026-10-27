@@ -127,7 +127,7 @@ import { createProjectConfigRuntime } from './lib/projects/project-config.js';
 import { ensureChatsDir, migrateLegacyUserDirs } from './lib/data-dir-migration.js';
 import { createProjectContextRuntime } from './lib/project-context/runtime.js';
 import { createAgentMemoryRuntime } from './lib/agent-memory/runtime.js';
-import { createCodeGraphRuntime } from './lib/code-graph/runtime.js';
+import { createCodeGraphHost } from './lib/code-graph/host.js';
 import { createAgentMemoryActions } from './lib/agent-memory/actions.js';
 import { createMemoryProjectResolver } from './lib/agent-memory/project-resolution.js';
 import { isAgentMemoryFeatureAvailable } from './lib/agent-memory/feature-flag.js';
@@ -676,7 +676,12 @@ const agentMemoryRuntime = createAgentMemoryRuntime({
  * there is nothing to switch off. Missing engine support degrades per
  * request, never at startup (see lib/code-graph/DOCUMENTATION.md).
  */
-const codeGraphRuntime = createCodeGraphRuntime({ fsPromises, path });
+const codeGraphRuntime = createCodeGraphHost({ storeDir: path.join(ALCODE_DATA_DIR, 'code-graph-store') });
+// The indexer is a separate process holding the graph; an app exit must not
+// leave it behind on a machine the person is about to power down.
+process.once('exit', () => {
+  void codeGraphRuntime.stop({ kill: true });
+});
 
 /**
  * One switch for everything memory-related. It gates the tool, these routes,

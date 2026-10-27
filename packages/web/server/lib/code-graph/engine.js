@@ -22,6 +22,7 @@
 export { indexFiles } from '../../../../omo-engine/code-graph/src/extract.ts';
 export {
   findTests,
+  findUnreferenced,
   impact,
   search,
   symbolContext,
@@ -33,3 +34,13 @@ export {
   computeScopeFingerprint,
   searchContent,
 } from '../../../../omo-engine/code-graph/src/schema.ts';
+export {
+  SNAPSHOT_STORE_VERSION,
+  createSnapshotManifest,
+  joinSnapshotShards,
+  parseSnapshotManifest,
+  parseSnapshotShard,
+  serializeSnapshotManifest,
+  serializeSnapshotShard,
+  splitSnapshotIntoShards,
+} from '../../../../omo-engine/code-graph/src/snapshot-store.ts';

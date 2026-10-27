@@ -43,7 +43,7 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-const runtime = createCodeGraphRuntime({ fsPromises, path });
+const runtime = createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true });
 
 describe('snapshot file resolution', () => {
   it('resolves an absolute id the engine emits for files outside the snapshot root', async () => {

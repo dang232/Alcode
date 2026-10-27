@@ -16,7 +16,7 @@ import { createCodeGraphRuntime } from './runtime.js';
  * simulated.
  */
 
-const runtime = createCodeGraphRuntime({ fsPromises, path });
+const runtime = createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true });
 const root = mkdtempSync(join(tmpdir(), 'code-graph-generations-'));
 
 afterAll(() => {

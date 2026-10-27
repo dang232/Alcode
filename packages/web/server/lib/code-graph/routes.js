@@ -10,7 +10,8 @@
  *   and node/edge counts for the directory. The panel reads this first to
  *   render freshness (and its refresh action) before any symbol query.
  * - `GET /api/code-graph/query?directory=...&kind=...` — one engine query
- *   (`context`, `impact`, `search`, `tests`, `file`, `explore`, `trace`) with the freshness
+ *   (`context`, `impact`, `search`, `tests`, `file`, `explore`, `trace`,
+ *   `unreferenced`) with the freshness
  *   binding attached, so every row the panel shows carries the revision it
  *   was read at.
  * - `GET /api/code-graph/resolve?directory=...&file=...` — a snapshot file id
@@ -40,7 +41,7 @@ export const registerCodeGraphRoutes = (app, dependencies) => {
 
   const respondWithError = (res, error, fallbackMessage) => {
     const message = error instanceof Error ? error.message : fallbackMessage;
-    const status = error instanceof Error && typeof error.status === 'number' ? error.status : 500;
+    const status = error instanceof Error && Number.isFinite(error.status) ? error.status : 500;
     return res.status(status).json({ error: message || fallbackMessage });
   };
 
@@ -52,6 +53,31 @@ export const registerCodeGraphRoutes = (app, dependencies) => {
       return res.json(await codeGraphRuntime.readIndex(directory, { refresh }));
     } catch (caught) {
       return respondWithError(res, caught, 'Failed to read code graph index');
+    }
+  });
+
+  /**
+   * The index lifecycle, readable without starting anything: the panel polls
+   * this while a build runs, so progress and failure are observable states
+   * rather than a spinner on a request that cannot answer.
+   */
+  app.get('/api/code-graph/status', async (req, res) => {
+    const directory = await resolveDirectory(req, res);
+    if (!directory) return undefined;
+    try {
+      return res.json(await codeGraphRuntime.indexState(directory));
+    } catch (caught) {
+      return respondWithError(res, caught, 'Failed to read code graph index state');
+    }
+  });
+
+  app.post('/api/code-graph/cancel', async (req, res) => {
+    const directory = await resolveDirectory(req, res);
+    if (!directory) return undefined;
+    try {
+      return res.json(await codeGraphRuntime.cancelIndex(directory));
+    } catch (caught) {
+      return respondWithError(res, caught, 'Failed to cancel code graph indexing');
     }
   });
 
@@ -80,6 +106,7 @@ export const registerCodeGraphRoutes = (app, dependencies) => {
     if (!directory) return undefined;
     try {
       const rawLimit = Number(req.query.limit);
+      const rawDepth = Number(req.query.depth);
       const result = await codeGraphRuntime.query(directory, {
         kind: req.query.kind,
         symbol: req.query.symbol,
@@ -89,9 +116,11 @@ export const registerCodeGraphRoutes = (app, dependencies) => {
         from: req.query.from,
         to: req.query.to,
         limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+        // Neighbourhood depth for context/impact/trace: 1..3, default 1.
+        depth: Number.isFinite(rawDepth) ? Math.min(3, Math.max(1, Math.floor(rawDepth))) : 1,
         refresh: req.query.refresh === '1' || req.query.refresh === 'true',
       });
-      if (result && typeof result.error === 'string') {
+      if (result && Object.prototype.toString.call(result.error) === '[object String]') {
         return res.status(result.status ?? 400).json({ error: result.error });
       }
       return res.json(result);

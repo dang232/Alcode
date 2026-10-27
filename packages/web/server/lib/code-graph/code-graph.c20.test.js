@@ -43,7 +43,7 @@ afterAll(() => {
 const buildApp = () => {
   const app = express();
   registerCodeGraphRoutes(app, {
-    codeGraphRuntime: createCodeGraphRuntime({ fsPromises, path }),
+    codeGraphRuntime: createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true }),
   });
   return app;
 };
