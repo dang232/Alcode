@@ -23,6 +23,12 @@ concurrency:
 jobs:
   rehash:
     runs-on: ubuntu-latest
+    # Read through env, never inside an `if:`: GitHub refuses the whole workflow
+    # file when a secrets.* expression appears in a condition. A fork without the
+    # bake app leaves these empty, which skips the PR instead of failing the job.
+    env:
+      BAKE_APP_ID: ${{ secrets.OC_REVIEW_APP_ID }}
+      BAKE_APP_KEY: ${{ secrets.OC_REVIEW_APP_PRIVATE_KEY }}
     steps:
       # No persisted GITHUB_TOKEN: the only push here goes through the app
       # token below, and a token left in git config would win and get a 403.
@@ -55,7 +61,7 @@ jobs:
       # pull requests" toggle. The token carries only the two permissions
       # the bake needs, and exists only for the push and the PR.
       - name: Mint the bake bot token
-        if: steps.bake.outputs.changed == 'true'
+        if: steps.bake.outputs.changed == 'true' && env.BAKE_APP_ID != '' && env.BAKE_APP_KEY != ''
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -64,8 +70,16 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
+      # The bake still ran; without the app there is just nobody to open the PR.
+      # Say so out loud so a fork never reads a quiet skip as "hashes current".
+      - name: Report a bake that needs a manual commit
+        if: steps.bake.outputs.changed == 'true' && (env.BAKE_APP_ID == '' || env.BAKE_APP_KEY == '')
+        run: |
+          echo "::warning title=nix hashes re-baked::Hashes changed but no bake app is configured for this repository, so no PR was opened. Run nix run .#update-hashes locally and commit the diff."
+          git --no-pager diff --stat
+
       - name: Open or update the bake PR
-        if: steps.bake.outputs.changed == 'true'
+        if: steps.bake.outputs.changed == 'true' && env.BAKE_APP_ID != '' && env.BAKE_APP_KEY != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
