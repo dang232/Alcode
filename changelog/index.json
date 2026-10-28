@@ -7047,6 +7047,32 @@
     "vscode": null
   },
   {
+    "version": "0.2.0",
+    "date": "2026-10-28",
+    "title": "The code graph reaches your agent",
+    "intro": null,
+    "app": {
+      "new": [
+        "Code graph: the agent can now query the graph itself. One `code_graph` tool answers status, symbol context, search, a call trace, blast radius and related tests, returning source locations with a confirmed / inferred / unresolved label and honest counts instead of a bare list.",
+        "Code graph: each task decides how much graph work it earns. A non-code message is left untouched, an ordinary code question gets a small bounded block, unclear or multi-file work gets relationships, and security-sensitive work adds impact and tests. The chosen level changes the request the model receives, not just a log line.",
+        "Code graph: after an edit the run re-checks the changed files against the revision it started from, so stale analysis is reported as stale rather than presented as current.",
+        "Models: the catalog keeps the metadata the platform publishes — display name, description, reasoning and attachment support, input/output modalities, context and output limits — so `al-1.4` arrives with its real capabilities instead of a bare name."
+      ],
+      "improvements": [
+        "Indexing runs in a worker and answers from state, so opening the panel no longer freezes the app while a large repository is scanned; a persisted generation is reused after a restart.",
+        "Code graph answers report totals independently of the rows shown, bound their walks by depth, edges and wall clock, and say why an answer is partial.",
+        "The graph panel is driven by the server contract: known/displayed/hidden totals, depth instead of a row cap, and its own completeness and freshness labels."
+      ],
+      "fixes": [
+        "Account: a quota read that fails now says so instead of showing the loading label forever, and a session whose identity was not bound into its token is completed from the stored credential instead of reading as forbidden.",
+        "Code graph: a test that reaches a subject through another module is no longer labelled the same as one that imports it directly, and a dynamic import is reported as unresolved rather than as no dependency.",
+        "Tests: a UI test no longer depends on an ignored evidence file, the example bundle check has room for fifteen sequential builds, and an escape-refusal test pins the invariant instead of one of three honest refusal reasons."
+      ],
+      "misc": []
+    },
+    "vscode": null
+  },
+  {
     "version": "0.1.1",
     "date": "2026-10-26",
     "title": "Chat, settings and desktop work again",
