@@ -118,6 +118,14 @@ export interface QueryItem {
   readonly verdict?: QueryVerdict;
   /** True when the row's file is a test path by the engine's own `isTestPath`. */
   readonly isTest?: boolean;
+  /**
+   * findTests only: hops from the subject file to this test file.
+   * 1 means the test imports the subject directly; 2+ means the edge runs
+   * through another module, which is an association, not a coverage claim.
+   */
+  readonly testDistance?: number;
+  /** findTests only: derived label for `testDistance` (`direct` at 1, else `transitive`). */
+  readonly testAssociation?: "direct" | "transitive";
   /** Search only: which tier produced this hit. Always set by `search`. */
   readonly reason?: SearchMatchReason;
   /** Search only: numeric tier (`SEARCH_RANK[reason]`); lower wins. Always set by `search`. */
@@ -1685,7 +1693,15 @@ export function findTests(
         const hop: QueryEvidence = { edge: edge.kind, ref: edge.ref, confidence: edge.confidence };
         const evidence = [...current.via, hop];
         if (importer.kind === "file" && importer.isTest === true) {
-          walked.push({ item: nodeItem(snapshot, importer, evidence), depth });
+          const item = nodeItem(snapshot, importer, evidence);
+          walked.push({
+            item: {
+              ...item,
+              testDistance: depth,
+              testAssociation: depth === 1 ? "direct" : "transitive",
+            },
+            depth,
+          });
         } else if (importer.kind === "file") {
           next.push({ id: importer.id, via: evidence });
         }
