@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs"
 import pc from "picocolors"
 import type { RunOptions, RunContext } from "./types"
 import { createEventState, processEvents, serializeError } from "./events"
@@ -19,6 +20,9 @@ import { isAmbiguousPostDispatchPromptFailure } from "../../shared/prompt-failur
 import { resolveRunnableRunAgent } from "./runnable-agent-resolver"
 import { buildRunnerProfileInput, buildWorkflowProfile, resolveExecutionOptions } from "./workflow-profile"
 import { selectWorkflow } from "./workflow-select"
+import { isGraphPreflightForcedOff, selectGraphContextLevel } from "./graph-policy"
+import { createGraphTelemetry } from "./graph-telemetry"
+import { analyzePostEdit } from "./post-edit-impact"
 import { buildPromptInput, preparePlannerTurn } from "./plan-evidence"
 
 export { resolveRunAgent }
@@ -122,11 +126,46 @@ export async function run(options: RunOptions): Promise<number> {
       }
       const execOpts = resolveExecutionOptions(workflowDecision.strategy)
 
+      const graphDecision = selectGraphContextLevel({
+        explicitMode: enriched.profile.explicitMode,
+        complexity: enriched.profile.complexity,
+        clarity: enriched.profile.clarity,
+        risk: enriched.profile.risk,
+        fileCount: enriched.profile.fileCount,
+        strategy: workflowDecision.strategy,
+        message,
+        replanCount: enriched.profile.replanCount,
+      })
+      const graphLevel = isGraphPreflightForcedOff(process.env) ? 0 as const : graphDecision.level
+      if (options.verbose) {
+        console.log(pc.dim(`Graph preflight: level ${graphLevel} \u2014 ${graphDecision.reasonCode} [${graphDecision.notes.join(", ") || "no notes"}]`))
+      }
+      // Telemetry is audit-only: it records the decision, never model or source text.
+      // A run may point it at a JSONL file so a completed run can be inspected
+      // after the fact; without the file it stays in memory for the verbose line.
+      const telemetryFile = (process.env.OMO_GRAPH_TELEMETRY_FILE ?? "").trim()
+      const graphTelemetry = createGraphTelemetry({
+        env: process.env,
+        ...(telemetryFile === "" ? {} : {
+          sink: (event) => {
+            try {
+              appendFileSync(telemetryFile, `${JSON.stringify(event)}\n`)
+            } catch {
+              // Telemetry must never fail a run.
+            }
+          },
+        }),
+      })
+
       const plannerTurn = await preparePlannerTurn({
         message,
         directory,
         strategy: workflowDecision.strategy,
         enabled: options.planEvidence,
+        level: graphLevel,
+        maxBytes: graphLevel === 0 ? 0 : graphDecision.maxBytes,
+        maxSubjects: graphLevel === 0 ? 0 : graphDecision.maxSubjects,
+        includeImpactAndTests: graphLevel >= 3,
       })
       if (options.verbose && plannerTurn.evidence !== undefined) {
         const diagnostics = plannerTurn.evidence.diagnostics
@@ -138,6 +177,25 @@ export async function run(options: RunOptions): Promise<number> {
         ))
       }
 
+      const evidenceDiagnostics = plannerTurn.evidence?.diagnostics
+      const graphEscalated = graphDecision.escalateToHighAssurance
+        && plannerTurn.evidence?.status !== "available"
+      graphTelemetry.record({
+        type: "graph-preflight",
+        level: graphLevel,
+        reasonCode: graphEscalated ? "graph-unavailable-escalated" : graphDecision.reasonCode,
+        ...(evidenceDiagnostics?.scope?.revision === undefined ? {} : { generation: evidenceDiagnostics.scope.revision }),
+        freshness: plannerTurn.evidence?.status === "available" ? "fresh" : "unknown",
+        coverage: plannerTurn.evidence?.status === "available" ? "indexed" : graphLevel === 0 ? "unindexed" : "partial",
+        queries: graphLevel === 0 || plannerTurn.skipped !== undefined
+          ? []
+          : graphLevel >= 3
+            ? ["search", "symbolContext", "impact", "findTests"]
+            : ["search", "symbolContext"],
+        itemCount: evidenceDiagnostics?.subjects.length ?? 0,
+        unresolvedCount: 0,
+        included: plannerTurn.promptText !== message,
+      })
       const ctx: RunContext = {
         client,
         sessionID,
@@ -198,8 +256,46 @@ export async function run(options: RunOptions): Promise<number> {
       await waitForPromptStart(ctx, eventState, abortController)
       const exitCode = await pollForCompletion(ctx, eventState, abortController, {
         requireMeaningfulWork,
-        requiredConsecutive: execOpts.requiredConsecutive,
+        // A high-risk request whose graph evidence was unavailable falls back to
+        // the existing stricter completion gate instead of inventing one.
+        requiredConsecutive: graphEscalated
+          ? Math.max(execOpts.requiredConsecutive, 2)
+          : execOpts.requiredConsecutive,
       })
+
+      // Post-edit impact runs against the generation THIS run started from, so a
+      // stale snapshot is reported as stale instead of being presented as current.
+      try {
+        const baselineRevision = evidenceDiagnostics?.scope?.revision
+        const postEdit = await analyzePostEdit({
+          directory,
+          ...(baselineRevision === undefined ? {} : { graphRevision: baselineRevision }),
+        })
+        graphTelemetry.record({
+          type: "graph-post-edit",
+          level: graphLevel,
+          reasonCode: postEdit.invalidated
+            ? "graph-invalidated"
+            : postEdit.refresh === "unavailable" ? "graph-unavailable" : "graph-current",
+          ...(postEdit.envelope.correlation.generation === undefined
+            ? {}
+            : { generation: postEdit.envelope.correlation.generation }),
+          freshness: postEdit.envelope.status.freshness,
+          coverage: postEdit.envelope.status.coverage,
+          queries: postEdit.changed.length === 0 ? [] : ["impact", "findTests"],
+          itemCount: postEdit.envelope.items.length,
+          unresolvedCount: postEdit.envelope.unresolved.length,
+          included: false,
+        })
+        if (options.verbose) {
+          console.log(pc.dim(
+            `Graph post-edit: ${postEdit.changed.length} changed, refresh ${postEdit.refresh}` +
+            `${postEdit.invalidated ? ", invalidated" : ""}`,
+          ))
+        }
+      } catch {
+        // Post-edit analysis is advisory: it never fails a completed run.
+      }
 
       abortController.abort()
 

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { promises as fs } from "node:fs"
+import os from "node:os"
+import path from "node:path"
 
 import { createPlannerEvidenceHook } from "./planner-evidence-hook"
 import type { PlannerEvidence } from "../../cli/run/plan-evidence"
@@ -110,5 +113,43 @@ describe("planner evidence host hook", () => {
     await hook.handler({ sessionID: "ses-1" }, { note: (text) => notes.push(text) })
 
     expect(notes).toEqual([])
+  })
+
+  test("#given a chat message with no code signal #when the transform runs #then the policy selects level 0 and builds nothing", async () => {
+    const notes: string[] = []
+    let built = false
+    const hook = createPlannerEvidenceHook({
+      env: {},
+      directory: () => "I:/repo",
+      readLastUserText: async () => "thanks, that looks good",
+      buildEvidence: async () => {
+        built = true
+        return evidence(block)
+      },
+    })
+
+    await hook.handler({ sessionID: "ses-1" }, { note: (text) => notes.push(text) })
+
+    expect(built).toBe(false)
+    expect(notes).toEqual([])
+  })
+
+  test("#given a telemetry file #when the transform runs #then the preflight decision is appended with included true", async () => {
+    const notes: string[] = []
+    const file = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "cg-hook-")), "events.jsonl")
+    const hook = createPlannerEvidenceHook({
+      env: { OMO_GRAPH_TELEMETRY_FILE: file },
+      directory: () => "I:/repo",
+      readLastUserText: async () => "fix the scheduler gate",
+      buildEvidence: async () => evidence(block),
+    })
+
+    await hook.handler({ sessionID: "ses-1" }, { note: (text) => notes.push(text) })
+
+    const [event] = (await fs.readFile(file, "utf8")).trim().split("\n").map((line) => JSON.parse(line))
+    expect(event.type).toBe("graph-preflight")
+    expect(event.included).toBe(true)
+    expect(event.level).toBeGreaterThan(0)
+    await fs.rm(path.dirname(file), { recursive: true, force: true })
   })
 })
