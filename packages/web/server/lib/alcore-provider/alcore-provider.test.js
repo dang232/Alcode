@@ -180,6 +180,37 @@ describe('alcore catalog fetch', () => {
     expect(requests[0].authorization).toBe('Bearer user-access-1');
   });
 
+  test('maps the platform metadata fields onto the provider model entry', async () => {
+    const { runtime } = createHarness({
+      catalogImpl: async () => okResponse([
+        {
+          id: 'al-1.4',
+          display_name: 'al-1.4',
+          description: 'Alcore flagship',
+          context_window: 128000,
+          max_output_tokens: 8192,
+          modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+          capabilities: { tools: true, reasoning: true, attachment: true },
+        },
+      ]),
+    });
+
+    const catalog = await runtime.fetchAlcoreCatalog('user-1');
+
+    expect(catalog.models[0]).toEqual({
+      modelID: 'al-1.4',
+      name: 'al-1.4',
+      description: 'Alcore flagship',
+      limit: { context: 128000, output: 8192 },
+      capabilities: {
+        tools: true,
+        input: ['text', 'image', 'pdf'],
+        output: ['text'],
+        reasoning: true,
+        attachment: true,
+      },
+    });
+  });
   test('accepts a bare array catalog', async () => {
     const { runtime } = createHarness({ catalogImpl: async () => okResponse([{ id: 'solo' }]) });
     const catalog = await runtime.fetchAlcoreCatalog('user-1');

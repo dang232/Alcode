@@ -157,11 +157,23 @@ const isTransientFailure = (error) => {
 const discoveredCatalogEntrySchema = z.object({
   id: z.string(),
   name: z.string().optional(),
+  display_name: z.string().optional(),
+  description: z.string().optional(),
+  context_window: z.number().optional(),
+  max_output_tokens: z.number().optional(),
+  modalities: z.object({
+    input: z.array(z.string()).optional(),
+    output: z.array(z.string()).optional(),
+  }).optional(),
   limit: z.object({ context: z.number().optional(), output: z.number().optional() }).optional(),
   capabilities: z.object({
     input: z.array(z.string()).optional(),
     output: z.array(z.string()).optional(),
     tools: z.boolean().optional(),
+    reasoning: z.boolean().optional(),
+    json_mode: z.boolean().optional(),
+    structured_output: z.boolean().optional(),
+    attachment: z.boolean().optional(),
   }).optional(),
 }).passthrough();
 
@@ -171,27 +183,46 @@ const sanitizeCatalogModels = (models) => {
   for (const raw of models ?? []) {
     const parsed = discoveredCatalogEntrySchema.safeParse(raw);
     if (!parsed.success) continue;
-    const model = parsed.data;
+    // Discovery hands back its normalized fields under `metadata`; read through so
+    // the platform's catalog metadata reaches the provider entry instead of being
+    // dropped as an unknown shape.
+    const model = { ...parsed.data, ...((parsed.data).metadata ?? {}) };
     const id = model.id.trim();
     if (id === '' || seen.has(id)) continue;
     seen.add(id);
-    const entry = { modelID: id, name: model.name?.trim() ? model.name.trim() : id };
+    const entry = { modelID: id, name: model.display_name?.trim() ? model.display_name.trim() : model.name?.trim() ? model.name.trim() : id };
+    if (model.description?.trim()) entry.description = model.description.trim();
     const limit = {};
-    if (Number.isSafeInteger(model.limit?.context) && model.limit.context > 0) {
-      limit.context = model.limit.context;
+    // The platform publishes context_window / max_output_tokens; older entries
+    // used limit.context / limit.output. Accept both so a field rename does not
+    // silently drop a model's limits.
+    const contextWindow = model.limit?.context ?? model.context_window;
+    const maxOutput = model.limit?.output ?? model.max_output_tokens;
+    if (Number.isSafeInteger(contextWindow) && contextWindow > 0) {
+      limit.context = contextWindow;
     }
-    if (Number.isSafeInteger(model.limit?.output) && model.limit.output > 0) {
-      limit.output = model.limit.output;
+    if (Number.isSafeInteger(maxOutput) && maxOutput > 0) {
+      limit.output = maxOutput;
     }
     if (Object.keys(limit).length > 0) entry.limit = limit;
-    const input = model.capabilities?.input?.filter((value) => ALCORE_KNOWN_CAPABILITIES.has(value));
-    const outCap = model.capabilities?.output?.filter((value) => ALCORE_KNOWN_CAPABILITIES.has(value));
+    const modalities = model.modalities ?? model.capabilities;
+    const input = modalities?.input?.filter((value) => ALCORE_KNOWN_CAPABILITIES.has(value));
+    const outCap = modalities?.output?.filter((value) => ALCORE_KNOWN_CAPABILITIES.has(value));
     const tools = model.capabilities?.tools;
-    if (input !== undefined || outCap !== undefined || tools !== undefined) {
+    const reasoning = model.capabilities?.reasoning;
+    const attachment = model.capabilities?.attachment;
+    const jsonMode = model.capabilities?.json_mode;
+    const structured = model.capabilities?.structured_output;
+    if (input !== undefined || outCap !== undefined || tools !== undefined || reasoning !== undefined
+      || attachment !== undefined || jsonMode !== undefined || structured !== undefined) {
       entry.capabilities = {
         tools: tools ?? true,
         input: input ?? ['text'],
         output: outCap ?? ['text'],
+        ...(reasoning === undefined ? {} : { reasoning }),
+        ...(attachment === undefined ? {} : { attachment }),
+        ...(jsonMode === undefined ? {} : { json_mode: jsonMode }),
+        ...(structured === undefined ? {} : { structured_output: structured }),
       };
     }
     kept.push(entry);

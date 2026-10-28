@@ -48,6 +48,8 @@ const providerModelSchema = z.union([
     contextWindow: z.unknown().optional(),
     max_output_tokens: z.unknown().optional(),
     maxOutputTokens: z.unknown().optional(),
+    display_name: z.unknown().optional(),
+    description: z.unknown().optional(),
     modalities: z.object({ input: z.unknown().optional(), output: z.unknown().optional() }).passthrough().optional().catch(undefined),
     capabilities: z.object({
       input: z.unknown().optional(),
@@ -63,8 +65,17 @@ const providerResponseSchema = z.union([
 
 const catalogModelSchema = z.object({
   name: z.unknown().optional(),
+  description: z.unknown().optional(),
   limit: z.object({ context: z.unknown().optional(), output: z.unknown().optional() }).passthrough().optional().catch(undefined),
+  context_window: z.unknown().optional(),
+  max_output_tokens: z.unknown().optional(),
   modalities: z.object({ input: z.unknown().optional(), output: z.unknown().optional() }).passthrough().optional().catch(undefined),
+  capabilities: z.object({
+    reasoning: z.unknown().optional(),
+    attachment: z.unknown().optional(),
+    json_mode: z.unknown().optional(),
+    structured_output: z.unknown().optional(),
+  }).passthrough().optional().catch(undefined),
   tool_call: z.unknown().optional(),
 }).passthrough();
 const catalogProviderSchema = z.object({
@@ -103,9 +114,9 @@ const buildLimit = (context, output) => {
 };
 
 /** Capabilities when anything describes them; text in and out, with tools, fills the gaps. */
-const buildCapabilities = (input, output, tools) => {
-  if (!input && !output && tools === undefined) return undefined;
-  return { tools: tools ?? true, input: input ?? ['text'], output: output ?? ['text'] };
+const buildCapabilities = (input, output, tools, extra = {}) => {
+  if (!input && !output && tools === undefined && Object.keys(extra).length === 0) return undefined;
+  return { tools: tools ?? true, input: input ?? ['text'], output: output ?? ['text'], ...extra };
 };
 
 const withOptional = (target, key, value) => {
@@ -208,15 +219,22 @@ const normalizeProviderModel = (value) => {
   const parsed = providerModelSchema.safeParse(value);
   if (!parsed.success) return null;
   const raw = parsed.data;
-  const model = { id: raw.id, name: optionalString(raw.name) ?? raw.id };
+  const model = { id: raw.id, name: optionalString(raw.display_name) ?? optionalString(raw.name) ?? raw.id };
+  withOptional(model, 'description', optionalString(raw.description) ?? undefined);
   withOptional(model, 'limit', buildLimit(
     firstPositive(raw.limit?.context, raw.context_window, raw.contextWindow),
     firstPositive(raw.limit?.output, raw.max_output_tokens, raw.maxOutputTokens),
   ));
+  const extraCapabilities = {};
+  for (const key of ['reasoning', 'attachment', 'json_mode', 'structured_output']) {
+    const flag = optionalBoolean(raw.capabilities?.[key]);
+    if (flag !== undefined) extraCapabilities[key] = flag;
+  }
   withOptional(model, 'capabilities', buildCapabilities(
     optionalStringList(raw.capabilities?.input) ?? optionalStringList(raw.modalities?.input),
     optionalStringList(raw.capabilities?.output) ?? optionalStringList(raw.modalities?.output),
     optionalBoolean(raw.capabilities?.tools),
+    extraCapabilities,
   ));
   return model;
 };
@@ -259,11 +277,23 @@ const modelEntries = (catalog) => {
 const metadataFromCatalogEntry = (entry) => {
   const metadata = { providerID: entry.providerID, modelID: entry.modelID };
   withOptional(metadata, 'name', optionalString(entry.value.name) ?? undefined);
-  withOptional(metadata, 'limit', buildLimit(firstPositive(entry.value.limit?.context), firstPositive(entry.value.limit?.output)));
+  withOptional(metadata, 'description', optionalString(entry.value.description) ?? undefined);
+  // The platform publishes context_window / max_output_tokens beside the older
+  // limit.{context,output}; read both so a rename cannot silently drop limits.
+  withOptional(metadata, 'limit', buildLimit(
+    firstPositive(entry.value.limit?.context, entry.value.context_window, entry.value.contextWindow),
+    firstPositive(entry.value.limit?.output, entry.value.max_output_tokens, entry.value.maxOutputTokens),
+  ));
+  const extraCapabilities = {};
+  for (const key of ['reasoning', 'attachment', 'json_mode', 'structured_output']) {
+    const flag = optionalBoolean(entry.value.capabilities?.[key]);
+    if (flag !== undefined) extraCapabilities[key] = flag;
+  }
   withOptional(metadata, 'capabilities', buildCapabilities(
     optionalStringList(entry.value.modalities?.input),
     optionalStringList(entry.value.modalities?.output),
     optionalBoolean(entry.value.tool_call),
+    extraCapabilities,
   ));
   return metadata;
 };
