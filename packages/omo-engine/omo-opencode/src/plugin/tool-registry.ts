@@ -36,6 +36,7 @@ const BASE_TOOLS: RegistryMap = {
   ulw_evidence: { description: "Record a dispatched ULW goal's child result as evidence." },
   ulw_checkpoint: { description: "Gate a ULW checkpoint on recorded child results." },
   ulw_complete: { description: "Close a ULW run once every dispatched goal has its result." },
+  code_graph: { description: "Query the repository code graph: status, symbol context, search, call trace, blast-radius impact, or owning tests." },
   LspHover: { description: "Show hover information for a code symbol." },
   grep_app_search: { description: "Search the companion app index." },
 };

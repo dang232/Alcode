@@ -12,6 +12,7 @@ import type {
 import type { OhMyOpenCodeConfig } from "./config/schema/oh-my-opencode-config";
 import { buildToolRegistry } from "./plugin/tool-registry";
 import { getAgentToolRestrictions } from "./shared/agent-tool-restrictions";
+import { createCodeGraphTools } from "./tools/code-graph/index.ts";
 import { createUlwTools } from "./tools/ulw/index.ts";
 
 // Candidate locations for the shared skills loader barrel. Tried in order;
@@ -163,6 +164,15 @@ export async function createTools(
   // store-backed executes. A name the registry dropped stays dropped.
   const ulwTools = createUlwTools();
   for (const [name, tool] of Object.entries(ulwTools)) {
+    if (registry[name] !== undefined) {
+      filteredTools[name] = tool;
+    }
+  }
+
+  // The native code-graph tool follows the same merge: registry-gated name,
+  // real engine-backed execute. A dropped name stays dropped.
+  const codeGraphTools = createCodeGraphTools({ directory: ctx.directory });
+  for (const [name, tool] of Object.entries(codeGraphTools)) {
     if (registry[name] !== undefined) {
       filteredTools[name] = tool;
     }
