@@ -80,5 +80,7 @@ describe('checked-in SDK examples', () => {
       expect(Bun.hash(normalize(await readFile(output, 'utf8')))).toBe(Bun.hash(normalize(await readFile(new URL(`${entry}.js`, examples), 'utf8'))));
     }
     } finally { await rm(temporary, { recursive: true, force: true }); }
-  });
+    // Fifteen bundle builds run in sequence; measured 3.9-5.1 s locally, so the
+    // default 5 s cap fails on timing rather than on content.
+  }, 60_000);
 });

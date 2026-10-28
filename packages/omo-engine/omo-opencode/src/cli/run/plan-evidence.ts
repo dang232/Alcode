@@ -29,6 +29,7 @@ import {
   type QueryOptions,
   type SymbolContextResult,
 } from "../../../../code-graph/src/index.ts"
+import type { GraphContextLevel } from "./graph-policy.ts"
 import {
   PROJECT_KNOWLEDGE_DIR,
   RECORD_FILE_EXTENSION,
@@ -53,6 +54,18 @@ export const PLAN_EVIDENCE_DISABLED_ENV = "OMO_PLAN_EVIDENCE"
 export const PLAN_EVIDENCE_KNOWLEDGE_ENV = "OMO_PLAN_EVIDENCE_KNOWLEDGE"
 export const PLAN_EVIDENCE_MAX_BYTES = 4096
 export const PLAN_EVIDENCE_MAX_FILES = 2000
+/**
+ * Files a level may index. Measured on the Alwork tree: 120 files ~7.4 s cold
+ * (~6 s of it is the TypeScript extraction start) and 240 files ~14.4 s, so an
+ * uncapped walk turns one user message into a minute of work. Levels buy
+ * bounded cost, not full-repo coverage; a persisted generation is the path to
+ * both and is tracked as a limitation in the Phase 3 report.
+ */
+export const PLAN_EVIDENCE_LEVEL_MAX_FILES: Record<1 | 2 | 3, number> = {
+  1: 120,
+  2: 400,
+  3: 800,
+}
 export const PLAN_EVIDENCE_MAX_KEYWORDS = 8
 export const PLAN_EVIDENCE_MAX_SUBJECTS = 3
 
@@ -106,6 +119,13 @@ export type PlannerEvidenceOptions = {
   readonly directory: string
   readonly maxBytes?: number
   readonly maxFiles?: number
+  readonly maxSubjects?: number
+  /**
+   * When false, the block carries confirmed symbols only: impact and
+   * findTests sections are omitted so lower levels send less request text.
+   * Defaults to true to preserve the pre-level request shape.
+   */
+  readonly includeImpactAndTests?: boolean
   readonly knowledge?: readonly KnowledgeRecordInput[]
   readonly knowledgeRoot?: string
   /** Trusted project for this request; defaults to the repository identity of `directory`. */
@@ -121,6 +141,10 @@ export type PlannerTurnInput = {
   readonly projectId?: string
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly maxBytes?: number
+  /** Graph preflight level: 0 sends the original message untouched. */
+  readonly level?: GraphContextLevel
+  readonly maxSubjects?: number
+  readonly includeImpactAndTests?: boolean
 }
 
 export type PlannerTurn = {
@@ -516,7 +540,7 @@ export async function buildPlannerEvidence(options: PlannerEvidenceOptions): Pro
   }
   const ranked = [...candidates].sort((left, right) =>
     Number(namesKeyword(right)) - Number(namesKeyword(left)) || right.confidence - left.confidence)
-  const subjects = ranked.slice(0, PLAN_EVIDENCE_MAX_SUBJECTS).map((item) => item.id)
+  const subjects = ranked.slice(0, options.maxSubjects ?? PLAN_EVIDENCE_MAX_SUBJECTS).map((item) => item.id)
   if (subjects.length === 0) {
     return unavailable("no-confirmed-subject", { keywords, scope, files: files.length })
   }
@@ -524,11 +548,13 @@ export async function buildPlannerEvidence(options: PlannerEvidenceOptions): Pro
   let contextEvidence: SymbolContextEnvelopeInput | undefined
   let impactEvidence: ImpactEnvelopeInput | undefined
   let testsEvidence: FindTestsEnvelopeInput | undefined
+  const includeImpactAndTests = options.includeImpactAndTests ?? true
   for (const subject of subjects) {
     const context = symbolContext(snapshot, subject, optionsForScope)
     if (contextEvidence === undefined && context.definition !== undefined) {
       contextEvidence = symbolContextEnvelope(context)
     }
+    if (!includeImpactAndTests) continue
     const reach = impact(snapshot, subject, optionsForScope)
     if (impactEvidence === undefined || (impactEvidence.impacted ?? []).length === 0) {
       impactEvidence = impactEnvelope(reach)
@@ -541,7 +567,7 @@ export async function buildPlannerEvidence(options: PlannerEvidenceOptions): Pro
   // A barrel file carries the symbol but no test edge of its own; when the chosen subjects
   // yield no test, the definition the barrel re-exports still owns the coverage, so ask the
   // graph for it by symbol instead of reporting no tests for a covered change.
-  if ((testsEvidence?.candidates ?? []).length === 0) {
+  if (includeImpactAndTests && (testsEvidence?.candidates ?? []).length === 0) {
     const symbolFallbacks = searchEvidence.items.filter((item) =>
       item.id.startsWith("fn:") && !subjects.includes(item.id))
     for (const candidate of symbolFallbacks) {
@@ -561,7 +587,13 @@ export async function buildPlannerEvidence(options: PlannerEvidenceOptions): Pro
   }
   const understanding = buildTaskUnderstanding({ scope, queries, knowledge: loaded.records })
   const hints = derivePlanHints(understanding, [])
-  const text = renderBlock(understanding, scope, maxBytes)
+  // Lower levels render confirmed symbols only: impact and test rows are a
+  // level-3 addition, so they are redacted from the rendered block (hints
+  // still see the full understanding).
+  const rendered = includeImpactAndTests
+    ? understanding
+    : { ...understanding, impacted: [], tests: [] }
+  const text = renderBlock(rendered, scope, maxBytes)
   const bytes = Buffer.byteLength(text)
   if (bytes === 0) return unavailable("empty-render", { keywords, scope, files: files.length })
 
@@ -597,11 +629,24 @@ export function composeRunPrompt(message: string, evidence: PlannerEvidence | un
 export async function preparePlannerTurn(input: PlannerTurnInput): Promise<PlannerTurn> {
   if (input.enabled === false) return { promptText: input.message, skipped: "disabled" }
   if (!isPlanEvidenceEnabled(input.env ?? process.env)) return { promptText: input.message, skipped: "disabled-env" }
-  if (!isPlanningStrategy(input.strategy)) return { promptText: input.message, skipped: "strategy-direct" }
+  if (input.level === 0) return { promptText: input.message, skipped: "graph-level-0" }
+  // A level-bearing caller has already decided how much graph work this task
+  // earns, so a `direct` strategy no longer vetoes a level 1 block: simple
+  // code questions are exactly where a small bounded block pays off. Without a
+  // level the old strategy gate stands, so every existing caller is unchanged.
+  if (input.level === undefined && !isPlanningStrategy(input.strategy)) {
+    return { promptText: input.message, skipped: "strategy-direct" }
+  }
   const evidence = await buildPlannerEvidence({
     message: input.message,
     directory: input.directory,
-    maxBytes: input.maxBytes,
+    maxBytes: input.maxBytes ?? (input.level === 1 ? 1024 : PLAN_EVIDENCE_MAX_BYTES),
+    maxSubjects: input.maxSubjects ?? (input.level === 1 ? 1 : PLAN_EVIDENCE_MAX_SUBJECTS),
+    maxFiles: input.maxFiles ?? (input.level === undefined
+      ? PLAN_EVIDENCE_MAX_FILES
+      : PLAN_EVIDENCE_LEVEL_MAX_FILES[input.level]),
+    includeImpactAndTests:
+      input.includeImpactAndTests ?? (input.level === undefined ? true : input.level >= 3),
     knowledgeRoot: resolveKnowledgeRoot(input.env ?? process.env),
     projectId: input.projectId,
   })

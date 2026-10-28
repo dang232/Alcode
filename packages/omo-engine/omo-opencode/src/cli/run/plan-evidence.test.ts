@@ -21,6 +21,8 @@ import {
   isPlanEvidenceEnabled,
   loadKnowledgeRecords,
   preparePlannerTurn,
+  PLAN_EVIDENCE_LEVEL_MAX_FILES,
+  PLAN_EVIDENCE_MAX_FILES,
   readWorktreeRevision,
   resolveKnowledgeRoot,
 } from "./plan-evidence"
@@ -229,6 +231,18 @@ describe("planner evidence producer", () => {
     expect(informed.body.tools).toEqual({ question: false })
   })
 
+  test("#given a direct strategy and an explicit level #when prepared #then the level decides whether evidence rides the request", async () => {
+    const dir = makeRepo()
+    const levelled = await preparePlannerTurn({ message: TASK_MESSAGE, directory: dir, strategy: "direct", level: 1 })
+    const zero = await preparePlannerTurn({ message: TASK_MESSAGE, directory: dir, strategy: "direct", level: 0 })
+
+    expect(levelled.skipped).toBeUndefined()
+    expect(levelled.evidence?.status).toBe("available")
+    expect(levelled.promptText).toContain("<plan-evidence")
+    expect(zero.promptText).toBe(TASK_MESSAGE)
+    expect(zero.skipped).toBe("graph-level-0")
+  })
+
   test("#given a planning strategy and a real repo #when prepared #then the planner text contains the evidence block", async () => {
     const dir = makeRepo()
     const turn = await preparePlannerTurn({ message: TASK_MESSAGE, directory: dir, strategy: "plan-then-execute" })
@@ -238,6 +252,27 @@ describe("planner evidence producer", () => {
     expect(turn.promptText).toContain("<plan-evidence")
     expect(turn.promptText.startsWith(TASK_MESSAGE)).toBe(true)
     expect(Buffer.byteLength(turn.promptText)).toBeGreaterThan(Buffer.byteLength(TASK_MESSAGE))
+  })
+
+  test("#given a repo larger than the level budget #when evidence is built #then the walk stops at the level cap", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "planner-cap-"))
+    roots.push(dir)
+    mkdirSync(join(dir, ".git", "refs", "heads"), { recursive: true })
+    writeFileSync(join(dir, ".git", "HEAD"), "ref: refs/heads/main\n")
+    writeFileSync(join(dir, ".git", "refs", "heads", "main"), `${REVISION}\n`)
+    for (let index = 0; index < 150; index += 1) {
+      writeFileSync(join(dir, `module-${String(index).padStart(3, "0")}.ts`), `export function handler${index}(): number { return ${index} }\n`)
+    }
+
+    const evidence = await buildPlannerEvidence({
+      message: "where is handler12 implemented",
+      directory: dir,
+      maxFiles: PLAN_EVIDENCE_LEVEL_MAX_FILES[1],
+    })
+
+    expect(evidence.diagnostics.files).toBe(PLAN_EVIDENCE_LEVEL_MAX_FILES[1])
+    expect(PLAN_EVIDENCE_LEVEL_MAX_FILES[1]).toBeLessThan(PLAN_EVIDENCE_MAX_FILES)
+    expect(PLAN_EVIDENCE_LEVEL_MAX_FILES[3]).toBeLessThan(PLAN_EVIDENCE_MAX_FILES)
   })
 
   test("#given a graph-informed definition #when hints and validation run #then scopes fill only where empty and dependencies never change", async () => {
@@ -382,6 +417,23 @@ describe("planner evidence boundaries", () => {
     expect(resolveKnowledgeRoot({ OMO_PLAN_EVIDENCE_KNOWLEDGE: "   " })).toBeUndefined()
     expect(resolveKnowledgeRoot({ OMO_PLAN_EVIDENCE_KNOWLEDGE: "project-knowledge" })).toBeUndefined()
     expect(resolveKnowledgeRoot({ OMO_PLAN_EVIDENCE_KNOWLEDGE: ` ${absolute} ` })).toBe(absolute)
+  })
+
+  test("#given level 1 and level 3 on the same fixture #when prepared #then the prompt text differs and only level 3 carries impact/test sections", async () => {
+    const dir = makeRepo()
+    const level1 = await preparePlannerTurn({ message: TASK_MESSAGE, directory: dir, strategy: "plan-then-execute", level: 1 })
+    const level3 = await preparePlannerTurn({ message: TASK_MESSAGE, directory: dir, strategy: "plan-then-execute", level: 3 })
+    const off = await preparePlannerTurn({ message: TASK_MESSAGE, directory: dir, strategy: "plan-then-execute", level: 0 })
+
+    expect(level1.skipped).toBeUndefined()
+    expect(level3.skipped).toBeUndefined()
+    expect(level1.promptText).not.toBe(level3.promptText)
+    expect(level3.promptText).toContain("impacted:")
+    expect(level3.promptText).toContain("affected tests:")
+    expect(level1.promptText).not.toContain("impacted:")
+    expect(level1.promptText).not.toContain("affected tests:")
+    expect(off.promptText).toBe(TASK_MESSAGE)
+    expect(off.skipped).toBe("graph-level-0")
   })
 
   test("#given a message #when keywords are extracted #then stopwords and duplicates are removed", () => {

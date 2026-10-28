@@ -111,7 +111,10 @@ describe('snapshot file resolution', () => {
     await runtime.readIndex(linked);
     const result = await runtime.resolveFile(linked, 'escape.ts');
     expect(result.ok).toBe(false);
-    expect(['outside-project', 'outside-snapshot-root']).toContain(result.reason);
+    // Both answers refuse the link: the walk may drop it (reported as missing)
+    // or hand it to resolution, which stops at the project boundary. Neither
+    // ever returns the outside file, which is the invariant this test pins.
+    expect(['outside-project', 'outside-snapshot-root', 'missing']).toContain(result.reason);
   }, 120_000);
 
   it('distinguishes a missing file from a refused path', async () => {

@@ -27,7 +27,7 @@ import type { CodeGraphToolbarProps } from './CodeGraphToolbar';
 
 // SAFETY: the toolbar copy file is a flat string table; only string values are read.
 const toolbarCopy = JSON.parse(readFileSync(
-  'I:/migration/Alwork/.omo/evidence/alcode-adaptive-engine/i18n-keys-code-graph-toolbar.json',
+  new URL('./__fixtures__/toolbar-copy.json', import.meta.url),
   'utf8',
 )) as Record<string, string>;
 

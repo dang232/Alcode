@@ -204,6 +204,25 @@ describe("code-graph queries", () => {
   );
 
   it(
+    "#given a direct and an indirect test #when findTests runs #then each row reports its own association",
+    () => {
+      // given: main.test.ts imports main.ts directly; math.ts is reached through it
+      const snapshot = indexFiles(fixture("main.ts", "reexport.ts", "main.test.ts"));
+
+      // when
+      const direct = findTests(snapshot, "main.ts", options()).candidates.find((item) => item.id === "file:main.test.ts");
+      const indirect = findTests(snapshot, "math.ts", options()).candidates.find((item) => item.id === "file:main.test.ts");
+
+      // then: the same test file is direct for one subject and transitive for the other
+      expect(direct?.testDistance).toBe(1);
+      expect(direct?.testAssociation).toBe("direct");
+      expect(indirect?.testDistance).toBeGreaterThan(1);
+      expect(indirect?.testAssociation).toBe("transitive");
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     "#given a renamed symbol #when detectChanges runs #then it reports the invalidation with cause",
     () => {
       // given: a baseline plus a variant with add renamed to total
