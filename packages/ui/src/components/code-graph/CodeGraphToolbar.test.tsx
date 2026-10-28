@@ -1,5 +1,6 @@
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 const browser = new Window({ url: 'http://localhost/' });
@@ -27,7 +28,7 @@ import type { CodeGraphToolbarProps } from './CodeGraphToolbar';
 
 // SAFETY: the toolbar copy file is a flat string table; only string values are read.
 const toolbarCopy = JSON.parse(readFileSync(
-  'I:/migration/Alwork/.omo/evidence/alcode-adaptive-engine/i18n-keys-code-graph-toolbar.json',
+  join(import.meta.dir, '__fixtures__', 'toolbar-copy.json'),
   'utf8',
 )) as Record<string, string>;
 
