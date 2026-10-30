@@ -665,13 +665,24 @@ jobs:
           });
           NODE
 
+      # Publishing must not rewrite the release. This step used to re-run
+      # softprops/action-gh-release with only tag_name and draft: false, and the
+      # action rewrites body and name from its inputs, so every release shipped
+      # with the changelog body wiped (v0.2.1 published empty and had to be
+      # edited by hand). Flipping draft through the API leaves both untouched.
       - name: Publish release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          tag_name: v${{ needs.create-release.outputs.version }}
-          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh release edit "v$VERSION" --draft=false --repo "$REPOSITORY"
+          state=$(gh release view "v$VERSION" --repo "$REPOSITORY" --json isDraft,body --jq '(.isDraft|tostring) + " " + ((.body|length)|tostring)')
+          echo "release $VERSION isDraft/bodyBytes: $state"
+          case "$state" in
+            "false "*) if [ "${state#false }" = "0" ]; then echo "::error::release body is empty"; exit 1; fi ;;
+            *) echo "::error::release is still a draft"; exit 1 ;;
+          esac
 
       - name: Send release to Discord
         if: ${{ env.DISCORD_WEBHOOK_URL != '' }}
