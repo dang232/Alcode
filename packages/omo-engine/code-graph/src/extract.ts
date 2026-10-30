@@ -195,6 +195,17 @@ export interface IndexOptions {
    * Called on the indexing thread, so a reporter must not block.
    */
   readonly onProgress?: (event: IndexProgressEvent) => void;
+  /**
+   * The graph accumulated after each finished project, handed over while the
+   * remaining projects are still building. A caller publishes it as the
+   * current partial answer so a reader sees the projects already analysed
+   * instead of an empty graph; the returned snapshot stays the complete one.
+   * Cross-project edges into projects not yet analysed are absent by nature.
+   */
+  readonly onPartialSnapshot?: (
+    snapshot: GraphSnapshot,
+    progress: { readonly projectsDone: number; readonly projectsTotal: number },
+  ) => void;
 }
 
 /** One measured step of a build: nothing here is extrapolated. */
@@ -1007,6 +1018,9 @@ function buildGraph(
         builder.addEntries(project, entries);
         projectsDone += 1;
         report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+        if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
+          options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
+        }
       }
       report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
       builder.addKnowledgeLinks(options.knowledge ?? []);

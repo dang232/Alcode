@@ -631,7 +631,30 @@ export const createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExe
     return { revision: sha1Hex(`${directory}\n${stamped.join('\n')}`), binding: 'content' };
   };
 
-  const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, onProgress = null } = {}) => {
+  // Bounded projection of a partial graph, small enough to ride a progress
+// message out of the blocked worker: module buckets from indexed file paths
+// plus counts. Never the whole graph - a 1269-file repo would put tens of MB on
+// the IPC channel mid-build.
+const PARTIAL_MODULE_LIMIT = 12;
+const summarizePartialSnapshot = (snapshot) => {
+  const modules = new Map();
+  for (const node of snapshot.nodes ?? []) {
+    const file = node?.file ?? '';
+    if (file === '') continue;
+    const segments = file.split('/');
+    const bucket = segments.length > 2 ? `${segments[0]}/${segments[1]}` : (segments[0] ?? file);
+    modules.set(bucket, (modules.get(bucket) ?? 0) + 1);
+  }
+  const ranked = [...modules.entries()].sort((left, right) => right[1] - left[1]);
+  return {
+    nodes: (snapshot.nodes ?? []).length,
+    edges: (snapshot.edges ?? []).length,
+    modules: ranked.slice(0, PARTIAL_MODULE_LIMIT).map(([module, count]) => ({ module, count })),
+    modulesTotal: ranked.length,
+  };
+};
+
+const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, onProgress = null } = {}) => {
     const engine = await loadEngine();
     const { entries, truncated, excludedCount, excludedSample, maxEntryFiles: cap, coverage } = await listEntryFiles(directory, maxEntryFiles);
     const { revision, binding, dirty, dirtyReason } = await readRevision(directory, entries, { forceStatus });
@@ -641,7 +664,42 @@ export const createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExe
     // directory the route serves, so the served `snapshotRoot` below is
     // the same root the resolver joins ids against — joining against
     // anything else addresses files that do not exist.
-    const snapshot = engine.indexFiles(entries, { rootDir: directory, onProgress: onProgress ?? undefined });
+    const snapshot = engine.indexFiles(entries, {
+      rootDir: directory,
+      onProgress: onProgress ?? undefined,
+      // A build of several projects takes minutes, and a reader polling for
+      // progress used to get an empty graph the whole time. Each finished
+      // project is published here as the directory's current answer; the
+      // complete entry returned below replaces it, and persistEntry still only
+      // ever writes the finished generation.
+      //
+      // The progress message also carries a bounded projection of the partial
+      // graph, because the worker's event loop is blocked by the synchronous
+      // build: the host can answer "what is indexed so far" from that message
+      // even though every graph query would queue behind the build.
+      onPartialSnapshot: (partialSnapshot, progress) => {
+        snapshots.set(directory, assembleEntry({
+          snapshot: partialSnapshot,
+          scope: { projectId, worktreeId, revision, fingerprint },
+          binding,
+          dirty,
+          dirtyReason,
+          truncated,
+          excludedCount,
+          excludedSample,
+          cap,
+          entries,
+          coverage,
+        }));
+        onProgress?.({
+          phase: 'projects',
+          files: entries.length,
+          projectsDone: progress.projectsDone,
+          projectsTotal: progress.projectsTotal,
+          partial: summarizePartialSnapshot(partialSnapshot),
+        });
+      },
+    });
     const built = assembleEntry({ snapshot, scope: { projectId, worktreeId, revision, fingerprint }, binding, dirty, dirtyReason, truncated, excludedCount, excludedSample, cap, entries, coverage });
     void persistEntry(directory, built);
     return built;

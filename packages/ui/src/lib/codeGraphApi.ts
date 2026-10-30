@@ -151,6 +151,17 @@ export interface CodeGraphIndexState {
   startedAtMs?: number | null;
   error?: string | null;
   generation?: number | null;
+  /**
+   * Bounded projection of the projects analysed so far, carried on the progress
+   * message while a build runs: the worker's loop is blocked by the build, so
+   * this is the only answer available until the finished graph lands.
+   */
+  partial?: {
+    nodes?: number;
+    edges?: number;
+    modules?: Array<{ module: string; count: number }>;
+    modulesTotal?: number;
+  } | null;
 }
 
 export type CodeGraphCompleteness = 'complete' | 'partial' | 'truncated' | 'unindexed';

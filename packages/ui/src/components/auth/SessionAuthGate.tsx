@@ -18,7 +18,7 @@ import { AuthExpiredBanner } from './AuthExpiredBanner';
 import { getRuntimeExtraHeadersSync } from '@/lib/runtime-auth';
 import { getRuntimeApiBaseUrl, getRuntimeKey, subscribeRuntimeEndpointChanged, switchRuntimeEndpoint } from '@/lib/runtime-switch';
 import { desktopHostsGet, desktopHostsSet, getDesktopHostApiUrl, normalizeHostUrl } from '@/lib/desktopHosts';
-import { runtimeIdentityMatches, type GateState, type RuntimeIdentity } from './sessionAuthGateState';
+import { nextGateStateForAuthSession, runtimeIdentityMatches, shouldHealAuthSession, type GateState, type RuntimeIdentity } from './sessionAuthGateState';
 import {
   authenticateWithPasskey,
   cancelPasskeyCeremony,
@@ -598,9 +598,15 @@ export const SessionAuthGate: React.FC<SessionAuthGateProps> = ({
       void checkStatusRef.current?.();
     }
   }, [authSessionState, skipAuth]);
+  // Auto-logout on a confirmed expiry: drop out of the workspace into the
+  // sign-in view instead of leaving a banner over dead screens.
   React.useEffect(() => {
     if (skipAuth) return;
-    if (state === 'authenticated' && useAuthSessionStore.getState().state !== 'ok') {
+    setState((current) => nextGateStateForAuthSession(current, authSessionState));
+  }, [authSessionState, skipAuth]);
+  React.useEffect(() => {
+    if (skipAuth) return;
+    if (shouldHealAuthSession(state, useAuthSessionStore.getState().state)) {
       useAuthSessionStore.getState().markAuthenticated();
     }
   }, [skipAuth, state]);
