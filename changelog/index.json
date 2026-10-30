@@ -7053,15 +7053,20 @@
     "intro": null,
     "app": {
       "new": [
-        "The code graph shows what it has already indexed while a build is still running, instead of an empty panel with a spinner.",
-        "An Alcore session that has expired now returns you to the sign-in screen, instead of leaving open a workspace where every request fails."
+        "**The code graph builds in the open.** While the indexer is still walking a multi-project repository, the panel now lists what it has already covered - project count, files, symbols and the largest modules - instead of an empty canvas behind a spinner.",
+        "**Progress per finished project.** The engine hands over its accumulated snapshot each time a project finishes, so the numbers on screen keep moving during a build that takes minutes, rather than arriving all at once at the end.",
+        "**Signing out is automatic when a session expires.** An Alcore session that has expired - or lost its token - now returns you to the sign-in screen instead of leaving a workspace open where every request fails."
       ],
       "improvements": [
-        "The code graph refetches itself when a finished build publishes a new index, so an answer cached during the build cannot be replayed forever.",
-        "Coming back to the window revalidates the index, at most once a minute.",
-        "The projects counter in the index header reads \"3/16 projects\" instead of a doubled-brace template."
+        "**Graph queries answer while a build runs.** The host serves the in-progress view for explore and modules, and answers other graph questions with an honest \"still building\" state. Before this, those questions were handed to a worker that was busy indexing and came back as a 90 second timeout, which the panel kept showing as a permanent spinner.",
+        "**The graph redraws itself when a build finishes.** A finished build publishes a new index, and the panel refetches against it automatically, so an answer cached mid-build cannot be replayed forever.",
+        "**Coming back to the window refreshes the index**, at most once a minute, so a repo indexed elsewhere does not stay stale on screen.",
+        "**No more timer-based guessing.** The panel no longer treats a build as finished after a fixed interval; it follows the index state the engine actually reports."
       ],
-      "fixes": [],
+      "fixes": [
+        "The index header counter reads \"3/16 projects\" instead of the doubled-brace template it rendered before.",
+        "Version 0.2.1 is consistent across all six workspace manifests and the lockfile, so an installer and the repository no longer report different versions."
+      ],
       "misc": []
     },
     "vscode": {
