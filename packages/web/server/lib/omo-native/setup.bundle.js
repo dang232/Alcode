@@ -25773,6 +25773,9 @@ function buildGraph(absoluteEntries, root, strictRoot, options) {
         builder.addEntries(project, entries);
         projectsDone += 1;
         report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+        if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
+          options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
+        }
       }
       report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
       builder.addKnowledgeLinks(options.knowledge ?? []);
