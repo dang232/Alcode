@@ -10584,6 +10584,9 @@ function buildGraph(absoluteEntries, root, strictRoot, options) {
         builder.addEntries(project, entries);
         projectsDone += 1;
         report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+        if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
+          options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
+        }
       }
       report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
       builder.addKnowledgeLinks(options.knowledge ?? []);
@@ -11741,7 +11744,15 @@ function findTests(snapshot, target, options) {
         const hop = { edge: edge.kind, ref: edge.ref, confidence: edge.confidence };
         const evidence = [...current.via, hop];
         if (importer.kind === "file" && importer.isTest === true) {
-          walked.push({ item: nodeItem(snapshot, importer, evidence), depth });
+          const item = nodeItem(snapshot, importer, evidence);
+          walked.push({
+            item: {
+              ...item,
+              testDistance: depth,
+              testAssociation: depth === 1 ? "direct" : "transitive"
+            },
+            depth
+          });
         } else if (importer.kind === "file") {
           next.push({ id: importer.id, via: evidence });
         }

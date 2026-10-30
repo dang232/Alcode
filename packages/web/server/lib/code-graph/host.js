@@ -170,6 +170,10 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
   const buildingState = (directory) => {
     const cached = stateByDirectory.get(keyOf(directory));
     if (!cached || !LIVE_BUILD_STATES.has(cached.state)) return null;
+    // A finished build writes state 'ready' into this map (see the readIndex
+    // path below), so the state check alone separates live from stale. A time
+    // window here used to expire while a long silent phase was still running,
+    // which forwarded queries into a blocked worker and pinned the caller's loading flag on the 90s timeout.
     return cached;
   };
 
@@ -212,6 +216,10 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
             startedAtMs: building.startedAtMs ?? building.atMs,
             cancelRequested: false,
             error: building.error ?? null,
+            // Bounded projection of the projects analysed so far: the worker's
+            // loop is blocked by the synchronous build, so this progress message
+            // is the only place a client can read "what is indexed yet".
+            partial: building.partial ?? null,
           },
         };
       }
@@ -222,7 +230,44 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
       }
       return summary;
     },
-    query: (directory, input = {}) => call('query', { directory, input }),
+    query: (directory, input = {}) => {
+      const building = buildingState(directory);
+      const kind = input?.kind;
+      // The worker's event loop is blocked by the synchronous build, so a query
+      // forwarded now queues and dies at the caller's timeout (measured: "worker
+      // timed out after 90000 ms on query"). The host answers the module view
+      // from the bounded projection it already holds, and refuses anything that
+      // needs the real graph instead of hanging on it.
+      if (building) {
+        const partial = building.partial ?? null;
+        if (kind === 'explore' || kind === 'modules') {
+          return Promise.resolve({
+            kind: 'explore',
+            modules: partial?.modules ?? [],
+            files: [],
+            coverage: 'partial',
+            truncated: true,
+            partial: partial ?? null,
+            indexState: { state: building.state, projectsDone: building.projectsDone ?? null, projectsTotal: building.projectsTotal ?? null },
+          });
+        }
+        // Resolve instead of rejecting: a rejected promise leaves the caller's
+        // loading flag set forever, which reads to a person as "this has been
+        // spinning for an hour". A typed answer lets the caller clear the
+        // spinner and state the build phase.
+        return Promise.resolve({
+          status: 'indexing',
+          // The client's documented "still building" answer: freshness unindexed
+          // keeps null facts legitimate, so the panel clears its spinner and
+          // states the phase instead of parsing a partial graph as complete.
+          freshness: 'unindexed',
+          coverage: 'unindexed',
+          projectsDone: building.projectsDone ?? 0,
+          projectsTotal: building.projectsTotal ?? 0,
+        });
+      }
+      return call('query', { directory, input });
+    },
     resolveFile: (directory, file) => call('resolveFile', { directory, file }),
     indexState: async (directory) => {
       const cached = stateByDirectory.get(keyOf(directory));

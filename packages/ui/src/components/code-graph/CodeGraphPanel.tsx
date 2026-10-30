@@ -516,8 +516,16 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
   // every rebuild, so a cached entry is always from the current generation
   // by construction — and loader identities stay stable when the revision
   // merely arrives, instead of refetching a just-loaded answer.
+  // A cached answer belongs to ONE index generation. During a build the server
+  // answers queries with the honest "not ready" shape, and caching that under a
+  // key that never changes made the panel replay "not ready" forever after the
+  // index went Fresh - a blank canvas with a spinner. The generation is part of
+  // the key, so a finished build makes every cached answer unreachable and the
+  // pending subject query actually refetches.
+  const indexStamp = Number(index?.observedAtMs) || 0;
+  const indexBuildRef = React.useRef(0);
   const cacheKey = React.useCallback((kind: string, subject: string, queryDepth: number): string => (
-    `${kind}|${subject}|${queryDepth}`
+    `${kind}|${subject}|${queryDepth}|build:${indexBuildRef.current}`
   ), []);
 
   // One generation keeps one answer: an identical kind/subject/depth request
@@ -622,6 +630,14 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     return pending;
   }, []);
 
+  // Freshness is decided when the index is read, never by a watcher: a checkout
+  // can change under an open panel (git switch, an agent writing files). Reading
+  // again when the panel regains focus re-checks the content fingerprint, so a
+  // stale generation is reported instead of silently served. Bounded to once a
+  // minute so window switching never starts a rebuild storm, and the rebuild
+  // itself stays explicit because it costs minutes and gigabytes.
+  const FOCUS_REVALIDATE_MIN_INTERVAL_MS = 60_000;
+  const lastIndexReadAtRef = React.useRef(0);
   const loadIndex = React.useCallback(async (refresh: boolean, signal: AbortSignal) => {
     if (!directory) return;
     setIndexLoading(true);
@@ -629,6 +645,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     try {
       const summary = await fetchCodeGraphIndex(directory, { refresh, signal });
       if (signal.aborted) return;
+      lastIndexReadAtRef.current = Date.now();
       setIndex(summary);
     } catch (error) {
       if (signal.aborted) return;
@@ -638,6 +655,27 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       if (!signal.aborted) setIndexLoading(false);
     }
   }, [directory]);
+
+  React.useEffect(() => {
+    if (!directory) return undefined;
+    const revalidateIndex = () => {
+      if (globalThis.document?.visibilityState === 'hidden') return;
+      if (Date.now() - lastIndexReadAtRef.current < FOCUS_REVALIDATE_MIN_INTERVAL_MS) return;
+      const controller = new AbortController();
+      void loadIndex(false, controller.signal);
+    };
+    window.addEventListener('focus', revalidateIndex);
+    document.addEventListener('visibilitychange', revalidateIndex);
+    return () => {
+      window.removeEventListener('focus', revalidateIndex);
+      document.removeEventListener('visibilitychange', revalidateIndex);
+    };
+  }, [directory, FOCUS_REVALIDATE_MIN_INTERVAL_MS, loadIndex]);
+
+  // Keep the cache key bound to the index generation the panel is looking at.
+  React.useEffect(() => {
+    indexBuildRef.current = indexStamp;
+  }, [indexStamp]);
 
   const cancelIndexing = React.useCallback(() => {
     if (!directory) return;
@@ -762,7 +800,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       .catch((error) => { if (!controller.signal.aborted) setDetailError(error instanceof Error ? error.message : String(error)); })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [directory, focusFile]);
+  }, [directory, focusFile, indexStamp]);
 
   const fetchSubject = React.useCallback(async (
     item: Pick<CodeGraphItem, 'id' | 'file'>,
@@ -2072,6 +2110,24 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
                   onSelectFile={handleSelectModuleFile}
                   filesByModule={filesByModule}
                 />
+              ) : null}
+              {index?.indexState?.partial?.modules?.length ? (
+                <div className="rounded-md border border-border p-2" data-testid="code-graph-partial-modules">
+                  <p className="typography-micro text-muted-foreground">
+                    {t('codeGraph.toolbar.completenessPartial')} — {index.indexState.partial.nodes ?? 0} nodes
+                    {(index.indexState.partial.modulesTotal ?? 0) > (index.indexState.partial.modules?.length ?? 0)
+                      ? ` · ${index.indexState.partial.modulesTotal} modules`
+                      : ''}
+                  </p>
+                  <ul className="mt-1 flex flex-col gap-1">
+                    {index.indexState.partial.modules.map((entry) => (
+                      <li key={entry.module} className="flex items-center justify-between gap-2 typography-micro">
+                        <span className="truncate">{entry.module}</span>
+                        <span className="text-muted-foreground">{entry.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
             </section>
           ) : null}
