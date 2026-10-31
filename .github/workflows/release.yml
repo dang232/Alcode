@@ -248,6 +248,8 @@ jobs:
           bun run prepare:opencode-cli
           bun run verify:opencode-cli
           bun run prepare:ripgrep
+          bun run prepare:ulw-loop-cli
+          bun run verify:ulw-loop-cli
           bun run bundle:main
           # npmRebuild=false in package.json, so electron-builder won't
           # recompile native deps on its own — we must rebuild against the
@@ -380,6 +382,8 @@ jobs:
           bun run prepare:opencode-cli
           bun run verify:opencode-cli
           bun run prepare:ripgrep
+          bun run prepare:ulw-loop-cli
+          bun run verify:ulw-loop-cli
 
       - name: Bundle main process
         working-directory: packages/electron
@@ -503,6 +507,8 @@ jobs:
           bun run prepare:opencode-cli
           bun run verify:opencode-cli
           bun run prepare:ripgrep
+          bun run prepare:ulw-loop-cli
+          bun run verify:ulw-loop-cli
           bun run bundle:main
           bun run rebuild:native
           node ./scripts/package.mjs --linux --${{ matrix.arch }} --publish=never
