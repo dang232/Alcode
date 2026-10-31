@@ -4,12 +4,14 @@
 // layer points OpenCode at this file under the runtime already executing
 // Alcode, so there is nothing to install and no port to agree on.
 // `initialize` and `tools/list` are answered locally; `tools/call` shells
-// out to the checkout ulw-loop CLI (built by the root postinstall), so the
-// MCP surface always runs the same implementation the loop agents use.
-// An explicit OMO_ULW_LOOP_CLI override wins over the checkout default,
-// matching the lifecycle's resolution for loop agents.
+// out to the ulw-loop CLI: an explicit OMO_ULW_LOOP_CLI override (staged
+// copy or user path) wins, else the checkout dist beside a checkout server.
+// A missing CLI fails closed with the pointer and the rebuild command — it
+// never shells out to a guessed path, so a half-staged install reads as a
+// named error instead of a node MODULE_NOT_FOUND stack.
 
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,14 +20,25 @@ const SERVER_VERSION = '0.1.0';
 const PROTOCOL_VERSION = '2024-11-05';
 const CALL_TIMEOUT_MS = 120_000;
 
+const missingCliError = () => new Error(
+  'No usable ulw-loop CLI: set OMO_ULW_LOOP_CLI at a built ulw-loop dist/cli.js, '
+  + 'or rebuild it (checkout: npm --prefix packages/omo-engine/omo-codex/plugin/components/ulw-loop run build; ' +
+  'packaged: re-run the Electron prepare:ulw-loop-cli step).',
+);
+
 const resolveLoopCli = () => {
   const override = (process.env.OMO_ULW_LOOP_CLI ?? '').trim();
-  if (override) return override;
-  return path.resolve(
+  if (override) {
+    if (!existsSync(override)) throw missingCliError();
+    return override;
+  }
+  const checkout = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     '..', '..', '..', '..',
     'omo-engine', 'omo-codex', 'plugin', 'components', 'ulw-loop', 'dist', 'cli.js',
   );
+  if (!existsSync(checkout)) throw missingCliError();
+  return checkout;
 };
 
 // MCP tool name to ulw-loop subcommand. `inspect` is a read-only view over
@@ -54,15 +67,23 @@ const toolRecord = (tool) => ({
 const toKebab = (key) => String(key).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 
 // MCP arguments ride as CLI flags: booleans become bare flags, scalars
-// become --key value pairs, objects become JSON strings. `--json` is always
-// on so the result parses.
+// become --key value pairs, objects become JSON strings, and arrays ride
+// as one repeated --key per item — the CLI only reads repeated flags
+// (readRepeated), so a single JSON-string flag parses as one unknown id.
+// `--json` is always on so the result parses.
 const toArgv = (params = {}) => {
   const argv = ['--json'];
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === false) continue;
     const flag = `--${toKebab(key)}`;
     if (value === true) argv.push(flag);
-    else if (Array.isArray(value) || value?.constructor === Object) argv.push(flag, JSON.stringify(value));
+    else if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item === undefined || item === null) continue;
+        argv.push(flag, item?.constructor === Object || Array.isArray(item) ? JSON.stringify(item) : String(item));
+      }
+    }
+    else if (value?.constructor === Object) argv.push(flag, JSON.stringify(value));
     else argv.push(flag, String(value));
   }
   return argv;
@@ -73,7 +94,15 @@ const callTool = (name, params) => {
   if (!tool) {
     return { isError: true, content: [{ type: 'text', text: `Unknown ULW tool: ${name}.` }] };
   }
-  const cli = resolveLoopCli();
+  let cli;
+  try {
+    cli = resolveLoopCli();
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{ type: 'text', text: error?.message ?? String(error) }],
+    };
+  }
   let completed;
   try {
     completed = spawnSync(process.execPath, [cli, tool.subcommand, ...toArgv(params)], {
