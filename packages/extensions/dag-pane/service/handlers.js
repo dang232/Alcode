@@ -648,7 +648,19 @@ export const createDagServiceHandlers = (dependencies = {}) => {
   // runtime's normalizeDirectory binds the scope (missing/not-a-directory
   // fails before the engine runs). Overridable for tests; the default is
   // the real engine.
-  const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime({ fsPromises: nodeFsPromises, path: nodePath });
+  //
+  // `blockOnRead` makes the default runtime wait for the build, so these
+  // routes answer with a published graph instead of `ready: false` and an
+  // empty-looking index that a panel latches onto forever. The engine builds
+  // synchronously, so a blocked read does not extend the freeze this process
+  // already has: the non-blocking read answers in 15 ms and then the event
+  // loop stalls for the whole build anyway (measured 3.4 s on this package),
+  // while a blocking read returns at the same wall-clock moment with facts.
+  // An injected runtime is used verbatim, never reconfigured.
+  const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime(
+    { fsPromises: nodeFsPromises, path: nodePath },
+    { blockOnRead: true },
+  );
 
   try {
     fs.mkdirSync(snapshotDir, { recursive: true });

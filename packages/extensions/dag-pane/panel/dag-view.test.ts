@@ -182,3 +182,32 @@ describe('mergeRunModelPost', () => {
     expect(merged.snapshot).toEqual(next);
   });
 });
+
+describe('run counts truthfulness (audit-fixes-b)', () => {
+  const runDoc = (counts: Record<string, number>) => ({
+    schemaVersion: 1,
+    sessionId: 'ses_a',
+    updatedAt: '2026-10-24T00:00:00.000Z',
+    dag: {
+      runs: [{
+        run_id: 'r1', run_key: 'k', name: 'n', status: 'failed',
+        nodes: [{ id: 'a', label: 'a', state: 'failed', attempt: 1, prompt: 'do a', depends_on: [], started_at: null, completed_at: null }],
+        edges: [],
+        counts,
+      }],
+    },
+    tasks: null,
+  });
+  test('failed plus cancelled counts survive the parse instead of vanishing', () => {
+    const outcome = parseSnapshotDoc(runDoc({ pending: 0, running: 0, completed: 0, failed: 1, cancelled: 1 }));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0]?.counts).toEqual({ pending: 0, running: 0, completed: 0, failed: 1, cancelled: 1 });
+  });
+  test('missing failed/cancelled counts read as zero for old snapshots', () => {
+    const outcome = parseSnapshotDoc(runDoc({ pending: 1, running: 0, completed: 2 }));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0]?.counts).toEqual({ pending: 1, running: 0, completed: 2, failed: 0, cancelled: 0 });
+  });
+});

@@ -27,7 +27,7 @@ const run = (overrides: Partial<DagRunView> = {}): DagRunView => ({
   runKey: 'k',
   name: 'demo',
   status: 'running',
-  counts: { pending: 0, running: 1, completed: 1 },
+  counts: { pending: 0, running: 1, completed: 1, failed: 0, cancelled: 0 },
   nodes: [
     node({ id: 'a', label: 'a', state: 'completed', startedAt: '2026-10-24T00:00:01.000Z', completedAt: '2026-10-24T00:00:03.500Z' }),
     node({ id: 'b', label: 'b', state: 'running', startedAt: '2026-10-24T00:00:02.000Z' }),

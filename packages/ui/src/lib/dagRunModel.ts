@@ -49,7 +49,7 @@ export type DagRunChild = {
   agent: string | null;
   description: string | null;
   state: DagChildState;
-  startedAt: number;
+  startedAt: number | null;
   endedAt: number | null;
   /** The child's final answer (or failure text) when reported, sliced. */
   output: string | null;
@@ -70,7 +70,7 @@ export type DagRunModel = {
   endedAt: number | null;
   children: DagRunChild[];
   synthesis: { state: 'pending' | 'ready'; text: string | null };
-  counts: { pending: number; running: number; completed: number };
+  counts: { pending: number; running: number; completed: number; failed: number; cancelled: number };
   /** Max record time in the model: stable across unrelated store updates. */
   updatedAt: number;
 };
@@ -200,7 +200,8 @@ export const buildDagRunModel = (input: DagRunModelInput): DagRunModel | null =>
     if (report) state = reportStateOf(report.state);
     else if (liveCall) state = liveCall.status === 'pending' ? 'pending' : 'running';
     else if (busy) state = 'running';
-    else if (finishedCall || named) state = 'completed';
+    else if (finishedCall) state = finishedCall.status === 'error' ? 'failed' : 'completed';
+    else if (named) state = 'completed';
     else state = child.agent ? 'completed' : 'pending';
     children.push({
       sessionId: child.id,
@@ -208,20 +209,22 @@ export const buildDagRunModel = (input: DagRunModelInput): DagRunModel | null =>
       agent: clean(child.agent) ?? null,
       description,
       state,
-      startedAt: child.time?.created ?? 0,
+      startedAt: child.time?.created ?? null,
       endedAt: report ? report.reportedAt : null,
       output: report && report.output ? slice(clean(report.output) ?? '', OUTPUT_MAX) || null : null,
     });
   }
   const hasEvidence = calls.length > 0 || reports.size > 0 || children.length > 0;
   if (!hasEvidence) return null;
-  children.sort((a, b) => a.startedAt - b.startedAt);
+  children.sort((a, b) => (a.startedAt ?? Number.MAX_SAFE_INTEGER) - (b.startedAt ?? Number.MAX_SAFE_INTEGER));
 
   const parentBusy = isBusyStatus(statuses, parent.id);
   const anyRunning = children.some((child) => child.state === 'running' || child.state === 'pending');
+  const allFailed = children.length > 0 && children.every((child) => child.state === 'failed');
   let state: DagParentState;
   if (parent.outcome === 'failed') state = 'failed';
   else if (anyRunning || parentBusy) state = 'running';
+  else if (allFailed && parent.outcome !== 'succeeded') state = 'failed';
   else state = 'completed';
 
   const userText = firstUserText(messages, parts);
@@ -229,15 +232,17 @@ export const buildDagRunModel = (input: DagRunModelInput): DagRunModel | null =>
   const prompt = userText ? slice(userText, PROMPT_MAX) : label;
   const allTerminal = children.length > 0 && children.every((child) => child.state !== 'running' && child.state !== 'pending');
   const synthesisText = allTerminal && !parentBusy ? lastAssistantText(messages, parts) : null;
-  const counts = { pending: 0, running: 0, completed: 0 };
+  const counts = { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
   for (const child of children) {
     if (child.state === 'pending') counts.pending += 1;
     else if (child.state === 'running') counts.running += 1;
     else if (child.state === 'completed') counts.completed += 1;
+    else if (child.state === 'failed') counts.failed += 1;
+    else if (child.state === 'cancelled') counts.cancelled += 1;
   }
   const updatedAt = Math.max(
     parent.time?.updated ?? 0,
-    ...children.map((child) => child.endedAt ?? child.startedAt),
+    ...children.map((child) => child.endedAt ?? child.startedAt ?? 0),
   );
   return {
     version: 1,
@@ -283,7 +288,7 @@ export const dagRunModelToSnapshotDoc = (model: DagRunModel): JsonValue => {
       ? `${child.description ?? child.label}\n\nResult:\n${child.output}`
       : (child.description ?? child.label),
     depends_on: ['parent'],
-    started_at: new Date(child.startedAt).toISOString(),
+    started_at: child.startedAt === null ? null : new Date(child.startedAt).toISOString(),
     completed_at: child.endedAt === null ? null : new Date(child.endedAt).toISOString(),
   }));
   const synthesisNode = {

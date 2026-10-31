@@ -6,6 +6,8 @@
 // unit-testable in bun:test without a browser; `panel/main.ts` owns fetching
 // and painting, these helpers own shaping and rules.
 
+import { isWireRecord, wireString } from './dag-view.ts';
+
 export type CodeItemKind = 'symbol' | 'file' | 'other';
 
 export type CodeTaskRow = { id: string; label: string };
@@ -14,6 +16,7 @@ export type CodeIndexStatus =
   | 'disconnected'
   | 'loading'
   | 'error'
+  | 'indexing'
   | 'empty'
   | 'stale'
   | 'ready';
@@ -137,6 +140,30 @@ export type CodeIndexBody = {
   freshness?: unknown;
   binding?: unknown;
   nodeCount?: unknown;
+  ready?: unknown;
+  indexState?: unknown;
+};
+
+// Every job state after `queued` and before a terminal one: the build holds no
+// published graph yet, so an index body carrying one of these is in progress.
+// `persisting` is included because the graph exists but is not published.
+const BUILD_IN_PROGRESS_STATES = new Set(['queued', 'discovering', 'analyzing', 'persisting']);
+
+/**
+ * True while the runtime reports a build that has not published. The body is
+ * authoritative: `ready` comes from the answer itself, and `indexState.state`
+ * names the phase. A body without either field predates the lifecycle and
+ * reads as finished, so only a stated build counts.
+ */
+export const isCodeIndexBuilding = (index: CodeIndexBody): boolean => {
+  if (index.ready === false) {
+    return true;
+  }
+  if (!isWireRecord(index.indexState)) {
+    return false;
+  }
+  const state = wireString(index.indexState.state);
+  return state !== null && BUILD_IN_PROGRESS_STATES.has(state);
 };
 
 /**
@@ -163,8 +190,14 @@ export const formatFreshnessChip = (index: CodeIndexBody): CodeFreshnessChip => 
 /**
  * The Code view index state. `connected` is engine reachability from the
  * pane's own `/status` read; a fetch failure is `error`, never an empty
- * success; `stale` still renders the chip plus a refresh offer; `empty`
- * means the index answered with zero nodes.
+ * success; `stale` still renders the chip plus a refresh offer; `indexing`
+ * means the build is still running and has published nothing; `empty` means
+ * a finished index answered with zero nodes.
+ *
+ * A zero-node body only reads as `empty` once the build says it is done. An
+ * in-progress body also carries zero nodes (and `freshness: 'unindexed'`), so
+ * classifying it as empty told the user "no symbols here" about a directory
+ * whose symbols were being extracted at that moment.
  */
 export const resolveCodeIndexStatus = (input: {
   connected: boolean;
@@ -180,8 +213,13 @@ export const resolveCodeIndexStatus = (input: {
   if (input.index === null) {
     return 'loading';
   }
+  // A stale answer is a real published generation being superseded; its chip
+  // is the honest report, even while the newer build runs.
   if (input.index.freshness === 'stale') {
     return 'stale';
+  }
+  if (isCodeIndexBuilding(input.index)) {
+    return 'indexing';
   }
   if (typeof input.index.nodeCount === 'number' && input.index.nodeCount === 0) {
     return 'empty';
