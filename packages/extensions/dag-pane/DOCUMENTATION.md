@@ -83,12 +83,15 @@ exists for this guest.
   accepts the panel directory and merges snapshot ids first, loop-only ids
   after; the panel paints `/loop` while `/snapshot` 404s, and snapshot
   data wins once it lands.
-- `service/main.js` — loopback entry and node build entry. Requires
-  `ALCODE_SERVICE_PORT` + `ALCODE_SERVICE_TOKEN` (the legacy
+- `service/main.js` — committed self-contained ESM bundle, regenerated from
+  `service/server.js` (loopback entry source) plus `service/handlers.js` and
+  the upstream bridge/engine modules via `bun ./main.regen.mjs`. Edit the
+  sources, never the bundle: an edit without a regen ships stale code into
+  every packaged build. `service/main.bundle.test.js` pins byte-identical
+  regen. Requires `ALCODE_SERVICE_PORT` + `ALCODE_SERVICE_TOKEN` (the legacy
   `OPENCHAMBER_SERVICE_*` names still work as a fallback), enforces the
   bearer on every request including `/health`, binds 127.0.0.1 only. The
-  shipped bundle is the self-contained ESM the builtin build produces;
-  the host never compiles TypeScript.
+  host never compiles TypeScript.
 
 ## Data path
 
@@ -108,10 +111,19 @@ merges temp snapshots, loop rows, and project-scoped records, deduped by
 own directory filter. The panel's History covers the followed conversation
 only and stays display-only: rows never bind the live view.
 The panel never touches the filesystem: it calls `serviceRequest`, and the
-service reads the file. The wrapper entry for steering is per-guest
-storage (`wrapperEntry`, kept silently — no visible input); with no entry anywhere the
-bridge resolves the native/vendored engine before answering engine-absent,
-so a saved path stays an optional override and empty means auto-resolve.
+service reads the file. The staged service ships two native companions next
+to `service/main.js`, both compiled to plain JS by `extensions:build`:
+`service/worker.js` (the run worker) and
+`service/vendor/omo-engine/omo-opencode/src/cli/run/index.js` (the engine
+run barrel). The bridge resolves them beside the service bundle with no bun
+and no engine checkout on the machine, so a clean install probes
+`OMO_PROBE_OK` and steers natively; wrapper-kind jobs additionally accept a
+user wrapper entry with no bun either. The wrapper entry for steering and status polls is
+per-guest storage (`wrapperEntry`, kept silently — no visible input): every
+`/status` poll carries it too, so the probe handshakes a saved wrapper instead
+of gating native with no entry; with no entry anywhere the bridge resolves the
+native/vendored engine before answering engine-absent, so a saved path stays an
+optional override and empty means auto-resolve.
 
 ## Ship (desktop, no manual install)
 

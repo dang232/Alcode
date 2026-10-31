@@ -1,3 +1,10 @@
+/**
+ * Generated from the dag-pane service sources — DO NOT EDIT BY HAND.
+ *
+ * Regen with `bun ./main.regen.mjs` in this directory. Bundled with
+ * Bun.build (target node, format esm, external node:* builtins only) so the
+ * packaged service runs under plain Node with no transpile step.
+ */
 var __defProp = Object.defineProperty;
 var __returnValue = (v) => v;
 function __exportSetter(name, newValue) {
@@ -24,16 +31,28 @@ var __esm = (fn, res, err) => () => {
   return res;
 };
 
-// Alwork/packages/web/server/lib/code-graph/code-graph.bundle.js
+// ../../../web/server/lib/code-graph/code-graph.bundle.js
 var exports_code_graph_bundle = {};
 __export(exports_code_graph_bundle, {
+  MAX_CONTENT_TOKENS_PER_FILE: () => MAX_CONTENT_TOKENS_PER_FILE,
+  SNAPSHOT_STORE_VERSION: () => SNAPSHOT_STORE_VERSION,
   STALE_AFTER_MS: () => STALE_AFTER_MS,
   computeScopeFingerprint: () => computeScopeFingerprint,
+  createSnapshotManifest: () => createSnapshotManifest,
   findTests: () => findTests,
+  findUnreferenced: () => findUnreferenced,
   impact: () => impact,
   indexFiles: () => indexFiles,
+  joinSnapshotShards: () => joinSnapshotShards,
+  parseSnapshotManifest: () => parseSnapshotManifest,
+  parseSnapshotShard: () => parseSnapshotShard,
   search: () => search,
-  symbolContext: () => symbolContext
+  searchContent: () => searchContent,
+  serializeSnapshotManifest: () => serializeSnapshotManifest,
+  serializeSnapshotShard: () => serializeSnapshotShard,
+  splitSnapshotIntoShards: () => splitSnapshotIntoShards,
+  symbolContext: () => symbolContext,
+  trace: () => trace
 });
 import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -5867,6 +5886,213 @@ class Signature {
     return (this.flags & SignatureFlags.Abstract) !== 0;
   }
 }
+function sha256Hex(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+function computeScopeFingerprint(projectId, worktreeId, revision) {
+  return sha256Hex(`${projectId}
+${worktreeId}
+${revision}`);
+}
+function emptyContentIndex() {
+  return { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: {}, skipped: [] };
+}
+function contentTokenize(text) {
+  return text.toLowerCase().match(/[a-z0-9_$]+/g) ?? [];
+}
+function normalizeLanguage(value) {
+  const bare = value.trim().toLowerCase().replace(/^\.+/, "");
+  return LANGUAGE_ALIASES[bare] ?? bare;
+}
+function normalizePathFilter(value) {
+  if (value === undefined)
+    return;
+  const cleaned = value.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  const trimmed = cleaned.replace(/^\.\//, "");
+  return trimmed === "" ? undefined : trimmed;
+}
+function clampContentLimit(limit) {
+  if (limit === undefined || !Number.isFinite(limit))
+    return CONTENT_DEFAULT_LIMIT;
+  return Math.min(CONTENT_MAX_LIMIT, Math.max(1, Math.floor(limit)));
+}
+function collapseWhitespace(value) {
+  return value.replace(/\s+/g, " ");
+}
+function contentFileLanguage(file) {
+  const base = file.split("/").pop() ?? file;
+  const dot = base.lastIndexOf(".");
+  return dot < 0 ? "unknown" : base.slice(dot + 1).toLowerCase();
+}
+function pathFilterMatches(file, filter) {
+  if (file.startsWith(filter))
+    return true;
+  const segments = filter.split("/").filter((segment) => segment.length > 0);
+  for (let index = 1;index < segments.length; index += 1) {
+    const tail = segments.slice(index).join("/");
+    if (file === tail || file.startsWith(`${tail}/`))
+      return true;
+  }
+  return false;
+}
+function fileMatchesFilters(file, isTest, language, prefix, directory, kind, wantedLanguage) {
+  if (prefix !== undefined && !pathFilterMatches(file, prefix))
+    return false;
+  if (directory !== undefined && !pathFilterMatches(file, directory))
+    return false;
+  if (kind === "test" && !isTest)
+    return false;
+  if (kind === "source" && isTest)
+    return false;
+  if (wantedLanguage !== undefined && language !== wantedLanguage)
+    return false;
+  return true;
+}
+function excerptFor(line, column) {
+  if (line.length <= 200)
+    return line;
+  const start = Math.max(0, Math.min(line.length - 200, column - 1 - 80));
+  return line.slice(start, start + 200);
+}
+function searchContent(snapshot, query, options = {}) {
+  const limit = clampContentLimit(options.limit);
+  const index = snapshot.content;
+  if (index === undefined) {
+    return {
+      items: [],
+      truncated: false,
+      coverage: "unindexed",
+      unresolved: ["snapshot has no content index (extracted before content search; re-run indexFiles)"],
+      unsupported: []
+    };
+  }
+  const trimmed = query.trim();
+  const terms = contentTokenize(trimmed);
+  if (terms.length === 0) {
+    return {
+      items: [],
+      truncated: false,
+      coverage: "indexed",
+      unresolved: [`query has no searchable terms: ${JSON.stringify(query.slice(0, 80))}`],
+      unsupported: []
+    };
+  }
+  if (options.language !== undefined) {
+    const wanted = normalizeLanguage(options.language);
+    const supported = Object.values(index.files).some((entry) => entry.language === wanted);
+    if (!supported) {
+      return {
+        items: [],
+        truncated: false,
+        coverage: "unindexed",
+        unresolved: [],
+        unsupported: [`unsupported language: "${options.language}" (no indexed files)`]
+      };
+    }
+  }
+  const prefix = normalizePathFilter(options.pathPrefix);
+  const directory = normalizePathFilter(options.directory);
+  const kind = options.kind === "test" || options.kind === "source" ? options.kind : undefined;
+  const wantedLanguage = options.language === undefined ? undefined : normalizeLanguage(options.language);
+  const deadline = Date.now() + CONTENT_SEARCH_TIME_BUDGET_MS;
+  const uniqueTerms = [...new Set(terms)];
+  const multi = terms.length > 1;
+  const phraseNeedle = collapseWhitespace(trimmed.toLowerCase());
+  const ranked = [];
+  let timedOut = false;
+  const candidateFiles = Object.values(index.files).filter((entry) => fileMatchesFilters(entry.file, entry.isTest, entry.language, prefix, directory, kind, wantedLanguage)).sort((left, right) => left.file < right.file ? -1 : 1);
+  for (const entry of candidateFiles) {
+    if (Date.now() > deadline) {
+      timedOut = true;
+      break;
+    }
+    if (!fileHasAllTerms(entry, uniqueTerms))
+      continue;
+    const lowered = entry.lines.map((line) => line.toLowerCase());
+    for (let lineNumber = 1;lineNumber <= entry.lines.length; lineNumber += 1) {
+      const line = lowered[lineNumber - 1];
+      if (!uniqueTerms.every((term) => line.includes(term)))
+        continue;
+      let reason;
+      let tier;
+      if (multi && collapseWhitespace(line).includes(phraseNeedle)) {
+        reason = "phrase";
+        tier = 0;
+      } else if (!multi) {
+        reason = "literal";
+        tier = 0;
+      } else if (termsInOrder(line, terms)) {
+        reason = "token";
+        tier = 1;
+      } else {
+        reason = "token";
+        tier = 2;
+      }
+      const column = line.indexOf(uniqueTerms[0]) + 1;
+      const raw = entry.lines[lineNumber - 1];
+      ranked.push({
+        tier,
+        item: {
+          file: entry.file,
+          line: lineNumber,
+          column,
+          excerpt: excerptFor(raw, column),
+          reason,
+          confidence: 1
+        }
+      });
+    }
+  }
+  ranked.sort((left, right) => {
+    if (left.tier !== right.tier)
+      return left.tier - right.tier;
+    if (left.item.file !== right.item.file)
+      return left.item.file < right.item.file ? -1 : 1;
+    return left.item.line - right.item.line;
+  });
+  const truncated = timedOut || ranked.length > limit;
+  const items = ranked.slice(0, limit).map((entry) => entry.item);
+  const unresolved = [];
+  const skippedInScope = index.skipped.filter((skip) => fileMatchesFilters(skip.file, skip.isTest, skip.language, prefix, directory, kind, wantedLanguage));
+  if (skippedInScope.length > 0) {
+    const named = skippedInScope.slice(0, 5).map((skip) => `${skip.file} (${skip.reason})`);
+    const rest = skippedInScope.length > 5 ? ` and ${skippedInScope.length - 5} more` : "";
+    unresolved.push(`skipped ${skippedInScope.length} file(s) from content search (binary or too large to index): ${named.join(", ")}${rest}`);
+  }
+  const cappedInScope = candidateFiles.filter((entry) => entry.tokenTruncated).length;
+  if (cappedInScope > 0) {
+    unresolved.push(`${cappedInScope} file(s) hit the per-file token cap (${index.tokenCap}); matches past the cap may be missed`);
+  }
+  if (timedOut) {
+    unresolved.push(`search stopped after the ${CONTENT_SEARCH_TIME_BUDGET_MS}ms time budget; results are partial`);
+  }
+  if (ranked.length > limit) {
+    unresolved.push(`truncated to ${limit} of ${ranked.length} content matches`);
+  }
+  return {
+    items,
+    truncated,
+    coverage: truncated ? "partial" : "indexed",
+    unresolved,
+    unsupported: []
+  };
+}
+function fileHasAllTerms(entry, terms) {
+  const missing = terms.filter((term) => !(term in entry.tokens));
+  if (missing.length === 0)
+    return true;
+  return missing.every((term) => entry.lines.some((line) => line.toLowerCase().includes(term)));
+}
+function termsInOrder(line, terms) {
+  let from = 0;
+  for (const term of terms) {
+    const at = line.indexOf(term, from);
+    if (at < 0)
+      return false;
+    from = at + term.length;
+  }
+  return true;
+}
 function isTestPath(path2) {
   const normalized = path2.replace(/\\/g, "/");
   return /(^|\/)__tests__\//.test(normalized) || /\.test\.[cm]?[tj]sx?$/.test(normalized) || /\.spec\.[cm]?[tj]sx?$/.test(normalized) || /(^|\/)(test|tests)\//.test(normalized);
@@ -5913,12 +6139,6 @@ function defaultTsServerPath() {
       return candidate;
   }
   throw new Error("code-graph: TypeScript native server binary not found inside typescript@7.0.2; " + "pass IndexOptions.tsserverPath explicitly");
-}
-function isSymbolLike(value) {
-  if (typeof value !== "object" || value === null)
-    return false;
-  const candidate = value;
-  return typeof candidate.name === "string" && typeof candidate.flags === "number" && Array.isArray(candidate.declarations);
 }
 function followAlias(checker, symbol) {
   let current = symbol;
@@ -5974,17 +6194,28 @@ function isCallableDeclKind(kind) {
 
 class GraphBuilder {
   root;
+  strictRoot;
   files = new Map;
   nodes = new Map;
   edges = new Map;
   callOrdinals = new Map;
-  constructor(root) {
+  contentFiles = new Map;
+  contentSkipped = [];
+  droppedKeys = new Set;
+  dropped = [];
+  constructor(root, strictRoot = false) {
     this.root = root;
+    this.strictRoot = strictRoot;
   }
   snapshot() {
     const nodes = [...this.nodes.values()].sort((left, right) => left.id < right.id ? -1 : 1);
     const edges = [...this.edges.values()].sort((left, right) => left.id < right.id ? -1 : 1);
-    return { nodes, edges };
+    const files = [...this.contentFiles.values()].sort((left, right) => left.file < right.file ? -1 : 1);
+    const byFile = {};
+    for (const entry of files)
+      byFile[entry.file] = entry;
+    const skipped = [...this.contentSkipped].sort((left, right) => left.file < right.file ? -1 : 1);
+    return { nodes, edges, content: { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: byFile, skipped } };
   }
   addEntries(project, entries) {
     const program = project.program;
@@ -6010,8 +6241,13 @@ class GraphBuilder {
         continue;
       }
       const rel = this.relOf(key);
+      if (rel === undefined) {
+        this.dropOutsideRoot(key);
+        continue;
+      }
       const ctx = { key, rel, sourceFile, project, checker: project.checker };
       this.files.set(key, ctx);
+      this.indexContent(ctx);
       this.nodes.set(`file:${rel}`, { id: `file:${rel}`, kind: "file", file: rel, line: 1, name: rel });
       for (const target of this.staticImportTargets(ctx)) {
         if (!this.files.has(target))
@@ -6039,7 +6275,9 @@ class GraphBuilder {
       if (!Number.isFinite(link.confidence) || link.confidence < 0 || link.confidence > 1)
         continue;
       const id = `knowledge:${link.recordId}`;
-      const file = toPosixPath(link.sourceFile);
+      const file = this.linkFileOf(link.sourceFile);
+      if (file === undefined)
+        continue;
       this.nodes.set(id, { id, kind: "knowledge-link", file, line: 1, target: link.recordId, revision: link.sourceRevision });
       const edgeId = `links:${link.from}:${link.recordId}`;
       this.edges.set(edgeId, {
@@ -6052,9 +6290,83 @@ class GraphBuilder {
       });
     }
   }
+  indexContent(ctx) {
+    const language = contentFileLanguage(ctx.rel);
+    const isTest = isTestPath(ctx.rel);
+    const text = ctx.sourceFile.getFullText();
+    if (text.includes("\x00")) {
+      this.contentSkipped.push({ file: ctx.rel, reason: "binary", language, isTest });
+      return;
+    }
+    if (text.length > MAX_CONTENT_FILE_BYTES) {
+      this.contentSkipped.push({ file: ctx.rel, reason: "too-large", language, isTest });
+      return;
+    }
+    const lines = text.split(`
+`).map((line) => line.endsWith("\r") ? line.slice(0, -1) : line);
+    const perToken = new Map;
+    lines.forEach((line, index) => {
+      for (const token of contentTokenize(line)) {
+        const seen = perToken.get(token);
+        if (seen) {
+          if (seen[seen.length - 1] !== index + 1)
+            seen.push(index + 1);
+        } else {
+          perToken.set(token, [index + 1]);
+        }
+      }
+    });
+    const tokens = {};
+    let kept = 0;
+    let tokenTruncated = false;
+    for (const [token, atLines] of perToken) {
+      if (kept >= MAX_CONTENT_TOKENS_PER_FILE) {
+        tokenTruncated = true;
+        break;
+      }
+      tokens[token] = atLines;
+      kept += 1;
+    }
+    this.contentFiles.set(ctx.rel, {
+      file: ctx.rel,
+      language,
+      isTest,
+      lines,
+      tokens,
+      tokenCount: perToken.size,
+      tokenTruncated
+    });
+  }
   relOf(key) {
-    const rel = key.startsWith(`${this.root}/`) ? key.slice(this.root.length + 1) : key;
+    const prefix = `${this.root}/`;
+    if (!key.startsWith(prefix))
+      return this.strictRoot ? undefined : key;
+    const rel = key.slice(prefix.length);
+    if (rel.length === 0 || rel.split("/").includes(".."))
+      return;
     return rel;
+  }
+  dropOutsideRoot(key) {
+    if (this.droppedKeys.has(key))
+      return;
+    this.droppedKeys.add(key);
+    this.dropped.push({ file: key, reason: "outside-root" });
+  }
+  linkFileOf(sourceFile) {
+    const posix = toPosixPath(sourceFile);
+    if (!this.strictRoot)
+      return posix;
+    const prefix = `${this.root}/`;
+    if (posix.startsWith(prefix)) {
+      const rel = posix.slice(prefix.length);
+      if (rel.length > 0 && !rel.split("/").includes(".."))
+        return rel;
+      return;
+    }
+    if (posix.startsWith("/") || /^[a-z]:\//.test(posix) || posix.split("/").includes("..")) {
+      return;
+    }
+    return posix.replace(/^\.\//, "");
   }
   lineOf(ctx, node) {
     return ctx.sourceFile.getLineAndCharacterOfPosition(node.getStart(ctx.sourceFile)).line + 1;
@@ -6154,8 +6466,7 @@ class GraphBuilder {
     const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
     if (!moduleSymbol)
       return;
-    const raw = ctx.checker.getExportsOfModule(moduleSymbol);
-    const exported = Array.isArray(raw) ? raw.filter(isSymbolLike) : [];
+    const exported = ctx.checker.getExportsOfModule(moduleSymbol);
     const contractLines = this.exportContractLines(ctx);
     for (const exportedSymbol of exported) {
       if ((exportedSymbol.flags & SymbolFlags.ExportStar) !== 0)
@@ -6440,15 +6751,49 @@ class GraphBuilder {
 }
 function indexFiles(entryFiles, options = {}) {
   if (entryFiles.length === 0)
-    return { nodes: [], edges: [] };
+    return { nodes: [], edges: [], content: emptyContentIndex() };
   const absoluteEntries = entryFiles.map((entry) => resolve(entry));
-  const root = commonDir(absoluteEntries.map(toPosixPath));
+  if (options.rootDir === undefined) {
+    const root = commonDir(absoluteEntries.map(toPosixPath));
+    const { snapshot } = buildGraph(absoluteEntries, root, false, options);
+    return { ...snapshot, root };
+  }
+  const root = toPosixPath(resolve(options.rootDir));
+  const prefix = `${root}/`;
+  const inside = [];
+  const entryDropped = [];
+  const seenDropped = new Set;
+  for (const entry of absoluteEntries) {
+    const key = toPosixPath(entry);
+    const rel = key.startsWith(prefix) ? key.slice(prefix.length) : undefined;
+    if (rel !== undefined && rel.length > 0 && !rel.split("/").includes("..")) {
+      inside.push(entry);
+    } else if (!seenDropped.has(key)) {
+      seenDropped.add(key);
+      entryDropped.push({ file: key, reason: "outside-root" });
+    }
+  }
+  if (inside.length === 0) {
+    return { nodes: [], edges: [], content: emptyContentIndex(), root, dropped: entryDropped };
+  }
+  const { snapshot, dropped } = buildGraph(inside, root, true, options);
+  const mergedByFile = new Map;
+  for (const drop of [...entryDropped, ...dropped]) {
+    if (!mergedByFile.has(drop.file))
+      mergedByFile.set(drop.file, drop);
+  }
+  const merged = [...mergedByFile.values()].sort((left, right) => left.file < right.file ? -1 : 1);
+  return { ...snapshot, root, dropped: merged };
+}
+function buildGraph(absoluteEntries, root, strictRoot, options) {
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
+  const report = options.onProgress;
   const api = new API({ tsserverPath, cwd: root });
   try {
-    const snapshot = api.updateSnapshot({ openFiles: absoluteEntries });
+    const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
+    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0 });
     try {
-      const builder = new GraphBuilder(root);
+      const builder = new GraphBuilder(root, strictRoot);
       const byProject = new Map;
       for (const entry of absoluteEntries) {
         const project = snapshot.getDefaultProjectForFile(entry);
@@ -6460,10 +6805,21 @@ function indexFiles(entryFiles, options = {}) {
         else
           byProject.set(project, [entry]);
       }
-      for (const [project, entries] of byProject)
+      const projectsTotal = byProject.size;
+      let projectsDone = 0;
+      for (const [project, entries] of byProject) {
         builder.addEntries(project, entries);
+        projectsDone += 1;
+        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+        if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
+          options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
+        }
+      }
+      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
       builder.addKnowledgeLinks(options.knowledge ?? []);
-      return builder.snapshot();
+      const snapshotOut = builder.snapshot();
+      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal });
+      return { snapshot: snapshotOut, dropped: builder.dropped };
     } finally {
       snapshot.dispose();
     }
@@ -6480,6 +6836,149 @@ function clampDepth(depth) {
   if (depth === undefined || !Number.isFinite(depth))
     return DEFAULT_MAX_DEPTH;
   return Math.min(MAX_DEPTH_LIMIT, Math.max(1, Math.floor(depth)));
+}
+function clampExploredEdges(value) {
+  if (value === undefined || !Number.isFinite(value))
+    return MAX_EXPLORED_EDGES;
+  return Math.min(MAX_EXPLORED_EDGES, Math.max(1, Math.floor(value)));
+}
+function clampQueryBudgetMs(value) {
+  if (value === undefined || !Number.isFinite(value))
+    return DEFAULT_QUERY_BUDGET_MS;
+  return Math.min(MAX_QUERY_BUDGET_MS, Math.max(0, Math.floor(value)));
+}
+function kindRank(edge) {
+  return KIND_PRIORITY[edge] ?? 4;
+}
+function verdictForEvidenceKind(edge) {
+  return CONFIRMED_EVIDENCE_KINDS.has(edge) ? "confirmed" : "inferred";
+}
+function dedupeById(items) {
+  const seen = new Set;
+  const kept = [];
+  for (const item of items) {
+    if (seen.has(item.id))
+      continue;
+    seen.add(item.id);
+    kept.push(item);
+  }
+  return { items: kept, dropped: items.length - kept.length };
+}
+function duplicatesExtra(dropped) {
+  return dropped > 0 ? { duplicatesDropped: dropped } : {};
+}
+function ambiguousExtra(items) {
+  const seen = new Map;
+  for (const item of items) {
+    if (item.name === undefined || item.name === "")
+      continue;
+    const first = seen.get(item.name);
+    if (first === undefined) {
+      seen.set(item.name, item.id);
+    } else if (first !== item.id) {
+      return { ambiguousNames: true };
+    }
+  }
+  return;
+}
+function primaryKind(item) {
+  return item.evidence[0]?.edge ?? "indexed";
+}
+function compareRows(depthA, a, depthB, b) {
+  if (depthA !== depthB)
+    return depthA - depthB;
+  if (a.confidence !== b.confidence)
+    return b.confidence - a.confidence;
+  const kindDelta = kindRank(primaryKind(a)) - kindRank(primaryKind(b));
+  if (kindDelta !== 0)
+    return kindDelta;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+function byKindFor(items) {
+  const counts = new Map;
+  for (const item of items) {
+    const kind = primaryKind(item);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((left, right) => kindRank(left[0]) - kindRank(right[0]) || (left[0] < right[0] ? -1 : 1)).map(([kind, count]) => ({ kind, count }));
+}
+function indexTruncationNote(snapshot) {
+  const dropped = snapshot.dropped ?? [];
+  if (dropped.length > 0) {
+    const named = dropped.slice(0, 3).map((entry) => entry.file).join(", ");
+    const rest = dropped.length > 3 ? ` and ${dropped.length - 3} more` : "";
+    return `index truncated: ${dropped.length} file(s) excluded from the snapshot (${named}${rest})`;
+  }
+  const content = snapshot.content;
+  if (content === undefined)
+    return;
+  if (content.skipped.length > 0) {
+    return `index truncated: ${content.skipped.length} file(s) skipped from the content index (binary or too large to index)`;
+  }
+  const capped = Object.values(content.files).filter((entry) => entry.tokenTruncated).length;
+  if (capped > 0) {
+    return `index truncated: ${capped} file(s) hit the per-file token cap (${content.tokenCap})`;
+  }
+  return;
+}
+function indexCoverage(snapshot) {
+  return indexTruncationNote(snapshot) === undefined ? "indexed" : "partial";
+}
+function decideCompleteness(flags) {
+  if (flags.unsupported)
+    return { completeness: "partial", completenessReason: "unsupported-files" };
+  if (flags.excluded)
+    return { completeness: "partial", completenessReason: "index-excluded" };
+  if (flags.indexPartial)
+    return { completeness: "partial", completenessReason: "index-truncated" };
+  if (flags.timeBudget === true)
+    return { completeness: "truncated", completenessReason: "time-budget" };
+  if (flags.edgeBudget === true)
+    return { completeness: "truncated", completenessReason: "edge-budget" };
+  if (flags.depthBudget)
+    return { completeness: "truncated", completenessReason: "depth-budget" };
+  if (flags.unresolvedEdges)
+    return { completeness: "partial", completenessReason: "unresolved-edges" };
+  if (flags.cut)
+    return { completeness: "truncated", completenessReason: "result-limit" };
+  return { completeness: "complete" };
+}
+function moduleFor(file) {
+  const slash = file.indexOf("/");
+  return slash < 0 ? "(root)" : file.slice(0, slash);
+}
+function moduleCounts(items) {
+  const counts = new Map;
+  for (const item of items) {
+    const module2 = moduleFor(item.file);
+    counts.set(module2, (counts.get(module2) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0)).map(([module2, count]) => ({ module: module2, count }));
+}
+function hasTestPath(snapshot, item) {
+  if (isTestPath(item.file))
+    return true;
+  const index = indexFor(snapshot);
+  const direct = index.edgesByTo.get(item.id) ?? [];
+  if (direct.some((edge) => edge.kind === "TESTS"))
+    return true;
+  const fileEdges = index.edgesByTo.get(`file:${item.file}`) ?? [];
+  return fileEdges.some((edge) => edge.kind === "TESTS");
+}
+function emptyImpactSummary(subjectIds, completeness) {
+  return {
+    subjectIds,
+    dependentFiles: 0,
+    dependentSymbols: 0,
+    modules: [],
+    testsFound: 0,
+    callersWithoutTestPath: 0,
+    unresolvedEdges: 0,
+    completeness
+  };
+}
+function unresolvedEdgesFrom(snapshot, nodeId) {
+  return (indexFor(snapshot).edgesByFrom.get(nodeId) ?? []).filter((edge) => edge.kind === "CALLS_UNRESOLVED");
 }
 function scopeFromBaseline(baseline) {
   return {
@@ -6522,28 +7021,12 @@ function indexedEvidence(node) {
   return { edge: "indexed", ref: `${node.file}:${node.line}`, confidence: 1 };
 }
 function knowledgeIdsFor(snapshot, nodeIds) {
+  const index = indexFor(snapshot);
   const byNode = new Map;
-  const knowledgeTargets = new Map;
-  for (const node of snapshot.nodes) {
-    if (node.kind === "knowledge-link" && node.target !== undefined) {
-      knowledgeTargets.set(node.id, node.target);
-    }
-  }
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "LINKS_KNOWLEDGE")
-      continue;
-    if (!nodeIds.has(edge.from))
-      continue;
-    const recordId = knowledgeTargets.get(edge.to);
-    if (recordId === undefined)
-      continue;
-    const list = byNode.get(edge.from);
-    if (list) {
-      if (!list.includes(recordId))
-        list.push(recordId);
-    } else {
-      byNode.set(edge.from, [recordId]);
-    }
+  for (const id of nodeIds) {
+    const ids = index.knowledgeByFrom.get(id);
+    if (ids !== undefined)
+      byNode.set(id, [...ids]);
   }
   return byNode;
 }
@@ -6564,7 +7047,9 @@ function toItem(node, evidence, knowledge) {
     line: node.line,
     evidence,
     confidence: 1,
-    knowledgeIds: knowledge
+    knowledgeIds: knowledge,
+    verdict: verdictForEvidenceKind(evidence[0]?.edge ?? "indexed"),
+    isTest: isTestPath(node.file)
   };
   return node.name === undefined ? item : { ...item, name: node.name };
 }
@@ -6581,72 +7066,266 @@ function search(snapshot, query, options) {
   const freshness = options.freshness ?? "fresh";
   const limit = clampLimit(options.limit);
   const needle = query.toLowerCase();
+  if (needle.trim().length === 0) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
+      query,
+      coverage: "indexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: ["empty query: name or path fragment required"],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      completeness: "complete"
+    };
+  }
   if ((query.includes("/") || query.includes("\\")) && !isSupportedPath(query)) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
+      query,
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [],
       unsupported: [unsupportedNote(query)],
-      items: []
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files"
     };
   }
+  const queryTokens = tokenizeIdentifier(query);
   const ranked = [];
   for (const node of snapshot.nodes) {
     if (node.kind !== "file" && node.kind !== "symbol")
       continue;
-    const id = node.id.toLowerCase();
-    const name = (node.name ?? "").toLowerCase();
-    const file = node.file.toLowerCase();
-    let rank = -1;
-    if (id === needle || name === needle)
-      rank = 0;
-    else if (name.startsWith(needle))
-      rank = 1;
-    else if (name.includes(needle))
-      rank = 2;
-    else if (file.includes(needle))
-      rank = 3;
-    else if (id.includes(needle))
-      rank = 4;
-    if (rank >= 0)
-      ranked.push({ node, rank });
+    const match = matchSearchTier(node, needle, queryTokens);
+    if (match !== undefined)
+      ranked.push({ node, ...match });
   }
   ranked.sort((left, right) => rankCompare(left, right));
-  const truncated = ranked.length > limit;
-  const items = ranked.slice(0, limit).map(({ node }) => nodeItem(snapshot, node, definesEvidence(snapshot, node)));
-  const notes = truncated ? [`truncated to ${limit} of ${ranked.length} matches`] : [];
-  return {
+  const eligible = options.excludeTests === true ? ranked.filter(({ node }) => !isTestPath(node.file)) : ranked;
+  const hiddenTests = ranked.length - eligible.length;
+  const truncated = eligible.length > limit;
+  const deduped = dedupeById(eligible.slice(0, limit).map(({ node, reason, rank }) => ({
+    ...nodeItem(snapshot, node, definesEvidence(snapshot, node)),
+    reason,
+    rank
+  })));
+  const items = deduped.items;
+  const indexNote = indexTruncationNote(snapshot);
+  const notes = truncated ? [`truncated to ${limit} of ${eligible.length} matches`] : [];
+  if (indexNote !== undefined)
+    notes.push(indexNote);
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  const envelope = {
     ...baseEnvelope(scope, freshness),
-    coverage: truncated ? "partial" : "indexed",
+    suggestedMode: "explore",
+    query,
+    ...duplicatesExtra(deduped.dropped),
+    ...ambiguousExtra(items),
+    shownOf: { candidates: { shown: items.length, total: eligible.length } },
+    coverage: indexCoverage(snapshot),
     truncated,
     knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
     unresolved: notes,
     unsupported: [],
-    items
+    items,
+    totals: indexNote !== undefined ? { displayed: items.length, known: null, hidden: null, byKind: byKindFor(items) } : { displayed: items.length, known: eligible.length, hidden: eligible.length - items.length, byKind: byKindFor(items) },
+    ...decided
   };
+  return hiddenTests > 0 ? { ...envelope, hiddenTestCount: hiddenTests } : envelope;
+}
+function tokenizeIdentifier(value) {
+  const out = [];
+  for (const part of value.split(/[^A-Za-z0-9]+/)) {
+    if (part.length === 0)
+      continue;
+    for (const hump of part.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/)) {
+      for (const piece of hump.split(/(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])/)) {
+        if (piece.length > 0)
+          out.push(piece.toLowerCase());
+      }
+    }
+  }
+  return out;
+}
+function withinEditDistance(a, b, maxDist) {
+  if (Math.abs(a.length - b.length) > maxDist)
+    return false;
+  if (a === b)
+    return true;
+  let prev = [];
+  for (let j = 0;j <= b.length; j += 1)
+    prev.push(j);
+  for (let i = 1;i <= a.length; i += 1) {
+    const curr = [i];
+    let rowMin = i;
+    for (let j = 1;j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const cell = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      curr.push(cell);
+      if (cell < rowMin)
+        rowMin = cell;
+    }
+    if (rowMin > maxDist)
+      return false;
+    prev = curr;
+  }
+  return prev[b.length] <= maxDist;
+}
+function matchSearchTier(node, needle, queryTokens) {
+  const nameLower = (node.name ?? "").toLowerCase();
+  const idLower = node.id.toLowerCase();
+  const fileLower = node.file.toLowerCase();
+  const baseLower = fileLower.split("/").pop() ?? fileLower;
+  if (needle.length === 0)
+    return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (nameLower === needle)
+    return { reason: "exact-name", rank: SEARCH_RANK["exact-name"] };
+  if (baseLower === needle)
+    return { reason: "exact-name", rank: SEARCH_RANK["exact-name"] };
+  if (idLower === needle || `${nameLower}@${fileLower}` === needle) {
+    return { reason: "exact-qualified", rank: SEARCH_RANK["exact-qualified"] };
+  }
+  if (nameLower.startsWith(needle))
+    return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (baseLower.startsWith(needle))
+    return { reason: "prefix", rank: SEARCH_RANK.prefix };
+  if (tokenMatches(node, queryTokens))
+    return { reason: "token", rank: SEARCH_RANK.token };
+  if (nameLower.includes(needle) || fileLower.includes(needle) || idLower.includes(needle)) {
+    return { reason: "substring", rank: SEARCH_RANK.substring };
+  }
+  const distance = fuzzyDistance(nameLower, needle);
+  if (distance !== null)
+    return { reason: "fuzzy", rank: SEARCH_RANK.fuzzy, distance };
+  return;
+}
+function tokenMatches(node, queryTokens) {
+  const useful = queryTokens.filter((token) => token.length >= 2);
+  if (useful.length === 0)
+    return false;
+  const targets = [...tokenizeIdentifier(node.name ?? ""), ...tokenizeIdentifier(node.file)];
+  if (targets.length === 0)
+    return false;
+  const hits = (query) => targets.some((target) => target === query || target.startsWith(query));
+  return useful.every(hits);
+}
+function fuzzyDistance(nameLower, needle) {
+  if (needle.length < 3 || nameLower.length === 0)
+    return null;
+  if (nameLower[0] !== needle[0])
+    return null;
+  const maxDist = needle.length <= 4 ? 1 : 2;
+  let best = null;
+  const consider = (candidate) => {
+    if (candidate.length === 0 || candidate[0] !== needle[0])
+      return;
+    for (let distance = 1;distance <= maxDist; distance += 1) {
+      if (best !== null && distance >= best)
+        return;
+      if (withinEditDistance(needle, candidate, distance)) {
+        best = distance;
+        return;
+      }
+    }
+  };
+  consider(nameLower);
+  for (const token of tokenizeIdentifier(nameLower))
+    consider(token);
+  return best;
 }
 function rankCompare(left, right) {
   if (left.rank !== right.rank)
     return left.rank - right.rank;
-  return left.node.id < right.node.id ? -1 : 1;
+  const reasonDelta = SEARCH_RANK[left.reason] - SEARCH_RANK[right.reason];
+  if (reasonDelta !== 0)
+    return reasonDelta;
+  const leftDistance = left.distance ?? Number.POSITIVE_INFINITY;
+  const rightDistance = right.distance ?? Number.POSITIVE_INFINITY;
+  if (leftDistance !== rightDistance)
+    return leftDistance - rightDistance;
+  if (left.node.kind !== right.node.kind)
+    return left.node.kind === "file" ? -1 : 1;
+  if (left.node.file.length !== right.node.file.length)
+    return left.node.file.length - right.node.file.length;
+  if (left.node.file !== right.node.file)
+    return left.node.file < right.node.file ? -1 : 1;
+  return left.node.id < right.node.id ? -1 : left.node.id > right.node.id ? 1 : 0;
 }
 function definesEvidence(snapshot, node) {
   if (node.kind === "file")
     return [indexedEvidence(node)];
-  const evidence = snapshot.edges.filter((edge) => edge.kind === "DEFINES" && edge.to === node.id).map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
+  const evidence = (indexFor(snapshot).edgesByTo.get(node.id) ?? []).filter((edge) => edge.kind === "DEFINES").map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
   return evidence.length > 0 ? evidence : [indexedEvidence(node)];
 }
+function indexFor(snapshot) {
+  const cached = snapshotIndexes.get(snapshot);
+  if (cached !== undefined)
+    return cached;
+  const nodeById = new Map;
+  for (const node of snapshot.nodes)
+    nodeById.set(node.id, node);
+  const edgesByFrom = new Map;
+  const edgesByTo = new Map;
+  for (const edge of snapshot.edges) {
+    const from = edgesByFrom.get(edge.from);
+    if (from === undefined)
+      edgesByFrom.set(edge.from, [edge]);
+    else
+      from.push(edge);
+    const to = edgesByTo.get(edge.to);
+    if (to === undefined)
+      edgesByTo.set(edge.to, [edge]);
+    else
+      to.push(edge);
+  }
+  const knowledgeTargets = new Map;
+  for (const node of snapshot.nodes) {
+    if (node.kind === "knowledge-link" && node.target !== undefined) {
+      knowledgeTargets.set(node.id, node.target);
+    }
+  }
+  const knowledgeByFrom = new Map;
+  for (const edge of snapshot.edges) {
+    if (edge.kind !== "LINKS_KNOWLEDGE")
+      continue;
+    const recordId = knowledgeTargets.get(edge.to);
+    if (recordId === undefined)
+      continue;
+    const list = knowledgeByFrom.get(edge.from);
+    if (list) {
+      if (!list.includes(recordId))
+        list.push(recordId);
+    } else {
+      knowledgeByFrom.set(edge.from, [recordId]);
+    }
+  }
+  const built = { nodeById, edgesByFrom, edgesByTo, knowledgeTargets, knowledgeByFrom };
+  snapshotIndexes.set(snapshot, built);
+  return built;
+}
 function findNode(snapshot, id) {
-  return snapshot.nodes.find((node) => node.id === id);
+  return indexFor(snapshot).nodeById.get(id);
 }
 function callersOf(snapshot, symbolId) {
   const out = [];
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "CALLS_STATIC" || edge.to !== symbolId)
+  const index = indexFor(snapshot);
+  for (const edge of index.edgesByTo.get(symbolId) ?? []) {
+    if (edge.kind !== "CALLS_STATIC")
       continue;
-    const caller = findNode(snapshot, edge.from);
+    const caller = index.nodeById.get(edge.from);
     if (caller !== undefined)
       out.push({ caller, ref: edge.ref });
   }
@@ -6655,10 +7334,11 @@ function callersOf(snapshot, symbolId) {
 }
 function calleesOf(snapshot, symbolId) {
   const out = [];
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "CALLS_STATIC" || edge.from !== symbolId)
+  const index = indexFor(snapshot);
+  for (const edge of index.edgesByFrom.get(symbolId) ?? []) {
+    if (edge.kind !== "CALLS_STATIC")
       continue;
-    const callee = findNode(snapshot, edge.to);
+    const callee = index.nodeById.get(edge.to);
     if (callee !== undefined)
       out.push({ callee, ref: edge.ref });
   }
@@ -6668,17 +7348,36 @@ function calleesOf(snapshot, symbolId) {
 function unindexedSymbol(scope, freshness, symbolId) {
   const filePart = symbolFilePart(symbolId);
   const unsupported = filePart !== undefined && !isSupportedPath(filePart) ? [unsupportedNote(filePart)] : [];
+  const decided = decideCompleteness({
+    unsupported: unsupported.length > 0,
+    excluded: unsupported.length === 0,
+    indexPartial: false,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: false
+  });
   return {
     ...baseEnvelope(scope, freshness),
+    suggestedMode: "explore",
     coverage: "unindexed",
     truncated: false,
     knowledgeIds: [],
     unresolved: [`no definition for ${symbolId} in this snapshot`],
     unsupported,
     items: [],
+    totals: { displayed: 0, known: null, hidden: null },
+    ...decided,
     definition: undefined,
     callers: [],
-    callees: []
+    callees: [],
+    summary: {
+      subjectId: null,
+      depth: 1,
+      incoming: 0,
+      outgoing: 0,
+      tests: 0,
+      modulesTouched: []
+    }
   };
 }
 function symbolContext(snapshot, symbolId, options) {
@@ -6689,15 +7388,27 @@ function symbolContext(snapshot, symbolId, options) {
   if (filePart !== undefined && !isSupportedPath(filePart)) {
     const empty = {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [],
       unsupported: [unsupportedNote(filePart)],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files",
       definition: undefined,
       callers: [],
-      callees: []
+      callees: [],
+      summary: {
+        subjectId: null,
+        depth: 1,
+        incoming: 0,
+        outgoing: 0,
+        tests: 0,
+        modulesTouched: []
+      }
     };
     return empty;
   }
@@ -6708,23 +7419,77 @@ function symbolContext(snapshot, symbolId, options) {
   const definition = nodeItem(snapshot, node, definesEvidence(snapshot, node));
   const callerItems = callersOf(snapshot, symbolId).map(({ caller, ref }) => nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
   const calleeItems = calleesOf(snapshot, symbolId).map(({ callee, ref }) => nodeItem(snapshot, callee, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
-  const combined = [definition, ...callerItems, ...calleeItems];
-  const truncated = combined.length > limit;
-  const items = combined.slice(0, limit);
+  const ranked = [
+    { item: definition, depth: 0 },
+    ...callerItems.map((item) => ({ item, depth: 1 })),
+    ...calleeItems.map((item) => ({ item, depth: 1 }))
+  ].sort((left, right) => compareRows(left.depth, left.item, right.depth, right.item));
+  const seenIds = new Set;
+  const uniqueRanked = ranked.filter((entry) => {
+    if (seenIds.has(entry.item.id))
+      return false;
+    seenIds.add(entry.item.id);
+    return true;
+  });
+  const dropped = ranked.length - uniqueRanked.length;
+  const truncated = uniqueRanked.length > limit;
+  const items = uniqueRanked.slice(0, limit).map((entry) => entry.item);
+  const indexNote = indexTruncationNote(snapshot);
+  const subjectUnresolved = unresolvedFor(snapshot, symbolId);
+  const unresolved = [
+    ...subjectUnresolved,
+    ...indexNote === undefined ? [] : [indexNote],
+    ...truncated ? [`truncated to ${limit} of ${uniqueRanked.length} rows`] : []
+  ];
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: subjectUnresolved.length > 0,
+    cut: truncated
+  });
+  const neighbourhood = [definition, ...callerItems, ...calleeItems];
+  const testFiles = new Set;
+  for (const row of neighbourhood) {
+    if (isTestPath(row.file))
+      testFiles.add(row.file);
+  }
+  const modulesTouched = [...new Set(neighbourhood.map((row) => moduleFor(row.file)))].sort();
+  const depthCounts = new Map;
+  for (const entry of uniqueRanked)
+    depthCounts.set(entry.depth, (depthCounts.get(entry.depth) ?? 0) + 1);
+  const byDepth = [...depthCounts.entries()].sort((left, right) => left[0] - right[0]).map(([depth, count]) => ({ depth, count }));
+  const callers = callerItems.slice(0, limit);
+  const callees = calleeItems.slice(0, limit);
   return {
     ...baseEnvelope(scope, freshness),
-    coverage: truncated ? "partial" : "indexed",
+    suggestedMode: "explore",
+    ...duplicatesExtra(dropped),
+    ...ambiguousExtra(items),
+    shownOf: {
+      callers: { shown: callers.length, total: callerItems.length },
+      callees: { shown: callees.length, total: calleeItems.length }
+    },
+    coverage: indexCoverage(snapshot),
     truncated,
     knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
-    unresolved: [
-      ...unresolvedFor(snapshot, symbolId),
-      ...truncated ? [`truncated to ${limit} of ${combined.length} rows`] : []
-    ],
+    unresolved,
     unsupported: [],
     items,
+    totals: indexNote !== undefined ? { displayed: items.length, known: null, hidden: null, byDepth, byKind: byKindFor(items) } : { displayed: items.length, known: uniqueRanked.length, hidden: uniqueRanked.length - items.length, byDepth, byKind: byKindFor(items) },
+    ...decided,
     definition,
-    callers: callerItems.slice(0, limit),
-    callees: calleeItems.slice(0, limit)
+    callers,
+    callees,
+    summary: {
+      subjectId: symbolId,
+      depth: 1,
+      incoming: callerItems.length,
+      outgoing: calleeItems.length,
+      tests: testFiles.size,
+      modulesTouched
+    }
   };
 }
 function impact(snapshot, symbolId, options) {
@@ -6736,69 +7501,378 @@ function impact(snapshot, symbolId, options) {
   if (filePart !== undefined && !isSupportedPath(filePart)) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "impact",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [],
       unsupported: [unsupportedNote(filePart)],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files",
       subject: undefined,
-      impacted: []
+      impacted: [],
+      summary: emptyImpactSummary([symbolId], "partial")
     };
   }
   const subjectNode = findNode(snapshot, symbolId);
   if (subjectNode === undefined) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "impact",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [`no definition for ${symbolId} in this snapshot`],
       unsupported: [],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "index-excluded",
       subject: undefined,
-      impacted: []
+      impacted: [],
+      summary: emptyImpactSummary([symbolId], "partial")
     };
   }
   const subject = nodeItem(snapshot, subjectNode, definesEvidence(snapshot, subjectNode));
-  const impacted = [];
+  const walked = [];
   const seen = new Set([symbolId]);
+  const exploredCap = clampExploredEdges(options.maxExploredEdges);
+  const deadlineMs = Date.now() + clampQueryBudgetMs(options.maxQueryMs);
+  let explored = 0;
+  let edgeBudgetHit = false;
+  let timeBudgetHit = false;
   let frontier = [symbolId];
-  let truncated = false;
-  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !truncated; depth += 1) {
+  for (let depth = 1;depth <= maxDepth && frontier.length > 0; depth += 1) {
+    if (Date.now() >= deadlineMs) {
+      timeBudgetHit = true;
+      break;
+    }
     const next = [];
     for (const current of frontier) {
       for (const { caller, ref } of callersOf(snapshot, current)) {
+        explored += 1;
+        if (explored > exploredCap) {
+          edgeBudgetHit = true;
+          break;
+        }
+        if (Date.now() >= deadlineMs) {
+          timeBudgetHit = true;
+          break;
+        }
         if (seen.has(caller.id))
           continue;
         seen.add(caller.id);
-        if (impacted.length >= limit) {
-          truncated = true;
-          break;
-        }
-        impacted.push(nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+        walked.push({
+          item: nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]),
+          depth
+        });
         if (caller.kind === "symbol")
           next.push(caller.id);
       }
-      if (truncated)
+      if (edgeBudgetHit || timeBudgetHit)
+        break;
+    }
+    if (edgeBudgetHit || timeBudgetHit)
+      break;
+    frontier = next;
+  }
+  const depthBudgetHit = frontier.some((id) => callersOf(snapshot, id).some(({ caller }) => !seen.has(caller.id)));
+  walked.sort((left, right) => compareRows(left.depth, left.item, right.depth, right.item));
+  const truncated = walked.length > limit;
+  const returned = walked.slice(0, limit);
+  const impacted = returned.map((entry) => entry.item);
+  const depthCounts = new Map;
+  for (const entry of walked)
+    depthCounts.set(entry.depth, (depthCounts.get(entry.depth) ?? 0) + 1);
+  const byDepth = [...depthCounts.entries()].sort((left, right) => left[0] - right[0]).map(([depth, count]) => ({ depth, count }));
+  const visitedIds = [symbolId, ...walked.map((entry) => entry.item.id)];
+  const unresolvedNotes = [];
+  let unresolvedEdges = 0;
+  for (const id of visitedIds) {
+    const edges = unresolvedEdgesFrom(snapshot, id);
+    unresolvedEdges += edges.length;
+    for (const edge of edges) {
+      unresolvedNotes.push(`${edge.ref} calls an unknown callee (manual review, never proven)`);
+    }
+  }
+  unresolvedNotes.sort();
+  const indexNote = indexTruncationNote(snapshot);
+  const unresolved = [
+    ...unresolvedNotes,
+    ...indexNote === undefined ? [] : [indexNote],
+    ...edgeBudgetHit ? [`edge budget ${exploredCap} stopped the walk after ${explored - 1} caller edges; more dependents may exist`] : [],
+    ...timeBudgetHit ? [`time budget ${clampQueryBudgetMs(options.maxQueryMs)} ms stopped the walk; more dependents may exist`] : [],
+    ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callers still unexplored`] : [],
+    ...truncated ? [`truncated to ${limit} of ${walked.length} impacted rows`] : []
+  ];
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    edgeBudget: edgeBudgetHit,
+    timeBudget: timeBudgetHit,
+    depthBudget: depthBudgetHit,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  const allDependents = walked.map((entry) => entry.item);
+  const dependentFiles = new Set(allDependents.map((item) => item.file));
+  const testFiles = new Set;
+  let callersWithoutTestPath = 0;
+  for (const item of allDependents) {
+    if (isTestPath(item.file))
+      testFiles.add(item.file);
+    if (!hasTestPath(snapshot, item))
+      callersWithoutTestPath += 1;
+  }
+  const dedupedImpacted = dedupeById(impacted);
+  const uniqueImpacted = [...dedupedImpacted.items];
+  return {
+    ...baseEnvelope(scope, freshness),
+    suggestedMode: "impact",
+    ...duplicatesExtra(dedupedImpacted.dropped),
+    ...ambiguousExtra(uniqueImpacted),
+    shownOf: { impacted: { shown: uniqueImpacted.length, total: walked.length } },
+    coverage: indexCoverage(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(uniqueImpacted.map((item) => item.id)))),
+    unresolved,
+    unsupported: [],
+    items: uniqueImpacted,
+    totals: indexNote !== undefined ? { displayed: uniqueImpacted.length, known: null, hidden: null, byDepth, byKind: byKindFor(uniqueImpacted) } : { displayed: uniqueImpacted.length, known: walked.length, hidden: walked.length - uniqueImpacted.length, byDepth, byKind: byKindFor(uniqueImpacted) },
+    ...decided,
+    subject,
+    impacted: uniqueImpacted,
+    summary: {
+      subjectIds: [symbolId],
+      dependentFiles: dependentFiles.size,
+      dependentSymbols: allDependents.filter((item) => !item.id.startsWith("file:")).length,
+      modules: moduleCounts(allDependents),
+      testsFound: testFiles.size,
+      callersWithoutTestPath,
+      unresolvedEdges,
+      completeness: decided.completeness
+    }
+  };
+}
+function trace(snapshot, fromId, toId, options) {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const maxDepth = clampDepth(options.maxDepth);
+  for (const id of [fromId, toId]) {
+    const filePart = symbolFilePart(id);
+    if (filePart !== undefined && !isSupportedPath(filePart)) {
+      return {
+        ...baseEnvelope(scope, freshness),
+        suggestedMode: "trace",
+        coverage: "unindexed",
+        truncated: false,
+        knowledgeIds: [],
+        unresolved: [],
+        unsupported: [unsupportedNote(filePart)],
+        items: [],
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial",
+        completenessReason: "unsupported-files",
+        path: [],
+        summary: {
+          found: false,
+          hops: null,
+          alternativePaths: null,
+          reason: id === fromId ? "start-unresolved" : "destination-unresolved"
+        }
+      };
+    }
+  }
+  const fromNode = findNode(snapshot, fromId);
+  const toNode = findNode(snapshot, toId);
+  if (fromNode === undefined || toNode === undefined) {
+    const missing = fromNode === undefined ? fromId : toId;
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [`no definition for ${missing} in this snapshot`],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      completeness: "partial",
+      completenessReason: "index-excluded",
+      path: [],
+      summary: {
+        found: false,
+        hops: null,
+        alternativePaths: null,
+        reason: fromNode === undefined ? "start-unresolved" : "destination-unresolved"
+      }
+    };
+  }
+  if (fromId === toId) {
+    const self = nodeItem(snapshot, fromNode, [indexedEvidence(fromNode)]);
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
+      ...ambiguousExtra([self]),
+      coverage: "indexed",
+      truncated: false,
+      knowledgeIds: [...self.knowledgeIds],
+      unresolved: [],
+      unsupported: [],
+      items: [self],
+      totals: { displayed: 1, known: 1, hidden: 0, byKind: byKindFor([self]) },
+      completeness: "complete",
+      path: [],
+      summary: { found: true, hops: 0, alternativePaths: null, reason: "same-node" }
+    };
+  }
+  const parents = new Map;
+  const seen = new Set([fromId]);
+  const visitCap = limit * 20;
+  let frontier = [fromId];
+  let found = false;
+  let abandoned = false;
+  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !found && !abandoned; depth += 1) {
+    const next = [];
+    for (const current of frontier) {
+      for (const { callee, ref } of calleesOf(snapshot, current)) {
+        if (seen.has(callee.id))
+          continue;
+        seen.add(callee.id);
+        parents.set(callee.id, { via: current, ref });
+        if (callee.id === toId) {
+          found = true;
+          break;
+        }
+        next.push(callee.id);
+        if (seen.size > visitCap) {
+          abandoned = true;
+          break;
+        }
+      }
+      if (found || abandoned)
         break;
     }
     frontier = next;
   }
-  const unresolved = [
-    ...unresolvedFor(snapshot, symbolId),
-    ...truncated ? [`truncated to ${limit} impacted rows`] : []
-  ];
+  const indexNote = indexTruncationNote(snapshot);
+  if (abandoned && !found) {
+    const decided = decideCompleteness({
+      unsupported: false,
+      excluded: false,
+      indexPartial: indexNote !== undefined,
+      depthBudget: false,
+      unresolvedEdges: false,
+      cut: true
+    });
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
+      coverage: "partial",
+      truncated: true,
+      knowledgeIds: [],
+      unresolved: [
+        `trace abandoned: call frontier exceeded ${visitCap} nodes (bounded, never the whole graph)`,
+        ...indexNote === undefined ? [] : [indexNote]
+      ],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      ...decided,
+      path: [],
+      summary: { found: false, hops: null, alternativePaths: null, reason: "budget-exhausted" }
+    };
+  }
+  if (!found) {
+    let blockedEdge;
+    for (const id of seen) {
+      blockedEdge = unresolvedEdgesFrom(snapshot, id)[0];
+      if (blockedEdge !== undefined)
+        break;
+    }
+    const depthBudgetHit = frontier.length > 0;
+    const reason = blockedEdge !== undefined ? "blocked-by-unresolved" : depthBudgetHit ? "budget-exhausted" : "no-path-in-graph";
+    const decided = decideCompleteness({
+      unsupported: false,
+      excluded: false,
+      indexPartial: indexNote !== undefined,
+      depthBudget: depthBudgetHit && blockedEdge === undefined,
+      unresolvedEdges: blockedEdge !== undefined,
+      cut: false
+    });
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
+      coverage: indexCoverage(snapshot),
+      truncated: depthBudgetHit,
+      knowledgeIds: [],
+      unresolved: [
+        blockedEdge === undefined && !depthBudgetHit ? `no static call path from ${fromId} to ${toId} (never guessed)` : `no static call path from ${fromId} to ${toId} within budget (never guessed)`,
+        ...blockedEdge === undefined ? [] : [`${blockedEdge.ref} calls an unknown callee (manual review, never proven)`],
+        ...indexNote === undefined ? [] : [indexNote],
+        ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callees still unexplored`] : []
+      ],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      ...decided,
+      path: [],
+      summary: { found: false, hops: null, alternativePaths: null, reason }
+    };
+  }
+  const chain = [toId];
+  while (chain[0] !== fromId) {
+    const head = chain[0];
+    const parent = parents.get(head);
+    if (parent === undefined)
+      break;
+    chain.unshift(parent.via);
+  }
+  const path2 = [];
+  for (let index = 0;index < chain.length - 1; index += 1) {
+    const child = chain[index + 1];
+    const parent = parents.get(child);
+    path2.push({ from: chain[index], to: child, ref: parent?.ref ?? "", confidence: 1 });
+  }
+  const items = chain.map((id) => findNode(snapshot, id)).filter((node) => node !== undefined).map((node) => {
+    const step = path2.find((entry) => entry.from === node.id || entry.to === node.id);
+    return nodeItem(snapshot, node, step ? [{ edge: "CALLS_STATIC", ref: step.ref, confidence: 1 }] : [indexedEvidence(node)]);
+  });
+  const foundNotes = unresolvedFor(snapshot, fromId);
+  const foundDecided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: false
+  });
+  const dedupedFound = dedupeById(items);
+  const uniqueFound = [...dedupedFound.items];
   return {
     ...baseEnvelope(scope, freshness),
-    coverage: truncated ? "partial" : "indexed",
-    truncated,
-    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(impacted.map((item) => item.id)))),
-    unresolved,
+    suggestedMode: "trace",
+    ...duplicatesExtra(dedupedFound.dropped),
+    ...ambiguousExtra(uniqueFound),
+    coverage: "indexed",
+    truncated: false,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(uniqueFound.map((item) => item.id)))),
+    unresolved: [...foundNotes, ...indexNote === undefined ? [] : [indexNote]],
     unsupported: [],
-    items: impacted,
-    subject,
-    impacted
+    items: uniqueFound,
+    totals: {
+      displayed: uniqueFound.length,
+      known: indexNote === undefined ? uniqueFound.length : null,
+      hidden: indexNote === undefined ? 0 : null,
+      byKind: byKindFor(uniqueFound)
+    },
+    ...foundDecided,
+    path: path2,
+    summary: { found: true, hops: path2.length, alternativePaths: null }
   };
 }
 function subjectFileFor(snapshot, target) {
@@ -6818,14 +7892,19 @@ function findTests(snapshot, target, options) {
   const maxDepth = clampDepth(options.maxDepth);
   const subjectFile = subjectFileFor(snapshot, target);
   if (subjectFile === undefined || !isSupportedPath(subjectFile)) {
+    const unsupportedInput = subjectFile !== undefined;
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: subjectFile === undefined ? [`no definition for ${target} in this snapshot`] : [],
       unsupported: subjectFile === undefined ? [] : [unsupportedNote(subjectFile)],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: unsupportedInput ? "unsupported-files" : "index-excluded",
       subjectFile: undefined,
       candidates: []
     };
@@ -6834,76 +7913,404 @@ function findTests(snapshot, target, options) {
   if (findNode(snapshot, subjectId) === undefined) {
     return {
       ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
       coverage: "unindexed",
       truncated: false,
       knowledgeIds: [],
       unresolved: [`${subjectFile} is not in this snapshot`],
       unsupported: [],
       items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "index-excluded",
       subjectFile: undefined,
       candidates: []
     };
   }
-  const candidates = [];
+  const walked = [];
   const seen = new Set([subjectId]);
-  const visitCap = limit * 20;
+  const deadlineMs = Date.now() + clampQueryBudgetMs(options.maxQueryMs);
+  let timeBudgetHit = false;
   let frontier = [{ id: subjectId, via: [] }];
-  let truncated = false;
-  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !truncated; depth += 1) {
+  for (let depth = 1;depth <= maxDepth && frontier.length > 0; depth += 1) {
+    if (Date.now() >= deadlineMs) {
+      timeBudgetHit = true;
+      break;
+    }
     const next = [];
     for (const current of frontier) {
-      for (const edge of snapshot.edges) {
-        if (edge.to !== current.id)
-          continue;
+      for (const edge of indexFor(snapshot).edgesByTo.get(current.id) ?? []) {
         if (edge.kind !== "IMPORTS" && edge.kind !== "TESTS")
           continue;
-        const importer = findNode(snapshot, edge.from);
+        const importer = indexFor(snapshot).nodeById.get(edge.from);
         if (importer === undefined || seen.has(importer.id))
           continue;
         seen.add(importer.id);
-        if (seen.size > visitCap) {
-          truncated = true;
-          break;
-        }
         const hop = { edge: edge.kind, ref: edge.ref, confidence: edge.confidence };
         const evidence = [...current.via, hop];
         if (importer.kind === "file" && importer.isTest === true) {
-          if (candidates.length >= limit) {
-            truncated = true;
-            break;
-          }
-          candidates.push(nodeItem(snapshot, importer, evidence));
+          const item = nodeItem(snapshot, importer, evidence);
+          walked.push({
+            item: {
+              ...item,
+              testDistance: depth,
+              testAssociation: depth === 1 ? "direct" : "transitive"
+            },
+            depth
+          });
         } else if (importer.kind === "file") {
           next.push({ id: importer.id, via: evidence });
         }
       }
-      if (truncated)
-        break;
     }
     frontier = next;
   }
-  candidates.sort((left, right) => left.id < right.id ? -1 : 1);
+  const depthBudgetHit = frontier.some((entry) => (indexFor(snapshot).edgesByTo.get(entry.id) ?? []).some((edge) => (edge.kind === "IMPORTS" || edge.kind === "TESTS") && !seen.has(edge.from)));
+  walked.sort((left, right) => compareRows(left.depth, left.item, right.depth, right.item));
+  const truncated = walked.length > limit;
+  const dedupedCandidates = dedupeById(walked.slice(0, limit).map((entry) => entry.item));
+  const candidates = [...dedupedCandidates.items];
+  const indexNote = indexTruncationNote(snapshot);
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    timeBudget: timeBudgetHit,
+    depthBudget: depthBudgetHit,
+    unresolvedEdges: false,
+    cut: truncated
+  });
   return {
     ...baseEnvelope(scope, freshness),
-    coverage: truncated ? "partial" : "indexed",
+    suggestedMode: "explore",
+    ...duplicatesExtra(dedupedCandidates.dropped),
+    ...ambiguousExtra(candidates),
+    shownOf: { candidates: { shown: candidates.length, total: walked.length } },
+    coverage: indexCoverage(snapshot),
     truncated,
     knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(candidates.map((item) => item.id)))),
-    unresolved: truncated ? [`truncated to ${limit} candidate tests`] : [],
+    unresolved: [
+      ...indexNote === undefined ? [] : [indexNote],
+      ...timeBudgetHit ? [`time budget ${clampQueryBudgetMs(options.maxQueryMs)} ms stopped the walk; more candidates may exist`] : [],
+      ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with importers still unexplored`] : [],
+      ...truncated ? [`truncated to ${limit} of ${walked.length} candidate tests`] : []
+    ],
     unsupported: [],
     items: candidates,
+    totals: indexNote !== undefined ? { displayed: candidates.length, known: null, hidden: null, byKind: byKindFor(candidates) } : { displayed: candidates.length, known: walked.length, hidden: walked.length - candidates.length, byKind: byKindFor(candidates) },
+    ...decided,
     subjectFile,
     candidates
   };
 }
-function sha256Hex(value) {
-  return createHash("sha256").update(value, "utf8").digest("hex");
+function entryBasename(file) {
+  const base = file.split("/").pop() ?? file;
+  const stem = (base.split(".")[0] ?? base).toLowerCase();
+  return stem === "main" || stem === "index" || stem === "cli";
 }
-function computeScopeFingerprint(projectId, worktreeId, revision) {
-  return sha256Hex(`${projectId}
-${worktreeId}
-${revision}`);
+function isEntryLikeFile(file) {
+  if (isTestPath(file))
+    return true;
+  if (file.endsWith(".sh"))
+    return true;
+  return entryBasename(file);
 }
-var CompletionItemKind, DiagnosticCategory, ElementFlags, ModuleKind, NodeBuilderFlags, ObjectFlags, SignatureFlags, SignatureKind, SymbolFlags, TypeFlags, TypePredicateKind, CharacterCodes, CommentDirectiveType, InternalSymbolName, LanguageVariant, ModifierFlags, NodeFlags, RegularExpressionFlags, ScriptKind, ScriptTarget, SyntaxKind, TokenFlags, OuterExpressionKinds, visitEachChildTable, forEachChildTable, EscapeSequenceScanningFlags, textToKeywordObj, textToKeyword, textToToken, charCodeToRegExpFlag, jsDocTagTerminators, tokenStrings, childProperties, singleChildNodePropertyNames, PROTOCOL_VERSION = 5, HEADER_OFFSET_METADATA = 0, HEADER_OFFSET_HASH_LO0 = 4, HEADER_OFFSET_HASH_LO1 = 8, HEADER_OFFSET_HASH_HI0 = 12, HEADER_OFFSET_HASH_HI1 = 16, HEADER_OFFSET_PARSE_OPTIONS = 20, HEADER_OFFSET_STRING_TABLE_OFFSETS = 24, HEADER_OFFSET_STRING_TABLE = 28, HEADER_OFFSET_EXTENDED_DATA = 32, HEADER_OFFSET_STRUCTURED_DATA = 36, HEADER_OFFSET_NODES = 40, HEADER_SIZE = 44, NODE_LEN = 28, NODE_OFFSET_KIND = 0, NODE_OFFSET_POS = 4, NODE_OFFSET_END = 8, NODE_OFFSET_NEXT = 12, NODE_OFFSET_PARENT = 16, NODE_OFFSET_DATA = 20, NODE_OFFSET_FLAGS = 24, KIND_NODE_LIST = 4294967295, NODE_DATA_TYPE_CHILDREN = 0, NODE_DATA_TYPE_STRING = 1073741824, NODE_DATA_TYPE_EXTENDED = 2147483648, surrogateLeadByte = 237, surrogateSecondByteMin = 160, surrogateSecondByteMax = 191, continuationByteMin = 128, continuationByteMax = 191, Wtf8Decoder, MSGPACK_FIXARRAY3 = 147, MSGPACK_BIN8 = 196, MSGPACK_BIN16 = 197, MSGPACK_BIN32 = 198, MSGPACK_UINT8 = 204, encoder, decoder, NODE_FIELDS, NODE_FIELD_NEXT = 3, NO_STRUCTURED_DATA = 4294967295, _encoder, popcount8, NODE_DATA_TYPE_MASK = 3221225472, NODE_CHILD_MASK = 255, NODE_STRING_INDEX_MASK = 16777215, NODE_EXTENDED_DATA_MASK = 16777215, RemoteNodeList, RemoteNode, NO_STRUCTURED_DATA2 = 4294967295, RemoteSourceFile, CharacterCodesSlash = 47, CharacterCodesBackslash = 92, CharacterCodesColon = 58, CharacterCodesPercent = 37, CharacterCodes3 = 51, CharacterCodesa = 97, CharacterCodesz = 122, CharacterCodesA = 65, CharacterCodesZ = 90, CharacterCodesDot = 46, directorySeparator = "/", altDirectorySeparator = "\\", urlSchemeSeparator = "://", backslashRegExp, relativePathSegmentRegExp, bundledScheme = "bundled:///", fsCallbackNames, MSG_REQUEST = 1, MSG_CALL_RESPONSE = 2, MSG_CALL_ERROR = 3, MSG_RESPONSE = 4, MSG_ERROR = 5, MSG_CALL = 6, sleepBuf, EMPTY_BUF, liveChildren, RECENT_REQUEST_CAPACITY = 5, Snapshot, STATIC_CONFIDENCE = 1, UNRESOLVED_CONFIDENCE = 0.5, UNKNOWN = "unknown", RECORD_ID, MAX_ALIAS_DEPTH = 10, DEFAULT_RESULT_LIMIT = 20, MAX_RESULT_LIMIT = 50, DEFAULT_MAX_DEPTH = 5, MAX_DEPTH_LIMIT = 10, SUPPORTED_FILE, STALE_AFTER_MS;
+function findUnreferenced(snapshot, options) {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const index = indexFor(snapshot);
+  const analysedIds = new Set(snapshot.nodes.map((node) => node.id));
+  const excludedFiles = new Set;
+  let analyzedFiles = 0;
+  const all = [];
+  for (const node of snapshot.nodes) {
+    if (node.kind === "file")
+      analyzedFiles += 1;
+    if (node.kind !== "file" && node.kind !== "export-contract")
+      continue;
+    if (isEntryLikeFile(node.file)) {
+      excludedFiles.add(node.file);
+      continue;
+    }
+    const inboundIds = node.kind === "export-contract" && node.target !== undefined && node.target !== "unknown" ? [node.id, node.target] : [node.id];
+    const inbound = inboundIds.flatMap((id) => index.edgesByTo.get(id) ?? []).filter((edge) => !inboundIds.includes(edge.from) && analysedIds.has(edge.from));
+    const inboundImports = inbound.filter((edge) => edge.kind === "IMPORTS").length;
+    const inboundCalls = inbound.filter((edge) => edge.kind === "CALLS_STATIC" || edge.kind === "CALLS_UNRESOLVED").length;
+    if (inboundImports > 0 || inboundCalls > 0)
+      continue;
+    const inboundTests = inbound.filter((edge) => edge.kind === "TESTS").length;
+    const inboundKnowledge = inbound.filter((edge) => edge.kind === "LINKS_KNOWLEDGE").length;
+    const exported = inbound.some((edge) => edge.kind === "EXPORTS");
+    const candidate = {
+      id: node.id,
+      file: node.file,
+      line: node.line,
+      kind: node.kind === "file" ? "file" : "symbol",
+      inboundImports,
+      inboundCalls,
+      inboundTests,
+      inboundKnowledge,
+      reason: exported ? "only-exported" : "no-inbound-edges"
+    };
+    all.push(node.name === undefined ? candidate : { ...candidate, name: node.name });
+  }
+  all.sort((left, right) => {
+    const leftTotal = left.inboundImports + left.inboundCalls + left.inboundTests + left.inboundKnowledge;
+    const rightTotal = right.inboundImports + right.inboundCalls + right.inboundTests + right.inboundKnowledge;
+    if (leftTotal !== rightTotal)
+      return leftTotal - rightTotal;
+    if (left.file !== right.file)
+      return left.file < right.file ? -1 : 1;
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+  const kept = all.slice(0, limit);
+  const truncated = all.length > limit;
+  const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const items = kept.map((candidate) => {
+    const node = byId.get(candidate.id);
+    if (node === undefined) {
+      return {
+        id: candidate.id,
+        file: candidate.file,
+        line: candidate.line,
+        evidence: [{ edge: "indexed", ref: `${candidate.file}:${candidate.line}`, confidence: 1 }],
+        confidence: 1,
+        knowledgeIds: [],
+        verdict: verdictForEvidenceKind("indexed"),
+        isTest: isTestPath(candidate.file)
+      };
+    }
+    const exportEvidence = (index.edgesByTo.get(node.id) ?? []).filter((edge) => edge.kind === "EXPORTS" && edge.from !== node.id && analysedIds.has(edge.from)).map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
+    const evidence = exportEvidence.length > 0 ? exportEvidence : [indexedEvidence(node)];
+    const linked = knowledgeIdsFor(snapshot, new Set([node.id, `file:${node.file}`]));
+    const own = [...linked.get(node.id) ?? [], ...linked.get(`file:${node.file}`) ?? []].filter((id, at, seen) => seen.indexOf(id) === at);
+    const entry = {
+      id: node.id,
+      file: node.file,
+      line: node.line,
+      evidence,
+      confidence: 1,
+      knowledgeIds: own,
+      verdict: verdictForEvidenceKind(evidence[0]?.edge ?? "indexed"),
+      isTest: isTestPath(node.file)
+    };
+    return node.name === undefined ? entry : { ...entry, name: node.name };
+  });
+  const indexNote = indexTruncationNote(snapshot);
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  return {
+    ...baseEnvelope(scope, freshness),
+    suggestedMode: "explore",
+    ...ambiguousExtra(items),
+    shownOf: { candidates: { shown: items.length, total: all.length } },
+    coverage: indexCoverage(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved: [
+      ...indexNote === undefined ? [] : [indexNote, "unanalyzed content cannot be judged: references may arrive from outside the analysed edge set"],
+      ...truncated ? [`truncated to ${limit} of ${all.length} candidates`] : []
+    ],
+    unsupported: [],
+    items,
+    totals: { displayed: items.length, known: all.length, hidden: all.length - items.length },
+    ...decided,
+    candidates: kept,
+    summary: {
+      analyzedFiles,
+      unanalyzedNote: UNANALYZED_NOTE,
+      candidatesTotal: all.length,
+      excludedEntryLike: excludedFiles.size
+    }
+  };
+}
+function fileOfNodeId(id) {
+  if (id.startsWith("file:"))
+    return id.slice("file:".length);
+  const at = id.lastIndexOf("@");
+  if (at < 0)
+    return null;
+  const withLine = id.slice(at + 1);
+  const colon = withLine.lastIndexOf(":");
+  const file = colon < 0 ? withLine : withLine.slice(0, colon);
+  return file.length > 0 ? file : null;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function splitSnapshotIntoShards(snapshot) {
+  const order = [];
+  const seenInOrder = new Set;
+  const nodesByFile = new Map;
+  const edgesByFile = new Map;
+  const register = (key) => {
+    if (seenInOrder.has(key))
+      return;
+    seenInOrder.add(key);
+    order.push(key);
+  };
+  for (const node of snapshot.nodes) {
+    const key = fileOfNodeId(node.id) ?? UNATTRIBUTED_SHARD;
+    register(key);
+    const bucket = nodesByFile.get(key);
+    if (bucket)
+      bucket.push(node);
+    else
+      nodesByFile.set(key, [node]);
+  }
+  for (const edge of snapshot.edges) {
+    const key = fileOfNodeId(edge.from) ?? UNATTRIBUTED_SHARD;
+    register(key);
+    const bucket = edgesByFile.get(key);
+    if (bucket)
+      bucket.push(edge);
+    else
+      edgesByFile.set(key, [edge]);
+  }
+  const contentFiles = snapshot.content?.files ?? {};
+  for (const file of Object.keys(contentFiles)) {
+    if (!nodesByFile.has(file) && !edgesByFile.has(file))
+      order.push(file);
+  }
+  return order.map((file) => {
+    const nodes = nodesByFile.get(file) ?? [];
+    const edges = edgesByFile.get(file) ?? [];
+    const content = contentFiles[file];
+    return content === undefined ? { file, nodes, edges } : { file, nodes, edges, content };
+  });
+}
+function createSnapshotManifest(snapshot, meta) {
+  return {
+    version: SNAPSHOT_STORE_VERSION,
+    scope: meta.scope,
+    observedAtMs: meta.observedAtMs,
+    entryCap: meta.entryCap,
+    entryCount: meta.entryCount,
+    root: snapshot.root ?? null,
+    nodeCount: snapshot.nodes.length,
+    edgeCount: snapshot.edges.length,
+    contentTokenCap: snapshot.content?.tokenCap ?? null,
+    contentSkipped: snapshot.content?.skipped ?? [],
+    dropped: snapshot.dropped ?? [],
+    shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file)
+  };
+}
+function serializeSnapshotShard(shard) {
+  return JSON.stringify(shard);
+}
+function serializeSnapshotManifest(manifest) {
+  return JSON.stringify(manifest);
+}
+function parseSnapshotManifest(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "corrupt", reason: "manifest is not JSON" };
+  }
+  if (!isRecord2(parsed))
+    return { kind: "corrupt", reason: "manifest is not an object" };
+  if (parsed.version !== SNAPSHOT_STORE_VERSION) {
+    return { kind: "corrupt", reason: `unsupported manifest version: ${String(parsed.version)}` };
+  }
+  const scope = parsed.scope;
+  if (!isRecord2(scope))
+    return { kind: "corrupt", reason: "manifest has no scope" };
+  const scopeKeys = ["projectId", "worktreeId", "revision", "fingerprint"];
+  for (const key of scopeKeys) {
+    if (typeof scope[key] !== "string" || String(scope[key]).length === 0) {
+      return { kind: "corrupt", reason: `scope.${key} is missing` };
+    }
+  }
+  if (!Array.isArray(parsed.shards) || parsed.shards.some((entry) => typeof entry !== "string")) {
+    return { kind: "corrupt", reason: "manifest shards are not a string list" };
+  }
+  if (!Number.isFinite(parsed.nodeCount) || !Number.isFinite(parsed.edgeCount)) {
+    return { kind: "corrupt", reason: "manifest counts are not numbers" };
+  }
+  return {
+    kind: "manifest",
+    manifest: {
+      version: SNAPSHOT_STORE_VERSION,
+      scope: {
+        projectId: String(scope.projectId),
+        worktreeId: String(scope.worktreeId),
+        revision: String(scope.revision),
+        fingerprint: String(scope.fingerprint)
+      },
+      observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
+      entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
+      entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
+      root: typeof parsed.root === "string" ? parsed.root : null,
+      nodeCount: Number(parsed.nodeCount),
+      edgeCount: Number(parsed.edgeCount),
+      contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
+      contentSkipped: Array.isArray(parsed.contentSkipped) ? parsed.contentSkipped : [],
+      dropped: Array.isArray(parsed.dropped) ? parsed.dropped : [],
+      shards: parsed.shards
+    }
+  };
+}
+function parseSnapshotShard(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "corrupt", reason: "shard is not JSON" };
+  }
+  if (!isRecord2(parsed))
+    return { kind: "corrupt", reason: "shard is not an object" };
+  if (typeof parsed.file !== "string")
+    return { kind: "corrupt", reason: "shard has no file" };
+  if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
+    return { kind: "corrupt", reason: "shard has no node/edge arrays" };
+  }
+  const shard = {
+    file: parsed.file,
+    nodes: parsed.nodes,
+    edges: parsed.edges,
+    ...isRecord2(parsed.content) ? { content: parsed.content } : {}
+  };
+  return { kind: "shard", shard };
+}
+function joinSnapshotShards(manifest, shards) {
+  if (shards.length !== manifest.shards.length) {
+    return { kind: "torn", reason: `expected ${manifest.shards.length} shards, found ${shards.length}` };
+  }
+  const nodes = [];
+  const edges = [];
+  const files = {};
+  for (const shard of shards) {
+    for (const node of shard.nodes)
+      nodes.push(node);
+    for (const edge of shard.edges)
+      edges.push(edge);
+    if (shard.content !== undefined)
+      files[shard.file] = shard.content;
+  }
+  if (nodes.length !== manifest.nodeCount || edges.length !== manifest.edgeCount) {
+    return {
+      kind: "torn",
+      reason: `shard totals ${nodes.length}/${edges.length} do not match manifest ${manifest.nodeCount}/${manifest.edgeCount}`
+    };
+  }
+  const snapshot = {
+    nodes,
+    edges,
+    ...manifest.root === null ? {} : { root: manifest.root },
+    ...manifest.contentTokenCap === null ? {} : { content: { tokenCap: manifest.contentTokenCap, files, skipped: manifest.contentSkipped } },
+    ...manifest.dropped.length > 0 ? { dropped: manifest.dropped } : {}
+  };
+  return { kind: "snapshot", snapshot };
+}
+var CompletionItemKind, DiagnosticCategory, ElementFlags, ModuleKind, NodeBuilderFlags, ObjectFlags, SignatureFlags, SignatureKind, SymbolFlags, TypeFlags, TypePredicateKind, CharacterCodes, CommentDirectiveType, InternalSymbolName, LanguageVariant, ModifierFlags, NodeFlags, RegularExpressionFlags, ScriptKind, ScriptTarget, SyntaxKind, TokenFlags, OuterExpressionKinds, visitEachChildTable, forEachChildTable, EscapeSequenceScanningFlags, textToKeywordObj, textToKeyword, textToToken, charCodeToRegExpFlag, jsDocTagTerminators, tokenStrings, childProperties, singleChildNodePropertyNames, PROTOCOL_VERSION = 5, HEADER_OFFSET_METADATA = 0, HEADER_OFFSET_HASH_LO0 = 4, HEADER_OFFSET_HASH_LO1 = 8, HEADER_OFFSET_HASH_HI0 = 12, HEADER_OFFSET_HASH_HI1 = 16, HEADER_OFFSET_PARSE_OPTIONS = 20, HEADER_OFFSET_STRING_TABLE_OFFSETS = 24, HEADER_OFFSET_STRING_TABLE = 28, HEADER_OFFSET_EXTENDED_DATA = 32, HEADER_OFFSET_STRUCTURED_DATA = 36, HEADER_OFFSET_NODES = 40, HEADER_SIZE = 44, NODE_LEN = 28, NODE_OFFSET_KIND = 0, NODE_OFFSET_POS = 4, NODE_OFFSET_END = 8, NODE_OFFSET_NEXT = 12, NODE_OFFSET_PARENT = 16, NODE_OFFSET_DATA = 20, NODE_OFFSET_FLAGS = 24, KIND_NODE_LIST = 4294967295, NODE_DATA_TYPE_CHILDREN = 0, NODE_DATA_TYPE_STRING = 1073741824, NODE_DATA_TYPE_EXTENDED = 2147483648, surrogateLeadByte = 237, surrogateSecondByteMin = 160, surrogateSecondByteMax = 191, continuationByteMin = 128, continuationByteMax = 191, Wtf8Decoder, MSGPACK_FIXARRAY3 = 147, MSGPACK_BIN8 = 196, MSGPACK_BIN16 = 197, MSGPACK_BIN32 = 198, MSGPACK_UINT8 = 204, encoder, decoder, NODE_FIELDS, NODE_FIELD_NEXT = 3, NO_STRUCTURED_DATA = 4294967295, _encoder, popcount8, NODE_DATA_TYPE_MASK = 3221225472, NODE_CHILD_MASK = 255, NODE_STRING_INDEX_MASK = 16777215, NODE_EXTENDED_DATA_MASK = 16777215, RemoteNodeList, RemoteNode, NO_STRUCTURED_DATA2 = 4294967295, RemoteSourceFile, CharacterCodesSlash = 47, CharacterCodesBackslash = 92, CharacterCodesColon = 58, CharacterCodesPercent = 37, CharacterCodes3 = 51, CharacterCodesa = 97, CharacterCodesz = 122, CharacterCodesA = 65, CharacterCodesZ = 90, CharacterCodesDot = 46, directorySeparator = "/", altDirectorySeparator = "\\", urlSchemeSeparator = "://", backslashRegExp, relativePathSegmentRegExp, bundledScheme = "bundled:///", fsCallbackNames, MSG_REQUEST = 1, MSG_CALL_RESPONSE = 2, MSG_CALL_ERROR = 3, MSG_RESPONSE = 4, MSG_ERROR = 5, MSG_CALL = 6, sleepBuf, EMPTY_BUF, liveChildren, RECENT_REQUEST_CAPACITY = 5, Snapshot, STALE_AFTER_MS, MAX_CONTENT_TOKENS_PER_FILE = 5000, MAX_CONTENT_FILE_BYTES, CONTENT_SEARCH_TIME_BUDGET_MS = 1000, CONTENT_DEFAULT_LIMIT = 20, CONTENT_MAX_LIMIT = 50, LANGUAGE_ALIASES, STATIC_CONFIDENCE = 1, UNRESOLVED_CONFIDENCE = 0.5, UNKNOWN = "unknown", RECORD_ID, MAX_ALIAS_DEPTH = 10, SEARCH_RANK, DEFAULT_RESULT_LIMIT = 20, MAX_RESULT_LIMIT = 50, MAX_EXPLORED_EDGES = 20000, DEFAULT_QUERY_BUDGET_MS = 2000, MAX_QUERY_BUDGET_MS = 60000, DEFAULT_MAX_DEPTH = 5, MAX_DEPTH_LIMIT = 10, SUPPORTED_FILE, KIND_PRIORITY, CONFIRMED_EVIDENCE_KINDS, snapshotIndexes, UNANALYZED_NOTE, SNAPSHOT_STORE_VERSION = 1, UNATTRIBUTED_SHARD = "__unattributed__";
 var init_code_graph_bundle = __esm(() => {
   (function(CompletionItemKind) {
     CompletionItemKind[CompletionItemKind["Text"] = 1] = "Text";
@@ -10530,15 +11937,44 @@ var init_code_graph_bundle = __esm(() => {
       }
     }
   };
-  RECORD_ID = /^pk-[0-9a-f]{12}$/;
-  SUPPORTED_FILE = /\.[cm]?[tj]sx?$/;
   STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+  MAX_CONTENT_FILE_BYTES = 256 * 1024;
+  LANGUAGE_ALIASES = {
+    typescript: "ts",
+    javascript: "js"
+  };
+  RECORD_ID = /^pk-[0-9a-f]{12}$/;
+  SEARCH_RANK = {
+    "exact-name": 0,
+    "exact-qualified": 1,
+    prefix: 2,
+    token: 3,
+    substring: 4,
+    fuzzy: 5
+  };
+  SUPPORTED_FILE = /\.[cm]?[tj]sx?$/;
+  KIND_PRIORITY = {
+    TESTS: 0,
+    IMPORTS: 1,
+    CALLS_STATIC: 2,
+    CALLS_UNRESOLVED: 3
+  };
+  CONFIRMED_EVIDENCE_KINDS = new Set([
+    "DEFINES",
+    "EXPORTS",
+    "IMPORTS",
+    "CALLS_STATIC",
+    "TESTS"
+  ]);
+  snapshotIndexes = new WeakMap;
+  UNANALYZED_NOTE = "non-TypeScript files are not analysed; entry points, framework conventions, " + "CLI registries, schedulers and build config can reach a file outside the analysed " + "edge set, so every candidate is only potentially unreferenced, never proven unused.";
 });
 
-// Alwork/packages/extensions/dag-pane/service/main.js
+// server.js
 import http from "node:http";
+import { Buffer as Buffer3 } from "node:buffer";
 
-// Alwork/packages/extensions/dag-pane/service/handlers.js
+// handlers.js
 import { execFileSync } from "node:child_process";
 import { tmpdir as osTmpdir } from "node:os";
 import { join as joinPath } from "node:path";
@@ -10546,13 +11982,13 @@ import nodeFs from "node:fs";
 import { promises as nodeFsPromises } from "node:fs";
 import nodePath from "node:path";
 
-// Alwork/packages/web/server/lib/opencode/omo-bridge-runtime.js
+// ../../../web/server/lib/opencode/omo-bridge-runtime.js
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync2 } from "node:child_process";
 import { existsSync as nodeExistsSync2, readFileSync as nodeReadFileSync } from "node:fs";
 import { dirname as nodeDirname, join as nodeJoinPath2 } from "node:path";
 import { fileURLToPath as nodeFileURLToPath } from "node:url";
 
-// Alwork/packages/web/server/lib/opencode/omo-toolkit-probe.js
+// ../../../web/server/lib/opencode/omo-toolkit-probe.js
 import { spawnSync as nodeSpawnSync } from "node:child_process";
 import { existsSync as nodeExistsSync } from "node:fs";
 import { join as nodeJoinPath } from "node:path";
@@ -10692,7 +12128,7 @@ var probeToolkit = ({
   }
 };
 
-// Alwork/packages/web/server/lib/opencode/omo-bridge-runtime.js
+// ../../../web/server/lib/opencode/omo-bridge-runtime.js
 var OMO_BRIDGE_EVENT_DAG_UPDATED = "omo.dag.updated";
 var OMO_BRIDGE_EVENT_TASK_UPDATED = "omo.task.updated";
 var OMO_BRIDGE_SNAPSHOT_SCHEMA_VERSION = 1;
@@ -10791,6 +12227,7 @@ var resolveVendoredRootCandidates = ({ bridgeDir, packageCwd, resourcesPath } = 
   const candidates = [];
   const dir = bridgeDir ?? nodeDirname(nodeFileURLToPath(import.meta.url));
   candidates.push(nodeJoinPath2(dir, "..", "..", "..", "..", OMO_VENDORED_ENGINE_DIR));
+  candidates.push(nodeJoinPath2(dir, "vendor", OMO_VENDORED_ENGINE_DIR));
   const packaged = resourcesPath ?? process?.resourcesPath ?? null;
   if (packaged)
     candidates.push(nodeJoinPath2(packaged, OMO_VENDORED_ENGINE_DIR));
@@ -10812,6 +12249,8 @@ var resolveVendoredRoot = ({
 } = {}) => {
   for (const root of resolveVendoredRootCandidates({ bridgeDir, packageCwd, resourcesPath })) {
     if (existsSync(nodeJoinPath2(root, OMO_VENDORED_RUN_BARREL)))
+      return root;
+    if (existsSync(nodeJoinPath2(root, OMO_VENDORED_RUN_BARREL.replace(/\.ts$/, ".js"))))
       return root;
   }
   return null;
@@ -10845,12 +12284,15 @@ var defaultWorkerEntry = () => nodeFileURLToPath(new URL("./omo-invoker-worker.t
 var resolveWorkerEntry = ({
   workerEntry,
   existsSync = nodeExistsSync2,
+  bridgeDir,
   packageCwd,
   resourcesPath
 } = {}) => {
   if (workerEntry)
     return { path: workerEntry, found: existsSync(workerEntry) };
   const candidates = [defaultWorkerEntry()];
+  const base = bridgeDir ?? nodeDirname(nodeFileURLToPath(import.meta.url));
+  candidates.push(nodeJoinPath2(base, "worker.js"));
   const cwd = packageCwd ?? process.cwd();
   candidates.push(nodeJoinPath2(cwd, "..", "..", "lib", "opencode", "omo-invoker-worker.ts"));
   const packaged = resourcesPath ?? process?.resourcesPath ?? null;
@@ -10876,13 +12318,14 @@ var resolveNativeRunner = ({
   const worker = resolveWorkerEntry({
     workerEntry,
     existsSync,
+    bridgeDir,
     packageCwd,
     resourcesPath
   });
   if (!worker.found) {
     throw new OmoBridgeError("OMO_NATIVE_UNAVAILABLE", `Native worker missing at "${worker.path}".`);
   }
-  const bun = bunPath ?? env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? "";
+  const bun = worker.path.endsWith(".js") ? process.execPath : bunPath ?? env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? "";
   const resolvedBun = bun !== "" ? bun : "bun";
   const { root: engineRoot, vendored } = resolveEngineRoot(wrapperEntry, {
     env,
@@ -10891,11 +12334,17 @@ var resolveNativeRunner = ({
     packageCwd,
     resourcesPath
   });
+  let barrelPath = vendored ? undefined : nodeJoinPath2(engineRoot, OMO_ENGINE_RUN_BARREL);
+  if (vendored) {
+    const tsPath = nodeJoinPath2(engineRoot, OMO_VENDORED_RUN_BARREL);
+    const jsPath = nodeJoinPath2(engineRoot, OMO_VENDORED_RUN_BARREL.replace(/\.ts$/, ".js"));
+    barrelPath = existsSync(tsPath) ? tsPath : existsSync(jsPath) ? jsPath : tsPath;
+  }
   return {
     workerEntry: worker.path,
     bunPath: resolvedBun,
     engineRoot,
-    barrelPath: vendored ? nodeJoinPath2(engineRoot, OMO_VENDORED_RUN_BARREL) : undefined
+    barrelPath
   };
 };
 var bunUnavailableMessage = (bun) => bun.source === "env" ? `Native runner unavailable: ${OMO_BUN_PATH_ENV} points at "${bun.path}" which does not resolve. The wrapper path is kept; fix ${OMO_BUN_PATH_ENV} or install bun on PATH to run natively.` : `Native runner unavailable: bun was not found on PATH and ${OMO_BUN_PATH_ENV} is unset. The wrapper path is kept; install bun or set ${OMO_BUN_PATH_ENV} to run natively.`;
@@ -10903,17 +12352,22 @@ var resolveWorkerRunner = ({
   env = process.env,
   existsSync = nodeExistsSync2,
   workerEntry,
+  bridgeDir,
   packageCwd,
   resourcesPath
 } = {}) => {
   const worker = resolveWorkerEntry({
     workerEntry,
     existsSync,
+    bridgeDir,
     packageCwd,
     resourcesPath
   });
   if (!worker.found) {
     throw new OmoBridgeError("OMO_NATIVE_UNAVAILABLE", `Native runner unavailable: native worker missing at "${worker.path}". The wrapper path is kept.`);
+  }
+  if (worker.path.endsWith(".js")) {
+    return { workerEntry: worker.path, bunPath: process.execPath };
   }
   const bun = resolveBunCommand({ env, existsSync });
   if (!bun.found) {
@@ -10966,6 +12420,7 @@ var checkNativeParity = ({
   const worker = resolveWorkerEntry({
     workerEntry,
     existsSync,
+    bridgeDir,
     packageCwd,
     resourcesPath
   });
@@ -10988,7 +12443,12 @@ var checkNativeParity = ({
   } catch (error) {
     engineReason = error?.message ?? String(error);
   }
-  const barrelPath = engineFound ? joinPath(engineRoot, vendored ? OMO_VENDORED_RUN_BARREL : OMO_ENGINE_RUN_BARREL) : null;
+  let barrelPath = null;
+  if (engineFound) {
+    const tsPath = joinPath(engineRoot, vendored ? OMO_VENDORED_RUN_BARREL : OMO_ENGINE_RUN_BARREL);
+    const jsPath = joinPath(engineRoot, (vendored ? OMO_VENDORED_RUN_BARREL : OMO_ENGINE_RUN_BARREL).replace(/\.ts$/, ".js"));
+    barrelPath = existsSync(tsPath) ? tsPath : existsSync(jsPath) ? jsPath : tsPath;
+  }
   const barrelFound = barrelPath !== null && existsSync(barrelPath);
   const details = {
     bunPath: bun.path,
@@ -11002,7 +12462,8 @@ var checkNativeParity = ({
     barrelPath,
     barrelFound
   };
-  if (!bun.found) {
+  const plainNode = workerFound && worker.path.endsWith(".js") && barrelFound && barrelPath !== null && barrelPath.endsWith(".js");
+  if (!bun.found && !plainNode) {
     return {
       ok: false,
       code: "OMO_NATIVE_UNAVAILABLE",
@@ -11676,9 +13137,122 @@ var cancelRun = (handle, reason, dependencies = {}) => {
   });
 };
 
-// Alwork/packages/web/server/lib/code-graph/runtime.js
+// ../../../web/server/lib/code-graph/runtime.js
 import { createHash as createHash2 } from "node:crypto";
 import { execFile } from "node:child_process";
+
+// ../../../web/server/lib/code-graph/snapshot-storage.js
+import crypto from "node:crypto";
+var STORE_VERSION = 1;
+var safeSegment = (value) => String(value ?? "").replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 80);
+var shardName = (text) => `${crypto.createHash("sha256").update(text).digest("hex").slice(0, 32)}.json`;
+var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
+  const enabled = typeof storeDir === "string" && storeDir.length > 0;
+  const scopeDir = (projectId, worktreeId) => path.join(storeDir, `${safeSegment(projectId)}--${safeSegment(worktreeId)}`);
+  const writeAtomic = async (target, text) => {
+    const temporary = `${target}.tmp-${process.pid}`;
+    await fsPromises.writeFile(temporary, text, "utf8");
+    await fsPromises.rename(temporary, target);
+  };
+  return {
+    enabled,
+    async write(directory, entry) {
+      if (!enabled)
+        return { written: false, reason: "store-disabled" };
+      const dir = scopeDir(entry.scope.projectId, entry.scope.worktreeId);
+      const shardsDir = path.join(dir, "shards");
+      try {
+        await fsPromises.mkdir(shardsDir, { recursive: true });
+        const shards = engine.splitSnapshotIntoShards(entry.snapshot);
+        const names = [];
+        let written = 0;
+        let reused = 0;
+        for (const shard of shards) {
+          const text = engine.serializeSnapshotShard(shard);
+          const name = shardName(text);
+          names.push(name);
+          const target = path.join(shardsDir, name);
+          const alreadyThere = await fsPromises.stat(target).then(() => true, () => false);
+          if (alreadyThere) {
+            reused += 1;
+            continue;
+          }
+          await fsPromises.writeFile(target, text, "utf8");
+          written += 1;
+        }
+        const manifest = engine.createSnapshotManifest(entry.snapshot, {
+          scope: entry.scope,
+          observedAtMs: entry.observedAtMs,
+          entryCap: entry.entryCap ?? 0,
+          entryCount: entry.entryCount ?? 0
+        });
+        await writeAtomic(path.join(dir, "manifest.json"), engine.serializeSnapshotManifest({ ...manifest, shards: names, storeVersion: STORE_VERSION }));
+        await this.prune(dir, new Set(names));
+        return { written: true, shards: names.length, writtenShards: written, reusedShards: reused };
+      } catch (error) {
+        return { written: false, reason: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    async prune(dir, keep) {
+      if (!enabled)
+        return 0;
+      const shardsDir = path.join(dir, "shards");
+      const existing = await fsPromises.readdir(shardsDir).catch(() => []);
+      let removed = 0;
+      for (const name of existing) {
+        if (keep.has(name))
+          continue;
+        await fsPromises.rm(path.join(shardsDir, name), { force: true }).catch(() => {
+          return;
+        });
+        removed += 1;
+      }
+      return removed;
+    },
+    async read(directory, scope) {
+      if (!enabled)
+        return { status: "miss", reason: "store-disabled" };
+      const dir = scopeDir(scope.projectId, scope.worktreeId);
+      let text;
+      try {
+        text = await fsPromises.readFile(path.join(dir, "manifest.json"), "utf8");
+      } catch {
+        return { status: "miss", reason: "no-store" };
+      }
+      const parsed = engine.parseSnapshotManifest(text);
+      if (parsed.kind !== "manifest")
+        return { status: "miss", reason: parsed.reason };
+      const manifest = parsed.manifest;
+      if (manifest.scope.revision !== scope.revision || manifest.scope.fingerprint !== scope.fingerprint) {
+        return { status: "stale", reason: "scope-mismatch", manifest };
+      }
+      const shards = [];
+      try {
+        for (const name of manifest.shards) {
+          const shardText = await fsPromises.readFile(path.join(dir, "shards", name), "utf8");
+          const shard = engine.parseSnapshotShard(shardText);
+          if (shard.kind !== "shard")
+            return { status: "miss", reason: `${name}: ${shard.reason}` };
+          shards.push(shard.shard);
+        }
+      } catch (error) {
+        return { status: "miss", reason: error instanceof Error ? error.message : String(error) };
+      }
+      const joined = engine.joinSnapshotShards(manifest, shards);
+      if (joined.kind !== "snapshot")
+        return { status: "miss", reason: joined.reason };
+      return { status: "hit", snapshot: joined.snapshot, manifest };
+    },
+    async clear(scope) {
+      if (!enabled)
+        return false;
+      await fsPromises.rm(scopeDir(scope.projectId, scope.worktreeId), { recursive: true, force: true });
+      return true;
+    }
+  };
+};
+
+// ../../../web/server/lib/code-graph/runtime.js
 var enginePromise = null;
 var loadEngine = () => {
   if (!enginePromise) {
@@ -11686,10 +13260,21 @@ var loadEngine = () => {
   }
   return enginePromise;
 };
-var MAX_ENTRY_FILES = 500;
+var GIT_STATUS_TTL_MS = 1500;
+var DEFAULT_MAX_ENTRY_FILES = 5000;
+var HARD_MAX_ENTRY_FILES = 20000;
+var MAX_EXCLUDED_SAMPLE = 10;
+var resolveMaxEntryFiles = (value) => {
+  if (value === undefined || value === null || !Number.isFinite(Number(value))) {
+    return DEFAULT_MAX_ENTRY_FILES;
+  }
+  return Math.min(HARD_MAX_ENTRY_FILES, Math.max(1, Math.floor(Number(value))));
+};
 var SKIPPED_DIRS = new Set([
   "node_modules",
   ".git",
+  ".omo",
+  "web-dist",
   "dist",
   "dist-bundle",
   "build",
@@ -11713,8 +13298,9 @@ var sanitizeSlug = (value, fallback) => {
 };
 var sha256Hex2 = (value) => createHash2("sha256").update(value, "utf8").digest("hex");
 var sha1Hex = (value) => createHash2("sha1").update(value, "utf8").digest("hex");
-var runGitHead = (directory) => new Promise((resolve) => {
-  execFile("git", ["-C", directory, "rev-parse", "HEAD"], { timeout: 1e4 }, (error, stdout) => {
+var isString = (value) => Object.prototype.toString.call(value) === "[object String]";
+var runGitHead = (spawnGit, directory) => new Promise((resolve) => {
+  spawnGit("git", ["-C", directory, "rev-parse", "HEAD"], { timeout: 1e4 }, (error, stdout) => {
     if (error) {
       resolve(null);
       return;
@@ -11723,28 +13309,227 @@ var runGitHead = (directory) => new Promise((resolve) => {
     resolve(HEX40.test(revision) ? revision : null);
   });
 });
-var createCodeGraphRuntime = ({ fsPromises, path }) => {
+var createGitHeadReader = ({ fsPromises, path }) => {
+  const memo = new Map;
+  const statKey = async (file) => {
+    try {
+      const stat = await fsPromises.stat(file);
+      return `${stat.mtimeMs}:${stat.size}`;
+    } catch {
+      return null;
+    }
+  };
+  const readText = async (file) => {
+    try {
+      return await fsPromises.readFile(file, "utf8");
+    } catch {
+      return null;
+    }
+  };
+  const resolveGitDir = async (directory) => {
+    const dotGit = path.join(directory, ".git");
+    let dotStat = null;
+    try {
+      dotStat = await fsPromises.stat(dotGit);
+    } catch {
+      dotStat = null;
+    }
+    if (dotStat) {
+      if (dotStat.isDirectory())
+        return { gitDir: dotGit, bare: false };
+      const pointer = await readText(dotGit);
+      if (pointer !== null) {
+        const match = /^gitdir:\s*(.+?)\s*$/.exec(pointer.trim());
+        if (match) {
+          const target = match[1];
+          return { gitDir: path.isAbsolute(target) ? target : path.resolve(directory, target), bare: false };
+        }
+      }
+      return { gitDir: null, bare: false, unreadable: true };
+    }
+    const topHead = await statKey(path.join(directory, "HEAD"));
+    if (topHead !== null)
+      return { gitDir: directory, bare: true };
+    return { gitDir: null, bare: false, unreadable: false };
+  };
+  const shaFromGitDir = async (gitDir) => {
+    const raw = await readText(path.join(gitDir, "HEAD"));
+    if (raw === null)
+      return { status: "unreadable" };
+    const trimmed = raw.trim();
+    if (HEX40.test(trimmed.toLowerCase())) {
+      return { status: "ok", head: trimmed.toLowerCase(), refPath: null };
+    }
+    const match = /^ref:\s*(.+?)\s*$/.exec(trimmed);
+    if (!match)
+      return { status: "unreadable" };
+    const ref = match[1];
+    if (ref.includes("..") || ref.startsWith("/"))
+      return { status: "unreadable" };
+    const refPath = path.join(gitDir, ...ref.split("/"));
+    const loose = await readText(refPath);
+    if (loose !== null) {
+      const sha = loose.trim().toLowerCase();
+      if (HEX40.test(sha))
+        return { status: "ok", head: sha, refPath };
+      return { status: "unreadable" };
+    }
+    const packed = await readText(path.join(gitDir, "packed-refs"));
+    if (packed !== null) {
+      for (const line of packed.split(`
+`)) {
+        const text = line.trim();
+        if (!text || text.startsWith("#") || text.startsWith("^"))
+          continue;
+        const parts = text.split(/\s+/);
+        if (parts.length >= 2 && parts[1] === ref && HEX40.test((parts[0] ?? "").toLowerCase())) {
+          return { status: "ok", head: parts[0].toLowerCase(), refPath };
+        }
+      }
+    }
+    return { status: "unreadable" };
+  };
+  return async (directory) => {
+    const resolved = await resolveGitDir(directory);
+    if (!resolved.gitDir) {
+      return resolved.unreadable ? { status: "unreadable" } : { status: "absent" };
+    }
+    const { gitDir } = resolved;
+    const headPath = path.join(gitDir, "HEAD");
+    const headKey = await statKey(headPath);
+    if (headKey === null)
+      return { status: "unreadable" };
+    const cached = memo.get(gitDir);
+    if (cached && cached.headKey === headKey) {
+      if (cached.refPath === null)
+        return { status: "ok", head: cached.value };
+      const refKey = await statKey(cached.refPath);
+      const extraKey = cached.extraPath ? await statKey(cached.extraPath) : null;
+      if (refKey === cached.refKey && extraKey === cached.extraKey) {
+        return { status: "ok", head: cached.value };
+      }
+    }
+    const parsed = await shaFromGitDir(gitDir);
+    if (parsed.status !== "ok")
+      return parsed;
+    const refKey = parsed.refPath ? await statKey(parsed.refPath) : null;
+    const packedPath = parsed.refPath && refKey === null ? path.join(gitDir, "packed-refs") : null;
+    memo.set(gitDir, {
+      headKey,
+      refPath: parsed.refPath,
+      refKey,
+      extraPath: packedPath,
+      extraKey: packedPath ? await statKey(packedPath) : null,
+      value: parsed.head
+    });
+    return parsed;
+  };
+};
+var createDirectoryNormalizer = ({ fsPromises, path }) => async (directory) => {
+  const trimmed = isString(directory) ? directory.trim() : "";
+  if (!trimmed) {
+    return { error: "directory is required" };
+  }
+  const normalized = path.normalize(trimmed);
+  let stat = null;
+  try {
+    stat = await fsPromises.stat(normalized);
+  } catch {
+    return { error: `directory not found: ${trimmed}`, status: 404 };
+  }
+  if (!stat.isDirectory()) {
+    return { error: `not a directory: ${trimmed}`, status: 404 };
+  }
+  return { directory: normalized };
+};
+var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, runtimeOptions = {}) => {
   if (!fsPromises || !path) {
     throw new Error("code-graph runtime requires fsPromises and path");
   }
-  const snapshots = new Map;
-  const normalizeDirectory = async (directory) => {
-    const trimmed = typeof directory === "string" ? directory.trim() : "";
-    if (!trimmed) {
-      return { error: "directory is required" };
+  const spawnGit = injectedExecFile ?? execFile;
+  const blockOnRead = runtimeOptions.blockOnRead === true;
+  const defaultMaxEntryFiles = resolveMaxEntryFiles(runtimeOptions.maxEntryFiles);
+  const readGitHead = createGitHeadReader({ fsPromises, path });
+  const gitStatusTTLMs = (() => {
+    const override = Number(runtimeOptions.gitStatusTTLMs);
+    return Number.isFinite(override) && override > 0 ? override : GIT_STATUS_TTL_MS;
+  })();
+  const gitStatusCache = new Map;
+  const runGitStatus = (directory) => new Promise((resolve) => {
+    spawnGit("git", ["-C", directory, "status", "--porcelain=v1", "-z", "--untracked-files=all"], { timeout: 1e4, maxBuffer: 16777216 }, (error, stdout) => {
+      if (error) {
+        resolve({ ok: false });
+        return;
+      }
+      resolve({ ok: true, stdout: String(stdout ?? "") });
+    });
+  });
+  const parseGitStatusZ = (stdout) => {
+    const entries = [];
+    const tokens = String(stdout ?? "").split("\x00");
+    for (let index = 0;index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (token.length < 4 || token[2] !== " ")
+        continue;
+      const code = token.slice(0, 2);
+      const first = token.slice(3);
+      if (code[0] === "R" || code[0] === "C") {
+        const second = tokens[index + 1] ?? "";
+        if (second.length > 0)
+          index += 1;
+        entries.push({ code, paths: second.length > 0 ? [first, second] : [first] });
+      } else {
+        entries.push({ code, paths: [first] });
+      }
     }
-    const normalized = path.normalize(trimmed);
+    return entries;
+  };
+  const isEntryCandidateRel = (rel) => ENTRY_FILE.test(path.basename(rel));
+  const stampDirtyPath = async (directory, rel) => {
     let stat = null;
     try {
-      stat = await fsPromises.stat(normalized);
+      stat = await fsPromises.stat(path.join(directory, ...rel.split("/")));
     } catch {
-      return { error: `directory not found: ${trimmed}`, status: 404 };
+      stat = null;
     }
-    if (!stat.isDirectory()) {
-      return { error: `not a directory: ${trimmed}`, status: 404 };
-    }
-    return { directory: normalized };
+    if (!stat || !stat.isFile())
+      return `${rel}:deleted`;
+    return `${rel}:${stat.size}:${Math.trunc(stat.mtimeMs)}`;
   };
+  const readDirtyFingerprint = async (directory, { force = false } = {}) => {
+    const key = path.normalize(directory);
+    const now = Date.now();
+    if (!force) {
+      const hit = gitStatusCache.get(key);
+      if (hit && now - hit.atMs < gitStatusTTLMs)
+        return hit.result;
+    }
+    const ran = await runGitStatus(directory);
+    let result;
+    if (!ran.ok) {
+      result = { ok: false };
+    } else {
+      const lines = [];
+      for (const entry of parseGitStatusZ(ran.stdout)) {
+        if (!entry.paths.some(isEntryCandidateRel))
+          continue;
+        for (const rel of entry.paths) {
+          lines.push(`${entry.code} ${await stampDirtyPath(directory, rel)}`);
+        }
+      }
+      lines.sort();
+      result = { ok: true, lines };
+    }
+    gitStatusCache.set(key, { atMs: Date.now(), result });
+    return result;
+  };
+  let buildSeq = 0;
+  const MAX_CACHED_QUERIES = 200;
+  const snapshots = new Map;
+  const partialByDirectory = new Map;
+  const jobs = new Map;
+  const MAX_RETAINED_SNAPSHOTS = 3;
+  const normalizeDirectory = createDirectoryNormalizer({ fsPromises, path });
   const deriveScopeIds = (directory) => {
     const digest = sha256Hex2(directory);
     return {
@@ -11752,23 +13537,77 @@ var createCodeGraphRuntime = ({ fsPromises, path }) => {
       worktreeId: sanitizeSlug(path.basename(directory), "worktree")
     };
   };
-  const listEntryFiles = async (directory) => {
+  const MAX_SKIPPED_SCAN_FILES = 1e4;
+  const bucketOfRel = (rel) => {
+    const segments = String(rel ?? "").split("/").filter((segment) => segment.length > 0);
+    return segments.length > 1 ? segments[0] : "(root)";
+  };
+  const extOf = (name) => {
+    const ext = path.extname(String(name ?? "")).toLowerCase();
+    return ext.length > 0 ? ext : "(no-extension)";
+  };
+  const listEntryFiles = async (directory, maxEntryFiles) => {
+    const cap = resolveMaxEntryFiles(maxEntryFiles ?? defaultMaxEntryFiles);
     const entries = [];
     let scanned = 0;
-    let truncated = false;
-    const visit = async (dir) => {
-      if (truncated)
+    let excludedCount = 0;
+    const excludedSample = [];
+    const skippedDirs = [];
+    const unreadableDirs = [];
+    const byModule = new Map;
+    const bucketStats = (bucket) => {
+      let stats = byModule.get(bucket);
+      if (!stats) {
+        stats = { analyzedFiles: 0, unanalyzedFiles: 0, unanalyzedByExtension: {}, excludedFiles: 0 };
+        byModule.set(bucket, stats);
+      }
+      return stats;
+    };
+    const relOf = (full) => path.relative(directory, full).split(path.sep).join("/");
+    const scanState = { count: 0, truncated: false };
+    const countSkipped = async (dir, bucket) => {
+      if (scanState.count >= MAX_SKIPPED_SCAN_FILES) {
+        scanState.truncated = true;
         return;
+      }
       let names = [];
       try {
         names = await fsPromises.readdir(dir);
       } catch {
         return;
       }
+      for (const name of names) {
+        if (scanState.count >= MAX_SKIPPED_SCAN_FILES) {
+          scanState.truncated = true;
+          return;
+        }
+        if (name === "." || name === "..")
+          continue;
+        scanState.count += 1;
+        let stat = null;
+        try {
+          stat = await fsPromises.stat(path.join(dir, name));
+        } catch {
+          continue;
+        }
+        if (stat.isDirectory()) {
+          await countSkipped(path.join(dir, name), bucket);
+        } else if (stat.isFile()) {
+          bucketStats(bucket).excludedFiles += 1;
+        }
+      }
+    };
+    const visit = async (dir) => {
+      let names = [];
+      try {
+        names = await fsPromises.readdir(dir);
+      } catch {
+        const rel = relOf(dir);
+        unreadableDirs.push(rel.length > 0 ? rel : ".");
+        return;
+      }
       names.sort();
       for (const name of names) {
-        if (truncated)
-          return;
         if (name === "." || name === "..")
           continue;
         const full = path.join(dir, name);
@@ -11779,109 +13618,536 @@ var createCodeGraphRuntime = ({ fsPromises, path }) => {
           continue;
         }
         if (stat.isDirectory()) {
-          if (SKIPPED_DIRS.has(name))
+          if (SKIPPED_DIRS.has(name)) {
+            const rel = relOf(full);
+            skippedDirs.push(rel);
+            await countSkipped(full, bucketOfRel(rel));
             continue;
+          }
           await visit(full);
         } else if (stat.isFile()) {
           scanned += 1;
-          if (!ENTRY_FILE.test(name))
+          const rel = relOf(full);
+          const bucket = bucketOfRel(rel);
+          if (!ENTRY_FILE.test(name)) {
+            const stats = bucketStats(bucket);
+            stats.unanalyzedFiles += 1;
+            const ext = extOf(name);
+            stats.unanalyzedByExtension[ext] = (stats.unanalyzedByExtension[ext] ?? 0) + 1;
             continue;
-          if (entries.length >= MAX_ENTRY_FILES) {
-            truncated = true;
-            return;
+          }
+          if (entries.length >= cap) {
+            excludedCount += 1;
+            bucketStats(bucket).excludedFiles += 1;
+            if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
+              excludedSample.push(rel);
+            }
+            continue;
           }
           entries.push(full);
+          bucketStats(bucket).analyzedFiles += 1;
         }
       }
     };
     await visit(directory);
     entries.sort();
-    return { entries, scanned, truncated };
-  };
-  const readRevision = async (directory, entryFiles) => {
-    const head = await runGitHead(directory);
-    if (head)
-      return { revision: head, binding: "git-head" };
-    const listing = entryFiles.map((entry) => path.relative(directory, entry).split(path.sep).join("/")).join(`
-`);
-    return { revision: sha1Hex(`${directory}
-${listing}`), binding: "content" };
-  };
-  const buildSnapshot = async (directory) => {
-    const engine = await loadEngine();
-    const { entries, truncated } = await listEntryFiles(directory);
-    const { revision, binding } = await readRevision(directory, entries);
-    const { projectId, worktreeId } = deriveScopeIds(directory);
-    const fingerprint = engine.computeScopeFingerprint(projectId, worktreeId, revision);
-    const snapshot = engine.indexFiles(entries);
-    return {
-      snapshot,
-      scope: { projectId, worktreeId, revision, fingerprint },
-      observedAtMs: Date.now(),
-      binding,
-      truncated,
-      entryCount: entries.length,
-      entryFiles: entries
-    };
-  };
-  const ensureIndex = async (directory, { refresh = false } = {}) => {
-    const engine = await loadEngine();
-    const cached = snapshots.get(directory);
-    if (!refresh && cached) {
-      const { revision } = await readRevision(directory, cached.entryFiles ?? []);
-      if (revision === cached.scope.revision && Date.now() - cached.observedAtMs <= engine.STALE_AFTER_MS) {
-        const { entryFiles: _dropped, ...served } = cached;
-        return { ...served, freshness: "fresh" };
+    skippedDirs.sort();
+    unreadableDirs.sort();
+    const buckets = [...byModule.keys()].sort();
+    const modules = {};
+    for (const bucket of buckets) {
+      const stats = byModule.get(bucket);
+      modules[bucket] = {
+        analyzedFiles: stats.analyzedFiles,
+        unanalyzedFiles: stats.unanalyzedFiles,
+        unanalyzedByExtension: Object.fromEntries(Object.entries(stats.unanalyzedByExtension).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)),
+        excludedFiles: stats.excludedFiles
+      };
+    }
+    const totals = { analyzedFiles: 0, unanalyzedFiles: 0, unanalyzedByExtension: {}, excludedFiles: 0 };
+    for (const stats of Object.values(modules)) {
+      totals.analyzedFiles += stats.analyzedFiles;
+      totals.unanalyzedFiles += stats.unanalyzedFiles;
+      totals.excludedFiles += stats.excludedFiles;
+      for (const [ext, count] of Object.entries(stats.unanalyzedByExtension)) {
+        totals.unanalyzedByExtension[ext] = (totals.unanalyzedByExtension[ext] ?? 0) + count;
       }
     }
-    try {
-      const entry = await buildSnapshot(directory);
-      snapshots.set(directory, entry);
-      const { entryFiles: _dropped, ...served } = entry;
-      return { ...served, freshness: "fresh" };
-    } catch (error) {
-      if (cached) {
-        const { revision } = await readRevision(directory, cached.entryFiles ?? []).catch(() => ({ revision: null }));
-        const { entryFiles: _dropped, ...served } = cached;
-        return {
-          ...served,
-          freshness: "stale",
-          staleReason: revision && revision !== cached.scope.revision ? "HEAD-MOVE" : "EVID-STALE",
-          refreshError: error instanceof Error ? error.message : String(error)
-        };
+    totals.unanalyzedByExtension = Object.fromEntries(Object.entries(totals.unanalyzedByExtension).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+    return { entries, scanned, truncated: excludedCount > 0, excludedCount, excludedSample, maxEntryFiles: cap, coverage: { byModule: modules, totals, skippedDirs, unreadableDirs, excludedTruncated: scanState.truncated } };
+  };
+  const readRevision = async (directory, entryFiles, { forceStatus = false } = {}) => {
+    const local = await readGitHead(directory);
+    let head = null;
+    if (local.status === "ok") {
+      head = local.head;
+    } else if (local.status === "unreadable") {
+      head = await runGitHead(spawnGit, directory);
+    }
+    if (head !== null) {
+      const dirty = await readDirtyFingerprint(directory, { force: forceStatus });
+      if (!dirty.ok) {
+        return { revision: head, binding: "git-head", dirty: "unknown", dirtyReason: "git-status-unavailable" };
       }
+      if (dirty.lines.length === 0)
+        return { revision: head, binding: "git-head", dirty: "clean" };
+      return {
+        revision: sha1Hex(`${head}
+${dirty.lines.join(`
+`)}`),
+        binding: "git-head",
+        dirty: "dirty"
+      };
+    }
+    const stamped = await Promise.all(entryFiles.map(async (entry) => {
+      const rel = path.relative(directory, entry).split(path.sep).join("/");
+      const stat = await fsPromises.stat(entry).catch(() => null);
+      return stat === null ? `${rel}:unreadable` : `${rel}:${stat.size}:${Math.trunc(stat.mtimeMs)}`;
+    }));
+    return { revision: sha1Hex(`${directory}
+${stamped.join(`
+`)}`), binding: "content" };
+  };
+  const PARTIAL_MODULE_LIMIT = 12;
+  const summarizePartialSnapshot = (snapshot) => {
+    const modules = new Map;
+    for (const node of snapshot.nodes ?? []) {
+      const file = node?.file ?? "";
+      if (file === "")
+        continue;
+      const segments = file.split("/");
+      const bucket = segments.length > 2 ? `${segments[0]}/${segments[1]}` : segments[0] ?? file;
+      modules.set(bucket, (modules.get(bucket) ?? 0) + 1);
+    }
+    const ranked = [...modules.entries()].sort((left, right) => right[1] - left[1]);
+    return {
+      nodes: (snapshot.nodes ?? []).length,
+      edges: (snapshot.edges ?? []).length,
+      modules: ranked.slice(0, PARTIAL_MODULE_LIMIT).map(([module, count]) => ({ module, count })),
+      modulesTotal: ranked.length
+    };
+  };
+  const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, onProgress = null } = {}) => {
+    const engine = await loadEngine();
+    const { entries, truncated, excludedCount, excludedSample, maxEntryFiles: cap, coverage } = await listEntryFiles(directory, maxEntryFiles);
+    const { revision, binding, dirty, dirtyReason } = await readRevision(directory, entries, { forceStatus });
+    const { projectId, worktreeId } = deriveScopeIds(directory);
+    const fingerprint = engine.computeScopeFingerprint(projectId, worktreeId, revision);
+    const snapshot = engine.indexFiles(entries, {
+      rootDir: directory,
+      onProgress: onProgress ?? undefined,
+      onPartialSnapshot: (partialSnapshot, progress) => {
+        partialByDirectory.set(directory, assembleEntry({
+          snapshot: partialSnapshot,
+          scope: { projectId, worktreeId, revision, fingerprint },
+          binding,
+          dirty,
+          dirtyReason,
+          truncated,
+          excludedCount,
+          excludedSample,
+          cap,
+          entries,
+          coverage
+        }));
+        onProgress?.({
+          phase: "projects",
+          files: entries.length,
+          projectsDone: progress.projectsDone,
+          projectsTotal: progress.projectsTotal,
+          partial: summarizePartialSnapshot(partialSnapshot)
+        });
+      }
+    });
+    const built = assembleEntry({ snapshot, scope: { projectId, worktreeId, revision, fingerprint }, binding, dirty, dirtyReason, truncated, excludedCount, excludedSample, cap, entries, coverage });
+    partialByDirectory.delete(directory);
+    persistEntry(directory, built);
+    return built;
+  };
+  const assembleEntry = ({ snapshot, scope, binding, dirty, dirtyReason, truncated, excludedCount, excludedSample, cap, entries, coverage, observedAtMs }) => {
+    buildSeq += 1;
+    const built = {
+      snapshot,
+      scope,
+      observedAtMs: observedAtMs ?? Date.now(),
+      binding,
+      dirty: dirty ?? null,
+      truncated,
+      indexTruncated: truncated,
+      excludedCount,
+      excludedSample,
+      entryCap: cap,
+      entryCount: entries.length,
+      entryFiles: entries,
+      coverage,
+      buildSeq,
+      queryCache: new Map
+    };
+    if (dirtyReason) {
+      built.dirtyReason = dirtyReason;
+    }
+    return built;
+  };
+  let snapshotStorage = null;
+  const getStorage = async () => {
+    if (typeof runtimeOptions.storeDir !== "string" || runtimeOptions.storeDir.length === 0)
+      return null;
+    if (snapshotStorage === null) {
+      const engine = await loadEngine();
+      snapshotStorage = createSnapshotStorage({ fsPromises, path, engine, storeDir: runtimeOptions.storeDir });
+    }
+    return snapshotStorage;
+  };
+  const persistEntry = async (directory, entry) => {
+    if (entry.truncated)
+      return;
+    const storage = await getStorage();
+    if (!storage)
+      return;
+    const result = await storage.write(directory, entry);
+    if (!result.written) {
+      emitProgress(directory, { state: "ready", storeWriteFailed: result.reason ?? "unknown" });
+    }
+  };
+  const restoreFromStore = async (directory, cap) => {
+    const storage = await getStorage();
+    if (!storage)
+      return null;
+    const engine = await loadEngine();
+    const { entries, truncated, excludedCount, excludedSample, coverage } = await listEntryFiles(directory, cap);
+    if (truncated)
+      return null;
+    const { revision, binding, dirty, dirtyReason } = await readRevision(directory, entries, { forceStatus: false });
+    const { projectId, worktreeId } = deriveScopeIds(directory);
+    const fingerprint = engine.computeScopeFingerprint(projectId, worktreeId, revision);
+    let read;
+    try {
+      read = await storage.read(directory, { projectId, worktreeId, revision, fingerprint });
+    } catch (error) {
+      emitProgress(directory, { state: "discovering", storeReadFailed: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+    if (read.status !== "hit")
+      return null;
+    const built = assembleEntry({
+      snapshot: read.snapshot,
+      scope: { projectId, worktreeId, revision, fingerprint },
+      binding,
+      dirty,
+      dirtyReason,
+      truncated: false,
+      excludedCount,
+      excludedSample,
+      cap,
+      entries,
+      coverage,
+      observedAtMs: read.manifest.observedAtMs
+    });
+    emitProgress(directory, {
+      state: "ready",
+      seeded: true,
+      restoredFromStore: true,
+      generation: built.buildSeq,
+      nodes: built.snapshot.nodes.length,
+      edges: built.snapshot.edges.length,
+      entryCount: built.entryCount
+    });
+    return built;
+  };
+  const ensureIndex = async (directory, { refresh = false, maxEntryFiles, block = false } = {}) => {
+    const engine = await loadEngine();
+    const cap = resolveMaxEntryFiles(maxEntryFiles ?? defaultMaxEntryFiles);
+    const cached = snapshots.get(directory);
+    if (!refresh && cached && cached.entryCap === cap) {
+      const { revision } = await readRevision(directory, cached.entryFiles ?? []);
+      if (revision === cached.scope.revision && Date.now() - cached.observedAtMs <= engine.STALE_AFTER_MS) {
+        return { entry: { ...cached, freshness: "fresh" } };
+      }
+    }
+    if (!refresh) {
+      const restored = await restoreFromStore(directory, cap).catch(() => null);
+      if (restored) {
+        retainSnapshot(directory, restored);
+        return { entry: { ...restored, freshness: "fresh" } };
+      }
+    }
+    const running = jobs.get(directory);
+    if (running) {
+      if (!block)
+        return { pending: jobFacts(running), cached: cached ?? null };
+      try {
+        return { entry: { ...await running.promise, freshness: "fresh" } };
+      } catch (error) {
+        return cached ? { entry: { ...cached, freshness: "stale" }, refreshFailed: error } : Promise.reject(error);
+      }
+    }
+    const job = startJob(directory, cap, { refresh });
+    if (!block)
+      return { pending: jobFacts(job), cached: cached ?? null };
+    try {
+      return { entry: { ...await job.promise, freshness: "fresh" } };
+    } catch (error) {
+      const lastValid = snapshots.get(directory);
+      if (lastValid)
+        return { entry: { ...lastValid, freshness: "stale" }, refreshFailed: error };
       throw error;
     }
   };
-  const freshnessFields = (entry) => ({
-    projectId: entry.scope.projectId,
-    worktreeId: entry.scope.worktreeId,
-    revision: entry.scope.revision,
-    fingerprint: entry.scope.fingerprint,
-    freshness: entry.freshness,
-    observedAtMs: entry.observedAtMs,
-    staleAfterMs: entry.staleAfterMs,
-    ...entry.staleReason ? { staleReason: entry.staleReason } : {},
-    ...entry.refreshError ? { refreshError: entry.refreshError } : {},
-    ...entry.truncated ? { truncated: true } : {}
+  const jobFacts = (job) => ({
+    state: job.state,
+    startedAtMs: job.startedAtMs,
+    progress: job.progress ?? null,
+    cancelRequested: job.cancelRequested === true,
+    error: job.error ?? null
   });
+  const emitProgress = (directory, event) => {
+    if (typeof runtimeOptions.onProgress !== "function")
+      return;
+    try {
+      runtimeOptions.onProgress({ directory, atMs: Date.now(), ...event });
+    } catch {}
+  };
+  const retainSnapshot = (directory, entry) => {
+    partialByDirectory.delete(directory);
+    snapshots.set(directory, entry);
+    while (snapshots.size > MAX_RETAINED_SNAPSHOTS) {
+      const oldest = [...snapshots.entries()].filter(([key]) => key !== directory).sort((left, right) => (left[1].observedAtMs ?? 0) - (right[1].observedAtMs ?? 0))[0];
+      if (!oldest)
+        break;
+      snapshots.delete(oldest[0]);
+    }
+  };
+  const startJob = (directory, cap, { refresh }) => {
+    const job = {
+      directory,
+      startedAtMs: Date.now(),
+      state: "queued",
+      progress: null,
+      cancelRequested: false,
+      error: null
+    };
+    job.promise = (async () => {
+      job.state = "discovering";
+      emitProgress(directory, { state: "discovering" });
+      try {
+        const entry = await buildSnapshot(directory, cap, {
+          forceStatus: refresh,
+          onProgress: (event) => {
+            if (job.cancelRequested) {
+              const cancelled = new Error("code-graph index cancelled");
+              cancelled.code = "CANCELLED";
+              throw cancelled;
+            }
+            job.state = event.phase === "done" ? "persisting" : "analyzing";
+            job.progress = event;
+            emitProgress(directory, {
+              state: job.state,
+              phase: event.phase,
+              files: event.files,
+              projectsDone: event.projectsDone,
+              projectsTotal: event.projectsTotal
+            });
+          }
+        });
+        retainSnapshot(directory, entry);
+        job.state = "ready";
+        emitProgress(directory, {
+          state: "ready",
+          generation: entry.buildSeq,
+          nodes: entry.snapshot.nodes.length,
+          edges: entry.snapshot.edges.length,
+          entryCount: entry.entryCount,
+          projectId: entry.scope.projectId,
+          worktreeId: entry.scope.worktreeId,
+          revision: entry.scope.revision,
+          fingerprint: entry.scope.fingerprint,
+          binding: entry.binding ?? null,
+          snapshotRoot: entry.snapshot.root ?? null
+        });
+        return entry;
+      } catch (error) {
+        const cancelled = job.cancelRequested === true || error?.code === "CANCELLED";
+        job.state = cancelled ? "cancelled" : "failed";
+        job.error = cancelled ? null : error instanceof Error ? error.message : String(error);
+        partialByDirectory.delete(directory);
+        emitProgress(directory, { state: job.state, error: job.error });
+        throw error;
+      } finally {
+        jobs.delete(directory);
+      }
+    })();
+    job.promise.catch(() => {});
+    jobs.set(directory, job);
+    return job;
+  };
+  const cancelIndex = (directory) => {
+    const job = jobs.get(directory);
+    if (!job)
+      return { cancelled: false, state: "idle" };
+    job.cancelRequested = true;
+    emitProgress(directory, { state: "cancelled" });
+    return { cancelled: true, state: job.state };
+  };
+  const awaitIndex = async (directory, options = {}) => {
+    const { entry } = await ensureIndex(directory, { ...options, block: true });
+    const engine = await loadEngine();
+    return { ...freshnessFields({ ...entry, staleAfterMs: engine.STALE_AFTER_MS }), ready: true };
+  };
+  const indexState = (directory) => {
+    const job = jobs.get(directory);
+    if (job)
+      return jobFacts(job);
+    const entry = snapshots.get(directory);
+    if (entry) {
+      return {
+        state: "ready",
+        startedAtMs: entry.observedAtMs,
+        progress: null,
+        cancelRequested: false,
+        error: null,
+        generation: entry.buildSeq,
+        nodes: entry.snapshot.nodes.length,
+        edges: entry.snapshot.edges.length,
+        entryCount: entry.entryCount
+      };
+    }
+    return { state: "not-indexed", startedAtMs: null, progress: null, cancelRequested: false, error: null };
+  };
+  const seedSnapshot = (directory, entry) => {
+    retainSnapshot(directory, entry);
+    buildSeq = Math.max(buildSeq, Number(entry.buildSeq) || 0);
+    emitProgress(directory, {
+      state: "ready",
+      seeded: true,
+      generation: entry.buildSeq,
+      nodes: entry.snapshot.nodes.length,
+      edges: entry.snapshot.edges.length,
+      entryCount: entry.entryCount
+    });
+    return { generation: entry.buildSeq, nodes: entry.snapshot.nodes.length };
+  };
+  const freshnessFields = (entry) => {
+    const fields = {
+      projectId: entry.scope.projectId,
+      worktreeId: entry.scope.worktreeId,
+      revision: entry.scope.revision,
+      fingerprint: entry.scope.fingerprint,
+      freshness: entry.freshness,
+      observedAtMs: entry.observedAtMs,
+      staleAfterMs: entry.staleAfterMs,
+      generation: entry.buildSeq,
+      indexTruncated: entry.indexTruncated === true,
+      excludedCount: entry.excludedCount ?? 0,
+      excludedSample: entry.excludedSample ?? []
+    };
+    if (entry.dirty) {
+      fields.dirty = entry.dirty;
+    }
+    if (entry.dirtyReason) {
+      fields.dirtyReason = entry.dirtyReason;
+    }
+    if (entry.staleReason) {
+      fields.staleReason = entry.staleReason;
+    }
+    if (entry.refreshError) {
+      fields.refreshError = entry.refreshError;
+    }
+    return fields;
+  };
+  const indexExclusionNote = (entry) => `index incomplete: ${entry.excludedCount ?? 0} files excluded by the entry cap (${entry.entryCap ?? defaultMaxEntryFiles} max)`;
+  const applyIndexCoverage = (envelope, entry) => {
+    if (!entry.indexTruncated)
+      return envelope;
+    if (envelope.coverage !== "indexed" && envelope.coverage !== "partial")
+      return envelope;
+    const note = indexExclusionNote(entry);
+    const unresolved = Array.isArray(envelope.unresolved) ? envelope.unresolved : [];
+    const next = {
+      ...envelope,
+      unresolved: unresolved.some((line) => line.includes("index incomplete")) ? unresolved : [...unresolved, note]
+    };
+    if (next.coverage === "indexed")
+      next.coverage = "partial";
+    if (next.completeness === "complete" || next.completeness === "truncated") {
+      next.completeness = "partial";
+      next.completenessReason = "index-truncated";
+    }
+    return next;
+  };
   const readIndex = async (directory, options = {}) => {
     const engine = await loadEngine();
-    const entry = await ensureIndex(directory, options);
+    const outcome = await ensureIndex(directory, options.block === true || blockOnRead ? { ...options, block: true } : options);
+    if (!outcome.entry) {
+      const cached = outcome.cached ?? null;
+      const base = cached ? freshnessFields({ ...cached, freshness: "stale", staleAfterMs: engine.STALE_AFTER_MS }) : null;
+      return {
+        ready: false,
+        indexState: outcome.pending,
+        ...base ?? {
+          projectId: null,
+          worktreeId: null,
+          revision: null,
+          fingerprint: null,
+          freshness: "unindexed",
+          observedAtMs: null,
+          generation: null,
+          indexTruncated: false,
+          excludedCount: 0,
+          excludedSample: []
+        },
+        truncated: cached ? cached.indexTruncated === true : false,
+        binding: cached?.binding ?? null,
+        snapshotRoot: cached?.snapshot?.root ?? null,
+        nodeCount: cached?.snapshot.nodes.length ?? 0,
+        edgeCount: cached?.snapshot.edges.length ?? 0,
+        entryCount: cached?.entryCount ?? 0,
+        entryCap: cached?.entryCap ?? defaultMaxEntryFiles
+      };
+    }
+    const entry = outcome.entry;
+    const fields = freshnessFields({
+      ...entry,
+      staleAfterMs: engine.STALE_AFTER_MS,
+      ...outcome.refreshFailed ? { refreshError: outcome.refreshFailed instanceof Error ? outcome.refreshFailed.message : String(outcome.refreshFailed) } : {}
+    });
     return {
-      ...freshnessFields({ ...entry, staleAfterMs: engine.STALE_AFTER_MS }),
+      ready: true,
+      indexState: { state: "ready", error: null, progress: null, startedAtMs: entry.observedAtMs, cancelRequested: false },
+      ...fields,
+      truncated: fields.indexTruncated,
       binding: entry.binding,
+      snapshotRoot: entry.snapshot.root ?? null,
       nodeCount: entry.snapshot.nodes.length,
       edgeCount: entry.snapshot.edges.length,
-      entryCount: entry.entryCount
+      entryCount: entry.entryCount,
+      entryCap: entry.entryCap ?? defaultMaxEntryFiles
     };
+  };
+  const resolveFileId = (entry, rel) => {
+    const nodeById = new Map(entry.snapshot.nodes.map((node) => [node.id, node]));
+    const direct = `file:${rel}`;
+    if (nodeById.has(direct))
+      return direct;
+    let match = null;
+    for (const id of nodeById.keys()) {
+      if (!id.startsWith("file:"))
+        continue;
+      const rest = id.slice("file:".length);
+      if (rest === rel || rest.endsWith(`/${rel}`) || rel.endsWith(`/${rest}`)) {
+        if (match !== null)
+          return null;
+        match = id;
+      }
+    }
+    return match;
   };
   const fileView = (entry, file, limit) => {
     const { snapshot, scope, freshness } = entry;
     const rel = String(file ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
     const fileId = `file:${rel}`;
     const nodeById = new Map(snapshot.nodes.map((node) => [node.id, node]));
-    if (!nodeById.has(fileId)) {
+    const resolvedId = resolveFileId(entry, rel);
+    if (resolvedId === null || !nodeById.has(resolvedId)) {
       return {
         projectId: scope.projectId,
         worktreeId: scope.worktreeId,
@@ -11893,7 +14159,9 @@ ${listing}`), binding: "content" };
         knowledgeIds: [],
         unresolved: [`no definition for ${fileId} in this snapshot`],
         unsupported: [],
-        items: []
+        items: [],
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial"
       };
     }
     const knowledgeByNode = new Map;
@@ -11908,28 +14176,47 @@ ${listing}`), binding: "content" };
         list.push(recordId);
       knowledgeByNode.set(edge.from, list);
     }
-    const toItem = (node, evidence) => ({
-      id: node.id,
-      file: node.file,
-      line: node.line,
-      ...node.name === undefined ? {} : { name: node.name },
-      evidence,
-      confidence: 1,
-      knowledgeIds: knowledgeByNode.get(node.id) ?? []
-    });
-    const items = [];
+    const toItem = (node, evidence) => {
+      const item = {
+        id: node.id,
+        file: node.file,
+        line: node.line,
+        evidence,
+        confidence: 1,
+        knowledgeIds: knowledgeByNode.get(node.id) ?? []
+      };
+      if (node.name !== undefined) {
+        item.name = node.name;
+      }
+      return item;
+    };
+    const FILE_EDGE_RANK = { DEFINES: 0, EXPORTS: 0, IMPORTS: 1, TESTS: 2 };
+    const ranked = [];
+    const subject = nodeById.get(resolvedId);
+    ranked.push({ item: toItem(subject, []), distance: 0, rank: -1 });
     for (const edge of snapshot.edges) {
       if (edge.kind !== "DEFINES" && edge.kind !== "IMPORTS" && edge.kind !== "EXPORTS" && edge.kind !== "TESTS")
         continue;
-      if (edge.from !== fileId && edge.to !== fileId)
+      if (edge.from !== resolvedId && edge.to !== resolvedId)
         continue;
-      const otherId = edge.from === fileId ? edge.to : edge.from;
+      const otherId = edge.from === resolvedId ? edge.to : edge.from;
       const other = nodeById.get(otherId);
       if (!other)
         continue;
-      items.push(toItem(other, [{ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }]));
+      ranked.push({
+        item: toItem(other, [{ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }]),
+        distance: 1,
+        rank: FILE_EDGE_RANK[edge.kind] ?? 3
+      });
     }
-    items.sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    ranked.sort((left, right) => {
+      if (left.distance !== right.distance)
+        return left.distance - right.distance;
+      if (left.rank !== right.rank)
+        return left.rank - right.rank;
+      return left.item.id < right.item.id ? -1 : left.item.id > right.item.id ? 1 : 0;
+    });
+    const items = ranked.map((entry) => entry.item);
     const limited = items.slice(0, limit);
     return {
       projectId: scope.projectId,
@@ -11942,24 +14229,246 @@ ${listing}`), binding: "content" };
       knowledgeIds: [...new Set(limited.flatMap((item) => item.knowledgeIds))],
       unresolved: items.length > limit ? [`truncated to ${limit} of ${items.length} rows`] : [],
       unsupported: [],
-      items: limited
+      items: limited,
+      totals: { displayed: limited.length, known: items.length, hidden: items.length - limited.length },
+      completeness: "complete"
     };
+  };
+  const exploreModules = (entry, limit, directory) => {
+    const { snapshot, scope, freshness } = entry;
+    const rootPrefix = String(directory ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+    const base = {
+      projectId: scope.projectId,
+      worktreeId: scope.worktreeId,
+      revision: scope.revision,
+      fingerprint: scope.fingerprint,
+      freshness
+    };
+    const fileNodes = snapshot.nodes.filter((node) => node.kind === "file");
+    const walkCoverage = entry.coverage ?? null;
+    const walkByModule = walkCoverage?.byModule ?? {};
+    const emptyTotals = { analyzedFiles: 0, unanalyzedFiles: 0, unanalyzedByExtension: {}, excludedFiles: 0 };
+    if (fileNodes.length === 0 && Object.keys(walkByModule).length === 0) {
+      return {
+        ...base,
+        coverage: "unindexed",
+        truncated: false,
+        knowledgeIds: [],
+        unresolved: ["empty index: no files in this snapshot"],
+        unsupported: [],
+        items: [],
+        modules: [],
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial",
+        repositoryTotals: walkCoverage?.totals ?? emptyTotals,
+        skippedDirs: walkCoverage?.skippedDirs ?? [],
+        unreadableDirs: walkCoverage?.unreadableDirs ?? []
+      };
+    }
+    const bucketOf = (file) => {
+      const raw = String(file ?? "").replace(/\\/g, "/");
+      const lower = raw.toLowerCase();
+      const relative = rootPrefix.length > 0 && lower.startsWith(rootPrefix + "/") ? raw.slice(rootPrefix.length + 1) : raw;
+      const segments = relative.split("/").filter((segment) => segment.length > 0);
+      if (segments.length === 0)
+        return "(root)";
+      const first = segments[0];
+      if (/^[a-z]:$/i.test(first)) {
+        return segments.length > 1 ? segments[1] : "(root)";
+      }
+      return segments.length > 1 ? first : "(root)";
+    };
+    const fileIdsByBucket = new Map;
+    const bucketByNodeId = new Map;
+    for (const node of fileNodes) {
+      const bucket = bucketOf(node.file);
+      bucketByNodeId.set(node.id, bucket);
+      let set = fileIdsByBucket.get(bucket);
+      if (!set) {
+        set = new Set;
+        fileIdsByBucket.set(bucket, set);
+      }
+      set.add(node.id);
+    }
+    for (const node of snapshot.nodes) {
+      if (node.kind !== "symbol")
+        continue;
+      bucketByNodeId.set(node.id, bucketOf(node.file));
+    }
+    const names = [...new Set([...fileIdsByBucket.keys(), ...Object.keys(walkByModule)])].sort();
+    const modules = names.map((name) => {
+      const fileIds = fileIdsByBucket.get(name) ?? new Set;
+      const walk = walkByModule[name] ?? emptyTotals;
+      const files = fileNodes.filter((node) => fileIds.has(node.id));
+      const symbols = snapshot.nodes.filter((node) => node.kind === "symbol" && bucketByNodeId.get(node.id) === name).sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+      let symbolCount = 0;
+      let edgeCount = 0;
+      for (const edge of snapshot.edges) {
+        if (edge.kind === "DEFINES" && fileIds.has(edge.from))
+          symbolCount += 1;
+        if (bucketByNodeId.get(edge.from) === name || bucketByNodeId.get(edge.to) === name)
+          edgeCount += 1;
+      }
+      return {
+        name,
+        fileCount: files.length,
+        testFileCount: files.filter((node) => node.isTest === true).length,
+        symbolCount,
+        edgeCount,
+        sampleSymbols: symbols.slice(0, 5).map((node) => {
+          const sample = {
+            id: node.id,
+            file: node.file,
+            line: node.line
+          };
+          if (node.name !== undefined) {
+            sample.name = node.name;
+          }
+          return sample;
+        }),
+        analyzedFiles: walk.analyzedFiles ?? 0,
+        unanalyzedFiles: walk.unanalyzedFiles ?? 0,
+        unanalyzedByExtension: walk.unanalyzedByExtension ?? {},
+        excludedFiles: walk.excludedFiles ?? 0
+      };
+    });
+    const limited = modules.slice(0, limit);
+    const skippedDirs = walkCoverage?.skippedDirs ?? [];
+    const unreadableDirs = walkCoverage?.unreadableDirs ?? [];
+    const unresolved = [
+      ...modules.length > limit ? [`truncated to ${limit} of ${modules.length} modules`] : [],
+      ...unreadableDirs.length > 0 ? [`walk could not read ${unreadableDirs.length} directorie(s): ${unreadableDirs.join(", ")}`] : [],
+      ...skippedDirs.length > 0 ? [`walk skipped generated/vendored directorie(s): ${skippedDirs.join(", ")}`] : []
+    ];
+    return {
+      ...base,
+      coverage: "indexed",
+      truncated: modules.length > limit,
+      knowledgeIds: [],
+      unresolved,
+      unsupported: [],
+      items: [],
+      modules: limited,
+      totals: { displayed: limited.length, known: modules.length, hidden: modules.length - limited.length },
+      completeness: "complete",
+      repositoryTotals: walkCoverage?.totals ?? emptyTotals,
+      skippedDirs,
+      unreadableDirs
+    };
+  };
+  const GRAPH_EDGE_KINDS = new Set(["DEFINES", "IMPORTS", "EXPORTS", "TESTS", "CALLS_STATIC", "CALLS_UNRESOLVED"]);
+  const MAX_GRAPH_NODES = 40;
+  const graphView = (entry, subjectId, limit) => {
+    const nodeById = new Map(entry.snapshot.nodes.map((node) => [node.id, node]));
+    if (!nodeById.has(subjectId)) {
+      return null;
+    }
+    const maxNodes = Math.min(MAX_GRAPH_NODES, Math.max(2, limit));
+    const kept = new Set([subjectId]);
+    let truncated = false;
+    for (const edge of entry.snapshot.edges) {
+      if (!GRAPH_EDGE_KINDS.has(edge.kind))
+        continue;
+      if (edge.from !== subjectId && edge.to !== subjectId)
+        continue;
+      const other = edge.from === subjectId ? edge.to : edge.from;
+      if (kept.has(other) || !nodeById.has(other))
+        continue;
+      if (kept.size >= maxNodes) {
+        truncated = true;
+        continue;
+      }
+      kept.add(other);
+    }
+    const edges = [];
+    for (const edge of entry.snapshot.edges) {
+      if (!GRAPH_EDGE_KINDS.has(edge.kind))
+        continue;
+      if (!kept.has(edge.from) || !kept.has(edge.to))
+        continue;
+      edges.push({ id: edge.id, kind: edge.kind, from: edge.from, to: edge.to, confidence: edge.confidence });
+    }
+    const nodes = [...kept].map((id) => {
+      const node = nodeById.get(id);
+      const row = {
+        id: node.id,
+        kind: node.kind,
+        subject: id === subjectId
+      };
+      if (node.name !== undefined) {
+        row.name = node.name;
+      }
+      if (node.file !== undefined) {
+        row.file = node.file;
+      }
+      if (node.line !== undefined) {
+        row.line = node.line;
+      }
+      return row;
+    });
+    return { subjectId, nodes, edges, truncated };
   };
   const query = async (directory, input = {}) => {
     const engine = await loadEngine();
     const kind = input.kind;
     const limit = input.limit === undefined ? 20 : Math.min(50, Math.max(1, Math.floor(input.limit)));
-    const entry = await ensureIndex(directory, { refresh: input.refresh === true });
+    const rawDepth = Number(input.depth);
+    const depth = Number.isFinite(rawDepth) ? Math.min(3, Math.max(1, Math.floor(rawDepth))) : 1;
+    const outcome = await ensureIndex(directory, { refresh: input.refresh === true, block: blockOnRead });
+    const entry = outcome.entry ?? outcome.cached ?? null;
+    if (!entry) {
+      const pending = outcome.pending ?? { state: "not-indexed" };
+      return {
+        projectId: null,
+        worktreeId: null,
+        revision: null,
+        fingerprint: null,
+        freshness: "unindexed",
+        generation: null,
+        ready: false,
+        indexState: pending,
+        coverage: "unindexed",
+        knowledgeIds: [],
+        unresolved: [`index ${pending.state}: no graph published yet for this directory`],
+        unsupported: [],
+        items: [],
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial",
+        completenessReason: "index-building"
+      };
+    }
+    const indexBuilding = outcome.entry ? null : outcome.pending ?? null;
+    const cacheKey = JSON.stringify([
+      kind,
+      input.symbol ?? null,
+      input.query ?? null,
+      input.target ?? null,
+      input.file ?? null,
+      input.from ?? null,
+      input.to ?? null,
+      input.pathPrefix ?? null,
+      input.language ?? null,
+      input.contentKind ?? null,
+      input.directory ?? null,
+      limit,
+      depth
+    ]);
+    const stored = snapshots.get(directory);
+    const queryCache = stored && stored.buildSeq === entry.buildSeq && stored.queryCache instanceof Map ? stored.queryCache : null;
+    const cachedAnswer = queryCache?.get(cacheKey);
+    if (cachedAnswer !== undefined)
+      return cachedAnswer;
     const options = { scope: entry.scope, freshness: entry.freshness, limit };
+    const reachOptions = { ...options, maxDepth: depth };
     let envelope = null;
     if (kind === "context") {
       if (!input.symbol)
         return { error: "symbol is required for kind=context", status: 400 };
-      envelope = engine.symbolContext(entry.snapshot, input.symbol, options);
+      envelope = engine.symbolContext(entry.snapshot, input.symbol, reachOptions);
     } else if (kind === "impact") {
       if (!input.symbol)
         return { error: "symbol is required for kind=impact", status: 400 };
-      envelope = engine.impact(entry.snapshot, input.symbol, options);
+      envelope = engine.impact(entry.snapshot, input.symbol, reachOptions);
     } else if (kind === "search") {
       if (!input.query)
         return { error: "query is required for kind=search", status: 400 };
@@ -11972,30 +14481,126 @@ ${listing}`), binding: "content" };
       if (!input.file)
         return { error: "file is required for kind=file", status: 400 };
       envelope = fileView(entry, input.file, limit);
+    } else if (kind === "explore") {
+      envelope = exploreModules(entry, limit, directory);
+    } else if (kind === "trace") {
+      if (!input.from || !input.to)
+        return { error: "from and to are required for kind=trace", status: 400 };
+      envelope = engine.trace(entry.snapshot, input.from, input.to, reachOptions);
+    } else if (kind === "content") {
+      if (!input.query)
+        return { error: "query is required for kind=content", status: 400 };
+      const contentOptions = { limit };
+      if (input.pathPrefix !== undefined) {
+        contentOptions.pathPrefix = String(input.pathPrefix);
+      }
+      if (input.language !== undefined) {
+        contentOptions.language = String(input.language);
+      }
+      if (input.contentKind === "test" || input.contentKind === "source") {
+        contentOptions.kind = input.contentKind;
+      }
+      if (input.directory !== undefined) {
+        contentOptions.directory = String(input.directory);
+      }
+      envelope = engine.searchContent(entry.snapshot, input.query, contentOptions);
+    } else if (kind === "unreferenced") {
+      envelope = engine.findUnreferenced(entry.snapshot, options);
     } else {
-      return { error: "kind must be context, impact, search, tests, or file", status: 400 };
+      return { error: "kind must be context, impact, search, content, tests, file, explore, trace, or unreferenced", status: 400 };
+    }
+    const subjectId = kind === "file" ? resolveFileId(entry, String(input.file ?? "").replace(/\\/g, "/").replace(/^\.\//, "")) ?? "" : kind === "context" || kind === "impact" ? String(input.symbol ?? "") : "";
+    const graph = subjectId.length > 0 ? graphView(entry, subjectId, limit) : null;
+    const answer = {
+      ...applyIndexCoverage(envelope, entry),
+      snapshotRoot: entry.snapshot.root ?? null,
+      ...freshnessFields({ ...entry, staleAfterMs: engine.STALE_AFTER_MS }),
+      ...indexBuilding ? { ready: outcome.entry !== undefined, freshness: "stale", indexState: indexBuilding } : { ready: true }
+    };
+    if (graph !== null) {
+      answer.graph = graph;
+    }
+    if (queryCache) {
+      if (queryCache.size >= MAX_CACHED_QUERIES) {
+        queryCache.delete(queryCache.keys().next().value);
+      }
+      queryCache.set(cacheKey, answer);
+    }
+    return answer;
+  };
+  const compareKey = (value) => {
+    const stripped = value.startsWith("\\\\?\\") ? value.slice(4) : value;
+    const slashed = stripped.replace(/\\/g, "/").replace(/\/$/, "");
+    return process.platform === "win32" ? slashed.toLowerCase() : slashed;
+  };
+  const isInside = (parent, child) => {
+    const parentKey = compareKey(path.resolve(parent));
+    const childKey = compareKey(path.resolve(child));
+    return childKey === parentKey || childKey.startsWith(`${parentKey}/`);
+  };
+  const resolveFile = async (directory, file) => {
+    const raw = isString(file) ? file.trim() : "";
+    if (raw.length === 0) {
+      return { ok: false, reason: "missing-file-id" };
+    }
+    const relative = raw;
+    const outcome = await ensureIndex(directory, { block: blockOnRead });
+    const entry = outcome.entry ?? outcome.cached ?? null;
+    if (!entry) {
+      return { ok: false, reason: "index-not-ready", indexState: outcome.pending ?? { state: "not-indexed" }, snapshotRoot: null };
+    }
+    const snapshotRoot = entry.snapshot.root ?? null;
+    const isAbsoluteId = /^[a-zA-Z]:[\\/]/.test(relative) || relative.startsWith("\\\\") || relative.startsWith("/");
+    if (!isAbsoluteId && !snapshotRoot) {
+      return { ok: false, reason: "no-snapshot-root" };
+    }
+    const candidate = isAbsoluteId ? path.resolve(relative) : path.resolve(snapshotRoot, relative);
+    if (!isAbsoluteId && !isInside(snapshotRoot, candidate)) {
+      return { ok: false, reason: "outside-snapshot-root" };
+    }
+    let real;
+    try {
+      real = await fsPromises.realpath(candidate);
+    } catch {
+      return { ok: false, reason: "missing", snapshotRoot, candidate };
+    }
+    let projectReal;
+    try {
+      projectReal = await fsPromises.realpath(directory);
+    } catch {
+      projectReal = path.resolve(directory);
+    }
+    if (!isInside(projectReal, real)) {
+      return { ok: false, reason: "outside-project", snapshotRoot, candidate: real };
     }
     return {
-      ...envelope,
-      ...freshnessFields({ ...entry, staleAfterMs: engine.STALE_AFTER_MS })
+      ok: true,
+      absolute: real,
+      projectRelative: path.relative(projectReal, real).replace(/\\/g, "/"),
+      snapshotRoot
     };
   };
   return {
     normalizeDirectory,
     deriveScopeIds,
     readIndex,
-    query
+    query,
+    resolveFile,
+    indexState,
+    cancelIndex,
+    awaitIndex,
+    seedSnapshot
   };
 };
 
-// Alwork/packages/omo-engine/memory-core/src/project-knowledge/record.ts
+// ../../../omo-engine/memory-core/src/project-knowledge/record.ts
 import { createHash as createHash3 } from "node:crypto";
 
-// Alwork/packages/omo-engine/memory-core/src/fs/resilient.ts
+// ../../../omo-engine/memory-core/src/fs/resilient.ts
 import * as fsSync from "node:fs";
 import * as fsp from "node:fs/promises";
 
-// Alwork/packages/omo-engine/memory-core/src/fs/retry.ts
+// ../../../omo-engine/memory-core/src/fs/retry.ts
 var EINTR_RETRY_CAP = 128;
 function fsErrorCode(error) {
   if (!(error instanceof Error) || !("code" in error))
@@ -12023,10 +14628,10 @@ function retryOnEintrSync(operation) {
   }
 }
 
-// Alwork/packages/omo-engine/memory-core/src/fs/rename-contention.ts
+// ../../../omo-engine/memory-core/src/fs/rename-contention.ts
 var CONTENTION_CODES = new Set(["EPERM", "EBUSY", "EACCES"]);
 
-// Alwork/packages/omo-engine/memory-core/src/fs/resilient.ts
+// ../../../omo-engine/memory-core/src/fs/resilient.ts
 function isFunction(value) {
   return typeof value === "function";
 }
@@ -12091,11 +14696,11 @@ var {
   writeSync: writeSync2
 } = sync;
 
-// Alwork/packages/omo-engine/memory-core/src/git/config-lock.ts
+// ../../../omo-engine/memory-core/src/git/config-lock.ts
 var mutationQueues = new Map;
-// Alwork/packages/omo-engine/memory-core/src/git/path-state.ts
+// ../../../omo-engine/memory-core/src/git/path-state.ts
 var INDEX_MODES = new Set(["100644", "100755"]);
-// Alwork/packages/omo-engine/memory-core/src/sync/redact.ts
+// ../../../omo-engine/memory-core/src/sync/redact.ts
 var SECRET_VALUE_TAIL = `[^\\s"'<>,}\\])]`;
 var SECRET_PATTERN_SOURCES = [
   ["aws_access_key", "\\bAKIA[0-9A-Z]{16}\\b", ""],
@@ -12203,9 +14808,9 @@ function findPemBlock(value, from = 0) {
   return;
 }
 
-// Alwork/packages/omo-engine/memory-core/src/git/worktree-mutation-queue.ts
+// ../../../omo-engine/memory-core/src/git/worktree-mutation-queue.ts
 var worktreeMutationQueues = new Map;
-// Alwork/packages/omo-engine/memory-core/src/sync/mirror.ts
+// ../../../omo-engine/memory-core/src/sync/mirror.ts
 var CONFIG_KEY = "omo.memoryRepository.url";
 var LOG_NAME = "memory-repository-push.log";
 var SYNC_PUSH_ENV = "OMO_MEMORY_PUSH_SYNC";
@@ -12241,7 +14846,7 @@ exit 0
 `;
 }
 
-// Alwork/packages/omo-engine/memory-core/src/memfs/hooks-scripts.ts
+// ../../../omo-engine/memory-core/src/memfs/hooks-scripts.ts
 var HOOK_SECRET_PATTERNS = [
   { class: "aws_access_key", ere: "(^|[^A-Za-z0-9_])AKIA[0-9A-Z]{16}([^A-Za-z0-9_]|$)" },
   {
@@ -12434,7 +15039,7 @@ fi
 exit 0
 `;
 var POST_COMMIT_HOOK_SCRIPT = getPostCommitHookScript();
-// Alwork/packages/omo-engine/memory-core/src/memfs/frontmatter-scalar.ts
+// ../../../omo-engine/memory-core/src/memfs/frontmatter-scalar.ts
 var FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 var DOUBLE_QUOTED_JSON_RE = /^"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"$/;
 var SINGLE_QUOTED_RE = /^'(?:[^']|'')*'$/;
@@ -12455,7 +15060,7 @@ function decodeScalarSource(raw) {
   return decodeQuotedScalar(raw) ?? raw;
 }
 
-// Alwork/packages/omo-engine/memory-core/src/memfs/frontmatter.ts
+// ../../../omo-engine/memory-core/src/memfs/frontmatter.ts
 class FrontmatterError extends Error {
   name = "FrontmatterError";
 }
@@ -12526,7 +15131,7 @@ function parseAliases(value, rawLine) {
   }
   return parsed;
 }
-// Alwork/packages/omo-engine/memory-core/src/project-knowledge/record.ts
+// ../../../omo-engine/memory-core/src/project-knowledge/record.ts
 var PROJECT_KNOWLEDGE_DIR = "project-knowledge";
 var RECORD_FILE_EXTENSION = ".md";
 var MAX_CLAIM_CHARS = 500;
@@ -12853,7 +15458,7 @@ class ProjectKnowledgeStore {
   }
 }
 
-// Alwork/packages/omo-engine/memory-core/src/recall/planner.ts
+// ../../../omo-engine/memory-core/src/recall/planner.ts
 var MAX_RECALL_QUERIES = 4;
 var MAX_SINGLE_TERMS = 2;
 var MAX_TOOL_SINGLE_TERMS = 2;
@@ -13192,7 +15797,7 @@ function planPhrases(tokenLists) {
   return phrases.slice(0, MAX_PHRASES);
 }
 
-// Alwork/packages/omo-engine/memory-core/src/search/query.ts
+// ../../../omo-engine/memory-core/src/search/query.ts
 function normalizeText(value) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -13259,11 +15864,11 @@ function matchScoreNormalized(haystack, query) {
   }
   return score;
 }
-// Alwork/packages/omo-engine/memory-core/src/search/engine.ts
+// ../../../omo-engine/memory-core/src/search/engine.ts
 var EPOCH = new Date(0).toISOString();
-// Alwork/packages/omo-engine/memory-core/src/search/senpi-session-provider.ts
+// ../../../omo-engine/memory-core/src/search/senpi-session-provider.ts
 var EXCLUDED_CUSTOM_TYPES = new Set(["omo-kibitzer:recall", "omo-memorian:recall", "omo-memory:notice"]);
-// Alwork/packages/omo-engine/memory-core/src/recall/english-stem.ts
+// ../../../omo-engine/memory-core/src/recall/english-stem.ts
 var ASCII_WORD = /^[a-z]+$/;
 var VOWEL = /[aeiouy]/;
 var DOUBLED_CONSONANT = /([^aeiouylsz])\1$/;
@@ -13305,7 +15910,7 @@ function stemEnglishToken(token) {
   return word.length > 3 && word.endsWith("e") ? word.slice(0, -1) : word;
 }
 
-// Alwork/packages/omo-engine/memory-core/src/recall/bm25.ts
+// ../../../omo-engine/memory-core/src/recall/bm25.ts
 var K1 = 1.5;
 var B = 0.75;
 var CJK_CLASS = "\\p{Script=Hangul}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\u30fc";
@@ -13349,7 +15954,7 @@ function recallTerms(text) {
   return tokenizeRecallText(text).map(stemEnglishToken);
 }
 var INDEXES = new WeakMap;
-function indexFor(documents) {
+function indexFor2(documents) {
   const cached = INDEXES.get(documents);
   if (cached !== undefined)
     return cached;
@@ -13403,7 +16008,7 @@ function rankRecallDocumentsBm25(documents, queries, expansions) {
   const queryTerms = [...new Set(queries.flatMap(recallTerms))];
   if (queryTerms.length === 0 || documents.length === 0)
     return [];
-  const index = indexFor(documents);
+  const index = indexFor2(documents);
   const averageLength = index.averageLength > 0 ? index.averageLength : 1;
   const termScore = (term, frequencies, length) => {
     const frequency = frequencies.get(term);
@@ -13444,7 +16049,7 @@ function rankRecallDocumentsBm25(documents, queries, expansions) {
   return [...fullMatches.sort(byScore).map(({ document, score }) => ({ document, score: score + lift, fullMatch: true })), ...ranked];
 }
 
-// Alwork/packages/omo-engine/memory-core/src/recall/haystack.ts
+// ../../../omo-engine/memory-core/src/recall/haystack.ts
 var NORMALIZED_HAYSTACKS = new WeakMap;
 function normalizedHaystack(document) {
   const cached = NORMALIZED_HAYSTACKS.get(document);
@@ -13456,7 +16061,7 @@ ${document.body}`);
   return haystack;
 }
 
-// Alwork/packages/omo-engine/memory-core/src/recall/strategy.ts
+// ../../../omo-engine/memory-core/src/recall/strategy.ts
 var CJK_CORPUS_MIN_SHARE = 0.1;
 var LARGE_CORPUS_MIN_DOCUMENTS = 200;
 var CJK_CHARACTER = new RegExp(`[${CJK_CLASS}]`, "u");
@@ -13489,7 +16094,7 @@ function chooseRecallStrategy(documents, queries) {
   return "substring";
 }
 
-// Alwork/packages/omo-engine/memory-core/src/recall/select.ts
+// ../../../omo-engine/memory-core/src/recall/select.ts
 var EXCERPT_CHARS = 200;
 var RRF_K = 60;
 function expansionTexts(expansions) {
@@ -13673,7 +16278,7 @@ function buildExcerpt(body, terms, ...fallbackTerms) {
   return normalized.slice(clampedStart, end).trim();
 }
 
-// Alwork/packages/omo-engine/memory-core/src/project-knowledge/budget.ts
+// ../../../omo-engine/memory-core/src/project-knowledge/budget.ts
 var KNOWLEDGE_BLOCK_MAX_BYTES = 4096;
 var KNOWLEDGE_BLOCK_MAX_RECORDS = 12;
 var HYPOTHESIS_CAP = 1;
@@ -13758,7 +16363,7 @@ ${renderBlockEntry(entry)}`).length;
   return { included: kept, dropped, text: rendered.text, bytes: rendered.bytes };
 }
 
-// Alwork/packages/omo-engine/memory-core/src/project-knowledge/retrieve.ts
+// ../../../omo-engine/memory-core/src/project-knowledge/retrieve.ts
 var TASK_RELEVANCE_WEIGHT = 0.4;
 var SOURCE_AUTHORITY_WEIGHT = 0.25;
 var FRESHNESS_WEIGHT = 0.15;
@@ -13864,7 +16469,7 @@ function retrieveProjectKnowledge(records, request) {
   return { ranked, purgedSecretIds, budget: applyBudget(budgeted) };
 }
 
-// Alwork/packages/omo-engine/memory-core/src/project-knowledge/validator.ts
+// ../../../omo-engine/memory-core/src/project-knowledge/validator.ts
 function validatedAgeMs(record, nowMs) {
   if (record.validatedAt === undefined)
     return;
@@ -13886,7 +16491,7 @@ function evaluateFreshness(record, headRevision, nowMs) {
   };
 }
 
-// Alwork/packages/extensions/dag-pane/service/handlers.js
+// handlers.js
 var DAG_SERVICE_NAME = "alcode-builtin-dag-pane";
 var DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX = "omo-dag-snapshots";
 var DAG_SERVICE_MAX_BODY_BYTES = 1e6;
@@ -13898,7 +16503,7 @@ var DAG_DEBUG_HOOK_PATTERN = "(?:ultrawork|ulw)";
 var defaultServiceSnapshotDir = (tmpdir = osTmpdir, join = joinPath) => join(tmpdir(), DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX);
 var isNonEmptyString2 = (value) => (value?.trim?.() ?? "").length > 0;
 var asString = (value) => value?.trim?.() ?? "";
-var isRecord2 = (value) => Object(value) === value && !Array.isArray(value);
+var isRecord3 = (value) => Object(value) === value && !Array.isArray(value);
 var DAG_LOOP_RUNS_MAX = 50;
 var DAG_LOOP_PLAN_MAX_BYTES = 262144;
 var isSafeSessionId = (value) => {
@@ -13955,17 +16560,17 @@ var projectRunsDir = (directory) => `${directory.trim().replace(/[/\\]+$/, "")}/
 var projectLiveRunPath = (directory, sessionId) => `${projectRunsDir(directory)}/${sessionId}.snapshot.json`;
 var projectRunHistoryDir = (directory, sessionId) => `${projectRunsDir(directory)}/${DAG_RUN_HISTORY_DIRNAME}/${sessionId}`;
 var readPostedRunDoc = (doc) => {
-  if (!isRecord2(doc))
+  if (!isRecord3(doc))
     return null;
   if (doc.schemaVersion !== 1)
     return null;
   const sessionId = asString(doc.sessionId);
   if (!isSafeSessionId(sessionId))
     return null;
-  const dag = isRecord2(doc.dag) ? doc.dag : null;
+  const dag = isRecord3(doc.dag) ? doc.dag : null;
   if (!dag || !Array.isArray(dag.runs) || dag.runs.length === 0)
     return null;
-  const run = isRecord2(dag.runs[0]) ? dag.runs[0] : null;
+  const run = isRecord3(dag.runs[0]) ? dag.runs[0] : null;
   if (!run)
     return null;
   if (!isNonEmptyString2(run.run_id) || !isNonEmptyString2(run.run_key) || !isNonEmptyString2(run.name) || !isNonEmptyString2(run.status))
@@ -14093,7 +16698,7 @@ var readLoopPlan = (fs, directory, sessionId) => {
     if (!stat.isFile() || stat.size > DAG_LOOP_PLAN_MAX_BYTES)
       return null;
     const parsed = JSON.parse(fs.readFileSync(planPath, "utf8"));
-    if (!isRecord2(parsed))
+    if (!isRecord3(parsed))
       return null;
     return parsed;
   } catch {
@@ -14149,7 +16754,7 @@ var readLoopGoalsPlan = (fs, directory, sessionId) => {
     } catch {
       continue;
     }
-    if (!isRecord2(parsed) || !Array.isArray(parsed.goals))
+    if (!isRecord3(parsed) || !Array.isArray(parsed.goals))
       continue;
     return parsed;
   }
@@ -14175,7 +16780,7 @@ var readLoopWorkerEntries = (fs, directory, sessionId) => {
     } catch {
       continue;
     }
-    if (!isRecord2(parsed))
+    if (!isRecord3(parsed))
       continue;
     const kind = asString(parsed.kind);
     if (!DAG_LOOP_WORKER_KINDS.includes(kind))
@@ -14253,7 +16858,7 @@ var projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
   const title = (asString(plan?.title) || asString(plan?.goal).split(`
 `)[0] || goalsBriefTitle || sessionId).slice(0, 120);
   const goalsPlan = readLoopGoalsPlan(fs, directory, sessionId);
-  const goalRecords = Array.isArray(goalsPlan?.goals) ? goalsPlan.goals.filter(isRecord2) : [];
+  const goalRecords = Array.isArray(goalsPlan?.goals) ? goalsPlan.goals.filter(isRecord3) : [];
   if (goalRecords.length > 0) {
     const childNodes = goalRecords.map((goal, index) => {
       const id = asString(goal.id) || `goal-${index + 1}`;
@@ -14278,7 +16883,7 @@ var projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
         workersByGoal.set(goalId, []);
       workersByGoal.get(goalId).push(worker.id);
     }
-    const aggregateDone = isRecord2(goalsPlan?.aggregateCompletion) && goalsPlan.aggregateCompletion.status === "complete";
+    const aggregateDone = isRecord3(goalsPlan?.aggregateCompletion) && goalsPlan.aggregateCompletion.status === "complete";
     const allChildrenComplete = childNodes.every((node) => node.state === "completed");
     const anyChildFailed = childNodes.some((node) => node.state === "failed");
     const anyChildRunning = childNodes.some((node) => node.state === "running");
@@ -14400,7 +17005,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
     }),
     codeGraphRuntime = null
   } = dependencies;
-  const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime({ fsPromises: nodeFsPromises, path: nodePath });
+  const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime({ fsPromises: nodeFsPromises, path: nodePath }, { blockOnRead: true });
   try {
     fs.mkdirSync(snapshotDir, { recursive: true });
   } catch {}
@@ -14474,7 +17079,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
       }
       const runs = Array.isArray(doc?.dag?.runs) ? doc.dag.runs : [];
       const run = runs[0] ?? null;
-      if (!isRecord2(run)) {
+      if (!isRecord3(run)) {
         skipped += 1;
         continue;
       }
@@ -14498,7 +17103,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
       for (const sessionId of listLoopSessionIds(fs, trimmedDirectory)) {
         const projected = projectLoopSnapshot(fs, trimmedDirectory, sessionId, false);
         const run = projected?.dag?.runs?.[0] ?? null;
-        if (!isRecord2(run))
+        if (!isRecord3(run))
           continue;
         const status = asString(run.status);
         if (status !== "completed" && status !== "failed")
@@ -15112,7 +17717,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
   return { handleRequest, live };
 };
 
-// Alwork/packages/extensions/dag-pane/service/main.js
+// server.js
 var port = Number.parseInt(process.env.ALCODE_SERVICE_PORT ?? process.env.OPENCHAMBER_SERVICE_PORT ?? "", 10);
 var token = process.env.ALCODE_SERVICE_TOKEN ?? process.env.OPENCHAMBER_SERVICE_TOKEN ?? "";
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -15136,7 +17741,7 @@ var readBody = (request) => new Promise((resolve, reject) => {
     }
     chunks.push(chunk);
   });
-  request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+  request.on("end", () => resolve(Buffer3.concat(chunks).toString("utf8")));
   request.on("error", reject);
 });
 var server = http.createServer(async (request, response) => {

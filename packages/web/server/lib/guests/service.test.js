@@ -41,6 +41,18 @@ http.createServer((req, res) => {
     res.end(JSON.stringify({ pong: true }));
     return;
   }
+  if (req.url === '/env') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      OMO_BUN_PATH: process.env.OMO_BUN_PATH ?? null,
+      OMO_WRAPPER_PATH: process.env.OMO_WRAPPER_PATH ?? null,
+      OMO_ENGINE_ROOT: process.env.OMO_ENGINE_ROOT ?? null,
+      OMO_UNLISTED: process.env.OMO_UNLISTED ?? null,
+      PROBE_SECRET_TOKEN: process.env.PROBE_SECRET_TOKEN ?? null,
+      hasPath: typeof process.env.PATH === 'string',
+    }));
+    return;
+  }
   res.writeHead(404);
   res.end('missing');
 }).listen(port, '127.0.0.1');
@@ -130,6 +142,56 @@ describe('guest service proxy', () => {
       expect(getServiceStatus('docker')).toBe('stopped');
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('service env passes named OMO paths and keeps secrets out', async () => {
+    const { dir, persistPath, packageRoot } = await writeFixture();
+    const saved = {
+      OMO_BUN_PATH: process.env.OMO_BUN_PATH,
+      OMO_WRAPPER_PATH: process.env.OMO_WRAPPER_PATH,
+      OMO_ENGINE_ROOT: process.env.OMO_ENGINE_ROOT,
+      OMO_UNLISTED: process.env.OMO_UNLISTED,
+      PROBE_SECRET_TOKEN: process.env.PROBE_SECRET_TOKEN,
+    };
+    process.env.OMO_BUN_PATH = 'C:\\tools\\bun\\bun.exe';
+    process.env.OMO_WRAPPER_PATH = 'C:\\engine\\bin\\oh-my-opencode.js';
+    process.env.OMO_ENGINE_ROOT = 'C:\\engine';
+    process.env.OMO_UNLISTED = 'must-not-pass';
+    process.env.PROBE_SECRET_TOKEN = 'must-not-pass';
+    try {
+      await setCapabilityGrants('docker', persistPath, ['service']);
+      const result = await proxyGuestServiceRequest({
+        guestId: 'docker',
+        packageRoot,
+        service: {
+          entry: 'service/main.js',
+          permissions: { exec: ['docker'] },
+        },
+        granted: ['service'],
+        persistPath,
+        method: 'GET',
+        path: '/env',
+      });
+      expect(result.status).toBe(200);
+      expect(JSON.parse(result.body)).toEqual({
+        OMO_BUN_PATH: 'C:\\tools\\bun\\bun.exe',
+        OMO_WRAPPER_PATH: 'C:\\engine\\bin\\oh-my-opencode.js',
+        OMO_ENGINE_ROOT: 'C:\\engine',
+        OMO_UNLISTED: null,
+        PROBE_SECRET_TOKEN: null,
+        hasPath: true,
+      });
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      // Windows keeps the spawned fixture child on the temp dir briefly
+      // after stop; stop first, then retry the removal instead of
+      // failing the test on that lock.
+      await stopGuestService('docker');
+      await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 

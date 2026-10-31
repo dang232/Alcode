@@ -95,6 +95,33 @@ describe("goal admission", () => {
     if (adopt.ok) throw new Error("expected corrupt-state refusal");
     expect(adopt.code).toBe("OMO_LOOP_DRIVER_STATE_CORRUPT");
   });
+
+  test("a CLI-owned ledger (kind rows, no seq/event) is refused with the ledger untouched", () => {
+    const cases = [
+      `{"at":"2026-01-01T00:00:00.000Z","kind":"goal_started"}\n{"at":"2026-01-01T00:01:00.000Z","kind":"plan_created"}\n`,
+      "CORRUPT{{{\n",
+    ];
+    for (const cliLedger of cases) {
+      const loopSrc = stateDir();
+      fs.writeFileSync(path.join(loopSrc, "ledger.jsonl"), cliLedger);
+      const before = fs.readdirSync(loopSrc);
+      const refused = startLoopGoal({ ...OWNER, loopSrc, goal: "takeover", totalSteps: 1 });
+      if (refused.ok) throw new Error("expected foreign-ledger refusal");
+      expect(refused.code).toBe("OMO_LOOP_DRIVER_STATE_CORRUPT");
+      expect(fs.readFileSync(path.join(loopSrc, "ledger.jsonl"), "utf8")).toBe(cliLedger);
+      expect(fs.readdirSync(loopSrc)).toEqual(before);
+    }
+  });
+
+  test("an empty or driver-shaped ledger still starts (live-caller path unchanged)", () => {
+    for (const seed of ["", "   \n", `{"seq":1,"event":"started","at":"2026-01-01T00:00:00.000Z"}\n`]) {
+      const loopSrc = stateDir();
+      if (seed !== "") fs.writeFileSync(path.join(loopSrc, "ledger.jsonl"), seed);
+      const started = startLoopGoal({ ...OWNER, loopSrc, goal: "fresh", totalSteps: 1 });
+      if (!started.ok) throw new Error(`expected start: ${started.code}`);
+      expect(ledgerEvents(loopSrc)).toEqual(["started"]);
+    }
+  });
 });
 
 describe("iteration contract", () => {

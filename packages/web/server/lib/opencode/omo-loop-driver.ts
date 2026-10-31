@@ -326,6 +326,12 @@ export function startLoopGoal(args: LoopDriverStart): LoopDriverStartOk | LoopDr
   if (readPlan(loopSrc) !== null) {
     return fail("OMO_LOOP_DRIVER_STATE_CORRUPT", "Unowned plan state here: refusing to adopt it.");
   }
+  // startLoopGoal truncates ledger.jsonl below: refuse when the existing
+  // ledger is not driver-owned (CLI `kind` rows, unparseable lines, or an
+  // oversize file), so a shared session dir's audit trail is never destroyed.
+  if (readLedgerTail(loopSrc, Number.MAX_SAFE_INTEGER).malformed) {
+    return fail("OMO_LOOP_DRIVER_STATE_CORRUPT", "Foreign ledger state here: refusing to overwrite it.");
+  }
   try {
     fs.mkdirSync(loopSrc, { recursive: true });
   } catch {

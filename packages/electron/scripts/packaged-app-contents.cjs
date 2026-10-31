@@ -41,7 +41,16 @@ const REQUIRED_UNPACKED_FILES = [
   `${WEB_PACKAGE}/server/lib/git/credential-helper.js`,
   `${WEB_PACKAGE}/server/lib/git/ssh-wrapper.js`,
   `${WEB_PACKAGE}/server/lib/git/repository-credential-helper.js`,
+  // The DAG pane's native companions must ship beside its service, unpacked:
+  // the plain-JS worker plus the compiled engine barrel. A service without
+  // them probes OMO_ENGINE_ABSENT on machines with no bun and no checkout.
+  `${WEB_PACKAGE}/server/built-in-extensions/dag-pane/service/worker.js`,
+  `${WEB_PACKAGE}/server/built-in-extensions/dag-pane/service/vendor/omo-engine/omo-opencode/src/cli/run/index.js`,
 ];
+
+// The staged loop CLI must ship complete: without dist/cli.js the managed
+// env gets no OMO_ULW_LOOP_CLI and loop agents die on an asar guess.
+const ULW_LOOP_CLI_FILES = ['dist/cli.js', 'resolve-ulw-loop-cli.mjs', 'directive.md'];
 
 /**
  * Lists the files recorded in an asar header.
@@ -112,6 +121,11 @@ const verifyPackagedAppContents = (resourcesPath) => {
   const ripgrep = path.join(resourcesPath, 'ripgrep', RIPGREP_BINARY);
   if (!fs.existsSync(ripgrep)) {
     problems.push(`${ripgrep} is missing; run prepare:ripgrep before packaging`);
+  }
+  for (const file of ULW_LOOP_CLI_FILES) {
+    if (!fs.existsSync(path.join(resourcesPath, 'ulw-loop-cli', file))) {
+      problems.push(`resources/ulw-loop-cli/${file} is missing; run prepare:ulw-loop-cli before packaging`);
+    }
   }
   if (problems.length > 0) {
     throw new Error(`Packaged app contents check failed for ${asarPath}:\n- ${problems.join('\n- ')}`);

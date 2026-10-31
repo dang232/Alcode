@@ -10824,28 +10824,12 @@ function indexedEvidence(node) {
   return { edge: "indexed", ref: `${node.file}:${node.line}`, confidence: 1 };
 }
 function knowledgeIdsFor(snapshot, nodeIds) {
+  const index = indexFor(snapshot);
   const byNode = new Map;
-  const knowledgeTargets = new Map;
-  for (const node of snapshot.nodes) {
-    if (node.kind === "knowledge-link" && node.target !== undefined) {
-      knowledgeTargets.set(node.id, node.target);
-    }
-  }
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "LINKS_KNOWLEDGE")
-      continue;
-    if (!nodeIds.has(edge.from))
-      continue;
-    const recordId = knowledgeTargets.get(edge.to);
-    if (recordId === undefined)
-      continue;
-    const list = byNode.get(edge.from);
-    if (list) {
-      if (!list.includes(recordId))
-        list.push(recordId);
-    } else {
-      byNode.set(edge.from, [recordId]);
-    }
+  for (const id of nodeIds) {
+    const ids = index.knowledgeByFrom.get(id);
+    if (ids !== undefined)
+      byNode.set(id, [...ids]);
   }
   return byNode;
 }
@@ -11111,7 +11095,28 @@ function indexFor(snapshot) {
     else
       to.push(edge);
   }
-  const built = { nodeById, edgesByFrom, edgesByTo };
+  const knowledgeTargets = new Map;
+  for (const node of snapshot.nodes) {
+    if (node.kind === "knowledge-link" && node.target !== undefined) {
+      knowledgeTargets.set(node.id, node.target);
+    }
+  }
+  const knowledgeByFrom = new Map;
+  for (const edge of snapshot.edges) {
+    if (edge.kind !== "LINKS_KNOWLEDGE")
+      continue;
+    const recordId = knowledgeTargets.get(edge.to);
+    if (recordId === undefined)
+      continue;
+    const list = knowledgeByFrom.get(edge.from);
+    if (list) {
+      if (!list.includes(recordId))
+        list.push(recordId);
+    } else {
+      knowledgeByFrom.set(edge.from, [recordId]);
+    }
+  }
+  const built = { nodeById, edgesByFrom, edgesByTo, knowledgeTargets, knowledgeByFrom };
   snapshotIndexes.set(snapshot, built);
   return built;
 }
@@ -11356,6 +11361,10 @@ function impact(snapshot, symbolId, options) {
           edgeBudgetHit = true;
           break;
         }
+        if (Date.now() >= deadlineMs) {
+          timeBudgetHit = true;
+          break;
+        }
         if (seen.has(caller.id))
           continue;
         seen.add(caller.id);
@@ -11366,10 +11375,10 @@ function impact(snapshot, symbolId, options) {
         if (caller.kind === "symbol")
           next.push(caller.id);
       }
-      if (edgeBudgetHit)
+      if (edgeBudgetHit || timeBudgetHit)
         break;
     }
-    if (edgeBudgetHit)
+    if (edgeBudgetHit || timeBudgetHit)
       break;
     frontier = next;
   }

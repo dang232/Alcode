@@ -567,3 +567,73 @@ describe("code-graph query totals and summaries", () => {
     expect(result.completenessReason).toBe("result-limit");
   });
 });
+
+describe("code-graph impact knowledge links and time budget", () => {
+  const caller = (n: number): GraphNode => ({
+    id: `fn:caller${n}@b.ts`,
+    kind: "symbol",
+    file: "b.ts",
+    line: n,
+    name: `caller${n}`,
+  });
+  const callEdge = (n: number): GraphEdge => ({
+    id: `call-${n}`,
+    kind: "CALLS_STATIC",
+    from: `fn:caller${n}@b.ts`,
+    to: "fn:core@a.ts",
+    confidence: 1,
+    ref: `b.ts:${n}`,
+  });
+  const wideSnapshot = (callerCount: number): GraphSnapshot => ({
+    nodes: [
+      { id: "fn:core@a.ts", kind: "symbol", file: "a.ts", line: 1, name: "core" },
+      ...Array.from({ length: callerCount }, (_, index) => caller(index + 1)),
+      { id: "kl-1", kind: "knowledge-link", file: "notes/pk.md", line: 1, target: "pk-1" },
+    ],
+    edges: [
+      ...Array.from({ length: callerCount }, (_, index) => callEdge(index + 1)),
+      { id: "link-1", kind: "LINKS_KNOWLEDGE", from: "fn:caller1@b.ts", to: "kl-1", confidence: 1, ref: "b.ts:1" },
+    ],
+  });
+
+  it("#given knowledge links #when impact runs #then caller rows carry their record ids", () => {
+    // given: one caller linked to a knowledge record, one unlinked
+    const snapshot = wideSnapshot(2);
+
+    // when
+    const result = impact(snapshot, "fn:core@a.ts", options({ maxDepth: 1, limit: 10 }));
+
+    // then: the linked caller carries pk-1, the unlinked caller carries none
+    const linked = result.items.find((item) => item.id === "fn:caller1@b.ts");
+    const plain = result.items.find((item) => item.id === "fn:caller2@b.ts");
+    expect(linked?.knowledgeIds).toEqual(["pk-1"]);
+    expect(plain?.knowledgeIds).toEqual([]);
+  });
+
+  it("#given a blown budget inside one wide level #when impact runs #then it stops mid-level with a time-budget note", () => {
+    // given: twenty callers behind one subject, and a clock that jumps past
+    // the budget mid-level. The jump placement is generous (call 12 of ~22
+    // setup-plus-level calls) so stray reads cannot move it out of the level.
+    const snapshot = wideSnapshot(20);
+    const realNow = Date.now;
+    let calls = 0;
+    Date.now = () => {
+      calls += 1;
+      return calls < 12 ? 1000 : 5000;
+    };
+    try {
+      // when
+      const result = impact(
+        snapshot,
+        "fn:core@a.ts",
+        options({ maxDepth: 2, maxQueryMs: 500, maxExploredEdges: 100000, limit: 100 }),
+      );
+
+      // then: the walk stopped early with the budget named, not silently whole
+      expect(result.totals?.known ?? 999).toBeLessThan(20);
+      expect(result.unresolved.some((note) => note.includes("time budget"))).toBe(true);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+});

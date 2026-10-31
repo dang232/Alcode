@@ -41,11 +41,23 @@ export type UlwRunIntent = {
 }
 
 /**
+ * The order written as prose: a leading `mass ulw <task>` or a closing
+ * `<task> ... mass ulw`. Both are matched word-bound and only in directive
+ * position, so the phrase inside a sentence stays plain chat.
+ */
+const MASS_ULW_LEADING = /^\s*mass\s+ulw\b([\s\S]*)$/i
+const MASS_ULW_CLOSING = /(?:^|\s)mass\s+ulw\s*[.!?]*$/i
+
+/**
  * Resolve run intent the way the old fallback did: rewrite a leading
  * word-bound `ulw` to the `/ulw` slash form, then accept only when the head
  * names `ulw` (trailing command punctuation stripped, so `ulw: ...`
  * counts). Anything else — mid-sentence mentions, lookalikes (`ulwazi`,
  * `soulwork`, `ulw-blah`), other slash commands, plain chat — is not a run.
+ *
+ * `mass ulw` is the same order in prose and starts a run too, because that
+ * is how the request is actually typed on the composer. The brief is the
+ * text around the directive, so the model receives the task itself.
  */
 export const resolveUlwRunIntent = (
   content: string,
@@ -53,6 +65,14 @@ export const resolveUlwRunIntent = (
 ): UlwRunIntent | null => {
   if (inputMode === 'shell') return null
   const text = content ?? ''
+  const leadingDirective = MASS_ULW_LEADING.exec(text)
+  if (leadingDirective !== null) {
+    return { args: leadingDirective[1].replace(/^[\s:;,.!?]+/, '').trim() }
+  }
+  const closingDirective = MASS_ULW_CLOSING.exec(text)
+  if (closingDirective !== null) {
+    return { args: text.slice(0, closingDirective.index).trim() }
+  }
   const bareUlwArguments = text.match(/^\s*ulw\b([\s\S]*)$/i)?.[1]
   const slashContent = bareUlwArguments === undefined ? text : `/ulw${bareUlwArguments}`
   if (!slashContent.startsWith("/")) return null
@@ -143,7 +163,7 @@ export type UlwNativeRunResult = {
  * the same lifecycle the DAG reads.
  */
 export const buildUlwRunProcedure = (runId: string): string => (
-  `ULW run ${runId}: drive the loop with native tools only — exact operations, no discovery calls. Register ALL goals in ONE ulw_goal_create call with complete per-goal briefs. Dispatch the full roster in ONE ulw_dispatch call. Then wait with a SINGLE bounded script (poll ulw_status inside one script with backoff and a deadline) instead of repeated status turns. Record each actual result once with ulw_evidence, advance once with ulw_checkpoint (it refuses while receipts are missing), finish once with ulw_complete. Never shell out to ulw-loop CLI and never hand-write loop state. Synthesize only after checkpoint accepts; the run ends at ulw_complete. Narrate tersely: one line per phase, no per-call commentary.`
+  `ULW run ${runId}: drive the loop with native tools only — exact operations, no discovery calls. Register ALL goals in ONE ulw_goal_create call with complete per-goal briefs; it answers with each goal's goalId. Then spawn one real worker per goal with the host \`task\` tool and keep the child session id that result reports (metadata sessionID/sessionId) — never do the goal's work inline. Dispatch each goal with ulw_dispatch { runId, goalId, workerSessionId } carrying that worker's session id; a goal with no real worker session stays undispatched. Wait with a SINGLE bounded script (poll ulw_status inside one script with backoff and a deadline) instead of repeated status turns. Record each real result once with ulw_evidence { runId, goalId, childSessionId, status, resultRef, reason }, advance once with ulw_checkpoint (it refuses while receipts are missing), finish once with ulw_complete { runId, status }. Never shell out to ulw-loop CLI and never hand-write loop state. Synthesize only after checkpoint accepts; the run ends at ulw_complete. Narrate tersely: one line per phase, no per-call commentary.`
 )
 
 /**

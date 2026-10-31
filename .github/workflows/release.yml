@@ -78,6 +78,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  verify:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        run: bun run type-check
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Tests
+        run: bun run test
+
   publish-npm:
     needs: create-release
     if: ${{ github.event.inputs.finish_published_release != 'true' && vars.ALCODE_RELEASE_NPM == 'true' }}
@@ -133,7 +159,7 @@ jobs:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   build-desktop-electron-macos:
-    needs: create-release
+    needs: [create-release, verify]
     runs-on: ${{ matrix.runner }}
     # `secrets` cannot be referenced inside an `if:`, so the certificate is lifted
     # into the job environment and every signing gate reads it from there.
@@ -296,7 +322,7 @@ jobs:
           retention-days: 1
 
   build-desktop-electron-windows:
-    needs: create-release
+    needs: [create-release, verify]
     if: ${{ github.event.inputs.finish_published_release != 'true' }}
     # windows-latest currently resolves to a runner with Visual Studio 18,
     # which this electron/node-gyp stack does not detect correctly.
@@ -399,7 +425,7 @@ jobs:
           retention-days: 1
 
   build-desktop-electron-linux:
-    needs: create-release
+    needs: [create-release, verify]
     if: ${{ github.event.inputs.finish_published_release != 'true' }}
     strategy:
       fail-fast: false

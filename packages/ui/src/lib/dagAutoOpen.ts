@@ -1,28 +1,32 @@
 /**
  * Auto-opening the DAG runs pane when a ulw run starts.
  *
- * There is no UI-side ulw command: the engine's ultrawork hook starts the
- * loop when the user prompt contains `ultrawork` or `ulw` (word-bounded,
- * case-insensitive). The composer send is the only UI-observable edge of
- * that start, so the send path reveals the pane on those prompts — once per
- * send, never on render. The DAG pane is desktop-only, so this stays a
+ * There is no UI-side ulw command: the run-start predicate lives with the
+ * native run (`resolveUlwRunIntent` in `ulwNativeRun.ts`) — a leading
+ * word-bound `ulw` or `/ulw` with arguments starts a run, mid-sentence
+ * mentions stay plain chat. The composer send is the only UI-observable edge
+ * of that start, so the send path reveals the pane on those prompts — once
+ * per send, never on render. The DAG pane is desktop-only, so this stays a
  * no-op outside the Electron shell.
  */
 
 import { isDesktopShell } from '@/lib/desktop';
 import { normalizeContextPanelDirectoryKey, useUIStore } from '@/stores/useUIStore';
 
+import { resolveAutoRunIntent } from './ulwAutoEngage';
+import { resolveUlwRunIntent } from './ulwNativeRun';
+
 /** The context-panel mode of the built-in DAG runs pane. */
 export const DAG_PANE_SURFACE_MODE = 'plugin:alcode-builtin-dag-pane';
 
 /**
- * Whether the sent text starts a ulw run. Mirrors the engine trigger: shell
- * input never reaches the model hook, so it never counts.
+ * Whether the sent text starts a ulw run: an explicit order (leading `ulw`,
+ * `/ulw`, or a `mass ulw` directive), or a long, structured,
+ * execution-demanding brief that engages the run on the shape of the work.
  */
-export const isUlvRunPrompt = (content: string, inputMode?: 'normal' | 'shell'): boolean => {
-  if (inputMode === 'shell') return false;
-  return /\b(ultrawork|ulw)\b/i.test(content ?? '');
-};
+export const isUlvRunPrompt = (content: string, inputMode?: 'normal' | 'shell'): boolean => (
+  resolveUlwRunIntent(content, inputMode) !== null || resolveAutoRunIntent(content, inputMode) !== null
+);
 
 export type DagAutoOpenOptions = {
   inputMode?: 'normal' | 'shell';

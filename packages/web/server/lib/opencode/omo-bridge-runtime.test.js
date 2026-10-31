@@ -29,6 +29,8 @@ import {
   resolveEngineRoot,
   resolveNativeRunner,
   resolveRunModel,
+  resolveVendoredRoot,
+  resolveWorkerEntry,
   resolveWorkerRunner,
   splitModelRef,
 } from './omo-bridge-runtime.js';
@@ -634,6 +636,66 @@ describe('one run path (worker serves both kinds)', () => {
     expect(defaultWorkerEntry().endsWith('omo-invoker-worker.ts')).toBe(true);
   });
 
+  it('packaged worker.js resolves beside the service bundle when the .ts sibling is absent', () => {
+    const found = resolveWorkerEntry({
+      existsSync: (p) => String(p).endsWith('worker.js'),
+      bridgeDir: join('/pkg', 'dag-pane', 'service'),
+      packageCwd: '/nowhere',
+    });
+    expect(found.found).toBe(true);
+    expect(found.path.endsWith(join('service', 'worker.js'))).toBe(true);
+    const preferred = resolveWorkerEntry({
+      existsSync: () => true,
+      bridgeDir: join('/pkg', 'dag-pane', 'service'),
+      packageCwd: '/nowhere',
+    });
+    expect(preferred.path.endsWith('omo-invoker-worker.ts')).toBe(true);
+  });
+
+  it('packaged engine bundle resolves under the service vendor dir with a .js barrel', () => {
+    const root = resolveVendoredRoot({
+      existsSync: (p) => String(p).includes(join('vendor', 'omo-engine')) && String(p).endsWith('index.js'),
+      bridgeDir: join('/pkg', 'dag-pane', 'service'),
+      packageCwd: '/nowhere',
+    });
+    expect(root).not.toBeNull();
+    expect(root.endsWith(join('vendor', 'omo-engine'))).toBe(true);
+  });
+
+  it('plain-Node pair passes the gate with no bun on the machine', () => {
+    const gate = checkNativeParity({
+      env: {},
+      existsSync: (p) => (String(p).includes(join('vendor', 'omo-engine')) && String(p).endsWith('.js')) || String(p).endsWith('worker.js'),
+      bridgeDir: join('/pkg', 'dag-pane', 'service'),
+      packageCwd: '/nowhere',
+    });
+    expect(gate.ok).toBe(true);
+    expect(gate.code).toBe(OMO_NATIVE_OK);
+    expect(String(gate.details.barrelPath).endsWith(join('run', 'index.js'))).toBe(true);
+  });
+
+  it('.js worker resolves to the current Node runtime without bun', () => {
+    expect(resolveWorkerRunner({
+      env: {},
+      existsSync: (p) => String(p).endsWith('worker.js'),
+      bridgeDir: join('/pkg', 'dag-pane', 'service'),
+      packageCwd: '/nowhere',
+    })).toEqual({ workerEntry: join('/pkg', 'dag-pane', 'service', 'worker.js'), bunPath: process.execPath });
+  });
+
+  it('native runner pairs a .js worker with the .js barrel', () => {
+    const runner = resolveNativeRunner({
+      wrapperEntry: null,
+      env: {},
+      existsSync: (p) => (String(p).includes(join('vendor', 'omo-engine')) && String(p).endsWith('.js')) || String(p).endsWith('worker.js'),
+      bridgeDir: join('/pkg', 'dag-pane', 'service'),
+      packageCwd: '/nowhere',
+    });
+    expect(runner.workerEntry.endsWith('worker.js')).toBe(true);
+    expect(runner.bunPath).toBe(process.execPath);
+    expect(String(runner.barrelPath).endsWith(join('run', 'index.js'))).toBe(true);
+  });
+
   it('native-kind invoke spawns bun with the job on stdin and the same handle shape', async () => {
     const calls = [];
     let stdinText = '';
@@ -1114,9 +1176,14 @@ describe('one run path (kind selection on the default)', () => {
 
   it('per-call native:true with an unresolvable setup throws and spawns nothing', () => {
     const { spawn, calls } = stubSpawn();
+    // Hermetic empty machine: neither the `.ts` sources nor the packaged
+    // `.js` companions resolve.
+    const nothingResolves = (p) => !String(p).endsWith('.ts')
+      && !String(p).endsWith('worker.js')
+      && !String(p).endsWith(join('run', 'index.js'));
     const bridge = createOmoBridgeRuntime(capable({
       spawn,
-      existsSync: (p) => !String(p).endsWith('.ts'),
+      existsSync: nothingResolves,
     }));
     let thrown = null;
     try {

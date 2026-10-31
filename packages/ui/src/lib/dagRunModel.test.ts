@@ -51,6 +51,19 @@ const toolCall = (id: string, messageId: string, input: ToolInput, status: 'comp
   }
 );
 
+const errorToolCall = (id: string, messageId: string, input: ToolInput, childId: string, sessionId = 'ses_parent01'): ToolPart => (
+  {
+    id, sessionID: sessionId, messageID: messageId, type: 'tool', callID: `call_${id}`, tool: 'subagent',
+    state: { status: 'error', input, error: 'Subagent failed', metadata: { sessionID: childId }, time: { start: 2000, end: 8000 } },
+  }
+);
+
+const stateReport = (id: string, childId: string, output: string, state: 'completed' | 'error' | 'cancelled', sessionId = 'ses_parent01'): SyntheticMessage => ({
+  id, sessionID: sessionId, role: 'synthetic', time: { created: 8500 }, text: output,
+  description: `Subagent ${childId} finished`,
+  metadata: { source: 'subagent', childID: childId, agent: 'explore', state },
+});
+
 const report = (id: string, childId: string, output: string, sessionId = 'ses_parent01'): SyntheticMessage => ({
   id, sessionID: sessionId, role: 'synthetic', time: { created: 8500 }, text: output,
   description: `Subagent ${childId} finished`,
@@ -93,7 +106,7 @@ describe('buildDagRunModel', () => {
       messages: [assistantMessage('m2'), report('r1', 'ses_thin', 'ok')],
       parts: {},
     }));
-    expect(thin?.children[0]?.startedAt).toBe(0);
+    expect(thin?.children[0]?.startedAt).toBeNull();
   });
 
   test('three reported children become three labeled nodes under the parent', () => {
@@ -125,7 +138,7 @@ describe('buildDagRunModel', () => {
     expect(model.children.every((c) => c.agent === 'explore')).toBe(true);
     expect(model.state).toBe('completed');
     expect(model.synthesis.state).toBe('ready');
-    expect(model.counts).toEqual({ pending: 0, running: 0, completed: 3 });
+    expect(model.counts).toEqual({ pending: 0, running: 0, completed: 3, failed: 0, cancelled: 0 });
     expect(model.children[0]?.output).toContain('alpha: string utils');
   });
 
@@ -292,5 +305,86 @@ describe('dagRunSnapshotStatus', () => {
     expect(dagRunSnapshotStatus(null)).toBeNull();
     expect(dagRunSnapshotStatus({ schemaVersion: 1, sessionId: 's', dag: { runs: [] } })).toBeNull();
     expect(dagRunSnapshotStatus({ schemaVersion: 1, sessionId: 's', dag: null, tasks: null })).toBeNull();
+  });
+});
+
+describe('dag truthfulness regressions (audit-fixes-b)', () => {
+  test('an errored subagent call classifies the child failed, never completed', () => {
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent(), child('ses_err')],
+      messages: [assistantMessage('m2')],
+      parts: partsOf([['m2', [errorToolCall('t1', 'm2', { description: 'Analyze alpha' }, 'ses_err')]]]),
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    expect(model.children.map((c) => c.sessionId)).toEqual(['ses_err']);
+    expect(model.children[0]?.state).toBe('failed');
+  });
+
+  test('failed plus cancelled children are counted, not vanished', () => {
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent(), child('ses_f'), child('ses_c')],
+      messages: [
+        assistantMessage('m2'),
+        stateReport('r1', 'ses_f', 'boom', 'error'),
+        stateReport('r2', 'ses_c', 'stopped', 'cancelled'),
+      ],
+      parts: partsOf([['m2', [
+        errorToolCall('t1', 'm2', { description: 'F' }, 'ses_f'),
+        toolCall('t2', 'm2', { description: 'C' }, 'completed', 'ses_c'),
+      ]]]),
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    expect(model.children.find((c) => c.sessionId === 'ses_f')?.state).toBe('failed');
+    expect(model.children.find((c) => c.sessionId === 'ses_c')?.state).toBe('cancelled');
+    expect(model.counts).toEqual({ pending: 0, running: 0, completed: 0, failed: 1, cancelled: 1 });
+    expect(model.progress).toEqual({ total: 2, settled: 2 });
+  });
+
+  test('a parent whose every child failed is failed', () => {
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent(), child('ses_a'), child('ses_b')],
+      messages: [
+        assistantMessage('m2'),
+        stateReport('r1', 'ses_a', 'boom-a', 'error'),
+        stateReport('r2', 'ses_b', 'boom-b', 'error'),
+      ],
+      parts: partsOf([['m2', [
+        errorToolCall('t1', 'm2', { description: 'A' }, 'ses_a'),
+        errorToolCall('t2', 'm2', { description: 'B' }, 'ses_b'),
+      ]]]),
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    expect(model.children.every((c) => c.state === 'failed')).toBe(true);
+    expect(model.state).toBe('failed');
+  });
+
+  test('an explicit succeeded outcome keeps the parent completed even when every child failed', () => {
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent({ outcome: 'succeeded' }), child('ses_a')],
+      messages: [assistantMessage('m2'), stateReport('r1', 'ses_a', 'boom', 'error')],
+      parts: partsOf([['m2', [errorToolCall('t1', 'm2', { description: 'A' }, 'ses_a')]]]),
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    expect(model.children[0]?.state).toBe('failed');
+    expect(model.state).toBe('completed');
+  });
+
+  test('a child with no creation time keeps startedAt null and serializes null, never epoch zero', () => {
+    const thinChild = child('ses_thin', { time: undefined });
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent(), thinChild],
+      messages: [assistantMessage('m2'), report('r1', 'ses_thin', 'ok')],
+      parts: {},
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    expect(model.children[0]?.startedAt).toBeNull();
+    // SAFETY: the doc is built by dagRunModelToSnapshotDoc from the thin
+    // fixture above, so runs[0].nodes carries string ids with nullable
+    // started_at; the assertion only names the fields this test reads.
+    const doc = dagRunModelToSnapshotDoc(model) as {
+      dag: { runs: [{ nodes: [{ id: string; started_at: string | null }] }] };
+    };
+    const node = doc.dag.runs[0]?.nodes.find((n) => n.id === 'ses_thin');
+    expect(node?.started_at).toBeNull();
   });
 });

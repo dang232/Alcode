@@ -69,6 +69,7 @@ declare global {
 
 interface IndexPayloadOverrides {
   freshness?: CodeGraphFreshness;
+  ready?: boolean;
   staleReason?: string;
   refreshError?: string;
   nodeCount?: number;
@@ -1213,6 +1214,36 @@ describe('code graph restore and impact classification', () => {
 
     expect(requests.some((entry) => entry.includes('kind=search') && entry.includes('q=add'))).toBe(true);
     expect(requests.some((entry) => entry.includes('kind=context') && entry.includes(encodeURIComponent(definitionItem.id)))).toBe(true);
+  });
+
+  test('restore waits for a building index instead of answering empty', async () => {
+    let indexReady = false;
+    stubFetch((url) => {
+      if (url.pathname === '/api/code-graph/index') {
+        return json(indexPayload(indexReady ? {} : { ready: false, revision: '0'.repeat(40) }));
+      }
+      if (url.searchParams.get('kind') === 'search') return json(searchPayload);
+      if (url.searchParams.get('kind') === 'context') return json(contextPayload);
+      if (url.searchParams.get('kind') === 'impact') return json(impactPayload);
+      if (url.searchParams.get('kind') === 'tests') return json(testsPayload);
+      return json({ error: 'unexpected' }, 500);
+    });
+
+    // Mount while the index is still building: the saved query must not fire
+    // against an empty generation, so no search request goes out.
+    await render(DIRECTORY, null, { mode: 'explore', query: 'add', selectedId: definitionItem.id });
+    await act(async () => {});
+    await act(async () => {});
+    expect(requests.some((entry) => entry.includes('kind=search'))).toBe(false);
+
+    // A fresh mount once the build published a generation restores at once.
+    await act(async () => { root.unmount(); });
+    container.remove();
+    indexReady = true;
+    await render(DIRECTORY, null, { mode: 'explore', query: 'add', selectedId: definitionItem.id });
+    await act(async () => {});
+    await act(async () => {});
+    expect(requests.some((entry) => entry.includes('kind=search') && entry.includes('q=add'))).toBe(true);
   });
 
   test('drops a saved subject the snapshot no longer contains', async () => {

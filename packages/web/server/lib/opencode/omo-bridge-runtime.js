@@ -348,6 +348,10 @@ export const resolveVendoredRootCandidates = ({ bridgeDir, packageCwd, resources
   const candidates = [];
   const dir = bridgeDir ?? nodeDirname(nodeFileURLToPath(import.meta.url));
   candidates.push(nodeJoinPath(dir, '..', '..', '..', '..', OMO_VENDORED_ENGINE_DIR));
+  // Packaged companion: the builtin build stages a compiled engine bundle
+  // under the dag-pane service dir (`service/vendor/omo-engine/...`), so the
+  // bundled service finds it without baked absolutes.
+  candidates.push(nodeJoinPath(dir, 'vendor', OMO_VENDORED_ENGINE_DIR));
   const packaged = resourcesPath ?? process?.resourcesPath ?? null;
   if (packaged) candidates.push(nodeJoinPath(packaged, OMO_VENDORED_ENGINE_DIR));
   let level = packageCwd ?? process.cwd();
@@ -364,6 +368,9 @@ export const resolveVendoredRoot = ({
 } = {}) => {
   for (const root of resolveVendoredRootCandidates({ bridgeDir, packageCwd, resourcesPath })) {
     if (existsSync(nodeJoinPath(root, OMO_VENDORED_RUN_BARREL))) return root;
+    // Packaged companions ship the compiled bundle at the same path with a
+    // `.js` suffix; plain Node imports it, no bun needed.
+    if (existsSync(nodeJoinPath(root, OMO_VENDORED_RUN_BARREL.replace(/\.ts$/, '.js')))) return root;
   }
   return null;
 };
@@ -405,11 +412,19 @@ export const defaultWorkerEntry = () => nodeFileURLToPath(new URL('./omo-invoker
 export const resolveWorkerEntry = ({
   workerEntry,
   existsSync = nodeExistsSync,
+  bridgeDir,
   packageCwd,
   resourcesPath,
 } = {}) => {
   if (workerEntry) return { path: workerEntry, found: existsSync(workerEntry) };
   const candidates = [defaultWorkerEntry()];
+  // Packaged companion: the builtin build stages a compiled `worker.js`
+  // beside the dag-pane service bundle (plain Node runs it, no bun).
+  // bridgeDir defaults to this module's own dir, which is that service dir
+  // inside the bundled service and lib/opencode in dev (no worker.js there,
+  // so dev keeps resolving the `.ts` sibling).
+  const base = bridgeDir ?? nodeDirname(nodeFileURLToPath(import.meta.url));
+  candidates.push(nodeJoinPath(base, 'worker.js'));
   const cwd = packageCwd ?? process.cwd();
   candidates.push(nodeJoinPath(cwd, '..', '..', 'lib', 'opencode', 'omo-invoker-worker.ts'));
   const packaged = resourcesPath ?? process?.resourcesPath ?? null;
@@ -439,21 +454,31 @@ export const resolveNativeRunner = ({
   resourcesPath,
 } = {}) => {
   const worker = resolveWorkerEntry({
-    workerEntry, existsSync, packageCwd, resourcesPath,
+    workerEntry, existsSync, bridgeDir, packageCwd, resourcesPath,
   });
   if (!worker.found) {
     throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native worker missing at "${worker.path}".`);
   }
-  const bun = bunPath ?? env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? '';
+  // A compiled `.js` worker runs under the current Node runtime (packaged
+  // companion); only a `.ts` worker needs the bun runtime.
+  const bun = worker.path.endsWith('.js')
+    ? process.execPath
+    : (bunPath ?? env?.[OMO_BUN_PATH_ENV]?.trim?.() ?? '');
   const resolvedBun = bun !== '' ? bun : 'bun';
   const { root: engineRoot, vendored } = resolveEngineRoot(wrapperEntry, {
     env, existsSync, bridgeDir, packageCwd, resourcesPath,
   });
+  let barrelPath = vendored ? undefined : nodeJoinPath(engineRoot, OMO_ENGINE_RUN_BARREL);
+  if (vendored) {
+    const tsPath = nodeJoinPath(engineRoot, OMO_VENDORED_RUN_BARREL);
+    const jsPath = nodeJoinPath(engineRoot, OMO_VENDORED_RUN_BARREL.replace(/\.ts$/, '.js'));
+    barrelPath = existsSync(tsPath) ? tsPath : (existsSync(jsPath) ? jsPath : tsPath);
+  }
   return {
     workerEntry: worker.path,
     bunPath: resolvedBun,
     engineRoot,
-    barrelPath: vendored ? nodeJoinPath(engineRoot, OMO_VENDORED_RUN_BARREL) : undefined,
+    barrelPath,
   };
 };
 
@@ -474,14 +499,20 @@ export const resolveWorkerRunner = ({
   env = process.env,
   existsSync = nodeExistsSync,
   workerEntry,
+  bridgeDir,
   packageCwd,
   resourcesPath,
 } = {}) => {
   const worker = resolveWorkerEntry({
-    workerEntry, existsSync, packageCwd, resourcesPath,
+    workerEntry, existsSync, bridgeDir, packageCwd, resourcesPath,
   });
   if (!worker.found) {
     throw new OmoBridgeError('OMO_NATIVE_UNAVAILABLE', `Native runner unavailable: native worker missing at "${worker.path}". The wrapper path is kept.`);
+  }
+  // A compiled `.js` worker runs under the current Node runtime (packaged
+  // companion); only a `.ts` worker needs a resolvable bun.
+  if (worker.path.endsWith('.js')) {
+    return { workerEntry: worker.path, bunPath: process.execPath };
   }
   const bun = resolveBunCommand({ env, existsSync });
   if (!bun.found) {
@@ -501,7 +532,9 @@ export const resolveWorkerRunner = ({
 // test; the five messages below are byte-exact and asserted with `toBe`).
 // Checks run in a fixed order — bun, worker, engine root, barrel — and
 // every check is evaluated, so the result names the first failure while
-// `details` carries each check's machine outcome. Presence is resolvability
+// `details` carries each check's machine outcome. One exception: `plainNode`
+// passes the bun check when a compiled `.js` worker and barrel pair resolves,
+// since that path runs under plain Node. Presence is resolvability
 // only: the gate does not execute bun and performs no version check.
 export const OMO_NATIVE_OK = 'OMO_NATIVE_OK';
 
@@ -565,7 +598,7 @@ export const checkNativeParity = ({
 } = {}) => {
   const bun = resolveBunCommand({ env, existsSync, pathValue, platform, joinPath });
   const worker = resolveWorkerEntry({
-    workerEntry, existsSync, packageCwd, resourcesPath,
+    workerEntry, existsSync, bridgeDir, packageCwd, resourcesPath,
   });
   const workerFound = worker.found;
   let engineRoot = null;
@@ -582,9 +615,16 @@ export const checkNativeParity = ({
   } catch (error) {
     engineReason = error?.message ?? String(error);
   }
-  const barrelPath = engineFound
-    ? joinPath(engineRoot, vendored ? OMO_VENDORED_RUN_BARREL : OMO_ENGINE_RUN_BARREL)
-    : null;
+  let barrelPath = null;
+  if (engineFound) {
+    const tsPath = joinPath(engineRoot, vendored ? OMO_VENDORED_RUN_BARREL : OMO_ENGINE_RUN_BARREL);
+    // Packaged companions ship the compiled bundle at the same path with a
+    // `.js` suffix; the `.ts` source wins where both exist (dev checkout).
+    // When neither exists the probe still names the `.ts` path, exactly as
+    // before, so the degraded output is unchanged.
+    const jsPath = joinPath(engineRoot, (vendored ? OMO_VENDORED_RUN_BARREL : OMO_ENGINE_RUN_BARREL).replace(/\.ts$/, '.js'));
+    barrelPath = existsSync(tsPath) ? tsPath : (existsSync(jsPath) ? jsPath : tsPath);
+  }
   // An explicit OMO_ENGINE_ROOT is trusted by resolveEngineRoot without an
   // existence check, so the barrel probe is what fails a nonexistent root
   // closed: no crash, just found: false.
@@ -601,7 +641,11 @@ export const checkNativeParity = ({
     barrelPath,
     barrelFound,
   };
-  if (!bun.found) {
+  // A compiled `.js` worker plus a compiled `.js` barrel run under plain
+  // Node (packaged companions): no bun runtime needed on that path.
+  const plainNode = workerFound && worker.path.endsWith('.js')
+    && barrelFound && barrelPath !== null && barrelPath.endsWith('.js');
+  if (!bun.found && !plainNode) {
     return {
       ok: false, code: 'OMO_NATIVE_UNAVAILABLE', path: 'wrapper', message: bunUnavailableMessage(bun), details,
     };

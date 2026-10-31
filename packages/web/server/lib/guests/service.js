@@ -554,12 +554,28 @@ const INHERITED_SERVICE_ENV_NAMES = new Set([
   'SYSTEMROOT', 'SYSTEMDRIVE', 'COMSPEC', 'PATHEXT', 'WINDIR',
 ]);
 
+// OmO-native path overrides a guest service needs to see: explicit filesystem
+// paths only, never credentials. Without these the packaged DAG-pane service
+// cannot find a user-installed bun, wrapper, or engine checkout, so the pane
+// reports the engine disconnected with no user-side remedy. Host secrets
+// (tokens, keys, passwords) stay out: each name here is pinned below and any
+// other `OMO_*` name is still refused.
+const INHERITED_OMO_ENV_NAMES = new Set([
+  'OMO_BUN_PATH',
+  'OMO_WRAPPER_PATH',
+  'OMO_ENGINE_ROOT',
+]);
+
 /** @param {NodeJS.ProcessEnv} source */
 const inheritedServiceEnv = (source) => {
   /** @type {Record<string, string>} */
   const env = {};
   for (const [name, value] of Object.entries(source)) {
-    if (typeof value === 'string' && INHERITED_SERVICE_ENV_NAMES.has(name.toUpperCase())) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+    const upper = name.toUpperCase();
+    if (INHERITED_SERVICE_ENV_NAMES.has(upper) || INHERITED_OMO_ENV_NAMES.has(upper)) {
       env[name] = value;
     }
   }

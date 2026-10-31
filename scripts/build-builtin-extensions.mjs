@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -97,6 +98,52 @@ export const buildBuiltInExtensions = async ({ sourceRoot = path.join(repoRoot, 
         const output = path.join(destination, target.out);
         await fs.mkdir(path.dirname(output), { recursive: true });
         await fs.writeFile(output, new Uint8Array(await result.outputs[0].arrayBuffer()));
+      }
+      // Dag-pane native companions: the OmO run worker and the engine run
+      // barrel compiled to plain JS beside the service bundle, so the
+      // packaged service runs native jobs under plain Node with no bun and
+      // no engine checkout on the machine. Sources stay canonical outside
+      // this package (worker in web/server, engine in omo-engine); only the
+      // staged output lands here, like service/main.js.
+      if (entry.directory === 'dag-pane') {
+        const nativeCompanions = [
+          {
+            from: path.join(repoRoot, 'packages', 'web', 'server', 'lib', 'opencode', 'omo-invoker-worker.ts'),
+            out: path.join('service', 'worker.js'),
+          },
+          {
+            from: path.join(repoRoot, 'packages', 'omo-engine', 'omo-opencode', 'src', 'cli', 'run', 'index.ts'),
+            out: path.join('service', 'vendor', 'omo-engine', 'omo-opencode', 'src', 'cli', 'run', 'index.js'),
+          },
+        ];
+        // jsonc-parser's `main` is a UMD bundle whose relative requires do
+        // not survive into the staged output; its `module` build bundles
+        // cleanly, so the companions pin it explicitly.
+        const companionOverrides = {
+          name: 'packaged-esm-overrides',
+          setup(build) {
+            build.onResolve({ filter: /^jsonc-parser$/ }, () => {
+              const manifestPath = createRequire(path.join(repoRoot, 'package.json')).resolve('jsonc-parser/package.json');
+              return { path: path.join(path.dirname(manifestPath), 'lib', 'esm', 'main.js') };
+            });
+          },
+        };
+        for (const companion of nativeCompanions) {
+          const result = await Bun.build({
+            entrypoints: [companion.from],
+            target: 'node',
+            format: 'esm',
+            minify: false,
+            sourcemap: 'none',
+            env: 'disable',
+            plugins: [companionOverrides],
+            write: false,
+          });
+          if (!result.success || result.outputs.length !== 1) throw new Error(`Built-in ${entry.id} companion ${companion.out} must produce one self-contained node entry`);
+          const output = path.join(destination, companion.out);
+          await fs.mkdir(path.dirname(output), { recursive: true });
+          await fs.writeFile(output, new Uint8Array(await result.outputs[0].arrayBuffer()));
+        }
       }
       const inspected = await inspectGuestPackage(destination, { alcodeVersion: app.version });
       if (!inspected.ok || inspected.guest.id !== entry.id) throw new Error(`Built-in package failed validation: ${entry.id}`);

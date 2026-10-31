@@ -9,6 +9,7 @@ import {
   ULW_RESUME_EMPTY_BRIEF,
   ULW_RUN_METADATA_KEY,
   buildUlwRunProcedure,
+  resolveUlwRunIntent,
   splitUlwResumeTarget,
   startUlwNativeRun,
 } from './ulwNativeRun';
@@ -291,6 +292,55 @@ describe('procedure text names native tools and forbids CLI shell-outs', () => {
 
   test('ulw command name constant keeps the native path standing in for /ulw', () => {
     expect(ULW_COMMAND_NAME).toBe('ulw');
+  });
+});
+
+describe('resolveUlwRunIntent: the prose order', () => {
+  test('a closing mass ulw order resolves to the task text', () => {
+    expect(resolveUlwRunIntent('Audit the repo and fix it. mass ulw')).toEqual({
+      args: 'Audit the repo and fix it.',
+    });
+    expect(resolveUlwRunIntent('do the thing mass ulw.')).toEqual({ args: 'do the thing' });
+  });
+
+  test('a leading mass ulw order resolves to the rest of the message', () => {
+    expect(resolveUlwRunIntent('mass ulw audit the repo')).toEqual({ args: 'audit the repo' });
+    expect(resolveUlwRunIntent('  MASS ULW: go')).toEqual({ args: 'go' });
+  });
+
+  test('a bare mass ulw order carries no brief and falls back to the send text', () => {
+    expect(resolveUlwRunIntent('mass ulw')).toEqual({ args: '' });
+  });
+
+  test('mentions inside a sentence still start no run', () => {
+    expect(resolveUlwRunIntent('we discussed mass ulw in the notes')).toBeNull();
+    expect(resolveUlwRunIntent('can you ulw this?')).toBeNull();
+    expect(resolveUlwRunIntent('ulwazi rules')).toBeNull();
+    expect(resolveUlwRunIntent('soulwork')).toBeNull();
+  });
+
+  test('shell input never resolves to a run', () => {
+    expect(resolveUlwRunIntent('do the thing mass ulw', 'shell')).toBeNull();
+  });
+});
+
+describe('procedure names an executable dispatch sequence', () => {
+  test('spawns a real task worker per goal and dispatches with that session id', () => {
+    const procedure = buildUlwRunProcedure('session-run-1');
+
+    expect(procedure.toLowerCase()).not.toContain('dispatch the full roster');
+    expect(procedure).toContain('task');
+    expect(procedure).toContain('workerSessionId');
+    expect(procedure).toContain('childSessionId');
+  });
+
+  test('names the lifecycle in execution order', () => {
+    const procedure = buildUlwRunProcedure('session-run-1');
+    const order = ['ulw_goal_create', 'task', 'ulw_dispatch', 'ulw_evidence', 'ulw_checkpoint', 'ulw_complete']
+      .map((token) => procedure.indexOf(token));
+
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((left, right) => left - right)).toEqual(order);
   });
 });
 

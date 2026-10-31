@@ -640,24 +640,11 @@ function indexedEvidence(node: GraphNode): QueryEvidence {
 
 /** `pk-` record ids linked from any of the given node ids. */
 function knowledgeIdsFor(snapshot: GraphSnapshot, nodeIds: ReadonlySet<string>): Map<string, string[]> {
+  const index = indexFor(snapshot);
   const byNode = new Map<string, string[]>();
-  const knowledgeTargets = new Map<string, string>();
-  for (const node of snapshot.nodes) {
-    if (node.kind === "knowledge-link" && node.target !== undefined) {
-      knowledgeTargets.set(node.id, node.target);
-    }
-  }
-  for (const edge of snapshot.edges) {
-    if (edge.kind !== "LINKS_KNOWLEDGE") continue;
-    if (!nodeIds.has(edge.from)) continue;
-    const recordId = knowledgeTargets.get(edge.to);
-    if (recordId === undefined) continue;
-    const list = byNode.get(edge.from);
-    if (list) {
-      if (!list.includes(recordId)) list.push(recordId);
-    } else {
-      byNode.set(edge.from, [recordId]);
-    }
+  for (const id of nodeIds) {
+    const ids = index.knowledgeByFrom.get(id);
+    if (ids !== undefined) byNode.set(id, [...ids]);
   }
   return byNode;
 }
@@ -957,6 +944,7 @@ type SnapshotIndex = {
   nodeById: Map<string, GraphNode>;
   edgesByFrom: Map<string, GraphEdge[]>;
   edgesByTo: Map<string, GraphEdge[]>;
+  knowledgeByFrom: Map<string, string[]>;
 };
 
 const snapshotIndexes = new WeakMap<GraphSnapshot, SnapshotIndex>();
@@ -976,7 +964,28 @@ function indexFor(snapshot: GraphSnapshot): SnapshotIndex {
     if (to === undefined) edgesByTo.set(edge.to, [edge]);
     else to.push(edge);
   }
-  const built = { nodeById, edgesByFrom, edgesByTo };
+  // Knowledge links are indexed once per snapshot beside the edge maps so
+  // per-item lookups below stay lookups: knowledgeIdsFor used to rescan
+  // every node and edge per call, which made wide impact walks quadratic.
+  const knowledgeTargets = new Map<string, string>();
+  for (const node of snapshot.nodes) {
+    if (node.kind === "knowledge-link" && node.target !== undefined) {
+      knowledgeTargets.set(node.id, node.target);
+    }
+  }
+  const knowledgeByFrom = new Map<string, string[]>();
+  for (const edge of snapshot.edges) {
+    if (edge.kind !== "LINKS_KNOWLEDGE") continue;
+    const recordId = knowledgeTargets.get(edge.to);
+    if (recordId === undefined) continue;
+    const list = knowledgeByFrom.get(edge.from);
+    if (list) {
+      if (!list.includes(recordId)) list.push(recordId);
+    } else {
+      knowledgeByFrom.set(edge.from, [recordId]);
+    }
+  }
+  const built = { nodeById, edgesByFrom, edgesByTo, knowledgeTargets, knowledgeByFrom };
   snapshotIndexes.set(snapshot, built);
   return built;
 }
@@ -1259,6 +1268,13 @@ export function impact(
           edgeBudgetHit = true;
           break;
         }
+        // The deadline is checked inside the level, not only between
+        // levels: one wide frontier would otherwise run the whole level
+        // past the budget before the depth-top check ever fires.
+        if (Date.now() >= deadlineMs) {
+          timeBudgetHit = true;
+          break;
+        }
         if (seen.has(caller.id)) continue;
         seen.add(caller.id);
         walked.push({
@@ -1267,9 +1283,9 @@ export function impact(
         });
         if (caller.kind === "symbol") next.push(caller.id);
       }
-      if (edgeBudgetHit) break;
+      if (edgeBudgetHit || timeBudgetHit) break;
     }
-    if (edgeBudgetHit) break;
+    if (edgeBudgetHit || timeBudgetHit) break;
     frontier = next;
   }
   // The depth budget stopped the walk early when a frontier node still has

@@ -10,6 +10,7 @@ import {
   classifyCodeItemId,
   extractCodeToken,
   formatFreshnessChip,
+  isCodeIndexBuilding,
   resolveCodeIndexStatus,
   resolveCodeQueryStatus,
   taskToCodeSource,
@@ -149,6 +150,17 @@ describe('resolveCodeIndexStatus', () => {
     expect(resolveCodeIndexStatus({ connected: true, error: null, index: { freshness: 'stale', nodeCount: 4 } })).toBe('stale');
     expect(resolveCodeIndexStatus({ connected: true, error: null, index })).toBe('ready');
   });
+  test('an unfinished build reads as indexing, never as empty', () => {
+    expect(isCodeIndexBuilding({ ready: false, freshness: 'unindexed', nodeCount: 0 })).toBe(true);
+    expect(isCodeIndexBuilding({ indexState: { state: 'analyzing' }, nodeCount: 0 })).toBe(true);
+    expect(isCodeIndexBuilding({ indexState: { state: 'persisting' }, nodeCount: 0 })).toBe(true);
+    expect(isCodeIndexBuilding({ freshness: 'fresh', nodeCount: 0 })).toBe(false);
+    expect(isCodeIndexBuilding({ indexState: { state: 'ready' }, nodeCount: 4 })).toBe(false);
+    expect(resolveCodeIndexStatus({ connected: true, error: null, index: { ready: false, freshness: 'unindexed', nodeCount: 0 } })).toBe('indexing');
+    expect(resolveCodeIndexStatus({ connected: true, error: null, index: { indexState: { state: 'discovering' }, nodeCount: 0 } })).toBe('indexing');
+    // A published stale generation keeps its chip while the next build runs.
+    expect(resolveCodeIndexStatus({ connected: true, error: null, index: { freshness: 'stale', nodeCount: 4, indexState: { state: 'analyzing' } } })).toBe('stale');
+  });
 });
 
 describe('resolveCodeQueryStatus', () => {
@@ -267,6 +279,7 @@ describe('code view strings', () => {
     'codeEmptyTitle',
     'codeEmptyBody',
     'codeStale',
+    'codeIndexing',
     'codeErrorTitle',
     'codeSearchPlaceholder',
     'codeSearchButton',
@@ -298,6 +311,15 @@ describe('code view strings', () => {
       // Badge-adjacent chrome may share a word or two across languages;
       // a wholesale English copy would match nearly every key.
       expect(identical.length, `${locale}: ${identical.join(',')}`).toBeLessThan(keys.length / 2);
+    }
+  });
+  test('codeIndexing is unique per locale, never a neighbour copy', () => {
+    const seen = new Map<string, string>();
+    for (const locale of DAG_PANE_LOCALES) {
+      const value = stringsFor(locale).codeIndexing;
+      expect(value.length, `${locale}.codeIndexing`).toBeGreaterThan(0);
+      expect(seen.get(value), `${locale} repeats ${seen.get(value)}`).toBeUndefined();
+      seen.set(value, locale);
     }
   });
 });

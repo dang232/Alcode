@@ -249,7 +249,7 @@ export function createUlwDispatchTool(deps: UlwDispatchDeps = {}): OmoToolDefini
         if (client === undefined) {
           const pending = toSpawn.map((entry) => entry.goalId).join(", ")
           throw new Error(
-            `ULW run '${runId}': batch dispatch needs a host client to spawn ${toSpawn.length} worker(s) (${pending}); pass workerSessionId per goal to record explicit sessions instead.`,
+            `ULW run '${runId}': this runtime injects no host client, so batch dispatch cannot spawn ${toSpawn.length} worker(s) (${pending}). Spawn one task worker per goal with the host task tool, then dispatch each with that worker's session id as workerSessionId.`,
           )
         }
         batchClient = client

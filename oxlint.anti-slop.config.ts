@@ -23,6 +23,10 @@ export default defineConfig({
     ".tmp/**",
     // Bundles built from the TypeScript sources beside them; the sources are linted.
     "packages/sdk/examples/**/*.js",
+    // Generated service bundle: server.js, handlers.js, and the upstream
+    // bridge/engine modules are linted as tracked sources; main.js only
+    // re-emits them, so its inline copies are not counted again here.
+    "packages/extensions/dag-pane/service/main.js",
     "patches/**",
     "bun-patches/**",
     "tools/oxlint/**",

@@ -37,7 +37,8 @@ import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
 import { prepareUserMessageResume } from "./user-message-resume"
 import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
-import { ULW_COMMAND_NAME, startUlwNativeRun } from "@/lib/ulwNativeRun"
+import { ULW_COMMAND_NAME, resolveUlwRunIntent, startUlwNativeRun } from "@/lib/ulwNativeRun"
+import { resolveAutoRunIntent } from "@/lib/ulwAutoEngage"
 import { dagRouteSample, recordDagRouteDecision, type DagRouteDecision, type DagRouteReport } from "@/lib/dagRouteLog"
 import { normalizePath } from "@/lib/pathNormalization"
 import { CHAT_DRAFT_PROJECT_ID, createChatDirectory, deleteChatDirectory, getChatsRootFromDirectory, isChatDirectoryPath, warmChatsRootDirectory } from "@/lib/chatDirectories"
@@ -244,9 +245,9 @@ export async function routeMessage(params: {
   const routeTrigger: DagRouteDecision = bareUlwArguments !== undefined
     ? 'captured-to-/ulw'
     : params.content.startsWith("/") ? 'slash-command' : 'plain-prompt'
-  const reportRoute = (command?: string | null, args?: string | null): void => {
+  const reportRoute = (command?: string | null, args?: string | null, decision?: DagRouteDecision): void => {
     const report: DagRouteReport = {
-      decision: routeTrigger,
+      decision: decision ?? routeTrigger,
       sample: dagRouteSample(params.content),
       sessionId: params.sessionId,
     }
@@ -366,6 +367,69 @@ export async function routeMessage(params: {
         instructionFor: params.skills?.instructionFor ?? buildSkillMentionInstruction,
       }
     }
+  }
+
+  // A run order typed as prose (`<task> ... mass ulw`) takes the same native
+  // path a typed /ulw does. Without this branch the send is a plain prompt, so
+  // no run session, no goals, and no DAG entry ever exist for the way the order
+  // is actually written. A leading bare `ulw` and a matched slash name were
+  // handled above, and a matched command or skill keeps its precedence, so only
+  // an unresolved prose order reaches this point.
+  const proseIntent = bareUlwArguments === undefined && !params.content.startsWith("/")
+    ? resolveUlwRunIntent(params.content, params.inputMode)
+    : null
+  if (proseIntent) {
+    await startUlwNativeRun({
+      runtimeKey: params.runtimeKey,
+      directory: requestDirectory,
+      sessionId: params.sessionId,
+      content: params.content,
+      args: proseIntent.args,
+      providerID: params.providerID,
+      modelID: params.modelID,
+      variant: params.variant ?? undefined,
+      agent: params.agent,
+      agentMentionName: params.agentMentionName,
+      files: sendFiles,
+      context: [...contextItems, ...skillInstructionContext()],
+      skills,
+      delivery: params.delivery,
+      appendSubmissions: params.appendSubmissions,
+      ready: params.knowledgeSync,
+    })
+    reportRoute(ULW_COMMAND_NAME, proseIntent.args, 'captured-to-/ulw')
+    return 'command'
+  }
+
+  // A long, structured, execution-demanding brief takes the same native path
+  // with no trigger words: the classifier already excludes shell input,
+  // short chats, unstructured pastes, and read-only briefs, and a matched
+  // command or skill keeps its precedence above. Without this branch that
+  // work degrades into a plain prompt with no run behind it.
+  const autoIntent = bareUlwArguments === undefined && !params.content.startsWith("/")
+    ? resolveAutoRunIntent(params.content, params.inputMode)
+    : null
+  if (autoIntent) {
+    await startUlwNativeRun({
+      runtimeKey: params.runtimeKey,
+      directory: requestDirectory,
+      sessionId: params.sessionId,
+      content: params.content,
+      args: autoIntent.args,
+      providerID: params.providerID,
+      modelID: params.modelID,
+      variant: params.variant ?? undefined,
+      agent: params.agent,
+      agentMentionName: params.agentMentionName,
+      files: sendFiles,
+      context: [...contextItems, ...skillInstructionContext()],
+      skills,
+      delivery: params.delivery,
+      appendSubmissions: params.appendSubmissions,
+      ready: params.knowledgeSync,
+    })
+    reportRoute(ULW_COMMAND_NAME, autoIntent.args, 'captured-to-/ulw')
+    return 'command'
   }
 
   // Normal prompt — optimistic insert so message appears instantly

@@ -62,6 +62,35 @@ const stateColorVar = (state: string): string => {
   return 'var(--oc-muted)';
 };
 
+/**
+ * Inspector honesty: confidence comes only from edge evidence. A node with
+ * no edges (and so no entry in the confidence map) has unknown confidence —
+ * rendering the fallback as 1 would print a false 100 percent.
+ */
+export const CODE_CONFIDENCE_UNKNOWN = 'unknown (unproven)';
+
+export const formatCodeConfidence = (value: number | undefined): string =>
+  value === undefined ? CODE_CONFIDENCE_UNKNOWN : String(value);
+
+export type DetailsSelection = { id: string | null; autoSelected: boolean };
+
+/**
+ * Details-card honesty: the card follows a user selection when there is one
+ * and otherwise falls back to the first running node, else the first node.
+ * The fallback is a panel guess, so it is flagged auto-selected and the card
+ * badges it — a guess never looks identical to a user selection.
+ */
+export const resolveDetailsSelection = (
+  nodeIds: string[],
+  runningId: string | null,
+  selectedId: string | null,
+): DetailsSelection => {
+  if (selectedId !== null) {
+    return { id: selectedId, autoSelected: false };
+  }
+  return { id: runningId ?? nodeIds[0] ?? null, autoSelected: true };
+};
+
 const el = (tag: string, className: string): HTMLElement => {
   const node = document.createElement(tag);
   if (className) {
@@ -255,9 +284,20 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     return { status: answer.status, body: parsed };
   };
 
-  const statusQuery = (): Record<string, string> | undefined => (
-    paneDirectory ? { directory: paneDirectory } : undefined
-  );
+  // The saved wrapper entry travels on every /status poll (not only steer),
+  // so the probe can handshake a user-installed wrapper instead of always
+  // taking the native gate with no entry. Empty storage means auto-resolve.
+  const statusQuery = (): Record<string, string> | undefined => {
+    const query: Record<string, string> = {};
+    if (paneDirectory) {
+      query.directory = paneDirectory;
+    }
+    const trimmedEntry = wrapperEntry.trim();
+    if (trimmedEntry) {
+      query.entry = trimmedEntry;
+    }
+    return Object.keys(query).length > 0 ? query : undefined;
+  };
 
   // Header for the followed conversation: its human title plus a live dot
   // while any run is active. No session picker: the panel never pins an
@@ -487,21 +527,31 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   let lastSectionKey: string | null = null;
 
   const paintDetails = (run: DagRunView): void => {
-    const node: DagNodeView | undefined = run.nodes.find((entry) => entry.id === (selectedNodeId ?? run.nodes.find((entry_) => entry_.state === 'running')?.id ?? run.nodes[0]?.id));
+    const selection = resolveDetailsSelection(
+      run.nodes.map((entry) => entry.id),
+      run.nodes.find((entry) => entry.state === 'running')?.id ?? null,
+      selectedNodeId,
+    );
+    const node: DagNodeView | undefined = run.nodes.find((entry) => entry.id === selection.id);
     if (!node) {
       return;
     }
-    if (!selectedNodeId) {
+    if (selectedNodeId === null) {
       selectedNodeId = node.id;
     }
     const card = el('section', 'dag-details');
     card.append(text('h2', 'dag-details-title', strings.details));
+    if (selection.autoSelected) {
+      const badgeRow = el('div', 'dag-details-auto-row');
+      badgeRow.append(text('span', 'dag-badge dag-details-auto', 'auto-selected'));
+      card.append(badgeRow);
+    }
     const rows: [string, string][] = [
       ['id', node.id],
       ['label', node.label],
       ['state', node.state],
       ['attempt', String(node.attempt)],
-      ['prompt', node.prompt],
+      ['output', node.prompt],
       ['depends_on', node.dependsOn.join(', ') || '—'],
       ['started', node.startedAt ?? '—'],
       ['completed', node.completedAt ?? '—'],
@@ -541,7 +591,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       const counts = text(
         'p',
         'dag-run-counts',
-        `pending ${run.counts.pending} · running ${run.counts.running} · completed ${run.counts.completed}`,
+        `pending ${run.counts.pending} · running ${run.counts.running} · completed ${run.counts.completed} · failed ${run.counts.failed} · cancelled ${run.counts.cancelled}`,
       );
       content.append(counts);
       paintGraph(run);
@@ -1430,7 +1480,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
         strings.codeGraphInspectPath,
         selectedNode.file === null ? '—' : `${selectedNode.file}${selectedNode.line === null ? '' : `:${selectedNode.line}`}`,
       );
-      row(strings.codeGraphInspectConfidence, String(confidence.get(selectedNode.id) ?? 1));
+      row(strings.codeGraphInspectConfidence, formatCodeConfidence(confidence.get(selectedNode.id)));
       row(strings.codeGraphInspectImpact, impactSummary(selectedNode.id));
       box.append(inspector);
     }
@@ -1532,6 +1582,8 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
         }));
       } else if (indexStatus === 'empty') {
         sectionHandles.push(mountEmpty(section, { title: strings.codeEmptyTitle, body: strings.codeEmptyBody }));
+      } else if (indexStatus === 'indexing') {
+        section.append(text('p', 'dag-code-indexing', strings.codeIndexing));
       } else {
         const chipBody: Record<string, JsonValue> = codeIndexBody ?? {};
         const chip = formatFreshnessChip(chipBody);

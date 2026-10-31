@@ -69,7 +69,7 @@ export type DagRunView = {
   runKey: string;
   name: string;
   status: string;
-  counts: { pending: number; running: number; completed: number };
+  counts: { pending: number; running: number; completed: number; failed: number; cancelled: number };
   nodes: DagNodeView[];
   edges: { from: string; to: string }[];
   waves: DagRunWave[];
@@ -196,7 +196,7 @@ const readRun = (raw: JsonValue | undefined): DagRunView | null => {
     runKey,
     name,
     status,
-    counts: { pending: countOf('pending'), running: countOf('running'), completed: countOf('completed') },
+    counts: { pending: countOf('pending'), running: countOf('running'), completed: countOf('completed'), failed: countOf('failed'), cancelled: countOf('cancelled') },
     nodes,
     edges,
     waves,
