@@ -4,7 +4,7 @@
 
 - `registry.json` is the app-owned allowlist. IDs use the reserved `alcode-builtin-` prefix and remain stable across releases.
 - Each package uses the ordinary SDK manifest and public SDK APIs. Built-in status does not expose private stores, credentials, or native bridges to its iframe.
-- `scripts/build-builtin-extensions.mjs` copies only declared files, bundles declared entries, stamps the app version, and validates the staged output before replacing the previous complete bundle. Browser output is a self-contained IIFE. Node service output is ESM.
+- `scripts/build-builtin-extensions.mjs` copies only declared files, bundles declared entries, stamps the app version, and validates the staged output before replacing the previous complete bundle. The dag-pane package additionally stages two compiled native companions from outside its own directory (the run worker and the engine run barrel, both plain-JS node entries beside the service bundle); their sources stay canonical in `web/server` and `omo-engine`, only the staged output lands here. Browser output is a self-contained IIFE. Node service output is ESM.
 - Panel translations live with the package and use `HostReadyContext.locale`. They cannot consume the host React i18n context across the iframe boundary. Keep all 12 host locales covered.
 - `packages/web/server/built-in-extensions/` is generated app code, not user data. Web builds, web prepack and root postinstall prepare it. Packaged Electron keeps it in `app.asar.unpacked/node_modules/@alcode/web/server/built-in-extensions` and supplies that physical root to the in-process backend.
 
