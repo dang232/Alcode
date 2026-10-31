@@ -1715,6 +1715,11 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     // Restore only once the snapshot binding is known: the saved id has to be
     // checked against this snapshot, not against a guess.
     if (!key || !index || restoredKeyRef.current === key) return;
+    // Never restore against an index that is still building: the empty answer
+    // would consume the pending selection with nothing to find, and the mark
+    // below would block the retry. The build poller refreshes the index, so
+    // this effect reruns and the restore fires on the first ready generation.
+    if (index.ready === false) return;
     restoredKeyRef.current = key;
     const saved = useUIStore.getState().codeGraphStateByDirectory[key];
     if (!saved) {

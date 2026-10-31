@@ -390,6 +390,16 @@ export const createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExe
   /** Normalized directory -> cached snapshot entry. Project isolation is the key. */
   const snapshots = new Map();
   /**
+   * Normalized directory -> the last partial projection an in-flight build
+   * handed over. It exists ONLY so a progress reader can show what is analysed
+   * so far; it is never a generation. A partial is missing every project not
+   * yet analysed, so serving it from `snapshots` presents half a graph as the
+   * whole graph - and because the entry mints a generation, a build that ends
+   * without publishing (cancelled, failed, crashed) would leave that half graph
+   * behind as the last known-good one. Kept apart so neither can happen.
+   */
+  const partialByDirectory = new Map();
+  /**
    * One in-flight build per directory. Without this, opening the panel, the
    * module map, and a query at the same moment each started its own full
    * build: the same work repeated, on the same thread, at the same time.
@@ -678,7 +688,7 @@ const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, on
       // build: the host can answer "what is indexed so far" from that message
       // even though every graph query would queue behind the build.
       onPartialSnapshot: (partialSnapshot, progress) => {
-        snapshots.set(directory, assembleEntry({
+        partialByDirectory.set(directory, assembleEntry({
           snapshot: partialSnapshot,
           scope: { projectId, worktreeId, revision, fingerprint },
           binding,
@@ -701,6 +711,8 @@ const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, on
       },
     });
     const built = assembleEntry({ snapshot, scope: { projectId, worktreeId, revision, fingerprint }, binding, dirty, dirtyReason, truncated, excludedCount, excludedSample, cap, entries, coverage });
+    // The finished graph supersedes any projection this build handed over.
+    partialByDirectory.delete(directory);
     void persistEntry(directory, built);
     return built;
   };
@@ -888,6 +900,8 @@ const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, on
   };
 
   const retainSnapshot = (directory, entry) => {
+    // A published generation always supersedes a projection for that directory.
+    partialByDirectory.delete(directory);
     snapshots.set(directory, entry);
     while (snapshots.size > MAX_RETAINED_SNAPSHOTS) {
       const oldest = [...snapshots.entries()]
@@ -955,6 +969,10 @@ const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, on
         const cancelled = job.cancelRequested === true || error?.code === 'CANCELLED';
         job.state = cancelled ? 'cancelled' : 'failed';
         job.error = cancelled ? null : error instanceof Error ? error.message : String(error);
+        // A build that never publishes must not leave its projection behind:
+        // the projection is not a generation, and the previous complete one
+        // (if any) stays exactly where it was, labelled stale on the next read.
+        partialByDirectory.delete(directory);
         emitProgress(directory, { state: job.state, error: job.error });
         throw error;
       } finally {
@@ -1192,6 +1210,7 @@ const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, on
         items: [],
         totals: { displayed: 0, known: 0, hidden: 0 },
         completeness: 'partial',
+        completenessReason: 'index-excluded',
       };
     }
     const knowledgeByNode = new Map();
