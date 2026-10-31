@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { readAsarFiles, findPackagedAppContentProblems } = require('./packaged-app-contents.cjs');
+const { readAsarFiles, findPackagedAppContentProblems, verifyPackagedAppContents } = require('./packaged-app-contents.cjs');
 
 const web = 'node_modules/@alcode/web';
 const helpers = [
@@ -12,12 +12,18 @@ const helpers = [
   `${web}/server/lib/git/repository-credential-helper.js`,
 ];
 
+const companions = [
+  `${web}/server/built-in-extensions/dag-pane/service/worker.js`,
+  `${web}/server/built-in-extensions/dag-pane/service/vendor/omo-engine/omo-opencode/src/cli/run/index.js`,
+];
+
 const completeApp = () => [
   ...['dist-bundle/entry.mjs', 'dist-bundle/main.mjs', 'dist-bundle/early-startup.mjs', 'preload.mjs', 'browser-panel-preload.cjs', 'package.json'],
   `${web}/package.json`,
   `${web}/server/index.js`,
 ].map((filePath) => ({ path: filePath, unpacked: false }))
-  .concat(helpers.map((filePath) => ({ path: filePath, unpacked: true })));
+  .concat(helpers.map((filePath) => ({ path: filePath, unpacked: true })))
+  .concat(companions.map((filePath) => ({ path: filePath, unpacked: true })));
 
 const writeAsar = (directory, header) => {
   const json = Buffer.from(JSON.stringify(header), 'utf8');
@@ -61,6 +67,57 @@ test('a missing server entry or a packed git helper is reported', () => {
     `${web}/server/index.js is missing`,
     `${helpers[0]} must be unpacked from the asar`,
   ]);
+});
+
+test('a service without its native companions is reported', () => {
+  const files = completeApp().filter((file) => file.path !== companions[0])
+    .map((file) => (file.path === companions[1] ? { ...file, unpacked: false } : file));
+  assert.deepEqual(findPackagedAppContentProblems(files), [
+    `${companions[0]} is missing`,
+    `${companions[1]} must be unpacked from the asar`,
+  ]);
+});
+
+test('a packaged tree without the staged loop CLI is reported', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-contents-'));
+  try {
+    const header = { files: {} };
+    for (const file of completeApp()) {
+      const parts = file.path.split('/');
+      let node = header.files;
+      for (let i = 0; i < parts.length - 1; i++) {
+        node[parts[i]] = node[parts[i]] || { files: {} };
+        node = node[parts[i]].files;
+      }
+      const leaf = { size: 1, offset: '0' };
+      if (file.unpacked) leaf.unpacked = true;
+      node[parts[parts.length - 1]] = leaf;
+    }
+    writeAsar(directory, header);
+    const unpacked = completeApp().filter((file) => file.unpacked).map((file) => file.path);
+    for (const file of unpacked) {
+      const full = path.join(directory, 'app.asar.unpacked', ...file.split('/'));
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, '');
+    }
+    const ripgrep = path.join(directory, 'ripgrep', process.platform === 'win32' ? 'rg.exe' : 'rg');
+    fs.mkdirSync(path.dirname(ripgrep), { recursive: true });
+    fs.writeFileSync(ripgrep, '');
+    const cliFiles = ['dist/cli.js', 'resolve-ulw-loop-cli.mjs', 'directive.md'];
+    for (const file of cliFiles) {
+      const full = path.join(directory, 'ulw-loop-cli', ...file.split('/'));
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, '');
+    }
+    verifyPackagedAppContents(directory);
+    fs.rmSync(path.join(directory, 'ulw-loop-cli', 'dist', 'cli.js'));
+    assert.throws(
+      () => verifyPackagedAppContents(directory),
+      /resources\/ulw-loop-cli\/dist\/cli\.js is missing/,
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('reads nested files and the unpacked flag from an asar header', () => {
