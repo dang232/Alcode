@@ -240,6 +240,8 @@ describe("ulw_dispatch batch", () => {
     // then
     expect(error).toBeInstanceOf(Error)
     expect(error.message).toContain("workerSessionId")
+    // The refusal is a dead end only if it hides the one spawner the model does have.
+    expect(error.message).toContain("task worker per goal")
     expect(store.dispatchedGoalIds(RUN_ID)).toEqual([])
   })
 

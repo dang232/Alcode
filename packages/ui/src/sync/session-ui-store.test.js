@@ -495,6 +495,96 @@ describe('routeMessage bare ulw capture', () => {
     expect(sendMessageCalls[0].text).toBe('can you ulw this?');
   });
 
+  test('routes a closing mass ulw order to the native run with the task as brief', async () => {
+    const decision = await send('Audit the repo and fix what is broken. mass ulw');
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-ulw');
+    expect(sendMessageCalls[0].text).toBe('Audit the repo and fix what is broken.');
+    const context = (sendMessageCalls[0].context ?? []).map((part) => part.text ?? '').join('\n');
+    expect(context).toContain('ulw_goal_create');
+    expect(context).toContain('ulw_dispatch');
+  });
+
+  test('routes a leading mass ulw order to the native run', async () => {
+    const decision = await send('mass ulw audit the repo');
+
+    expect(decision).toBe('command');
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('audit the repo');
+  });
+
+  test('leaves a mid-sentence mass ulw mention as a plain prompt', async () => {
+    const decision = await send('we discussed mass ulw in the notes');
+
+    expect(decision).toBe('prompt');
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe('we discussed mass ulw in the notes');
+  });
+
+  test('keeps shell input off the prose order route', async () => {
+    const decision = await send('audit the repo mass ulw', 'shell');
+
+    expect(decision).toBe('shell');
+    expect(shellCalls).toHaveLength(1);
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  const workBrief = (body) => `# Repo work order
+
+${body}
+
+## Phase A — Baseline
+Map the implementation, list the confirmed defects with file paths.
+
+## Phase B — Critical correctness
+Fix the confirmed P0 defects first, keep the change small.
+
+## Definition of done
+Every fix is proven by its run on the real surface with the kept tests green.
+
+Priority P0 items come before anything else. Do not stop after a plan:
+continue through implementation and verification.
+`;
+  const padTo = (text, length) => (text.length >= length ? text.slice(0, length) : text + 'x'.repeat(length - text.length));
+
+  test('routes a long structured execution brief to the native run with no trigger', async () => {
+    const brief = padTo(workBrief('Audit the checkout end to end.'), 1800);
+
+    expect(brief.toLowerCase()).not.toContain('ulw');
+    const decision = await send(brief);
+
+    expect(decision).toBe('command');
+    expect(sendCommandCalls).toHaveLength(0);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].id).toBe('session-ulw');
+    expect(sendMessageCalls[0].text).toBe(brief.trim());
+    const context = (sendMessageCalls[0].context ?? []).map((part) => part.text ?? '').join('\n');
+    expect(context).toContain('ulw_goal_create');
+  });
+
+  test('leaves a long pasted log plus a question as a plain prompt', async () => {
+    const log = `${'Error: something failed\n    at frame (app.js:10:5)\n'.repeat(60)}What does this trace mean?`;
+
+    expect(log.length).toBeGreaterThan(1500);
+    const decision = await send(log);
+
+    expect(decision).toBe('prompt');
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].text).toBe(log);
+  });
+
+  test('leaves a long structured read-only brief as a plain prompt', async () => {
+    const brief = padTo('# Release notes\n\n## Phase A — Recap\n\nPriority P0 highlights.\n\n## Definition of done\nSummarize what shipped.', 1700);
+
+    const decision = await send(brief);
+
+    expect(decision).toBe('prompt');
+    expect(sendMessageCalls).toHaveLength(1);
+  });
+
   test('leaves empty and whitespace content as plain prompts', async () => {
     expect(await send('')).toBe('prompt');
     expect(await send('   ')).toBe('prompt');
