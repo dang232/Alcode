@@ -312,9 +312,30 @@ const denyRead = async (file) => {
       step('deny-verify', path.basename(file) + ': denied=' + probe.denied + ' code=' + probe.code + ' stat=' + probe.statCode + ' freshExit=' + fresh.exit + (fresh.stderr ? ' freshErr=' + fresh.stderr.slice(0, 80) : ''));
       if (probe.statCode === 'ENOENT') fail('deny-wrong-error', file + ' is missing; a missing file must never pass as denied');
       if (probe.denied) {
-        step('deny-ok', path.basename(file) + ': genuine EACCES-class denial code=' + probe.code + ' stat=' + probe.statCode);
+        step('deny-ok', path.basename(file) + ': genuine EACCES-class denial code=' + probe.code + ' stat=' + probe.statCode + ' via user deny');
         return async () => {
           runIcacls([file, '/remove:d', USERNAME], attempts);
+          if (await isDenied(file)) {
+            fail('restore', 'icacls /remove:d did not restore readability for ' + file + ' [' + attempts.join(' | ') + ']');
+          }
+          step('deny-restore', path.basename(file) + ': readable after /remove:d');
+        };
+      }
+      try {
+        const postDump = spawnSync('icacls', [file], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+        step('deny-postaces', path.basename(file) + ': ' + (postDump.stdout ?? '').trim().split('\n').slice(0, 8).join(' | ').slice(0, 400));
+      } catch { /* diagnostics only */ }
+      step('deny-everyone', path.basename(file) + ': user deny ineffective (Full via Administrators), trying Everyone deny');
+      runIcacls([file, '/deny', '*S-1-1-0:(R)'], attempts);
+      const probe2 = await denialProbe(file);
+      const fresh2 = freshNodeDenied(file);
+      step('deny-verify2', path.basename(file) + ': denied=' + probe2.denied + ' code=' + probe2.code + ' stat=' + probe2.statCode + ' freshExit=' + fresh2.exit);
+      if (probe2.statCode === 'ENOENT') fail('deny-wrong-error', file + ' is missing; a missing file must never pass as denied');
+      if (probe2.denied) {
+        step('deny-ok', path.basename(file) + ': genuine EACCES-class denial code=' + probe2.code + ' stat=' + probe2.statCode + ' via Everyone deny');
+        return async () => {
+          runIcacls([file, '/remove:d', USERNAME], attempts);
+          runIcacls([file, '/remove:d', '*S-1-1-0'], attempts);
           if (await isDenied(file)) {
             fail('restore', 'icacls /remove:d did not restore readability for ' + file + ' [' + attempts.join(' | ') + ']');
           }
@@ -372,16 +393,28 @@ const probeNativeAclDenial = async (file) => {
   step('contract-b-native-probe', path.basename(file) + ': denied=' + probe.denied + ' code=' + probe.code + ' stat=' + probe.statCode + ' freshExit=' + fresh.exit);
   const restoreNative = async () => {
     runIcacls([file, '/remove:d', USERNAME], attempts);
+    runIcacls([file, '/remove:d', '*S-1-1-0'], attempts);
   };
   try {
     if (probe.statCode === 'ENOENT') fail('deny-wrong-error', file + ' is missing; a missing file must never pass as denied');
     if (probe.denied) {
-      step('contract-b-native', 'PASS: native icacls denial genuine code=' + probe.code + ' stat=' + probe.statCode);
+      step('contract-b-native', 'PASS: native icacls denial genuine code=' + probe.code + ' stat=' + probe.statCode + ' via user deny');
       await restoreNative();
       expect('contract-b-native-restore', (await denialProbe(file)).denied === false, 'probe file readable after restore');
       return 'pass';
     }
-    step('contract-b-native', 'BLOCKED: hosted runner bypasses ACL (icacls exit 0 but fresh-node exit=' + fresh.exit + ', priv=' + whoamiPriv() + '); Contract A will use isolated (backup-disabled) denial, this does not block it [' + attempts.join(' | ') + ']');
+    runIcacls([file, '/deny', '*S-1-1-0:(R)'], attempts);
+    const probe2 = await denialProbe(file);
+    const fresh2 = freshNodeDenied(file);
+    step('contract-b-native-probe2', path.basename(file) + ': denied=' + probe2.denied + ' code=' + probe2.code + ' stat=' + probe2.statCode + ' freshExit=' + fresh2.exit);
+    if (probe2.statCode === 'ENOENT') fail('deny-wrong-error', file + ' is missing; a missing file must never pass as denied');
+    if (probe2.denied) {
+      step('contract-b-native', 'PASS: native icacls denial genuine code=' + probe2.code + ' stat=' + probe2.statCode + ' via Everyone deny (user Full required broader deny)');
+      await restoreNative();
+      expect('contract-b-native-restore', (await denialProbe(file)).denied === false, 'probe file readable after restore');
+      return 'pass';
+    }
+    step('contract-b-native', 'BLOCKED: hosted runner bypasses ACL (icacls exit 0 but fresh-node exit=' + fresh.exit + '/' + fresh2.exit + ', priv=' + whoamiPriv() + '); Contract A will use isolated denial, this does not block it [' + attempts.join(' | ') + ']');
     await restoreNative();
     return 'blocked';
   } catch (error) {
