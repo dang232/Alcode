@@ -198,7 +198,7 @@ const main = async () => {
   const { entries } = readAsarHeader(asarPath);
   const names = new Set(entries.map((entry) => entry.path));
   expect('asar-typescript', names.has('node_modules/typescript/package.json'), 'typescript package manifest ships');
-  const binary = process.platform === 'win32' ? 'tsc.exe' : 'tsgo';
+  const binary = process.platform === 'win32' ? 'tsc.exe' : 'tsc';
   const binaryPath = `node_modules/@typescript/${platformPackage}/lib/${binary}`;
   expect('asar-binary', names.has(binaryPath), `${platformPackage} compiler binary ships`);
 

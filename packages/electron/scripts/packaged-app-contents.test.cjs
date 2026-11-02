@@ -135,13 +135,13 @@ test('target platform mapping honors the cross-build signal', () => {
     { os: process.platform, arch: 'x64' },
   );
   assert.equal(typescriptPlatformLib({ os: 'darwin', arch: 'arm64' }), 'node_modules/@typescript/typescript-darwin-arm64/lib');
-  assert.equal(typescriptBinaryName({ os: 'darwin', arch: 'arm64' }), 'tsgo');
+  assert.equal(typescriptBinaryName({ os: 'darwin', arch: 'arm64' }), 'tsc');
 });
 
 test('a foreign target binary is required by path, not by host layout', () => {
   const target = { os: 'darwin', arch: 'arm64' };
   const binary = `${typescriptPlatformLib(target)}/${typescriptBinaryName(target)}`;
-  assert.equal(binary, 'node_modules/@typescript/typescript-darwin-arm64/lib/tsgo');
+  assert.equal(binary, 'node_modules/@typescript/typescript-darwin-arm64/lib/tsc');
   assert.deepEqual(findPackagedAppContentProblems(completeApp(), target).filter((problem) =>
     problem.includes('typescript-darwin-arm64'),
   ), [`${binary} is missing`]);
@@ -162,7 +162,7 @@ test('copyTypescriptPlatformLibs stages the binary plus its lib declarations', (
     const platform = `typescript-${process.platform}-${process.arch}`;
     const sourceLib = path.join(directory, 'tree', '@typescript', platform, 'lib');
     fs.mkdirSync(sourceLib, { recursive: true });
-    fs.writeFileSync(path.join(sourceLib, process.platform === 'win32' ? 'tsc.exe' : 'tsgo'), '');
+    fs.writeFileSync(path.join(sourceLib, process.platform === 'win32' ? 'tsc.exe' : 'tsc'), '');
     fs.writeFileSync(path.join(sourceLib, 'lib.d.ts'), '');
     const resources = path.join(directory, 'resources');
     fs.mkdirSync(resources, { recursive: true });
@@ -180,7 +180,7 @@ test('copyTypescriptPlatformLibs refuses a platform tree without lib declaration
     const platform = `typescript-${process.platform}-${process.arch}`;
     const sourceLib = path.join(directory, 'tree', '@typescript', platform, 'lib');
     fs.mkdirSync(sourceLib, { recursive: true });
-    fs.writeFileSync(path.join(sourceLib, process.platform === 'win32' ? 'tsc.exe' : 'tsgo'), '');
+    fs.writeFileSync(path.join(sourceLib, process.platform === 'win32' ? 'tsc.exe' : 'tsc'), '');
     assert.throws(
       () => copyTypescriptPlatformLibs(path.join(directory, 'resources'), path.join(directory, 'tree', 'typescript')),
       /no lib\.d\.ts/,

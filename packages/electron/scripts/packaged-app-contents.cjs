@@ -75,7 +75,7 @@ const typescriptTargetPlatform = (environment = process.env) => {
 };
 const typescriptPlatformDir = (target = typescriptTargetPlatform()) =>
   `@typescript/typescript-${target.os}-${target.arch}`;
-const typescriptBinaryName = (target = typescriptTargetPlatform()) => (target.os === 'win32' ? 'tsc.exe' : 'tsgo');
+const typescriptBinaryName = (target = typescriptTargetPlatform()) => (target.os === 'win32' ? 'tsc.exe' : 'tsc');
 const typescriptPlatformLib = (target) => `node_modules/${typescriptPlatformDir(target)}/lib`;
 
 /**
