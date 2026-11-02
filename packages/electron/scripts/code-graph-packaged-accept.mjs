@@ -195,17 +195,24 @@ const denyRead = async (file) => {
     // Attached with piped stdio: detached+ignored holders die on some
     // hosts before taking the lock; the command prints nothing on the
     // success path, so the pipes cannot fill.
-    const holder = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command',
-      `try { $f=[System.IO.File]::Open('${file.replace(/'/g, "''")}', 'Open', 'Read', 'None'); Start-Sleep 120 } catch { exit 1 }`,
+    const holder = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+      `$f=[System.IO.File]::Open('${file.replace(/'/g, "''")}', 'Open', 'Read', 'None'); Start-Sleep 120`,
     ], { stdio: 'pipe', windowsHide: true });
     holder.stdout.resume();
     holder.stderr.resume();
+    step('deny-holder', `spawned exclusive-lock helper pid=${holder.pid ?? 'none'} for ${path.basename(file)}`);
     // PowerShell cold start on a loaded host can take seconds; poll for
     // the lock instead of trusting a fixed delay, and stop early if the
     // helper itself is gone.
     let holderGone = false;
-    holder.on('exit', () => { holderGone = true; });
-    holder.on('error', () => { holderGone = true; });
+    holder.on('exit', (code, signal) => {
+      holderGone = true;
+      step('deny-holder-exit', `helper exited early code=${code ?? 'none'} signal=${signal ?? 'none'}`);
+    });
+    holder.on('error', (error) => {
+      holderGone = true;
+      step('deny-holder-error', String(error).slice(0, 160));
+    });
     let locked = false;
     for (let waited = 0; waited < 30000; waited += 1000) {
       await sleep(1000);
