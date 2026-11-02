@@ -6,6 +6,20 @@
  * engine TypeScript ships inline: the packaged web server runs under plain
  * Node with no transpile step, where a static `.ts` import fails.
  */
+var __defProp = Object.defineProperty;
+var __returnValue = (v) => v;
+function __exportSetter(name, newValue) {
+  this[name] = __returnValue.bind(null, newValue);
+}
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, {
+      get: all[name],
+      enumerable: true,
+      configurable: true,
+      set: __exportSetter.bind(all, name)
+    });
+};
 var __esm = (fn, res, err) => () => {
   if (fn)
     try {
@@ -22,6 +36,12236 @@ var init_runner = () => {};
 
 // ../../../../omo-engine/tmux-core/src/tmux-utils/environment.ts
 var init_environment = () => {};
+
+// ../code-graph/code-graph.bundle.js
+var exports_code_graph_bundle = {};
+__export(exports_code_graph_bundle, {
+  FILE_RECORDS_VERSION: () => FILE_RECORDS_VERSION,
+  MAX_CONTENT_TOKENS_PER_FILE: () => MAX_CONTENT_TOKENS_PER_FILE2,
+  PARSER_RECORD_VERSION: () => PARSER_RECORD_VERSION,
+  SNAPSHOT_STORE_VERSION: () => SNAPSHOT_STORE_VERSION,
+  STALE_AFTER_MS: () => STALE_AFTER_MS3,
+  computeScopeFingerprint: () => computeScopeFingerprint2,
+  createSnapshotManifest: () => createSnapshotManifest,
+  exportSurfaceKey: () => exportSurfaceKey,
+  fileOfNodeId: () => fileOfNodeId,
+  findTests: () => findTests2,
+  findUnreferenced: () => findUnreferenced,
+  fingerprintBytes: () => fingerprintBytes,
+  fingerprintContent: () => fingerprintContent,
+  impact: () => impact2,
+  indexFiles: () => indexFiles2,
+  joinSnapshotShards: () => joinSnapshotShards,
+  parseFileRecordsDoc: () => parseFileRecordsDoc,
+  parseSnapshotManifest: () => parseSnapshotManifest,
+  parseSnapshotShard: () => parseSnapshotShard,
+  rebuildIncremental: () => rebuildIncremental,
+  search: () => search2,
+  searchContent: () => searchContent,
+  serializeFileRecordsDoc: () => serializeFileRecordsDoc,
+  serializeSnapshotManifest: () => serializeSnapshotManifest,
+  serializeSnapshotShard: () => serializeSnapshotShard,
+  splitSnapshotIntoShards: () => splitSnapshotIntoShards,
+  symbolContext: () => symbolContext2,
+  trace: () => trace2,
+  validateFileRecords: () => validateFileRecords
+});
+import { existsSync as existsSync15, readdirSync as readdirSync6 } from "node:fs";
+import { createRequire as createRequire2 } from "node:module";
+import { dirname as dirname6, join as join12, resolve as resolve6 } from "node:path";
+import { Buffer as Buffer22 } from "node:buffer";
+import fs4 from "node:fs";
+import module2 from "node:module";
+import path5 from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+import { spawn as spawn2 } from "node:child_process";
+import { closeSync as closeSync3, openSync as openSync3, readSync as readSync2, writeSync as writeSync3 } from "node:fs";
+import { createHash as createHash5 } from "node:crypto";
+import { createHash as createHash22 } from "node:crypto";
+function unescapeLeadingUnderscores2(identifier) {
+  const id = identifier;
+  return id.length >= 3 && id.charCodeAt(0) === CharacterCodes4._ && id.charCodeAt(1) === CharacterCodes4._ && id.charCodeAt(2) === CharacterCodes4._ ? id.slice(1) : id;
+}
+function cloneSourceFileData2(sourceFile) {
+  return {
+    statements: sourceFile.statements,
+    endOfFileToken: sourceFile.endOfFileToken,
+    text: sourceFile.text,
+    fileName: sourceFile.fileName,
+    path: sourceFile.path,
+    languageVariant: sourceFile.languageVariant,
+    scriptKind: sourceFile.scriptKind,
+    isDeclarationFile: sourceFile.isDeclarationFile,
+    referencedFiles: sourceFile.referencedFiles,
+    typeReferenceDirectives: sourceFile.typeReferenceDirectives,
+    libReferenceDirectives: sourceFile.libReferenceDirectives,
+    imports: sourceFile.imports,
+    moduleAugmentations: sourceFile.moduleAugmentations,
+    ambientModuleNames: sourceFile.ambientModuleNames,
+    externalModuleIndicator: sourceFile.externalModuleIndicator,
+    tokenCache: undefined
+  };
+}
+function isIdentifier2(node) {
+  return node.kind === SyntaxKind3.Identifier;
+}
+function isCaseBlock2(node) {
+  return node.kind === SyntaxKind3.CaseBlock;
+}
+function isCatchClause2(node) {
+  return node.kind === SyntaxKind3.CatchClause;
+}
+function isBlock2(node) {
+  return node.kind === SyntaxKind3.Block;
+}
+function isVariableStatement2(node) {
+  return node.kind === SyntaxKind3.VariableStatement;
+}
+function isVariableDeclaration2(node) {
+  return node.kind === SyntaxKind3.VariableDeclaration;
+}
+function isVariableDeclarationList2(node) {
+  return node.kind === SyntaxKind3.VariableDeclarationList;
+}
+function isFunctionDeclaration2(node) {
+  return node.kind === SyntaxKind3.FunctionDeclaration;
+}
+function isClassDeclaration2(node) {
+  return node.kind === SyntaxKind3.ClassDeclaration;
+}
+function isClassExpression2(node) {
+  return node.kind === SyntaxKind3.ClassExpression;
+}
+function isInterfaceDeclaration2(node) {
+  return node.kind === SyntaxKind3.InterfaceDeclaration;
+}
+function isTypeAliasDeclaration2(node) {
+  switch (node.kind) {
+    case SyntaxKind3.TypeAliasDeclaration:
+    case SyntaxKind3.JSTypeAliasDeclaration:
+      return true;
+    default:
+      return false;
+  }
+}
+function isEnumDeclaration2(node) {
+  return node.kind === SyntaxKind3.EnumDeclaration;
+}
+function isImportDeclaration2(node) {
+  switch (node.kind) {
+    case SyntaxKind3.ImportDeclaration:
+    case SyntaxKind3.JSImportDeclaration:
+      return true;
+    default:
+      return false;
+  }
+}
+function isConstructorDeclaration2(node) {
+  return node.kind === SyntaxKind3.Constructor;
+}
+function isMethodDeclaration2(node) {
+  return node.kind === SyntaxKind3.MethodDeclaration;
+}
+function isStringLiteral2(node) {
+  return node.kind === SyntaxKind3.StringLiteral;
+}
+function isArrowFunction2(node) {
+  return node.kind === SyntaxKind3.ArrowFunction;
+}
+function isFunctionExpression2(node) {
+  return node.kind === SyntaxKind3.FunctionExpression;
+}
+function isElementAccessExpression2(node) {
+  return node.kind === SyntaxKind3.ElementAccessExpression;
+}
+function isCallExpression2(node) {
+  return node.kind === SyntaxKind3.CallExpression;
+}
+function isNewExpression2(node) {
+  return node.kind === SyntaxKind3.NewExpression;
+}
+function isExpressionWithTypeArguments2(node) {
+  return node.kind === SyntaxKind3.ExpressionWithTypeArguments;
+}
+function isImportAttributes2(node) {
+  return node.kind === SyntaxKind3.ImportAttributes;
+}
+function isTemplateHead2(node) {
+  return node.kind === SyntaxKind3.TemplateHead;
+}
+function isJsxAttributes2(node) {
+  return node.kind === SyntaxKind3.JsxAttributes;
+}
+function isJsxOpeningElement2(node) {
+  return node.kind === SyntaxKind3.JsxOpeningElement;
+}
+function isJsxSelfClosingElement2(node) {
+  return node.kind === SyntaxKind3.JsxSelfClosingElement;
+}
+function isJsxOpeningFragment2(node) {
+  return node.kind === SyntaxKind3.JsxOpeningFragment;
+}
+function isJsxClosingFragment2(node) {
+  return node.kind === SyntaxKind3.JsxClosingFragment;
+}
+function isJsxClosingElement2(node) {
+  return node.kind === SyntaxKind3.JsxClosingElement;
+}
+function isSourceFile2(node) {
+  return node.kind === SyntaxKind3.SourceFile;
+}
+function isExportDeclaration2(node) {
+  return node.kind === SyntaxKind3.ExportDeclaration;
+}
+function isImportClause2(node) {
+  return node.kind === SyntaxKind3.ImportClause;
+}
+function isTypeParameterDeclaration2(node) {
+  return node.kind === SyntaxKind3.TypeParameter;
+}
+function isModuleName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.StringLiteral;
+}
+function isModuleExportName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.StringLiteral;
+}
+function isPropertyName2(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind3.Identifier || kind === SyntaxKind3.StringLiteral || kind === SyntaxKind3.NoSubstitutionTemplateLiteral || kind === SyntaxKind3.NumericLiteral || kind === SyntaxKind3.ComputedPropertyName || kind === SyntaxKind3.PrivateIdentifier || kind === SyntaxKind3.BigIntLiteral;
+}
+function isModuleBody2(node) {
+  return node.kind === SyntaxKind3.ModuleBlock || node.kind === SyntaxKind3.ModuleDeclaration;
+}
+function isJSDocFullName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.ModuleDeclaration;
+}
+function isModuleReference2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.QualifiedName || node.kind === SyntaxKind3.ExternalModuleReference;
+}
+function isNamedImportBindings2(node) {
+  return node.kind === SyntaxKind3.NamespaceImport || node.kind === SyntaxKind3.NamedImports;
+}
+function isNamedExportBindings2(node) {
+  return node.kind === SyntaxKind3.NamespaceExport || node.kind === SyntaxKind3.NamedExports;
+}
+function isMemberName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.PrivateIdentifier;
+}
+function isEntityName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.QualifiedName;
+}
+function isBindingName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.ObjectBindingPattern || node.kind === SyntaxKind3.ArrayBindingPattern;
+}
+function isJsxAttributeName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.JsxNamespacedName;
+}
+function isJsxAttributeValue2(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind3.StringLiteral || kind === SyntaxKind3.JsxExpression || kind === SyntaxKind3.JsxElement || kind === SyntaxKind3.JsxSelfClosingElement || kind === SyntaxKind3.JsxFragment;
+}
+function isTemplateMiddleOrTail2(node) {
+  return node.kind === SyntaxKind3.TemplateMiddle || node.kind === SyntaxKind3.TemplateTail;
+}
+function isTemplateLiteral2(node) {
+  return node.kind === SyntaxKind3.TemplateExpression || node.kind === SyntaxKind3.NoSubstitutionTemplateLiteral;
+}
+function isTypePredicateParameterName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.ThisType;
+}
+function isImportAttributeName2(node) {
+  return node.kind === SyntaxKind3.Identifier || node.kind === SyntaxKind3.StringLiteral;
+}
+function isFunctionBody2(node) {
+  return node.kind === SyntaxKind3.Block;
+}
+function isAssignmentOperator2(kind) {
+  return kind === SyntaxKind3.EqualsToken || isCompoundAssignmentOperator2(kind);
+}
+function isBinaryOperator2(kind) {
+  return isAssignmentOperatorOrHigher2(kind) || kind === SyntaxKind3.CommaToken;
+}
+function isExponentiationOperator2(kind) {
+  return kind === SyntaxKind3.AsteriskAsteriskToken;
+}
+function isMultiplicativeOperator2(kind) {
+  return kind === SyntaxKind3.AsteriskToken || kind === SyntaxKind3.SlashToken || kind === SyntaxKind3.PercentToken;
+}
+function isMultiplicativeOperatorOrHigher2(kind) {
+  return isExponentiationOperator2(kind) || isMultiplicativeOperator2(kind);
+}
+function isAdditiveOperator2(kind) {
+  return kind === SyntaxKind3.PlusToken || kind === SyntaxKind3.MinusToken;
+}
+function isAdditiveOperatorOrHigher2(kind) {
+  return isMultiplicativeOperatorOrHigher2(kind) || isAdditiveOperator2(kind);
+}
+function isShiftOperator2(kind) {
+  return kind === SyntaxKind3.LessThanLessThanToken || kind === SyntaxKind3.GreaterThanGreaterThanToken || kind === SyntaxKind3.GreaterThanGreaterThanGreaterThanToken;
+}
+function isShiftOperatorOrHigher2(kind) {
+  return isAdditiveOperatorOrHigher2(kind) || isShiftOperator2(kind);
+}
+function isRelationalOperator2(kind) {
+  return kind === SyntaxKind3.LessThanToken || kind === SyntaxKind3.LessThanEqualsToken || kind === SyntaxKind3.GreaterThanToken || kind === SyntaxKind3.GreaterThanEqualsToken || kind === SyntaxKind3.InstanceOfKeyword || kind === SyntaxKind3.InKeyword;
+}
+function isRelationalOperatorOrHigher2(kind) {
+  return isShiftOperatorOrHigher2(kind) || isRelationalOperator2(kind);
+}
+function isEqualityOperator2(kind) {
+  return kind === SyntaxKind3.EqualsEqualsToken || kind === SyntaxKind3.EqualsEqualsEqualsToken || kind === SyntaxKind3.ExclamationEqualsEqualsToken || kind === SyntaxKind3.ExclamationEqualsToken;
+}
+function isEqualityOperatorOrHigher2(kind) {
+  return isRelationalOperatorOrHigher2(kind) || isEqualityOperator2(kind);
+}
+function isBitwiseOperator2(kind) {
+  return kind === SyntaxKind3.AmpersandToken || kind === SyntaxKind3.BarToken || kind === SyntaxKind3.CaretToken;
+}
+function isBitwiseOperatorOrHigher2(kind) {
+  return isEqualityOperatorOrHigher2(kind) || isBitwiseOperator2(kind);
+}
+function isLogicalOperator2(kind) {
+  return kind === SyntaxKind3.AmpersandAmpersandToken || kind === SyntaxKind3.BarBarToken;
+}
+function isLogicalOperatorOrHigher2(kind) {
+  return isBitwiseOperatorOrHigher2(kind) || isLogicalOperator2(kind);
+}
+function isCompoundAssignmentOperator2(kind) {
+  return kind === SyntaxKind3.PlusEqualsToken || kind === SyntaxKind3.MinusEqualsToken || kind === SyntaxKind3.AsteriskAsteriskEqualsToken || kind === SyntaxKind3.AsteriskEqualsToken || kind === SyntaxKind3.SlashEqualsToken || kind === SyntaxKind3.PercentEqualsToken || kind === SyntaxKind3.AmpersandEqualsToken || kind === SyntaxKind3.BarEqualsToken || kind === SyntaxKind3.CaretEqualsToken || kind === SyntaxKind3.LessThanLessThanEqualsToken || kind === SyntaxKind3.GreaterThanGreaterThanGreaterThanEqualsToken || kind === SyntaxKind3.GreaterThanGreaterThanEqualsToken || kind === SyntaxKind3.BarBarEqualsToken || kind === SyntaxKind3.AmpersandAmpersandEqualsToken || kind === SyntaxKind3.QuestionQuestionEqualsToken;
+}
+function isAssignmentOperatorOrHigher2(kind) {
+  return kind === SyntaxKind3.QuestionQuestionToken || isLogicalOperatorOrHigher2(kind) || isAssignmentOperator2(kind);
+}
+function isJSDocNodeKind2(kind) {
+  return kind >= SyntaxKind3.FirstJSDocNode && kind <= SyntaxKind3.LastJSDocNode;
+}
+function isEndOfFile2(node) {
+  return node.kind === SyntaxKind3.EndOfFile;
+}
+function isDotDotDotToken2(node) {
+  return node.kind === SyntaxKind3.DotDotDotToken;
+}
+function isQuestionToken2(node) {
+  return node.kind === SyntaxKind3.QuestionToken;
+}
+function isExclamationToken2(node) {
+  return node.kind === SyntaxKind3.ExclamationToken;
+}
+function isColonToken2(node) {
+  return node.kind === SyntaxKind3.ColonToken;
+}
+function isEqualsToken2(node) {
+  return node.kind === SyntaxKind3.EqualsToken;
+}
+function isAsteriskToken2(node) {
+  return node.kind === SyntaxKind3.AsteriskToken;
+}
+function isEqualsGreaterThanToken2(node) {
+  return node.kind === SyntaxKind3.EqualsGreaterThanToken;
+}
+function isQuestionDotToken2(node) {
+  return node.kind === SyntaxKind3.QuestionDotToken;
+}
+function isAssertsKeyword2(node) {
+  return node.kind === SyntaxKind3.AssertsKeyword;
+}
+function isAwaitKeyword2(node) {
+  return node.kind === SyntaxKind3.AwaitKeyword;
+}
+function isBinaryOperatorToken2(node) {
+  return isBinaryOperator2(node.kind);
+}
+function isTypeNode2(node) {
+  return isTypeNodeKind2(node.kind);
+}
+function isTypeNodeKind2(kind) {
+  return kind >= SyntaxKind3.FirstTypeNode && kind <= SyntaxKind3.LastTypeNode || kind === SyntaxKind3.AnyKeyword || kind === SyntaxKind3.UnknownKeyword || kind === SyntaxKind3.NumberKeyword || kind === SyntaxKind3.BigIntKeyword || kind === SyntaxKind3.ObjectKeyword || kind === SyntaxKind3.BooleanKeyword || kind === SyntaxKind3.StringKeyword || kind === SyntaxKind3.SymbolKeyword || kind === SyntaxKind3.VoidKeyword || kind === SyntaxKind3.UndefinedKeyword || kind === SyntaxKind3.NeverKeyword || kind === SyntaxKind3.IntrinsicKeyword || kind === SyntaxKind3.ExpressionWithTypeArguments || kind === SyntaxKind3.JSDocAllType || kind === SyntaxKind3.JSDocNullableType || kind === SyntaxKind3.JSDocNonNullableType || kind === SyntaxKind3.JSDocOptionalType || kind === SyntaxKind3.JSDocVariadicType || kind === SyntaxKind3.JSDocTypeExpression || kind === SyntaxKind3.JSDocTypeLiteral || kind === SyntaxKind3.JSDocSignature;
+}
+function isStatement2(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind3.VariableStatement || kind === SyntaxKind3.EmptyStatement || kind === SyntaxKind3.ExpressionStatement || kind === SyntaxKind3.IfStatement || kind === SyntaxKind3.DoStatement || kind === SyntaxKind3.WhileStatement || kind === SyntaxKind3.ForStatement || kind === SyntaxKind3.ForInStatement || kind === SyntaxKind3.ForOfStatement || kind === SyntaxKind3.ContinueStatement || kind === SyntaxKind3.BreakStatement || kind === SyntaxKind3.ReturnStatement || kind === SyntaxKind3.WithStatement || kind === SyntaxKind3.SwitchStatement || kind === SyntaxKind3.LabeledStatement || kind === SyntaxKind3.ThrowStatement || kind === SyntaxKind3.TryStatement || kind === SyntaxKind3.DebuggerStatement || kind === SyntaxKind3.InterfaceDeclaration || kind === SyntaxKind3.TypeAliasDeclaration || kind === SyntaxKind3.EnumDeclaration || kind === SyntaxKind3.ModuleDeclaration || kind === SyntaxKind3.ImportDeclaration || kind === SyntaxKind3.ImportEqualsDeclaration || kind === SyntaxKind3.ExportDeclaration || kind === SyntaxKind3.ExportAssignment || kind === SyntaxKind3.NamespaceExportDeclaration || kind === SyntaxKind3.FunctionDeclaration || kind === SyntaxKind3.ClassDeclaration || kind === SyntaxKind3.MissingDeclaration || kind === SyntaxKind3.NotEmittedStatement || kind === SyntaxKind3.Block;
+}
+function isExpression2(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind3.ConditionalExpression || kind === SyntaxKind3.YieldExpression || kind === SyntaxKind3.ArrowFunction || kind === SyntaxKind3.BinaryExpression || kind === SyntaxKind3.SpreadElement || kind === SyntaxKind3.AsExpression || kind === SyntaxKind3.OmittedExpression || kind === SyntaxKind3.SatisfiesExpression || kind === SyntaxKind3.PrefixUnaryExpression || kind === SyntaxKind3.PostfixUnaryExpression || kind === SyntaxKind3.DeleteExpression || kind === SyntaxKind3.TypeOfExpression || kind === SyntaxKind3.VoidExpression || kind === SyntaxKind3.AwaitExpression || kind === SyntaxKind3.TypeAssertionExpression || kind === SyntaxKind3.CallExpression || kind === SyntaxKind3.NewExpression || kind === SyntaxKind3.TaggedTemplateExpression || kind === SyntaxKind3.NonNullExpression || kind === SyntaxKind3.MetaProperty || kind === SyntaxKind3.JsxExpression || kind === SyntaxKind3.PropertyAccessExpression || kind === SyntaxKind3.ElementAccessExpression || kind === SyntaxKind3.FunctionExpression || kind === SyntaxKind3.ClassExpression || kind === SyntaxKind3.ParenthesizedExpression || kind === SyntaxKind3.ArrayLiteralExpression || kind === SyntaxKind3.ObjectLiteralExpression || kind === SyntaxKind3.TemplateExpression || kind === SyntaxKind3.Identifier || kind === SyntaxKind3.PrivateIdentifier || kind === SyntaxKind3.NumericLiteral || kind === SyntaxKind3.BigIntLiteral || kind === SyntaxKind3.StringLiteral || kind === SyntaxKind3.RegularExpressionLiteral || kind === SyntaxKind3.NoSubstitutionTemplateLiteral || kind === SyntaxKind3.JsxElement || kind === SyntaxKind3.JsxSelfClosingElement || kind === SyntaxKind3.JsxFragment || kind === SyntaxKind3.NullKeyword || kind === SyntaxKind3.TrueKeyword || kind === SyntaxKind3.FalseKeyword || kind === SyntaxKind3.ThisKeyword || kind === SyntaxKind3.SuperKeyword || kind === SyntaxKind3.ImportKeyword || kind === SyntaxKind3.ExpressionWithTypeArguments;
+}
+function isLeftHandSideExpression2(node) {
+  return isLeftHandSideExpressionKind2(skipPartiallyEmittedExpressions2(node).kind);
+}
+function skipPartiallyEmittedExpressions2(node) {
+  return skipOuterExpressions2(node, OuterExpressionKinds2.PartiallyEmittedExpressions);
+}
+function isLeftHandSideExpressionKind2(kind) {
+  switch (kind) {
+    case SyntaxKind3.PropertyAccessExpression:
+    case SyntaxKind3.ElementAccessExpression:
+    case SyntaxKind3.NewExpression:
+    case SyntaxKind3.CallExpression:
+    case SyntaxKind3.JsxElement:
+    case SyntaxKind3.JsxSelfClosingElement:
+    case SyntaxKind3.JsxFragment:
+    case SyntaxKind3.TaggedTemplateExpression:
+    case SyntaxKind3.ArrayLiteralExpression:
+    case SyntaxKind3.ParenthesizedExpression:
+    case SyntaxKind3.ObjectLiteralExpression:
+    case SyntaxKind3.ClassExpression:
+    case SyntaxKind3.FunctionExpression:
+    case SyntaxKind3.Identifier:
+    case SyntaxKind3.PrivateIdentifier:
+    case SyntaxKind3.RegularExpressionLiteral:
+    case SyntaxKind3.NumericLiteral:
+    case SyntaxKind3.BigIntLiteral:
+    case SyntaxKind3.StringLiteral:
+    case SyntaxKind3.NoSubstitutionTemplateLiteral:
+    case SyntaxKind3.TemplateExpression:
+    case SyntaxKind3.FalseKeyword:
+    case SyntaxKind3.NullKeyword:
+    case SyntaxKind3.ThisKeyword:
+    case SyntaxKind3.TrueKeyword:
+    case SyntaxKind3.SuperKeyword:
+    case SyntaxKind3.NonNullExpression:
+    case SyntaxKind3.ExpressionWithTypeArguments:
+    case SyntaxKind3.MetaProperty:
+    case SyntaxKind3.ImportKeyword:
+    case SyntaxKind3.MissingDeclaration:
+      return true;
+    default:
+      return false;
+  }
+}
+function isOuterExpression2(node, kinds = OuterExpressionKinds2.All) {
+  switch (node.kind) {
+    case SyntaxKind3.ParenthesizedExpression:
+      if (kinds & OuterExpressionKinds2.ExcludeJSDocTypeAssertion && isJSDocTypeAssertion2(node)) {
+        return false;
+      }
+      return (kinds & OuterExpressionKinds2.Parentheses) !== 0;
+    case SyntaxKind3.TypeAssertionExpression:
+    case SyntaxKind3.AsExpression:
+      return (kinds & OuterExpressionKinds2.TypeAssertions) !== 0;
+    case SyntaxKind3.SatisfiesExpression:
+      return (kinds & (OuterExpressionKinds2.ExpressionsWithTypeArguments | OuterExpressionKinds2.Satisfies)) !== 0;
+    case SyntaxKind3.ExpressionWithTypeArguments:
+      return (kinds & OuterExpressionKinds2.ExpressionsWithTypeArguments) !== 0;
+    case SyntaxKind3.NonNullExpression:
+      return (kinds & OuterExpressionKinds2.NonNullAssertions) !== 0;
+    case SyntaxKind3.PartiallyEmittedExpression:
+      return (kinds & OuterExpressionKinds2.PartiallyEmittedExpressions) !== 0;
+  }
+  return false;
+}
+function skipOuterExpressions2(node, kinds = OuterExpressionKinds2.All) {
+  while (isOuterExpression2(node, kinds)) {
+    node = node.expression;
+  }
+  return node;
+}
+function isJSDocTypeAssertion2(node) {
+  const sourceFile = node.getSourceFile();
+  if (sourceFile.scriptKind !== ScriptKind2.JS && sourceFile.scriptKind !== ScriptKind2.JSX) {
+    return false;
+  }
+  const expression = node.expression;
+  if (expression.kind !== SyntaxKind3.AsExpression) {
+    return false;
+  }
+  const asExpression = expression;
+  return !!asExpression.type && (asExpression.type.flags & NodeFlags2.Reparsed) !== 0;
+}
+function isConciseBody2(node) {
+  return node.kind === SyntaxKind3.Block || isExpression2(node);
+}
+function isForInitializer2(node) {
+  return node.kind === SyntaxKind3.VariableDeclarationList || isExpression2(node);
+}
+function isQuestionOrExclamationToken2(node) {
+  return node.kind === SyntaxKind3.QuestionToken || node.kind === SyntaxKind3.ExclamationToken;
+}
+function isReadonlyKeywordOrPlusOrMinusToken2(node) {
+  return node.kind === SyntaxKind3.ReadonlyKeyword || node.kind === SyntaxKind3.PlusToken || node.kind === SyntaxKind3.MinusToken;
+}
+function isQuestionOrPlusOrMinusToken2(node) {
+  return node.kind === SyntaxKind3.QuestionToken || node.kind === SyntaxKind3.PlusToken || node.kind === SyntaxKind3.MinusToken;
+}
+function isJsxTagNameExpression2(node) {
+  const kind = node.kind;
+  return kind === SyntaxKind3.ThisKeyword || kind === SyntaxKind3.Identifier || kind === SyntaxKind3.PropertyAccessExpression || kind === SyntaxKind3.JsxNamespacedName;
+}
+function visitNode3(node, visitor, test) {
+  if (node === undefined)
+    return;
+  const visited = visitor(node);
+  if (visited !== undefined && test !== undefined && !test(visited)) {
+    throw new Error("Visited node failed test assertion.");
+  }
+  return visited;
+}
+function visitNodes3(nodes, visitor) {
+  if (nodes === undefined)
+    return;
+  const updated = visitNodesArray2(nodes, visitor);
+  if (updated === nodes) {
+    return nodes;
+  }
+  return createNodeArray2(updated, nodes.pos, nodes.end);
+}
+function visitNodesArray2(nodes, visitor) {
+  if (nodes === undefined)
+    return;
+  let updated;
+  for (let i = 0;i < nodes.length; i++) {
+    const node = nodes[i];
+    const visited = visitor(node);
+    if (updated) {
+      if (visited)
+        updated.push(visited);
+    } else if (visited !== node) {
+      updated = [];
+      for (let j = 0;j < i; j++)
+        updated.push(nodes[j]);
+      if (visited)
+        updated.push(visited);
+    }
+  }
+  return updated ?? nodes;
+}
+function visitNodeForEachChild2(cbNode, node) {
+  return node ? cbNode(node) : undefined;
+}
+function visitNodesForEachChild2(cbNode, cbNodes, nodes) {
+  if (!nodes)
+    return;
+  if (cbNodes)
+    return cbNodes(nodes);
+  for (const node of nodes) {
+    const result = cbNode(node);
+    if (result)
+      return result;
+  }
+  return;
+}
+function forEachChildOfJSDocParameterOrPropertyTag2(data, cbNode, cbNodes) {
+  return visitNodeForEachChild2(cbNode, data.tagName) || (data.isNameFirst ? visitNodeForEachChild2(cbNode, data.name) || visitNodeForEachChild2(cbNode, data.typeExpression) : visitNodeForEachChild2(cbNode, data.typeExpression) || visitNodeForEachChild2(cbNode, data.name)) || visitNodesForEachChild2(cbNode, cbNodes, data.comment);
+}
+function visitEachChildOfJSDocParameterOrPropertyTag2(node, visitor) {
+  const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+  const _name = visitNode3(node.name, visitor, isEntityName2);
+  const _typeExpression = visitNode3(node.typeExpression, visitor, isTypeNode2);
+  const _comment = visitNodes3(node.comment, visitor);
+  return node.kind === SyntaxKind3.JSDocParameterTag ? updateJSDocParameterTag2(node, _tagName, _name, _typeExpression, _comment) : updateJSDocPropertyTag2(node, _tagName, _name, _typeExpression, _comment);
+}
+
+class NodeObject2 {
+  kind;
+  flags = 0;
+  pos = -1;
+  end = -1;
+  parent = undefined;
+  _data;
+  constructor(kind, data) {
+    this.kind = kind;
+    this._data = data;
+  }
+  get ambientModuleNames() {
+    return this._data?.ambientModuleNames;
+  }
+  get argument() {
+    return this._data?.argument;
+  }
+  get argumentExpression() {
+    return this._data?.argumentExpression;
+  }
+  get arguments() {
+    return this._data?.arguments;
+  }
+  get assertsModifier() {
+    return this._data?.assertsModifier;
+  }
+  get asteriskToken() {
+    return this._data?.asteriskToken;
+  }
+  get attributes() {
+    return this._data?.attributes;
+  }
+  get awaitModifier() {
+    return this._data?.awaitModifier;
+  }
+  get block() {
+    return this._data?.block;
+  }
+  get body() {
+    return this._data?.body;
+  }
+  get caseBlock() {
+    return this._data?.caseBlock;
+  }
+  get catchClause() {
+    return this._data?.catchClause;
+  }
+  get checkType() {
+    return this._data?.checkType;
+  }
+  get children() {
+    return this._data?.children;
+  }
+  get className() {
+    return this._data?.className;
+  }
+  get clauses() {
+    return this._data?.clauses;
+  }
+  get closingElement() {
+    return this._data?.closingElement;
+  }
+  get closingFragment() {
+    return this._data?.closingFragment;
+  }
+  get colonToken() {
+    return this._data?.colonToken;
+  }
+  get comment() {
+    return this._data?.comment;
+  }
+  get condition() {
+    return this._data?.condition;
+  }
+  get constraint() {
+    return this._data?.constraint;
+  }
+  get containsOnlyTriviaWhiteSpaces() {
+    return this._data?.containsOnlyTriviaWhiteSpaces;
+  }
+  get declarationList() {
+    return this._data?.declarationList;
+  }
+  get declarations() {
+    return this._data?.declarations;
+  }
+  get defaultType() {
+    return this._data?.defaultType;
+  }
+  get dotDotDotToken() {
+    return this._data?.dotDotDotToken;
+  }
+  get elementType() {
+    return this._data?.elementType;
+  }
+  get elements() {
+    return this._data?.elements;
+  }
+  get elseStatement() {
+    return this._data?.elseStatement;
+  }
+  get endOfFileToken() {
+    return this._data?.endOfFileToken;
+  }
+  get equalsGreaterThanToken() {
+    return this._data?.equalsGreaterThanToken;
+  }
+  get equalsToken() {
+    return this._data?.equalsToken;
+  }
+  get exclamationToken() {
+    return this._data?.exclamationToken;
+  }
+  get exportClause() {
+    return this._data?.exportClause;
+  }
+  get exprName() {
+    return this._data?.exprName;
+  }
+  get expression() {
+    return this._data?.expression;
+  }
+  get extendsType() {
+    return this._data?.extendsType;
+  }
+  get externalModuleIndicator() {
+    return this._data?.externalModuleIndicator;
+  }
+  get falseType() {
+    return this._data?.falseType;
+  }
+  get fileName() {
+    return this._data?.fileName;
+  }
+  get finallyBlock() {
+    return this._data?.finallyBlock;
+  }
+  get head() {
+    return this._data?.head;
+  }
+  get heritageClauses() {
+    return this._data?.heritageClauses;
+  }
+  get importClause() {
+    return this._data?.importClause;
+  }
+  get imports() {
+    return this._data?.imports;
+  }
+  get incrementor() {
+    return this._data?.incrementor;
+  }
+  get indexType() {
+    return this._data?.indexType;
+  }
+  get initializer() {
+    return this._data?.initializer;
+  }
+  get isArrayType() {
+    return this._data?.isArrayType;
+  }
+  get isBracketed() {
+    return this._data?.isBracketed;
+  }
+  get isDeclarationFile() {
+    return this._data?.isDeclarationFile;
+  }
+  get isExportEquals() {
+    return this._data?.isExportEquals;
+  }
+  get isNameFirst() {
+    return this._data?.isNameFirst;
+  }
+  get isSpread() {
+    return this._data?.isSpread;
+  }
+  get isTypeOf() {
+    return this._data?.isTypeOf;
+  }
+  get isTypeOnly() {
+    return this._data?.isTypeOnly;
+  }
+  get jsdocPropertyTags() {
+    return this._data?.jsdocPropertyTags;
+  }
+  get keyword() {
+    return this._data?.keyword;
+  }
+  get keywordToken() {
+    return this._data?.keywordToken;
+  }
+  get label() {
+    return this._data?.label;
+  }
+  get languageVariant() {
+    return this._data?.languageVariant;
+  }
+  get left() {
+    return this._data?.left;
+  }
+  get libReferenceDirectives() {
+    return this._data?.libReferenceDirectives;
+  }
+  get literal() {
+    return this._data?.literal;
+  }
+  get members() {
+    return this._data?.members;
+  }
+  get modifiers() {
+    return this._data?.modifiers;
+  }
+  get moduleAugmentations() {
+    return this._data?.moduleAugmentations;
+  }
+  get moduleReference() {
+    return this._data?.moduleReference;
+  }
+  get moduleSpecifier() {
+    return this._data?.moduleSpecifier;
+  }
+  get multiLine() {
+    return this._data?.multiLine;
+  }
+  get name() {
+    return this._data?.name;
+  }
+  get nameExpression() {
+    return this._data?.nameExpression;
+  }
+  get nameType() {
+    return this._data?.nameType;
+  }
+  get namedBindings() {
+    return this._data?.namedBindings;
+  }
+  get namespace() {
+    return this._data?.namespace;
+  }
+  get objectAssignmentInitializer() {
+    return this._data?.objectAssignmentInitializer;
+  }
+  get objectType() {
+    return this._data?.objectType;
+  }
+  get openingElement() {
+    return this._data?.openingElement;
+  }
+  get openingFragment() {
+    return this._data?.openingFragment;
+  }
+  get operand() {
+    return this._data?.operand;
+  }
+  get operator() {
+    return this._data?.operator;
+  }
+  get operatorToken() {
+    return this._data?.operatorToken;
+  }
+  get parameterName() {
+    return this._data?.parameterName;
+  }
+  get parameters() {
+    return this._data?.parameters;
+  }
+  get path() {
+    return this._data?.path;
+  }
+  get phaseModifier() {
+    return this._data?.phaseModifier;
+  }
+  get postfixToken() {
+    return this._data?.postfixToken;
+  }
+  get properties() {
+    return this._data?.properties;
+  }
+  get propertyName() {
+    return this._data?.propertyName;
+  }
+  get qualifier() {
+    return this._data?.qualifier;
+  }
+  get questionDotToken() {
+    return this._data?.questionDotToken;
+  }
+  get questionToken() {
+    return this._data?.questionToken;
+  }
+  get rawText() {
+    return this._data?.rawText;
+  }
+  get readonlyToken() {
+    return this._data?.readonlyToken;
+  }
+  get referencedFiles() {
+    return this._data?.referencedFiles;
+  }
+  get right() {
+    return this._data?.right;
+  }
+  get scriptKind() {
+    return this._data?.scriptKind;
+  }
+  get statement() {
+    return this._data?.statement;
+  }
+  get statements() {
+    return this._data?.statements;
+  }
+  get tag() {
+    return this._data?.tag;
+  }
+  get tagName() {
+    return this._data?.tagName;
+  }
+  get tags() {
+    return this._data?.tags;
+  }
+  get template() {
+    return this._data?.template;
+  }
+  get templateFlags() {
+    return this._data?.templateFlags;
+  }
+  get templateSpans() {
+    return this._data?.templateSpans;
+  }
+  get text() {
+    return this._data?.text;
+  }
+  get thenStatement() {
+    return this._data?.thenStatement;
+  }
+  get thisArg() {
+    return this._data?.thisArg;
+  }
+  get token() {
+    return this._data?.token;
+  }
+  get tokenCache() {
+    return this._data?.tokenCache;
+  }
+  get tokenFlags() {
+    return this._data?.tokenFlags;
+  }
+  get trueType() {
+    return this._data?.trueType;
+  }
+  get tryBlock() {
+    return this._data?.tryBlock;
+  }
+  get tupleNameSource() {
+    return this._data?.tupleNameSource;
+  }
+  get type() {
+    return this._data?.type;
+  }
+  get typeArguments() {
+    return this._data?.typeArguments;
+  }
+  get typeExpression() {
+    return this._data?.typeExpression;
+  }
+  get typeName() {
+    return this._data?.typeName;
+  }
+  get typeParameter() {
+    return this._data?.typeParameter;
+  }
+  get typeParameters() {
+    return this._data?.typeParameters;
+  }
+  get typeReferenceDirectives() {
+    return this._data?.typeReferenceDirectives;
+  }
+  get types() {
+    return this._data?.types;
+  }
+  get value() {
+    return this._data?.value;
+  }
+  get variableDeclaration() {
+    return this._data?.variableDeclaration;
+  }
+  get whenFalse() {
+    return this._data?.whenFalse;
+  }
+  get whenTrue() {
+    return this._data?.whenTrue;
+  }
+  forEachChild(visitor, visitArray) {
+    const fn = forEachChildTable2[this.kind];
+    return fn ? fn(this._data, visitor, visitArray) : undefined;
+  }
+  getSourceFile() {
+    let node = this;
+    while (node.parent)
+      node = node.parent;
+    return node;
+  }
+  getStart(sourceFile, includeJsDocComment) {
+    return getTokenPosOfNode2(this, sourceFile ?? this.getSourceFile(), includeJsDocComment);
+  }
+  getFullStart() {
+    return this.pos;
+  }
+  getEnd() {
+    return this.end;
+  }
+  getWidth(sourceFile) {
+    return this.getEnd() - this.getStart(sourceFile);
+  }
+  getFullWidth() {
+    return this.end - this.pos;
+  }
+  getLeadingTriviaWidth(sourceFile) {
+    return this.getStart(sourceFile) - this.pos;
+  }
+  getFullText(sourceFile) {
+    return (sourceFile ?? this.getSourceFile()).text.substring(this.pos, this.end);
+  }
+  getText(sourceFile) {
+    sourceFile ??= this.getSourceFile();
+    return sourceFile.text.substring(this.getStart(sourceFile), this.end);
+  }
+}
+function isNodeArray3(array) {
+  return "pos" in array && "end" in array;
+}
+function createNodeArray2(elements, pos = -1, end = -1) {
+  if (isNodeArray3(elements))
+    return elements;
+  const arr = elements.slice();
+  arr.pos = pos;
+  arr.end = end;
+  return arr;
+}
+function visitNode22(cbNode, node) {
+  return node ? cbNode(node) : undefined;
+}
+function visitNodes22(cbNode, cbNodes, nodes) {
+  if (!nodes)
+    return;
+  if (cbNodes)
+    return cbNodes(nodes);
+  for (const node of nodes) {
+    const result = cbNode(node);
+    if (result)
+      return result;
+  }
+  return;
+}
+function createQualifiedName2(left, right) {
+  return new NodeObject2(SyntaxKind3.QualifiedName, {
+    left,
+    right
+  });
+}
+function createComputedPropertyName2(expression) {
+  return new NodeObject2(SyntaxKind3.ComputedPropertyName, {
+    expression
+  });
+}
+function createDecorator2(expression) {
+  return new NodeObject2(SyntaxKind3.Decorator, {
+    expression
+  });
+}
+function createIfStatement2(expression, thenStatement, elseStatement) {
+  return new NodeObject2(SyntaxKind3.IfStatement, {
+    expression,
+    thenStatement,
+    elseStatement
+  });
+}
+function createDoStatement2(statement, expression) {
+  return new NodeObject2(SyntaxKind3.DoStatement, {
+    statement,
+    expression
+  });
+}
+function createWhileStatement2(expression, statement) {
+  return new NodeObject2(SyntaxKind3.WhileStatement, {
+    expression,
+    statement
+  });
+}
+function createForStatement2(initializer, condition, incrementor, statement) {
+  return new NodeObject2(SyntaxKind3.ForStatement, {
+    initializer,
+    condition,
+    incrementor,
+    statement
+  });
+}
+function createBreakStatement2(label) {
+  return new NodeObject2(SyntaxKind3.BreakStatement, {
+    label
+  });
+}
+function createContinueStatement2(label) {
+  return new NodeObject2(SyntaxKind3.ContinueStatement, {
+    label
+  });
+}
+function createReturnStatement2(expression) {
+  return new NodeObject2(SyntaxKind3.ReturnStatement, {
+    expression
+  });
+}
+function createWithStatement2(expression, statement) {
+  return new NodeObject2(SyntaxKind3.WithStatement, {
+    expression,
+    statement
+  });
+}
+function createSwitchStatement2(expression, caseBlock) {
+  return new NodeObject2(SyntaxKind3.SwitchStatement, {
+    expression,
+    caseBlock
+  });
+}
+function createCaseBlock2(clauses) {
+  return new NodeObject2(SyntaxKind3.CaseBlock, {
+    clauses: createNodeArray2(clauses)
+  });
+}
+function createThrowStatement2(expression) {
+  return new NodeObject2(SyntaxKind3.ThrowStatement, {
+    expression
+  });
+}
+function createTryStatement2(tryBlock, catchClause, finallyBlock) {
+  return new NodeObject2(SyntaxKind3.TryStatement, {
+    tryBlock,
+    catchClause,
+    finallyBlock
+  });
+}
+function createCatchClause2(variableDeclaration, block) {
+  return new NodeObject2(SyntaxKind3.CatchClause, {
+    variableDeclaration,
+    block
+  });
+}
+function createLabeledStatement2(label, statement) {
+  return new NodeObject2(SyntaxKind3.LabeledStatement, {
+    label,
+    statement
+  });
+}
+function createExpressionStatement2(expression) {
+  return new NodeObject2(SyntaxKind3.ExpressionStatement, {
+    expression
+  });
+}
+function createBlock2(statements, multiLine) {
+  return new NodeObject2(SyntaxKind3.Block, {
+    statements: createNodeArray2(statements),
+    multiLine
+  });
+}
+function createVariableStatement2(modifiers, declarationList) {
+  return new NodeObject2(SyntaxKind3.VariableStatement, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    declarationList
+  });
+}
+function createVariableDeclaration2(name, exclamationToken, type, initializer) {
+  return new NodeObject2(SyntaxKind3.VariableDeclaration, {
+    name,
+    exclamationToken,
+    type,
+    initializer
+  });
+}
+function createVariableDeclarationList2(declarations, flags) {
+  const node = new NodeObject2(SyntaxKind3.VariableDeclarationList, {
+    declarations: createNodeArray2(declarations)
+  });
+  node.flags = flags;
+  return node;
+}
+function createParameterDeclaration2(modifiers, dotDotDotToken, name, questionToken, type, initializer) {
+  return new NodeObject2(SyntaxKind3.Parameter, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    dotDotDotToken,
+    name,
+    questionToken,
+    type,
+    initializer
+  });
+}
+function createBindingElement2(dotDotDotToken, propertyName, name, initializer) {
+  return new NodeObject2(SyntaxKind3.BindingElement, {
+    dotDotDotToken,
+    propertyName,
+    name,
+    initializer
+  });
+}
+function createMissingDeclaration2(modifiers) {
+  return new NodeObject2(SyntaxKind3.MissingDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined
+  });
+}
+function createFunctionDeclaration2(modifiers, asteriskToken, name, typeParameters, parameters, type, body) {
+  return new NodeObject2(SyntaxKind3.FunctionDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    asteriskToken,
+    name,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type,
+    body
+  });
+}
+function createClassDeclaration2(modifiers, name, typeParameters, heritageClauses, members) {
+  return new NodeObject2(SyntaxKind3.ClassDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    heritageClauses: heritageClauses ? createNodeArray2(heritageClauses) : undefined,
+    members: createNodeArray2(members)
+  });
+}
+function createClassExpression2(modifiers, name, typeParameters, heritageClauses, members) {
+  return new NodeObject2(SyntaxKind3.ClassExpression, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    heritageClauses: heritageClauses ? createNodeArray2(heritageClauses) : undefined,
+    members: createNodeArray2(members)
+  });
+}
+function createHeritageClause2(token, types) {
+  return new NodeObject2(SyntaxKind3.HeritageClause, {
+    token,
+    types: createNodeArray2(types)
+  });
+}
+function createInterfaceDeclaration2(modifiers, name, typeParameters, heritageClauses, members) {
+  return new NodeObject2(SyntaxKind3.InterfaceDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    heritageClauses: heritageClauses ? createNodeArray2(heritageClauses) : undefined,
+    members: createNodeArray2(members)
+  });
+}
+function createTypeAliasDeclaration2(modifiers, name, typeParameters, type) {
+  return new NodeObject2(SyntaxKind3.TypeAliasDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    type
+  });
+}
+function createEnumMember2(name, initializer) {
+  return new NodeObject2(SyntaxKind3.EnumMember, {
+    name,
+    initializer
+  });
+}
+function createEnumDeclaration2(modifiers, name, members) {
+  return new NodeObject2(SyntaxKind3.EnumDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    members: createNodeArray2(members)
+  });
+}
+function createModuleBlock2(statements) {
+  return new NodeObject2(SyntaxKind3.ModuleBlock, {
+    statements: createNodeArray2(statements)
+  });
+}
+function createImportDeclaration2(modifiers, importClause, moduleSpecifier, attributes) {
+  return new NodeObject2(SyntaxKind3.ImportDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    importClause,
+    moduleSpecifier,
+    attributes
+  });
+}
+function createExternalModuleReference2(expression) {
+  return new NodeObject2(SyntaxKind3.ExternalModuleReference, {
+    expression
+  });
+}
+function createNamespaceImport2(name) {
+  return new NodeObject2(SyntaxKind3.NamespaceImport, {
+    name
+  });
+}
+function createNamedImports2(elements) {
+  return new NodeObject2(SyntaxKind3.NamedImports, {
+    elements: createNodeArray2(elements)
+  });
+}
+function createExportAssignment2(modifiers, isExportEquals = false, type, expression) {
+  return new NodeObject2(SyntaxKind3.ExportAssignment, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    isExportEquals,
+    type,
+    expression
+  });
+}
+function createNamespaceExportDeclaration2(modifiers, name) {
+  return new NodeObject2(SyntaxKind3.NamespaceExportDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name
+  });
+}
+function createNamespaceExport2(name) {
+  return new NodeObject2(SyntaxKind3.NamespaceExport, {
+    name
+  });
+}
+function createNamedExports2(elements) {
+  return new NodeObject2(SyntaxKind3.NamedExports, {
+    elements: createNodeArray2(elements)
+  });
+}
+function createExportSpecifier2(isTypeOnly = false, propertyName, name) {
+  return new NodeObject2(SyntaxKind3.ExportSpecifier, {
+    isTypeOnly,
+    propertyName,
+    name
+  });
+}
+function createCallSignatureDeclaration2(typeParameters, parameters, type) {
+  return new NodeObject2(SyntaxKind3.CallSignature, {
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type
+  });
+}
+function createConstructSignatureDeclaration2(typeParameters, parameters, type) {
+  return new NodeObject2(SyntaxKind3.ConstructSignature, {
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type
+  });
+}
+function createConstructorDeclaration2(modifiers, typeParameters, parameters, type, body) {
+  return new NodeObject2(SyntaxKind3.Constructor, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type,
+    body
+  });
+}
+function createGetAccessorDeclaration2(modifiers, name, typeParameters, parameters, type, body) {
+  return new NodeObject2(SyntaxKind3.GetAccessor, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type,
+    body
+  });
+}
+function createSetAccessorDeclaration2(modifiers, name, typeParameters, parameters, type, body) {
+  return new NodeObject2(SyntaxKind3.SetAccessor, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type,
+    body
+  });
+}
+function createIndexSignatureDeclaration2(modifiers, parameters, type) {
+  return new NodeObject2(SyntaxKind3.IndexSignature, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    parameters: createNodeArray2(parameters),
+    type
+  });
+}
+function createMethodSignatureDeclaration2(modifiers, name, postfixToken, typeParameters, parameters, type) {
+  return new NodeObject2(SyntaxKind3.MethodSignature, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    postfixToken,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type
+  });
+}
+function createMethodDeclaration2(modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, type, body) {
+  return new NodeObject2(SyntaxKind3.MethodDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    asteriskToken,
+    name,
+    postfixToken,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type,
+    body
+  });
+}
+function createPropertySignatureDeclaration2(modifiers, name, postfixToken, type, initializer) {
+  return new NodeObject2(SyntaxKind3.PropertySignature, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    postfixToken,
+    type,
+    initializer
+  });
+}
+function createPropertyDeclaration2(modifiers, name, postfixToken, type, initializer) {
+  return new NodeObject2(SyntaxKind3.PropertyDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    postfixToken,
+    type,
+    initializer
+  });
+}
+function createClassStaticBlockDeclaration2(modifiers, body) {
+  return new NodeObject2(SyntaxKind3.ClassStaticBlockDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    body
+  });
+}
+function createBinaryExpression2(modifiers, left, type, operatorToken, right) {
+  return new NodeObject2(SyntaxKind3.BinaryExpression, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    left,
+    type,
+    operatorToken,
+    right
+  });
+}
+function createPrefixUnaryExpression2(operator, operand) {
+  return new NodeObject2(SyntaxKind3.PrefixUnaryExpression, {
+    operator,
+    operand
+  });
+}
+function createPostfixUnaryExpression2(operand, operator) {
+  return new NodeObject2(SyntaxKind3.PostfixUnaryExpression, {
+    operand,
+    operator
+  });
+}
+function createYieldExpression2(asteriskToken, expression) {
+  return new NodeObject2(SyntaxKind3.YieldExpression, {
+    asteriskToken,
+    expression
+  });
+}
+function createArrowFunction2(modifiers, typeParameters, parameters, type, equalsGreaterThanToken, body) {
+  return new NodeObject2(SyntaxKind3.ArrowFunction, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type,
+    equalsGreaterThanToken,
+    body
+  });
+}
+function createFunctionExpression2(modifiers, asteriskToken, name, typeParameters, parameters, type, body) {
+  return new NodeObject2(SyntaxKind3.FunctionExpression, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    asteriskToken,
+    name,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type,
+    body
+  });
+}
+function createAsExpression2(expression, type) {
+  return new NodeObject2(SyntaxKind3.AsExpression, {
+    expression,
+    type
+  });
+}
+function createSatisfiesExpression2(expression, type) {
+  return new NodeObject2(SyntaxKind3.SatisfiesExpression, {
+    expression,
+    type
+  });
+}
+function createConditionalExpression2(condition, questionToken, whenTrue, colonToken, whenFalse) {
+  return new NodeObject2(SyntaxKind3.ConditionalExpression, {
+    condition,
+    questionToken,
+    whenTrue,
+    colonToken,
+    whenFalse
+  });
+}
+function createPropertyAccessExpression2(expression, questionDotToken, name, flags) {
+  const node = new NodeObject2(SyntaxKind3.PropertyAccessExpression, {
+    expression,
+    questionDotToken,
+    name
+  });
+  node.flags = flags;
+  return node;
+}
+function createElementAccessExpression2(expression, questionDotToken, argumentExpression, flags) {
+  const node = new NodeObject2(SyntaxKind3.ElementAccessExpression, {
+    expression,
+    questionDotToken,
+    argumentExpression
+  });
+  node.flags = flags;
+  return node;
+}
+function createCallExpression2(expression, questionDotToken, typeArguments, arguments_, flags) {
+  const node = new NodeObject2(SyntaxKind3.CallExpression, {
+    expression,
+    questionDotToken,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined,
+    arguments: createNodeArray2(arguments_)
+  });
+  node.flags = flags;
+  return node;
+}
+function createNewExpression2(expression, typeArguments, arguments_) {
+  return new NodeObject2(SyntaxKind3.NewExpression, {
+    expression,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined,
+    arguments: arguments_ ? createNodeArray2(arguments_) : undefined
+  });
+}
+function createMetaProperty2(keywordToken, name) {
+  return new NodeObject2(SyntaxKind3.MetaProperty, {
+    keywordToken,
+    name
+  });
+}
+function createNonNullExpression2(expression, flags) {
+  const node = new NodeObject2(SyntaxKind3.NonNullExpression, {
+    expression
+  });
+  node.flags = flags;
+  return node;
+}
+function createSpreadElement2(expression) {
+  return new NodeObject2(SyntaxKind3.SpreadElement, {
+    expression
+  });
+}
+function createTemplateExpression2(head, templateSpans) {
+  return new NodeObject2(SyntaxKind3.TemplateExpression, {
+    head,
+    templateSpans: createNodeArray2(templateSpans)
+  });
+}
+function createTemplateSpan2(expression, literal) {
+  return new NodeObject2(SyntaxKind3.TemplateSpan, {
+    expression,
+    literal
+  });
+}
+function createTaggedTemplateExpression2(tag, questionDotToken, typeArguments, template, flags) {
+  const node = new NodeObject2(SyntaxKind3.TaggedTemplateExpression, {
+    tag,
+    questionDotToken,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined,
+    template
+  });
+  node.flags = flags;
+  return node;
+}
+function createParenthesizedExpression2(expression) {
+  return new NodeObject2(SyntaxKind3.ParenthesizedExpression, {
+    expression
+  });
+}
+function createArrayLiteralExpression2(elements, multiLine) {
+  return new NodeObject2(SyntaxKind3.ArrayLiteralExpression, {
+    elements: createNodeArray2(elements),
+    multiLine
+  });
+}
+function createObjectLiteralExpression2(properties, multiLine) {
+  return new NodeObject2(SyntaxKind3.ObjectLiteralExpression, {
+    properties: createNodeArray2(properties),
+    multiLine
+  });
+}
+function createSpreadAssignment2(expression) {
+  return new NodeObject2(SyntaxKind3.SpreadAssignment, {
+    expression
+  });
+}
+function createPropertyAssignment2(modifiers, name, postfixToken, type, initializer) {
+  return new NodeObject2(SyntaxKind3.PropertyAssignment, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    postfixToken,
+    type,
+    initializer
+  });
+}
+function createShorthandPropertyAssignment2(modifiers, name, postfixToken, type, equalsToken, objectAssignmentInitializer) {
+  return new NodeObject2(SyntaxKind3.ShorthandPropertyAssignment, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    postfixToken,
+    type,
+    equalsToken,
+    objectAssignmentInitializer
+  });
+}
+function createDeleteExpression2(expression) {
+  return new NodeObject2(SyntaxKind3.DeleteExpression, {
+    expression
+  });
+}
+function createTypeOfExpression2(expression) {
+  return new NodeObject2(SyntaxKind3.TypeOfExpression, {
+    expression
+  });
+}
+function createVoidExpression2(expression) {
+  return new NodeObject2(SyntaxKind3.VoidExpression, {
+    expression
+  });
+}
+function createAwaitExpression2(expression) {
+  return new NodeObject2(SyntaxKind3.AwaitExpression, {
+    expression
+  });
+}
+function createTypeAssertion2(type, expression) {
+  return new NodeObject2(SyntaxKind3.TypeAssertionExpression, {
+    type,
+    expression
+  });
+}
+function createUnionTypeNode2(types) {
+  return new NodeObject2(SyntaxKind3.UnionType, {
+    types: createNodeArray2(types)
+  });
+}
+function createIntersectionTypeNode2(types) {
+  return new NodeObject2(SyntaxKind3.IntersectionType, {
+    types: createNodeArray2(types)
+  });
+}
+function createConditionalTypeNode2(checkType, extendsType, trueType, falseType) {
+  return new NodeObject2(SyntaxKind3.ConditionalType, {
+    checkType,
+    extendsType,
+    trueType,
+    falseType
+  });
+}
+function createTypeOperatorNode2(operator, type) {
+  return new NodeObject2(SyntaxKind3.TypeOperator, {
+    operator,
+    type
+  });
+}
+function createInferTypeNode2(typeParameter) {
+  return new NodeObject2(SyntaxKind3.InferType, {
+    typeParameter
+  });
+}
+function createArrayTypeNode2(elementType) {
+  return new NodeObject2(SyntaxKind3.ArrayType, {
+    elementType
+  });
+}
+function createIndexedAccessTypeNode2(objectType, indexType) {
+  return new NodeObject2(SyntaxKind3.IndexedAccessType, {
+    objectType,
+    indexType
+  });
+}
+function createTypeReferenceNode2(typeName, typeArguments) {
+  return new NodeObject2(SyntaxKind3.TypeReference, {
+    typeName,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined
+  });
+}
+function createExpressionWithTypeArguments2(expression, typeArguments) {
+  return new NodeObject2(SyntaxKind3.ExpressionWithTypeArguments, {
+    expression,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined
+  });
+}
+function createLiteralTypeNode2(literal) {
+  return new NodeObject2(SyntaxKind3.LiteralType, {
+    literal
+  });
+}
+function createTypePredicateNode2(assertsModifier, parameterName, type) {
+  return new NodeObject2(SyntaxKind3.TypePredicate, {
+    assertsModifier,
+    parameterName,
+    type
+  });
+}
+function createImportAttribute2(name, value) {
+  return new NodeObject2(SyntaxKind3.ImportAttribute, {
+    name,
+    value
+  });
+}
+function createImportAttributes2(token, attributes, multiLine) {
+  return new NodeObject2(SyntaxKind3.ImportAttributes, {
+    token,
+    attributes: createNodeArray2(attributes),
+    multiLine
+  });
+}
+function createTypeQueryNode2(exprName, typeArguments) {
+  return new NodeObject2(SyntaxKind3.TypeQuery, {
+    exprName,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined
+  });
+}
+function createMappedTypeNode2(readonlyToken, typeParameter, nameType, questionToken, type, members) {
+  return new NodeObject2(SyntaxKind3.MappedType, {
+    readonlyToken,
+    typeParameter,
+    nameType,
+    questionToken,
+    type,
+    members: members ? createNodeArray2(members) : undefined
+  });
+}
+function createTypeLiteralNode2(members) {
+  return new NodeObject2(SyntaxKind3.TypeLiteral, {
+    members: createNodeArray2(members)
+  });
+}
+function createTupleTypeNode2(elements) {
+  return new NodeObject2(SyntaxKind3.TupleType, {
+    elements: createNodeArray2(elements)
+  });
+}
+function createNamedTupleMember2(dotDotDotToken, name, questionToken, type) {
+  return new NodeObject2(SyntaxKind3.NamedTupleMember, {
+    dotDotDotToken,
+    name,
+    questionToken,
+    type
+  });
+}
+function createOptionalTypeNode2(type) {
+  return new NodeObject2(SyntaxKind3.OptionalType, {
+    type
+  });
+}
+function createRestTypeNode2(type) {
+  return new NodeObject2(SyntaxKind3.RestType, {
+    type
+  });
+}
+function createParenthesizedTypeNode2(type) {
+  return new NodeObject2(SyntaxKind3.ParenthesizedType, {
+    type
+  });
+}
+function createFunctionTypeNode2(typeParameters, parameters, type) {
+  return new NodeObject2(SyntaxKind3.FunctionType, {
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type
+  });
+}
+function createConstructorTypeNode2(modifiers, typeParameters, parameters, type) {
+  return new NodeObject2(SyntaxKind3.ConstructorType, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type
+  });
+}
+function createTemplateLiteralTypeNode2(head, templateSpans) {
+  return new NodeObject2(SyntaxKind3.TemplateLiteralType, {
+    head,
+    templateSpans: createNodeArray2(templateSpans)
+  });
+}
+function createTemplateLiteralTypeSpan2(type, literal) {
+  return new NodeObject2(SyntaxKind3.TemplateLiteralTypeSpan, {
+    type,
+    literal
+  });
+}
+function createSyntheticExpression2(type, isSpread, tupleNameSource) {
+  return new NodeObject2(SyntaxKind3.SyntheticExpression, {
+    type,
+    isSpread,
+    tupleNameSource
+  });
+}
+function createPartiallyEmittedExpression2(expression) {
+  return new NodeObject2(SyntaxKind3.PartiallyEmittedExpression, {
+    expression
+  });
+}
+function createJsxElement2(openingElement, children, closingElement) {
+  return new NodeObject2(SyntaxKind3.JsxElement, {
+    openingElement,
+    children: createNodeArray2(children),
+    closingElement
+  });
+}
+function createJsxAttributes2(properties) {
+  return new NodeObject2(SyntaxKind3.JsxAttributes, {
+    properties: createNodeArray2(properties)
+  });
+}
+function createJsxNamespacedName2(namespace, name) {
+  return new NodeObject2(SyntaxKind3.JsxNamespacedName, {
+    namespace,
+    name
+  });
+}
+function createJsxOpeningElement2(tagName, typeArguments, attributes) {
+  return new NodeObject2(SyntaxKind3.JsxOpeningElement, {
+    tagName,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined,
+    attributes
+  });
+}
+function createJsxSelfClosingElement2(tagName, typeArguments, attributes) {
+  return new NodeObject2(SyntaxKind3.JsxSelfClosingElement, {
+    tagName,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined,
+    attributes
+  });
+}
+function createJsxFragment2(openingFragment, children, closingFragment) {
+  return new NodeObject2(SyntaxKind3.JsxFragment, {
+    openingFragment,
+    children: createNodeArray2(children),
+    closingFragment
+  });
+}
+function createJsxAttribute2(name, initializer) {
+  return new NodeObject2(SyntaxKind3.JsxAttribute, {
+    name,
+    initializer
+  });
+}
+function createJsxSpreadAttribute2(expression) {
+  return new NodeObject2(SyntaxKind3.JsxSpreadAttribute, {
+    expression
+  });
+}
+function createJsxClosingElement2(tagName) {
+  return new NodeObject2(SyntaxKind3.JsxClosingElement, {
+    tagName
+  });
+}
+function createJsxExpression2(dotDotDotToken, expression) {
+  return new NodeObject2(SyntaxKind3.JsxExpression, {
+    dotDotDotToken,
+    expression
+  });
+}
+function createSyntaxList2(children) {
+  return new NodeObject2(SyntaxKind3.SyntaxList, {
+    children
+  });
+}
+function createJSDoc2(comment, tags) {
+  return new NodeObject2(SyntaxKind3.JSDoc, {
+    comment: createNodeArray2(comment),
+    tags: tags ? createNodeArray2(tags) : undefined
+  });
+}
+function createJSDocTypeExpression2(type) {
+  return new NodeObject2(SyntaxKind3.JSDocTypeExpression, {
+    type
+  });
+}
+function createJSDocNonNullableType2(type) {
+  return new NodeObject2(SyntaxKind3.JSDocNonNullableType, {
+    type
+  });
+}
+function createJSDocNullableType2(type) {
+  return new NodeObject2(SyntaxKind3.JSDocNullableType, {
+    type
+  });
+}
+function createJSDocVariadicType2(type) {
+  return new NodeObject2(SyntaxKind3.JSDocVariadicType, {
+    type
+  });
+}
+function createJSDocOptionalType2(type) {
+  return new NodeObject2(SyntaxKind3.JSDocOptionalType, {
+    type
+  });
+}
+function createJSDocTypeTag2(tagName, typeExpression, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocTypeTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocUnknownTag2(tagName, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocUnknownTag, {
+    tagName,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocTemplateTag2(tagName, constraint, typeParameters, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocTemplateTag, {
+    tagName,
+    constraint,
+    typeParameters: createNodeArray2(typeParameters),
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocReturnTag2(tagName, typeExpression, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocReturnTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocPublicTag2(tagName, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocPublicTag, {
+    tagName,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocPrivateTag2(tagName, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocPrivateTag, {
+    tagName,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocProtectedTag2(tagName, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocProtectedTag, {
+    tagName,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocReadonlyTag2(tagName, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocReadonlyTag, {
+    tagName,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocOverrideTag2(tagName, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocOverrideTag, {
+    tagName,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocDeprecatedTag2(tagName, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocDeprecatedTag, {
+    tagName,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocSeeTag2(tagName, nameExpression, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocSeeTag, {
+    tagName,
+    nameExpression,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocImplementsTag2(tagName, className, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocImplementsTag, {
+    tagName,
+    className,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocAugmentsTag2(tagName, className, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocAugmentsTag, {
+    tagName,
+    className,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocSatisfiesTag2(tagName, typeExpression, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocSatisfiesTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocThrowsTag2(tagName, typeExpression, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocThrowsTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocThisTag2(tagName, typeExpression, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocThisTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocImportTag2(tagName, importClause, moduleSpecifier, attributes, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocImportTag, {
+    tagName,
+    importClause,
+    moduleSpecifier,
+    attributes,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocCallbackTag2(tagName, typeExpression, name, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocCallbackTag, {
+    tagName,
+    typeExpression,
+    name,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocOverloadTag2(tagName, typeExpression, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocOverloadTag, {
+    tagName,
+    typeExpression,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocTypedefTag2(tagName, typeExpression, name, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocTypedefTag, {
+    tagName,
+    typeExpression,
+    name,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocSignature2(typeParameters, parameters, type) {
+  return new NodeObject2(SyntaxKind3.JSDocSignature, {
+    typeParameters: typeParameters ? createNodeArray2(typeParameters) : undefined,
+    parameters: createNodeArray2(parameters),
+    type
+  });
+}
+function createJSDocNameReference2(name) {
+  return new NodeObject2(SyntaxKind3.JSDocNameReference, {
+    name
+  });
+}
+function createModuleDeclaration2(modifiers, keyword, name, body) {
+  return new NodeObject2(SyntaxKind3.ModuleDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    keyword,
+    name,
+    body
+  });
+}
+function createImportEqualsDeclaration2(modifiers, isTypeOnly = false, name, moduleReference) {
+  return new NodeObject2(SyntaxKind3.ImportEqualsDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    isTypeOnly,
+    name,
+    moduleReference
+  });
+}
+function createExportDeclaration2(modifiers, isTypeOnly, exportClause, moduleSpecifier, attributes) {
+  return new NodeObject2(SyntaxKind3.ExportDeclaration, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    isTypeOnly,
+    exportClause,
+    moduleSpecifier,
+    attributes
+  });
+}
+function createImportTypeNode2(isTypeOf = false, argument, attributes, qualifier, typeArguments) {
+  return new NodeObject2(SyntaxKind3.ImportType, {
+    isTypeOf,
+    argument,
+    attributes,
+    qualifier,
+    typeArguments: typeArguments ? createNodeArray2(typeArguments) : undefined
+  });
+}
+function createImportClause2(phaseModifier, name, namedBindings) {
+  return new NodeObject2(SyntaxKind3.ImportClause, {
+    phaseModifier,
+    name,
+    namedBindings
+  });
+}
+function createImportSpecifier2(isTypeOnly = false, propertyName, name) {
+  return new NodeObject2(SyntaxKind3.ImportSpecifier, {
+    isTypeOnly,
+    propertyName,
+    name
+  });
+}
+function createJSDocLink2(name, text) {
+  return new NodeObject2(SyntaxKind3.JSDocLink, {
+    name,
+    text
+  });
+}
+function createJSDocLinkPlain2(name, text) {
+  return new NodeObject2(SyntaxKind3.JSDocLinkPlain, {
+    name,
+    text
+  });
+}
+function createJSDocLinkCode2(name, text) {
+  return new NodeObject2(SyntaxKind3.JSDocLinkCode, {
+    name,
+    text
+  });
+}
+function createTypeParameterDeclaration2(modifiers, name, constraint, expression, defaultType) {
+  return new NodeObject2(SyntaxKind3.TypeParameter, {
+    modifiers: modifiers ? createNodeArray2(modifiers) : undefined,
+    name,
+    constraint,
+    expression,
+    defaultType
+  });
+}
+function createSyntheticReferenceExpression2(expression, thisArg) {
+  return new NodeObject2(SyntaxKind3.SyntheticReferenceExpression, {
+    expression,
+    thisArg
+  });
+}
+function createJSDocTypeLiteral2(jsdocPropertyTags, isArrayType) {
+  return new NodeObject2(SyntaxKind3.JSDocTypeLiteral, {
+    jsdocPropertyTags,
+    isArrayType
+  });
+}
+function createForInStatement2(awaitModifier, initializer, expression, statement) {
+  return new NodeObject2(SyntaxKind3.ForInStatement, {
+    awaitModifier,
+    initializer,
+    expression,
+    statement
+  });
+}
+function createForOfStatement2(awaitModifier, initializer, expression, statement) {
+  return new NodeObject2(SyntaxKind3.ForOfStatement, {
+    awaitModifier,
+    initializer,
+    expression,
+    statement
+  });
+}
+function createCaseClause2(expression, statements) {
+  return new NodeObject2(SyntaxKind3.CaseClause, {
+    expression,
+    statements: createNodeArray2(statements)
+  });
+}
+function createDefaultClause2(expression, statements) {
+  return new NodeObject2(SyntaxKind3.DefaultClause, {
+    expression,
+    statements: createNodeArray2(statements)
+  });
+}
+function createObjectBindingPattern2(elements) {
+  return new NodeObject2(SyntaxKind3.ObjectBindingPattern, {
+    elements: createNodeArray2(elements)
+  });
+}
+function createArrayBindingPattern2(elements) {
+  return new NodeObject2(SyntaxKind3.ArrayBindingPattern, {
+    elements: createNodeArray2(elements)
+  });
+}
+function createJSDocParameterTag2(tagName, name, isBracketed, typeExpression, isNameFirst, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocParameterTag, {
+    tagName,
+    name,
+    isBracketed,
+    typeExpression,
+    isNameFirst,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function createJSDocPropertyTag2(tagName, name, isBracketed, typeExpression, isNameFirst, comment) {
+  return new NodeObject2(SyntaxKind3.JSDocPropertyTag, {
+    tagName,
+    name,
+    isBracketed,
+    typeExpression,
+    isNameFirst,
+    comment: comment ? createNodeArray2(comment) : undefined
+  });
+}
+function updateQualifiedName2(node, left, right) {
+  return node.left !== left || node.right !== right ? createQualifiedName2(left, right) : node;
+}
+function updateComputedPropertyName2(node, expression) {
+  return node.expression !== expression ? createComputedPropertyName2(expression) : node;
+}
+function updateDecorator2(node, expression) {
+  return node.expression !== expression ? createDecorator2(expression) : node;
+}
+function updateIfStatement2(node, expression, thenStatement, elseStatement) {
+  return node.expression !== expression || node.thenStatement !== thenStatement || node.elseStatement !== elseStatement ? createIfStatement2(expression, thenStatement, elseStatement) : node;
+}
+function updateDoStatement2(node, statement, expression) {
+  return node.statement !== statement || node.expression !== expression ? createDoStatement2(statement, expression) : node;
+}
+function updateWhileStatement2(node, expression, statement) {
+  return node.expression !== expression || node.statement !== statement ? createWhileStatement2(expression, statement) : node;
+}
+function updateForStatement2(node, initializer, condition, incrementor, statement) {
+  return node.initializer !== initializer || node.condition !== condition || node.incrementor !== incrementor || node.statement !== statement ? createForStatement2(initializer, condition, incrementor, statement) : node;
+}
+function updateBreakStatement2(node, label) {
+  return node.label !== label ? createBreakStatement2(label) : node;
+}
+function updateContinueStatement2(node, label) {
+  return node.label !== label ? createContinueStatement2(label) : node;
+}
+function updateReturnStatement2(node, expression) {
+  return node.expression !== expression ? createReturnStatement2(expression) : node;
+}
+function updateWithStatement2(node, expression, statement) {
+  return node.expression !== expression || node.statement !== statement ? createWithStatement2(expression, statement) : node;
+}
+function updateSwitchStatement2(node, expression, caseBlock) {
+  return node.expression !== expression || node.caseBlock !== caseBlock ? createSwitchStatement2(expression, caseBlock) : node;
+}
+function updateCaseBlock2(node, clauses) {
+  return node.clauses !== clauses ? createCaseBlock2(clauses) : node;
+}
+function updateThrowStatement2(node, expression) {
+  return node.expression !== expression ? createThrowStatement2(expression) : node;
+}
+function updateTryStatement2(node, tryBlock, catchClause, finallyBlock) {
+  return node.tryBlock !== tryBlock || node.catchClause !== catchClause || node.finallyBlock !== finallyBlock ? createTryStatement2(tryBlock, catchClause, finallyBlock) : node;
+}
+function updateCatchClause2(node, variableDeclaration, block) {
+  return node.variableDeclaration !== variableDeclaration || node.block !== block ? createCatchClause2(variableDeclaration, block) : node;
+}
+function updateLabeledStatement2(node, label, statement) {
+  return node.label !== label || node.statement !== statement ? createLabeledStatement2(label, statement) : node;
+}
+function updateExpressionStatement2(node, expression) {
+  return node.expression !== expression ? createExpressionStatement2(expression) : node;
+}
+function updateBlock2(node, statements) {
+  return node.statements !== statements ? createBlock2(statements, node.multiLine) : node;
+}
+function updateVariableStatement2(node, modifiers, declarationList) {
+  return node.modifiers !== modifiers || node.declarationList !== declarationList ? createVariableStatement2(modifiers, declarationList) : node;
+}
+function updateVariableDeclaration2(node, name, exclamationToken, type, initializer) {
+  return node.name !== name || node.exclamationToken !== exclamationToken || node.type !== type || node.initializer !== initializer ? createVariableDeclaration2(name, exclamationToken, type, initializer) : node;
+}
+function updateVariableDeclarationList2(node, declarations) {
+  return node.declarations !== declarations ? createVariableDeclarationList2(declarations, node.flags) : node;
+}
+function updateParameterDeclaration2(node, modifiers, dotDotDotToken, name, questionToken, type, initializer) {
+  return node.modifiers !== modifiers || node.dotDotDotToken !== dotDotDotToken || node.name !== name || node.questionToken !== questionToken || node.type !== type || node.initializer !== initializer ? createParameterDeclaration2(modifiers, dotDotDotToken, name, questionToken, type, initializer) : node;
+}
+function updateBindingElement2(node, dotDotDotToken, propertyName, name, initializer) {
+  return node.dotDotDotToken !== dotDotDotToken || node.propertyName !== propertyName || node.name !== name || node.initializer !== initializer ? createBindingElement2(dotDotDotToken, propertyName, name, initializer) : node;
+}
+function updateMissingDeclaration2(node, modifiers) {
+  return node.modifiers !== modifiers ? createMissingDeclaration2(modifiers) : node;
+}
+function updateFunctionDeclaration2(node, modifiers, asteriskToken, name, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.asteriskToken !== asteriskToken || node.name !== name || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createFunctionDeclaration2(modifiers, asteriskToken, name, typeParameters, parameters, type, body) : node;
+}
+function updateClassDeclaration2(node, modifiers, name, typeParameters, heritageClauses, members) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.heritageClauses !== heritageClauses || node.members !== members ? createClassDeclaration2(modifiers, name, typeParameters, heritageClauses, members) : node;
+}
+function updateClassExpression2(node, modifiers, name, typeParameters, heritageClauses, members) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.heritageClauses !== heritageClauses || node.members !== members ? createClassExpression2(modifiers, name, typeParameters, heritageClauses, members) : node;
+}
+function updateHeritageClause2(node, types) {
+  return node.types !== types ? createHeritageClause2(node.token, types) : node;
+}
+function updateInterfaceDeclaration2(node, modifiers, name, typeParameters, heritageClauses, members) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.heritageClauses !== heritageClauses || node.members !== members ? createInterfaceDeclaration2(modifiers, name, typeParameters, heritageClauses, members) : node;
+}
+function updateTypeAliasDeclaration2(node, modifiers, name, typeParameters, type) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.type !== type ? createTypeAliasDeclaration2(modifiers, name, typeParameters, type) : node;
+}
+function updateEnumMember2(node, name, initializer) {
+  return node.name !== name || node.initializer !== initializer ? createEnumMember2(name, initializer) : node;
+}
+function updateEnumDeclaration2(node, modifiers, name, members) {
+  return node.modifiers !== modifiers || node.name !== name || node.members !== members ? createEnumDeclaration2(modifiers, name, members) : node;
+}
+function updateModuleBlock2(node, statements) {
+  return node.statements !== statements ? createModuleBlock2(statements) : node;
+}
+function updateImportDeclaration2(node, modifiers, importClause, moduleSpecifier, attributes) {
+  return node.modifiers !== modifiers || node.importClause !== importClause || node.moduleSpecifier !== moduleSpecifier || node.attributes !== attributes ? createImportDeclaration2(modifiers, importClause, moduleSpecifier, attributes) : node;
+}
+function updateExternalModuleReference2(node, expression) {
+  return node.expression !== expression ? createExternalModuleReference2(expression) : node;
+}
+function updateNamespaceImport2(node, name) {
+  return node.name !== name ? createNamespaceImport2(name) : node;
+}
+function updateNamedImports2(node, elements) {
+  return node.elements !== elements ? createNamedImports2(elements) : node;
+}
+function updateExportAssignment2(node, modifiers, type, expression) {
+  return node.modifiers !== modifiers || node.type !== type || node.expression !== expression ? createExportAssignment2(modifiers, node.isExportEquals, type, expression) : node;
+}
+function updateNamespaceExportDeclaration2(node, modifiers, name) {
+  return node.modifiers !== modifiers || node.name !== name ? createNamespaceExportDeclaration2(modifiers, name) : node;
+}
+function updateNamespaceExport2(node, name) {
+  return node.name !== name ? createNamespaceExport2(name) : node;
+}
+function updateNamedExports2(node, elements) {
+  return node.elements !== elements ? createNamedExports2(elements) : node;
+}
+function updateExportSpecifier2(node, propertyName, name) {
+  return node.propertyName !== propertyName || node.name !== name ? createExportSpecifier2(node.isTypeOnly, propertyName, name) : node;
+}
+function updateCallSignatureDeclaration2(node, typeParameters, parameters, type) {
+  return node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createCallSignatureDeclaration2(typeParameters, parameters, type) : node;
+}
+function updateConstructSignatureDeclaration2(node, typeParameters, parameters, type) {
+  return node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createConstructSignatureDeclaration2(typeParameters, parameters, type) : node;
+}
+function updateConstructorDeclaration2(node, modifiers, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createConstructorDeclaration2(modifiers, typeParameters, parameters, type, body) : node;
+}
+function updateGetAccessorDeclaration2(node, modifiers, name, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createGetAccessorDeclaration2(modifiers, name, typeParameters, parameters, type, body) : node;
+}
+function updateSetAccessorDeclaration2(node, modifiers, name, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.name !== name || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createSetAccessorDeclaration2(modifiers, name, typeParameters, parameters, type, body) : node;
+}
+function updateIndexSignatureDeclaration2(node, modifiers, parameters, type) {
+  return node.modifiers !== modifiers || node.parameters !== parameters || node.type !== type ? createIndexSignatureDeclaration2(modifiers, parameters, type) : node;
+}
+function updateMethodSignatureDeclaration2(node, modifiers, name, postfixToken, typeParameters, parameters, type) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createMethodSignatureDeclaration2(modifiers, name, postfixToken, typeParameters, parameters, type) : node;
+}
+function updateMethodDeclaration2(node, modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.asteriskToken !== asteriskToken || node.name !== name || node.postfixToken !== postfixToken || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createMethodDeclaration2(modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, type, body) : node;
+}
+function updatePropertySignatureDeclaration2(node, modifiers, name, postfixToken, type, initializer) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.type !== type || node.initializer !== initializer ? createPropertySignatureDeclaration2(modifiers, name, postfixToken, type, initializer) : node;
+}
+function updatePropertyDeclaration2(node, modifiers, name, postfixToken, type, initializer) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.type !== type || node.initializer !== initializer ? createPropertyDeclaration2(modifiers, name, postfixToken, type, initializer) : node;
+}
+function updateClassStaticBlockDeclaration2(node, modifiers, body) {
+  return node.modifiers !== modifiers || node.body !== body ? createClassStaticBlockDeclaration2(modifiers, body) : node;
+}
+function updateBinaryExpression2(node, modifiers, left, type, operatorToken, right) {
+  return node.modifiers !== modifiers || node.left !== left || node.type !== type || node.operatorToken !== operatorToken || node.right !== right ? createBinaryExpression2(modifiers, left, type, operatorToken, right) : node;
+}
+function updatePrefixUnaryExpression2(node, operand) {
+  return node.operand !== operand ? createPrefixUnaryExpression2(node.operator, operand) : node;
+}
+function updatePostfixUnaryExpression2(node, operand) {
+  return node.operand !== operand ? createPostfixUnaryExpression2(operand, node.operator) : node;
+}
+function updateYieldExpression2(node, asteriskToken, expression) {
+  return node.asteriskToken !== asteriskToken || node.expression !== expression ? createYieldExpression2(asteriskToken, expression) : node;
+}
+function updateArrowFunction2(node, modifiers, typeParameters, parameters, type, equalsGreaterThanToken, body) {
+  return node.modifiers !== modifiers || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.equalsGreaterThanToken !== equalsGreaterThanToken || node.body !== body ? createArrowFunction2(modifiers, typeParameters, parameters, type, equalsGreaterThanToken, body) : node;
+}
+function updateFunctionExpression2(node, modifiers, asteriskToken, name, typeParameters, parameters, type, body) {
+  return node.modifiers !== modifiers || node.asteriskToken !== asteriskToken || node.name !== name || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createFunctionExpression2(modifiers, asteriskToken, name, typeParameters, parameters, type, body) : node;
+}
+function updateAsExpression2(node, expression, type) {
+  return node.expression !== expression || node.type !== type ? createAsExpression2(expression, type) : node;
+}
+function updateSatisfiesExpression2(node, expression, type) {
+  return node.expression !== expression || node.type !== type ? createSatisfiesExpression2(expression, type) : node;
+}
+function updateConditionalExpression2(node, condition, questionToken, whenTrue, colonToken, whenFalse) {
+  return node.condition !== condition || node.questionToken !== questionToken || node.whenTrue !== whenTrue || node.colonToken !== colonToken || node.whenFalse !== whenFalse ? createConditionalExpression2(condition, questionToken, whenTrue, colonToken, whenFalse) : node;
+}
+function updatePropertyAccessExpression2(node, expression, questionDotToken, name) {
+  return node.expression !== expression || node.questionDotToken !== questionDotToken || node.name !== name ? createPropertyAccessExpression2(expression, questionDotToken, name, node.flags) : node;
+}
+function updateElementAccessExpression2(node, expression, questionDotToken, argumentExpression) {
+  return node.expression !== expression || node.questionDotToken !== questionDotToken || node.argumentExpression !== argumentExpression ? createElementAccessExpression2(expression, questionDotToken, argumentExpression, node.flags) : node;
+}
+function updateCallExpression2(node, expression, questionDotToken, typeArguments, arguments_) {
+  return node.expression !== expression || node.questionDotToken !== questionDotToken || node.typeArguments !== typeArguments || node.arguments !== arguments_ ? createCallExpression2(expression, questionDotToken, typeArguments, arguments_, node.flags) : node;
+}
+function updateNewExpression2(node, expression, typeArguments, arguments_) {
+  return node.expression !== expression || node.typeArguments !== typeArguments || node.arguments !== arguments_ ? createNewExpression2(expression, typeArguments, arguments_) : node;
+}
+function updateMetaProperty2(node, name) {
+  return node.name !== name ? createMetaProperty2(node.keywordToken, name) : node;
+}
+function updateNonNullExpression2(node, expression) {
+  return node.expression !== expression ? createNonNullExpression2(expression, node.flags) : node;
+}
+function updateSpreadElement2(node, expression) {
+  return node.expression !== expression ? createSpreadElement2(expression) : node;
+}
+function updateTemplateExpression2(node, head, templateSpans) {
+  return node.head !== head || node.templateSpans !== templateSpans ? createTemplateExpression2(head, templateSpans) : node;
+}
+function updateTemplateSpan2(node, expression, literal) {
+  return node.expression !== expression || node.literal !== literal ? createTemplateSpan2(expression, literal) : node;
+}
+function updateTaggedTemplateExpression2(node, tag, questionDotToken, typeArguments, template) {
+  return node.tag !== tag || node.questionDotToken !== questionDotToken || node.typeArguments !== typeArguments || node.template !== template ? createTaggedTemplateExpression2(tag, questionDotToken, typeArguments, template, node.flags) : node;
+}
+function updateParenthesizedExpression2(node, expression) {
+  return node.expression !== expression ? createParenthesizedExpression2(expression) : node;
+}
+function updateArrayLiteralExpression2(node, elements) {
+  return node.elements !== elements ? createArrayLiteralExpression2(elements, node.multiLine) : node;
+}
+function updateObjectLiteralExpression2(node, properties) {
+  return node.properties !== properties ? createObjectLiteralExpression2(properties, node.multiLine) : node;
+}
+function updateSpreadAssignment2(node, expression) {
+  return node.expression !== expression ? createSpreadAssignment2(expression) : node;
+}
+function updatePropertyAssignment2(node, modifiers, name, postfixToken, type, initializer) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.type !== type || node.initializer !== initializer ? createPropertyAssignment2(modifiers, name, postfixToken, type, initializer) : node;
+}
+function updateShorthandPropertyAssignment2(node, modifiers, name, postfixToken, type, equalsToken, objectAssignmentInitializer) {
+  return node.modifiers !== modifiers || node.name !== name || node.postfixToken !== postfixToken || node.type !== type || node.equalsToken !== equalsToken || node.objectAssignmentInitializer !== objectAssignmentInitializer ? createShorthandPropertyAssignment2(modifiers, name, postfixToken, type, equalsToken, objectAssignmentInitializer) : node;
+}
+function updateDeleteExpression2(node, expression) {
+  return node.expression !== expression ? createDeleteExpression2(expression) : node;
+}
+function updateTypeOfExpression2(node, expression) {
+  return node.expression !== expression ? createTypeOfExpression2(expression) : node;
+}
+function updateVoidExpression2(node, expression) {
+  return node.expression !== expression ? createVoidExpression2(expression) : node;
+}
+function updateAwaitExpression2(node, expression) {
+  return node.expression !== expression ? createAwaitExpression2(expression) : node;
+}
+function updateTypeAssertion2(node, type, expression) {
+  return node.type !== type || node.expression !== expression ? createTypeAssertion2(type, expression) : node;
+}
+function updateUnionTypeNode2(node, types) {
+  return node.types !== types ? createUnionTypeNode2(types) : node;
+}
+function updateIntersectionTypeNode2(node, types) {
+  return node.types !== types ? createIntersectionTypeNode2(types) : node;
+}
+function updateConditionalTypeNode2(node, checkType, extendsType, trueType, falseType) {
+  return node.checkType !== checkType || node.extendsType !== extendsType || node.trueType !== trueType || node.falseType !== falseType ? createConditionalTypeNode2(checkType, extendsType, trueType, falseType) : node;
+}
+function updateTypeOperatorNode2(node, type) {
+  return node.type !== type ? createTypeOperatorNode2(node.operator, type) : node;
+}
+function updateInferTypeNode2(node, typeParameter) {
+  return node.typeParameter !== typeParameter ? createInferTypeNode2(typeParameter) : node;
+}
+function updateArrayTypeNode2(node, elementType) {
+  return node.elementType !== elementType ? createArrayTypeNode2(elementType) : node;
+}
+function updateIndexedAccessTypeNode2(node, objectType, indexType) {
+  return node.objectType !== objectType || node.indexType !== indexType ? createIndexedAccessTypeNode2(objectType, indexType) : node;
+}
+function updateTypeReferenceNode2(node, typeName, typeArguments) {
+  return node.typeName !== typeName || node.typeArguments !== typeArguments ? createTypeReferenceNode2(typeName, typeArguments) : node;
+}
+function updateExpressionWithTypeArguments2(node, expression, typeArguments) {
+  return node.expression !== expression || node.typeArguments !== typeArguments ? createExpressionWithTypeArguments2(expression, typeArguments) : node;
+}
+function updateLiteralTypeNode2(node, literal) {
+  return node.literal !== literal ? createLiteralTypeNode2(literal) : node;
+}
+function updateTypePredicateNode2(node, assertsModifier, parameterName, type) {
+  return node.assertsModifier !== assertsModifier || node.parameterName !== parameterName || node.type !== type ? createTypePredicateNode2(assertsModifier, parameterName, type) : node;
+}
+function updateImportAttribute2(node, name, value) {
+  return node.name !== name || node.value !== value ? createImportAttribute2(name, value) : node;
+}
+function updateImportAttributes2(node, attributes) {
+  return node.attributes !== attributes ? createImportAttributes2(node.token, attributes, node.multiLine) : node;
+}
+function updateTypeQueryNode2(node, exprName, typeArguments) {
+  return node.exprName !== exprName || node.typeArguments !== typeArguments ? createTypeQueryNode2(exprName, typeArguments) : node;
+}
+function updateMappedTypeNode2(node, readonlyToken, typeParameter, nameType, questionToken, type, members) {
+  return node.readonlyToken !== readonlyToken || node.typeParameter !== typeParameter || node.nameType !== nameType || node.questionToken !== questionToken || node.type !== type || node.members !== members ? createMappedTypeNode2(readonlyToken, typeParameter, nameType, questionToken, type, members) : node;
+}
+function updateTypeLiteralNode2(node, members) {
+  return node.members !== members ? createTypeLiteralNode2(members) : node;
+}
+function updateTupleTypeNode2(node, elements) {
+  return node.elements !== elements ? createTupleTypeNode2(elements) : node;
+}
+function updateNamedTupleMember2(node, dotDotDotToken, name, questionToken, type) {
+  return node.dotDotDotToken !== dotDotDotToken || node.name !== name || node.questionToken !== questionToken || node.type !== type ? createNamedTupleMember2(dotDotDotToken, name, questionToken, type) : node;
+}
+function updateOptionalTypeNode2(node, type) {
+  return node.type !== type ? createOptionalTypeNode2(type) : node;
+}
+function updateRestTypeNode2(node, type) {
+  return node.type !== type ? createRestTypeNode2(type) : node;
+}
+function updateParenthesizedTypeNode2(node, type) {
+  return node.type !== type ? createParenthesizedTypeNode2(type) : node;
+}
+function updateFunctionTypeNode2(node, typeParameters, parameters, type) {
+  return node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createFunctionTypeNode2(typeParameters, parameters, type) : node;
+}
+function updateConstructorTypeNode2(node, modifiers, typeParameters, parameters, type) {
+  return node.modifiers !== modifiers || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createConstructorTypeNode2(modifiers, typeParameters, parameters, type) : node;
+}
+function updateTemplateLiteralTypeNode2(node, head, templateSpans) {
+  return node.head !== head || node.templateSpans !== templateSpans ? createTemplateLiteralTypeNode2(head, templateSpans) : node;
+}
+function updateTemplateLiteralTypeSpan2(node, type, literal) {
+  return node.type !== type || node.literal !== literal ? createTemplateLiteralTypeSpan2(type, literal) : node;
+}
+function updateSyntheticExpression2(node, tupleNameSource) {
+  return node.tupleNameSource !== tupleNameSource ? createSyntheticExpression2(node.type, node.isSpread, tupleNameSource) : node;
+}
+function updatePartiallyEmittedExpression2(node, expression) {
+  return node.expression !== expression ? createPartiallyEmittedExpression2(expression) : node;
+}
+function updateJsxElement2(node, openingElement, children, closingElement) {
+  return node.openingElement !== openingElement || node.children !== children || node.closingElement !== closingElement ? createJsxElement2(openingElement, children, closingElement) : node;
+}
+function updateJsxAttributes2(node, properties) {
+  return node.properties !== properties ? createJsxAttributes2(properties) : node;
+}
+function updateJsxNamespacedName2(node, namespace, name) {
+  return node.namespace !== namespace || node.name !== name ? createJsxNamespacedName2(namespace, name) : node;
+}
+function updateJsxOpeningElement2(node, tagName, typeArguments, attributes) {
+  return node.tagName !== tagName || node.typeArguments !== typeArguments || node.attributes !== attributes ? createJsxOpeningElement2(tagName, typeArguments, attributes) : node;
+}
+function updateJsxSelfClosingElement2(node, tagName, typeArguments, attributes) {
+  return node.tagName !== tagName || node.typeArguments !== typeArguments || node.attributes !== attributes ? createJsxSelfClosingElement2(tagName, typeArguments, attributes) : node;
+}
+function updateJsxFragment2(node, openingFragment, children, closingFragment) {
+  return node.openingFragment !== openingFragment || node.children !== children || node.closingFragment !== closingFragment ? createJsxFragment2(openingFragment, children, closingFragment) : node;
+}
+function updateJsxAttribute2(node, name, initializer) {
+  return node.name !== name || node.initializer !== initializer ? createJsxAttribute2(name, initializer) : node;
+}
+function updateJsxSpreadAttribute2(node, expression) {
+  return node.expression !== expression ? createJsxSpreadAttribute2(expression) : node;
+}
+function updateJsxClosingElement2(node, tagName) {
+  return node.tagName !== tagName ? createJsxClosingElement2(tagName) : node;
+}
+function updateJsxExpression2(node, dotDotDotToken, expression) {
+  return node.dotDotDotToken !== dotDotDotToken || node.expression !== expression ? createJsxExpression2(dotDotDotToken, expression) : node;
+}
+function updateSyntaxList2(node, children) {
+  return node.children !== children ? createSyntaxList2(children) : node;
+}
+function updateJSDoc2(node, comment, tags) {
+  return node.comment !== comment || node.tags !== tags ? createJSDoc2(comment, tags) : node;
+}
+function updateJSDocTypeExpression2(node, type) {
+  return node.type !== type ? createJSDocTypeExpression2(type) : node;
+}
+function updateJSDocNonNullableType2(node, type) {
+  return node.type !== type ? createJSDocNonNullableType2(type) : node;
+}
+function updateJSDocNullableType2(node, type) {
+  return node.type !== type ? createJSDocNullableType2(type) : node;
+}
+function updateJSDocVariadicType2(node, type) {
+  return node.type !== type ? createJSDocVariadicType2(type) : node;
+}
+function updateJSDocOptionalType2(node, type) {
+  return node.type !== type ? createJSDocOptionalType2(type) : node;
+}
+function updateJSDocTypeTag2(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocTypeTag2(tagName, typeExpression, comment) : node;
+}
+function updateJSDocUnknownTag2(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocUnknownTag2(tagName, comment) : node;
+}
+function updateJSDocTemplateTag2(node, tagName, constraint, typeParameters, comment) {
+  return node.tagName !== tagName || node.constraint !== constraint || node.typeParameters !== typeParameters || node.comment !== comment ? createJSDocTemplateTag2(tagName, constraint, typeParameters, comment) : node;
+}
+function updateJSDocReturnTag2(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocReturnTag2(tagName, typeExpression, comment) : node;
+}
+function updateJSDocPublicTag2(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocPublicTag2(tagName, comment) : node;
+}
+function updateJSDocPrivateTag2(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocPrivateTag2(tagName, comment) : node;
+}
+function updateJSDocProtectedTag2(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocProtectedTag2(tagName, comment) : node;
+}
+function updateJSDocReadonlyTag2(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocReadonlyTag2(tagName, comment) : node;
+}
+function updateJSDocOverrideTag2(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocOverrideTag2(tagName, comment) : node;
+}
+function updateJSDocDeprecatedTag2(node, tagName, comment) {
+  return node.tagName !== tagName || node.comment !== comment ? createJSDocDeprecatedTag2(tagName, comment) : node;
+}
+function updateJSDocSeeTag2(node, tagName, nameExpression, comment) {
+  return node.tagName !== tagName || node.nameExpression !== nameExpression || node.comment !== comment ? createJSDocSeeTag2(tagName, nameExpression, comment) : node;
+}
+function updateJSDocImplementsTag2(node, tagName, className, comment) {
+  return node.tagName !== tagName || node.className !== className || node.comment !== comment ? createJSDocImplementsTag2(tagName, className, comment) : node;
+}
+function updateJSDocAugmentsTag2(node, tagName, className, comment) {
+  return node.tagName !== tagName || node.className !== className || node.comment !== comment ? createJSDocAugmentsTag2(tagName, className, comment) : node;
+}
+function updateJSDocSatisfiesTag2(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocSatisfiesTag2(tagName, typeExpression, comment) : node;
+}
+function updateJSDocThrowsTag2(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocThrowsTag2(tagName, typeExpression, comment) : node;
+}
+function updateJSDocThisTag2(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocThisTag2(tagName, typeExpression, comment) : node;
+}
+function updateJSDocImportTag2(node, tagName, importClause, moduleSpecifier, attributes, comment) {
+  return node.tagName !== tagName || node.importClause !== importClause || node.moduleSpecifier !== moduleSpecifier || node.attributes !== attributes || node.comment !== comment ? createJSDocImportTag2(tagName, importClause, moduleSpecifier, attributes, comment) : node;
+}
+function updateJSDocCallbackTag2(node, tagName, typeExpression, name, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.name !== name || node.comment !== comment ? createJSDocCallbackTag2(tagName, typeExpression, name, comment) : node;
+}
+function updateJSDocOverloadTag2(node, tagName, typeExpression, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocOverloadTag2(tagName, typeExpression, comment) : node;
+}
+function updateJSDocTypedefTag2(node, tagName, typeExpression, name, comment) {
+  return node.tagName !== tagName || node.typeExpression !== typeExpression || node.name !== name || node.comment !== comment ? createJSDocTypedefTag2(tagName, typeExpression, name, comment) : node;
+}
+function updateJSDocSignature2(node, typeParameters, parameters, type) {
+  return node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type ? createJSDocSignature2(typeParameters, parameters, type) : node;
+}
+function updateJSDocNameReference2(node, name) {
+  return node.name !== name ? createJSDocNameReference2(name) : node;
+}
+function updateModuleDeclaration2(node, modifiers, name, body) {
+  return node.modifiers !== modifiers || node.name !== name || node.body !== body ? createModuleDeclaration2(modifiers, node.keyword, name, body) : node;
+}
+function updateImportEqualsDeclaration2(node, modifiers, name, moduleReference) {
+  return node.modifiers !== modifiers || node.name !== name || node.moduleReference !== moduleReference ? createImportEqualsDeclaration2(modifiers, node.isTypeOnly, name, moduleReference) : node;
+}
+function updateExportDeclaration2(node, modifiers, exportClause, moduleSpecifier, attributes) {
+  return node.modifiers !== modifiers || node.exportClause !== exportClause || node.moduleSpecifier !== moduleSpecifier || node.attributes !== attributes ? createExportDeclaration2(modifiers, node.isTypeOnly, exportClause, moduleSpecifier, attributes) : node;
+}
+function updateImportTypeNode2(node, argument, attributes, qualifier, typeArguments) {
+  return node.argument !== argument || node.attributes !== attributes || node.qualifier !== qualifier || node.typeArguments !== typeArguments ? createImportTypeNode2(node.isTypeOf, argument, attributes, qualifier, typeArguments) : node;
+}
+function updateImportClause2(node, name, namedBindings) {
+  return node.name !== name || node.namedBindings !== namedBindings ? createImportClause2(node.phaseModifier, name, namedBindings) : node;
+}
+function updateImportSpecifier2(node, propertyName, name) {
+  return node.propertyName !== propertyName || node.name !== name ? createImportSpecifier2(node.isTypeOnly, propertyName, name) : node;
+}
+function updateJSDocLink2(node, name) {
+  return node.name !== name ? createJSDocLink2(name, node.text) : node;
+}
+function updateJSDocLinkPlain2(node, name) {
+  return node.name !== name ? createJSDocLinkPlain2(name, node.text) : node;
+}
+function updateJSDocLinkCode2(node, name) {
+  return node.name !== name ? createJSDocLinkCode2(name, node.text) : node;
+}
+function updateTypeParameterDeclaration2(node, modifiers, name, constraint, expression, defaultType) {
+  return node.modifiers !== modifiers || node.name !== name || node.constraint !== constraint || node.expression !== expression || node.defaultType !== defaultType ? createTypeParameterDeclaration2(modifiers, name, constraint, expression, defaultType) : node;
+}
+function updateSyntheticReferenceExpression2(node, expression, thisArg) {
+  return node.expression !== expression || node.thisArg !== thisArg ? createSyntheticReferenceExpression2(expression, thisArg) : node;
+}
+function updateJSDocTypeLiteral2(node, jsdocPropertyTags) {
+  return node.jsdocPropertyTags !== jsdocPropertyTags ? createJSDocTypeLiteral2(jsdocPropertyTags, node.isArrayType) : node;
+}
+function updateForInStatement2(node, awaitModifier, initializer, expression, statement) {
+  return node.awaitModifier !== awaitModifier || node.initializer !== initializer || node.expression !== expression || node.statement !== statement ? createForInStatement2(awaitModifier, initializer, expression, statement) : node;
+}
+function updateForOfStatement2(node, awaitModifier, initializer, expression, statement) {
+  return node.awaitModifier !== awaitModifier || node.initializer !== initializer || node.expression !== expression || node.statement !== statement ? createForOfStatement2(awaitModifier, initializer, expression, statement) : node;
+}
+function updateCaseClause2(node, expression, statements) {
+  return node.expression !== expression || node.statements !== statements ? createCaseClause2(expression, statements) : node;
+}
+function updateDefaultClause2(node, expression, statements) {
+  return node.expression !== expression || node.statements !== statements ? createDefaultClause2(expression, statements) : node;
+}
+function updateObjectBindingPattern2(node, elements) {
+  return node.elements !== elements ? createObjectBindingPattern2(elements) : node;
+}
+function updateArrayBindingPattern2(node, elements) {
+  return node.elements !== elements ? createArrayBindingPattern2(elements) : node;
+}
+function updateJSDocParameterTag2(node, tagName, name, typeExpression, comment) {
+  return node.tagName !== tagName || node.name !== name || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocParameterTag2(tagName, name, node.isBracketed, typeExpression, node.isNameFirst, comment) : node;
+}
+function updateJSDocPropertyTag2(node, tagName, name, typeExpression, comment) {
+  return node.tagName !== tagName || node.name !== name || node.typeExpression !== typeExpression || node.comment !== comment ? createJSDocPropertyTag2(tagName, name, node.isBracketed, typeExpression, node.isNameFirst, comment) : node;
+}
+function cloneSourceFileWithChanges2(source, statements, endOfFileToken) {
+  return new NodeObject2(SyntaxKind3.SourceFile, {
+    ...cloneSourceFileData2(source),
+    statements: createNodeArray2(statements),
+    endOfFileToken
+  });
+}
+function updateSourceFile2(node, statements, endOfFileToken) {
+  return node.statements !== statements || node.endOfFileToken !== endOfFileToken ? cloneSourceFileWithChanges2(node, statements, endOfFileToken) : node;
+}
+function makeReverseMap2(source) {
+  const result = [];
+  source.forEach((value, name) => {
+    result[value] = name;
+  });
+  return result;
+}
+function computeLineStarts2(text) {
+  const result = [];
+  let pos = 0;
+  let lineStart = 0;
+  while (pos < text.length) {
+    const ch = text.charCodeAt(pos);
+    pos++;
+    switch (ch) {
+      case CharacterCodes4.carriageReturn:
+        if (text.charCodeAt(pos) === CharacterCodes4.lineFeed) {
+          pos++;
+        }
+      case CharacterCodes4.lineFeed:
+        result.push(lineStart);
+        lineStart = pos;
+        break;
+      default:
+        if (ch > CharacterCodes4.maxAsciiCharacter && isLineBreak3(ch)) {
+          result.push(lineStart);
+          lineStart = pos;
+        }
+        break;
+    }
+  }
+  result.push(lineStart);
+  return result;
+}
+function isWhiteSpaceLike2(ch) {
+  return isWhiteSpaceSingleLine2(ch) || isLineBreak3(ch);
+}
+function isWhiteSpaceSingleLine2(ch) {
+  return ch === CharacterCodes4.space || ch === CharacterCodes4.tab || ch === CharacterCodes4.verticalTab || ch === CharacterCodes4.formFeed || ch === CharacterCodes4.nonBreakingSpace || ch === CharacterCodes4.nextLine || ch === CharacterCodes4.ogham || ch >= CharacterCodes4.enQuad && ch <= CharacterCodes4.zeroWidthSpace || ch === CharacterCodes4.narrowNoBreakSpace || ch === CharacterCodes4.mathematicalSpace || ch === CharacterCodes4.ideographicSpace || ch === CharacterCodes4.byteOrderMark;
+}
+function isLineBreak3(ch) {
+  return ch === CharacterCodes4.lineFeed || ch === CharacterCodes4.carriageReturn || ch === CharacterCodes4.lineSeparator || ch === CharacterCodes4.paragraphSeparator;
+}
+function skipTrivia2(text, pos, stopAfterLineBreak, stopAtComments, inJSDoc) {
+  if (pos < 0) {
+    return pos;
+  }
+  let canConsumeStar = false;
+  while (true) {
+    const ch = text.charCodeAt(pos);
+    switch (ch) {
+      case CharacterCodes4.carriageReturn:
+        if (text.charCodeAt(pos + 1) === CharacterCodes4.lineFeed) {
+          pos++;
+        }
+      case CharacterCodes4.lineFeed:
+        pos++;
+        if (stopAfterLineBreak) {
+          return pos;
+        }
+        canConsumeStar = !!inJSDoc;
+        continue;
+      case CharacterCodes4.tab:
+      case CharacterCodes4.verticalTab:
+      case CharacterCodes4.formFeed:
+      case CharacterCodes4.space:
+        pos++;
+        continue;
+      case CharacterCodes4.slash:
+        if (stopAtComments) {
+          break;
+        }
+        if (text.charCodeAt(pos + 1) === CharacterCodes4.slash) {
+          pos += 2;
+          while (pos < text.length) {
+            if (isLineBreak3(text.charCodeAt(pos))) {
+              break;
+            }
+            pos++;
+          }
+          canConsumeStar = false;
+          continue;
+        }
+        if (text.charCodeAt(pos + 1) === CharacterCodes4.asterisk) {
+          pos += 2;
+          while (pos < text.length) {
+            if (text.charCodeAt(pos) === CharacterCodes4.asterisk && text.charCodeAt(pos + 1) === CharacterCodes4.slash) {
+              pos += 2;
+              break;
+            }
+            pos++;
+          }
+          canConsumeStar = false;
+          continue;
+        }
+        break;
+      case CharacterCodes4.lessThan:
+      case CharacterCodes4.bar:
+      case CharacterCodes4.equals:
+      case CharacterCodes4.greaterThan:
+        if (isConflictMarkerTrivia2(text, pos)) {
+          pos = scanConflictMarkerTrivia2(text, pos);
+          canConsumeStar = false;
+          continue;
+        }
+        break;
+      case CharacterCodes4.hash:
+        if (pos === 0 && isShebangTrivia2(text, pos)) {
+          pos = scanShebangTrivia2(text, pos);
+          continue;
+        }
+        break;
+      case CharacterCodes4.asterisk:
+        if (canConsumeStar) {
+          pos++;
+          canConsumeStar = false;
+          continue;
+        }
+        break;
+      default:
+        if (ch > CharacterCodes4.maxAsciiCharacter && isWhiteSpaceLike2(ch)) {
+          pos++;
+          continue;
+        }
+        break;
+    }
+    return pos;
+  }
+}
+function isConflictMarkerTrivia2(text, pos) {
+  if (pos >= text.length) {
+    return false;
+  }
+  const ch = text.charCodeAt(pos);
+  if (pos === 0 || isLineBreak3(text.charCodeAt(pos - 1))) {
+    if (ch === CharacterCodes4.lessThan || ch === CharacterCodes4.greaterThan || ch === CharacterCodes4.equals) {
+      if (pos + 6 < text.length && text.charCodeAt(pos + 1) === ch && text.charCodeAt(pos + 2) === ch && text.charCodeAt(pos + 3) === ch && text.charCodeAt(pos + 4) === ch && text.charCodeAt(pos + 5) === ch && text.charCodeAt(pos + 6) === ch) {
+        return ch === CharacterCodes4.equals || text.charCodeAt(pos + 7) === CharacterCodes4.space;
+      }
+    }
+    if (ch === CharacterCodes4.bar && pos + 6 < text.length && text.charCodeAt(pos + 1) === ch && text.charCodeAt(pos + 2) === ch && text.charCodeAt(pos + 3) === ch && text.charCodeAt(pos + 4) === ch && text.charCodeAt(pos + 5) === ch && text.charCodeAt(pos + 6) === ch) {
+      return true;
+    }
+  }
+  return false;
+}
+function scanConflictMarkerTrivia2(text, pos) {
+  const ch = text.charCodeAt(pos);
+  const len = text.length;
+  if (ch === CharacterCodes4.lessThan || ch === CharacterCodes4.greaterThan) {
+    while (pos < len && !isLineBreak3(text.charCodeAt(pos))) {
+      pos++;
+    }
+  } else {
+    pos += 7;
+    while (pos < len) {
+      const currentChar = text.charCodeAt(pos);
+      if ((currentChar === CharacterCodes4.equals || currentChar === CharacterCodes4.greaterThan) && isConflictMarkerTrivia2(text, pos)) {
+        break;
+      }
+      pos++;
+    }
+  }
+  return pos;
+}
+function isShebangTrivia2(text, pos) {
+  return pos === 0 && text.charCodeAt(0) === CharacterCodes4.hash && text.charCodeAt(1) === CharacterCodes4.exclamation;
+}
+function scanShebangTrivia2(text, pos) {
+  pos += 2;
+  while (pos < text.length) {
+    if (isLineBreak3(text.charCodeAt(pos))) {
+      break;
+    }
+    pos++;
+  }
+  return pos;
+}
+function getTokenPosOfNode2(node, sourceFile, includeJSDoc) {
+  if (nodeIsMissing2(node)) {
+    return node.pos;
+  }
+  if (isJSDocNodeKind2(node.kind) || node.kind === SyntaxKind3.JsxText) {
+    return skipTrivia2(sourceFile.text, node.pos, false, true);
+  }
+  if (includeJSDoc && node.jsDoc && node.jsDoc.length > 0) {
+    return getTokenPosOfNode2(node.jsDoc[0], sourceFile, false);
+  }
+  return skipTrivia2(sourceFile.text, node.pos, false, false, !!(node.flags & NodeFlags2.JSDoc));
+}
+function nodeIsMissing2(node) {
+  return node.pos === node.end && node.pos >= 0 && node.kind !== SyntaxKind3.EndOfFile;
+}
+function getNodeDataType2(kind) {
+  switch (kind) {
+    case SyntaxKind3.Identifier:
+    case SyntaxKind3.PrivateIdentifier:
+    case SyntaxKind3.JsxText:
+    case SyntaxKind3.JSDocText:
+    case SyntaxKind3.JSDocLink:
+    case SyntaxKind3.JSDocLinkPlain:
+    case SyntaxKind3.JSDocLinkCode:
+      return NODE_DATA_TYPE_STRING2;
+    case SyntaxKind3.StringLiteral:
+    case SyntaxKind3.NumericLiteral:
+    case SyntaxKind3.BigIntLiteral:
+    case SyntaxKind3.RegularExpressionLiteral:
+    case SyntaxKind3.NoSubstitutionTemplateLiteral:
+    case SyntaxKind3.TemplateHead:
+    case SyntaxKind3.TemplateMiddle:
+    case SyntaxKind3.TemplateTail:
+    case SyntaxKind3.SourceFile:
+      return NODE_DATA_TYPE_EXTENDED2;
+    default:
+      return NODE_DATA_TYPE_CHILDREN2;
+  }
+}
+function getNodeCommonData2(node) {
+  switch (node.kind) {
+    case SyntaxKind3.Block:
+      return (node.multiLine ? 1 : 0) << 24;
+    case SyntaxKind3.HeritageClause:
+      return (node.token === SyntaxKind3.ImplementsKeyword ? 1 : 0) << 24;
+    case SyntaxKind3.ExportAssignment:
+      return (node.isExportEquals ? 1 : 0) << 24;
+    case SyntaxKind3.ExportSpecifier:
+      return (node.isTypeOnly ? 1 : 0) << 24;
+    case SyntaxKind3.PrefixUnaryExpression:
+      return (node.operator === SyntaxKind3.MinusToken ? 1 : node.operator === SyntaxKind3.TildeToken ? 2 : node.operator === SyntaxKind3.ExclamationToken ? 3 : node.operator === SyntaxKind3.PlusPlusToken ? 4 : node.operator === SyntaxKind3.MinusMinusToken ? 5 : 0) << 24;
+    case SyntaxKind3.PostfixUnaryExpression:
+      return (node.operator === SyntaxKind3.MinusMinusToken ? 1 : 0) << 24;
+    case SyntaxKind3.MetaProperty:
+      return (node.keywordToken === SyntaxKind3.NewKeyword ? 1 : 0) << 24;
+    case SyntaxKind3.ArrayLiteralExpression:
+      return (node.multiLine ? 1 : 0) << 24;
+    case SyntaxKind3.ObjectLiteralExpression:
+      return (node.multiLine ? 1 : 0) << 24;
+    case SyntaxKind3.TypeOperator:
+      return (node.operator === SyntaxKind3.ReadonlyKeyword ? 1 : node.operator === SyntaxKind3.UniqueKeyword ? 2 : 0) << 24;
+    case SyntaxKind3.ImportAttributes:
+      return (node.multiLine ? 1 : 0) << 24 | (node.token === SyntaxKind3.AssertKeyword ? 1 : 0) << 25;
+    case SyntaxKind3.JsxText:
+      return (node.containsOnlyTriviaWhiteSpaces ? 1 : 0) << 24;
+    case SyntaxKind3.ModuleDeclaration:
+      return (node.keyword === SyntaxKind3.NamespaceKeyword ? 1 : 0) << 24;
+    case SyntaxKind3.ImportEqualsDeclaration:
+      return (node.isTypeOnly ? 1 : 0) << 24;
+    case SyntaxKind3.ExportDeclaration:
+      return (node.isTypeOnly ? 1 : 0) << 24;
+    case SyntaxKind3.ImportType:
+      return (node.isTypeOf ? 1 : 0) << 24;
+    case SyntaxKind3.ImportClause:
+      return (node.phaseModifier === SyntaxKind3.TypeKeyword ? 1 : node.phaseModifier === SyntaxKind3.DeferKeyword ? 2 : 0) << 24;
+    case SyntaxKind3.ImportSpecifier:
+      return (node.isTypeOnly ? 1 : 0) << 24;
+    case SyntaxKind3.JSDocTypeLiteral:
+      return (node.isArrayType ? 1 : 0) << 24;
+    case SyntaxKind3.JSDocParameterTag:
+    case SyntaxKind3.JSDocPropertyTag:
+      return (node.isBracketed ? 1 : 0) << 24 | (node.isNameFirst ? 1 : 0) << 25;
+  }
+  return 0;
+}
+function isWtf8Surrogate2(bytes, index) {
+  return index + 2 < bytes.length && bytes[index] === surrogateLeadByte2 && bytes[index + 1] >= surrogateSecondByteMin2 && bytes[index + 1] <= surrogateSecondByteMax2 && bytes[index + 2] >= continuationByteMin2 && bytes[index + 2] <= continuationByteMax2;
+}
+function getSurrogateCodeUnit2(bytes, index) {
+  return 53248 | (bytes[index + 1] & 63) << 6 | bytes[index + 2] & 63;
+}
+function hasSurrogateLeadByte2(bytes) {
+  return Buffer22.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).indexOf(surrogateLeadByte2) >= 0;
+}
+function toUint8Array2(input) {
+  if (input instanceof Uint8Array) {
+    return input;
+  }
+  if (ArrayBuffer.isView(input)) {
+    return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  }
+  return new Uint8Array(input);
+}
+function binHeaderSize2(len) {
+  if (len < 256)
+    return 2;
+  if (len < 65536)
+    return 3;
+  return 5;
+}
+function writeBinHeader2(buf, off, len) {
+  if (len < 256) {
+    buf[off++] = MSGPACK_BIN82;
+    buf[off++] = len;
+  } else if (len < 65536) {
+    buf[off++] = MSGPACK_BIN162;
+    buf[off++] = len >>> 8 & 255;
+    buf[off++] = len & 255;
+  } else {
+    buf[off++] = MSGPACK_BIN322;
+    buf[off++] = len >>> 24 & 255;
+    buf[off++] = len >>> 16 & 255;
+    buf[off++] = len >>> 8 & 255;
+    buf[off++] = len & 255;
+  }
+  return off;
+}
+
+class MsgpackWriter2 {
+  buf;
+  view;
+  pos;
+  constructor(initialSize = 256) {
+    this.buf = new Uint8Array(initialSize);
+    this.view = new DataView(this.buf.buffer);
+    this.pos = 0;
+  }
+  ensure(n) {
+    if (this.pos + n > this.buf.length) {
+      let newSize = this.buf.length * 2;
+      while (newSize < this.pos + n)
+        newSize *= 2;
+      const next = new Uint8Array(newSize);
+      next.set(this.buf);
+      this.buf = next;
+      this.view = new DataView(this.buf.buffer);
+    }
+  }
+  writeArrayHeader(length) {
+    if (length <= 15) {
+      this.ensure(1);
+      this.buf[this.pos++] = 144 | length;
+    } else if (length <= 65535) {
+      this.ensure(3);
+      this.buf[this.pos++] = 220;
+      this.view.setUint16(this.pos, length, false);
+      this.pos += 2;
+    } else {
+      this.ensure(5);
+      this.buf[this.pos++] = 221;
+      this.view.setUint32(this.pos, length, false);
+      this.pos += 4;
+    }
+  }
+  writeUint(value) {
+    if (value <= 127) {
+      this.ensure(1);
+      this.buf[this.pos++] = value;
+    } else if (value <= 255) {
+      this.ensure(2);
+      this.buf[this.pos++] = 204;
+      this.buf[this.pos++] = value;
+    } else if (value <= 65535) {
+      this.ensure(3);
+      this.buf[this.pos++] = 205;
+      this.view.setUint16(this.pos, value, false);
+      this.pos += 2;
+    } else {
+      this.ensure(5);
+      this.buf[this.pos++] = 206;
+      this.view.setUint32(this.pos, value, false);
+      this.pos += 4;
+    }
+  }
+  writeString(str) {
+    const encoded = encoder4.encode(str);
+    const len = encoded.length;
+    if (len <= 31) {
+      this.ensure(1 + len);
+      this.buf[this.pos++] = 160 | len;
+    } else if (len <= 255) {
+      this.ensure(2 + len);
+      this.buf[this.pos++] = 217;
+      this.buf[this.pos++] = len;
+    } else if (len <= 65535) {
+      this.ensure(3 + len);
+      this.buf[this.pos++] = 218;
+      this.view.setUint16(this.pos, len, false);
+      this.pos += 2;
+    } else {
+      this.ensure(5 + len);
+      this.buf[this.pos++] = 219;
+      this.view.setUint32(this.pos, len, false);
+      this.pos += 4;
+    }
+    this.buf.set(encoded, this.pos);
+    this.pos += len;
+  }
+  writeBool(value) {
+    this.ensure(1);
+    this.buf[this.pos++] = value ? 195 : 194;
+  }
+  finish() {
+    return this.buf.subarray(0, this.pos);
+  }
+}
+
+class MsgpackReader2 {
+  buf;
+  view;
+  pos;
+  constructor(data, offset = 0) {
+    this.buf = data;
+    this.view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    this.pos = offset;
+  }
+  readArrayHeader() {
+    const byte = this.buf[this.pos++];
+    if ((byte & 240) === 144)
+      return byte & 15;
+    if (byte === 220) {
+      const len = this.view.getUint16(this.pos, false);
+      this.pos += 2;
+      return len;
+    }
+    if (byte === 221) {
+      const len = this.view.getUint32(this.pos, false);
+      this.pos += 4;
+      return len;
+    }
+    throw new Error(`Expected array header, got 0x${byte.toString(16)}`);
+  }
+  readUint() {
+    const byte = this.buf[this.pos++];
+    if (byte <= 127)
+      return byte;
+    if (byte === 204)
+      return this.buf[this.pos++];
+    if (byte === 205) {
+      const val = this.view.getUint16(this.pos, false);
+      this.pos += 2;
+      return val;
+    }
+    if (byte === 206) {
+      const val = this.view.getUint32(this.pos, false);
+      this.pos += 4;
+      return val;
+    }
+    throw new Error(`Expected uint, got 0x${byte.toString(16)}`);
+  }
+  readString() {
+    const byte = this.buf[this.pos++];
+    let len;
+    if ((byte & 224) === 160) {
+      len = byte & 31;
+    } else if (byte === 217) {
+      len = this.buf[this.pos++];
+    } else if (byte === 218) {
+      len = this.view.getUint16(this.pos, false);
+      this.pos += 2;
+    } else if (byte === 219) {
+      len = this.view.getUint32(this.pos, false);
+      this.pos += 4;
+    } else {
+      throw new Error(`Expected string, got 0x${byte.toString(16)}`);
+    }
+    const str = decoder2.decode(this.buf.subarray(this.pos, this.pos + len));
+    this.pos += len;
+    return str;
+  }
+  readBool() {
+    const byte = this.buf[this.pos++];
+    if (byte === 195)
+      return true;
+    if (byte === 194)
+      return false;
+    throw new Error(`Expected bool, got 0x${byte.toString(16)}`);
+  }
+}
+
+class StringTable2 {
+  parts;
+  byteLen;
+  offsets;
+  constructor() {
+    this.parts = [];
+    this.byteLen = 0;
+    this.offsets = [];
+  }
+  add(text) {
+    const index = this.offsets.length;
+    const encoder = cachedEncoder2();
+    const encodedLength = encoder.encode(text).length;
+    const offset = this.byteLen;
+    this.parts.push(text);
+    this.byteLen += encodedLength;
+    this.offsets.push(offset, offset + encodedLength);
+    return index;
+  }
+  encode() {
+    const encoder = cachedEncoder2();
+    const dataBytes = encoder.encode(this.parts.join(""));
+    const offsetBytes = new Uint8Array(this.offsets.length * 4);
+    const view = new DataView(offsetBytes.buffer);
+    for (let i = 0;i < this.offsets.length; i++) {
+      view.setUint32(i * 4, this.offsets[i], true);
+    }
+    const result = new Uint8Array(offsetBytes.length + dataBytes.length);
+    result.set(offsetBytes, 0);
+    result.set(dataBytes, offsetBytes.length);
+    return result;
+  }
+  stringByteLength() {
+    return this.byteLen;
+  }
+  offsetsCount() {
+    return this.offsets.length;
+  }
+}
+function cachedEncoder2() {
+  return _encoder2 ??= new TextEncoder;
+}
+function getChildrenPropertyMask2(node) {
+  const kind = node.kind;
+  const props = childProperties2[kind];
+  if (!props) {
+    return 0;
+  }
+  const n = node;
+  let mask = 0;
+  for (let i = 0;i < props.length; i++) {
+    const prop = props[i];
+    if (prop !== undefined && isChildPresent2(n[prop])) {
+      mask |= 1 << i;
+    }
+  }
+  return mask;
+}
+function isChildPresent2(v) {
+  if (v === undefined || v === null)
+    return false;
+  return true;
+}
+function recordNodeStrings2(node, strs) {
+  return strs.add(node.text ?? "");
+}
+function encodeFileReferences2(refs, writer) {
+  if (!refs || refs.length === 0)
+    return NO_STRUCTURED_DATA3;
+  const offset = writer.finish().length;
+  writer.writeArrayHeader(refs.length);
+  for (const ref of refs) {
+    writer.writeArrayHeader(5);
+    writer.writeUint(ref.pos);
+    writer.writeUint(ref.end);
+    writer.writeString(ref.fileName);
+    writer.writeUint(ref.resolutionMode ?? 0);
+    writer.writeBool(ref.preserve ?? false);
+  }
+  return offset;
+}
+function recordExtendedData2(node, strs, extendedData, structuredWriter) {
+  const offset = extendedData.length * 4;
+  if (node.kind === SyntaxKind3.SourceFile) {
+    const sf = node;
+    const textIndex = strs.add(sf.text);
+    const fileNameIndex = strs.add(sf.fileName);
+    const pathIndex = strs.add(sf.path);
+    const referencedFilesOffset = encodeFileReferences2(sf.referencedFiles, structuredWriter);
+    const typeRefDirectivesOffset = encodeFileReferences2(sf.typeReferenceDirectives, structuredWriter);
+    const libRefDirectivesOffset = encodeFileReferences2(sf.libReferenceDirectives, structuredWriter);
+    extendedData.push(textIndex, fileNameIndex, pathIndex, sf.languageVariant, sf.scriptKind, referencedFilesOffset, typeRefDirectivesOffset, libRefDirectivesOffset, NO_STRUCTURED_DATA3, NO_STRUCTURED_DATA3, NO_STRUCTURED_DATA3, 0);
+  } else if (node.kind === SyntaxKind3.TemplateHead || node.kind === SyntaxKind3.TemplateMiddle || node.kind === SyntaxKind3.TemplateTail) {
+    const tmpl = node;
+    const text = tmpl.text ?? "";
+    const rawText = tmpl.rawText ?? "";
+    const templateFlags = tmpl.templateFlags ?? 0;
+    const textIndex = strs.add(text);
+    const rawTextIndex = strs.add(rawText);
+    extendedData.push(textIndex, rawTextIndex, templateFlags);
+  } else {
+    const n = node;
+    const text = n.text ?? "";
+    const tokenFlags = n.tokenFlags ?? 0;
+    const textIndex = strs.add(text);
+    extendedData.push(textIndex, tokenFlags);
+  }
+  return offset;
+}
+function getNodeData2(node, strs, extendedData, structuredWriter) {
+  const t = getNodeDataType2(node.kind);
+  const common = getNodeCommonData2(node);
+  switch (t) {
+    case NODE_DATA_TYPE_CHILDREN2:
+      return t | common | getChildrenPropertyMask2(node);
+    case NODE_DATA_TYPE_STRING2:
+      return t | common | recordNodeStrings2(node, strs);
+    case NODE_DATA_TYPE_EXTENDED2:
+      return t | common | recordExtendedData2(node, strs, extendedData, structuredWriter);
+    default:
+      throw new Error("unreachable");
+  }
+}
+function getChildPropertiesForNode2(node) {
+  return childProperties2[node.kind];
+}
+function isNodeArray22(value) {
+  return Array.isArray(value) && typeof value.pos === "number" && typeof value.end === "number";
+}
+function encodeNode2(node) {
+  const strs = new StringTable2;
+  const extendedDataValues = [];
+  const structuredWriter = new MsgpackWriter2;
+  const nodeValues = [];
+  nodeValues.push(0, 0, 0, 0, 0, 0, 0);
+  let nodeCount = 0;
+  let parentIndex = 0;
+  let prevIndex = 0;
+  function visitNode(node) {
+    nodeCount++;
+    const currentIndex = nodeCount;
+    if (prevIndex !== 0) {
+      nodeValues[prevIndex * NODE_FIELDS2 + NODE_FIELD_NEXT2] = currentIndex;
+    }
+    const data = getNodeData2(node, strs, extendedDataValues, structuredWriter);
+    nodeValues.push(node.kind, node.pos >= 0 ? node.pos : 0, node.end >= 0 ? node.end : 0, 0, parentIndex, data, node.flags);
+    const saveParentIndex = parentIndex;
+    const savePrevIndex = prevIndex;
+    parentIndex = currentIndex;
+    prevIndex = 0;
+    visitChildren(node);
+    prevIndex = currentIndex;
+    parentIndex = saveParentIndex;
+  }
+  function visitNodeList(list) {
+    if (!list) {
+      return;
+    }
+    nodeCount++;
+    const currentIndex = nodeCount;
+    if (prevIndex !== 0) {
+      nodeValues[prevIndex * NODE_FIELDS2 + NODE_FIELD_NEXT2] = currentIndex;
+    }
+    nodeValues.push(KIND_NODE_LIST2, list.pos >= 0 ? list.pos : 0, list.end >= 0 ? list.end : 0, 0, parentIndex, list.length, 0);
+    const saveParentIndex = parentIndex;
+    parentIndex = currentIndex;
+    prevIndex = 0;
+    for (const child of list) {
+      visitNode(child);
+    }
+    prevIndex = currentIndex;
+    parentIndex = saveParentIndex;
+  }
+  function visitChildren(node) {
+    const props = getChildPropertiesForNode2(node);
+    const n = node;
+    if (props) {
+      for (const propName of props) {
+        if (propName === undefined)
+          continue;
+        const child = n[propName];
+        if (child === undefined || child === null)
+          continue;
+        if (isNodeArray22(child)) {
+          visitNodeList(child);
+        } else {
+          visitNode(child);
+        }
+      }
+    }
+  }
+  nodeCount++;
+  parentIndex++;
+  const rootData = getNodeData2(node, strs, extendedDataValues, structuredWriter);
+  nodeValues.push(node.kind, node.pos >= 0 ? node.pos : 0, node.end >= 0 ? node.end : 0, 0, 0, rootData, node.flags);
+  const saveParent = parentIndex;
+  prevIndex = 0;
+  parentIndex = 1;
+  visitChildren(node);
+  parentIndex = saveParent;
+  const extendedDataBytes = new Uint8Array(extendedDataValues.length * 4);
+  const extView = new DataView(extendedDataBytes.buffer);
+  for (let i = 0;i < extendedDataValues.length; i++) {
+    extView.setUint32(i * 4, extendedDataValues[i], true);
+  }
+  const structuredDataBytes = structuredWriter.finish();
+  const strsBytes = strs.encode();
+  const nodesBytes = new Uint8Array(nodeValues.length * 4);
+  const nodesView = new DataView(nodesBytes.buffer);
+  for (let i = 0;i < nodeValues.length; i++) {
+    nodesView.setUint32(i * 4, nodeValues[i] >>> 0, true);
+  }
+  const offsetStringTableOffsets = HEADER_SIZE2;
+  const offsetStringTableData = HEADER_SIZE2 + strs.offsetsCount() * 4;
+  const offsetExtendedData = offsetStringTableData + strs.stringByteLength();
+  const offsetStructuredData = offsetExtendedData + extendedDataBytes.length;
+  const offsetNodes = offsetStructuredData + structuredDataBytes.length;
+  const header = new Uint8Array(HEADER_SIZE2);
+  const headerView = new DataView(header.buffer);
+  const metadata = PROTOCOL_VERSION2 << 24;
+  headerView.setUint32(HEADER_OFFSET_METADATA2, metadata, true);
+  headerView.setUint32(HEADER_OFFSET_STRING_TABLE_OFFSETS2, offsetStringTableOffsets, true);
+  headerView.setUint32(HEADER_OFFSET_STRING_TABLE2, offsetStringTableData, true);
+  headerView.setUint32(HEADER_OFFSET_EXTENDED_DATA2, offsetExtendedData, true);
+  headerView.setUint32(HEADER_OFFSET_STRUCTURED_DATA2, offsetStructuredData, true);
+  headerView.setUint32(HEADER_OFFSET_NODES2, offsetNodes, true);
+  const result = new Uint8Array(header.length + strsBytes.length + extendedDataBytes.length + structuredDataBytes.length + nodesBytes.length);
+  result.set(header, 0);
+  result.set(strsBytes, HEADER_SIZE2);
+  result.set(extendedDataBytes, offsetExtendedData);
+  result.set(structuredDataBytes, offsetStructuredData);
+  result.set(nodesBytes, offsetNodes);
+  return result;
+}
+function uint8ArrayToBase642(data) {
+  return Buffer.from(data).toString("base64");
+}
+function readSourceFileHash2(data) {
+  const lo0 = data.getUint32(HEADER_OFFSET_HASH_LO02, true);
+  const lo1 = data.getUint32(HEADER_OFFSET_HASH_LO12, true);
+  const hi0 = data.getUint32(HEADER_OFFSET_HASH_HI02, true);
+  const hi1 = data.getUint32(HEADER_OFFSET_HASH_HI12, true);
+  return hex82(hi1) + hex82(hi0) + hex82(lo1) + hex82(lo0);
+}
+function readParseOptionsKey2(data) {
+  return data.getUint32(HEADER_OFFSET_PARSE_OPTIONS2, true).toString();
+}
+function hex82(n) {
+  return (n >>> 0).toString(16).padStart(8, "0");
+}
+function modifierToFlag2(kind) {
+  switch (kind) {
+    case SyntaxKind3.StaticKeyword:
+      return ModifierFlags2.Static;
+    case SyntaxKind3.PublicKeyword:
+      return ModifierFlags2.Public;
+    case SyntaxKind3.ProtectedKeyword:
+      return ModifierFlags2.Protected;
+    case SyntaxKind3.PrivateKeyword:
+      return ModifierFlags2.Private;
+    case SyntaxKind3.AbstractKeyword:
+      return ModifierFlags2.Abstract;
+    case SyntaxKind3.AccessorKeyword:
+      return ModifierFlags2.Accessor;
+    case SyntaxKind3.ExportKeyword:
+      return ModifierFlags2.Export;
+    case SyntaxKind3.DeclareKeyword:
+      return ModifierFlags2.Ambient;
+    case SyntaxKind3.ConstKeyword:
+      return ModifierFlags2.Const;
+    case SyntaxKind3.DefaultKeyword:
+      return ModifierFlags2.Default;
+    case SyntaxKind3.AsyncKeyword:
+      return ModifierFlags2.Async;
+    case SyntaxKind3.ReadonlyKeyword:
+      return ModifierFlags2.Readonly;
+    case SyntaxKind3.OverrideKeyword:
+      return ModifierFlags2.Override;
+    case SyntaxKind3.InKeyword:
+      return ModifierFlags2.In;
+    case SyntaxKind3.OutKeyword:
+      return ModifierFlags2.Out;
+    case SyntaxKind3.Decorator:
+      return ModifierFlags2.Decorator;
+    default:
+      return ModifierFlags2.None;
+  }
+}
+
+class RemoteNodeBase2 {
+  parent;
+  view;
+  index;
+  _byteIndex;
+  constructor(view, index, parent, byteIndex) {
+    this.view = view;
+    this.index = index;
+    this.parent = parent;
+    this._byteIndex = byteIndex;
+  }
+  get kind() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_KIND2, true);
+  }
+  get pos() {
+    return this.view.getInt32(this._byteIndex + NODE_OFFSET_POS2, true);
+  }
+  get end() {
+    return this.view.getInt32(this._byteIndex + NODE_OFFSET_END2, true);
+  }
+  get next() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_NEXT2, true);
+  }
+  get parentIndex() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_PARENT2, true);
+  }
+  get data() {
+    return this.view.getUint32(this._byteIndex + NODE_OFFSET_DATA2, true);
+  }
+  get dataType() {
+    return this.data & NODE_DATA_TYPE_MASK2;
+  }
+  get childMask() {
+    if (this.dataType !== NODE_DATA_TYPE_CHILDREN2) {
+      return -1;
+    }
+    return this.data & NODE_CHILD_MASK2;
+  }
+  getFileText(start, end) {
+    return this.sourceFile._decoder.decode(new Uint8Array(this.view.buffer, this.view.byteOffset + this.sourceFile._offsetStringTable + start, end - start));
+  }
+  get sourceFile() {
+    throw new Error("sourceFile not available on base");
+  }
+}
+function computeLineOfPosition2(lineStarts, position) {
+  let low = 0;
+  let high = lineStarts.length - 1;
+  while (low <= high) {
+    const middle = low + (high - low >> 1);
+    const value = lineStarts[middle];
+    if (value < position) {
+      low = middle + 1;
+    } else if (value > position) {
+      high = middle - 1;
+    } else {
+      return middle;
+    }
+  }
+  return low - 1;
+}
+function parseNodeHandle2(handle) {
+  const firstDot = handle.indexOf(".");
+  if (firstDot === -1) {
+    throw new Error(`Invalid node handle: ${handle}`);
+  }
+  const secondDot = handle.indexOf(".", firstDot + 1);
+  if (secondDot === -1) {
+    throw new Error(`Invalid node handle: ${handle}`);
+  }
+  return {
+    index: parseInt(handle.slice(0, firstDot), 10),
+    kind: parseInt(handle.slice(firstDot + 1, secondDot), 10),
+    path: handle.slice(secondDot + 1)
+  };
+}
+function decodeNode2(data) {
+  const sf = new RemoteSourceFile2(data, new Wtf8Decoder2);
+  return sf;
+}
+function getNodeId2(node) {
+  if (!(node instanceof RemoteNode2)) {
+    throw new Error("getNodeId requires a RemoteNode");
+  }
+  return node.id;
+}
+function isAnyDirectorySeparator2(charCode) {
+  return charCode === CharacterCodesSlash2 || charCode === CharacterCodesBackslash2;
+}
+function isVolumeCharacter2(charCode) {
+  return charCode >= CharacterCodesa2 && charCode <= CharacterCodesz2 || charCode >= CharacterCodesA2 && charCode <= CharacterCodesZ2;
+}
+function getFileUrlVolumeSeparatorEnd2(url, start) {
+  const ch0 = url.charCodeAt(start);
+  if (ch0 === CharacterCodesColon2)
+    return start + 1;
+  if (ch0 === CharacterCodesPercent2 && url.charCodeAt(start + 1) === CharacterCodes32) {
+    const ch2 = url.charCodeAt(start + 2);
+    if (ch2 === CharacterCodesa2 || ch2 === CharacterCodesA2)
+      return start + 3;
+  }
+  return -1;
+}
+function getRootLength2(path) {
+  const rootLength = getEncodedRootLength2(path);
+  return rootLength < 0 ? ~rootLength : rootLength;
+}
+function getEncodedRootLength2(path) {
+  if (!path)
+    return 0;
+  const ch0 = path.charCodeAt(0);
+  if (ch0 === CharacterCodesSlash2 || ch0 === CharacterCodesBackslash2) {
+    if (path.charCodeAt(1) !== ch0)
+      return 1;
+    const p1 = path.indexOf(ch0 === CharacterCodesSlash2 ? directorySeparator2 : altDirectorySeparator2, 2);
+    if (p1 < 0)
+      return path.length;
+    return p1 + 1;
+  }
+  if (isVolumeCharacter2(ch0) && path.charCodeAt(1) === CharacterCodesColon2) {
+    const ch2 = path.charCodeAt(2);
+    if (ch2 === CharacterCodesSlash2 || ch2 === CharacterCodesBackslash2)
+      return 3;
+    if (path.length === 2)
+      return 2;
+  }
+  const schemeEnd = path.indexOf(urlSchemeSeparator2);
+  if (schemeEnd !== -1) {
+    const authorityStart = schemeEnd + urlSchemeSeparator2.length;
+    const authorityEnd = path.indexOf(directorySeparator2, authorityStart);
+    if (authorityEnd !== -1) {
+      const scheme = path.slice(0, schemeEnd);
+      const authority = path.slice(authorityStart, authorityEnd);
+      if (scheme === "file" && (authority === "" || authority === "localhost") && isVolumeCharacter2(path.charCodeAt(authorityEnd + 1))) {
+        const volumeSeparatorEnd = getFileUrlVolumeSeparatorEnd2(path, authorityEnd + 2);
+        if (volumeSeparatorEnd !== -1) {
+          if (path.charCodeAt(volumeSeparatorEnd) === CharacterCodesSlash2) {
+            return ~(volumeSeparatorEnd + 1);
+          }
+          if (volumeSeparatorEnd === path.length) {
+            return ~volumeSeparatorEnd;
+          }
+        }
+      }
+      return ~(authorityEnd + 1);
+    }
+    return ~path.length;
+  }
+  return 0;
+}
+function hasTrailingDirectorySeparator2(path) {
+  return path.length > 0 && isAnyDirectorySeparator2(path.charCodeAt(path.length - 1));
+}
+function removeTrailingDirectorySeparator2(path) {
+  if (hasTrailingDirectorySeparator2(path)) {
+    return path.substr(0, path.length - 1);
+  }
+  return path;
+}
+function ensureTrailingDirectorySeparator2(path) {
+  if (!hasTrailingDirectorySeparator2(path)) {
+    return path + directorySeparator2;
+  }
+  return path;
+}
+function normalizeSlashes2(path) {
+  return path.includes("\\") ? path.replace(backslashRegExp2, directorySeparator2) : path;
+}
+function combinePaths2(path, ...paths) {
+  if (path)
+    path = normalizeSlashes2(path);
+  for (let relativePath of paths) {
+    if (!relativePath)
+      continue;
+    relativePath = normalizeSlashes2(relativePath);
+    if (!path || getRootLength2(relativePath) !== 0) {
+      path = relativePath;
+    } else {
+      path = ensureTrailingDirectorySeparator2(path) + relativePath;
+    }
+  }
+  return path;
+}
+function simpleNormalizePath2(path) {
+  if (!relativePathSegmentRegExp2.test(path)) {
+    return path;
+  }
+  let simplified = path.replace(/\/\.\//g, "/");
+  if (simplified.startsWith("./")) {
+    simplified = simplified.slice(2);
+  }
+  if (simplified !== path) {
+    path = simplified;
+    if (!relativePathSegmentRegExp2.test(path)) {
+      return path;
+    }
+  }
+  return;
+}
+function getNormalizedAbsolutePath2(path, currentDirectory) {
+  let rootLength = getRootLength2(path);
+  if (rootLength === 0 && currentDirectory) {
+    path = combinePaths2(currentDirectory, path);
+    rootLength = getRootLength2(path);
+  } else {
+    path = normalizeSlashes2(path);
+  }
+  const simpleNormalized = simpleNormalizePath2(path);
+  if (simpleNormalized !== undefined) {
+    return simpleNormalized.length > rootLength ? removeTrailingDirectorySeparator2(simpleNormalized) : simpleNormalized;
+  }
+  const length = path.length;
+  const root = path.substring(0, rootLength);
+  let normalized;
+  let index = rootLength;
+  let segmentStart = index;
+  let normalizedUpTo = index;
+  let seenNonDotDotSegment = rootLength !== 0;
+  while (index < length) {
+    segmentStart = index;
+    let ch = path.charCodeAt(index);
+    while (ch === CharacterCodesSlash2 && index + 1 < length) {
+      index++;
+      ch = path.charCodeAt(index);
+    }
+    if (index > segmentStart) {
+      normalized ??= path.substring(0, segmentStart - 1);
+      segmentStart = index;
+    }
+    let segmentEnd = path.indexOf(directorySeparator2, index + 1);
+    if (segmentEnd === -1) {
+      segmentEnd = length;
+    }
+    const segmentLength = segmentEnd - segmentStart;
+    if (segmentLength === 1 && path.charCodeAt(index) === CharacterCodesDot2) {
+      normalized ??= path.substring(0, normalizedUpTo);
+    } else if (segmentLength === 2 && path.charCodeAt(index) === CharacterCodesDot2 && path.charCodeAt(index + 1) === CharacterCodesDot2) {
+      if (!seenNonDotDotSegment) {
+        if (normalized !== undefined) {
+          normalized += normalized.length === rootLength ? ".." : "/..";
+        } else {
+          normalizedUpTo = index + 2;
+        }
+      } else if (normalized === undefined) {
+        if (normalizedUpTo - 2 >= 0) {
+          normalized = path.substring(0, Math.max(rootLength, path.lastIndexOf(directorySeparator2, normalizedUpTo - 2)));
+        } else {
+          normalized = path.substring(0, normalizedUpTo);
+        }
+      } else {
+        const lastSlash = normalized.lastIndexOf(directorySeparator2);
+        if (lastSlash !== -1) {
+          normalized = normalized.substring(0, Math.max(rootLength, lastSlash));
+        } else {
+          normalized = root;
+        }
+        if (normalized.length === rootLength) {
+          seenNonDotDotSegment = rootLength !== 0;
+        }
+      }
+    } else if (normalized !== undefined) {
+      if (normalized.length !== rootLength) {
+        normalized += directorySeparator2;
+      }
+      seenNonDotDotSegment = true;
+      normalized += path.substring(segmentStart, segmentEnd);
+    } else {
+      seenNonDotDotSegment = true;
+      normalizedUpTo = segmentEnd;
+    }
+    index = segmentEnd + 1;
+  }
+  return normalized ?? (length > rootLength ? removeTrailingDirectorySeparator2(path) : path);
+}
+function normalizePath2(path) {
+  path = normalizeSlashes2(path);
+  let normalized = simpleNormalizePath2(path);
+  if (normalized !== undefined) {
+    return normalized;
+  }
+  normalized = getNormalizedAbsolutePath2(path, "");
+  return normalized && hasTrailingDirectorySeparator2(path) ? ensureTrailingDirectorySeparator2(normalized) : normalized;
+}
+function isRootedDiskPath2(path) {
+  return getEncodedRootLength2(path) > 0;
+}
+function toPath2(fileName, basePath, getCanonicalFileName) {
+  const nonCanonicalizedPath = isRootedDiskPath2(fileName) ? normalizePath2(fileName) : getNormalizedAbsolutePath2(fileName, basePath);
+  return getCanonicalFileName(nonCanonicalizedPath);
+}
+function createGetCanonicalFileName2(useCaseSensitiveFileNames) {
+  return useCaseSensitiveFileNames ? identity2 : toLowerCase2;
+}
+function identity2(x) {
+  return x;
+}
+function toLowerCase2(s) {
+  return s.toLowerCase();
+}
+function isBundled2(path) {
+  return path.startsWith(bundledScheme2);
+}
+function splitVolumePath2(path) {
+  if (path.length >= 2 && isVolumeCharacter2(path.charCodeAt(0)) && path.charCodeAt(1) === CharacterCodesColon2) {
+    return [path.substring(0, 2).toLowerCase(), path.substring(2), true];
+  }
+  return ["", path, false];
+}
+function documentURIToFileName2(uri) {
+  if (isBundled2(uri)) {
+    return uri;
+  }
+  if (uri.startsWith("file://")) {
+    let parsed;
+    try {
+      parsed = new URL(uri);
+    } catch {
+      throw new Error("invalid file URI: " + uri);
+    }
+    if (parsed.host !== "") {
+      return "//" + parsed.host + parsed.pathname;
+    }
+    const path = decodeURIComponent(parsed.pathname);
+    if (path.length >= 3 && path.charCodeAt(0) === CharacterCodesSlash2) {
+      const [volume, rest, ok] = splitVolumePath2(path.substring(1));
+      if (ok) {
+        return volume + rest;
+      }
+    }
+    return path;
+  }
+  const colonIndex = uri.indexOf(":");
+  if (colonIndex === -1) {
+    throw new Error("invalid URI: " + uri);
+  }
+  const scheme = uri.substring(0, colonIndex);
+  let path = uri.substring(colonIndex + 1);
+  let authority = "ts-nul-authority";
+  if (path.startsWith("//")) {
+    const rest = path.substring(2);
+    const slashIndex = rest.indexOf("/");
+    if (slashIndex === -1) {
+      throw new Error("invalid URI: " + uri);
+    }
+    authority = rest.substring(0, slashIndex);
+    path = rest.substring(slashIndex + 1);
+  }
+  return "^/" + scheme + "/" + authority + "/" + path;
+}
+function resolveFileName2(identifier) {
+  if (typeof identifier === "string") {
+    return identifier;
+  }
+  return documentURIToFileName2(identifier.uri);
+}
+function toUpdateSnapshotRequest2(params) {
+  const { openProject, openProjects, ...rest } = params ?? {};
+  const mergedOpenProjects = openProject !== undefined ? [resolveFileName2(openProject), ...openProjects ?? []] : openProjects;
+  return {
+    ...rest,
+    ...mergedOpenProjects !== undefined ? { openProjects: mergedOpenProjects } : {}
+  };
+}
+function refKey2(snapshotId, projectId) {
+  return `${snapshotId}:${projectId}`;
+}
+
+class SourceFileCache2 {
+  cache = new Map;
+  snapshotProjectPaths = new Map;
+  getRetained(path, snapshotId, projectId) {
+    const entries = this.cache.get(path);
+    if (!entries)
+      return;
+    const key = refKey2(snapshotId, projectId);
+    const entry = entries.find((e) => e.refs.has(key));
+    return entry?.file;
+  }
+  set(path, file, parseOptionsKey, contentHash, snapshotId, projectId) {
+    let entries = this.cache.get(path);
+    if (!entries) {
+      entries = [];
+      this.cache.set(path, entries);
+    }
+    const ref = refKey2(snapshotId, projectId);
+    const existing = entries.find((e) => e.parseOptionsKey === parseOptionsKey && e.contentHash === contentHash);
+    if (existing) {
+      existing.refs.add(ref);
+      this.trackPath(snapshotId, projectId, path);
+      return existing.file;
+    }
+    entries.push({ file, contentHash, parseOptionsKey, refs: new Set([ref]) });
+    this.trackPath(snapshotId, projectId, path);
+    return file;
+  }
+  retainForSnapshot(newSnapshotId, previousSnapshotId, changes) {
+    const prevProjectMap = this.snapshotProjectPaths.get(previousSnapshotId);
+    if (!prevProjectMap)
+      return;
+    const removedProjects = new Set(changes?.removedProjects ?? []);
+    const changedProjects = changes?.changedProjects ?? {};
+    for (const [projectId, paths] of prevProjectMap) {
+      if (removedProjects.has(projectId))
+        continue;
+      const projectChanges = changedProjects[projectId];
+      let invalidPaths;
+      if (projectChanges) {
+        invalidPaths = new Set;
+        for (const p of projectChanges.changedFiles ?? [])
+          invalidPaths.add(p);
+        for (const p of projectChanges.deletedFiles ?? [])
+          invalidPaths.add(p);
+      }
+      const prevRef = refKey2(previousSnapshotId, projectId);
+      const newRef = refKey2(newSnapshotId, projectId);
+      for (const path of paths) {
+        if (invalidPaths?.has(path))
+          continue;
+        const entries = this.cache.get(path);
+        if (!entries)
+          continue;
+        for (const entry of entries) {
+          if (entry.refs.has(prevRef)) {
+            entry.refs.add(newRef);
+            this.trackPath(newSnapshotId, projectId, path);
+          }
+        }
+      }
+    }
+  }
+  releaseSnapshot(snapshotId) {
+    const projectMap = this.snapshotProjectPaths.get(snapshotId);
+    if (!projectMap)
+      return;
+    for (const [projectId, paths] of projectMap) {
+      const key = refKey2(snapshotId, projectId);
+      for (const path of paths) {
+        const entries = this.cache.get(path);
+        if (!entries)
+          continue;
+        for (let i = entries.length - 1;i >= 0; i--) {
+          entries[i].refs.delete(key);
+          if (entries[i].refs.size === 0) {
+            entries.splice(i, 1);
+          }
+        }
+        if (entries.length === 0) {
+          this.cache.delete(path);
+        }
+      }
+    }
+    this.snapshotProjectPaths.delete(snapshotId);
+  }
+  trackPath(snapshotId, projectId, path) {
+    let projectMap = this.snapshotProjectPaths.get(snapshotId);
+    if (!projectMap) {
+      projectMap = new Map;
+      this.snapshotProjectPaths.set(snapshotId, projectMap);
+    }
+    let paths = projectMap.get(projectId);
+    if (!paths) {
+      paths = new Set;
+      projectMap.set(projectId, paths);
+    }
+    paths.add(path);
+  }
+  clear() {
+    this.cache.clear();
+    this.snapshotProjectPaths.clear();
+  }
+  get size() {
+    return this.cache.size;
+  }
+  has(path) {
+    return this.cache.has(path);
+  }
+}
+function getExePath2() {
+  const __dirname2 = path5.dirname(fileURLToPath3(import.meta.url));
+  const normalizedDirname = __dirname2.replace(/\\/g, "/");
+  const pkg = JSON.parse(fs4.readFileSync(path5.join(__dirname2, "..", "package.json"), "utf8"));
+  const pkgName = pkg.name;
+  const baseName = pkgName.startsWith("@") ? pkgName.split("/")[1] : pkgName;
+  const expectedBinName = baseName === "typescript" ? "tsc" : "tsgo";
+  const binNames = pkg.bin && typeof pkg.bin === "object" ? Object.keys(pkg.bin) : [];
+  if (binNames.length !== 1 || binNames[0] !== expectedBinName) {
+    throw new Error(`Expected ${pkgName} to declare exactly one bin entry named ${expectedBinName}.`);
+  }
+  let binName = expectedBinName;
+  let exeDir;
+  const expectedPackage = baseName + "-" + process.platform + "-" + process.arch;
+  if (normalizedDirname.endsWith("/_packages/" + baseName + "/lib")) {
+    exeDir = path5.resolve(__dirname2, "..", "..", "..", "built", "local");
+    binName = "tsgo";
+  } else if (normalizedDirname.endsWith("/built/npm/" + baseName + "/lib")) {
+    exeDir = path5.resolve(__dirname2, "..", "..", expectedPackage, "lib");
+  } else {
+    const platformPackageName = "@typescript/" + expectedPackage;
+    try {
+      if (typeof import.meta.resolve === "undefined") {
+        const require2 = module2.createRequire(import.meta.url);
+        const packageJson = require2.resolve(platformPackageName + "/package.json");
+        exeDir = path5.join(path5.dirname(packageJson), "lib");
+      } else {
+        const packageJson = import.meta.resolve(platformPackageName + "/package.json");
+        const packageJsonPath = fileURLToPath3(packageJson);
+        exeDir = path5.join(path5.dirname(packageJsonPath), "lib");
+      }
+    } catch (e) {
+      throw new Error("Unable to resolve " + platformPackageName + ". Either your platform is unsupported, or you are missing the package on disk.");
+    }
+  }
+  let exe = path5.join(exeDir, binName);
+  if (process.platform === "win32") {
+    exe += ".exe";
+    if (exe.length >= 248) {
+      exe = "\\\\?\\" + exe;
+    }
+  }
+  if (!fs4.existsSync(exe)) {
+    throw new Error("Executable not found: " + exe);
+  }
+  return exe;
+}
+function isSpawnOptions2(options) {
+  return !("pipe" in options);
+}
+function resolveExePath2(options) {
+  return options.tsserverPath ?? getExePath2();
+}
+
+class SyncRpcChannel2 {
+  child;
+  readFd;
+  writeFd;
+  pipeFd;
+  callbacks = new Map;
+  methodBufCache = new Map;
+  collectTiming;
+  lastBytesSent = 0;
+  lastBytesReceived = 0;
+  _msgType = 0;
+  _msgName = EMPTY_BUF2;
+  _msgPayload = EMPTY_BUF2;
+  headerBuf = Buffer.allocUnsafe(4);
+  readBuf = Buffer.allocUnsafe(65536);
+  readBufPos = 0;
+  readBufLen = 0;
+  writeBuf = Buffer.allocUnsafe(65536);
+  constructor(exe, args, collectTiming = false) {
+    this.collectTiming = collectTiming;
+    const isWindows = process.platform === "win32";
+    if (isWindows) {
+      const pipePath = `\\\\.\\pipe\\tsgo-sync-${process.pid}-${Date.now()}`;
+      this.child = spawn2(exe, [...args, "--pipe", pipePath], {
+        stdio: ["ignore", "ignore", "inherit"]
+      });
+      let fd;
+      for (let i = 0;i < 500; i++) {
+        try {
+          fd = openSync3(pipePath, "r+");
+          break;
+        } catch {
+          if (this.child.exitCode !== null) {
+            throw new Error(`Child process exited with code ${this.child.exitCode} before pipe was ready`);
+          }
+          Atomics.wait(sleepBuf2, 0, 0, 10);
+        }
+      }
+      if (fd === undefined) {
+        this.child.kill();
+        throw new Error("SyncRpcChannel: timed out connecting to named pipe");
+      }
+      this.readFd = fd;
+      this.writeFd = fd;
+      this.pipeFd = fd;
+    } else {
+      this.child = spawn2(exe, args, {
+        stdio: ["pipe", "pipe", "inherit"]
+      });
+      const stdout = this.child.stdout;
+      const stdin = this.child.stdin;
+      this.readFd = stdout._handle.fd;
+      this.writeFd = stdin._handle.fd;
+      if (typeof this.readFd !== "number" || this.readFd < 0 || typeof this.writeFd !== "number" || this.writeFd < 0) {
+        stdout.destroy();
+        stdin.destroy();
+        this.child.kill();
+        throw new Error("SyncRpcChannel: could not obtain pipe file descriptors.");
+      }
+      stdout._handle.setBlocking?.(true);
+      stdin._handle.setBlocking?.(true);
+      stdout.pause();
+      stdout.unref();
+      stdin.unref();
+    }
+    liveChildren2.add(this.child);
+    this.child.unref();
+  }
+  requestSync(method, payload) {
+    this.ensureOpen();
+    const result = this.requestBytesSync(method, payload);
+    return result.toString("utf-8");
+  }
+  requestBinarySync(method, payload) {
+    this.ensureOpen();
+    return this.requestBytesSync(method, payload);
+  }
+  registerCallback(name, callback) {
+    this.callbacks.set(name, callback);
+  }
+  close() {
+    try {
+      liveChildren2.delete(this.child);
+      if (this.pipeFd !== undefined) {
+        closeSync3(this.pipeFd);
+        this.pipeFd = undefined;
+      }
+      this.child.stdout?.destroy();
+      this.child.stdin?.destroy();
+      this.child.kill();
+      this.readFd = -1;
+      this.writeFd = -1;
+    } catch {}
+  }
+  ensureOpen() {
+    if (this.readFd < 0) {
+      throw new Error("SyncRpcChannel is closed");
+    }
+  }
+  getMethodBuf(method) {
+    let buf = this.methodBufCache.get(method);
+    if (buf === undefined) {
+      buf = Buffer.from(method, "utf-8");
+      this.methodBufCache.set(method, buf);
+    }
+    return buf;
+  }
+  requestBytesSync(method, payload) {
+    const methodBuf = this.getMethodBuf(method);
+    if (this.collectTiming) {
+      this.lastBytesSent = typeof payload === "string" ? Buffer.byteLength(payload, "utf-8") : payload.length;
+      this.lastBytesReceived = 0;
+    }
+    this.writeTuple(MSG_REQUEST2, methodBuf, payload);
+    for (;; ) {
+      this.readTuple();
+      switch (this._msgType) {
+        case MSG_RESPONSE2: {
+          if (!methodBuf.equals(this._msgName)) {
+            throw new Error(`name mismatch for response: expected \`${method}\`, got \`${this._msgName.toString("utf-8")}\``);
+          }
+          if (this.collectTiming) {
+            this.lastBytesReceived = this._msgPayload.length;
+          }
+          return this._msgPayload;
+        }
+        case MSG_ERROR2: {
+          if (methodBuf.equals(this._msgName)) {
+            throw new Error(this._msgPayload.toString("utf-8"));
+          }
+          throw new Error(`name mismatch for response: expected \`${method}\`, got \`${this._msgName.toString("utf-8")}\``);
+        }
+        case MSG_CALL2: {
+          this.handleCall(this._msgName.toString("utf-8"), this._msgPayload);
+          break;
+        }
+        default:
+          throw new Error(`Invalid message type from child: ${this._msgType}`);
+      }
+    }
+  }
+  handleCall(name, payload) {
+    const cb = this.callbacks.get(name);
+    if (!cb) {
+      const errMsg = `unknown callback: \`${name}\`. Please make sure to register it on the JavaScript side before invoking it.`;
+      this.writeTuple(MSG_CALL_ERROR2, Buffer.from(name, "utf-8"), Buffer.from(errMsg, "utf-8"));
+      throw new Error(`no callback named \`${name}\` found`);
+    }
+    try {
+      const result = cb(name, payload.toString("utf-8"));
+      this.writeTuple(MSG_CALL_RESPONSE2, Buffer.from(name, "utf-8"), Buffer.from(result, "utf-8"));
+    } catch (e) {
+      const errMsg = String(e instanceof Error ? e.message : e).trim();
+      this.writeTuple(MSG_CALL_ERROR2, Buffer.from(name, "utf-8"), Buffer.from(errMsg, "utf-8"));
+      throw new Error(`Error calling callback \`${name}\`: ${errMsg}`);
+    }
+  }
+  writeTuple(type, name, payload) {
+    const nameLen = name.length;
+    const payloadIsString = typeof payload === "string";
+    const payloadLen = payloadIsString ? Buffer.byteLength(payload, "utf-8") : payload.length;
+    const nameHdrSize = binHeaderSize2(nameLen);
+    const payloadHdrSize = binHeaderSize2(payloadLen);
+    const headerSize = 2 + nameHdrSize + nameLen + payloadHdrSize;
+    const totalSize = headerSize + payloadLen;
+    if (totalSize <= this.writeBuf.length) {
+      let off = 0;
+      this.writeBuf[off++] = MSGPACK_FIXARRAY32;
+      this.writeBuf[off++] = type;
+      off = writeBinHeader2(this.writeBuf, off, nameLen);
+      name.copy(this.writeBuf, off);
+      off += nameLen;
+      off = writeBinHeader2(this.writeBuf, off, payloadLen);
+      if (payloadLen > 0) {
+        if (payloadIsString) {
+          this.writeBuf.write(payload, off, payloadLen, "utf-8");
+        } else if (payload instanceof Buffer) {
+          payload.copy(this.writeBuf, off);
+        } else {
+          this.writeBuf.set(payload, off);
+        }
+      }
+      this.writeAllBuf(this.writeBuf, totalSize);
+    } else {
+      let off = 0;
+      this.writeBuf[off++] = MSGPACK_FIXARRAY32;
+      this.writeBuf[off++] = type;
+      off = writeBinHeader2(this.writeBuf, off, nameLen);
+      name.copy(this.writeBuf, off);
+      off += nameLen;
+      off = writeBinHeader2(this.writeBuf, off, payloadLen);
+      this.writeAllBuf(this.writeBuf, off);
+      if (payloadLen > 0) {
+        if (payloadIsString) {
+          this.writeAllBuf(Buffer.from(payload, "utf-8"));
+        } else {
+          this.writeAllBuf(payload);
+        }
+      }
+    }
+  }
+  readTuple() {
+    const marker = this.readByte();
+    if (marker !== MSGPACK_FIXARRAY32) {
+      throw new Error(`Expected fixed 3-element array (0x93), received: 0x${marker.toString(16)}`);
+    }
+    const tb = this.readByte();
+    if (tb <= 127) {
+      this._msgType = tb;
+    } else if (tb === MSGPACK_UINT82) {
+      this._msgType = this.readByte();
+    } else {
+      throw new Error(`Expected positive fixint or uint8 marker, received: 0x${tb.toString(16)}`);
+    }
+    this._msgName = this.readBin();
+    this._msgPayload = this.readBin();
+  }
+  readBin() {
+    const marker = this.readByte();
+    let size;
+    switch (marker) {
+      case MSGPACK_BIN82:
+        size = this.readByte();
+        break;
+      case MSGPACK_BIN162:
+        this.readExactInto(this.headerBuf, 2);
+        size = this.headerBuf[0] << 8 | this.headerBuf[1];
+        break;
+      case MSGPACK_BIN322:
+        this.readExactInto(this.headerBuf, 4);
+        size = this.headerBuf.readUInt32BE(0);
+        break;
+      default:
+        throw new Error(`Expected binary data (0xc4-0xc6), received: 0x${marker.toString(16)}`);
+    }
+    if (size === 0)
+      return EMPTY_BUF2;
+    return this.readExact(size);
+  }
+  eofError() {
+    const code = this.child.exitCode;
+    const signal = this.child.signalCode;
+    const detail = signal ? `killed by signal ${signal}` : code !== null ? `exited with code ${code}` : "unknown reason";
+    return new Error(`Unexpected EOF while reading from child process (${detail})`);
+  }
+  readByte() {
+    if (this.readBufPos >= this.readBufLen) {
+      this.fillReadBuffer();
+    }
+    return this.readBuf[this.readBufPos++];
+  }
+  readExact(length) {
+    const buf = Buffer.allocUnsafeSlow(length);
+    this.readExactInto(buf, length);
+    return buf;
+  }
+  fillReadBuffer() {
+    this.readBufPos = 0;
+    this.readBufLen = 0;
+    for (;; ) {
+      try {
+        const n = readSync2(this.readFd, this.readBuf, 0, this.readBuf.length, null);
+        if (n === 0) {
+          throw this.eofError();
+        }
+        this.readBufLen = n;
+        return;
+      } catch (e) {
+        if (e instanceof Error && "code" in e && (e.code === "EAGAIN" || e.code === "EWOULDBLOCK")) {
+          Atomics.wait(sleepBuf2, 0, 0, 1);
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+  readExactInto(buffer, length) {
+    let pos = 0;
+    while (pos < length) {
+      const avail = this.readBufLen - this.readBufPos;
+      if (avail > 0) {
+        const toCopy = Math.min(avail, length - pos);
+        this.readBuf.copy(buffer, pos, this.readBufPos, this.readBufPos + toCopy);
+        this.readBufPos += toCopy;
+        pos += toCopy;
+      } else if (length - pos >= this.readBuf.length) {
+        try {
+          const n = readSync2(this.readFd, buffer, pos, length - pos, null);
+          if (n === 0) {
+            throw this.eofError();
+          }
+          pos += n;
+        } catch (e) {
+          if (e instanceof Error && "code" in e && (e.code === "EAGAIN" || e.code === "EWOULDBLOCK")) {
+            Atomics.wait(sleepBuf2, 0, 0, 1);
+            continue;
+          }
+          throw e;
+        }
+      } else {
+        this.fillReadBuffer();
+      }
+    }
+  }
+  writeAllBuf(data, length) {
+    const total = length ?? data.length;
+    let pos = 0;
+    while (pos < total) {
+      try {
+        const n = writeSync3(this.writeFd, data, pos, total - pos);
+        pos += n;
+      } catch (e) {
+        if (e instanceof Error && "code" in e && (e.code === "EAGAIN" || e.code === "EWOULDBLOCK")) {
+          Atomics.wait(sleepBuf2, 0, 0, 1);
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+}
+function emptyAccumulators2() {
+  return {
+    requestCount: 0,
+    roundTripMs: 0,
+    bytesSent: 0,
+    bytesReceived: 0,
+    serverTimeMs: 0,
+    transportOverheadMs: 0,
+    nodesMaterialized: 0,
+    sourceFilesFetched: 0,
+    nodesFetched: 0
+  };
+}
+function disabledTimingInfo2() {
+  return {
+    enabled: false,
+    totals: emptyAccumulators2(),
+    recentRequests: []
+  };
+}
+function combineTimingInfo2(client, server) {
+  if (!client.enabled) {
+    return client;
+  }
+  const serverTimeMs = server.totals.totalProcessingTimeMs;
+  const totals = {
+    ...client.totals,
+    serverTimeMs,
+    transportOverheadMs: Math.max(0, client.totals.roundTripMs - serverTimeMs)
+  };
+  const recentRequests = client.recentRequests.map((r) => ({ ...r }));
+  const serverRecent = server.recentRequests;
+  const pairs = Math.min(recentRequests.length, serverRecent.length);
+  for (let i = 1;i <= pairs; i++) {
+    const c = recentRequests[recentRequests.length - i];
+    const s = serverRecent[serverRecent.length - i];
+    if (c.method === s.method) {
+      c.serverTimeMs = s.processingTimeMs;
+      c.transportOverheadMs = Math.max(0, c.roundTripMs - s.processingTimeMs);
+    }
+  }
+  return {
+    enabled: true,
+    totals,
+    recentRequests
+  };
+}
+
+class TimingCollector2 {
+  totals = emptyAccumulators2();
+  ring = [];
+  head = 0;
+  record(sample) {
+    this.totals.requestCount++;
+    this.totals.roundTripMs += sample.roundTripMs;
+    this.totals.bytesSent += sample.bytesSent;
+    this.totals.bytesReceived += sample.bytesReceived;
+    const entry = {
+      method: sample.method,
+      roundTripMs: sample.roundTripMs,
+      bytesSent: sample.bytesSent,
+      bytesReceived: sample.bytesReceived,
+      timestamp: Date.now()
+    };
+    if (this.ring.length < RECENT_REQUEST_CAPACITY2) {
+      this.ring.push(entry);
+    } else {
+      this.ring[this.head] = entry;
+      this.head = (this.head + 1) % RECENT_REQUEST_CAPACITY2;
+    }
+  }
+  recordMaterialization() {
+    this.totals.nodesMaterialized++;
+  }
+  recordSourceFileFetched(materializableNodeCount) {
+    this.totals.sourceFilesFetched++;
+    this.totals.nodesFetched += materializableNodeCount;
+  }
+  getInfo() {
+    const recentRequests = [];
+    for (let i = 0;i < this.ring.length; i++) {
+      recentRequests.push(this.ring[(this.head + i) % this.ring.length]);
+    }
+    return {
+      enabled: true,
+      totals: { ...this.totals },
+      recentRequests
+    };
+  }
+  reset() {
+    this.totals = emptyAccumulators2();
+    this.ring = [];
+    this.head = 0;
+  }
+}
+
+class Client2 {
+  channel;
+  encoder = new TextEncoder;
+  timing;
+  constructor(options) {
+    if (!isSpawnOptions2(options)) {
+      throw new Error("Socket connections are not yet supported in the sync client");
+    }
+    const cwd = options.cwd ?? process.cwd();
+    const args = [
+      "--api",
+      "--cwd",
+      cwd
+    ];
+    const enabledCallbacks = [];
+    if (options.fs) {
+      for (const name of fsCallbackNames2) {
+        if (options.fs[name]) {
+          enabledCallbacks.push(name);
+        }
+      }
+    }
+    if (enabledCallbacks.length > 0) {
+      args.push(`--callbacks=${enabledCallbacks.join(",")}`);
+    }
+    const collectTiming = options.collectTiming ?? false;
+    if (collectTiming) {
+      args.push("--timing");
+      this.timing = new TimingCollector2;
+    }
+    const channel = new SyncRpcChannel2(resolveExePath2(options), args, collectTiming);
+    this.channel = channel;
+    if (options.fs) {
+      for (const name of enabledCallbacks) {
+        const callback = options.fs[name];
+        channel.registerCallback(name, (_, arg) => {
+          const result = callback(JSON.parse(arg));
+          if (name === "readFile") {
+            if (result === undefined)
+              return "";
+            return JSON.stringify({ content: result });
+          }
+          return JSON.stringify(result) ?? "";
+        });
+      }
+    }
+  }
+  apiRequest(method, params) {
+    const encodedPayload = JSON.stringify(params);
+    const start = performance.now();
+    const result = this.channel.requestSync(method, encodedPayload);
+    this.recordTiming(method, start);
+    if (result.length) {
+      return JSON.parse(result);
+    }
+    return;
+  }
+  apiRequestBinary(method, params) {
+    const start = performance.now();
+    const result = this.channel.requestBinarySync(method, this.encoder.encode(JSON.stringify(params)));
+    this.recordTiming(method, start);
+    if (result.length === 0)
+      return;
+    return result;
+  }
+  echo(payload) {
+    return this.channel.requestSync("echo", payload);
+  }
+  echoBinary(payload) {
+    return this.channel.requestBinarySync("echo", payload);
+  }
+  getTimingInfo() {
+    if (!this.timing) {
+      return disabledTimingInfo2();
+    }
+    const local = this.timing.getInfo();
+    const result = this.channel.requestSync("getServerTiming", "");
+    return combineTimingInfo2(local, JSON.parse(result));
+  }
+  resetTimingInfo() {
+    if (!this.timing)
+      return;
+    this.timing.reset();
+    this.channel.requestSync("resetServerTiming", "");
+  }
+  getTimingCollector() {
+    return this.timing;
+  }
+  recordTiming(method, start) {
+    if (!this.timing)
+      return;
+    this.timing.record({
+      method,
+      roundTripMs: performance.now() - start,
+      bytesSent: this.channel.lastBytesSent,
+      bytesReceived: this.channel.lastBytesReceived
+    });
+  }
+  close() {
+    this.channel.close();
+  }
+}
+
+class API2 {
+  client;
+  sourceFileCache;
+  toPath;
+  initialized = false;
+  activeSnapshots = new Set;
+  latestSnapshot;
+  internal;
+  constructor(options = {}) {
+    this.client = new Client2(options);
+    this.sourceFileCache = new SourceFileCache2;
+    this.internal = new InternalAPI2(this.client, () => this.ensureInitialized());
+  }
+  static fromLSPConnection(options) {
+    const api = new API2(options);
+    api.ensureInitialized();
+    return api;
+  }
+  ensureInitialized() {
+    if (!this.initialized) {
+      const response = this.client.apiRequest("initialize", null);
+      const getCanonicalFileName = createGetCanonicalFileName2(response.useCaseSensitiveFileNames);
+      const currentDirectory = response.currentDirectory;
+      this.toPath = (fileName) => toPath2(fileName, currentDirectory, getCanonicalFileName);
+      this.initialized = true;
+    }
+  }
+  parseConfigFile(file) {
+    this.ensureInitialized();
+    return this.client.apiRequest("parseConfigFile", { file });
+  }
+  updateSnapshot(params) {
+    this.ensureInitialized();
+    const requestParams = toUpdateSnapshotRequest2(params);
+    const data = this.client.apiRequest("updateSnapshot", requestParams);
+    if (this.latestSnapshot) {
+      this.sourceFileCache.retainForSnapshot(data.snapshot, this.latestSnapshot.id, data.changes);
+      if (this.latestSnapshot.isDisposed()) {
+        this.sourceFileCache.releaseSnapshot(this.latestSnapshot.id);
+      }
+    }
+    const snapshot = new Snapshot2(data, this.client, this.sourceFileCache, this.toPath, () => {
+      this.activeSnapshots.delete(snapshot);
+      if (snapshot !== this.latestSnapshot) {
+        this.sourceFileCache.releaseSnapshot(snapshot.id);
+      }
+    });
+    this.latestSnapshot = snapshot;
+    this.activeSnapshots.add(snapshot);
+    return snapshot;
+  }
+  close() {
+    for (const snapshot of [...this.activeSnapshots]) {
+      snapshot.dispose();
+    }
+    if (this.latestSnapshot) {
+      this.sourceFileCache.releaseSnapshot(this.latestSnapshot.id);
+      this.latestSnapshot = undefined;
+    }
+    this.client.close();
+    this.sourceFileCache.clear();
+  }
+  clearSourceFileCache() {
+    this.sourceFileCache.clear();
+  }
+  getTimingInfo() {
+    return this.client.getTimingInfo();
+  }
+  resetTimingInfo() {
+    return this.client.resetTimingInfo();
+  }
+}
+
+class InternalAPI2 {
+  client;
+  ensureInitialized;
+  constructor(client, ensureInitialized) {
+    this.client = client;
+    this.ensureInitialized = ensureInitialized;
+  }
+  startCPUProfile(dir) {
+    this.ensureInitialized();
+    this.client.apiRequest("startCPUProfile", { dir });
+  }
+  stopCPUProfile() {
+    this.ensureInitialized();
+    const result = this.client.apiRequest("stopCPUProfile", null);
+    return result.file;
+  }
+  saveHeapProfile(dir) {
+    this.ensureInitialized();
+    const result = this.client.apiRequest("saveHeapProfile", { dir });
+    return result.file;
+  }
+}
+
+class SnapshotObjectRegistry2 {
+  symbols = new Map;
+  client;
+  snapshotId;
+  resolveProject;
+  constructor(client, snapshotId, resolveProject) {
+    this.client = client;
+    this.snapshotId = snapshotId;
+    this.resolveProject = resolveProject;
+  }
+  getProject(projectId) {
+    return this.resolveProject(projectId);
+  }
+  getOrCreateSymbol(data) {
+    let symbol = this.symbols.get(data.id);
+    if (!symbol) {
+      symbol = new Symbol22(data, this);
+      this.symbols.set(data.id, symbol);
+    }
+    return symbol;
+  }
+  getSymbol(id) {
+    return this.symbols.get(id);
+  }
+  clear() {
+    this.symbols.clear();
+  }
+  fetchSymbol(source, method, handle, projectId) {
+    if (!handle)
+      return;
+    const cached = this.getSymbol(handle);
+    if (cached)
+      return cached;
+    const data = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: projectId,
+      objectId: source.id
+    });
+    if (!data)
+      throw new Error(`${method} returned null symbol for ${source.constructor.name} ${source.id}`);
+    return this.getOrCreateSymbol(data);
+  }
+  fetchSymbols(source, method, handles, projectId) {
+    if (handles) {
+      const result = new Array(handles.length);
+      let allCached = true;
+      for (let i = 0;i < handles.length; i++) {
+        const cached = this.getSymbol(handles[i]);
+        if (!cached) {
+          allCached = false;
+          break;
+        }
+        result[i] = cached;
+      }
+      if (allCached)
+        return result;
+    }
+    const symbolData = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: projectId,
+      objectId: source.id
+    });
+    if (symbolData == null)
+      return [];
+    else
+      return symbolData.map((data) => this.getOrCreateSymbol(data));
+  }
+}
+
+class ProjectObjectRegistry2 {
+  client;
+  snapshotId;
+  project;
+  snapshotRegistry;
+  types = new Map;
+  signatures = new Map;
+  constructor(client, snapshotId, project, snapshotRegistry) {
+    this.client = client;
+    this.snapshotId = snapshotId;
+    this.project = project;
+    this.snapshotRegistry = snapshotRegistry;
+  }
+  getOrCreateSymbol(data) {
+    return this.snapshotRegistry.getOrCreateSymbol(data);
+  }
+  getSymbol(id) {
+    return this.snapshotRegistry.getSymbol(id);
+  }
+  getOrCreateType(data) {
+    let type = this.types.get(data.id);
+    if (!type) {
+      type = new TypeObject2(data, this);
+      this.types.set(data.id, type);
+    }
+    return type;
+  }
+  getType(id) {
+    return this.types.get(id);
+  }
+  getOrCreateSignature(data) {
+    let sig = this.signatures.get(data.id);
+    if (!sig) {
+      sig = new Signature2(data, this.project, this);
+      this.signatures.set(data.id, sig);
+    }
+    return sig;
+  }
+  getSignature(id) {
+    return this.signatures.get(id);
+  }
+  clear() {
+    this.types.clear();
+    this.signatures.clear();
+  }
+  fetchType(source, method, handle) {
+    if (handle !== false) {
+      if (!handle)
+        return;
+      const cached = this.getType(handle);
+      if (cached)
+        return cached;
+    }
+    const data = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      objectId: source.id
+    });
+    if (!data)
+      throw new Error(`${method} returned null type for ${source.constructor.name} ${source.id}`);
+    return this.getOrCreateType(data);
+  }
+  fetchSymbol(source, method, handle) {
+    return this.snapshotRegistry.fetchSymbol(source, method, handle, this.project.id);
+  }
+  fetchSignature(source, method, handle) {
+    if (!handle)
+      return;
+    const cached = this.getSignature(handle);
+    if (cached)
+      return cached;
+    const data = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      objectId: source.id
+    });
+    if (!data)
+      throw new Error(`${method} returned null signature for ${source.constructor.name} ${source.id}`);
+    return this.getOrCreateSignature(data);
+  }
+  fetchTypes(source, method, handles) {
+    if (handles) {
+      const result = new Array(handles.length);
+      let allCached = true;
+      for (let i = 0;i < handles.length; i++) {
+        const cached = this.getType(handles[i]);
+        if (!cached) {
+          allCached = false;
+          break;
+        }
+        result[i] = cached;
+      }
+      if (allCached)
+        return result;
+    }
+    const typesData = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      objectId: source.id
+    });
+    if (typesData == null)
+      return [];
+    else
+      return typesData.map((data) => this.getOrCreateType(data));
+  }
+  fetchSymbols(source, method, handles) {
+    return this.snapshotRegistry.fetchSymbols(source, method, handles, this.project.id);
+  }
+  fetchBaseTypes(source) {
+    const typesData = this.client.apiRequest("getBaseTypes", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: source.id
+    });
+    if (typesData == null)
+      return [];
+    return typesData.map((data) => this.getOrCreateType(data));
+  }
+}
+
+class Project2 {
+  id;
+  configFileName;
+  compilerOptions;
+  rootFiles;
+  program;
+  checker;
+  emitter;
+  client;
+  constructor(data, snapshotId, client, sourceFileCache, toPath, snapshotRegistry) {
+    this.id = data.id;
+    this.configFileName = data.configFileName;
+    this.compilerOptions = data.compilerOptions;
+    this.rootFiles = data.rootFiles;
+    this.client = client;
+    this.program = new Program2(snapshotId, this, client, sourceFileCache, toPath);
+    const objectRegistry = new ProjectObjectRegistry2(client, snapshotId, this, snapshotRegistry);
+    this.checker = new Checker2(snapshotId, this, client, objectRegistry);
+    this.emitter = new Emitter2(client);
+  }
+  dispose() {
+    this.checker.dispose();
+  }
+}
+
+class Program2 {
+  snapshotId;
+  project;
+  client;
+  sourceFileCache;
+  toPath;
+  decoder = new Wtf8Decoder2;
+  sourceFileMetadataCache = new Map;
+  constructor(snapshotId, project, client, sourceFileCache, toPath) {
+    this.snapshotId = snapshotId;
+    this.project = project;
+    this.client = client;
+    this.sourceFileCache = sourceFileCache;
+    this.toPath = toPath;
+  }
+  getCompilerOptions() {
+    return this.project.compilerOptions;
+  }
+  getSourceFile(file) {
+    const fileName = resolveFileName2(file);
+    const path = this.toPath(fileName);
+    const retained = this.sourceFileCache.getRetained(path, this.snapshotId, this.project.id);
+    if (retained) {
+      return retained;
+    }
+    const binaryData = this.client.apiRequestBinary("getSourceFile", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file
+    });
+    if (!binaryData) {
+      return;
+    }
+    const view = new DataView(binaryData.buffer, binaryData.byteOffset, binaryData.byteLength);
+    const contentHash = readSourceFileHash2(view);
+    const parseOptionsKey = readParseOptionsKey2(view);
+    const sourceFile = new RemoteSourceFile2(binaryData, this.decoder, this.client.getTimingCollector());
+    return this.sourceFileCache.set(path, sourceFile, parseOptionsKey, contentHash, this.snapshotId, this.project.id);
+  }
+  getSourceFileNames() {
+    const data = this.client.apiRequest("getSourceFileNames", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return data ?? [];
+  }
+  getSourceFileMetadata(fileName) {
+    return this.getSourceFileMetadataByPath(this.toPath(fileName));
+  }
+  getSourceFileMetadataByPath(path) {
+    let metadata = this.sourceFileMetadataCache.get(path);
+    if (metadata === undefined) {
+      metadata = this.fetchSourceFileMetadata(path);
+      this.sourceFileMetadataCache.set(path, metadata);
+    }
+    return metadata;
+  }
+  fetchSourceFileMetadata(path) {
+    const data = this.client.apiRequest("getSourceFileMetadata", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file: path
+    });
+    return data ?? undefined;
+  }
+  isSourceFileFromExternalLibrary(file) {
+    const metadata = this.getSourceFileMetadataByPath(file.path);
+    return metadata?.isFromExternalLibrary ?? false;
+  }
+  isSourceFileDefaultLibrary(file) {
+    const metadata = this.getSourceFileMetadataByPath(file.path);
+    return metadata?.isDefaultLibrary ?? false;
+  }
+  getSyntacticDiagnostics(file) {
+    const data = this.client.apiRequest("getSyntacticDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getBindDiagnostics(file) {
+    const data = this.client.apiRequest("getBindDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getSemanticDiagnostics(file) {
+    const data = this.client.apiRequest("getSemanticDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getSuggestionDiagnostics(file) {
+    const data = this.client.apiRequest("getSuggestionDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getDeclarationDiagnostics(file) {
+    const data = this.client.apiRequest("getDeclarationDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      ...file !== undefined ? { file } : {}
+    });
+    return data ?? [];
+  }
+  getProgramDiagnostics() {
+    const data = this.client.apiRequest("getProgramDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return data ?? [];
+  }
+  getGlobalDiagnostics() {
+    const data = this.client.apiRequest("getGlobalDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return data ?? [];
+  }
+  getConfigFileParsingDiagnostics() {
+    const data = this.client.apiRequest("getConfigFileParsingDiagnostics", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return data ?? [];
+  }
+}
+
+class Checker2 {
+  snapshotId;
+  project;
+  client;
+  objectRegistry;
+  wellKnownSymbols;
+  constructor(snapshotId, project, client, objectRegistry) {
+    this.snapshotId = snapshotId;
+    this.project = project;
+    this.client = client;
+    this.objectRegistry = objectRegistry;
+  }
+  dispose() {
+    this.objectRegistry.clear();
+  }
+  getSymbolAtLocation(nodeOrNodes) {
+    if (Array.isArray(nodeOrNodes)) {
+      const data = this.client.apiRequest("getSymbolsAtLocations", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        locations: nodeOrNodes.map((node) => getNodeId2(node))
+      });
+      return data.map((d) => d ? this.objectRegistry.getOrCreateSymbol(d) : undefined);
+    }
+    const data = this.client.apiRequest("getSymbolAtLocation", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(nodeOrNodes)
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getSymbolAtPosition(file, positionOrPositions) {
+    if (typeof positionOrPositions === "number") {
+      const data = this.client.apiRequest("getSymbolAtPosition", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        file,
+        position: positionOrPositions
+      });
+      return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+    }
+    const data = this.client.apiRequest("getSymbolsAtPositions", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file,
+      positions: positionOrPositions
+    });
+    return data.map((d) => d ? this.objectRegistry.getOrCreateSymbol(d) : undefined);
+  }
+  getTypeOfSymbol(symbolOrSymbols) {
+    if (Array.isArray(symbolOrSymbols)) {
+      const data = this.client.apiRequest("getTypesOfSymbols", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        symbols: symbolOrSymbols.map((s) => s.id)
+      });
+      return data.map((d) => d ? this.objectRegistry.getOrCreateType(d) : undefined);
+    }
+    const data = this.client.apiRequest("getTypeOfSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbolOrSymbols.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getDeclaredTypeOfSymbol(symbol) {
+    const data = this.client.apiRequest("getDeclaredTypeOfSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    if (!data)
+      throw new Error(`getDeclaredTypeOfSymbol returned no type for symbol ${symbol.id}`);
+    return this.objectRegistry.getOrCreateType(data);
+  }
+  getReferencesToSymbolInFile(file, symbol) {
+    const data = this.client.apiRequest("getReferencesToSymbolInFile", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file,
+      symbol: symbol.id
+    });
+    return (data ?? []).map((h) => new NodeHandle2(h, this.project));
+  }
+  getReferencedSymbolsForNode(node, position) {
+    const data = this.client.apiRequest("getReferencedSymbolsForNode", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      node: getNodeId2(node),
+      position
+    });
+    return (data ?? []).map((entry) => ({
+      definition: new NodeHandle2(entry.definition, this.project),
+      symbol: entry.symbol ? this.objectRegistry.getOrCreateSymbol(entry.symbol) : undefined,
+      references: (entry.references ?? []).map((h) => new NodeHandle2(h, this.project))
+    }));
+  }
+  getSignatureUsage(signatureDecl) {
+    const data = this.client.apiRequest("getSignatureUsages", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signatureDecl: getNodeId2(signatureDecl)
+    });
+    return (data ?? []).map((entry) => ({
+      name: new NodeHandle2(entry.name, this.project),
+      call: entry.call ? new NodeHandle2(entry.call, this.project) : undefined
+    }));
+  }
+  getCompletionsAtPosition(document, position, options) {
+    const data = this.client.apiRequest("getCompletionsAtPosition", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file: document,
+      position,
+      triggerCharacter: options?.triggerCharacter,
+      includeSymbol: options?.includeSymbol
+    });
+    if (!data)
+      return;
+    return {
+      isIncomplete: data.isIncomplete,
+      entries: data.entries.map((e) => ({
+        ...e,
+        symbol: e.symbol ? this.objectRegistry.getOrCreateSymbol(e.symbol) : undefined
+      }))
+    };
+  }
+  getTypeAtLocation(nodeOrNodes) {
+    if (Array.isArray(nodeOrNodes)) {
+      const data = this.client.apiRequest("getTypeAtLocations", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        locations: nodeOrNodes.map((node) => getNodeId2(node))
+      });
+      return data.map((d) => d ? this.objectRegistry.getOrCreateType(d) : undefined);
+    }
+    const data = this.client.apiRequest("getTypeAtLocation", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(nodeOrNodes)
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getSignaturesOfType(type, kind) {
+    const data = this.client.apiRequest("getSignaturesOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id,
+      kind
+    });
+    return data.map((d) => this.objectRegistry.getOrCreateSignature(d));
+  }
+  getResolvedSignature(node) {
+    const data = this.client.apiRequest("getResolvedSignature", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(node)
+    });
+    return data ? this.objectRegistry.getOrCreateSignature(data) : undefined;
+  }
+  getTypeAtPosition(file, positionOrPositions) {
+    if (typeof positionOrPositions === "number") {
+      const data = this.client.apiRequest("getTypeAtPosition", {
+        snapshot: this.snapshotId,
+        project: this.project.id,
+        file,
+        position: positionOrPositions
+      });
+      return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+    }
+    const data = this.client.apiRequest("getTypesAtPositions", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      file,
+      positions: positionOrPositions
+    });
+    return data.map((d) => d ? this.objectRegistry.getOrCreateType(d) : undefined);
+  }
+  resolveName(name, meaning, location, excludeGlobals) {
+    const isNode = location && "kind" in location;
+    const data = this.client.apiRequest("resolveName", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      name,
+      meaning,
+      location: isNode ? getNodeId2(location) : undefined,
+      file: !isNode && location ? location.document : undefined,
+      position: !isNode && location ? location.position : undefined,
+      excludeGlobals
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getResolvedSymbol(node) {
+    const text = node.text;
+    if (!text)
+      return;
+    return this.resolveName(text, SymbolFlags2.Value | SymbolFlags2.ExportValue, node);
+  }
+  getContextualType(node) {
+    const data = this.client.apiRequest("getContextualType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(node)
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getBaseTypeOfLiteralType(type) {
+    const data = this.client.apiRequest("getBaseTypeOfLiteralType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getNonNullableType(type) {
+    const data = this.client.apiRequest("getNonNullableType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getTypeFromTypeNode(node) {
+    const data = this.client.apiRequest("getTypeFromTypeNode", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(node)
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getWidenedType(type) {
+    const data = this.client.apiRequest("getWidenedType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getParameterType(signature, index) {
+    const data = this.client.apiRequest("getParameterType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id,
+      index
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  isArrayLikeType(type) {
+    return this.client.apiRequest("isArrayLikeType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+  }
+  isTypeAssignableTo(source, target) {
+    return this.client.apiRequest("isTypeAssignableTo", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      source: source.id,
+      target: target.id
+    });
+  }
+  getShorthandAssignmentValueSymbol(node) {
+    const data = this.client.apiRequest("getShorthandAssignmentValueSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(node)
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getTypeOfSymbolAtLocation(symbol, location) {
+    const data = this.client.apiRequest("getTypeOfSymbolAtLocation", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id,
+      location: getNodeId2(location)
+    });
+    if (!data)
+      throw new Error(`getTypeOfSymbolAtLocation returned no type for symbol ${symbol.id}`);
+    return this.objectRegistry.getOrCreateType(data);
+  }
+  getIntrinsicType(method) {
+    const data = this.client.apiRequest(method, {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+    return this.objectRegistry.getOrCreateType(data);
+  }
+  getAnyType() {
+    return this.getIntrinsicType("getAnyType");
+  }
+  getStringType() {
+    return this.getIntrinsicType("getStringType");
+  }
+  getNumberType() {
+    return this.getIntrinsicType("getNumberType");
+  }
+  getBooleanType() {
+    return this.getIntrinsicType("getBooleanType");
+  }
+  getVoidType() {
+    return this.getIntrinsicType("getVoidType");
+  }
+  getUndefinedType() {
+    return this.getIntrinsicType("getUndefinedType");
+  }
+  getNullType() {
+    return this.getIntrinsicType("getNullType");
+  }
+  getNeverType() {
+    return this.getIntrinsicType("getNeverType");
+  }
+  getUnknownType() {
+    return this.getIntrinsicType("getUnknownType");
+  }
+  getBigIntType() {
+    return this.getIntrinsicType("getBigIntType");
+  }
+  getESSymbolType() {
+    return this.getIntrinsicType("getESSymbolType");
+  }
+  typeToTypeNode(type, enclosingDeclaration, flags) {
+    const binaryData = this.client.apiRequestBinary("typeToTypeNode", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id,
+      location: enclosingDeclaration ? getNodeId2(enclosingDeclaration) : undefined,
+      flags
+    });
+    if (!binaryData)
+      return;
+    return decodeNode2(binaryData);
+  }
+  signatureToSignatureDeclaration(signature, kind, enclosingDeclaration, flags) {
+    const binaryData = this.client.apiRequestBinary("signatureToSignatureDeclaration", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id,
+      kind,
+      location: enclosingDeclaration ? getNodeId2(enclosingDeclaration) : undefined,
+      flags
+    });
+    if (!binaryData)
+      return;
+    return decodeNode2(binaryData);
+  }
+  typeToString(type, enclosingDeclaration, flags) {
+    return this.client.apiRequest("typeToString", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id,
+      location: enclosingDeclaration ? getNodeId2(enclosingDeclaration) : undefined,
+      flags
+    });
+  }
+  isContextSensitive(node) {
+    return this.client.apiRequest("isContextSensitive", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(node)
+    });
+  }
+  isArrayType(type) {
+    return this.client.apiRequest("isArrayType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+  }
+  isTupleType(type) {
+    return this.client.apiRequest("isTupleType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+  }
+  getReturnTypeOfSignature(signature) {
+    const data = this.client.apiRequest("getReturnTypeOfSignature", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getRestTypeOfSignature(signature) {
+    const data = this.client.apiRequest("getRestTypeOfSignature", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getTypePredicateOfSignature(signature) {
+    const data = this.client.apiRequest("getTypePredicateOfSignature", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      signature: signature.id
+    });
+    if (!data)
+      return;
+    return {
+      kind: data.kind,
+      parameterIndex: data.parameterIndex,
+      parameterName: data.parameterName,
+      type: data.type ? this.objectRegistry.getOrCreateType(data.type) : undefined
+    };
+  }
+  getBaseTypes(type) {
+    const data = this.client.apiRequest("getBaseTypes", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? data.map((d) => this.objectRegistry.getOrCreateType(d)) : [];
+  }
+  getApparentType(type) {
+    const data = this.client.apiRequest("getApparentType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getPropertiesOfType(type) {
+    const data = this.client.apiRequest("getPropertiesOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? data.map((d) => this.objectRegistry.getOrCreateSymbol(d)) : [];
+  }
+  getIndexInfosOfType(type) {
+    const data = this.client.apiRequest("getIndexInfosOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    if (!data)
+      return [];
+    return data.map((d) => ({
+      keyType: this.objectRegistry.getOrCreateType(d.keyType),
+      valueType: this.objectRegistry.getOrCreateType(d.valueType),
+      isReadonly: d.isReadonly ?? false,
+      declaration: d.declaration ? new NodeHandle2(d.declaration, this.project) : undefined
+    }));
+  }
+  getConstraintOfTypeParameter(type) {
+    const data = this.client.apiRequest("getConstraintOfTypeParameter", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getBaseConstraintOfType(type) {
+    const data = this.client.apiRequest("getBaseConstraintOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+  }
+  getPropertyOfType(type, name) {
+    const data = this.client.apiRequest("getPropertyOfType", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id,
+      name
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getConstantValue(node) {
+    const data = this.client.apiRequest("getConstantValue", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(node)
+    });
+    return data ?? undefined;
+  }
+  getSignatureFromDeclaration(node) {
+    const data = this.client.apiRequest("getSignatureFromDeclaration", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(node)
+    });
+    return data ? this.objectRegistry.getOrCreateSignature(data) : undefined;
+  }
+  getExportSpecifierLocalTargetSymbol(node) {
+    const data = this.client.apiRequest("getExportSpecifierLocalTargetSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      location: getNodeId2(node)
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getAliasedSymbol(symbol) {
+    const data = this.client.apiRequest("getAliasedSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    if (!data)
+      throw new Error(`getAliasedSymbol returned no symbol for symbol ${symbol.id}`);
+    return this.objectRegistry.getOrCreateSymbol(data);
+  }
+  getImmediateAliasedSymbol(symbol) {
+    const data = this.client.apiRequest("getImmediateAliasedSymbol", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getWellKnownSymbols() {
+    return this.wellKnownSymbols ??= this.client.apiRequest("getWellKnownSymbols", {
+      snapshot: this.snapshotId,
+      project: this.project.id
+    });
+  }
+  isUnknownSymbol(symbol) {
+    return symbol.id === this.getWellKnownSymbols().unknown;
+  }
+  isUndefinedSymbol(symbol) {
+    return symbol.id === this.getWellKnownSymbols().undefined;
+  }
+  isArgumentsSymbol(symbol) {
+    return symbol.id === this.getWellKnownSymbols().arguments;
+  }
+  getExportsOfModule(symbol) {
+    const data = this.client.apiRequest("getExportsOfModule", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    return data ? data.map((d) => this.objectRegistry.getOrCreateSymbol(d)) : [];
+  }
+  getMemberInModuleExports(symbol, name) {
+    const data = this.client.apiRequest("getMemberInModuleExports", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id,
+      name
+    });
+    return data ? this.objectRegistry.getOrCreateSymbol(data) : undefined;
+  }
+  getJsDocTagsOfSymbol(symbol) {
+    const data = this.client.apiRequest("getJsDocTags", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+    return data ?? [];
+  }
+  getDocumentationCommentOfSymbol(symbol) {
+    return this.client.apiRequest("getDocumentationComment", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      symbol: symbol.id
+    });
+  }
+  getTypeArguments(type) {
+    const data = this.client.apiRequest("getTypeArguments", {
+      snapshot: this.snapshotId,
+      project: this.project.id,
+      type: type.id
+    });
+    return data ? data.map((d) => this.objectRegistry.getOrCreateType(d)) : [];
+  }
+}
+
+class Emitter2 {
+  client;
+  constructor(client) {
+    this.client = client;
+  }
+  printNode(node, options = {}) {
+    const encoded = encodeNode2(node);
+    const base64 = uint8ArrayToBase642(encoded);
+    return this.client.apiRequest("printNode", {
+      data: base64,
+      ...options
+    });
+  }
+}
+
+class NodeHandle2 {
+  canonicalProject;
+  index;
+  kind;
+  path;
+  constructor(handle, canonicalProject) {
+    const parsed = parseNodeHandle2(handle);
+    this.index = parsed.index;
+    this.kind = parsed.kind;
+    this.path = parsed.path;
+    this.canonicalProject = canonicalProject;
+  }
+  resolve(project = this.canonicalProject) {
+    const sourceFile = project.program.getSourceFile(this.path);
+    if (!sourceFile) {
+      return;
+    }
+    return sourceFile.getOrCreateNodeAtIndex(this.index);
+  }
+}
+
+class Symbol22 {
+  objectRegistry;
+  canonicalProject;
+  id;
+  escapedName;
+  name;
+  flags;
+  checkFlags;
+  declarations;
+  valueDeclaration;
+  parent;
+  exportSymbol;
+  membersCache;
+  exportsCache;
+  constructor(data, objectRegistry) {
+    this.objectRegistry = objectRegistry;
+    this.id = data.id;
+    this.escapedName = data.name;
+    this.name = unescapeLeadingUnderscores2(data.name);
+    this.flags = data.flags;
+    this.checkFlags = data.checkFlags;
+    const canonicalProject = objectRegistry.getProject(data.project);
+    if (!canonicalProject) {
+      throw new Error(`Symbol ${data.id} references unknown canonical project '${data.project}'`);
+    }
+    this.canonicalProject = canonicalProject;
+    this.declarations = (data.declarations ?? []).map((d) => new NodeHandle2(d, canonicalProject));
+    this.valueDeclaration = data.valueDeclaration ? new NodeHandle2(data.valueDeclaration, canonicalProject) : undefined;
+    if (data.parent !== undefined)
+      this.parent = data.parent;
+    if (data.exportSymbol !== undefined)
+      this.exportSymbol = data.exportSymbol;
+  }
+  getParent() {
+    return this.objectRegistry.fetchSymbol(this, "getParentOfSymbol", this.parent, this.canonicalProject.id);
+  }
+  getMembers() {
+    return this.membersCache ??= this.fetchSymbolTable("getMembersOfSymbol");
+  }
+  getExports() {
+    return this.exportsCache ??= this.fetchSymbolTable("getExportsOfSymbol");
+  }
+  fetchSymbolTable(method) {
+    const symbols = this.objectRegistry.fetchSymbols(this, method, undefined, this.canonicalProject.id);
+    const table = new Map;
+    for (const symbol of symbols) {
+      table.set(symbol.escapedName, symbol);
+    }
+    return table;
+  }
+  getExportSymbol() {
+    if (!this.exportSymbol)
+      return this;
+    return this.objectRegistry.fetchSymbol(this, "getExportSymbolOfSymbol", this.exportSymbol, this.canonicalProject.id);
+  }
+  getJsDocTags(checker) {
+    return checker.getJsDocTagsOfSymbol(this);
+  }
+  getDocumentationComment(checker) {
+    return checker.getDocumentationCommentOfSymbol(this);
+  }
+}
+
+class TypeObject2 {
+  objectRegistry;
+  id;
+  flags;
+  objectFlags;
+  symbol;
+  value;
+  intrinsicName;
+  isThisType;
+  freshType;
+  regularType;
+  target;
+  typeParameters;
+  outerTypeParameters;
+  localTypeParameters;
+  aliasTypeArguments;
+  aliasSymbol;
+  elementFlags;
+  fixedLength;
+  readonly;
+  texts;
+  objectType;
+  indexType;
+  checkType;
+  extendsType;
+  baseType;
+  substConstraint;
+  trueType;
+  falseType;
+  constructor(data, objectRegistry) {
+    this.objectRegistry = objectRegistry;
+    this.id = data.id;
+    this.flags = data.flags;
+    if (data.objectFlags !== undefined)
+      this.objectFlags = data.objectFlags;
+    if (data.symbol !== undefined)
+      this.symbol = data.symbol;
+    if (data.value != null) {
+      this.value = data.flags & TypeFlags2.BigIntLiteral ? BigInt(data.value) : data.value;
+    }
+    if (data.intrinsicName !== undefined)
+      this.intrinsicName = data.intrinsicName;
+    if (data.isThisType !== undefined)
+      this.isThisType = data.isThisType;
+    if (data.freshType !== undefined)
+      this.freshType = data.freshType;
+    if (data.regularType !== undefined)
+      this.regularType = data.regularType;
+    if (data.target !== undefined)
+      this.target = data.target;
+    this.typeParameters = data.typeParameters ?? [];
+    this.outerTypeParameters = data.outerTypeParameters ?? [];
+    this.localTypeParameters = data.localTypeParameters ?? [];
+    this.aliasTypeArguments = data.aliasTypeArguments ?? [];
+    if (data.aliasSymbol !== undefined)
+      this.aliasSymbol = data.aliasSymbol;
+    if (data.elementFlags !== undefined)
+      this.elementFlags = data.elementFlags;
+    if (data.fixedLength !== undefined)
+      this.fixedLength = data.fixedLength;
+    if (data.readonly !== undefined)
+      this.readonly = data.readonly;
+    if (data.texts !== undefined)
+      this.texts = data.texts;
+    if (data.objectType !== undefined)
+      this.objectType = data.objectType;
+    if (data.indexType !== undefined)
+      this.indexType = data.indexType;
+    if (data.checkType !== undefined)
+      this.checkType = data.checkType;
+    if (data.extendsType !== undefined)
+      this.extendsType = data.extendsType;
+    if (data.baseType !== undefined)
+      this.baseType = data.baseType;
+    if (data.substConstraint !== undefined)
+      this.substConstraint = data.substConstraint;
+    this.trueType = false;
+    this.falseType = false;
+  }
+  getSymbol() {
+    return this.objectRegistry.fetchSymbol(this, "getSymbolOfType", this.symbol);
+  }
+  getAliasSymbol() {
+    return this.objectRegistry.fetchSymbol(this, "getAliasSymbolOfType", this.aliasSymbol);
+  }
+  getTarget() {
+    return this.objectRegistry.fetchType(this, "getTargetOfType", this.target);
+  }
+  getFreshType() {
+    return this.objectRegistry.fetchType(this, "getFreshTypeOfType", this.freshType);
+  }
+  getRegularType() {
+    return this.objectRegistry.fetchType(this, "getRegularTypeOfType", this.regularType);
+  }
+  getTypes() {
+    if (!(this.flags & (TypeFlags2.UnionOrIntersection | TypeFlags2.TemplateLiteral))) {
+      return;
+    }
+    return this.objectRegistry.fetchTypes(this, "getTypesOfType");
+  }
+  getTypeParameters() {
+    return this.objectRegistry.fetchTypes(this, "getTypeParametersOfType", this.typeParameters);
+  }
+  getOuterTypeParameters() {
+    return this.objectRegistry.fetchTypes(this, "getOuterTypeParametersOfType", this.outerTypeParameters);
+  }
+  getLocalTypeParameters() {
+    return this.objectRegistry.fetchTypes(this, "getLocalTypeParametersOfType", this.localTypeParameters);
+  }
+  getAliasTypeArguments() {
+    return this.objectRegistry.fetchTypes(this, "getAliasTypeArgumentsOfType", this.aliasTypeArguments);
+  }
+  getObjectType() {
+    return this.objectRegistry.fetchType(this, "getObjectTypeOfType", this.objectType);
+  }
+  getIndexType() {
+    return this.objectRegistry.fetchType(this, "getIndexTypeOfType", this.indexType);
+  }
+  getCheckType() {
+    return this.objectRegistry.fetchType(this, "getCheckTypeOfType", this.checkType);
+  }
+  getExtendsType() {
+    return this.objectRegistry.fetchType(this, "getExtendsTypeOfType", this.extendsType);
+  }
+  getBaseType() {
+    return this.objectRegistry.fetchType(this, "getBaseTypeOfType", this.baseType);
+  }
+  getConstraint() {
+    return this.objectRegistry.fetchType(this, "getConstraintOfType", this.substConstraint);
+  }
+  getTrueType() {
+    const result = this.objectRegistry.fetchType(this, "getTrueTypeOfConditionalType", this.trueType);
+    this.trueType = result.id;
+    return result;
+  }
+  getFalseType() {
+    const result = this.objectRegistry.fetchType(this, "getFalseTypeOfConditionalType", this.falseType);
+    this.falseType = result.id;
+    return result;
+  }
+  getBaseTypes() {
+    if (!this.isClassOrInterface()) {
+      return;
+    }
+    return this.objectRegistry.fetchBaseTypes(this);
+  }
+  isClassOrInterface() {
+    return isClassOrInterfaceType2(this);
+  }
+  isUnionType() {
+    return isUnionType2(this);
+  }
+  isIntersectionType() {
+    return isIntersectionType2(this);
+  }
+  isObjectType() {
+    return isObjectType2(this);
+  }
+  isIntrinsicType() {
+    return isIntrinsicType2(this);
+  }
+  isErrorType() {
+    return isErrorType2(this);
+  }
+  isLiteralType() {
+    return isLiteralType2(this);
+  }
+  isStringLiteralType() {
+    return isStringLiteralType2(this);
+  }
+  isNumberLiteralType() {
+    return isNumberLiteralType2(this);
+  }
+  isBigIntLiteralType() {
+    return isBigIntLiteralType2(this);
+  }
+  isBooleanLiteralType() {
+    return isBooleanLiteralType2(this);
+  }
+  isTypeReference() {
+    return isTypeReference2(this);
+  }
+  isTupleType() {
+    return isTupleType2(this);
+  }
+  isIndexType() {
+    return isIndexType2(this);
+  }
+  isIndexedAccessType() {
+    return isIndexedAccessType2(this);
+  }
+  isConditionalType() {
+    return isConditionalType2(this);
+  }
+  isSubstitutionType() {
+    return isSubstitutionType2(this);
+  }
+  isTemplateLiteralType() {
+    return isTemplateLiteralType2(this);
+  }
+  isStringMappingType() {
+    return isStringMappingType2(this);
+  }
+  isTypeParameter() {
+    return isTypeParameter2(this);
+  }
+}
+function isUnionType2(type) {
+  return (type.flags & TypeFlags2.Union) !== 0;
+}
+function isIntersectionType2(type) {
+  return (type.flags & TypeFlags2.Intersection) !== 0;
+}
+function isObjectType2(type) {
+  return (type.flags & TypeFlags2.Object) !== 0;
+}
+function isClassOrInterfaceType2(type) {
+  return isObjectType2(type) && (type.objectFlags & ObjectFlags2.ClassOrInterface) !== 0;
+}
+function isIntrinsicType2(type) {
+  return (type.flags & TypeFlags2.Intrinsic) !== 0;
+}
+function isErrorType2(type) {
+  return isIntrinsicType2(type) && type.intrinsicName === "error";
+}
+function isLiteralType2(type) {
+  return (type.flags & TypeFlags2.Literal) !== 0;
+}
+function isStringLiteralType2(type) {
+  return (type.flags & TypeFlags2.StringLiteral) !== 0;
+}
+function isNumberLiteralType2(type) {
+  return (type.flags & TypeFlags2.NumberLiteral) !== 0;
+}
+function isBigIntLiteralType2(type) {
+  return (type.flags & TypeFlags2.BigIntLiteral) !== 0;
+}
+function isBooleanLiteralType2(type) {
+  return (type.flags & TypeFlags2.BooleanLiteral) !== 0;
+}
+function isTypeReference2(type) {
+  return isObjectType2(type) && (type.objectFlags & ObjectFlags2.Reference) !== 0;
+}
+function isTupleType2(type) {
+  return isObjectType2(type) && (type.objectFlags & ObjectFlags2.Tuple) !== 0;
+}
+function isIndexType2(type) {
+  return (type.flags & TypeFlags2.Index) !== 0;
+}
+function isIndexedAccessType2(type) {
+  return (type.flags & TypeFlags2.IndexedAccess) !== 0;
+}
+function isConditionalType2(type) {
+  return (type.flags & TypeFlags2.Conditional) !== 0;
+}
+function isSubstitutionType2(type) {
+  return (type.flags & TypeFlags2.Substitution) !== 0;
+}
+function isTemplateLiteralType2(type) {
+  return (type.flags & TypeFlags2.TemplateLiteral) !== 0;
+}
+function isStringMappingType2(type) {
+  return (type.flags & TypeFlags2.StringMapping) !== 0;
+}
+function isTypeParameter2(type) {
+  return (type.flags & TypeFlags2.TypeParameter) !== 0;
+}
+
+class Signature2 {
+  flags;
+  objectRegistry;
+  id;
+  declaration;
+  typeParameters;
+  parameters;
+  thisParameter;
+  target;
+  constructor(data, project, objectRegistry) {
+    this.id = data.id;
+    this.flags = data.flags;
+    this.objectRegistry = objectRegistry;
+    this.declaration = data.declaration ? new NodeHandle2(data.declaration, project) : undefined;
+    this.typeParameters = data.typeParameters ?? [];
+    this.parameters = data.parameters ?? [];
+    this.thisParameter = data.thisParameter;
+    this.target = data.target;
+  }
+  getTypeParameters() {
+    return this.objectRegistry.fetchTypes(this, "getTypeParametersOfSignature", this.typeParameters);
+  }
+  getParameters() {
+    return this.objectRegistry.fetchSymbols(this, "getParametersOfSignature", this.parameters);
+  }
+  getThisParameter() {
+    return this.objectRegistry.fetchSymbol(this, "getThisParameterOfSignature", this.thisParameter);
+  }
+  getTarget() {
+    return this.objectRegistry.fetchSignature(this, "getTargetOfSignature", this.target);
+  }
+  get hasRestParameter() {
+    return (this.flags & SignatureFlags2.HasRestParameter) !== 0;
+  }
+  get isConstruct() {
+    return (this.flags & SignatureFlags2.Construct) !== 0;
+  }
+  get isAbstract() {
+    return (this.flags & SignatureFlags2.Abstract) !== 0;
+  }
+}
+function sha256Hex3(value) {
+  return createHash5("sha256").update(value, "utf8").digest("hex");
+}
+function computeScopeFingerprint2(projectId, worktreeId, revision) {
+  return sha256Hex3(`${projectId}
+${worktreeId}
+${revision}`);
+}
+function emptyContentIndex2() {
+  return { tokenCap: MAX_CONTENT_TOKENS_PER_FILE2, files: {}, skipped: [] };
+}
+function contentTokenize2(text) {
+  return text.toLowerCase().match(/[a-z0-9_$]+/g) ?? [];
+}
+function normalizeLanguage(value) {
+  const bare = value.trim().toLowerCase().replace(/^\.+/, "");
+  return LANGUAGE_ALIASES[bare] ?? bare;
+}
+function normalizePathFilter(value) {
+  if (value === undefined)
+    return;
+  const cleaned = value.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  const trimmed = cleaned.replace(/^\.\//, "");
+  return trimmed === "" ? undefined : trimmed;
+}
+function clampContentLimit(limit) {
+  if (limit === undefined || !Number.isFinite(limit))
+    return CONTENT_DEFAULT_LIMIT;
+  return Math.min(CONTENT_MAX_LIMIT, Math.max(1, Math.floor(limit)));
+}
+function collapseWhitespace(value) {
+  return value.replace(/\s+/g, " ");
+}
+function contentFileLanguage2(file) {
+  const base = file.split("/").pop() ?? file;
+  const dot = base.lastIndexOf(".");
+  return dot < 0 ? "unknown" : base.slice(dot + 1).toLowerCase();
+}
+function pathFilterMatches(file, filter) {
+  if (file.startsWith(filter))
+    return true;
+  const segments = filter.split("/").filter((segment) => segment.length > 0);
+  for (let index = 1;index < segments.length; index += 1) {
+    const tail = segments.slice(index).join("/");
+    if (file === tail || file.startsWith(`${tail}/`))
+      return true;
+  }
+  return false;
+}
+function fileMatchesFilters(file, isTest, language, prefix, directory, kind, wantedLanguage) {
+  if (prefix !== undefined && !pathFilterMatches(file, prefix))
+    return false;
+  if (directory !== undefined && !pathFilterMatches(file, directory))
+    return false;
+  if (kind === "test" && !isTest)
+    return false;
+  if (kind === "source" && isTest)
+    return false;
+  if (wantedLanguage !== undefined && language !== wantedLanguage)
+    return false;
+  return true;
+}
+function excerptFor(line, column) {
+  if (line.length <= 200)
+    return line;
+  const start = Math.max(0, Math.min(line.length - 200, column - 1 - 80));
+  return line.slice(start, start + 200);
+}
+function searchContent(snapshot, query, options = {}) {
+  const limit = clampContentLimit(options.limit);
+  const index = snapshot.content;
+  if (index === undefined) {
+    return {
+      items: [],
+      truncated: false,
+      coverage: "unindexed",
+      unresolved: ["snapshot has no content index (extracted before content search; re-run indexFiles)"],
+      unsupported: []
+    };
+  }
+  const trimmed = query.trim();
+  const terms = contentTokenize2(trimmed);
+  if (terms.length === 0) {
+    return {
+      items: [],
+      truncated: false,
+      coverage: "indexed",
+      unresolved: [`query has no searchable terms: ${JSON.stringify(query.slice(0, 80))}`],
+      unsupported: []
+    };
+  }
+  if (options.language !== undefined) {
+    const wanted = normalizeLanguage(options.language);
+    const supported = Object.values(index.files).some((entry) => entry.language === wanted);
+    if (!supported) {
+      return {
+        items: [],
+        truncated: false,
+        coverage: "unindexed",
+        unresolved: [],
+        unsupported: [`unsupported language: "${options.language}" (no indexed files)`]
+      };
+    }
+  }
+  const prefix = normalizePathFilter(options.pathPrefix);
+  const directory = normalizePathFilter(options.directory);
+  const kind = options.kind === "test" || options.kind === "source" ? options.kind : undefined;
+  const wantedLanguage = options.language === undefined ? undefined : normalizeLanguage(options.language);
+  const deadline = Date.now() + CONTENT_SEARCH_TIME_BUDGET_MS;
+  const uniqueTerms = [...new Set(terms)];
+  const multi = terms.length > 1;
+  const phraseNeedle = collapseWhitespace(trimmed.toLowerCase());
+  const ranked = [];
+  let timedOut = false;
+  const candidateFiles = Object.values(index.files).filter((entry) => fileMatchesFilters(entry.file, entry.isTest, entry.language, prefix, directory, kind, wantedLanguage)).sort((left, right) => left.file < right.file ? -1 : 1);
+  for (const entry of candidateFiles) {
+    if (Date.now() > deadline) {
+      timedOut = true;
+      break;
+    }
+    if (!fileHasAllTerms(entry, uniqueTerms))
+      continue;
+    const lowered = entry.lines.map((line) => line.toLowerCase());
+    for (let lineNumber = 1;lineNumber <= entry.lines.length; lineNumber += 1) {
+      const line = lowered[lineNumber - 1];
+      if (!uniqueTerms.every((term) => line.includes(term)))
+        continue;
+      let reason;
+      let tier;
+      if (multi && collapseWhitespace(line).includes(phraseNeedle)) {
+        reason = "phrase";
+        tier = 0;
+      } else if (!multi) {
+        reason = "literal";
+        tier = 0;
+      } else if (termsInOrder(line, terms)) {
+        reason = "token";
+        tier = 1;
+      } else {
+        reason = "token";
+        tier = 2;
+      }
+      const column = line.indexOf(uniqueTerms[0]) + 1;
+      const raw = entry.lines[lineNumber - 1];
+      ranked.push({
+        tier,
+        item: {
+          file: entry.file,
+          line: lineNumber,
+          column,
+          excerpt: excerptFor(raw, column),
+          reason,
+          confidence: 1
+        }
+      });
+    }
+  }
+  ranked.sort((left, right) => {
+    if (left.tier !== right.tier)
+      return left.tier - right.tier;
+    if (left.item.file !== right.item.file)
+      return left.item.file < right.item.file ? -1 : 1;
+    return left.item.line - right.item.line;
+  });
+  const truncated = timedOut || ranked.length > limit;
+  const items = ranked.slice(0, limit).map((entry) => entry.item);
+  const unresolved = [];
+  const skippedInScope = index.skipped.filter((skip) => fileMatchesFilters(skip.file, skip.isTest, skip.language, prefix, directory, kind, wantedLanguage));
+  if (skippedInScope.length > 0) {
+    const named = skippedInScope.slice(0, 5).map((skip) => `${skip.file} (${skip.reason})`);
+    const rest = skippedInScope.length > 5 ? ` and ${skippedInScope.length - 5} more` : "";
+    unresolved.push(`skipped ${skippedInScope.length} file(s) from content search (binary or too large to index): ${named.join(", ")}${rest}`);
+  }
+  const cappedInScope = candidateFiles.filter((entry) => entry.tokenTruncated).length;
+  if (cappedInScope > 0) {
+    unresolved.push(`${cappedInScope} file(s) hit the per-file token cap (${index.tokenCap}); matches past the cap may be missed`);
+  }
+  if (timedOut) {
+    unresolved.push(`search stopped after the ${CONTENT_SEARCH_TIME_BUDGET_MS}ms time budget; results are partial`);
+  }
+  if (ranked.length > limit) {
+    unresolved.push(`truncated to ${limit} of ${ranked.length} content matches`);
+  }
+  return {
+    items,
+    truncated,
+    coverage: truncated ? "partial" : "indexed",
+    unresolved,
+    unsupported: []
+  };
+}
+function fileHasAllTerms(entry, terms) {
+  const missing = terms.filter((term) => !(term in entry.tokens));
+  if (missing.length === 0)
+    return true;
+  return missing.every((term) => entry.lines.some((line) => line.toLowerCase().includes(term)));
+}
+function termsInOrder(line, terms) {
+  let from = 0;
+  for (const term of terms) {
+    const at = line.indexOf(term, from);
+    if (at < 0)
+      return false;
+    from = at + term.length;
+  }
+  return true;
+}
+function buildFailure2(code, message) {
+  return Object.assign(new Error(message), { code, name: code === "CANCELLED" ? "AbortError" : "Error" });
+}
+function throwIfAborted2(signal) {
+  if (signal?.aborted === true) {
+    throw buildFailure2("CANCELLED", "code-graph: indexing cancelled (AbortSignal aborted)");
+  }
+}
+function isTestPath2(path) {
+  const normalized = path.replace(/\\/g, "/");
+  return /(^|\/)__tests__\//.test(normalized) || /\.test\.[cm]?[tj]sx?$/.test(normalized) || /\.spec\.[cm]?[tj]sx?$/.test(normalized) || /(^|\/)(test|tests)\//.test(normalized);
+}
+function toPosixPath3(value) {
+  const slashed = value.replace(/\\/g, "/");
+  return /^[a-zA-Z]:\//.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
+}
+function commonDir2(paths) {
+  const [first, ...rest] = paths;
+  if (first === undefined)
+    return process.cwd().replace(/\\/g, "/");
+  const firstSegments = first.split("/").slice(0, -1);
+  let length = firstSegments.length;
+  for (const other of rest) {
+    const segments = other.split("/").slice(0, -1);
+    let shared = 0;
+    while (shared < length && shared < segments.length && firstSegments[shared] === segments[shared]) {
+      shared += 1;
+    }
+    length = shared;
+  }
+  return firstSegments.slice(0, length).join("/") || "/";
+}
+function preferUnpacked2(candidate) {
+  for (const marker of ["/app.asar/", "\\app.asar\\"]) {
+    const at = candidate.indexOf(marker);
+    if (at < 0)
+      continue;
+    const twin = candidate.slice(0, at) + marker.replace("app.asar", "app.asar.unpacked") + candidate.slice(at + marker.length);
+    try {
+      if (existsSync15(twin))
+        return twin;
+    } catch {}
+  }
+  return candidate;
+}
+function defaultTsServerPath2() {
+  const require2 = createRequire2(import.meta.url);
+  const tsDir = dirname6(require2.resolve("typescript/package.json"));
+  const platformRoot = join12(tsDir, "..", "@typescript");
+  if (existsSync15(platformRoot)) {
+    const platform = `typescript-${process.platform}-${process.arch}`;
+    const names = readdirSync6(platformRoot).sort();
+    const ordered = [...names.filter((name) => name === platform), ...names.filter((name) => name !== platform)];
+    for (const name of ordered) {
+      for (const binary of ["tsc.exe", "tsgo", "tsc"]) {
+        const candidate = join12(platformRoot, name, "lib", binary);
+        if (existsSync15(candidate))
+          return preferUnpacked2(candidate);
+      }
+    }
+  }
+  for (const binary of process.platform === "win32" ? ["tsc.exe", "tsc"] : ["tsc"]) {
+    const candidate = join12(tsDir, "..", ".bin", binary);
+    if (existsSync15(candidate))
+      return preferUnpacked2(candidate);
+  }
+  throw new Error("code-graph: TypeScript native server binary not found inside typescript@7.0.2; " + "pass IndexOptions.tsserverPath explicitly");
+}
+function followAlias2(checker, symbol) {
+  let current = symbol;
+  for (let depth = 0;depth < MAX_ALIAS_DEPTH2; depth += 1) {
+    if ((current.flags & SymbolFlags2.Alias) === 0)
+      return current;
+    const next = checker.getAliasedSymbol(current);
+    if (!next || next === current)
+      return current;
+    current = next;
+  }
+  return current;
+}
+function ownerClassName2(declaration) {
+  const parent = declaration.parent;
+  if (parent === undefined)
+    return;
+  if ((isClassDeclaration2(parent) || isClassExpression2(parent)) && parent.name && isIdentifier2(parent.name)) {
+    return parent.name.text;
+  }
+  return;
+}
+function callableInitializer2(decl) {
+  if (!isVariableDeclaration2(decl) || decl.initializer === undefined)
+    return false;
+  return isArrowFunction2(decl.initializer) || isFunctionExpression2(decl.initializer);
+}
+function symbolIdForDecl2(declaration, nameText, fileRel) {
+  if (isConstructorDeclaration2(declaration)) {
+    const owner = ownerClassName2(declaration);
+    return `fn:${owner ? `${owner}.` : ""}constructor@${fileRel}`;
+  }
+  if (isMethodDeclaration2(declaration)) {
+    const owner = ownerClassName2(declaration);
+    return `fn:${owner ? `${owner}.` : ""}${nameText}@${fileRel}`;
+  }
+  if (isClassDeclaration2(declaration) || isClassExpression2(declaration))
+    return `class:${nameText}@${fileRel}`;
+  if (isInterfaceDeclaration2(declaration))
+    return `interface:${nameText}@${fileRel}`;
+  if (isEnumDeclaration2(declaration))
+    return `enum:${nameText}@${fileRel}`;
+  if (isTypeAliasDeclaration2(declaration))
+    return `type:${nameText}@${fileRel}`;
+  if (isFunctionDeclaration2(declaration) || isFunctionExpression2(declaration) || isArrowFunction2(declaration)) {
+    return `fn:${nameText}@${fileRel}`;
+  }
+  return `const:${nameText}@${fileRel}`;
+}
+function isCallableDeclKind2(kind) {
+  return kind === SyntaxKind3.FunctionDeclaration || kind === SyntaxKind3.FunctionExpression || kind === SyntaxKind3.ArrowFunction || kind === SyntaxKind3.MethodDeclaration || kind === SyntaxKind3.Constructor || kind === SyntaxKind3.ClassDeclaration || kind === SyntaxKind3.ClassExpression;
+}
+
+class GraphBuilder2 {
+  root;
+  strictRoot;
+  files = new Map;
+  nodes = new Map;
+  edges = new Map;
+  callOrdinals = new Map;
+  contentFiles = new Map;
+  contentSkipped = [];
+  droppedKeys = new Set;
+  dropped = [];
+  constructor(root, strictRoot = false) {
+    this.root = root;
+    this.strictRoot = strictRoot;
+  }
+  snapshot() {
+    const nodes = [...this.nodes.values()].sort((left, right) => left.id < right.id ? -1 : 1);
+    const edges = [...this.edges.values()].sort((left, right) => left.id < right.id ? -1 : 1);
+    const files = [...this.contentFiles.values()].sort((left, right) => left.file < right.file ? -1 : 1);
+    const byFile = {};
+    for (const entry of files)
+      byFile[entry.file] = entry;
+    const skipped = [...this.contentSkipped].sort((left, right) => left.file < right.file ? -1 : 1);
+    return { nodes, edges, content: { tokenCap: MAX_CONTENT_TOKENS_PER_FILE2, files: byFile, skipped } };
+  }
+  size() {
+    return { nodes: this.nodes.size, edges: this.edges.size, files: this.files.size };
+  }
+  addEntries(project, entries) {
+    const program = project.program;
+    const queue = [];
+    for (const entry of entries) {
+      const key = toPosixPath3(entry);
+      const sourceFile = program.getSourceFile(entry);
+      if (!sourceFile)
+        throw new Error(`code-graph: entry is not part of the TypeScript program: ${entry}`);
+      if (program.isSourceFileDefaultLibrary(sourceFile)) {
+        throw new Error(`code-graph: entry is a TypeScript default library file: ${entry}`);
+      }
+      queue.push(key);
+    }
+    while (queue.length > 0) {
+      const key = queue.pop();
+      if (key === undefined || this.files.has(key))
+        continue;
+      const sourceFile = program.getSourceFile(key);
+      if (!sourceFile)
+        continue;
+      if (program.isSourceFileDefaultLibrary(sourceFile) || program.isSourceFileFromExternalLibrary(sourceFile)) {
+        continue;
+      }
+      const rel = this.relOf(key);
+      if (rel === undefined) {
+        this.dropOutsideRoot(key);
+        continue;
+      }
+      const ctx = { key, rel, sourceFile, project, checker: project.checker };
+      this.files.set(key, ctx);
+      this.indexContent(ctx);
+      this.nodes.set(`file:${rel}`, { id: `file:${rel}`, kind: "file", file: rel, line: 1, name: rel });
+      for (const target of this.staticImportTargets(ctx)) {
+        if (!this.files.has(target))
+          queue.push(target);
+      }
+    }
+    const ordered = [...this.files.values()].sort((left, right) => left.rel < right.rel ? -1 : 1);
+    for (const ctx of ordered) {
+      const isTest = isTestPath2(ctx.rel);
+      if (isTest) {
+        const fileNode = this.nodes.get(`file:${ctx.rel}`);
+        if (fileNode)
+          this.nodes.set(fileNode.id, { ...fileNode, isTest: true });
+      }
+      this.emitImports(ctx, isTest);
+      this.emitExports(ctx);
+      this.emitDefinitions(ctx);
+      this.emitCalls(ctx);
+    }
+  }
+  addKnowledgeLinks(links) {
+    for (const link of links) {
+      if (link.from.length === 0 || !RECORD_ID3.test(link.recordId))
+        continue;
+      if (!Number.isFinite(link.confidence) || link.confidence < 0 || link.confidence > 1)
+        continue;
+      const id = `knowledge:${link.recordId}`;
+      const file = this.linkFileOf(link.sourceFile);
+      if (file === undefined)
+        continue;
+      this.nodes.set(id, { id, kind: "knowledge-link", file, line: 1, target: link.recordId, revision: link.sourceRevision });
+      const edgeId = `links:${link.from}:${link.recordId}`;
+      this.edges.set(edgeId, {
+        id: edgeId,
+        kind: "LINKS_KNOWLEDGE",
+        from: link.from,
+        to: id,
+        confidence: link.confidence,
+        ref: `${file}:1`
+      });
+    }
+  }
+  indexContent(ctx) {
+    const language = contentFileLanguage2(ctx.rel);
+    const isTest = isTestPath2(ctx.rel);
+    const text = ctx.sourceFile.getFullText();
+    if (text.includes("\x00")) {
+      this.contentSkipped.push({ file: ctx.rel, reason: "binary", language, isTest });
+      return;
+    }
+    if (text.length > MAX_CONTENT_FILE_BYTES2) {
+      this.contentSkipped.push({ file: ctx.rel, reason: "too-large", language, isTest });
+      return;
+    }
+    const lines = text.split(`
+`).map((line) => line.endsWith("\r") ? line.slice(0, -1) : line);
+    const perToken = new Map;
+    lines.forEach((line, index) => {
+      for (const token of contentTokenize2(line)) {
+        const seen = perToken.get(token);
+        if (seen) {
+          if (seen[seen.length - 1] !== index + 1)
+            seen.push(index + 1);
+        } else {
+          perToken.set(token, [index + 1]);
+        }
+      }
+    });
+    const tokens = {};
+    let kept = 0;
+    let tokenTruncated = false;
+    for (const [token, atLines] of perToken) {
+      if (kept >= MAX_CONTENT_TOKENS_PER_FILE2) {
+        tokenTruncated = true;
+        break;
+      }
+      tokens[token] = atLines;
+      kept += 1;
+    }
+    this.contentFiles.set(ctx.rel, {
+      file: ctx.rel,
+      language,
+      isTest,
+      lines,
+      tokens,
+      tokenCount: perToken.size,
+      tokenTruncated
+    });
+  }
+  relOf(key) {
+    const prefix = `${this.root}/`;
+    if (!key.startsWith(prefix))
+      return this.strictRoot ? undefined : key;
+    const rel = key.slice(prefix.length);
+    if (rel.length === 0 || rel.split("/").includes(".."))
+      return;
+    return rel;
+  }
+  dropOutsideRoot(key) {
+    if (this.droppedKeys.has(key))
+      return;
+    this.droppedKeys.add(key);
+    this.dropped.push({ file: key, reason: "outside-root" });
+  }
+  linkFileOf(sourceFile) {
+    const posix = toPosixPath3(sourceFile);
+    if (!this.strictRoot)
+      return posix;
+    const prefix = `${this.root}/`;
+    if (posix.startsWith(prefix)) {
+      const rel = posix.slice(prefix.length);
+      if (rel.length > 0 && !rel.split("/").includes(".."))
+        return rel;
+      return;
+    }
+    if (posix.startsWith("/") || /^[a-z]:\//.test(posix) || posix.split("/").includes("..")) {
+      return;
+    }
+    return posix.replace(/^\.\//, "");
+  }
+  lineOf(ctx, node) {
+    return ctx.sourceFile.getLineAndCharacterOfPosition(node.getStart(ctx.sourceFile)).line + 1;
+  }
+  resolveModuleKey(ctx, specifierNode) {
+    const symbol = ctx.checker.getSymbolAtLocation(specifierNode);
+    if (!symbol || (symbol.flags & SymbolFlags2.Alias) !== 0)
+      return;
+    const keys = new Set;
+    for (const handle of symbol.declarations) {
+      const declaration = handle.resolve(ctx.project);
+      if (!declaration || !isSourceFile2(declaration))
+        continue;
+      keys.add(toPosixPath3(declaration.fileName));
+    }
+    if (keys.size !== 1)
+      return;
+    const [key] = keys;
+    if (key === undefined)
+      return;
+    const target = ctx.project.program.getSourceFile(key);
+    if (!target)
+      return;
+    if (ctx.project.program.isSourceFileDefaultLibrary(target))
+      return;
+    return key;
+  }
+  staticImportTargets(ctx) {
+    const targets = [];
+    const visit = (node) => {
+      if (isImportDeclaration2(node) || isExportDeclaration2(node)) {
+        const specifier = node.moduleSpecifier;
+        if (specifier && isStringLiteral2(specifier)) {
+          const key = this.resolveModuleKey(ctx, specifier);
+          if (key)
+            targets.push(key);
+        }
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+    return targets;
+  }
+  emitImports(ctx, isTest) {
+    const visit = (node) => {
+      if (isImportDeclaration2(node) || isExportDeclaration2(node)) {
+        const specifier = node.moduleSpecifier;
+        if (specifier && isStringLiteral2(specifier)) {
+          const line = this.lineOf(ctx, specifier);
+          const key = this.resolveModuleKey(ctx, specifier);
+          const target = key === undefined ? undefined : this.files.get(key);
+          if (target) {
+            const edgeId = `imports:file:${ctx.rel}:file:${target.rel}:${line}`;
+            this.edges.set(edgeId, {
+              id: edgeId,
+              kind: "IMPORTS",
+              from: `file:${ctx.rel}`,
+              to: `file:${target.rel}`,
+              confidence: STATIC_CONFIDENCE2,
+              ref: `${ctx.rel}:${line}`
+            });
+            if (isTest) {
+              const testId = `tests:file:${ctx.rel}:file:${target.rel}:${line}`;
+              this.edges.set(testId, {
+                id: testId,
+                kind: "TESTS",
+                from: `file:${ctx.rel}`,
+                to: `file:${target.rel}`,
+                confidence: STATIC_CONFIDENCE2,
+                ref: `${ctx.rel}:${line}`
+              });
+            }
+          }
+        }
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitExports(ctx) {
+    if (!ctx.sourceFile.externalModuleIndicator)
+      return;
+    const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
+    if (!moduleSymbol)
+      return;
+    const exported = ctx.checker.getExportsOfModule(moduleSymbol);
+    const contractLines = this.exportContractLines(ctx);
+    for (const exportedSymbol of exported) {
+      if ((exportedSymbol.flags & SymbolFlags2.ExportStar) !== 0)
+        continue;
+      if (exportedSymbol.name.startsWith("__"))
+        continue;
+      const contractId = `export:${exportedSymbol.name}@${ctx.rel}`;
+      const origin = followAlias2(ctx.checker, exportedSymbol);
+      const targets = new Map;
+      for (const handle of origin.declarations) {
+        const declaration = handle.resolve(ctx.project);
+        if (!declaration)
+          continue;
+        const declFile = toPosixPath3(declaration.getSourceFile().fileName);
+        const targetCtx = this.files.get(declFile);
+        if (!targetCtx)
+          continue;
+        const nameText = this.declaredName(declaration);
+        if (!nameText)
+          continue;
+        const targetId = symbolIdForDecl2(declaration, nameText, targetCtx.rel);
+        targets.set(targetId, targetId);
+      }
+      const line = contractLines.get(exportedSymbol.name) ?? 1;
+      if (targets.size === 1) {
+        const [targetId] = targets.keys();
+        if (targetId === undefined)
+          continue;
+        this.nodes.set(contractId, {
+          id: contractId,
+          kind: "export-contract",
+          file: ctx.rel,
+          line,
+          name: exportedSymbol.name,
+          target: targetId
+        });
+        const edgeId = `exports:file:${ctx.rel}:${contractId}:${targetId}`;
+        this.edges.set(edgeId, {
+          id: edgeId,
+          kind: "EXPORTS",
+          from: `file:${ctx.rel}`,
+          to: contractId,
+          confidence: STATIC_CONFIDENCE2,
+          ref: `${ctx.rel}:${line}`
+        });
+      } else {
+        this.nodes.set(contractId, {
+          id: contractId,
+          kind: "export-contract",
+          file: ctx.rel,
+          line,
+          name: exportedSymbol.name
+        });
+        const candidates = targets.size > 0 ? [...targets.keys()] : [UNKNOWN2];
+        for (const candidate of candidates) {
+          const edgeId = `exports:file:${ctx.rel}:${contractId}:${candidate}`;
+          this.edges.set(edgeId, {
+            id: edgeId,
+            kind: "EXPORTS",
+            from: `file:${ctx.rel}`,
+            to: candidate === UNKNOWN2 ? UNKNOWN2 : contractId,
+            confidence: UNRESOLVED_CONFIDENCE2,
+            ref: `${ctx.rel}:${line}`,
+            uncertain: true
+          });
+        }
+      }
+    }
+  }
+  exportContractLines(ctx) {
+    const lines = new Map;
+    const visit = (node) => {
+      if (isExportDeclaration2(node)) {
+        const clause = node.exportClause;
+        if (clause && clause.kind === SyntaxKind3.NamedExports) {
+          clause.elements.forEach((element) => {
+            const exported = element.propertyName ?? element.name;
+            const text = exported.text;
+            if (!lines.has(text))
+              lines.set(text, this.lineOf(ctx, element));
+          });
+        }
+        if (node.moduleSpecifier === undefined)
+          return;
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+    return lines;
+  }
+  declaredName(declaration) {
+    if (isConstructorDeclaration2(declaration))
+      return "constructor";
+    if (isFunctionDeclaration2(declaration) || isFunctionExpression2(declaration) || isClassDeclaration2(declaration) || isClassExpression2(declaration) || isInterfaceDeclaration2(declaration) || isEnumDeclaration2(declaration) || isTypeAliasDeclaration2(declaration) || isMethodDeclaration2(declaration)) {
+      const name = declaration.name;
+      return name && isIdentifier2(name) ? name.text : undefined;
+    }
+    if (isVariableDeclaration2(declaration)) {
+      return isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+    }
+    return;
+  }
+  emitDefinitions(ctx) {
+    const define = (declaration, nameNode) => {
+      if (!isIdentifier2(nameNode))
+        return;
+      const symbol = ctx.checker.getSymbolAtLocation(nameNode);
+      if (!symbol)
+        return;
+      const id = symbolIdForDecl2(declaration, nameNode.text, ctx.rel);
+      const line = this.lineOf(ctx, nameNode);
+      this.nodes.set(id, { id, kind: "symbol", file: ctx.rel, line, name: symbol.name });
+      const edgeId = `defines:file:${ctx.rel}:${id}`;
+      this.edges.set(edgeId, {
+        id: edgeId,
+        kind: "DEFINES",
+        from: `file:${ctx.rel}`,
+        to: id,
+        confidence: STATIC_CONFIDENCE2,
+        ref: `${ctx.rel}:${line}`
+      });
+    };
+    const visit = (node) => {
+      if (isVariableStatement2(node)) {
+        for (const declaration of node.declarationList.declarations) {
+          if (isVariableDeclaration2(declaration))
+            define(declaration, declaration.name);
+        }
+      } else if (isFunctionDeclaration2(node) || isFunctionExpression2(node) || isClassDeclaration2(node) || isClassExpression2(node) || isInterfaceDeclaration2(node) || isEnumDeclaration2(node) || isTypeAliasDeclaration2(node) || isMethodDeclaration2(node)) {
+        if (node.name)
+          define(node, node.name);
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitCalls(ctx) {
+    const callers = [`file:${ctx.rel}`];
+    const visit = (node) => {
+      const boundary = this.boundaryId(ctx, node);
+      if (boundary)
+        callers.push(boundary);
+      const caller = callers[callers.length - 1] ?? `file:${ctx.rel}`;
+      if (isCallExpression2(node))
+        this.recordCall(ctx, node, node.expression, caller);
+      else if (isNewExpression2(node))
+        this.recordCall(ctx, node, node.expression, caller);
+      else if (isJsxOpeningElement2(node) || isJsxSelfClosingElement2(node)) {
+        this.recordCall(ctx, node, node.tagName, caller);
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+      if (boundary)
+        callers.pop();
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  boundaryId(ctx, node) {
+    if (isConstructorDeclaration2(node)) {
+      const owner = ownerClassName2(node);
+      return owner ? `class:${owner}@${ctx.rel}` : `file:${ctx.rel}`;
+    }
+    if (isFunctionDeclaration2(node) || isFunctionExpression2(node) || isMethodDeclaration2(node) || isVariableDeclaration2(node)) {
+      if (!isVariableDeclaration2(node) && node.name === undefined)
+        return;
+      const nameNode = isVariableDeclaration2(node) ? node.name : node.name;
+      if (!nameNode || !isIdentifier2(nameNode))
+        return;
+      if (isVariableDeclaration2(node) && !callableInitializer2(node))
+        return;
+      if (isVariableDeclaration2(node))
+        return `const:${nameNode.text}@${ctx.rel}`;
+      const symbol = ctx.checker.getSymbolAtLocation(nameNode);
+      if (!symbol)
+        return;
+      return symbolIdForDecl2(node, nameNode.text, ctx.rel);
+    }
+    return;
+  }
+  classifyCall(ctx, call, callee) {
+    if (callee.kind === SyntaxKind3.ImportKeyword)
+      return { kind: "unresolved" };
+    if (isIdentifier2(callee) && (callee.text === "eval" || callee.text === "require")) {
+      return { kind: "unresolved" };
+    }
+    if (isNewExpression2(call) && isIdentifier2(callee) && callee.text === "Function") {
+      return { kind: "unresolved" };
+    }
+    if (isElementAccessExpression2(callee))
+      return { kind: "unresolved" };
+    if (isFunctionExpression2(callee) || isArrowFunction2(callee))
+      return { kind: "skip" };
+    const symbol = ctx.checker.getSymbolAtLocation(callee);
+    if (!symbol)
+      return { kind: "unresolved" };
+    const final = followAlias2(ctx.checker, symbol);
+    const inGraph = [];
+    for (const handle of final.declarations) {
+      const declaration = handle.resolve(ctx.project);
+      if (!declaration)
+        continue;
+      const declFile = toPosixPath3(declaration.getSourceFile().fileName);
+      if (this.files.has(declFile))
+        inGraph.push(declaration);
+    }
+    if (inGraph.length === 0)
+      return { kind: "skip" };
+    const callable = inGraph.filter((declaration) => isCallableDeclKind2(declaration.kind) || callableInitializer2(declaration));
+    if (callable.length !== inGraph.length)
+      return { kind: "unresolved" };
+    const targets = new Set;
+    for (const declaration of callable) {
+      const nameText = this.declaredName(declaration);
+      if (!nameText)
+        return { kind: "unresolved" };
+      const declFile = toPosixPath3(declaration.getSourceFile().fileName);
+      const targetCtx = this.files.get(declFile);
+      if (!targetCtx)
+        return { kind: "unresolved" };
+      targets.add(symbolIdForDecl2(declaration, nameText, targetCtx.rel));
+    }
+    if (targets.size !== 1)
+      return { kind: "unresolved" };
+    const [targetId] = targets;
+    if (targetId === undefined)
+      return { kind: "unresolved" };
+    return { kind: "static", targetId };
+  }
+  recordCall(ctx, call, callee, callerId) {
+    const outcome = this.classifyCall(ctx, call, callee);
+    if (outcome.kind === "skip")
+      return;
+    const line = this.lineOf(ctx, call);
+    const ordinal = this.callOrdinals.get(ctx.key) ?? 0;
+    this.callOrdinals.set(ctx.key, ordinal + 1);
+    const callSiteId = `call:${ctx.rel}:${line}:${ordinal}`;
+    const calleeText = callee.getText().slice(0, 80);
+    this.nodes.set(callSiteId, { id: callSiteId, kind: "call-site", file: ctx.rel, line, name: calleeText });
+    if (outcome.kind === "static") {
+      const edgeId = `calls-static:${callerId}:${outcome.targetId}:${callSiteId}`;
+      this.edges.set(edgeId, {
+        id: edgeId,
+        kind: "CALLS_STATIC",
+        from: callerId,
+        to: outcome.targetId,
+        confidence: STATIC_CONFIDENCE2,
+        ref: `${ctx.rel}:${line}`,
+        callSite: callSiteId
+      });
+    } else {
+      const edgeId = `calls-unresolved:${callerId}:${callSiteId}`;
+      this.edges.set(edgeId, {
+        id: edgeId,
+        kind: "CALLS_UNRESOLVED",
+        from: callerId,
+        to: UNKNOWN2,
+        confidence: UNRESOLVED_CONFIDENCE2,
+        ref: `${ctx.rel}:${line}`,
+        uncertain: true,
+        callSite: callSiteId
+      });
+    }
+  }
+}
+function indexFiles2(entryFiles, options = {}) {
+  if (entryFiles.length === 0)
+    return { nodes: [], edges: [], content: emptyContentIndex2() };
+  throwIfAborted2(options.signal);
+  const maxFiles = options.budgets?.maxFiles;
+  if (maxFiles !== undefined && Number.isFinite(maxFiles) && entryFiles.length > maxFiles) {
+    throw buildFailure2("BUDGET_FILES", `code-graph: entry budget exceeded (${entryFiles.length} entries > maxFiles ${maxFiles})`);
+  }
+  const absoluteEntries = entryFiles.map((entry) => resolve6(entry));
+  if (options.rootDir === undefined) {
+    const root = commonDir2(absoluteEntries.map(toPosixPath3));
+    const { snapshot } = buildGraph2(absoluteEntries, root, false, options);
+    return { ...snapshot, root };
+  }
+  const root = toPosixPath3(resolve6(options.rootDir));
+  const prefix = `${root}/`;
+  const inside = [];
+  const entryDropped = [];
+  const seenDropped = new Set;
+  for (const entry of absoluteEntries) {
+    const key = toPosixPath3(entry);
+    const rel = key.startsWith(prefix) ? key.slice(prefix.length) : undefined;
+    if (rel !== undefined && rel.length > 0 && !rel.split("/").includes("..")) {
+      inside.push(entry);
+    } else if (!seenDropped.has(key)) {
+      seenDropped.add(key);
+      entryDropped.push({ file: key, reason: "outside-root" });
+    }
+  }
+  if (inside.length === 0) {
+    return { nodes: [], edges: [], content: emptyContentIndex2(), root, dropped: entryDropped };
+  }
+  const { snapshot, dropped } = buildGraph2(inside, root, true, options);
+  const mergedByFile = new Map;
+  for (const drop of [...entryDropped, ...dropped]) {
+    if (!mergedByFile.has(drop.file))
+      mergedByFile.set(drop.file, drop);
+  }
+  const merged = [...mergedByFile.values()].sort((left, right) => left.file < right.file ? -1 : 1);
+  return { ...snapshot, root, dropped: merged };
+}
+function buildGraph2(absoluteEntries, root, strictRoot, options) {
+  const tsserverPath = options.tsserverPath ?? defaultTsServerPath2();
+  const report = options.onProgress;
+  const signal = options.signal;
+  const budgets = options.budgets;
+  const generation = options.generation;
+  const startMs = Date.now();
+  const elapsed = () => Date.now() - startMs;
+  const checkTimeBudget = () => {
+    const maxMs = budgets?.maxMs;
+    if (maxMs !== undefined && Number.isFinite(maxMs) && elapsed() > maxMs) {
+      throw buildFailure2("BUDGET_TIME", `code-graph: time budget exceeded (${elapsed()}ms > maxMs ${maxMs})`);
+    }
+  };
+  const checkSizeBudgets = (size) => {
+    const maxNodes = budgets?.maxNodes;
+    if (maxNodes !== undefined && Number.isFinite(maxNodes) && size.nodes > maxNodes) {
+      throw buildFailure2("BUDGET_NODES", `code-graph: node budget exceeded (${size.nodes} nodes > maxNodes ${maxNodes})`);
+    }
+    const maxEdges = budgets?.maxEdges;
+    if (maxEdges !== undefined && Number.isFinite(maxEdges) && size.edges > maxEdges) {
+      throw buildFailure2("BUDGET_EDGES", `code-graph: edge budget exceeded (${size.edges} edges > maxEdges ${maxEdges})`);
+    }
+  };
+  throwIfAborted2(signal);
+  const api = new API2({ tsserverPath, cwd: root });
+  try {
+    const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
+    throwIfAborted2(signal);
+    checkTimeBudget();
+    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0, elapsedMs: elapsed(), generation });
+    try {
+      const builder = new GraphBuilder2(root, strictRoot);
+      const byProject = new Map;
+      for (const entry of absoluteEntries) {
+        const project = snapshot.getDefaultProjectForFile(entry);
+        if (!project)
+          throw new Error(`code-graph: no TypeScript project covers entry: ${entry}`);
+        const list = byProject.get(project);
+        if (list)
+          list.push(entry);
+        else
+          byProject.set(project, [entry]);
+      }
+      const projectsTotal = byProject.size;
+      let projectsDone = 0;
+      for (const [project, entries] of byProject) {
+        throwIfAborted2(signal);
+        checkTimeBudget();
+        builder.addEntries(project, entries);
+        projectsDone += 1;
+        const size = builder.size();
+        checkSizeBudgets(size);
+        checkTimeBudget();
+        throwIfAborted2(signal);
+        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: size.nodes, edges: size.edges, elapsedMs: elapsed(), generation });
+        if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
+          options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
+        }
+      }
+      throwIfAborted2(signal);
+      checkTimeBudget();
+      const preEdges = builder.size();
+      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: preEdges.nodes, edges: preEdges.edges, elapsedMs: elapsed(), generation });
+      builder.addKnowledgeLinks(options.knowledge ?? []);
+      const snapshotOut = builder.snapshot();
+      checkSizeBudgets({ nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length });
+      checkTimeBudget();
+      throwIfAborted2(signal);
+      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length, elapsedMs: elapsed(), generation });
+      return { snapshot: snapshotOut, dropped: builder.dropped };
+    } finally {
+      snapshot.dispose();
+    }
+  } finally {
+    api.close();
+  }
+}
+function clampLimit2(limit) {
+  if (limit === undefined || !Number.isFinite(limit))
+    return DEFAULT_RESULT_LIMIT2;
+  return Math.min(MAX_RESULT_LIMIT2, Math.max(1, Math.floor(limit)));
+}
+function clampDepth2(depth) {
+  if (depth === undefined || !Number.isFinite(depth))
+    return DEFAULT_MAX_DEPTH2;
+  return Math.min(MAX_DEPTH_LIMIT2, Math.max(1, Math.floor(depth)));
+}
+function clampExploredEdges2(value) {
+  if (value === undefined || !Number.isFinite(value))
+    return MAX_EXPLORED_EDGES2;
+  return Math.min(MAX_EXPLORED_EDGES2, Math.max(1, Math.floor(value)));
+}
+function clampQueryBudgetMs2(value) {
+  if (value === undefined || !Number.isFinite(value))
+    return DEFAULT_QUERY_BUDGET_MS2;
+  return Math.min(MAX_QUERY_BUDGET_MS2, Math.max(0, Math.floor(value)));
+}
+function kindRank2(edge) {
+  return KIND_PRIORITY2[edge] ?? 4;
+}
+function verdictForEvidenceKind2(edge) {
+  return CONFIRMED_EVIDENCE_KINDS2.has(edge) ? "confirmed" : "inferred";
+}
+function dedupeById2(items) {
+  const seen = new Set;
+  const kept = [];
+  for (const item of items) {
+    if (seen.has(item.id))
+      continue;
+    seen.add(item.id);
+    kept.push(item);
+  }
+  return { items: kept, dropped: items.length - kept.length };
+}
+function duplicatesExtra2(dropped) {
+  return dropped > 0 ? { duplicatesDropped: dropped } : {};
+}
+function ambiguousExtra2(items) {
+  const seen = new Map;
+  for (const item of items) {
+    if (item.name === undefined || item.name === "")
+      continue;
+    const first = seen.get(item.name);
+    if (first === undefined) {
+      seen.set(item.name, item.id);
+    } else if (first !== item.id) {
+      return { ambiguousNames: true };
+    }
+  }
+  return;
+}
+function primaryKind2(item) {
+  return item.evidence[0]?.edge ?? "indexed";
+}
+function compareRows2(depthA, a, depthB, b) {
+  if (depthA !== depthB)
+    return depthA - depthB;
+  if (a.confidence !== b.confidence)
+    return b.confidence - a.confidence;
+  const kindDelta = kindRank2(primaryKind2(a)) - kindRank2(primaryKind2(b));
+  if (kindDelta !== 0)
+    return kindDelta;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+function byKindFor2(items) {
+  const counts = new Map;
+  for (const item of items) {
+    const kind = primaryKind2(item);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((left, right) => kindRank2(left[0]) - kindRank2(right[0]) || (left[0] < right[0] ? -1 : 1)).map(([kind, count]) => ({ kind, count }));
+}
+function indexTruncationNote2(snapshot) {
+  const dropped = snapshot.dropped ?? [];
+  if (dropped.length > 0) {
+    const named = dropped.slice(0, 3).map((entry) => entry.file).join(", ");
+    const rest = dropped.length > 3 ? ` and ${dropped.length - 3} more` : "";
+    return `index truncated: ${dropped.length} file(s) excluded from the snapshot (${named}${rest})`;
+  }
+  const content = snapshot.content;
+  if (content === undefined)
+    return;
+  if (content.skipped.length > 0) {
+    return `index truncated: ${content.skipped.length} file(s) skipped from the content index (binary or too large to index)`;
+  }
+  const capped = Object.values(content.files).filter((entry) => entry.tokenTruncated).length;
+  if (capped > 0) {
+    return `index truncated: ${capped} file(s) hit the per-file token cap (${content.tokenCap})`;
+  }
+  return;
+}
+function indexCoverage2(snapshot) {
+  return indexTruncationNote2(snapshot) === undefined ? "indexed" : "partial";
+}
+function decideCompleteness2(flags) {
+  if (flags.unsupported)
+    return { completeness: "partial", completenessReason: "unsupported-files" };
+  if (flags.excluded)
+    return { completeness: "partial", completenessReason: "index-excluded" };
+  if (flags.indexPartial)
+    return { completeness: "partial", completenessReason: "index-truncated" };
+  if (flags.timeBudget === true)
+    return { completeness: "truncated", completenessReason: "time-budget" };
+  if (flags.edgeBudget === true)
+    return { completeness: "truncated", completenessReason: "edge-budget" };
+  if (flags.depthBudget)
+    return { completeness: "truncated", completenessReason: "depth-budget" };
+  if (flags.unresolvedEdges)
+    return { completeness: "partial", completenessReason: "unresolved-edges" };
+  if (flags.cut)
+    return { completeness: "truncated", completenessReason: "result-limit" };
+  return { completeness: "complete" };
+}
+function moduleFor2(file) {
+  const slash = file.indexOf("/");
+  return slash < 0 ? "(root)" : file.slice(0, slash);
+}
+function moduleCounts2(items) {
+  const counts = new Map;
+  for (const item of items) {
+    const module = moduleFor2(item.file);
+    counts.set(module, (counts.get(module) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0)).map(([module, count]) => ({ module, count }));
+}
+function hasTestPath2(snapshot, item) {
+  if (isTestPath2(item.file))
+    return true;
+  const index = indexFor2(snapshot);
+  const direct = index.edgesByTo.get(item.id) ?? [];
+  if (direct.some((edge) => edge.kind === "TESTS"))
+    return true;
+  const fileEdges = index.edgesByTo.get(`file:${item.file}`) ?? [];
+  return fileEdges.some((edge) => edge.kind === "TESTS");
+}
+function emptyImpactSummary2(subjectIds, completeness) {
+  return {
+    subjectIds,
+    dependentFiles: 0,
+    dependentSymbols: 0,
+    modules: [],
+    testsFound: 0,
+    callersWithoutTestPath: 0,
+    unresolvedEdges: 0,
+    completeness
+  };
+}
+function unresolvedEdgesFrom2(snapshot, nodeId) {
+  return (indexFor2(snapshot).edgesByFrom.get(nodeId) ?? []).filter((edge) => edge.kind === "CALLS_UNRESOLVED");
+}
+function scopeFromBaseline2(baseline) {
+  return {
+    projectId: baseline.scope.projectId,
+    worktreeId: baseline.scope.worktreeId,
+    revision: baseline.scope.revision,
+    fingerprint: baseline.scope.fingerprint
+  };
+}
+function resolveScope2(options) {
+  if (options.baseline !== undefined)
+    return scopeFromBaseline2(options.baseline);
+  return options.scope;
+}
+function baseEnvelope3(scope, freshness) {
+  return {
+    projectId: scope.projectId,
+    worktreeId: scope.worktreeId,
+    revision: scope.revision,
+    fingerprint: scope.fingerprint,
+    freshness
+  };
+}
+function isSupportedPath2(path) {
+  const base = path.split("/").pop() ?? path;
+  if (!base.includes("."))
+    return false;
+  return SUPPORTED_FILE2.test(base);
+}
+function unsupportedNote2(path) {
+  return `unsupported file type: ${path} is unindexed (never analyzed)`;
+}
+function symbolFilePart2(symbolId) {
+  const at = symbolId.lastIndexOf("@");
+  if (at < 0)
+    return;
+  return symbolId.slice(at + 1);
+}
+function indexedEvidence2(node) {
+  return { edge: "indexed", ref: `${node.file}:${node.line}`, confidence: 1 };
+}
+function knowledgeIdsFor2(snapshot, nodeIds) {
+  const index = indexFor2(snapshot);
+  const byNode = new Map;
+  for (const id of nodeIds) {
+    const ids = index.knowledgeByFrom.get(id);
+    if (ids !== undefined)
+      byNode.set(id, [...ids]);
+  }
+  return byNode;
+}
+function unionKnowledge2(linked) {
+  const out = [];
+  for (const ids of linked.values()) {
+    for (const id of ids) {
+      if (!out.includes(id))
+        out.push(id);
+    }
+  }
+  return out;
+}
+function toItem3(node, evidence, knowledge) {
+  const item = {
+    id: node.id,
+    file: node.file,
+    line: node.line,
+    evidence,
+    confidence: 1,
+    knowledgeIds: knowledge,
+    verdict: verdictForEvidenceKind2(evidence[0]?.edge ?? "indexed"),
+    isTest: isTestPath2(node.file)
+  };
+  return node.name === undefined ? item : { ...item, name: node.name };
+}
+function nodeItem2(snapshot, node, evidence) {
+  const linked = knowledgeIdsFor2(snapshot, new Set([node.id, `file:${node.file}`]));
+  const own = [...linked.get(node.id) ?? [], ...linked.get(`file:${node.file}`) ?? []].filter((id, index, all) => all.indexOf(id) === index);
+  return toItem3(node, evidence.length > 0 ? evidence : [indexedEvidence2(node)], own);
+}
+function unresolvedFor2(snapshot, symbolId) {
+  return snapshot.edges.filter((edge) => edge.kind === "CALLS_UNRESOLVED" && edge.from === symbolId).map((edge) => `${edge.ref} calls an unknown callee (manual review, never proven)`).sort();
+}
+function search2(snapshot, query, options) {
+  const scope = resolveScope2(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit2(options.limit);
+  const needle = query.toLowerCase();
+  if (needle.trim().length === 0) {
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "explore",
+      query,
+      coverage: "indexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: ["empty query: name or path fragment required"],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      completeness: "complete"
+    };
+  }
+  if ((query.includes("/") || query.includes("\\")) && !isSupportedPath2(query)) {
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "explore",
+      query,
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [],
+      unsupported: [unsupportedNote2(query)],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files"
+    };
+  }
+  const queryTokens = tokenizeIdentifier2(query);
+  const ranked = [];
+  for (const node of snapshot.nodes) {
+    if (node.kind !== "file" && node.kind !== "symbol")
+      continue;
+    const match = matchSearchTier2(node, needle, queryTokens);
+    if (match !== undefined)
+      ranked.push({ node, ...match });
+  }
+  ranked.sort((left, right) => rankCompare2(left, right));
+  const eligible = options.excludeTests === true ? ranked.filter(({ node }) => !isTestPath2(node.file)) : ranked;
+  const hiddenTests = ranked.length - eligible.length;
+  const truncated = eligible.length > limit;
+  const deduped = dedupeById2(eligible.slice(0, limit).map(({ node, reason, rank }) => ({
+    ...nodeItem2(snapshot, node, definesEvidence2(snapshot, node)),
+    reason,
+    rank
+  })));
+  const items = deduped.items;
+  const indexNote = indexTruncationNote2(snapshot);
+  const notes = truncated ? [`truncated to ${limit} of ${eligible.length} matches`] : [];
+  if (indexNote !== undefined)
+    notes.push(indexNote);
+  const decided = decideCompleteness2({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  const envelope = {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "explore",
+    query,
+    ...duplicatesExtra2(deduped.dropped),
+    ...ambiguousExtra2(items),
+    shownOf: { candidates: { shown: items.length, total: eligible.length } },
+    coverage: indexCoverage2(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge2(knowledgeIdsFor2(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved: notes,
+    unsupported: [],
+    items,
+    totals: indexNote !== undefined ? { displayed: items.length, known: null, hidden: null, byKind: byKindFor2(items) } : { displayed: items.length, known: eligible.length, hidden: eligible.length - items.length, byKind: byKindFor2(items) },
+    ...decided
+  };
+  return hiddenTests > 0 ? { ...envelope, hiddenTestCount: hiddenTests } : envelope;
+}
+function tokenizeIdentifier2(value) {
+  const out = [];
+  for (const part of value.split(/[^A-Za-z0-9]+/)) {
+    if (part.length === 0)
+      continue;
+    for (const hump of part.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/)) {
+      for (const piece of hump.split(/(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])/)) {
+        if (piece.length > 0)
+          out.push(piece.toLowerCase());
+      }
+    }
+  }
+  return out;
+}
+function withinEditDistance2(a, b, maxDist) {
+  if (Math.abs(a.length - b.length) > maxDist)
+    return false;
+  if (a === b)
+    return true;
+  let prev = [];
+  for (let j = 0;j <= b.length; j += 1)
+    prev.push(j);
+  for (let i = 1;i <= a.length; i += 1) {
+    const curr = [i];
+    let rowMin = i;
+    for (let j = 1;j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const cell = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      curr.push(cell);
+      if (cell < rowMin)
+        rowMin = cell;
+    }
+    if (rowMin > maxDist)
+      return false;
+    prev = curr;
+  }
+  return prev[b.length] <= maxDist;
+}
+function matchSearchTier2(node, needle, queryTokens) {
+  const nameLower = (node.name ?? "").toLowerCase();
+  const idLower = node.id.toLowerCase();
+  const fileLower = node.file.toLowerCase();
+  const baseLower = fileLower.split("/").pop() ?? fileLower;
+  if (needle.length === 0)
+    return { reason: "prefix", rank: SEARCH_RANK2.prefix };
+  if (nameLower === needle)
+    return { reason: "exact-name", rank: SEARCH_RANK2["exact-name"] };
+  if (baseLower === needle)
+    return { reason: "exact-name", rank: SEARCH_RANK2["exact-name"] };
+  if (idLower === needle || `${nameLower}@${fileLower}` === needle) {
+    return { reason: "exact-qualified", rank: SEARCH_RANK2["exact-qualified"] };
+  }
+  if (nameLower.startsWith(needle))
+    return { reason: "prefix", rank: SEARCH_RANK2.prefix };
+  if (baseLower.startsWith(needle))
+    return { reason: "prefix", rank: SEARCH_RANK2.prefix };
+  if (tokenMatches2(node, queryTokens))
+    return { reason: "token", rank: SEARCH_RANK2.token };
+  if (nameLower.includes(needle) || fileLower.includes(needle) || idLower.includes(needle)) {
+    return { reason: "substring", rank: SEARCH_RANK2.substring };
+  }
+  const distance = fuzzyDistance2(nameLower, needle);
+  if (distance !== null)
+    return { reason: "fuzzy", rank: SEARCH_RANK2.fuzzy, distance };
+  return;
+}
+function tokenMatches2(node, queryTokens) {
+  const useful = queryTokens.filter((token) => token.length >= 2);
+  if (useful.length === 0)
+    return false;
+  const targets = [...tokenizeIdentifier2(node.name ?? ""), ...tokenizeIdentifier2(node.file)];
+  if (targets.length === 0)
+    return false;
+  const hits = (query) => targets.some((target) => target === query || target.startsWith(query));
+  return useful.every(hits);
+}
+function fuzzyDistance2(nameLower, needle) {
+  if (needle.length < 3 || nameLower.length === 0)
+    return null;
+  if (nameLower[0] !== needle[0])
+    return null;
+  const maxDist = needle.length <= 4 ? 1 : 2;
+  let best = null;
+  const consider = (candidate) => {
+    if (candidate.length === 0 || candidate[0] !== needle[0])
+      return;
+    for (let distance = 1;distance <= maxDist; distance += 1) {
+      if (best !== null && distance >= best)
+        return;
+      if (withinEditDistance2(needle, candidate, distance)) {
+        best = distance;
+        return;
+      }
+    }
+  };
+  consider(nameLower);
+  for (const token of tokenizeIdentifier2(nameLower))
+    consider(token);
+  return best;
+}
+function rankCompare2(left, right) {
+  if (left.rank !== right.rank)
+    return left.rank - right.rank;
+  const reasonDelta = SEARCH_RANK2[left.reason] - SEARCH_RANK2[right.reason];
+  if (reasonDelta !== 0)
+    return reasonDelta;
+  const leftDistance = left.distance ?? Number.POSITIVE_INFINITY;
+  const rightDistance = right.distance ?? Number.POSITIVE_INFINITY;
+  if (leftDistance !== rightDistance)
+    return leftDistance - rightDistance;
+  if (left.node.kind !== right.node.kind)
+    return left.node.kind === "file" ? -1 : 1;
+  if (left.node.file.length !== right.node.file.length)
+    return left.node.file.length - right.node.file.length;
+  if (left.node.file !== right.node.file)
+    return left.node.file < right.node.file ? -1 : 1;
+  return left.node.id < right.node.id ? -1 : left.node.id > right.node.id ? 1 : 0;
+}
+function definesEvidence2(snapshot, node) {
+  if (node.kind === "file")
+    return [indexedEvidence2(node)];
+  const evidence = (indexFor2(snapshot).edgesByTo.get(node.id) ?? []).filter((edge) => edge.kind === "DEFINES").map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
+  return evidence.length > 0 ? evidence : [indexedEvidence2(node)];
+}
+function indexFor2(snapshot) {
+  const cached = snapshotIndexes2.get(snapshot);
+  if (cached !== undefined)
+    return cached;
+  const nodeById = new Map;
+  for (const node of snapshot.nodes)
+    nodeById.set(node.id, node);
+  const edgesByFrom = new Map;
+  const edgesByTo = new Map;
+  for (const edge of snapshot.edges) {
+    const from = edgesByFrom.get(edge.from);
+    if (from === undefined)
+      edgesByFrom.set(edge.from, [edge]);
+    else
+      from.push(edge);
+    const to = edgesByTo.get(edge.to);
+    if (to === undefined)
+      edgesByTo.set(edge.to, [edge]);
+    else
+      to.push(edge);
+  }
+  const knowledgeTargets = new Map;
+  for (const node of snapshot.nodes) {
+    if (node.kind === "knowledge-link" && node.target !== undefined) {
+      knowledgeTargets.set(node.id, node.target);
+    }
+  }
+  const knowledgeByFrom = new Map;
+  for (const edge of snapshot.edges) {
+    if (edge.kind !== "LINKS_KNOWLEDGE")
+      continue;
+    const recordId = knowledgeTargets.get(edge.to);
+    if (recordId === undefined)
+      continue;
+    const list = knowledgeByFrom.get(edge.from);
+    if (list) {
+      if (!list.includes(recordId))
+        list.push(recordId);
+    } else {
+      knowledgeByFrom.set(edge.from, [recordId]);
+    }
+  }
+  const built = { nodeById, edgesByFrom, edgesByTo, knowledgeTargets, knowledgeByFrom };
+  snapshotIndexes2.set(snapshot, built);
+  return built;
+}
+function findNode2(snapshot, id) {
+  return indexFor2(snapshot).nodeById.get(id);
+}
+function callersOf2(snapshot, symbolId) {
+  const out = [];
+  const index = indexFor2(snapshot);
+  for (const edge of index.edgesByTo.get(symbolId) ?? []) {
+    if (edge.kind !== "CALLS_STATIC")
+      continue;
+    const caller = index.nodeById.get(edge.from);
+    if (caller !== undefined)
+      out.push({ caller, ref: edge.ref });
+  }
+  out.sort((left, right) => left.caller.id < right.caller.id ? -1 : 1);
+  return out;
+}
+function calleesOf2(snapshot, symbolId) {
+  const out = [];
+  const index = indexFor2(snapshot);
+  for (const edge of index.edgesByFrom.get(symbolId) ?? []) {
+    if (edge.kind !== "CALLS_STATIC")
+      continue;
+    const callee = index.nodeById.get(edge.to);
+    if (callee !== undefined)
+      out.push({ callee, ref: edge.ref });
+  }
+  out.sort((left, right) => left.callee.id < right.callee.id ? -1 : 1);
+  return out;
+}
+function unindexedSymbol2(scope, freshness, symbolId) {
+  const filePart = symbolFilePart2(symbolId);
+  const unsupported = filePart !== undefined && !isSupportedPath2(filePart) ? [unsupportedNote2(filePart)] : [];
+  const decided = decideCompleteness2({
+    unsupported: unsupported.length > 0,
+    excluded: unsupported.length === 0,
+    indexPartial: false,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: false
+  });
+  return {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "explore",
+    coverage: "unindexed",
+    truncated: false,
+    knowledgeIds: [],
+    unresolved: [`no definition for ${symbolId} in this snapshot`],
+    unsupported,
+    items: [],
+    totals: { displayed: 0, known: null, hidden: null },
+    ...decided,
+    definition: undefined,
+    callers: [],
+    callees: [],
+    summary: {
+      subjectId: null,
+      depth: 1,
+      incoming: 0,
+      outgoing: 0,
+      tests: 0,
+      modulesTouched: []
+    }
+  };
+}
+function symbolContext2(snapshot, symbolId, options) {
+  const scope = resolveScope2(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit2(options.limit);
+  const filePart = symbolFilePart2(symbolId);
+  if (filePart !== undefined && !isSupportedPath2(filePart)) {
+    const empty = {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "explore",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [],
+      unsupported: [unsupportedNote2(filePart)],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files",
+      definition: undefined,
+      callers: [],
+      callees: [],
+      summary: {
+        subjectId: null,
+        depth: 1,
+        incoming: 0,
+        outgoing: 0,
+        tests: 0,
+        modulesTouched: []
+      }
+    };
+    return empty;
+  }
+  const node = findNode2(snapshot, symbolId);
+  if (node === undefined || node.kind !== "symbol") {
+    return unindexedSymbol2(scope, freshness, symbolId);
+  }
+  const definition = nodeItem2(snapshot, node, definesEvidence2(snapshot, node));
+  const callerItems = callersOf2(snapshot, symbolId).map(({ caller, ref }) => nodeItem2(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+  const calleeItems = calleesOf2(snapshot, symbolId).map(({ callee, ref }) => nodeItem2(snapshot, callee, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+  const ranked = [
+    { item: definition, depth: 0 },
+    ...callerItems.map((item) => ({ item, depth: 1 })),
+    ...calleeItems.map((item) => ({ item, depth: 1 }))
+  ].sort((left, right) => compareRows2(left.depth, left.item, right.depth, right.item));
+  const seenIds = new Set;
+  const uniqueRanked = ranked.filter((entry) => {
+    if (seenIds.has(entry.item.id))
+      return false;
+    seenIds.add(entry.item.id);
+    return true;
+  });
+  const dropped = ranked.length - uniqueRanked.length;
+  const truncated = uniqueRanked.length > limit;
+  const items = uniqueRanked.slice(0, limit).map((entry) => entry.item);
+  const indexNote = indexTruncationNote2(snapshot);
+  const subjectUnresolved = unresolvedFor2(snapshot, symbolId);
+  const unresolved = [
+    ...subjectUnresolved,
+    ...indexNote === undefined ? [] : [indexNote],
+    ...truncated ? [`truncated to ${limit} of ${uniqueRanked.length} rows`] : []
+  ];
+  const decided = decideCompleteness2({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: subjectUnresolved.length > 0,
+    cut: truncated
+  });
+  const neighbourhood = [definition, ...callerItems, ...calleeItems];
+  const testFiles = new Set;
+  for (const row of neighbourhood) {
+    if (isTestPath2(row.file))
+      testFiles.add(row.file);
+  }
+  const modulesTouched = [...new Set(neighbourhood.map((row) => moduleFor2(row.file)))].sort();
+  const depthCounts = new Map;
+  for (const entry of uniqueRanked)
+    depthCounts.set(entry.depth, (depthCounts.get(entry.depth) ?? 0) + 1);
+  const byDepth = [...depthCounts.entries()].sort((left, right) => left[0] - right[0]).map(([depth, count]) => ({ depth, count }));
+  const callers = callerItems.slice(0, limit);
+  const callees = calleeItems.slice(0, limit);
+  return {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "explore",
+    ...duplicatesExtra2(dropped),
+    ...ambiguousExtra2(items),
+    shownOf: {
+      callers: { shown: callers.length, total: callerItems.length },
+      callees: { shown: callees.length, total: calleeItems.length }
+    },
+    coverage: indexCoverage2(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge2(knowledgeIdsFor2(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved,
+    unsupported: [],
+    items,
+    totals: indexNote !== undefined ? { displayed: items.length, known: null, hidden: null, byDepth, byKind: byKindFor2(items) } : { displayed: items.length, known: uniqueRanked.length, hidden: uniqueRanked.length - items.length, byDepth, byKind: byKindFor2(items) },
+    ...decided,
+    definition,
+    callers,
+    callees,
+    summary: {
+      subjectId: symbolId,
+      depth: 1,
+      incoming: callerItems.length,
+      outgoing: calleeItems.length,
+      tests: testFiles.size,
+      modulesTouched
+    }
+  };
+}
+function impact2(snapshot, symbolId, options) {
+  const scope = resolveScope2(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit2(options.limit);
+  const maxDepth = clampDepth2(options.maxDepth);
+  const filePart = symbolFilePart2(symbolId);
+  if (filePart !== undefined && !isSupportedPath2(filePart)) {
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "impact",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [],
+      unsupported: [unsupportedNote2(filePart)],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files",
+      subject: undefined,
+      impacted: [],
+      summary: emptyImpactSummary2([symbolId], "partial")
+    };
+  }
+  const subjectNode = findNode2(snapshot, symbolId);
+  if (subjectNode === undefined) {
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "impact",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [`no definition for ${symbolId} in this snapshot`],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "index-excluded",
+      subject: undefined,
+      impacted: [],
+      summary: emptyImpactSummary2([symbolId], "partial")
+    };
+  }
+  const subject = nodeItem2(snapshot, subjectNode, definesEvidence2(snapshot, subjectNode));
+  const walked = [];
+  const seen = new Set([symbolId]);
+  const exploredCap = clampExploredEdges2(options.maxExploredEdges);
+  const deadlineMs = Date.now() + clampQueryBudgetMs2(options.maxQueryMs);
+  let explored = 0;
+  let edgeBudgetHit = false;
+  let timeBudgetHit = false;
+  let frontier = [symbolId];
+  for (let depth = 1;depth <= maxDepth && frontier.length > 0; depth += 1) {
+    if (Date.now() >= deadlineMs) {
+      timeBudgetHit = true;
+      break;
+    }
+    const next = [];
+    for (const current of frontier) {
+      for (const { caller, ref } of callersOf2(snapshot, current)) {
+        explored += 1;
+        if (explored > exploredCap) {
+          edgeBudgetHit = true;
+          break;
+        }
+        if (Date.now() >= deadlineMs) {
+          timeBudgetHit = true;
+          break;
+        }
+        if (seen.has(caller.id))
+          continue;
+        seen.add(caller.id);
+        walked.push({
+          item: nodeItem2(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]),
+          depth
+        });
+        if (caller.kind === "symbol")
+          next.push(caller.id);
+      }
+      if (edgeBudgetHit || timeBudgetHit)
+        break;
+    }
+    if (edgeBudgetHit || timeBudgetHit)
+      break;
+    frontier = next;
+  }
+  const depthBudgetHit = frontier.some((id) => callersOf2(snapshot, id).some(({ caller }) => !seen.has(caller.id)));
+  walked.sort((left, right) => compareRows2(left.depth, left.item, right.depth, right.item));
+  const truncated = walked.length > limit;
+  const returned = walked.slice(0, limit);
+  const impacted = returned.map((entry) => entry.item);
+  const depthCounts = new Map;
+  for (const entry of walked)
+    depthCounts.set(entry.depth, (depthCounts.get(entry.depth) ?? 0) + 1);
+  const byDepth = [...depthCounts.entries()].sort((left, right) => left[0] - right[0]).map(([depth, count]) => ({ depth, count }));
+  const visitedIds = [symbolId, ...walked.map((entry) => entry.item.id)];
+  const unresolvedNotes = [];
+  let unresolvedEdges = 0;
+  for (const id of visitedIds) {
+    const edges = unresolvedEdgesFrom2(snapshot, id);
+    unresolvedEdges += edges.length;
+    for (const edge of edges) {
+      unresolvedNotes.push(`${edge.ref} calls an unknown callee (manual review, never proven)`);
+    }
+  }
+  unresolvedNotes.sort();
+  const indexNote = indexTruncationNote2(snapshot);
+  const unresolved = [
+    ...unresolvedNotes,
+    ...indexNote === undefined ? [] : [indexNote],
+    ...edgeBudgetHit ? [`edge budget ${exploredCap} stopped the walk after ${explored - 1} caller edges; more dependents may exist`] : [],
+    ...timeBudgetHit ? [`time budget ${clampQueryBudgetMs2(options.maxQueryMs)} ms stopped the walk; more dependents may exist`] : [],
+    ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callers still unexplored`] : [],
+    ...truncated ? [`truncated to ${limit} of ${walked.length} impacted rows`] : []
+  ];
+  const decided = decideCompleteness2({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    edgeBudget: edgeBudgetHit,
+    timeBudget: timeBudgetHit,
+    depthBudget: depthBudgetHit,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  const allDependents = walked.map((entry) => entry.item);
+  const dependentFiles = new Set(allDependents.map((item) => item.file));
+  const testFiles = new Set;
+  let callersWithoutTestPath = 0;
+  for (const item of allDependents) {
+    if (isTestPath2(item.file))
+      testFiles.add(item.file);
+    if (!hasTestPath2(snapshot, item))
+      callersWithoutTestPath += 1;
+  }
+  const dedupedImpacted = dedupeById2(impacted);
+  const uniqueImpacted = [...dedupedImpacted.items];
+  return {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "impact",
+    ...duplicatesExtra2(dedupedImpacted.dropped),
+    ...ambiguousExtra2(uniqueImpacted),
+    shownOf: { impacted: { shown: uniqueImpacted.length, total: walked.length } },
+    coverage: indexCoverage2(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge2(knowledgeIdsFor2(snapshot, new Set(uniqueImpacted.map((item) => item.id)))),
+    unresolved,
+    unsupported: [],
+    items: uniqueImpacted,
+    totals: indexNote !== undefined ? { displayed: uniqueImpacted.length, known: null, hidden: null, byDepth, byKind: byKindFor2(uniqueImpacted) } : { displayed: uniqueImpacted.length, known: walked.length, hidden: walked.length - uniqueImpacted.length, byDepth, byKind: byKindFor2(uniqueImpacted) },
+    ...decided,
+    subject,
+    impacted: uniqueImpacted,
+    summary: {
+      subjectIds: [symbolId],
+      dependentFiles: dependentFiles.size,
+      dependentSymbols: allDependents.filter((item) => !item.id.startsWith("file:")).length,
+      modules: moduleCounts2(allDependents),
+      testsFound: testFiles.size,
+      callersWithoutTestPath,
+      unresolvedEdges,
+      completeness: decided.completeness
+    }
+  };
+}
+function trace2(snapshot, fromId, toId, options) {
+  const scope = resolveScope2(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit2(options.limit);
+  const maxDepth = clampDepth2(options.maxDepth);
+  for (const id of [fromId, toId]) {
+    const filePart = symbolFilePart2(id);
+    if (filePart !== undefined && !isSupportedPath2(filePart)) {
+      return {
+        ...baseEnvelope3(scope, freshness),
+        suggestedMode: "trace",
+        coverage: "unindexed",
+        truncated: false,
+        knowledgeIds: [],
+        unresolved: [],
+        unsupported: [unsupportedNote2(filePart)],
+        items: [],
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial",
+        completenessReason: "unsupported-files",
+        path: [],
+        summary: {
+          found: false,
+          hops: null,
+          alternativePaths: null,
+          reason: id === fromId ? "start-unresolved" : "destination-unresolved"
+        }
+      };
+    }
+  }
+  const fromNode = findNode2(snapshot, fromId);
+  const toNode = findNode2(snapshot, toId);
+  if (fromNode === undefined || toNode === undefined) {
+    const missing = fromNode === undefined ? fromId : toId;
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "trace",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [`no definition for ${missing} in this snapshot`],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      completeness: "partial",
+      completenessReason: "index-excluded",
+      path: [],
+      summary: {
+        found: false,
+        hops: null,
+        alternativePaths: null,
+        reason: fromNode === undefined ? "start-unresolved" : "destination-unresolved"
+      }
+    };
+  }
+  if (fromId === toId) {
+    const self = nodeItem2(snapshot, fromNode, [indexedEvidence2(fromNode)]);
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "trace",
+      ...ambiguousExtra2([self]),
+      coverage: "indexed",
+      truncated: false,
+      knowledgeIds: [...self.knowledgeIds],
+      unresolved: [],
+      unsupported: [],
+      items: [self],
+      totals: { displayed: 1, known: 1, hidden: 0, byKind: byKindFor2([self]) },
+      completeness: "complete",
+      path: [],
+      summary: { found: true, hops: 0, alternativePaths: null, reason: "same-node" }
+    };
+  }
+  const parents = new Map;
+  const seen = new Set([fromId]);
+  const visitCap = limit * 20;
+  let frontier = [fromId];
+  let found = false;
+  let abandoned = false;
+  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !found && !abandoned; depth += 1) {
+    const next = [];
+    for (const current of frontier) {
+      for (const { callee, ref } of calleesOf2(snapshot, current)) {
+        if (seen.has(callee.id))
+          continue;
+        seen.add(callee.id);
+        parents.set(callee.id, { via: current, ref });
+        if (callee.id === toId) {
+          found = true;
+          break;
+        }
+        next.push(callee.id);
+        if (seen.size > visitCap) {
+          abandoned = true;
+          break;
+        }
+      }
+      if (found || abandoned)
+        break;
+    }
+    frontier = next;
+  }
+  const indexNote = indexTruncationNote2(snapshot);
+  if (abandoned && !found) {
+    const decided = decideCompleteness2({
+      unsupported: false,
+      excluded: false,
+      indexPartial: indexNote !== undefined,
+      depthBudget: false,
+      unresolvedEdges: false,
+      cut: true
+    });
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "trace",
+      coverage: "partial",
+      truncated: true,
+      knowledgeIds: [],
+      unresolved: [
+        `trace abandoned: call frontier exceeded ${visitCap} nodes (bounded, never the whole graph)`,
+        ...indexNote === undefined ? [] : [indexNote]
+      ],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      ...decided,
+      path: [],
+      summary: { found: false, hops: null, alternativePaths: null, reason: "budget-exhausted" }
+    };
+  }
+  if (!found) {
+    let blockedEdge;
+    for (const id of seen) {
+      blockedEdge = unresolvedEdgesFrom2(snapshot, id)[0];
+      if (blockedEdge !== undefined)
+        break;
+    }
+    const depthBudgetHit = frontier.length > 0;
+    const reason = blockedEdge !== undefined ? "blocked-by-unresolved" : depthBudgetHit ? "budget-exhausted" : "no-path-in-graph";
+    const decided = decideCompleteness2({
+      unsupported: false,
+      excluded: false,
+      indexPartial: indexNote !== undefined,
+      depthBudget: depthBudgetHit && blockedEdge === undefined,
+      unresolvedEdges: blockedEdge !== undefined,
+      cut: false
+    });
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "trace",
+      coverage: indexCoverage2(snapshot),
+      truncated: depthBudgetHit,
+      knowledgeIds: [],
+      unresolved: [
+        blockedEdge === undefined && !depthBudgetHit ? `no static call path from ${fromId} to ${toId} (never guessed)` : `no static call path from ${fromId} to ${toId} within budget (never guessed)`,
+        ...blockedEdge === undefined ? [] : [`${blockedEdge.ref} calls an unknown callee (manual review, never proven)`],
+        ...indexNote === undefined ? [] : [indexNote],
+        ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callees still unexplored`] : []
+      ],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      ...decided,
+      path: [],
+      summary: { found: false, hops: null, alternativePaths: null, reason }
+    };
+  }
+  const chain = [toId];
+  while (chain[0] !== fromId) {
+    const head = chain[0];
+    const parent = parents.get(head);
+    if (parent === undefined)
+      break;
+    chain.unshift(parent.via);
+  }
+  const path = [];
+  for (let index = 0;index < chain.length - 1; index += 1) {
+    const child = chain[index + 1];
+    const parent = parents.get(child);
+    path.push({ from: chain[index], to: child, ref: parent?.ref ?? "", confidence: 1 });
+  }
+  const items = chain.map((id) => findNode2(snapshot, id)).filter((node) => node !== undefined).map((node) => {
+    const step = path.find((entry) => entry.from === node.id || entry.to === node.id);
+    return nodeItem2(snapshot, node, step ? [{ edge: "CALLS_STATIC", ref: step.ref, confidence: 1 }] : [indexedEvidence2(node)]);
+  });
+  const foundNotes = unresolvedFor2(snapshot, fromId);
+  const foundDecided = decideCompleteness2({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: false
+  });
+  const dedupedFound = dedupeById2(items);
+  const uniqueFound = [...dedupedFound.items];
+  return {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "trace",
+    ...duplicatesExtra2(dedupedFound.dropped),
+    ...ambiguousExtra2(uniqueFound),
+    coverage: "indexed",
+    truncated: false,
+    knowledgeIds: unionKnowledge2(knowledgeIdsFor2(snapshot, new Set(uniqueFound.map((item) => item.id)))),
+    unresolved: [...foundNotes, ...indexNote === undefined ? [] : [indexNote]],
+    unsupported: [],
+    items: uniqueFound,
+    totals: {
+      displayed: uniqueFound.length,
+      known: indexNote === undefined ? uniqueFound.length : null,
+      hidden: indexNote === undefined ? 0 : null,
+      byKind: byKindFor2(uniqueFound)
+    },
+    ...foundDecided,
+    path,
+    summary: { found: true, hops: path.length, alternativePaths: null }
+  };
+}
+function subjectFileFor2(snapshot, target) {
+  if (!target.includes("@") && !target.startsWith("fn:") && !target.startsWith("class:") && !target.startsWith("const:")) {
+    return target;
+  }
+  const node = findNode2(snapshot, target);
+  if (node !== undefined)
+    return node.file;
+  const filePart = symbolFilePart2(target);
+  return filePart;
+}
+function findTests2(snapshot, target, options) {
+  const scope = resolveScope2(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit2(options.limit);
+  const maxDepth = clampDepth2(options.maxDepth);
+  const subjectFile = subjectFileFor2(snapshot, target);
+  if (subjectFile === undefined || !isSupportedPath2(subjectFile)) {
+    const unsupportedInput = subjectFile !== undefined;
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "explore",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: subjectFile === undefined ? [`no definition for ${target} in this snapshot`] : [],
+      unsupported: subjectFile === undefined ? [] : [unsupportedNote2(subjectFile)],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: unsupportedInput ? "unsupported-files" : "index-excluded",
+      subjectFile: undefined,
+      candidates: []
+    };
+  }
+  const subjectId = `file:${subjectFile}`;
+  if (findNode2(snapshot, subjectId) === undefined) {
+    return {
+      ...baseEnvelope3(scope, freshness),
+      suggestedMode: "explore",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [`${subjectFile} is not in this snapshot`],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "index-excluded",
+      subjectFile: undefined,
+      candidates: []
+    };
+  }
+  const walked = [];
+  const seen = new Set([subjectId]);
+  const deadlineMs = Date.now() + clampQueryBudgetMs2(options.maxQueryMs);
+  let timeBudgetHit = false;
+  let frontier = [{ id: subjectId, via: [] }];
+  for (let depth = 1;depth <= maxDepth && frontier.length > 0; depth += 1) {
+    if (Date.now() >= deadlineMs) {
+      timeBudgetHit = true;
+      break;
+    }
+    const next = [];
+    for (const current of frontier) {
+      for (const edge of indexFor2(snapshot).edgesByTo.get(current.id) ?? []) {
+        if (edge.kind !== "IMPORTS" && edge.kind !== "TESTS")
+          continue;
+        const importer = indexFor2(snapshot).nodeById.get(edge.from);
+        if (importer === undefined || seen.has(importer.id))
+          continue;
+        seen.add(importer.id);
+        const hop = { edge: edge.kind, ref: edge.ref, confidence: edge.confidence };
+        const evidence = [...current.via, hop];
+        if (importer.kind === "file" && importer.isTest === true) {
+          const item = nodeItem2(snapshot, importer, evidence);
+          walked.push({
+            item: {
+              ...item,
+              testDistance: depth,
+              testAssociation: depth === 1 ? "direct" : "transitive"
+            },
+            depth
+          });
+        } else if (importer.kind === "file") {
+          next.push({ id: importer.id, via: evidence });
+        }
+      }
+    }
+    frontier = next;
+  }
+  const depthBudgetHit = frontier.some((entry) => (indexFor2(snapshot).edgesByTo.get(entry.id) ?? []).some((edge) => (edge.kind === "IMPORTS" || edge.kind === "TESTS") && !seen.has(edge.from)));
+  walked.sort((left, right) => compareRows2(left.depth, left.item, right.depth, right.item));
+  const truncated = walked.length > limit;
+  const dedupedCandidates = dedupeById2(walked.slice(0, limit).map((entry) => entry.item));
+  const candidates = [...dedupedCandidates.items];
+  const indexNote = indexTruncationNote2(snapshot);
+  const decided = decideCompleteness2({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    timeBudget: timeBudgetHit,
+    depthBudget: depthBudgetHit,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  return {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "explore",
+    ...duplicatesExtra2(dedupedCandidates.dropped),
+    ...ambiguousExtra2(candidates),
+    shownOf: { candidates: { shown: candidates.length, total: walked.length } },
+    coverage: indexCoverage2(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge2(knowledgeIdsFor2(snapshot, new Set(candidates.map((item) => item.id)))),
+    unresolved: [
+      ...indexNote === undefined ? [] : [indexNote],
+      ...timeBudgetHit ? [`time budget ${clampQueryBudgetMs2(options.maxQueryMs)} ms stopped the walk; more candidates may exist`] : [],
+      ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with importers still unexplored`] : [],
+      ...truncated ? [`truncated to ${limit} of ${walked.length} candidate tests`] : []
+    ],
+    unsupported: [],
+    items: candidates,
+    totals: indexNote !== undefined ? { displayed: candidates.length, known: null, hidden: null, byKind: byKindFor2(candidates) } : { displayed: candidates.length, known: walked.length, hidden: walked.length - candidates.length, byKind: byKindFor2(candidates) },
+    ...decided,
+    subjectFile,
+    candidates
+  };
+}
+function entryBasename(file) {
+  const base = file.split("/").pop() ?? file;
+  const stem = (base.split(".")[0] ?? base).toLowerCase();
+  return stem === "main" || stem === "index" || stem === "cli";
+}
+function isEntryLikeFile(file) {
+  if (isTestPath2(file))
+    return true;
+  if (file.endsWith(".sh"))
+    return true;
+  return entryBasename(file);
+}
+function findUnreferenced(snapshot, options) {
+  const scope = resolveScope2(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit2(options.limit);
+  const index = indexFor2(snapshot);
+  const analysedIds = new Set(snapshot.nodes.map((node) => node.id));
+  const excludedFiles = new Set;
+  let analyzedFiles = 0;
+  const all = [];
+  for (const node of snapshot.nodes) {
+    if (node.kind === "file")
+      analyzedFiles += 1;
+    if (node.kind !== "file" && node.kind !== "export-contract")
+      continue;
+    if (isEntryLikeFile(node.file)) {
+      excludedFiles.add(node.file);
+      continue;
+    }
+    const inboundIds = node.kind === "export-contract" && node.target !== undefined && node.target !== "unknown" ? [node.id, node.target] : [node.id];
+    const inbound = inboundIds.flatMap((id) => index.edgesByTo.get(id) ?? []).filter((edge) => !inboundIds.includes(edge.from) && analysedIds.has(edge.from));
+    const inboundImports = inbound.filter((edge) => edge.kind === "IMPORTS").length;
+    const inboundCalls = inbound.filter((edge) => edge.kind === "CALLS_STATIC" || edge.kind === "CALLS_UNRESOLVED").length;
+    if (inboundImports > 0 || inboundCalls > 0)
+      continue;
+    const inboundTests = inbound.filter((edge) => edge.kind === "TESTS").length;
+    const inboundKnowledge = inbound.filter((edge) => edge.kind === "LINKS_KNOWLEDGE").length;
+    const exported = inbound.some((edge) => edge.kind === "EXPORTS");
+    const candidate = {
+      id: node.id,
+      file: node.file,
+      line: node.line,
+      kind: node.kind === "file" ? "file" : "symbol",
+      inboundImports,
+      inboundCalls,
+      inboundTests,
+      inboundKnowledge,
+      reason: exported ? "only-exported" : "no-inbound-edges"
+    };
+    all.push(node.name === undefined ? candidate : { ...candidate, name: node.name });
+  }
+  all.sort((left, right) => {
+    const leftTotal = left.inboundImports + left.inboundCalls + left.inboundTests + left.inboundKnowledge;
+    const rightTotal = right.inboundImports + right.inboundCalls + right.inboundTests + right.inboundKnowledge;
+    if (leftTotal !== rightTotal)
+      return leftTotal - rightTotal;
+    if (left.file !== right.file)
+      return left.file < right.file ? -1 : 1;
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+  const kept = all.slice(0, limit);
+  const truncated = all.length > limit;
+  const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const items = kept.map((candidate) => {
+    const node = byId.get(candidate.id);
+    if (node === undefined) {
+      return {
+        id: candidate.id,
+        file: candidate.file,
+        line: candidate.line,
+        evidence: [{ edge: "indexed", ref: `${candidate.file}:${candidate.line}`, confidence: 1 }],
+        confidence: 1,
+        knowledgeIds: [],
+        verdict: verdictForEvidenceKind2("indexed"),
+        isTest: isTestPath2(candidate.file)
+      };
+    }
+    const exportEvidence = (index.edgesByTo.get(node.id) ?? []).filter((edge) => edge.kind === "EXPORTS" && edge.from !== node.id && analysedIds.has(edge.from)).map((edge) => ({ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }));
+    const evidence = exportEvidence.length > 0 ? exportEvidence : [indexedEvidence2(node)];
+    const linked = knowledgeIdsFor2(snapshot, new Set([node.id, `file:${node.file}`]));
+    const own = [...linked.get(node.id) ?? [], ...linked.get(`file:${node.file}`) ?? []].filter((id, at, seen) => seen.indexOf(id) === at);
+    const entry = {
+      id: node.id,
+      file: node.file,
+      line: node.line,
+      evidence,
+      confidence: 1,
+      knowledgeIds: own,
+      verdict: verdictForEvidenceKind2(evidence[0]?.edge ?? "indexed"),
+      isTest: isTestPath2(node.file)
+    };
+    return node.name === undefined ? entry : { ...entry, name: node.name };
+  });
+  const indexNote = indexTruncationNote2(snapshot);
+  const decided = decideCompleteness2({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: truncated
+  });
+  return {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "explore",
+    ...ambiguousExtra2(items),
+    shownOf: { candidates: { shown: items.length, total: all.length } },
+    coverage: indexCoverage2(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge2(knowledgeIdsFor2(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved: [
+      ...indexNote === undefined ? [] : [indexNote, "unanalyzed content cannot be judged: references may arrive from outside the analysed edge set"],
+      ...truncated ? [`truncated to ${limit} of ${all.length} candidates`] : []
+    ],
+    unsupported: [],
+    items,
+    totals: { displayed: items.length, known: all.length, hidden: all.length - items.length },
+    ...decided,
+    candidates: kept,
+    summary: {
+      analyzedFiles,
+      unanalyzedNote: UNANALYZED_NOTE2,
+      candidatesTotal: all.length,
+      excludedEntryLike: excludedFiles.size
+    }
+  };
+}
+function fileOfNodeId(id) {
+  if (id.startsWith("file:"))
+    return id.slice("file:".length);
+  if (id.startsWith("call:")) {
+    const rest = id.slice("call:".length);
+    const parts = rest.split(":");
+    if (parts.length < 3)
+      return null;
+    const file = parts.slice(0, -2).join(":");
+    return file.length > 0 ? file : null;
+  }
+  const at = id.lastIndexOf("@");
+  if (at < 0)
+    return null;
+  const withLine = id.slice(at + 1);
+  const colon = withLine.lastIndexOf(":");
+  const file = colon < 0 ? withLine : withLine.slice(0, colon);
+  return file.length > 0 ? file : null;
+}
+function isRecord10(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function splitSnapshotIntoShards(snapshot) {
+  const order = [];
+  const seenInOrder = new Set;
+  const nodesByFile = new Map;
+  const edgesByFile = new Map;
+  const register = (key) => {
+    if (seenInOrder.has(key))
+      return;
+    seenInOrder.add(key);
+    order.push(key);
+  };
+  for (const node of snapshot.nodes) {
+    const key = fileOfNodeId(node.id) ?? UNATTRIBUTED_SHARD;
+    register(key);
+    const bucket = nodesByFile.get(key);
+    if (bucket)
+      bucket.push(node);
+    else
+      nodesByFile.set(key, [node]);
+  }
+  for (const edge of snapshot.edges) {
+    const key = fileOfNodeId(edge.from) ?? UNATTRIBUTED_SHARD;
+    register(key);
+    const bucket = edgesByFile.get(key);
+    if (bucket)
+      bucket.push(edge);
+    else
+      edgesByFile.set(key, [edge]);
+  }
+  const contentFiles = snapshot.content?.files ?? {};
+  for (const file of Object.keys(contentFiles)) {
+    if (!nodesByFile.has(file) && !edgesByFile.has(file))
+      order.push(file);
+  }
+  return order.map((file) => {
+    const nodes = nodesByFile.get(file) ?? [];
+    const edges = edgesByFile.get(file) ?? [];
+    const content = contentFiles[file];
+    return content === undefined ? { file, nodes, edges } : { file, nodes, edges, content };
+  });
+}
+function createSnapshotManifest(snapshot, meta) {
+  return {
+    version: SNAPSHOT_STORE_VERSION,
+    scope: meta.scope,
+    observedAtMs: meta.observedAtMs,
+    entryCap: meta.entryCap,
+    entryCount: meta.entryCount,
+    root: snapshot.root ?? null,
+    nodeCount: snapshot.nodes.length,
+    edgeCount: snapshot.edges.length,
+    contentTokenCap: snapshot.content?.tokenCap ?? null,
+    contentSkipped: snapshot.content?.skipped ?? [],
+    dropped: snapshot.dropped ?? [],
+    shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file),
+    ...meta.fileRecords !== undefined && meta.fileRecords !== null ? { fileRecords: meta.fileRecords } : {},
+    truncated: meta.truncated === true,
+    truncationReason: typeof meta.truncationReason === "string" ? meta.truncationReason : null,
+    buildSeq: typeof meta.buildSeq === "number" && Number.isFinite(meta.buildSeq) ? meta.buildSeq : null,
+    unreadableFiles: Array.isArray(meta.unreadableFiles) ? [...meta.unreadableFiles] : [],
+    unreadableFileCount: typeof meta.unreadableFileCount === "number" && Number.isFinite(meta.unreadableFileCount) ? meta.unreadableFileCount : 0
+  };
+}
+function serializeSnapshotShard(shard) {
+  return JSON.stringify(shard);
+}
+function serializeSnapshotManifest(manifest) {
+  return JSON.stringify(manifest);
+}
+function parseSnapshotManifest(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "corrupt", reason: "manifest is not JSON" };
+  }
+  if (!isRecord10(parsed))
+    return { kind: "corrupt", reason: "manifest is not an object" };
+  if (parsed.version !== SNAPSHOT_STORE_VERSION) {
+    return { kind: "corrupt", reason: `unsupported manifest version: ${String(parsed.version)}` };
+  }
+  const scope = parsed.scope;
+  if (!isRecord10(scope))
+    return { kind: "corrupt", reason: "manifest has no scope" };
+  const scopeKeys = ["projectId", "worktreeId", "revision", "fingerprint"];
+  for (const key of scopeKeys) {
+    if (typeof scope[key] !== "string" || String(scope[key]).length === 0) {
+      return { kind: "corrupt", reason: `scope.${key} is missing` };
+    }
+  }
+  if (!Array.isArray(parsed.shards) || parsed.shards.some((entry) => typeof entry !== "string")) {
+    return { kind: "corrupt", reason: "manifest shards are not a string list" };
+  }
+  if (!Number.isFinite(parsed.nodeCount) || !Number.isFinite(parsed.edgeCount)) {
+    return { kind: "corrupt", reason: "manifest counts are not numbers" };
+  }
+  return {
+    kind: "manifest",
+    manifest: {
+      version: SNAPSHOT_STORE_VERSION,
+      scope: {
+        projectId: String(scope.projectId),
+        worktreeId: String(scope.worktreeId),
+        revision: String(scope.revision),
+        fingerprint: String(scope.fingerprint)
+      },
+      observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
+      entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
+      entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
+      root: typeof parsed.root === "string" ? parsed.root : null,
+      nodeCount: Number(parsed.nodeCount),
+      edgeCount: Number(parsed.edgeCount),
+      contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
+      contentSkipped: Array.isArray(parsed.contentSkipped) ? parsed.contentSkipped : [],
+      dropped: Array.isArray(parsed.dropped) ? parsed.dropped : [],
+      shards: parsed.shards,
+      ...typeof parsed.fileRecords === "string" && parsed.fileRecords.length > 0 ? { fileRecords: parsed.fileRecords } : {},
+      truncated: parsed.truncated === true,
+      truncationReason: typeof parsed.truncationReason === "string" ? parsed.truncationReason : null,
+      buildSeq: typeof parsed.buildSeq === "number" && Number.isFinite(parsed.buildSeq) ? parsed.buildSeq : null,
+      unreadableFiles: Array.isArray(parsed.unreadableFiles) ? parsed.unreadableFiles.filter((entry) => typeof entry === "string") : [],
+      unreadableFileCount: typeof parsed.unreadableFileCount === "number" && Number.isFinite(parsed.unreadableFileCount) ? parsed.unreadableFileCount : 0
+    }
+  };
+}
+function parseSnapshotShard(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "corrupt", reason: "shard is not JSON" };
+  }
+  if (!isRecord10(parsed))
+    return { kind: "corrupt", reason: "shard is not an object" };
+  if (typeof parsed.file !== "string")
+    return { kind: "corrupt", reason: "shard has no file" };
+  if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
+    return { kind: "corrupt", reason: "shard has no node/edge arrays" };
+  }
+  const shard = {
+    file: parsed.file,
+    nodes: parsed.nodes,
+    edges: parsed.edges,
+    ...isRecord10(parsed.content) ? { content: parsed.content } : {}
+  };
+  return { kind: "shard", shard };
+}
+function joinSnapshotShards(manifest, shards) {
+  if (shards.length !== manifest.shards.length) {
+    return { kind: "torn", reason: `expected ${manifest.shards.length} shards, found ${shards.length}` };
+  }
+  const nodes = [];
+  const edges = [];
+  const files = {};
+  for (const shard of shards) {
+    for (const node of shard.nodes)
+      nodes.push(node);
+    for (const edge of shard.edges)
+      edges.push(edge);
+    if (shard.content !== undefined)
+      files[shard.file] = shard.content;
+  }
+  if (nodes.length !== manifest.nodeCount || edges.length !== manifest.edgeCount) {
+    return {
+      kind: "torn",
+      reason: `shard totals ${nodes.length}/${edges.length} do not match manifest ${manifest.nodeCount}/${manifest.edgeCount}`
+    };
+  }
+  const snapshot = {
+    nodes,
+    edges,
+    ...manifest.root === null ? {} : { root: manifest.root },
+    ...manifest.contentTokenCap === null ? {} : { content: { tokenCap: manifest.contentTokenCap, files, skipped: manifest.contentSkipped } },
+    ...manifest.dropped.length > 0 ? { dropped: manifest.dropped } : {}
+  };
+  return { kind: "snapshot", snapshot };
+}
+function exportSurfaceKey(shard) {
+  const parts = [];
+  for (const node of shard.nodes ?? []) {
+    if (node.kind === "export-contract")
+      parts.push(`contract:${node.id}=>${node.target ?? ""}`);
+  }
+  for (const edge of shard.edges ?? []) {
+    if (edge.kind === "EXPORTS")
+      parts.push(`exports:${edge.id}`);
+  }
+  return parts.sort().join(`
+`);
+}
+function fingerprintContent(text) {
+  return createHash22("sha256").update(text, "utf8").digest("hex");
+}
+function fingerprintBytes(bytes) {
+  return createHash22("sha256").update(bytes).digest("hex");
+}
+function parseFileRecordsDoc(value) {
+  if (!isRecord22(value))
+    return null;
+  if (value.version !== FILE_RECORDS_VERSION)
+    return null;
+  if (value.parser !== PARSER_RECORD_VERSION)
+    return null;
+  if (value.schema !== SNAPSHOT_STORE_VERSION)
+    return null;
+  if (!isRecord22(value.files))
+    return null;
+  const files = {};
+  for (const [key, entry] of Object.entries(value.files)) {
+    if (typeof key !== "string" || key.length === 0)
+      return null;
+    if (!isRecord22(entry))
+      return null;
+    if (entry.file !== key || !isHex64(entry.blob))
+      return null;
+    const size = entry.size;
+    const mtimeMs = entry.mtimeMs;
+    const stat = typeof size === "number" && Number.isFinite(size) && size >= 0 && typeof mtimeMs === "number" && Number.isFinite(mtimeMs) && mtimeMs >= 0 ? { size, mtimeMs } : undefined;
+    files[key] = stat === undefined ? { file: key, blob: entry.blob } : { file: key, blob: entry.blob, ...stat };
+  }
+  return { version: FILE_RECORDS_VERSION, parser: PARSER_RECORD_VERSION, schema: SNAPSHOT_STORE_VERSION, files };
+}
+function serializeFileRecordsDoc(doc) {
+  const files = {};
+  for (const key of Object.keys(doc.files).sort()) {
+    const entry = doc.files[key];
+    files[key] = entry.size !== undefined && entry.mtimeMs !== undefined ? { file: entry.file, blob: entry.blob, size: entry.size, mtimeMs: entry.mtimeMs } : { file: entry.file, blob: entry.blob };
+  }
+  return JSON.stringify({ version: doc.version, parser: doc.parser, schema: doc.schema, files });
+}
+function validateFileRecords(doc, current) {
+  const reused = new Set;
+  const changed = new Set;
+  const added = new Set;
+  const deleted = new Set;
+  if (doc === null) {
+    for (const file of current.keys())
+      added.add(file);
+    return { reused, changed, added, deleted };
+  }
+  for (const [file, blob] of current) {
+    const record = doc.files[file];
+    if (record === undefined)
+      added.add(file);
+    else if (record.blob === blob)
+      reused.add(file);
+    else
+      changed.add(file);
+  }
+  for (const file of Object.keys(doc.files)) {
+    if (!current.has(file))
+      deleted.add(file);
+  }
+  return { reused, changed, added, deleted };
+}
+function rebuildIncremental(previous, changedFiles, freshChanged) {
+  const previousShards = splitSnapshotIntoShards(previous);
+  const keptShards = [];
+  for (const shard of previousShards) {
+    if (!changedFiles.has(shard.file))
+      keptShards.push(shard);
+  }
+  const freshShards = splitSnapshotIntoShards(freshChanged);
+  const changedFreshShards = [];
+  for (const shard of freshShards) {
+    if (changedFiles.has(shard.file))
+      changedFreshShards.push(shard);
+  }
+  const nodeById = new Map;
+  for (const shard of keptShards) {
+    for (const node of shard.nodes) {
+      if (!nodeById.has(node.id))
+        nodeById.set(node.id, node);
+    }
+  }
+  for (const shard of changedFreshShards) {
+    for (const node of shard.nodes)
+      nodeById.set(node.id, node);
+  }
+  const fileOfId = (id) => {
+    if (id === "unknown")
+      return null;
+    const known = nodeById.get(id);
+    if (known !== undefined && typeof known.file === "string" && known.file.length > 0)
+      return known.file;
+    return fileOfNodeId(id);
+  };
+  let invalidatedEdges = 0;
+  const keptEdges = [];
+  for (const shard of keptShards) {
+    for (const edge of shard.edges) {
+      const fromFile = fileOfId(edge.from);
+      const toFile = fileOfId(edge.to);
+      const fromAlive = nodeById.has(edge.from);
+      const toAlive = edge.to === "unknown" || nodeById.has(edge.to);
+      if (!fromAlive || !toAlive) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      if (fromFile === null && toFile === null) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      if (fromFile !== null && changedFiles.has(fromFile)) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      keptEdges.push(edge);
+    }
+  }
+  const seenEdgeIds = new Set(keptEdges.map((edge) => edge.id));
+  const freshEdges = [];
+  for (const shard of changedFreshShards) {
+    for (const edge of shard.edges) {
+      if (seenEdgeIds.has(edge.id))
+        continue;
+      seenEdgeIds.add(edge.id);
+      freshEdges.push(edge);
+    }
+  }
+  const nodes = [...nodeById.values()].sort((a, b) => a.id < b.id ? -1 : 1);
+  const edges = [...keptEdges, ...freshEdges].sort((a, b) => a.id < b.id ? -1 : 1);
+  const byFile = {};
+  const skippedMap = new Map;
+  for (const entry of previous.content?.skipped ?? []) {
+    const fileOf = entry.file;
+    if (!changedFiles.has(fileOf))
+      skippedMap.set(fileOf, entry);
+  }
+  for (const entry of freshChanged.content?.skipped ?? []) {
+    skippedMap.set(entry.file, entry);
+  }
+  const prevFiles = previous.content?.files ?? {};
+  for (const entry of Object.entries(prevFiles)) {
+    const file = entry[0];
+    const record = entry[1];
+    if (!changedFiles.has(file))
+      byFile[file] = record;
+  }
+  const freshFiles = freshChanged.content?.files ?? {};
+  for (const entry of Object.entries(freshFiles)) {
+    const file = entry[0];
+    const record = entry[1];
+    if (changedFiles.has(file))
+      byFile[file] = record;
+  }
+  const mergedDroppedMap = new Map;
+  for (const drop of previous.dropped ?? [])
+    mergedDroppedMap.set(drop.file, drop);
+  for (const drop of freshChanged.dropped ?? [])
+    mergedDroppedMap.set(drop.file, drop);
+  for (const file of Object.keys(byFile)) {
+    for (const key of [...mergedDroppedMap.keys()]) {
+      if (key.endsWith("/" + file) || key === file)
+        mergedDroppedMap.delete(key);
+    }
+  }
+  const mergedDropped = [...mergedDroppedMap.values()].sort((a, b) => a.file < b.file ? -1 : 1);
+  const tokenCap = previous.content?.tokenCap ?? freshChanged.content?.tokenCap ?? 5000;
+  const snapshot = {
+    nodes,
+    edges,
+    content: {
+      tokenCap,
+      files: byFile,
+      skipped: [...skippedMap.values()].sort((a, b) => a.file < b.file ? -1 : 1)
+    },
+    ...previous.root !== undefined || freshChanged.root !== undefined ? { root: freshChanged.root ?? previous.root } : {},
+    ...mergedDropped.length > 0 ? { dropped: mergedDropped } : {}
+  };
+  return { snapshot, reusedFiles: keptShards.length, invalidatedEdges };
+}
+var CompletionItemKind2, DiagnosticCategory2, ElementFlags2, ModuleKind2, NodeBuilderFlags2, ObjectFlags2, SignatureFlags2, SignatureKind2, SymbolFlags2, TypeFlags2, TypePredicateKind2, CharacterCodes4, CommentDirectiveType2, InternalSymbolName2, LanguageVariant2, ModifierFlags2, NodeFlags2, RegularExpressionFlags2, ScriptKind2, ScriptTarget2, SyntaxKind3, TokenFlags2, OuterExpressionKinds2, visitEachChildTable2, forEachChildTable2, EscapeSequenceScanningFlags2, textToKeywordObj2, textToKeyword2, textToToken2, charCodeToRegExpFlag2, jsDocTagTerminators2, tokenStrings2, childProperties2, singleChildNodePropertyNames2, PROTOCOL_VERSION2 = 5, HEADER_OFFSET_METADATA2 = 0, HEADER_OFFSET_HASH_LO02 = 4, HEADER_OFFSET_HASH_LO12 = 8, HEADER_OFFSET_HASH_HI02 = 12, HEADER_OFFSET_HASH_HI12 = 16, HEADER_OFFSET_PARSE_OPTIONS2 = 20, HEADER_OFFSET_STRING_TABLE_OFFSETS2 = 24, HEADER_OFFSET_STRING_TABLE2 = 28, HEADER_OFFSET_EXTENDED_DATA2 = 32, HEADER_OFFSET_STRUCTURED_DATA2 = 36, HEADER_OFFSET_NODES2 = 40, HEADER_SIZE2 = 44, NODE_LEN2 = 28, NODE_OFFSET_KIND2 = 0, NODE_OFFSET_POS2 = 4, NODE_OFFSET_END2 = 8, NODE_OFFSET_NEXT2 = 12, NODE_OFFSET_PARENT2 = 16, NODE_OFFSET_DATA2 = 20, NODE_OFFSET_FLAGS2 = 24, KIND_NODE_LIST2 = 4294967295, NODE_DATA_TYPE_CHILDREN2 = 0, NODE_DATA_TYPE_STRING2 = 1073741824, NODE_DATA_TYPE_EXTENDED2 = 2147483648, surrogateLeadByte2 = 237, surrogateSecondByteMin2 = 160, surrogateSecondByteMax2 = 191, continuationByteMin2 = 128, continuationByteMax2 = 191, Wtf8Decoder2, MSGPACK_FIXARRAY32 = 147, MSGPACK_BIN82 = 196, MSGPACK_BIN162 = 197, MSGPACK_BIN322 = 198, MSGPACK_UINT82 = 204, encoder4, decoder2, NODE_FIELDS2, NODE_FIELD_NEXT2 = 3, NO_STRUCTURED_DATA3 = 4294967295, _encoder2, popcount82, NODE_DATA_TYPE_MASK2 = 3221225472, NODE_CHILD_MASK2 = 255, NODE_STRING_INDEX_MASK2 = 16777215, NODE_EXTENDED_DATA_MASK2 = 16777215, RemoteNodeList2, RemoteNode2, NO_STRUCTURED_DATA22 = 4294967295, RemoteSourceFile2, CharacterCodesSlash2 = 47, CharacterCodesBackslash2 = 92, CharacterCodesColon2 = 58, CharacterCodesPercent2 = 37, CharacterCodes32 = 51, CharacterCodesa2 = 97, CharacterCodesz2 = 122, CharacterCodesA2 = 65, CharacterCodesZ2 = 90, CharacterCodesDot2 = 46, directorySeparator2 = "/", altDirectorySeparator2 = "\\", urlSchemeSeparator2 = "://", backslashRegExp2, relativePathSegmentRegExp2, bundledScheme2 = "bundled:///", fsCallbackNames2, MSG_REQUEST2 = 1, MSG_CALL_RESPONSE2 = 2, MSG_CALL_ERROR2 = 3, MSG_RESPONSE2 = 4, MSG_ERROR2 = 5, MSG_CALL2 = 6, sleepBuf2, EMPTY_BUF2, liveChildren2, RECENT_REQUEST_CAPACITY2 = 5, Snapshot2, STALE_AFTER_MS3, MAX_CONTENT_TOKENS_PER_FILE2 = 5000, MAX_CONTENT_FILE_BYTES2, CONTENT_SEARCH_TIME_BUDGET_MS = 1000, CONTENT_DEFAULT_LIMIT = 20, CONTENT_MAX_LIMIT = 50, LANGUAGE_ALIASES, STATIC_CONFIDENCE2 = 1, UNRESOLVED_CONFIDENCE2 = 0.5, UNKNOWN2 = "unknown", RECORD_ID3, MAX_ALIAS_DEPTH2 = 10, SEARCH_RANK2, DEFAULT_RESULT_LIMIT2 = 20, MAX_RESULT_LIMIT2 = 50, MAX_EXPLORED_EDGES2 = 20000, DEFAULT_QUERY_BUDGET_MS2 = 2000, MAX_QUERY_BUDGET_MS2 = 60000, DEFAULT_MAX_DEPTH2 = 5, MAX_DEPTH_LIMIT2 = 10, SUPPORTED_FILE2, KIND_PRIORITY2, CONFIRMED_EVIDENCE_KINDS2, snapshotIndexes2, UNANALYZED_NOTE2, SNAPSHOT_STORE_VERSION = 1, UNATTRIBUTED_SHARD = "__unattributed__", PARSER_RECORD_VERSION = 1, FILE_RECORDS_VERSION = 1, isRecord22 = (value) => typeof value === "object" && value !== null && !Array.isArray(value), isHex64 = (value) => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+var init_code_graph_bundle = __esm(() => {
+  (function(CompletionItemKind) {
+    CompletionItemKind[CompletionItemKind["Text"] = 1] = "Text";
+    CompletionItemKind[CompletionItemKind["Method"] = 2] = "Method";
+    CompletionItemKind[CompletionItemKind["Function"] = 3] = "Function";
+    CompletionItemKind[CompletionItemKind["Constructor"] = 4] = "Constructor";
+    CompletionItemKind[CompletionItemKind["Field"] = 5] = "Field";
+    CompletionItemKind[CompletionItemKind["Variable"] = 6] = "Variable";
+    CompletionItemKind[CompletionItemKind["Class"] = 7] = "Class";
+    CompletionItemKind[CompletionItemKind["Interface"] = 8] = "Interface";
+    CompletionItemKind[CompletionItemKind["Module"] = 9] = "Module";
+    CompletionItemKind[CompletionItemKind["Property"] = 10] = "Property";
+    CompletionItemKind[CompletionItemKind["Unit"] = 11] = "Unit";
+    CompletionItemKind[CompletionItemKind["Value"] = 12] = "Value";
+    CompletionItemKind[CompletionItemKind["Enum"] = 13] = "Enum";
+    CompletionItemKind[CompletionItemKind["Keyword"] = 14] = "Keyword";
+    CompletionItemKind[CompletionItemKind["Snippet"] = 15] = "Snippet";
+    CompletionItemKind[CompletionItemKind["Color"] = 16] = "Color";
+    CompletionItemKind[CompletionItemKind["File"] = 17] = "File";
+    CompletionItemKind[CompletionItemKind["Reference"] = 18] = "Reference";
+    CompletionItemKind[CompletionItemKind["Folder"] = 19] = "Folder";
+    CompletionItemKind[CompletionItemKind["EnumMember"] = 20] = "EnumMember";
+    CompletionItemKind[CompletionItemKind["Constant"] = 21] = "Constant";
+    CompletionItemKind[CompletionItemKind["Struct"] = 22] = "Struct";
+    CompletionItemKind[CompletionItemKind["Event"] = 23] = "Event";
+    CompletionItemKind[CompletionItemKind["Operator"] = 24] = "Operator";
+    CompletionItemKind[CompletionItemKind["TypeParameter"] = 25] = "TypeParameter";
+  })(CompletionItemKind2 || (CompletionItemKind2 = {}));
+  (function(DiagnosticCategory) {
+    DiagnosticCategory[DiagnosticCategory["Warning"] = 0] = "Warning";
+    DiagnosticCategory[DiagnosticCategory["Error"] = 1] = "Error";
+    DiagnosticCategory[DiagnosticCategory["Suggestion"] = 2] = "Suggestion";
+    DiagnosticCategory[DiagnosticCategory["Message"] = 3] = "Message";
+  })(DiagnosticCategory2 || (DiagnosticCategory2 = {}));
+  (function(ElementFlags) {
+    ElementFlags[ElementFlags["None"] = 0] = "None";
+    ElementFlags[ElementFlags["Required"] = 1] = "Required";
+    ElementFlags[ElementFlags["Optional"] = 2] = "Optional";
+    ElementFlags[ElementFlags["Rest"] = 4] = "Rest";
+    ElementFlags[ElementFlags["Variadic"] = 8] = "Variadic";
+    ElementFlags[ElementFlags["Fixed"] = 3] = "Fixed";
+    ElementFlags[ElementFlags["Variable"] = 12] = "Variable";
+    ElementFlags[ElementFlags["NonRequired"] = 14] = "NonRequired";
+    ElementFlags[ElementFlags["NonRest"] = 11] = "NonRest";
+  })(ElementFlags2 || (ElementFlags2 = {}));
+  (function(ModuleKind) {
+    ModuleKind[ModuleKind["None"] = 0] = "None";
+    ModuleKind[ModuleKind["CommonJS"] = 1] = "CommonJS";
+    ModuleKind[ModuleKind["AMD"] = 2] = "AMD";
+    ModuleKind[ModuleKind["UMD"] = 3] = "UMD";
+    ModuleKind[ModuleKind["System"] = 4] = "System";
+    ModuleKind[ModuleKind["ES2015"] = 5] = "ES2015";
+    ModuleKind[ModuleKind["ES2020"] = 6] = "ES2020";
+    ModuleKind[ModuleKind["ES2022"] = 7] = "ES2022";
+    ModuleKind[ModuleKind["ESNext"] = 99] = "ESNext";
+    ModuleKind[ModuleKind["Node16"] = 100] = "Node16";
+    ModuleKind[ModuleKind["Node18"] = 101] = "Node18";
+    ModuleKind[ModuleKind["Node20"] = 102] = "Node20";
+    ModuleKind[ModuleKind["NodeNext"] = 199] = "NodeNext";
+    ModuleKind[ModuleKind["Preserve"] = 200] = "Preserve";
+  })(ModuleKind2 || (ModuleKind2 = {}));
+  (function(NodeBuilderFlags) {
+    NodeBuilderFlags[NodeBuilderFlags["None"] = 0] = "None";
+    NodeBuilderFlags[NodeBuilderFlags["NoTruncation"] = 1] = "NoTruncation";
+    NodeBuilderFlags[NodeBuilderFlags["WriteArrayAsGenericType"] = 2] = "WriteArrayAsGenericType";
+    NodeBuilderFlags[NodeBuilderFlags["GenerateNamesForShadowedTypeParams"] = 4] = "GenerateNamesForShadowedTypeParams";
+    NodeBuilderFlags[NodeBuilderFlags["UseStructuralFallback"] = 8] = "UseStructuralFallback";
+    NodeBuilderFlags[NodeBuilderFlags["ForbidIndexedAccessSymbolReferences"] = 16] = "ForbidIndexedAccessSymbolReferences";
+    NodeBuilderFlags[NodeBuilderFlags["WriteTypeArgumentsOfSignature"] = 32] = "WriteTypeArgumentsOfSignature";
+    NodeBuilderFlags[NodeBuilderFlags["UseFullyQualifiedType"] = 64] = "UseFullyQualifiedType";
+    NodeBuilderFlags[NodeBuilderFlags["UseOnlyExternalAliasing"] = 128] = "UseOnlyExternalAliasing";
+    NodeBuilderFlags[NodeBuilderFlags["SuppressAnyReturnType"] = 256] = "SuppressAnyReturnType";
+    NodeBuilderFlags[NodeBuilderFlags["WriteTypeParametersInQualifiedName"] = 512] = "WriteTypeParametersInQualifiedName";
+    NodeBuilderFlags[NodeBuilderFlags["MultilineObjectLiterals"] = 1024] = "MultilineObjectLiterals";
+    NodeBuilderFlags[NodeBuilderFlags["WriteClassExpressionAsTypeLiteral"] = 2048] = "WriteClassExpressionAsTypeLiteral";
+    NodeBuilderFlags[NodeBuilderFlags["UseTypeOfFunction"] = 4096] = "UseTypeOfFunction";
+    NodeBuilderFlags[NodeBuilderFlags["OmitParameterModifiers"] = 8192] = "OmitParameterModifiers";
+    NodeBuilderFlags[NodeBuilderFlags["UseAliasDefinedOutsideCurrentScope"] = 16384] = "UseAliasDefinedOutsideCurrentScope";
+    NodeBuilderFlags[NodeBuilderFlags["UseSingleQuotesForStringLiteralType"] = 268435456] = "UseSingleQuotesForStringLiteralType";
+    NodeBuilderFlags[NodeBuilderFlags["NoTypeReduction"] = 536870912] = "NoTypeReduction";
+    NodeBuilderFlags[NodeBuilderFlags["UseInstantiationExpressions"] = 1073741824] = "UseInstantiationExpressions";
+    NodeBuilderFlags[NodeBuilderFlags["OmitThisParameter"] = 33554432] = "OmitThisParameter";
+    NodeBuilderFlags[NodeBuilderFlags["WriteCallStyleSignature"] = 134217728] = "WriteCallStyleSignature";
+    NodeBuilderFlags[NodeBuilderFlags["AllowThisInObjectLiteral"] = 32768] = "AllowThisInObjectLiteral";
+    NodeBuilderFlags[NodeBuilderFlags["AllowQualifiedNameInPlaceOfIdentifier"] = 65536] = "AllowQualifiedNameInPlaceOfIdentifier";
+    NodeBuilderFlags[NodeBuilderFlags["AllowAnonymousIdentifier"] = 131072] = "AllowAnonymousIdentifier";
+    NodeBuilderFlags[NodeBuilderFlags["AllowEmptyUnionOrIntersection"] = 262144] = "AllowEmptyUnionOrIntersection";
+    NodeBuilderFlags[NodeBuilderFlags["AllowEmptyTuple"] = 524288] = "AllowEmptyTuple";
+    NodeBuilderFlags[NodeBuilderFlags["AllowUniqueESSymbolType"] = 1048576] = "AllowUniqueESSymbolType";
+    NodeBuilderFlags[NodeBuilderFlags["AllowEmptyIndexInfoType"] = 2097152] = "AllowEmptyIndexInfoType";
+    NodeBuilderFlags[NodeBuilderFlags["AllowNodeModulesRelativePaths"] = 67108864] = "AllowNodeModulesRelativePaths";
+    NodeBuilderFlags[NodeBuilderFlags["IgnoreErrors"] = 70221824] = "IgnoreErrors";
+    NodeBuilderFlags[NodeBuilderFlags["InObjectTypeLiteral"] = 4194304] = "InObjectTypeLiteral";
+    NodeBuilderFlags[NodeBuilderFlags["InTypeAlias"] = 8388608] = "InTypeAlias";
+    NodeBuilderFlags[NodeBuilderFlags["InInitialEntityName"] = 16777216] = "InInitialEntityName";
+  })(NodeBuilderFlags2 || (NodeBuilderFlags2 = {}));
+  (function(ObjectFlags) {
+    ObjectFlags[ObjectFlags["None"] = 0] = "None";
+    ObjectFlags[ObjectFlags["Class"] = 1] = "Class";
+    ObjectFlags[ObjectFlags["Interface"] = 2] = "Interface";
+    ObjectFlags[ObjectFlags["Reference"] = 4] = "Reference";
+    ObjectFlags[ObjectFlags["Tuple"] = 8] = "Tuple";
+    ObjectFlags[ObjectFlags["Anonymous"] = 16] = "Anonymous";
+    ObjectFlags[ObjectFlags["Mapped"] = 32] = "Mapped";
+    ObjectFlags[ObjectFlags["Instantiated"] = 64] = "Instantiated";
+    ObjectFlags[ObjectFlags["ObjectLiteral"] = 128] = "ObjectLiteral";
+    ObjectFlags[ObjectFlags["EvolvingArray"] = 256] = "EvolvingArray";
+    ObjectFlags[ObjectFlags["ObjectLiteralPatternWithComputedProperties"] = 512] = "ObjectLiteralPatternWithComputedProperties";
+    ObjectFlags[ObjectFlags["ReverseMapped"] = 1024] = "ReverseMapped";
+    ObjectFlags[ObjectFlags["JsxAttributes"] = 2048] = "JsxAttributes";
+    ObjectFlags[ObjectFlags["JSLiteral"] = 4096] = "JSLiteral";
+    ObjectFlags[ObjectFlags["FreshLiteral"] = 8192] = "FreshLiteral";
+    ObjectFlags[ObjectFlags["ArrayLiteral"] = 16384] = "ArrayLiteral";
+    ObjectFlags[ObjectFlags["PrimitiveUnion"] = 32768] = "PrimitiveUnion";
+    ObjectFlags[ObjectFlags["ContainsWideningType"] = 65536] = "ContainsWideningType";
+    ObjectFlags[ObjectFlags["ContainsObjectOrArrayLiteral"] = 131072] = "ContainsObjectOrArrayLiteral";
+    ObjectFlags[ObjectFlags["NonInferrableType"] = 262144] = "NonInferrableType";
+    ObjectFlags[ObjectFlags["CouldContainTypeVariablesComputed"] = 524288] = "CouldContainTypeVariablesComputed";
+    ObjectFlags[ObjectFlags["CouldContainTypeVariables"] = 1048576] = "CouldContainTypeVariables";
+    ObjectFlags[ObjectFlags["MembersResolved"] = 2097152] = "MembersResolved";
+    ObjectFlags[ObjectFlags["ClassOrInterface"] = 3] = "ClassOrInterface";
+    ObjectFlags[ObjectFlags["RequiresWidening"] = 196608] = "RequiresWidening";
+    ObjectFlags[ObjectFlags["PropagatingFlags"] = 458752] = "PropagatingFlags";
+    ObjectFlags[ObjectFlags["InstantiatedMapped"] = 96] = "InstantiatedMapped";
+    ObjectFlags[ObjectFlags["InstantiationExpressionType"] = 16777216] = "InstantiationExpressionType";
+    ObjectFlags[ObjectFlags["SingleSignatureType"] = 33554432] = "SingleSignatureType";
+    ObjectFlags[ObjectFlags["ObjectTypeKindMask"] = 50332991] = "ObjectTypeKindMask";
+    ObjectFlags[ObjectFlags["ContainsSpread"] = 4194304] = "ContainsSpread";
+    ObjectFlags[ObjectFlags["ObjectRestType"] = 8388608] = "ObjectRestType";
+    ObjectFlags[ObjectFlags["IsClassInstanceClone"] = 67108864] = "IsClassInstanceClone";
+    ObjectFlags[ObjectFlags["IdenticalBaseTypeCalculated"] = 134217728] = "IdenticalBaseTypeCalculated";
+    ObjectFlags[ObjectFlags["IdenticalBaseTypeExists"] = 268435456] = "IdenticalBaseTypeExists";
+    ObjectFlags[ObjectFlags["UnresolvedMembers"] = 536870912] = "UnresolvedMembers";
+    ObjectFlags[ObjectFlags["FromTypeNode"] = 1073741824] = "FromTypeNode";
+    ObjectFlags[ObjectFlags["IsGenericTypeComputed"] = 4194304] = "IsGenericTypeComputed";
+    ObjectFlags[ObjectFlags["IsGenericObjectType"] = 8388608] = "IsGenericObjectType";
+    ObjectFlags[ObjectFlags["IsGenericIndexType"] = 16777216] = "IsGenericIndexType";
+    ObjectFlags[ObjectFlags["IsGenericType"] = 25165824] = "IsGenericType";
+    ObjectFlags[ObjectFlags["ContainsIntersections"] = 33554432] = "ContainsIntersections";
+    ObjectFlags[ObjectFlags["IsUnknownLikeUnionComputed"] = 67108864] = "IsUnknownLikeUnionComputed";
+    ObjectFlags[ObjectFlags["IsUnknownLikeUnion"] = 134217728] = "IsUnknownLikeUnion";
+    ObjectFlags[ObjectFlags["IsNeverIntersectionComputed"] = 33554432] = "IsNeverIntersectionComputed";
+    ObjectFlags[ObjectFlags["IsNeverIntersection"] = 67108864] = "IsNeverIntersection";
+    ObjectFlags[ObjectFlags["IsConstrainedTypeVariable"] = 134217728] = "IsConstrainedTypeVariable";
+  })(ObjectFlags2 || (ObjectFlags2 = {}));
+  (function(SignatureFlags) {
+    SignatureFlags[SignatureFlags["None"] = 0] = "None";
+    SignatureFlags[SignatureFlags["HasRestParameter"] = 1] = "HasRestParameter";
+    SignatureFlags[SignatureFlags["HasLiteralTypes"] = 2] = "HasLiteralTypes";
+    SignatureFlags[SignatureFlags["Construct"] = 4] = "Construct";
+    SignatureFlags[SignatureFlags["Abstract"] = 8] = "Abstract";
+    SignatureFlags[SignatureFlags["IsInnerCallChain"] = 16] = "IsInnerCallChain";
+    SignatureFlags[SignatureFlags["IsOuterCallChain"] = 32] = "IsOuterCallChain";
+    SignatureFlags[SignatureFlags["IsUntypedSignatureInJSFile"] = 64] = "IsUntypedSignatureInJSFile";
+    SignatureFlags[SignatureFlags["IsNonInferrable"] = 128] = "IsNonInferrable";
+    SignatureFlags[SignatureFlags["IsSignatureCandidateForOverloadFailure"] = 256] = "IsSignatureCandidateForOverloadFailure";
+    SignatureFlags[SignatureFlags["PropagatingFlags"] = 335] = "PropagatingFlags";
+    SignatureFlags[SignatureFlags["CallChainFlags"] = 48] = "CallChainFlags";
+  })(SignatureFlags2 || (SignatureFlags2 = {}));
+  (function(SignatureKind) {
+    SignatureKind[SignatureKind["Call"] = 0] = "Call";
+    SignatureKind[SignatureKind["Construct"] = 1] = "Construct";
+  })(SignatureKind2 || (SignatureKind2 = {}));
+  (function(SymbolFlags) {
+    SymbolFlags[SymbolFlags["None"] = 0] = "None";
+    SymbolFlags[SymbolFlags["FunctionScopedVariable"] = 1] = "FunctionScopedVariable";
+    SymbolFlags[SymbolFlags["BlockScopedVariable"] = 2] = "BlockScopedVariable";
+    SymbolFlags[SymbolFlags["Property"] = 4] = "Property";
+    SymbolFlags[SymbolFlags["EnumMember"] = 8] = "EnumMember";
+    SymbolFlags[SymbolFlags["Function"] = 16] = "Function";
+    SymbolFlags[SymbolFlags["Class"] = 32] = "Class";
+    SymbolFlags[SymbolFlags["Interface"] = 64] = "Interface";
+    SymbolFlags[SymbolFlags["ConstEnum"] = 128] = "ConstEnum";
+    SymbolFlags[SymbolFlags["RegularEnum"] = 256] = "RegularEnum";
+    SymbolFlags[SymbolFlags["ValueModule"] = 512] = "ValueModule";
+    SymbolFlags[SymbolFlags["NamespaceModule"] = 1024] = "NamespaceModule";
+    SymbolFlags[SymbolFlags["TypeLiteral"] = 2048] = "TypeLiteral";
+    SymbolFlags[SymbolFlags["ObjectLiteral"] = 4096] = "ObjectLiteral";
+    SymbolFlags[SymbolFlags["Method"] = 8192] = "Method";
+    SymbolFlags[SymbolFlags["Constructor"] = 16384] = "Constructor";
+    SymbolFlags[SymbolFlags["GetAccessor"] = 32768] = "GetAccessor";
+    SymbolFlags[SymbolFlags["SetAccessor"] = 65536] = "SetAccessor";
+    SymbolFlags[SymbolFlags["Signature"] = 131072] = "Signature";
+    SymbolFlags[SymbolFlags["TypeParameter"] = 262144] = "TypeParameter";
+    SymbolFlags[SymbolFlags["TypeAlias"] = 524288] = "TypeAlias";
+    SymbolFlags[SymbolFlags["ExportValue"] = 1048576] = "ExportValue";
+    SymbolFlags[SymbolFlags["Alias"] = 2097152] = "Alias";
+    SymbolFlags[SymbolFlags["Prototype"] = 4194304] = "Prototype";
+    SymbolFlags[SymbolFlags["ExportStar"] = 8388608] = "ExportStar";
+    SymbolFlags[SymbolFlags["Optional"] = 16777216] = "Optional";
+    SymbolFlags[SymbolFlags["Transient"] = 33554432] = "Transient";
+    SymbolFlags[SymbolFlags["Assignment"] = 67108864] = "Assignment";
+    SymbolFlags[SymbolFlags["ModuleExports"] = 134217728] = "ModuleExports";
+    SymbolFlags[SymbolFlags["ConstEnumOnlyModule"] = 268435456] = "ConstEnumOnlyModule";
+    SymbolFlags[SymbolFlags["ReplaceableByMethod"] = 536870912] = "ReplaceableByMethod";
+    SymbolFlags[SymbolFlags["GlobalLookup"] = 1073741824] = "GlobalLookup";
+    SymbolFlags[SymbolFlags["All"] = 536870912] = "All";
+    SymbolFlags[SymbolFlags["Enum"] = 384] = "Enum";
+    SymbolFlags[SymbolFlags["Variable"] = 3] = "Variable";
+    SymbolFlags[SymbolFlags["Value"] = 111551] = "Value";
+    SymbolFlags[SymbolFlags["Type"] = 788968] = "Type";
+    SymbolFlags[SymbolFlags["Namespace"] = 1920] = "Namespace";
+    SymbolFlags[SymbolFlags["Module"] = 1536] = "Module";
+    SymbolFlags[SymbolFlags["Accessor"] = 98304] = "Accessor";
+    SymbolFlags[SymbolFlags["FunctionScopedVariableExcludes"] = 111550] = "FunctionScopedVariableExcludes";
+    SymbolFlags[SymbolFlags["BlockScopedVariableExcludes"] = 111551] = "BlockScopedVariableExcludes";
+    SymbolFlags[SymbolFlags["ParameterExcludes"] = 111551] = "ParameterExcludes";
+    SymbolFlags[SymbolFlags["PropertyExcludes"] = 13243] = "PropertyExcludes";
+    SymbolFlags[SymbolFlags["EnumMemberExcludes"] = 900095] = "EnumMemberExcludes";
+    SymbolFlags[SymbolFlags["FunctionExcludes"] = 110991] = "FunctionExcludes";
+    SymbolFlags[SymbolFlags["ClassExcludes"] = 899503] = "ClassExcludes";
+    SymbolFlags[SymbolFlags["InterfaceExcludes"] = 788872] = "InterfaceExcludes";
+    SymbolFlags[SymbolFlags["RegularEnumExcludes"] = 899327] = "RegularEnumExcludes";
+    SymbolFlags[SymbolFlags["ConstEnumExcludes"] = 899967] = "ConstEnumExcludes";
+    SymbolFlags[SymbolFlags["ValueModuleExcludes"] = 110735] = "ValueModuleExcludes";
+    SymbolFlags[SymbolFlags["NamespaceModuleExcludes"] = 0] = "NamespaceModuleExcludes";
+    SymbolFlags[SymbolFlags["MethodExcludes"] = 103359] = "MethodExcludes";
+    SymbolFlags[SymbolFlags["GetAccessorExcludes"] = 46011] = "GetAccessorExcludes";
+    SymbolFlags[SymbolFlags["SetAccessorExcludes"] = 78779] = "SetAccessorExcludes";
+    SymbolFlags[SymbolFlags["AccessorExcludes"] = 111547] = "AccessorExcludes";
+    SymbolFlags[SymbolFlags["TypeParameterExcludes"] = 526824] = "TypeParameterExcludes";
+    SymbolFlags[SymbolFlags["TypeAliasExcludes"] = 788968] = "TypeAliasExcludes";
+    SymbolFlags[SymbolFlags["AliasExcludes"] = 2097152] = "AliasExcludes";
+    SymbolFlags[SymbolFlags["ModuleMember"] = 2623475] = "ModuleMember";
+    SymbolFlags[SymbolFlags["ExportHasLocal"] = 944] = "ExportHasLocal";
+    SymbolFlags[SymbolFlags["BlockScoped"] = 418] = "BlockScoped";
+    SymbolFlags[SymbolFlags["PropertyOrAccessor"] = 98308] = "PropertyOrAccessor";
+    SymbolFlags[SymbolFlags["ClassMember"] = 106500] = "ClassMember";
+    SymbolFlags[SymbolFlags["ExportSupportsDefaultModifier"] = 112] = "ExportSupportsDefaultModifier";
+    SymbolFlags[SymbolFlags["ExportDoesNotSupportDefaultModifier"] = -113] = "ExportDoesNotSupportDefaultModifier";
+    SymbolFlags[SymbolFlags["Classifiable"] = 2885600] = "Classifiable";
+    SymbolFlags[SymbolFlags["LateBindingContainer"] = 6256] = "LateBindingContainer";
+  })(SymbolFlags2 || (SymbolFlags2 = {}));
+  (function(TypeFlags) {
+    TypeFlags[TypeFlags["None"] = 0] = "None";
+    TypeFlags[TypeFlags["Any"] = 1] = "Any";
+    TypeFlags[TypeFlags["Unknown"] = 2] = "Unknown";
+    TypeFlags[TypeFlags["Undefined"] = 4] = "Undefined";
+    TypeFlags[TypeFlags["Null"] = 8] = "Null";
+    TypeFlags[TypeFlags["Void"] = 16] = "Void";
+    TypeFlags[TypeFlags["String"] = 32] = "String";
+    TypeFlags[TypeFlags["Number"] = 64] = "Number";
+    TypeFlags[TypeFlags["BigInt"] = 128] = "BigInt";
+    TypeFlags[TypeFlags["Boolean"] = 256] = "Boolean";
+    TypeFlags[TypeFlags["ESSymbol"] = 512] = "ESSymbol";
+    TypeFlags[TypeFlags["StringLiteral"] = 1024] = "StringLiteral";
+    TypeFlags[TypeFlags["NumberLiteral"] = 2048] = "NumberLiteral";
+    TypeFlags[TypeFlags["BigIntLiteral"] = 4096] = "BigIntLiteral";
+    TypeFlags[TypeFlags["BooleanLiteral"] = 8192] = "BooleanLiteral";
+    TypeFlags[TypeFlags["UniqueESSymbol"] = 16384] = "UniqueESSymbol";
+    TypeFlags[TypeFlags["EnumLiteral"] = 32768] = "EnumLiteral";
+    TypeFlags[TypeFlags["Enum"] = 65536] = "Enum";
+    TypeFlags[TypeFlags["NonPrimitive"] = 131072] = "NonPrimitive";
+    TypeFlags[TypeFlags["Never"] = 262144] = "Never";
+    TypeFlags[TypeFlags["TypeParameter"] = 524288] = "TypeParameter";
+    TypeFlags[TypeFlags["Object"] = 1048576] = "Object";
+    TypeFlags[TypeFlags["Index"] = 2097152] = "Index";
+    TypeFlags[TypeFlags["TemplateLiteral"] = 4194304] = "TemplateLiteral";
+    TypeFlags[TypeFlags["StringMapping"] = 8388608] = "StringMapping";
+    TypeFlags[TypeFlags["Substitution"] = 16777216] = "Substitution";
+    TypeFlags[TypeFlags["IndexedAccess"] = 33554432] = "IndexedAccess";
+    TypeFlags[TypeFlags["Conditional"] = 67108864] = "Conditional";
+    TypeFlags[TypeFlags["Union"] = 134217728] = "Union";
+    TypeFlags[TypeFlags["Intersection"] = 268435456] = "Intersection";
+    TypeFlags[TypeFlags["Reserved1"] = 536870912] = "Reserved1";
+    TypeFlags[TypeFlags["Reserved2"] = 1073741824] = "Reserved2";
+    TypeFlags[TypeFlags["Reserved3"] = -2147483648] = "Reserved3";
+    TypeFlags[TypeFlags["AnyOrUnknown"] = 3] = "AnyOrUnknown";
+    TypeFlags[TypeFlags["Nullable"] = 12] = "Nullable";
+    TypeFlags[TypeFlags["Literal"] = 15360] = "Literal";
+    TypeFlags[TypeFlags["Unit"] = 97292] = "Unit";
+    TypeFlags[TypeFlags["Freshable"] = 80896] = "Freshable";
+    TypeFlags[TypeFlags["StringOrNumberLiteral"] = 3072] = "StringOrNumberLiteral";
+    TypeFlags[TypeFlags["StringOrNumberLiteralOrUnique"] = 19456] = "StringOrNumberLiteralOrUnique";
+    TypeFlags[TypeFlags["DefinitelyFalsy"] = 15388] = "DefinitelyFalsy";
+    TypeFlags[TypeFlags["PossiblyFalsy"] = 15868] = "PossiblyFalsy";
+    TypeFlags[TypeFlags["Intrinsic"] = 393983] = "Intrinsic";
+    TypeFlags[TypeFlags["StringLike"] = 12583968] = "StringLike";
+    TypeFlags[TypeFlags["NumberLike"] = 67648] = "NumberLike";
+    TypeFlags[TypeFlags["BigIntLike"] = 4224] = "BigIntLike";
+    TypeFlags[TypeFlags["BooleanLike"] = 8448] = "BooleanLike";
+    TypeFlags[TypeFlags["EnumLike"] = 98304] = "EnumLike";
+    TypeFlags[TypeFlags["ESSymbolLike"] = 16896] = "ESSymbolLike";
+    TypeFlags[TypeFlags["VoidLike"] = 20] = "VoidLike";
+    TypeFlags[TypeFlags["Primitive"] = 12713980] = "Primitive";
+    TypeFlags[TypeFlags["DefinitelyNonNullable"] = 13893600] = "DefinitelyNonNullable";
+    TypeFlags[TypeFlags["DisjointDomains"] = 12812284] = "DisjointDomains";
+    TypeFlags[TypeFlags["UnionOrIntersection"] = 402653184] = "UnionOrIntersection";
+    TypeFlags[TypeFlags["StructuredType"] = 403701760] = "StructuredType";
+    TypeFlags[TypeFlags["TypeVariable"] = 34078720] = "TypeVariable";
+    TypeFlags[TypeFlags["InstantiableNonPrimitive"] = 117964800] = "InstantiableNonPrimitive";
+    TypeFlags[TypeFlags["InstantiablePrimitive"] = 14680064] = "InstantiablePrimitive";
+    TypeFlags[TypeFlags["Instantiable"] = 132644864] = "Instantiable";
+    TypeFlags[TypeFlags["StructuredOrInstantiable"] = 536346624] = "StructuredOrInstantiable";
+    TypeFlags[TypeFlags["ObjectFlagsType"] = 403963917] = "ObjectFlagsType";
+    TypeFlags[TypeFlags["Simplifiable"] = 102760448] = "Simplifiable";
+    TypeFlags[TypeFlags["Singleton"] = 394239] = "Singleton";
+    TypeFlags[TypeFlags["Narrowable"] = 536575971] = "Narrowable";
+    TypeFlags[TypeFlags["IncludesMask"] = 416808959] = "IncludesMask";
+    TypeFlags[TypeFlags["IncludesMissingType"] = 524288] = "IncludesMissingType";
+    TypeFlags[TypeFlags["IncludesNonWideningType"] = 2097152] = "IncludesNonWideningType";
+    TypeFlags[TypeFlags["IncludesWildcard"] = 33554432] = "IncludesWildcard";
+    TypeFlags[TypeFlags["IncludesEmptyObject"] = 67108864] = "IncludesEmptyObject";
+    TypeFlags[TypeFlags["IncludesInstantiable"] = 16777216] = "IncludesInstantiable";
+    TypeFlags[TypeFlags["IncludesConstrainedTypeVariable"] = 536870912] = "IncludesConstrainedTypeVariable";
+    TypeFlags[TypeFlags["IncludesError"] = 1073741824] = "IncludesError";
+    TypeFlags[TypeFlags["NotPrimitiveUnion"] = 286523411] = "NotPrimitiveUnion";
+  })(TypeFlags2 || (TypeFlags2 = {}));
+  (function(TypePredicateKind) {
+    TypePredicateKind[TypePredicateKind["This"] = 0] = "This";
+    TypePredicateKind[TypePredicateKind["Identifier"] = 1] = "Identifier";
+    TypePredicateKind[TypePredicateKind["AssertsThis"] = 2] = "AssertsThis";
+    TypePredicateKind[TypePredicateKind["AssertsIdentifier"] = 3] = "AssertsIdentifier";
+  })(TypePredicateKind2 || (TypePredicateKind2 = {}));
+  (function(CharacterCodes) {
+    CharacterCodes[CharacterCodes["EOF"] = -1] = "EOF";
+    CharacterCodes[CharacterCodes["nullCharacter"] = 0] = "nullCharacter";
+    CharacterCodes[CharacterCodes["maxAsciiCharacter"] = 127] = "maxAsciiCharacter";
+    CharacterCodes[CharacterCodes["lineFeed"] = 10] = "lineFeed";
+    CharacterCodes[CharacterCodes["carriageReturn"] = 13] = "carriageReturn";
+    CharacterCodes[CharacterCodes["lineSeparator"] = 8232] = "lineSeparator";
+    CharacterCodes[CharacterCodes["paragraphSeparator"] = 8233] = "paragraphSeparator";
+    CharacterCodes[CharacterCodes["nextLine"] = 133] = "nextLine";
+    CharacterCodes[CharacterCodes["space"] = 32] = "space";
+    CharacterCodes[CharacterCodes["nonBreakingSpace"] = 160] = "nonBreakingSpace";
+    CharacterCodes[CharacterCodes["enQuad"] = 8192] = "enQuad";
+    CharacterCodes[CharacterCodes["emQuad"] = 8193] = "emQuad";
+    CharacterCodes[CharacterCodes["enSpace"] = 8194] = "enSpace";
+    CharacterCodes[CharacterCodes["emSpace"] = 8195] = "emSpace";
+    CharacterCodes[CharacterCodes["threePerEmSpace"] = 8196] = "threePerEmSpace";
+    CharacterCodes[CharacterCodes["fourPerEmSpace"] = 8197] = "fourPerEmSpace";
+    CharacterCodes[CharacterCodes["sixPerEmSpace"] = 8198] = "sixPerEmSpace";
+    CharacterCodes[CharacterCodes["figureSpace"] = 8199] = "figureSpace";
+    CharacterCodes[CharacterCodes["punctuationSpace"] = 8200] = "punctuationSpace";
+    CharacterCodes[CharacterCodes["thinSpace"] = 8201] = "thinSpace";
+    CharacterCodes[CharacterCodes["hairSpace"] = 8202] = "hairSpace";
+    CharacterCodes[CharacterCodes["zeroWidthSpace"] = 8203] = "zeroWidthSpace";
+    CharacterCodes[CharacterCodes["narrowNoBreakSpace"] = 8239] = "narrowNoBreakSpace";
+    CharacterCodes[CharacterCodes["ideographicSpace"] = 12288] = "ideographicSpace";
+    CharacterCodes[CharacterCodes["mathematicalSpace"] = 8287] = "mathematicalSpace";
+    CharacterCodes[CharacterCodes["ogham"] = 5765] = "ogham";
+    CharacterCodes[CharacterCodes["replacementCharacter"] = 65533] = "replacementCharacter";
+    CharacterCodes[CharacterCodes["_"] = 95] = "_";
+    CharacterCodes[CharacterCodes["$"] = 36] = "$";
+    CharacterCodes[CharacterCodes["_0"] = 48] = "_0";
+    CharacterCodes[CharacterCodes["_1"] = 49] = "_1";
+    CharacterCodes[CharacterCodes["_2"] = 50] = "_2";
+    CharacterCodes[CharacterCodes["_3"] = 51] = "_3";
+    CharacterCodes[CharacterCodes["_4"] = 52] = "_4";
+    CharacterCodes[CharacterCodes["_5"] = 53] = "_5";
+    CharacterCodes[CharacterCodes["_6"] = 54] = "_6";
+    CharacterCodes[CharacterCodes["_7"] = 55] = "_7";
+    CharacterCodes[CharacterCodes["_8"] = 56] = "_8";
+    CharacterCodes[CharacterCodes["_9"] = 57] = "_9";
+    CharacterCodes[CharacterCodes["a"] = 97] = "a";
+    CharacterCodes[CharacterCodes["b"] = 98] = "b";
+    CharacterCodes[CharacterCodes["c"] = 99] = "c";
+    CharacterCodes[CharacterCodes["d"] = 100] = "d";
+    CharacterCodes[CharacterCodes["e"] = 101] = "e";
+    CharacterCodes[CharacterCodes["f"] = 102] = "f";
+    CharacterCodes[CharacterCodes["g"] = 103] = "g";
+    CharacterCodes[CharacterCodes["h"] = 104] = "h";
+    CharacterCodes[CharacterCodes["i"] = 105] = "i";
+    CharacterCodes[CharacterCodes["j"] = 106] = "j";
+    CharacterCodes[CharacterCodes["k"] = 107] = "k";
+    CharacterCodes[CharacterCodes["l"] = 108] = "l";
+    CharacterCodes[CharacterCodes["m"] = 109] = "m";
+    CharacterCodes[CharacterCodes["n"] = 110] = "n";
+    CharacterCodes[CharacterCodes["o"] = 111] = "o";
+    CharacterCodes[CharacterCodes["p"] = 112] = "p";
+    CharacterCodes[CharacterCodes["q"] = 113] = "q";
+    CharacterCodes[CharacterCodes["r"] = 114] = "r";
+    CharacterCodes[CharacterCodes["s"] = 115] = "s";
+    CharacterCodes[CharacterCodes["t"] = 116] = "t";
+    CharacterCodes[CharacterCodes["u"] = 117] = "u";
+    CharacterCodes[CharacterCodes["v"] = 118] = "v";
+    CharacterCodes[CharacterCodes["w"] = 119] = "w";
+    CharacterCodes[CharacterCodes["x"] = 120] = "x";
+    CharacterCodes[CharacterCodes["y"] = 121] = "y";
+    CharacterCodes[CharacterCodes["z"] = 122] = "z";
+    CharacterCodes[CharacterCodes["A"] = 65] = "A";
+    CharacterCodes[CharacterCodes["B"] = 66] = "B";
+    CharacterCodes[CharacterCodes["C"] = 67] = "C";
+    CharacterCodes[CharacterCodes["D"] = 68] = "D";
+    CharacterCodes[CharacterCodes["E"] = 69] = "E";
+    CharacterCodes[CharacterCodes["F"] = 70] = "F";
+    CharacterCodes[CharacterCodes["G"] = 71] = "G";
+    CharacterCodes[CharacterCodes["H"] = 72] = "H";
+    CharacterCodes[CharacterCodes["I"] = 73] = "I";
+    CharacterCodes[CharacterCodes["J"] = 74] = "J";
+    CharacterCodes[CharacterCodes["K"] = 75] = "K";
+    CharacterCodes[CharacterCodes["L"] = 76] = "L";
+    CharacterCodes[CharacterCodes["M"] = 77] = "M";
+    CharacterCodes[CharacterCodes["N"] = 78] = "N";
+    CharacterCodes[CharacterCodes["O"] = 79] = "O";
+    CharacterCodes[CharacterCodes["P"] = 80] = "P";
+    CharacterCodes[CharacterCodes["Q"] = 81] = "Q";
+    CharacterCodes[CharacterCodes["R"] = 82] = "R";
+    CharacterCodes[CharacterCodes["S"] = 83] = "S";
+    CharacterCodes[CharacterCodes["T"] = 84] = "T";
+    CharacterCodes[CharacterCodes["U"] = 85] = "U";
+    CharacterCodes[CharacterCodes["V"] = 86] = "V";
+    CharacterCodes[CharacterCodes["W"] = 87] = "W";
+    CharacterCodes[CharacterCodes["X"] = 88] = "X";
+    CharacterCodes[CharacterCodes["Y"] = 89] = "Y";
+    CharacterCodes[CharacterCodes["Z"] = 90] = "Z";
+    CharacterCodes[CharacterCodes["ampersand"] = 38] = "ampersand";
+    CharacterCodes[CharacterCodes["asterisk"] = 42] = "asterisk";
+    CharacterCodes[CharacterCodes["at"] = 64] = "at";
+    CharacterCodes[CharacterCodes["backslash"] = 92] = "backslash";
+    CharacterCodes[CharacterCodes["backtick"] = 96] = "backtick";
+    CharacterCodes[CharacterCodes["bar"] = 124] = "bar";
+    CharacterCodes[CharacterCodes["caret"] = 94] = "caret";
+    CharacterCodes[CharacterCodes["closeBrace"] = 125] = "closeBrace";
+    CharacterCodes[CharacterCodes["closeBracket"] = 93] = "closeBracket";
+    CharacterCodes[CharacterCodes["closeParen"] = 41] = "closeParen";
+    CharacterCodes[CharacterCodes["colon"] = 58] = "colon";
+    CharacterCodes[CharacterCodes["comma"] = 44] = "comma";
+    CharacterCodes[CharacterCodes["dot"] = 46] = "dot";
+    CharacterCodes[CharacterCodes["doubleQuote"] = 34] = "doubleQuote";
+    CharacterCodes[CharacterCodes["equals"] = 61] = "equals";
+    CharacterCodes[CharacterCodes["exclamation"] = 33] = "exclamation";
+    CharacterCodes[CharacterCodes["greaterThan"] = 62] = "greaterThan";
+    CharacterCodes[CharacterCodes["hash"] = 35] = "hash";
+    CharacterCodes[CharacterCodes["lessThan"] = 60] = "lessThan";
+    CharacterCodes[CharacterCodes["minus"] = 45] = "minus";
+    CharacterCodes[CharacterCodes["openBrace"] = 123] = "openBrace";
+    CharacterCodes[CharacterCodes["openBracket"] = 91] = "openBracket";
+    CharacterCodes[CharacterCodes["openParen"] = 40] = "openParen";
+    CharacterCodes[CharacterCodes["percent"] = 37] = "percent";
+    CharacterCodes[CharacterCodes["plus"] = 43] = "plus";
+    CharacterCodes[CharacterCodes["question"] = 63] = "question";
+    CharacterCodes[CharacterCodes["semicolon"] = 59] = "semicolon";
+    CharacterCodes[CharacterCodes["singleQuote"] = 39] = "singleQuote";
+    CharacterCodes[CharacterCodes["slash"] = 47] = "slash";
+    CharacterCodes[CharacterCodes["tilde"] = 126] = "tilde";
+    CharacterCodes[CharacterCodes["backspace"] = 8] = "backspace";
+    CharacterCodes[CharacterCodes["formFeed"] = 12] = "formFeed";
+    CharacterCodes[CharacterCodes["byteOrderMark"] = 65279] = "byteOrderMark";
+    CharacterCodes[CharacterCodes["tab"] = 9] = "tab";
+    CharacterCodes[CharacterCodes["verticalTab"] = 11] = "verticalTab";
+  })(CharacterCodes4 || (CharacterCodes4 = {}));
+  (function(CommentDirectiveType) {
+    CommentDirectiveType[CommentDirectiveType["ExpectError"] = 0] = "ExpectError";
+    CommentDirectiveType[CommentDirectiveType["Ignore"] = 1] = "Ignore";
+  })(CommentDirectiveType2 || (CommentDirectiveType2 = {}));
+  (function(InternalSymbolName) {
+    InternalSymbolName["Call"] = "__call";
+    InternalSymbolName["Constructor"] = "__constructor";
+    InternalSymbolName["New"] = "__new";
+    InternalSymbolName["Index"] = "__index";
+    InternalSymbolName["ExportStar"] = "__export";
+    InternalSymbolName["Global"] = "__global";
+    InternalSymbolName["Missing"] = "__missing";
+    InternalSymbolName["Type"] = "__type";
+    InternalSymbolName["Object"] = "__object";
+    InternalSymbolName["JSXAttributes"] = "__jsxAttributes";
+    InternalSymbolName["Class"] = "__class";
+    InternalSymbolName["Function"] = "__function";
+    InternalSymbolName["Computed"] = "__computed";
+    InternalSymbolName["AssignmentDeclaration"] = "__assignment";
+    InternalSymbolName["InstantiationExpression"] = "__instantiationExpression";
+    InternalSymbolName["ImportAttributes"] = "__importAttributes";
+    InternalSymbolName["ExportEquals"] = "export=";
+    InternalSymbolName["Default"] = "default";
+    InternalSymbolName["This"] = "this";
+    InternalSymbolName["ModuleExports"] = "module.exports";
+  })(InternalSymbolName2 || (InternalSymbolName2 = {}));
+  (function(LanguageVariant) {
+    LanguageVariant[LanguageVariant["Standard"] = 0] = "Standard";
+    LanguageVariant[LanguageVariant["JSX"] = 1] = "JSX";
+  })(LanguageVariant2 || (LanguageVariant2 = {}));
+  (function(ModifierFlags) {
+    ModifierFlags[ModifierFlags["None"] = 0] = "None";
+    ModifierFlags[ModifierFlags["Public"] = 1] = "Public";
+    ModifierFlags[ModifierFlags["Private"] = 2] = "Private";
+    ModifierFlags[ModifierFlags["Protected"] = 4] = "Protected";
+    ModifierFlags[ModifierFlags["Readonly"] = 8] = "Readonly";
+    ModifierFlags[ModifierFlags["Override"] = 16] = "Override";
+    ModifierFlags[ModifierFlags["Export"] = 32] = "Export";
+    ModifierFlags[ModifierFlags["Abstract"] = 64] = "Abstract";
+    ModifierFlags[ModifierFlags["Ambient"] = 128] = "Ambient";
+    ModifierFlags[ModifierFlags["Static"] = 256] = "Static";
+    ModifierFlags[ModifierFlags["Accessor"] = 512] = "Accessor";
+    ModifierFlags[ModifierFlags["Async"] = 1024] = "Async";
+    ModifierFlags[ModifierFlags["Default"] = 2048] = "Default";
+    ModifierFlags[ModifierFlags["Const"] = 4096] = "Const";
+    ModifierFlags[ModifierFlags["In"] = 8192] = "In";
+    ModifierFlags[ModifierFlags["Out"] = 16384] = "Out";
+    ModifierFlags[ModifierFlags["Decorator"] = 32768] = "Decorator";
+    ModifierFlags[ModifierFlags["Deprecated"] = 65536] = "Deprecated";
+    ModifierFlags[ModifierFlags["JSDocPublic"] = 8388608] = "JSDocPublic";
+    ModifierFlags[ModifierFlags["JSDocPrivate"] = 16777216] = "JSDocPrivate";
+    ModifierFlags[ModifierFlags["JSDocProtected"] = 33554432] = "JSDocProtected";
+    ModifierFlags[ModifierFlags["JSDocReadonly"] = 67108864] = "JSDocReadonly";
+    ModifierFlags[ModifierFlags["JSDocOverride"] = 134217728] = "JSDocOverride";
+    ModifierFlags[ModifierFlags["HasComputedJSDocModifiers"] = 268435456] = "HasComputedJSDocModifiers";
+    ModifierFlags[ModifierFlags["HasComputedFlags"] = 536870912] = "HasComputedFlags";
+    ModifierFlags[ModifierFlags["SyntacticOrJSDocModifiers"] = 31] = "SyntacticOrJSDocModifiers";
+    ModifierFlags[ModifierFlags["SyntacticOnlyModifiers"] = 65504] = "SyntacticOnlyModifiers";
+    ModifierFlags[ModifierFlags["SyntacticModifiers"] = 65535] = "SyntacticModifiers";
+    ModifierFlags[ModifierFlags["JSDocCacheOnlyModifiers"] = 260046848] = "JSDocCacheOnlyModifiers";
+    ModifierFlags[ModifierFlags["JSDocOnlyModifiers"] = 65536] = "JSDocOnlyModifiers";
+    ModifierFlags[ModifierFlags["NonCacheOnlyModifiers"] = 131071] = "NonCacheOnlyModifiers";
+    ModifierFlags[ModifierFlags["AccessibilityModifier"] = 7] = "AccessibilityModifier";
+    ModifierFlags[ModifierFlags["ParameterPropertyModifier"] = 31] = "ParameterPropertyModifier";
+    ModifierFlags[ModifierFlags["NonPublicAccessibilityModifier"] = 6] = "NonPublicAccessibilityModifier";
+    ModifierFlags[ModifierFlags["TypeScriptModifier"] = 28895] = "TypeScriptModifier";
+    ModifierFlags[ModifierFlags["ExportDefault"] = 2080] = "ExportDefault";
+    ModifierFlags[ModifierFlags["All"] = 131071] = "All";
+    ModifierFlags[ModifierFlags["Modifier"] = 98303] = "Modifier";
+    ModifierFlags[ModifierFlags["JavaScript"] = 3872] = "JavaScript";
+  })(ModifierFlags2 || (ModifierFlags2 = {}));
+  (function(NodeFlags) {
+    NodeFlags[NodeFlags["None"] = 0] = "None";
+    NodeFlags[NodeFlags["Let"] = 1] = "Let";
+    NodeFlags[NodeFlags["Const"] = 2] = "Const";
+    NodeFlags[NodeFlags["Using"] = 4] = "Using";
+    NodeFlags[NodeFlags["Reparsed"] = 8] = "Reparsed";
+    NodeFlags[NodeFlags["Synthesized"] = 16] = "Synthesized";
+    NodeFlags[NodeFlags["OptionalChain"] = 32] = "OptionalChain";
+    NodeFlags[NodeFlags["ExportContext"] = 64] = "ExportContext";
+    NodeFlags[NodeFlags["ContainsThis"] = 128] = "ContainsThis";
+    NodeFlags[NodeFlags["HasImplicitReturn"] = 256] = "HasImplicitReturn";
+    NodeFlags[NodeFlags["HasExplicitReturn"] = 512] = "HasExplicitReturn";
+    NodeFlags[NodeFlags["DisallowInContext"] = 1024] = "DisallowInContext";
+    NodeFlags[NodeFlags["YieldContext"] = 2048] = "YieldContext";
+    NodeFlags[NodeFlags["DecoratorContext"] = 4096] = "DecoratorContext";
+    NodeFlags[NodeFlags["AwaitContext"] = 8192] = "AwaitContext";
+    NodeFlags[NodeFlags["DisallowConditionalTypesContext"] = 16384] = "DisallowConditionalTypesContext";
+    NodeFlags[NodeFlags["ThisNodeHasError"] = 32768] = "ThisNodeHasError";
+    NodeFlags[NodeFlags["JavaScriptFile"] = 65536] = "JavaScriptFile";
+    NodeFlags[NodeFlags["ThisNodeOrAnySubNodesHasError"] = 131072] = "ThisNodeOrAnySubNodesHasError";
+    NodeFlags[NodeFlags["HasAsyncFunctions"] = 262144] = "HasAsyncFunctions";
+    NodeFlags[NodeFlags["PossiblyContainsDynamicImport"] = 524288] = "PossiblyContainsDynamicImport";
+    NodeFlags[NodeFlags["PossiblyContainsImportMeta"] = 1048576] = "PossiblyContainsImportMeta";
+    NodeFlags[NodeFlags["HasJSDoc"] = 2097152] = "HasJSDoc";
+    NodeFlags[NodeFlags["JSDoc"] = 4194304] = "JSDoc";
+    NodeFlags[NodeFlags["Ambient"] = 8388608] = "Ambient";
+    NodeFlags[NodeFlags["InWithStatement"] = 16777216] = "InWithStatement";
+    NodeFlags[NodeFlags["JsonFile"] = 33554432] = "JsonFile";
+    NodeFlags[NodeFlags["PossiblyContainsDeprecatedTag"] = 67108864] = "PossiblyContainsDeprecatedTag";
+    NodeFlags[NodeFlags["Unreachable"] = 134217728] = "Unreachable";
+    NodeFlags[NodeFlags["ReparserTransformedLiteral"] = 268435456] = "ReparserTransformedLiteral";
+    NodeFlags[NodeFlags["BlockScoped"] = 7] = "BlockScoped";
+    NodeFlags[NodeFlags["Constant"] = 6] = "Constant";
+    NodeFlags[NodeFlags["AwaitUsing"] = 6] = "AwaitUsing";
+    NodeFlags[NodeFlags["ReachabilityCheckFlags"] = 768] = "ReachabilityCheckFlags";
+    NodeFlags[NodeFlags["ReachabilityAndEmitFlags"] = 262912] = "ReachabilityAndEmitFlags";
+    NodeFlags[NodeFlags["ContextFlags"] = 25263104] = "ContextFlags";
+    NodeFlags[NodeFlags["TypeExcludesFlags"] = 10240] = "TypeExcludesFlags";
+    NodeFlags[NodeFlags["PermanentlySetIncrementalFlags"] = 1572864] = "PermanentlySetIncrementalFlags";
+    NodeFlags[NodeFlags["IdentifierHasExtendedUnicodeEscape"] = 128] = "IdentifierHasExtendedUnicodeEscape";
+    NodeFlags[NodeFlags["IdentifierIsInJSDocNamespace"] = 262144] = "IdentifierIsInJSDocNamespace";
+    NodeFlags[NodeFlags["NestedNamespace"] = 32] = "NestedNamespace";
+  })(NodeFlags2 || (NodeFlags2 = {}));
+  (function(RegularExpressionFlags) {
+    RegularExpressionFlags[RegularExpressionFlags["None"] = 0] = "None";
+    RegularExpressionFlags[RegularExpressionFlags["HasIndices"] = 1] = "HasIndices";
+    RegularExpressionFlags[RegularExpressionFlags["Global"] = 2] = "Global";
+    RegularExpressionFlags[RegularExpressionFlags["IgnoreCase"] = 4] = "IgnoreCase";
+    RegularExpressionFlags[RegularExpressionFlags["Multiline"] = 8] = "Multiline";
+    RegularExpressionFlags[RegularExpressionFlags["DotAll"] = 16] = "DotAll";
+    RegularExpressionFlags[RegularExpressionFlags["Unicode"] = 32] = "Unicode";
+    RegularExpressionFlags[RegularExpressionFlags["UnicodeSets"] = 64] = "UnicodeSets";
+    RegularExpressionFlags[RegularExpressionFlags["Sticky"] = 128] = "Sticky";
+    RegularExpressionFlags[RegularExpressionFlags["AnyUnicodeMode"] = 96] = "AnyUnicodeMode";
+  })(RegularExpressionFlags2 || (RegularExpressionFlags2 = {}));
+  (function(ScriptKind) {
+    ScriptKind[ScriptKind["Unknown"] = 0] = "Unknown";
+    ScriptKind[ScriptKind["JS"] = 1] = "JS";
+    ScriptKind[ScriptKind["JSX"] = 2] = "JSX";
+    ScriptKind[ScriptKind["TS"] = 3] = "TS";
+    ScriptKind[ScriptKind["TSX"] = 4] = "TSX";
+    ScriptKind[ScriptKind["External"] = 5] = "External";
+    ScriptKind[ScriptKind["JSON"] = 6] = "JSON";
+    ScriptKind[ScriptKind["Deferred"] = 7] = "Deferred";
+  })(ScriptKind2 || (ScriptKind2 = {}));
+  (function(ScriptTarget) {
+    ScriptTarget[ScriptTarget["ES2015"] = 2] = "ES2015";
+    ScriptTarget[ScriptTarget["ES2016"] = 3] = "ES2016";
+    ScriptTarget[ScriptTarget["ES2017"] = 4] = "ES2017";
+    ScriptTarget[ScriptTarget["ES2018"] = 5] = "ES2018";
+    ScriptTarget[ScriptTarget["ES2019"] = 6] = "ES2019";
+    ScriptTarget[ScriptTarget["ES2020"] = 7] = "ES2020";
+    ScriptTarget[ScriptTarget["ES2021"] = 8] = "ES2021";
+    ScriptTarget[ScriptTarget["ES2022"] = 9] = "ES2022";
+    ScriptTarget[ScriptTarget["ES2023"] = 10] = "ES2023";
+    ScriptTarget[ScriptTarget["ES2024"] = 11] = "ES2024";
+    ScriptTarget[ScriptTarget["ES2025"] = 12] = "ES2025";
+    ScriptTarget[ScriptTarget["ESNext"] = 99] = "ESNext";
+    ScriptTarget[ScriptTarget["JSON"] = 100] = "JSON";
+    ScriptTarget[ScriptTarget["Latest"] = 99] = "Latest";
+  })(ScriptTarget2 || (ScriptTarget2 = {}));
+  (function(SyntaxKind) {
+    SyntaxKind[SyntaxKind["Unknown"] = 0] = "Unknown";
+    SyntaxKind[SyntaxKind["EndOfFile"] = 1] = "EndOfFile";
+    SyntaxKind[SyntaxKind["SingleLineCommentTrivia"] = 2] = "SingleLineCommentTrivia";
+    SyntaxKind[SyntaxKind["MultiLineCommentTrivia"] = 3] = "MultiLineCommentTrivia";
+    SyntaxKind[SyntaxKind["NewLineTrivia"] = 4] = "NewLineTrivia";
+    SyntaxKind[SyntaxKind["WhitespaceTrivia"] = 5] = "WhitespaceTrivia";
+    SyntaxKind[SyntaxKind["ConflictMarkerTrivia"] = 6] = "ConflictMarkerTrivia";
+    SyntaxKind[SyntaxKind["NonTextFileMarkerTrivia"] = 7] = "NonTextFileMarkerTrivia";
+    SyntaxKind[SyntaxKind["NumericLiteral"] = 8] = "NumericLiteral";
+    SyntaxKind[SyntaxKind["BigIntLiteral"] = 9] = "BigIntLiteral";
+    SyntaxKind[SyntaxKind["StringLiteral"] = 10] = "StringLiteral";
+    SyntaxKind[SyntaxKind["JsxText"] = 11] = "JsxText";
+    SyntaxKind[SyntaxKind["JsxTextAllWhiteSpaces"] = 12] = "JsxTextAllWhiteSpaces";
+    SyntaxKind[SyntaxKind["RegularExpressionLiteral"] = 13] = "RegularExpressionLiteral";
+    SyntaxKind[SyntaxKind["NoSubstitutionTemplateLiteral"] = 14] = "NoSubstitutionTemplateLiteral";
+    SyntaxKind[SyntaxKind["TemplateHead"] = 15] = "TemplateHead";
+    SyntaxKind[SyntaxKind["TemplateMiddle"] = 16] = "TemplateMiddle";
+    SyntaxKind[SyntaxKind["TemplateTail"] = 17] = "TemplateTail";
+    SyntaxKind[SyntaxKind["OpenBraceToken"] = 18] = "OpenBraceToken";
+    SyntaxKind[SyntaxKind["CloseBraceToken"] = 19] = "CloseBraceToken";
+    SyntaxKind[SyntaxKind["OpenParenToken"] = 20] = "OpenParenToken";
+    SyntaxKind[SyntaxKind["CloseParenToken"] = 21] = "CloseParenToken";
+    SyntaxKind[SyntaxKind["OpenBracketToken"] = 22] = "OpenBracketToken";
+    SyntaxKind[SyntaxKind["CloseBracketToken"] = 23] = "CloseBracketToken";
+    SyntaxKind[SyntaxKind["DotToken"] = 24] = "DotToken";
+    SyntaxKind[SyntaxKind["DotDotDotToken"] = 25] = "DotDotDotToken";
+    SyntaxKind[SyntaxKind["SemicolonToken"] = 26] = "SemicolonToken";
+    SyntaxKind[SyntaxKind["CommaToken"] = 27] = "CommaToken";
+    SyntaxKind[SyntaxKind["QuestionDotToken"] = 28] = "QuestionDotToken";
+    SyntaxKind[SyntaxKind["LessThanToken"] = 29] = "LessThanToken";
+    SyntaxKind[SyntaxKind["LessThanSlashToken"] = 30] = "LessThanSlashToken";
+    SyntaxKind[SyntaxKind["GreaterThanToken"] = 31] = "GreaterThanToken";
+    SyntaxKind[SyntaxKind["LessThanEqualsToken"] = 32] = "LessThanEqualsToken";
+    SyntaxKind[SyntaxKind["GreaterThanEqualsToken"] = 33] = "GreaterThanEqualsToken";
+    SyntaxKind[SyntaxKind["EqualsEqualsToken"] = 34] = "EqualsEqualsToken";
+    SyntaxKind[SyntaxKind["ExclamationEqualsToken"] = 35] = "ExclamationEqualsToken";
+    SyntaxKind[SyntaxKind["EqualsEqualsEqualsToken"] = 36] = "EqualsEqualsEqualsToken";
+    SyntaxKind[SyntaxKind["ExclamationEqualsEqualsToken"] = 37] = "ExclamationEqualsEqualsToken";
+    SyntaxKind[SyntaxKind["EqualsGreaterThanToken"] = 38] = "EqualsGreaterThanToken";
+    SyntaxKind[SyntaxKind["PlusToken"] = 39] = "PlusToken";
+    SyntaxKind[SyntaxKind["MinusToken"] = 40] = "MinusToken";
+    SyntaxKind[SyntaxKind["AsteriskToken"] = 41] = "AsteriskToken";
+    SyntaxKind[SyntaxKind["AsteriskAsteriskToken"] = 42] = "AsteriskAsteriskToken";
+    SyntaxKind[SyntaxKind["SlashToken"] = 43] = "SlashToken";
+    SyntaxKind[SyntaxKind["PercentToken"] = 44] = "PercentToken";
+    SyntaxKind[SyntaxKind["PlusPlusToken"] = 45] = "PlusPlusToken";
+    SyntaxKind[SyntaxKind["MinusMinusToken"] = 46] = "MinusMinusToken";
+    SyntaxKind[SyntaxKind["LessThanLessThanToken"] = 47] = "LessThanLessThanToken";
+    SyntaxKind[SyntaxKind["GreaterThanGreaterThanToken"] = 48] = "GreaterThanGreaterThanToken";
+    SyntaxKind[SyntaxKind["GreaterThanGreaterThanGreaterThanToken"] = 49] = "GreaterThanGreaterThanGreaterThanToken";
+    SyntaxKind[SyntaxKind["AmpersandToken"] = 50] = "AmpersandToken";
+    SyntaxKind[SyntaxKind["BarToken"] = 51] = "BarToken";
+    SyntaxKind[SyntaxKind["CaretToken"] = 52] = "CaretToken";
+    SyntaxKind[SyntaxKind["ExclamationToken"] = 53] = "ExclamationToken";
+    SyntaxKind[SyntaxKind["TildeToken"] = 54] = "TildeToken";
+    SyntaxKind[SyntaxKind["AmpersandAmpersandToken"] = 55] = "AmpersandAmpersandToken";
+    SyntaxKind[SyntaxKind["BarBarToken"] = 56] = "BarBarToken";
+    SyntaxKind[SyntaxKind["QuestionToken"] = 57] = "QuestionToken";
+    SyntaxKind[SyntaxKind["ColonToken"] = 58] = "ColonToken";
+    SyntaxKind[SyntaxKind["AtToken"] = 59] = "AtToken";
+    SyntaxKind[SyntaxKind["QuestionQuestionToken"] = 60] = "QuestionQuestionToken";
+    SyntaxKind[SyntaxKind["BacktickToken"] = 61] = "BacktickToken";
+    SyntaxKind[SyntaxKind["HashToken"] = 62] = "HashToken";
+    SyntaxKind[SyntaxKind["EqualsToken"] = 63] = "EqualsToken";
+    SyntaxKind[SyntaxKind["PlusEqualsToken"] = 64] = "PlusEqualsToken";
+    SyntaxKind[SyntaxKind["MinusEqualsToken"] = 65] = "MinusEqualsToken";
+    SyntaxKind[SyntaxKind["AsteriskEqualsToken"] = 66] = "AsteriskEqualsToken";
+    SyntaxKind[SyntaxKind["AsteriskAsteriskEqualsToken"] = 67] = "AsteriskAsteriskEqualsToken";
+    SyntaxKind[SyntaxKind["SlashEqualsToken"] = 68] = "SlashEqualsToken";
+    SyntaxKind[SyntaxKind["PercentEqualsToken"] = 69] = "PercentEqualsToken";
+    SyntaxKind[SyntaxKind["LessThanLessThanEqualsToken"] = 70] = "LessThanLessThanEqualsToken";
+    SyntaxKind[SyntaxKind["GreaterThanGreaterThanEqualsToken"] = 71] = "GreaterThanGreaterThanEqualsToken";
+    SyntaxKind[SyntaxKind["GreaterThanGreaterThanGreaterThanEqualsToken"] = 72] = "GreaterThanGreaterThanGreaterThanEqualsToken";
+    SyntaxKind[SyntaxKind["AmpersandEqualsToken"] = 73] = "AmpersandEqualsToken";
+    SyntaxKind[SyntaxKind["BarEqualsToken"] = 74] = "BarEqualsToken";
+    SyntaxKind[SyntaxKind["BarBarEqualsToken"] = 75] = "BarBarEqualsToken";
+    SyntaxKind[SyntaxKind["AmpersandAmpersandEqualsToken"] = 76] = "AmpersandAmpersandEqualsToken";
+    SyntaxKind[SyntaxKind["QuestionQuestionEqualsToken"] = 77] = "QuestionQuestionEqualsToken";
+    SyntaxKind[SyntaxKind["CaretEqualsToken"] = 78] = "CaretEqualsToken";
+    SyntaxKind[SyntaxKind["Identifier"] = 79] = "Identifier";
+    SyntaxKind[SyntaxKind["PrivateIdentifier"] = 80] = "PrivateIdentifier";
+    SyntaxKind[SyntaxKind["JSDocCommentTextToken"] = 81] = "JSDocCommentTextToken";
+    SyntaxKind[SyntaxKind["BreakKeyword"] = 82] = "BreakKeyword";
+    SyntaxKind[SyntaxKind["CaseKeyword"] = 83] = "CaseKeyword";
+    SyntaxKind[SyntaxKind["CatchKeyword"] = 84] = "CatchKeyword";
+    SyntaxKind[SyntaxKind["ClassKeyword"] = 85] = "ClassKeyword";
+    SyntaxKind[SyntaxKind["ConstKeyword"] = 86] = "ConstKeyword";
+    SyntaxKind[SyntaxKind["ContinueKeyword"] = 87] = "ContinueKeyword";
+    SyntaxKind[SyntaxKind["DebuggerKeyword"] = 88] = "DebuggerKeyword";
+    SyntaxKind[SyntaxKind["DefaultKeyword"] = 89] = "DefaultKeyword";
+    SyntaxKind[SyntaxKind["DeleteKeyword"] = 90] = "DeleteKeyword";
+    SyntaxKind[SyntaxKind["DoKeyword"] = 91] = "DoKeyword";
+    SyntaxKind[SyntaxKind["ElseKeyword"] = 92] = "ElseKeyword";
+    SyntaxKind[SyntaxKind["EnumKeyword"] = 93] = "EnumKeyword";
+    SyntaxKind[SyntaxKind["ExportKeyword"] = 94] = "ExportKeyword";
+    SyntaxKind[SyntaxKind["ExtendsKeyword"] = 95] = "ExtendsKeyword";
+    SyntaxKind[SyntaxKind["FalseKeyword"] = 96] = "FalseKeyword";
+    SyntaxKind[SyntaxKind["FinallyKeyword"] = 97] = "FinallyKeyword";
+    SyntaxKind[SyntaxKind["ForKeyword"] = 98] = "ForKeyword";
+    SyntaxKind[SyntaxKind["FunctionKeyword"] = 99] = "FunctionKeyword";
+    SyntaxKind[SyntaxKind["IfKeyword"] = 100] = "IfKeyword";
+    SyntaxKind[SyntaxKind["ImportKeyword"] = 101] = "ImportKeyword";
+    SyntaxKind[SyntaxKind["InKeyword"] = 102] = "InKeyword";
+    SyntaxKind[SyntaxKind["InstanceOfKeyword"] = 103] = "InstanceOfKeyword";
+    SyntaxKind[SyntaxKind["NewKeyword"] = 104] = "NewKeyword";
+    SyntaxKind[SyntaxKind["NullKeyword"] = 105] = "NullKeyword";
+    SyntaxKind[SyntaxKind["ReturnKeyword"] = 106] = "ReturnKeyword";
+    SyntaxKind[SyntaxKind["SuperKeyword"] = 107] = "SuperKeyword";
+    SyntaxKind[SyntaxKind["SwitchKeyword"] = 108] = "SwitchKeyword";
+    SyntaxKind[SyntaxKind["ThisKeyword"] = 109] = "ThisKeyword";
+    SyntaxKind[SyntaxKind["ThrowKeyword"] = 110] = "ThrowKeyword";
+    SyntaxKind[SyntaxKind["TrueKeyword"] = 111] = "TrueKeyword";
+    SyntaxKind[SyntaxKind["TryKeyword"] = 112] = "TryKeyword";
+    SyntaxKind[SyntaxKind["TypeOfKeyword"] = 113] = "TypeOfKeyword";
+    SyntaxKind[SyntaxKind["VarKeyword"] = 114] = "VarKeyword";
+    SyntaxKind[SyntaxKind["VoidKeyword"] = 115] = "VoidKeyword";
+    SyntaxKind[SyntaxKind["WhileKeyword"] = 116] = "WhileKeyword";
+    SyntaxKind[SyntaxKind["WithKeyword"] = 117] = "WithKeyword";
+    SyntaxKind[SyntaxKind["ImplementsKeyword"] = 118] = "ImplementsKeyword";
+    SyntaxKind[SyntaxKind["InterfaceKeyword"] = 119] = "InterfaceKeyword";
+    SyntaxKind[SyntaxKind["LetKeyword"] = 120] = "LetKeyword";
+    SyntaxKind[SyntaxKind["PackageKeyword"] = 121] = "PackageKeyword";
+    SyntaxKind[SyntaxKind["PrivateKeyword"] = 122] = "PrivateKeyword";
+    SyntaxKind[SyntaxKind["ProtectedKeyword"] = 123] = "ProtectedKeyword";
+    SyntaxKind[SyntaxKind["PublicKeyword"] = 124] = "PublicKeyword";
+    SyntaxKind[SyntaxKind["StaticKeyword"] = 125] = "StaticKeyword";
+    SyntaxKind[SyntaxKind["YieldKeyword"] = 126] = "YieldKeyword";
+    SyntaxKind[SyntaxKind["AbstractKeyword"] = 127] = "AbstractKeyword";
+    SyntaxKind[SyntaxKind["AccessorKeyword"] = 128] = "AccessorKeyword";
+    SyntaxKind[SyntaxKind["AsKeyword"] = 129] = "AsKeyword";
+    SyntaxKind[SyntaxKind["AssertsKeyword"] = 130] = "AssertsKeyword";
+    SyntaxKind[SyntaxKind["AssertKeyword"] = 131] = "AssertKeyword";
+    SyntaxKind[SyntaxKind["AnyKeyword"] = 132] = "AnyKeyword";
+    SyntaxKind[SyntaxKind["AsyncKeyword"] = 133] = "AsyncKeyword";
+    SyntaxKind[SyntaxKind["AwaitKeyword"] = 134] = "AwaitKeyword";
+    SyntaxKind[SyntaxKind["BooleanKeyword"] = 135] = "BooleanKeyword";
+    SyntaxKind[SyntaxKind["ConstructorKeyword"] = 136] = "ConstructorKeyword";
+    SyntaxKind[SyntaxKind["DeclareKeyword"] = 137] = "DeclareKeyword";
+    SyntaxKind[SyntaxKind["GetKeyword"] = 138] = "GetKeyword";
+    SyntaxKind[SyntaxKind["ImmediateKeyword"] = 139] = "ImmediateKeyword";
+    SyntaxKind[SyntaxKind["InferKeyword"] = 140] = "InferKeyword";
+    SyntaxKind[SyntaxKind["IntrinsicKeyword"] = 141] = "IntrinsicKeyword";
+    SyntaxKind[SyntaxKind["IsKeyword"] = 142] = "IsKeyword";
+    SyntaxKind[SyntaxKind["KeyOfKeyword"] = 143] = "KeyOfKeyword";
+    SyntaxKind[SyntaxKind["ModuleKeyword"] = 144] = "ModuleKeyword";
+    SyntaxKind[SyntaxKind["NamespaceKeyword"] = 145] = "NamespaceKeyword";
+    SyntaxKind[SyntaxKind["NeverKeyword"] = 146] = "NeverKeyword";
+    SyntaxKind[SyntaxKind["OutKeyword"] = 147] = "OutKeyword";
+    SyntaxKind[SyntaxKind["ReadonlyKeyword"] = 148] = "ReadonlyKeyword";
+    SyntaxKind[SyntaxKind["RequireKeyword"] = 149] = "RequireKeyword";
+    SyntaxKind[SyntaxKind["NumberKeyword"] = 150] = "NumberKeyword";
+    SyntaxKind[SyntaxKind["ObjectKeyword"] = 151] = "ObjectKeyword";
+    SyntaxKind[SyntaxKind["SatisfiesKeyword"] = 152] = "SatisfiesKeyword";
+    SyntaxKind[SyntaxKind["SetKeyword"] = 153] = "SetKeyword";
+    SyntaxKind[SyntaxKind["StringKeyword"] = 154] = "StringKeyword";
+    SyntaxKind[SyntaxKind["SymbolKeyword"] = 155] = "SymbolKeyword";
+    SyntaxKind[SyntaxKind["TypeKeyword"] = 156] = "TypeKeyword";
+    SyntaxKind[SyntaxKind["UndefinedKeyword"] = 157] = "UndefinedKeyword";
+    SyntaxKind[SyntaxKind["UniqueKeyword"] = 158] = "UniqueKeyword";
+    SyntaxKind[SyntaxKind["UnknownKeyword"] = 159] = "UnknownKeyword";
+    SyntaxKind[SyntaxKind["UsingKeyword"] = 160] = "UsingKeyword";
+    SyntaxKind[SyntaxKind["FromKeyword"] = 161] = "FromKeyword";
+    SyntaxKind[SyntaxKind["GlobalKeyword"] = 162] = "GlobalKeyword";
+    SyntaxKind[SyntaxKind["BigIntKeyword"] = 163] = "BigIntKeyword";
+    SyntaxKind[SyntaxKind["OverrideKeyword"] = 164] = "OverrideKeyword";
+    SyntaxKind[SyntaxKind["OfKeyword"] = 165] = "OfKeyword";
+    SyntaxKind[SyntaxKind["DeferKeyword"] = 166] = "DeferKeyword";
+    SyntaxKind[SyntaxKind["QualifiedName"] = 167] = "QualifiedName";
+    SyntaxKind[SyntaxKind["ComputedPropertyName"] = 168] = "ComputedPropertyName";
+    SyntaxKind[SyntaxKind["TypeParameter"] = 169] = "TypeParameter";
+    SyntaxKind[SyntaxKind["Parameter"] = 170] = "Parameter";
+    SyntaxKind[SyntaxKind["Decorator"] = 171] = "Decorator";
+    SyntaxKind[SyntaxKind["PropertySignature"] = 172] = "PropertySignature";
+    SyntaxKind[SyntaxKind["PropertyDeclaration"] = 173] = "PropertyDeclaration";
+    SyntaxKind[SyntaxKind["MethodSignature"] = 174] = "MethodSignature";
+    SyntaxKind[SyntaxKind["MethodDeclaration"] = 175] = "MethodDeclaration";
+    SyntaxKind[SyntaxKind["ClassStaticBlockDeclaration"] = 176] = "ClassStaticBlockDeclaration";
+    SyntaxKind[SyntaxKind["Constructor"] = 177] = "Constructor";
+    SyntaxKind[SyntaxKind["GetAccessor"] = 178] = "GetAccessor";
+    SyntaxKind[SyntaxKind["SetAccessor"] = 179] = "SetAccessor";
+    SyntaxKind[SyntaxKind["CallSignature"] = 180] = "CallSignature";
+    SyntaxKind[SyntaxKind["ConstructSignature"] = 181] = "ConstructSignature";
+    SyntaxKind[SyntaxKind["IndexSignature"] = 182] = "IndexSignature";
+    SyntaxKind[SyntaxKind["TypePredicate"] = 183] = "TypePredicate";
+    SyntaxKind[SyntaxKind["TypeReference"] = 184] = "TypeReference";
+    SyntaxKind[SyntaxKind["FunctionType"] = 185] = "FunctionType";
+    SyntaxKind[SyntaxKind["ConstructorType"] = 186] = "ConstructorType";
+    SyntaxKind[SyntaxKind["TypeQuery"] = 187] = "TypeQuery";
+    SyntaxKind[SyntaxKind["TypeLiteral"] = 188] = "TypeLiteral";
+    SyntaxKind[SyntaxKind["ArrayType"] = 189] = "ArrayType";
+    SyntaxKind[SyntaxKind["TupleType"] = 190] = "TupleType";
+    SyntaxKind[SyntaxKind["OptionalType"] = 191] = "OptionalType";
+    SyntaxKind[SyntaxKind["RestType"] = 192] = "RestType";
+    SyntaxKind[SyntaxKind["UnionType"] = 193] = "UnionType";
+    SyntaxKind[SyntaxKind["IntersectionType"] = 194] = "IntersectionType";
+    SyntaxKind[SyntaxKind["ConditionalType"] = 195] = "ConditionalType";
+    SyntaxKind[SyntaxKind["InferType"] = 196] = "InferType";
+    SyntaxKind[SyntaxKind["ParenthesizedType"] = 197] = "ParenthesizedType";
+    SyntaxKind[SyntaxKind["ThisType"] = 198] = "ThisType";
+    SyntaxKind[SyntaxKind["TypeOperator"] = 199] = "TypeOperator";
+    SyntaxKind[SyntaxKind["IndexedAccessType"] = 200] = "IndexedAccessType";
+    SyntaxKind[SyntaxKind["MappedType"] = 201] = "MappedType";
+    SyntaxKind[SyntaxKind["LiteralType"] = 202] = "LiteralType";
+    SyntaxKind[SyntaxKind["NamedTupleMember"] = 203] = "NamedTupleMember";
+    SyntaxKind[SyntaxKind["TemplateLiteralType"] = 204] = "TemplateLiteralType";
+    SyntaxKind[SyntaxKind["TemplateLiteralTypeSpan"] = 205] = "TemplateLiteralTypeSpan";
+    SyntaxKind[SyntaxKind["ImportType"] = 206] = "ImportType";
+    SyntaxKind[SyntaxKind["ObjectBindingPattern"] = 207] = "ObjectBindingPattern";
+    SyntaxKind[SyntaxKind["ArrayBindingPattern"] = 208] = "ArrayBindingPattern";
+    SyntaxKind[SyntaxKind["BindingElement"] = 209] = "BindingElement";
+    SyntaxKind[SyntaxKind["ArrayLiteralExpression"] = 210] = "ArrayLiteralExpression";
+    SyntaxKind[SyntaxKind["ObjectLiteralExpression"] = 211] = "ObjectLiteralExpression";
+    SyntaxKind[SyntaxKind["PropertyAccessExpression"] = 212] = "PropertyAccessExpression";
+    SyntaxKind[SyntaxKind["ElementAccessExpression"] = 213] = "ElementAccessExpression";
+    SyntaxKind[SyntaxKind["CallExpression"] = 214] = "CallExpression";
+    SyntaxKind[SyntaxKind["NewExpression"] = 215] = "NewExpression";
+    SyntaxKind[SyntaxKind["TaggedTemplateExpression"] = 216] = "TaggedTemplateExpression";
+    SyntaxKind[SyntaxKind["TypeAssertionExpression"] = 217] = "TypeAssertionExpression";
+    SyntaxKind[SyntaxKind["ParenthesizedExpression"] = 218] = "ParenthesizedExpression";
+    SyntaxKind[SyntaxKind["FunctionExpression"] = 219] = "FunctionExpression";
+    SyntaxKind[SyntaxKind["ArrowFunction"] = 220] = "ArrowFunction";
+    SyntaxKind[SyntaxKind["DeleteExpression"] = 221] = "DeleteExpression";
+    SyntaxKind[SyntaxKind["TypeOfExpression"] = 222] = "TypeOfExpression";
+    SyntaxKind[SyntaxKind["VoidExpression"] = 223] = "VoidExpression";
+    SyntaxKind[SyntaxKind["AwaitExpression"] = 224] = "AwaitExpression";
+    SyntaxKind[SyntaxKind["PrefixUnaryExpression"] = 225] = "PrefixUnaryExpression";
+    SyntaxKind[SyntaxKind["PostfixUnaryExpression"] = 226] = "PostfixUnaryExpression";
+    SyntaxKind[SyntaxKind["BinaryExpression"] = 227] = "BinaryExpression";
+    SyntaxKind[SyntaxKind["ConditionalExpression"] = 228] = "ConditionalExpression";
+    SyntaxKind[SyntaxKind["TemplateExpression"] = 229] = "TemplateExpression";
+    SyntaxKind[SyntaxKind["YieldExpression"] = 230] = "YieldExpression";
+    SyntaxKind[SyntaxKind["SpreadElement"] = 231] = "SpreadElement";
+    SyntaxKind[SyntaxKind["ClassExpression"] = 232] = "ClassExpression";
+    SyntaxKind[SyntaxKind["OmittedExpression"] = 233] = "OmittedExpression";
+    SyntaxKind[SyntaxKind["ExpressionWithTypeArguments"] = 234] = "ExpressionWithTypeArguments";
+    SyntaxKind[SyntaxKind["AsExpression"] = 235] = "AsExpression";
+    SyntaxKind[SyntaxKind["NonNullExpression"] = 236] = "NonNullExpression";
+    SyntaxKind[SyntaxKind["MetaProperty"] = 237] = "MetaProperty";
+    SyntaxKind[SyntaxKind["SyntheticExpression"] = 238] = "SyntheticExpression";
+    SyntaxKind[SyntaxKind["SatisfiesExpression"] = 239] = "SatisfiesExpression";
+    SyntaxKind[SyntaxKind["TemplateSpan"] = 240] = "TemplateSpan";
+    SyntaxKind[SyntaxKind["SemicolonClassElement"] = 241] = "SemicolonClassElement";
+    SyntaxKind[SyntaxKind["Block"] = 242] = "Block";
+    SyntaxKind[SyntaxKind["EmptyStatement"] = 243] = "EmptyStatement";
+    SyntaxKind[SyntaxKind["VariableStatement"] = 244] = "VariableStatement";
+    SyntaxKind[SyntaxKind["ExpressionStatement"] = 245] = "ExpressionStatement";
+    SyntaxKind[SyntaxKind["IfStatement"] = 246] = "IfStatement";
+    SyntaxKind[SyntaxKind["DoStatement"] = 247] = "DoStatement";
+    SyntaxKind[SyntaxKind["WhileStatement"] = 248] = "WhileStatement";
+    SyntaxKind[SyntaxKind["ForStatement"] = 249] = "ForStatement";
+    SyntaxKind[SyntaxKind["ForInStatement"] = 250] = "ForInStatement";
+    SyntaxKind[SyntaxKind["ForOfStatement"] = 251] = "ForOfStatement";
+    SyntaxKind[SyntaxKind["ContinueStatement"] = 252] = "ContinueStatement";
+    SyntaxKind[SyntaxKind["BreakStatement"] = 253] = "BreakStatement";
+    SyntaxKind[SyntaxKind["ReturnStatement"] = 254] = "ReturnStatement";
+    SyntaxKind[SyntaxKind["WithStatement"] = 255] = "WithStatement";
+    SyntaxKind[SyntaxKind["SwitchStatement"] = 256] = "SwitchStatement";
+    SyntaxKind[SyntaxKind["LabeledStatement"] = 257] = "LabeledStatement";
+    SyntaxKind[SyntaxKind["ThrowStatement"] = 258] = "ThrowStatement";
+    SyntaxKind[SyntaxKind["TryStatement"] = 259] = "TryStatement";
+    SyntaxKind[SyntaxKind["DebuggerStatement"] = 260] = "DebuggerStatement";
+    SyntaxKind[SyntaxKind["VariableDeclaration"] = 261] = "VariableDeclaration";
+    SyntaxKind[SyntaxKind["VariableDeclarationList"] = 262] = "VariableDeclarationList";
+    SyntaxKind[SyntaxKind["FunctionDeclaration"] = 263] = "FunctionDeclaration";
+    SyntaxKind[SyntaxKind["ClassDeclaration"] = 264] = "ClassDeclaration";
+    SyntaxKind[SyntaxKind["InterfaceDeclaration"] = 265] = "InterfaceDeclaration";
+    SyntaxKind[SyntaxKind["TypeAliasDeclaration"] = 266] = "TypeAliasDeclaration";
+    SyntaxKind[SyntaxKind["EnumDeclaration"] = 267] = "EnumDeclaration";
+    SyntaxKind[SyntaxKind["ModuleDeclaration"] = 268] = "ModuleDeclaration";
+    SyntaxKind[SyntaxKind["ModuleBlock"] = 269] = "ModuleBlock";
+    SyntaxKind[SyntaxKind["CaseBlock"] = 270] = "CaseBlock";
+    SyntaxKind[SyntaxKind["NamespaceExportDeclaration"] = 271] = "NamespaceExportDeclaration";
+    SyntaxKind[SyntaxKind["ImportEqualsDeclaration"] = 272] = "ImportEqualsDeclaration";
+    SyntaxKind[SyntaxKind["ImportDeclaration"] = 273] = "ImportDeclaration";
+    SyntaxKind[SyntaxKind["ImportClause"] = 274] = "ImportClause";
+    SyntaxKind[SyntaxKind["NamespaceImport"] = 275] = "NamespaceImport";
+    SyntaxKind[SyntaxKind["NamedImports"] = 276] = "NamedImports";
+    SyntaxKind[SyntaxKind["ImportSpecifier"] = 277] = "ImportSpecifier";
+    SyntaxKind[SyntaxKind["ExportAssignment"] = 278] = "ExportAssignment";
+    SyntaxKind[SyntaxKind["ExportDeclaration"] = 279] = "ExportDeclaration";
+    SyntaxKind[SyntaxKind["NamedExports"] = 280] = "NamedExports";
+    SyntaxKind[SyntaxKind["NamespaceExport"] = 281] = "NamespaceExport";
+    SyntaxKind[SyntaxKind["ExportSpecifier"] = 282] = "ExportSpecifier";
+    SyntaxKind[SyntaxKind["MissingDeclaration"] = 283] = "MissingDeclaration";
+    SyntaxKind[SyntaxKind["ExternalModuleReference"] = 284] = "ExternalModuleReference";
+    SyntaxKind[SyntaxKind["JsxElement"] = 285] = "JsxElement";
+    SyntaxKind[SyntaxKind["JsxSelfClosingElement"] = 286] = "JsxSelfClosingElement";
+    SyntaxKind[SyntaxKind["JsxOpeningElement"] = 287] = "JsxOpeningElement";
+    SyntaxKind[SyntaxKind["JsxClosingElement"] = 288] = "JsxClosingElement";
+    SyntaxKind[SyntaxKind["JsxFragment"] = 289] = "JsxFragment";
+    SyntaxKind[SyntaxKind["JsxOpeningFragment"] = 290] = "JsxOpeningFragment";
+    SyntaxKind[SyntaxKind["JsxClosingFragment"] = 291] = "JsxClosingFragment";
+    SyntaxKind[SyntaxKind["JsxAttribute"] = 292] = "JsxAttribute";
+    SyntaxKind[SyntaxKind["JsxAttributes"] = 293] = "JsxAttributes";
+    SyntaxKind[SyntaxKind["JsxSpreadAttribute"] = 294] = "JsxSpreadAttribute";
+    SyntaxKind[SyntaxKind["JsxExpression"] = 295] = "JsxExpression";
+    SyntaxKind[SyntaxKind["JsxNamespacedName"] = 296] = "JsxNamespacedName";
+    SyntaxKind[SyntaxKind["CaseClause"] = 297] = "CaseClause";
+    SyntaxKind[SyntaxKind["DefaultClause"] = 298] = "DefaultClause";
+    SyntaxKind[SyntaxKind["HeritageClause"] = 299] = "HeritageClause";
+    SyntaxKind[SyntaxKind["CatchClause"] = 300] = "CatchClause";
+    SyntaxKind[SyntaxKind["ImportAttributes"] = 301] = "ImportAttributes";
+    SyntaxKind[SyntaxKind["ImportAttribute"] = 302] = "ImportAttribute";
+    SyntaxKind[SyntaxKind["PropertyAssignment"] = 303] = "PropertyAssignment";
+    SyntaxKind[SyntaxKind["ShorthandPropertyAssignment"] = 304] = "ShorthandPropertyAssignment";
+    SyntaxKind[SyntaxKind["SpreadAssignment"] = 305] = "SpreadAssignment";
+    SyntaxKind[SyntaxKind["EnumMember"] = 306] = "EnumMember";
+    SyntaxKind[SyntaxKind["SourceFile"] = 307] = "SourceFile";
+    SyntaxKind[SyntaxKind["JSDocTypeExpression"] = 308] = "JSDocTypeExpression";
+    SyntaxKind[SyntaxKind["JSDocNameReference"] = 309] = "JSDocNameReference";
+    SyntaxKind[SyntaxKind["JSDocAllType"] = 310] = "JSDocAllType";
+    SyntaxKind[SyntaxKind["JSDocNullableType"] = 311] = "JSDocNullableType";
+    SyntaxKind[SyntaxKind["JSDocNonNullableType"] = 312] = "JSDocNonNullableType";
+    SyntaxKind[SyntaxKind["JSDocOptionalType"] = 313] = "JSDocOptionalType";
+    SyntaxKind[SyntaxKind["JSDocVariadicType"] = 314] = "JSDocVariadicType";
+    SyntaxKind[SyntaxKind["JSDoc"] = 315] = "JSDoc";
+    SyntaxKind[SyntaxKind["JSDocText"] = 316] = "JSDocText";
+    SyntaxKind[SyntaxKind["JSDocTypeLiteral"] = 317] = "JSDocTypeLiteral";
+    SyntaxKind[SyntaxKind["JSDocSignature"] = 318] = "JSDocSignature";
+    SyntaxKind[SyntaxKind["JSDocLink"] = 319] = "JSDocLink";
+    SyntaxKind[SyntaxKind["JSDocLinkCode"] = 320] = "JSDocLinkCode";
+    SyntaxKind[SyntaxKind["JSDocLinkPlain"] = 321] = "JSDocLinkPlain";
+    SyntaxKind[SyntaxKind["JSDocUnknownTag"] = 322] = "JSDocUnknownTag";
+    SyntaxKind[SyntaxKind["JSDocAugmentsTag"] = 323] = "JSDocAugmentsTag";
+    SyntaxKind[SyntaxKind["JSDocImplementsTag"] = 324] = "JSDocImplementsTag";
+    SyntaxKind[SyntaxKind["JSDocDeprecatedTag"] = 325] = "JSDocDeprecatedTag";
+    SyntaxKind[SyntaxKind["JSDocPublicTag"] = 326] = "JSDocPublicTag";
+    SyntaxKind[SyntaxKind["JSDocPrivateTag"] = 327] = "JSDocPrivateTag";
+    SyntaxKind[SyntaxKind["JSDocProtectedTag"] = 328] = "JSDocProtectedTag";
+    SyntaxKind[SyntaxKind["JSDocReadonlyTag"] = 329] = "JSDocReadonlyTag";
+    SyntaxKind[SyntaxKind["JSDocOverrideTag"] = 330] = "JSDocOverrideTag";
+    SyntaxKind[SyntaxKind["JSDocCallbackTag"] = 331] = "JSDocCallbackTag";
+    SyntaxKind[SyntaxKind["JSDocOverloadTag"] = 332] = "JSDocOverloadTag";
+    SyntaxKind[SyntaxKind["JSDocParameterTag"] = 333] = "JSDocParameterTag";
+    SyntaxKind[SyntaxKind["JSDocReturnTag"] = 334] = "JSDocReturnTag";
+    SyntaxKind[SyntaxKind["JSDocThisTag"] = 335] = "JSDocThisTag";
+    SyntaxKind[SyntaxKind["JSDocTypeTag"] = 336] = "JSDocTypeTag";
+    SyntaxKind[SyntaxKind["JSDocTemplateTag"] = 337] = "JSDocTemplateTag";
+    SyntaxKind[SyntaxKind["JSDocTypedefTag"] = 338] = "JSDocTypedefTag";
+    SyntaxKind[SyntaxKind["JSDocSeeTag"] = 339] = "JSDocSeeTag";
+    SyntaxKind[SyntaxKind["JSDocPropertyTag"] = 340] = "JSDocPropertyTag";
+    SyntaxKind[SyntaxKind["JSDocThrowsTag"] = 341] = "JSDocThrowsTag";
+    SyntaxKind[SyntaxKind["JSDocSatisfiesTag"] = 342] = "JSDocSatisfiesTag";
+    SyntaxKind[SyntaxKind["JSDocImportTag"] = 343] = "JSDocImportTag";
+    SyntaxKind[SyntaxKind["SyntaxList"] = 344] = "SyntaxList";
+    SyntaxKind[SyntaxKind["JSTypeAliasDeclaration"] = 345] = "JSTypeAliasDeclaration";
+    SyntaxKind[SyntaxKind["JSImportDeclaration"] = 346] = "JSImportDeclaration";
+    SyntaxKind[SyntaxKind["NotEmittedStatement"] = 347] = "NotEmittedStatement";
+    SyntaxKind[SyntaxKind["PartiallyEmittedExpression"] = 348] = "PartiallyEmittedExpression";
+    SyntaxKind[SyntaxKind["SyntheticReferenceExpression"] = 349] = "SyntheticReferenceExpression";
+    SyntaxKind[SyntaxKind["NotEmittedTypeElement"] = 350] = "NotEmittedTypeElement";
+    SyntaxKind[SyntaxKind["Count"] = 351] = "Count";
+    SyntaxKind[SyntaxKind["FirstAssignment"] = 63] = "FirstAssignment";
+    SyntaxKind[SyntaxKind["LastAssignment"] = 78] = "LastAssignment";
+    SyntaxKind[SyntaxKind["FirstCompoundAssignment"] = 64] = "FirstCompoundAssignment";
+    SyntaxKind[SyntaxKind["LastCompoundAssignment"] = 78] = "LastCompoundAssignment";
+    SyntaxKind[SyntaxKind["FirstReservedWord"] = 82] = "FirstReservedWord";
+    SyntaxKind[SyntaxKind["LastReservedWord"] = 117] = "LastReservedWord";
+    SyntaxKind[SyntaxKind["FirstKeyword"] = 82] = "FirstKeyword";
+    SyntaxKind[SyntaxKind["LastKeyword"] = 166] = "LastKeyword";
+    SyntaxKind[SyntaxKind["FirstFutureReservedWord"] = 118] = "FirstFutureReservedWord";
+    SyntaxKind[SyntaxKind["LastFutureReservedWord"] = 126] = "LastFutureReservedWord";
+    SyntaxKind[SyntaxKind["FirstTypeNode"] = 183] = "FirstTypeNode";
+    SyntaxKind[SyntaxKind["LastTypeNode"] = 206] = "LastTypeNode";
+    SyntaxKind[SyntaxKind["FirstPunctuation"] = 18] = "FirstPunctuation";
+    SyntaxKind[SyntaxKind["LastPunctuation"] = 78] = "LastPunctuation";
+    SyntaxKind[SyntaxKind["FirstToken"] = 0] = "FirstToken";
+    SyntaxKind[SyntaxKind["LastToken"] = 166] = "LastToken";
+    SyntaxKind[SyntaxKind["FirstLiteralToken"] = 8] = "FirstLiteralToken";
+    SyntaxKind[SyntaxKind["LastLiteralToken"] = 14] = "LastLiteralToken";
+    SyntaxKind[SyntaxKind["FirstTemplateToken"] = 14] = "FirstTemplateToken";
+    SyntaxKind[SyntaxKind["LastTemplateToken"] = 17] = "LastTemplateToken";
+    SyntaxKind[SyntaxKind["FirstBinaryOperator"] = 29] = "FirstBinaryOperator";
+    SyntaxKind[SyntaxKind["LastBinaryOperator"] = 78] = "LastBinaryOperator";
+    SyntaxKind[SyntaxKind["FirstStatement"] = 244] = "FirstStatement";
+    SyntaxKind[SyntaxKind["LastStatement"] = 260] = "LastStatement";
+    SyntaxKind[SyntaxKind["FirstNode"] = 167] = "FirstNode";
+    SyntaxKind[SyntaxKind["FirstJSDocNode"] = 308] = "FirstJSDocNode";
+    SyntaxKind[SyntaxKind["LastJSDocNode"] = 343] = "LastJSDocNode";
+    SyntaxKind[SyntaxKind["FirstJSDocTagNode"] = 322] = "FirstJSDocTagNode";
+    SyntaxKind[SyntaxKind["LastJSDocTagNode"] = 343] = "LastJSDocTagNode";
+    SyntaxKind[SyntaxKind["FirstContextualKeyword"] = 127] = "FirstContextualKeyword";
+    SyntaxKind[SyntaxKind["LastContextualKeyword"] = 166] = "LastContextualKeyword";
+    SyntaxKind[SyntaxKind["LastUnaryOperator"] = 54] = "LastUnaryOperator";
+    SyntaxKind[SyntaxKind["FirstTriviaToken"] = 2] = "FirstTriviaToken";
+    SyntaxKind[SyntaxKind["LastTriviaToken"] = 6] = "LastTriviaToken";
+  })(SyntaxKind3 || (SyntaxKind3 = {}));
+  (function(TokenFlags) {
+    TokenFlags[TokenFlags["None"] = 0] = "None";
+    TokenFlags[TokenFlags["PrecedingLineBreak"] = 1] = "PrecedingLineBreak";
+    TokenFlags[TokenFlags["PrecedingJSDocComment"] = 2] = "PrecedingJSDocComment";
+    TokenFlags[TokenFlags["Unterminated"] = 4] = "Unterminated";
+    TokenFlags[TokenFlags["ExtendedUnicodeEscape"] = 8] = "ExtendedUnicodeEscape";
+    TokenFlags[TokenFlags["Scientific"] = 16] = "Scientific";
+    TokenFlags[TokenFlags["Octal"] = 32] = "Octal";
+    TokenFlags[TokenFlags["HexSpecifier"] = 64] = "HexSpecifier";
+    TokenFlags[TokenFlags["BinarySpecifier"] = 128] = "BinarySpecifier";
+    TokenFlags[TokenFlags["OctalSpecifier"] = 256] = "OctalSpecifier";
+    TokenFlags[TokenFlags["ContainsSeparator"] = 512] = "ContainsSeparator";
+    TokenFlags[TokenFlags["UnicodeEscape"] = 1024] = "UnicodeEscape";
+    TokenFlags[TokenFlags["ContainsInvalidEscape"] = 2048] = "ContainsInvalidEscape";
+    TokenFlags[TokenFlags["HexEscape"] = 4096] = "HexEscape";
+    TokenFlags[TokenFlags["ContainsLeadingZero"] = 8192] = "ContainsLeadingZero";
+    TokenFlags[TokenFlags["ContainsInvalidSeparator"] = 16384] = "ContainsInvalidSeparator";
+    TokenFlags[TokenFlags["PrecedingJSDocLeadingAsterisks"] = 32768] = "PrecedingJSDocLeadingAsterisks";
+    TokenFlags[TokenFlags["SingleQuote"] = 65536] = "SingleQuote";
+    TokenFlags[TokenFlags["PrecedingJSDocWithDeprecated"] = 131072] = "PrecedingJSDocWithDeprecated";
+    TokenFlags[TokenFlags["PrecedingJSDocWithSeeOrLink"] = 262144] = "PrecedingJSDocWithSeeOrLink";
+    TokenFlags[TokenFlags["BinaryOrOctalSpecifier"] = 384] = "BinaryOrOctalSpecifier";
+    TokenFlags[TokenFlags["WithSpecifier"] = 448] = "WithSpecifier";
+    TokenFlags[TokenFlags["StringLiteralFlags"] = 72716] = "StringLiteralFlags";
+    TokenFlags[TokenFlags["NumericLiteralFlags"] = 25584] = "NumericLiteralFlags";
+    TokenFlags[TokenFlags["TemplateLiteralLikeFlags"] = 7180] = "TemplateLiteralLikeFlags";
+    TokenFlags[TokenFlags["RegularExpressionLiteralFlags"] = 4] = "RegularExpressionLiteralFlags";
+    TokenFlags[TokenFlags["IsInvalid"] = 26656] = "IsInvalid";
+  })(TokenFlags2 || (TokenFlags2 = {}));
+  (function(OuterExpressionKinds) {
+    OuterExpressionKinds[OuterExpressionKinds["Parentheses"] = 1] = "Parentheses";
+    OuterExpressionKinds[OuterExpressionKinds["TypeAssertions"] = 2] = "TypeAssertions";
+    OuterExpressionKinds[OuterExpressionKinds["NonNullAssertions"] = 4] = "NonNullAssertions";
+    OuterExpressionKinds[OuterExpressionKinds["PartiallyEmittedExpressions"] = 8] = "PartiallyEmittedExpressions";
+    OuterExpressionKinds[OuterExpressionKinds["ExpressionsWithTypeArguments"] = 16] = "ExpressionsWithTypeArguments";
+    OuterExpressionKinds[OuterExpressionKinds["Satisfies"] = 32] = "Satisfies";
+    OuterExpressionKinds[OuterExpressionKinds["ExcludeJSDocTypeAssertion"] = 64] = "ExcludeJSDocTypeAssertion";
+    OuterExpressionKinds[OuterExpressionKinds["Assignments"] = 128] = "Assignments";
+    OuterExpressionKinds[OuterExpressionKinds["Comma"] = 256] = "Comma";
+    OuterExpressionKinds[OuterExpressionKinds["Assertions"] = 38] = "Assertions";
+    OuterExpressionKinds[OuterExpressionKinds["All"] = 63] = "All";
+    OuterExpressionKinds[OuterExpressionKinds["AllExceptAssertionsOrExpressionsWithTypeArguments"] = 9] = "AllExceptAssertionsOrExpressionsWithTypeArguments";
+    OuterExpressionKinds[OuterExpressionKinds["ExpressionTypePassthrough"] = 385] = "ExpressionTypePassthrough";
+  })(OuterExpressionKinds2 || (OuterExpressionKinds2 = {}));
+  visitEachChildTable2 = {
+    [SyntaxKind3.QualifiedName]: (node, visitor) => {
+      const _left = visitNode3(node.left, visitor, isEntityName2);
+      const _right = visitNode3(node.right, visitor, isIdentifier2);
+      return updateQualifiedName2(node, _left, _right);
+    },
+    [SyntaxKind3.ComputedPropertyName]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateComputedPropertyName2(node, _expression);
+    },
+    [SyntaxKind3.Decorator]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isLeftHandSideExpression2);
+      return updateDecorator2(node, _expression);
+    },
+    [SyntaxKind3.IfStatement]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _thenStatement = visitNode3(node.thenStatement, visitor, isStatement2);
+      const _elseStatement = visitNode3(node.elseStatement, visitor, isStatement2);
+      return updateIfStatement2(node, _expression, _thenStatement, _elseStatement);
+    },
+    [SyntaxKind3.DoStatement]: (node, visitor) => {
+      const _statement = visitNode3(node.statement, visitor, isStatement2);
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateDoStatement2(node, _statement, _expression);
+    },
+    [SyntaxKind3.WhileStatement]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _statement = visitNode3(node.statement, visitor, isStatement2);
+      return updateWhileStatement2(node, _expression, _statement);
+    },
+    [SyntaxKind3.ForStatement]: (node, visitor) => {
+      const _initializer = visitNode3(node.initializer, visitor, isForInitializer2);
+      const _condition = visitNode3(node.condition, visitor, isExpression2);
+      const _incrementor = visitNode3(node.incrementor, visitor, isExpression2);
+      const _statement = visitNode3(node.statement, visitor, isStatement2);
+      return updateForStatement2(node, _initializer, _condition, _incrementor, _statement);
+    },
+    [SyntaxKind3.BreakStatement]: (node, visitor) => {
+      const _label = visitNode3(node.label, visitor, isIdentifier2);
+      return updateBreakStatement2(node, _label);
+    },
+    [SyntaxKind3.ContinueStatement]: (node, visitor) => {
+      const _label = visitNode3(node.label, visitor, isIdentifier2);
+      return updateContinueStatement2(node, _label);
+    },
+    [SyntaxKind3.ReturnStatement]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateReturnStatement2(node, _expression);
+    },
+    [SyntaxKind3.WithStatement]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _statement = visitNode3(node.statement, visitor, isStatement2);
+      return updateWithStatement2(node, _expression, _statement);
+    },
+    [SyntaxKind3.SwitchStatement]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _caseBlock = visitNode3(node.caseBlock, visitor, isCaseBlock2);
+      return updateSwitchStatement2(node, _expression, _caseBlock);
+    },
+    [SyntaxKind3.CaseBlock]: (node, visitor) => {
+      const _clauses = visitNodes3(node.clauses, visitor);
+      return updateCaseBlock2(node, _clauses);
+    },
+    [SyntaxKind3.ThrowStatement]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateThrowStatement2(node, _expression);
+    },
+    [SyntaxKind3.TryStatement]: (node, visitor) => {
+      const _tryBlock = visitNode3(node.tryBlock, visitor, isBlock2);
+      const _catchClause = visitNode3(node.catchClause, visitor, isCatchClause2);
+      const _finallyBlock = visitNode3(node.finallyBlock, visitor, isBlock2);
+      return updateTryStatement2(node, _tryBlock, _catchClause, _finallyBlock);
+    },
+    [SyntaxKind3.CatchClause]: (node, visitor) => {
+      const _variableDeclaration = visitNode3(node.variableDeclaration, visitor, isVariableDeclaration2);
+      const _block = visitNode3(node.block, visitor, isBlock2);
+      return updateCatchClause2(node, _variableDeclaration, _block);
+    },
+    [SyntaxKind3.LabeledStatement]: (node, visitor) => {
+      const _label = visitNode3(node.label, visitor, isIdentifier2);
+      const _statement = visitNode3(node.statement, visitor, isStatement2);
+      return updateLabeledStatement2(node, _label, _statement);
+    },
+    [SyntaxKind3.ExpressionStatement]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateExpressionStatement2(node, _expression);
+    },
+    [SyntaxKind3.Block]: (node, visitor) => {
+      const _statements = visitNodes3(node.statements, visitor);
+      return updateBlock2(node, _statements);
+    },
+    [SyntaxKind3.VariableStatement]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _declarationList = visitNode3(node.declarationList, visitor, isVariableDeclarationList2);
+      return updateVariableStatement2(node, _modifiers, _declarationList);
+    },
+    [SyntaxKind3.VariableDeclaration]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isBindingName2);
+      const _exclamationToken = visitNode3(node.exclamationToken, visitor, isExclamationToken2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _initializer = visitNode3(node.initializer, visitor, isExpression2);
+      return updateVariableDeclaration2(node, _name, _exclamationToken, _type, _initializer);
+    },
+    [SyntaxKind3.VariableDeclarationList]: (node, visitor) => {
+      const _declarations = visitNodes3(node.declarations, visitor);
+      return updateVariableDeclarationList2(node, _declarations);
+    },
+    [SyntaxKind3.Parameter]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _dotDotDotToken = visitNode3(node.dotDotDotToken, visitor, isDotDotDotToken2);
+      const _name = visitNode3(node.name, visitor, isBindingName2);
+      const _questionToken = visitNode3(node.questionToken, visitor, isQuestionToken2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _initializer = visitNode3(node.initializer, visitor, isExpression2);
+      return updateParameterDeclaration2(node, _modifiers, _dotDotDotToken, _name, _questionToken, _type, _initializer);
+    },
+    [SyntaxKind3.BindingElement]: (node, visitor) => {
+      const _dotDotDotToken = visitNode3(node.dotDotDotToken, visitor, isDotDotDotToken2);
+      const _propertyName = visitNode3(node.propertyName, visitor, isPropertyName2);
+      const _name = visitNode3(node.name, visitor, isBindingName2);
+      const _initializer = visitNode3(node.initializer, visitor, isExpression2);
+      return updateBindingElement2(node, _dotDotDotToken, _propertyName, _name, _initializer);
+    },
+    [SyntaxKind3.MissingDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      return updateMissingDeclaration2(node, _modifiers);
+    },
+    [SyntaxKind3.FunctionDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _asteriskToken = visitNode3(node.asteriskToken, visitor, isAsteriskToken2);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _body = visitNode3(node.body, visitor, isFunctionBody2);
+      return updateFunctionDeclaration2(node, _modifiers, _asteriskToken, _name, _typeParameters, _parameters, _type, _body);
+    },
+    [SyntaxKind3.ClassDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _heritageClauses = visitNodes3(node.heritageClauses, visitor);
+      const _members = visitNodes3(node.members, visitor);
+      return updateClassDeclaration2(node, _modifiers, _name, _typeParameters, _heritageClauses, _members);
+    },
+    [SyntaxKind3.ClassExpression]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _heritageClauses = visitNodes3(node.heritageClauses, visitor);
+      const _members = visitNodes3(node.members, visitor);
+      return updateClassExpression2(node, _modifiers, _name, _typeParameters, _heritageClauses, _members);
+    },
+    [SyntaxKind3.HeritageClause]: (node, visitor) => {
+      const _types = visitNodes3(node.types, visitor);
+      return updateHeritageClause2(node, _types);
+    },
+    [SyntaxKind3.InterfaceDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _heritageClauses = visitNodes3(node.heritageClauses, visitor);
+      const _members = visitNodes3(node.members, visitor);
+      return updateInterfaceDeclaration2(node, _modifiers, _name, _typeParameters, _heritageClauses, _members);
+    },
+    [SyntaxKind3.TypeAliasDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateTypeAliasDeclaration2(node, _modifiers, _name, _typeParameters, _type);
+    },
+    [SyntaxKind3.EnumMember]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _initializer = visitNode3(node.initializer, visitor, isExpression2);
+      return updateEnumMember2(node, _name, _initializer);
+    },
+    [SyntaxKind3.EnumDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _members = visitNodes3(node.members, visitor);
+      return updateEnumDeclaration2(node, _modifiers, _name, _members);
+    },
+    [SyntaxKind3.ModuleBlock]: (node, visitor) => {
+      const _statements = visitNodes3(node.statements, visitor);
+      return updateModuleBlock2(node, _statements);
+    },
+    [SyntaxKind3.ImportDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _importClause = visitNode3(node.importClause, visitor, isImportClause2);
+      const _moduleSpecifier = visitNode3(node.moduleSpecifier, visitor, isExpression2);
+      const _attributes = visitNode3(node.attributes, visitor, isImportAttributes2);
+      return updateImportDeclaration2(node, _modifiers, _importClause, _moduleSpecifier, _attributes);
+    },
+    [SyntaxKind3.ExternalModuleReference]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateExternalModuleReference2(node, _expression);
+    },
+    [SyntaxKind3.NamespaceImport]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      return updateNamespaceImport2(node, _name);
+    },
+    [SyntaxKind3.NamedImports]: (node, visitor) => {
+      const _elements = visitNodes3(node.elements, visitor);
+      return updateNamedImports2(node, _elements);
+    },
+    [SyntaxKind3.ExportAssignment]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateExportAssignment2(node, _modifiers, _type, _expression);
+    },
+    [SyntaxKind3.NamespaceExportDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      return updateNamespaceExportDeclaration2(node, _modifiers, _name);
+    },
+    [SyntaxKind3.NamespaceExport]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isModuleExportName2);
+      return updateNamespaceExport2(node, _name);
+    },
+    [SyntaxKind3.NamedExports]: (node, visitor) => {
+      const _elements = visitNodes3(node.elements, visitor);
+      return updateNamedExports2(node, _elements);
+    },
+    [SyntaxKind3.ExportSpecifier]: (node, visitor) => {
+      const _propertyName = visitNode3(node.propertyName, visitor, isModuleExportName2);
+      const _name = visitNode3(node.name, visitor, isModuleExportName2);
+      return updateExportSpecifier2(node, _propertyName, _name);
+    },
+    [SyntaxKind3.CallSignature]: (node, visitor) => {
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateCallSignatureDeclaration2(node, _typeParameters, _parameters, _type);
+    },
+    [SyntaxKind3.ConstructSignature]: (node, visitor) => {
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateConstructSignatureDeclaration2(node, _typeParameters, _parameters, _type);
+    },
+    [SyntaxKind3.Constructor]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _body = visitNode3(node.body, visitor, isFunctionBody2);
+      return updateConstructorDeclaration2(node, _modifiers, _typeParameters, _parameters, _type, _body);
+    },
+    [SyntaxKind3.GetAccessor]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _body = visitNode3(node.body, visitor, isFunctionBody2);
+      return updateGetAccessorDeclaration2(node, _modifiers, _name, _typeParameters, _parameters, _type, _body);
+    },
+    [SyntaxKind3.SetAccessor]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _body = visitNode3(node.body, visitor, isFunctionBody2);
+      return updateSetAccessorDeclaration2(node, _modifiers, _name, _typeParameters, _parameters, _type, _body);
+    },
+    [SyntaxKind3.IndexSignature]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateIndexSignatureDeclaration2(node, _modifiers, _parameters, _type);
+    },
+    [SyntaxKind3.MethodSignature]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _postfixToken = visitNode3(node.postfixToken, visitor, isQuestionOrExclamationToken2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateMethodSignatureDeclaration2(node, _modifiers, _name, _postfixToken, _typeParameters, _parameters, _type);
+    },
+    [SyntaxKind3.MethodDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _asteriskToken = visitNode3(node.asteriskToken, visitor, isAsteriskToken2);
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _postfixToken = visitNode3(node.postfixToken, visitor, isQuestionOrExclamationToken2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _body = visitNode3(node.body, visitor, isFunctionBody2);
+      return updateMethodDeclaration2(node, _modifiers, _asteriskToken, _name, _postfixToken, _typeParameters, _parameters, _type, _body);
+    },
+    [SyntaxKind3.PropertySignature]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _postfixToken = visitNode3(node.postfixToken, visitor, isQuestionOrExclamationToken2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _initializer = visitNode3(node.initializer, visitor, isExpression2);
+      return updatePropertySignatureDeclaration2(node, _modifiers, _name, _postfixToken, _type, _initializer);
+    },
+    [SyntaxKind3.PropertyDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _postfixToken = visitNode3(node.postfixToken, visitor, isQuestionOrExclamationToken2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _initializer = visitNode3(node.initializer, visitor, isExpression2);
+      return updatePropertyDeclaration2(node, _modifiers, _name, _postfixToken, _type, _initializer);
+    },
+    [SyntaxKind3.ClassStaticBlockDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _body = visitNode3(node.body, visitor, isBlock2);
+      return updateClassStaticBlockDeclaration2(node, _modifiers, _body);
+    },
+    [SyntaxKind3.BinaryExpression]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _left = visitNode3(node.left, visitor, isExpression2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _operatorToken = visitNode3(node.operatorToken, visitor, isBinaryOperatorToken2);
+      const _right = visitNode3(node.right, visitor, isExpression2);
+      return updateBinaryExpression2(node, _modifiers, _left, _type, _operatorToken, _right);
+    },
+    [SyntaxKind3.PrefixUnaryExpression]: (node, visitor) => {
+      const _operand = visitNode3(node.operand, visitor, isExpression2);
+      return updatePrefixUnaryExpression2(node, _operand);
+    },
+    [SyntaxKind3.PostfixUnaryExpression]: (node, visitor) => {
+      const _operand = visitNode3(node.operand, visitor, isExpression2);
+      return updatePostfixUnaryExpression2(node, _operand);
+    },
+    [SyntaxKind3.YieldExpression]: (node, visitor) => {
+      const _asteriskToken = visitNode3(node.asteriskToken, visitor, isAsteriskToken2);
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateYieldExpression2(node, _asteriskToken, _expression);
+    },
+    [SyntaxKind3.ArrowFunction]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _equalsGreaterThanToken = visitNode3(node.equalsGreaterThanToken, visitor, isEqualsGreaterThanToken2);
+      const _body = visitNode3(node.body, visitor, isConciseBody2);
+      return updateArrowFunction2(node, _modifiers, _typeParameters, _parameters, _type, _equalsGreaterThanToken, _body);
+    },
+    [SyntaxKind3.FunctionExpression]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _asteriskToken = visitNode3(node.asteriskToken, visitor, isAsteriskToken2);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _body = visitNode3(node.body, visitor, isFunctionBody2);
+      return updateFunctionExpression2(node, _modifiers, _asteriskToken, _name, _typeParameters, _parameters, _type, _body);
+    },
+    [SyntaxKind3.AsExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateAsExpression2(node, _expression, _type);
+    },
+    [SyntaxKind3.SatisfiesExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateSatisfiesExpression2(node, _expression, _type);
+    },
+    [SyntaxKind3.ConditionalExpression]: (node, visitor) => {
+      const _condition = visitNode3(node.condition, visitor, isExpression2);
+      const _questionToken = visitNode3(node.questionToken, visitor, isQuestionToken2);
+      const _whenTrue = visitNode3(node.whenTrue, visitor, isExpression2);
+      const _colonToken = visitNode3(node.colonToken, visitor, isColonToken2);
+      const _whenFalse = visitNode3(node.whenFalse, visitor, isExpression2);
+      return updateConditionalExpression2(node, _condition, _questionToken, _whenTrue, _colonToken, _whenFalse);
+    },
+    [SyntaxKind3.PropertyAccessExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _questionDotToken = visitNode3(node.questionDotToken, visitor, isQuestionDotToken2);
+      const _name = visitNode3(node.name, visitor, isMemberName2);
+      return updatePropertyAccessExpression2(node, _expression, _questionDotToken, _name);
+    },
+    [SyntaxKind3.ElementAccessExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _questionDotToken = visitNode3(node.questionDotToken, visitor, isQuestionDotToken2);
+      const _argumentExpression = visitNode3(node.argumentExpression, visitor, isExpression2);
+      return updateElementAccessExpression2(node, _expression, _questionDotToken, _argumentExpression);
+    },
+    [SyntaxKind3.CallExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _questionDotToken = visitNode3(node.questionDotToken, visitor, isQuestionDotToken2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      const _arguments = visitNodes3(node.arguments, visitor);
+      return updateCallExpression2(node, _expression, _questionDotToken, _typeArguments, _arguments);
+    },
+    [SyntaxKind3.NewExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      const _arguments = visitNodes3(node.arguments, visitor);
+      return updateNewExpression2(node, _expression, _typeArguments, _arguments);
+    },
+    [SyntaxKind3.MetaProperty]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      return updateMetaProperty2(node, _name);
+    },
+    [SyntaxKind3.NonNullExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateNonNullExpression2(node, _expression);
+    },
+    [SyntaxKind3.SpreadElement]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateSpreadElement2(node, _expression);
+    },
+    [SyntaxKind3.TemplateExpression]: (node, visitor) => {
+      const _head = visitNode3(node.head, visitor, isTemplateHead2);
+      const _templateSpans = visitNodes3(node.templateSpans, visitor);
+      return updateTemplateExpression2(node, _head, _templateSpans);
+    },
+    [SyntaxKind3.TemplateSpan]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _literal = visitNode3(node.literal, visitor, isTemplateMiddleOrTail2);
+      return updateTemplateSpan2(node, _expression, _literal);
+    },
+    [SyntaxKind3.TaggedTemplateExpression]: (node, visitor) => {
+      const _tag = visitNode3(node.tag, visitor, isExpression2);
+      const _questionDotToken = visitNode3(node.questionDotToken, visitor, isQuestionDotToken2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      const _template = visitNode3(node.template, visitor, isTemplateLiteral2);
+      return updateTaggedTemplateExpression2(node, _tag, _questionDotToken, _typeArguments, _template);
+    },
+    [SyntaxKind3.ParenthesizedExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateParenthesizedExpression2(node, _expression);
+    },
+    [SyntaxKind3.ArrayLiteralExpression]: (node, visitor) => {
+      const _elements = visitNodes3(node.elements, visitor);
+      return updateArrayLiteralExpression2(node, _elements);
+    },
+    [SyntaxKind3.ObjectLiteralExpression]: (node, visitor) => {
+      const _properties = visitNodes3(node.properties, visitor);
+      return updateObjectLiteralExpression2(node, _properties);
+    },
+    [SyntaxKind3.SpreadAssignment]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateSpreadAssignment2(node, _expression);
+    },
+    [SyntaxKind3.PropertyAssignment]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _postfixToken = visitNode3(node.postfixToken, visitor, isQuestionOrExclamationToken2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _initializer = visitNode3(node.initializer, visitor, isExpression2);
+      return updatePropertyAssignment2(node, _modifiers, _name, _postfixToken, _type, _initializer);
+    },
+    [SyntaxKind3.ShorthandPropertyAssignment]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isPropertyName2);
+      const _postfixToken = visitNode3(node.postfixToken, visitor, isQuestionOrExclamationToken2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _equalsToken = visitNode3(node.equalsToken, visitor, isEqualsToken2);
+      const _objectAssignmentInitializer = visitNode3(node.objectAssignmentInitializer, visitor, isExpression2);
+      return updateShorthandPropertyAssignment2(node, _modifiers, _name, _postfixToken, _type, _equalsToken, _objectAssignmentInitializer);
+    },
+    [SyntaxKind3.DeleteExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateDeleteExpression2(node, _expression);
+    },
+    [SyntaxKind3.TypeOfExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateTypeOfExpression2(node, _expression);
+    },
+    [SyntaxKind3.VoidExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateVoidExpression2(node, _expression);
+    },
+    [SyntaxKind3.AwaitExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateAwaitExpression2(node, _expression);
+    },
+    [SyntaxKind3.TypeAssertionExpression]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateTypeAssertion2(node, _type, _expression);
+    },
+    [SyntaxKind3.UnionType]: (node, visitor) => {
+      const _types = visitNodes3(node.types, visitor);
+      return updateUnionTypeNode2(node, _types);
+    },
+    [SyntaxKind3.IntersectionType]: (node, visitor) => {
+      const _types = visitNodes3(node.types, visitor);
+      return updateIntersectionTypeNode2(node, _types);
+    },
+    [SyntaxKind3.ConditionalType]: (node, visitor) => {
+      const _checkType = visitNode3(node.checkType, visitor, isTypeNode2);
+      const _extendsType = visitNode3(node.extendsType, visitor, isTypeNode2);
+      const _trueType = visitNode3(node.trueType, visitor, isTypeNode2);
+      const _falseType = visitNode3(node.falseType, visitor, isTypeNode2);
+      return updateConditionalTypeNode2(node, _checkType, _extendsType, _trueType, _falseType);
+    },
+    [SyntaxKind3.TypeOperator]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateTypeOperatorNode2(node, _type);
+    },
+    [SyntaxKind3.InferType]: (node, visitor) => {
+      const _typeParameter = visitNode3(node.typeParameter, visitor, isTypeParameterDeclaration2);
+      return updateInferTypeNode2(node, _typeParameter);
+    },
+    [SyntaxKind3.ArrayType]: (node, visitor) => {
+      const _elementType = visitNode3(node.elementType, visitor, isTypeNode2);
+      return updateArrayTypeNode2(node, _elementType);
+    },
+    [SyntaxKind3.IndexedAccessType]: (node, visitor) => {
+      const _objectType = visitNode3(node.objectType, visitor, isTypeNode2);
+      const _indexType = visitNode3(node.indexType, visitor, isTypeNode2);
+      return updateIndexedAccessTypeNode2(node, _objectType, _indexType);
+    },
+    [SyntaxKind3.TypeReference]: (node, visitor) => {
+      const _typeName = visitNode3(node.typeName, visitor, isEntityName2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      return updateTypeReferenceNode2(node, _typeName, _typeArguments);
+    },
+    [SyntaxKind3.ExpressionWithTypeArguments]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      return updateExpressionWithTypeArguments2(node, _expression, _typeArguments);
+    },
+    [SyntaxKind3.LiteralType]: (node, visitor) => {
+      const _literal = visitNode3(node.literal, visitor);
+      return updateLiteralTypeNode2(node, _literal);
+    },
+    [SyntaxKind3.TypePredicate]: (node, visitor) => {
+      const _assertsModifier = visitNode3(node.assertsModifier, visitor, isAssertsKeyword2);
+      const _parameterName = visitNode3(node.parameterName, visitor, isTypePredicateParameterName2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateTypePredicateNode2(node, _assertsModifier, _parameterName, _type);
+    },
+    [SyntaxKind3.ImportAttribute]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isImportAttributeName2);
+      const _value = visitNode3(node.value, visitor, isExpression2);
+      return updateImportAttribute2(node, _name, _value);
+    },
+    [SyntaxKind3.ImportAttributes]: (node, visitor) => {
+      const _attributes = visitNodes3(node.attributes, visitor);
+      return updateImportAttributes2(node, _attributes);
+    },
+    [SyntaxKind3.TypeQuery]: (node, visitor) => {
+      const _exprName = visitNode3(node.exprName, visitor, isEntityName2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      return updateTypeQueryNode2(node, _exprName, _typeArguments);
+    },
+    [SyntaxKind3.MappedType]: (node, visitor) => {
+      const _readonlyToken = visitNode3(node.readonlyToken, visitor, isReadonlyKeywordOrPlusOrMinusToken2);
+      const _typeParameter = visitNode3(node.typeParameter, visitor, isTypeParameterDeclaration2);
+      const _nameType = visitNode3(node.nameType, visitor, isTypeNode2);
+      const _questionToken = visitNode3(node.questionToken, visitor, isQuestionOrPlusOrMinusToken2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _members = visitNodes3(node.members, visitor);
+      return updateMappedTypeNode2(node, _readonlyToken, _typeParameter, _nameType, _questionToken, _type, _members);
+    },
+    [SyntaxKind3.TypeLiteral]: (node, visitor) => {
+      const _members = visitNodes3(node.members, visitor);
+      return updateTypeLiteralNode2(node, _members);
+    },
+    [SyntaxKind3.TupleType]: (node, visitor) => {
+      const _elements = visitNodes3(node.elements, visitor);
+      return updateTupleTypeNode2(node, _elements);
+    },
+    [SyntaxKind3.NamedTupleMember]: (node, visitor) => {
+      const _dotDotDotToken = visitNode3(node.dotDotDotToken, visitor, isDotDotDotToken2);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _questionToken = visitNode3(node.questionToken, visitor, isQuestionToken2);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateNamedTupleMember2(node, _dotDotDotToken, _name, _questionToken, _type);
+    },
+    [SyntaxKind3.OptionalType]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateOptionalTypeNode2(node, _type);
+    },
+    [SyntaxKind3.RestType]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateRestTypeNode2(node, _type);
+    },
+    [SyntaxKind3.ParenthesizedType]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateParenthesizedTypeNode2(node, _type);
+    },
+    [SyntaxKind3.FunctionType]: (node, visitor) => {
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateFunctionTypeNode2(node, _typeParameters, _parameters, _type);
+    },
+    [SyntaxKind3.ConstructorType]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateConstructorTypeNode2(node, _modifiers, _typeParameters, _parameters, _type);
+    },
+    [SyntaxKind3.TemplateLiteralType]: (node, visitor) => {
+      const _head = visitNode3(node.head, visitor, isTemplateHead2);
+      const _templateSpans = visitNodes3(node.templateSpans, visitor);
+      return updateTemplateLiteralTypeNode2(node, _head, _templateSpans);
+    },
+    [SyntaxKind3.TemplateLiteralTypeSpan]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      const _literal = visitNode3(node.literal, visitor, isTemplateMiddleOrTail2);
+      return updateTemplateLiteralTypeSpan2(node, _type, _literal);
+    },
+    [SyntaxKind3.SyntheticExpression]: (node, visitor) => {
+      const _tupleNameSource = visitNode3(node.tupleNameSource, visitor);
+      return updateSyntheticExpression2(node, _tupleNameSource);
+    },
+    [SyntaxKind3.PartiallyEmittedExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updatePartiallyEmittedExpression2(node, _expression);
+    },
+    [SyntaxKind3.JsxElement]: (node, visitor) => {
+      const _openingElement = visitNode3(node.openingElement, visitor, isJsxOpeningElement2);
+      const _children = visitNodes3(node.children, visitor);
+      const _closingElement = visitNode3(node.closingElement, visitor, isJsxClosingElement2);
+      return updateJsxElement2(node, _openingElement, _children, _closingElement);
+    },
+    [SyntaxKind3.JsxAttributes]: (node, visitor) => {
+      const _properties = visitNodes3(node.properties, visitor);
+      return updateJsxAttributes2(node, _properties);
+    },
+    [SyntaxKind3.JsxNamespacedName]: (node, visitor) => {
+      const _namespace = visitNode3(node.namespace, visitor, isIdentifier2);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      return updateJsxNamespacedName2(node, _namespace, _name);
+    },
+    [SyntaxKind3.JsxOpeningElement]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isJsxTagNameExpression2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      const _attributes = visitNode3(node.attributes, visitor, isJsxAttributes2);
+      return updateJsxOpeningElement2(node, _tagName, _typeArguments, _attributes);
+    },
+    [SyntaxKind3.JsxSelfClosingElement]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isJsxTagNameExpression2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      const _attributes = visitNode3(node.attributes, visitor, isJsxAttributes2);
+      return updateJsxSelfClosingElement2(node, _tagName, _typeArguments, _attributes);
+    },
+    [SyntaxKind3.JsxFragment]: (node, visitor) => {
+      const _openingFragment = visitNode3(node.openingFragment, visitor, isJsxOpeningFragment2);
+      const _children = visitNodes3(node.children, visitor);
+      const _closingFragment = visitNode3(node.closingFragment, visitor, isJsxClosingFragment2);
+      return updateJsxFragment2(node, _openingFragment, _children, _closingFragment);
+    },
+    [SyntaxKind3.JsxAttribute]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isJsxAttributeName2);
+      const _initializer = visitNode3(node.initializer, visitor, isJsxAttributeValue2);
+      return updateJsxAttribute2(node, _name, _initializer);
+    },
+    [SyntaxKind3.JsxSpreadAttribute]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateJsxSpreadAttribute2(node, _expression);
+    },
+    [SyntaxKind3.JsxClosingElement]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isJsxTagNameExpression2);
+      return updateJsxClosingElement2(node, _tagName);
+    },
+    [SyntaxKind3.JsxExpression]: (node, visitor) => {
+      const _dotDotDotToken = visitNode3(node.dotDotDotToken, visitor, isDotDotDotToken2);
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      return updateJsxExpression2(node, _dotDotDotToken, _expression);
+    },
+    [SyntaxKind3.SyntaxList]: (node, visitor) => {
+      const _children = visitNodesArray2(node.children, visitor);
+      return updateSyntaxList2(node, _children);
+    },
+    [SyntaxKind3.JSDoc]: (node, visitor) => {
+      const _comment = visitNodes3(node.comment, visitor);
+      const _tags = visitNodes3(node.tags, visitor);
+      return updateJSDoc2(node, _comment, _tags);
+    },
+    [SyntaxKind3.JSDocTypeExpression]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateJSDocTypeExpression2(node, _type);
+    },
+    [SyntaxKind3.JSDocNonNullableType]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateJSDocNonNullableType2(node, _type);
+    },
+    [SyntaxKind3.JSDocNullableType]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateJSDocNullableType2(node, _type);
+    },
+    [SyntaxKind3.JSDocVariadicType]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateJSDocVariadicType2(node, _type);
+    },
+    [SyntaxKind3.JSDocOptionalType]: (node, visitor) => {
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateJSDocOptionalType2(node, _type);
+    },
+    [SyntaxKind3.JSDocTypeTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _typeExpression = visitNode3(node.typeExpression, visitor);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocTypeTag2(node, _tagName, _typeExpression, _comment);
+    },
+    [SyntaxKind3.JSDocUnknownTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocUnknownTag2(node, _tagName, _comment);
+    },
+    [SyntaxKind3.JSDocTemplateTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _constraint = visitNode3(node.constraint, visitor);
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocTemplateTag2(node, _tagName, _constraint, _typeParameters, _comment);
+    },
+    [SyntaxKind3.JSDocReturnTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _typeExpression = visitNode3(node.typeExpression, visitor, isTypeNode2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocReturnTag2(node, _tagName, _typeExpression, _comment);
+    },
+    [SyntaxKind3.JSDocPublicTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocPublicTag2(node, _tagName, _comment);
+    },
+    [SyntaxKind3.JSDocPrivateTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocPrivateTag2(node, _tagName, _comment);
+    },
+    [SyntaxKind3.JSDocProtectedTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocProtectedTag2(node, _tagName, _comment);
+    },
+    [SyntaxKind3.JSDocReadonlyTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocReadonlyTag2(node, _tagName, _comment);
+    },
+    [SyntaxKind3.JSDocOverrideTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocOverrideTag2(node, _tagName, _comment);
+    },
+    [SyntaxKind3.JSDocDeprecatedTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocDeprecatedTag2(node, _tagName, _comment);
+    },
+    [SyntaxKind3.JSDocSeeTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _nameExpression = visitNode3(node.nameExpression, visitor, isTypeNode2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocSeeTag2(node, _tagName, _nameExpression, _comment);
+    },
+    [SyntaxKind3.JSDocImplementsTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _className = visitNode3(node.className, visitor, isExpressionWithTypeArguments2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocImplementsTag2(node, _tagName, _className, _comment);
+    },
+    [SyntaxKind3.JSDocAugmentsTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _className = visitNode3(node.className, visitor, isExpressionWithTypeArguments2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocAugmentsTag2(node, _tagName, _className, _comment);
+    },
+    [SyntaxKind3.JSDocSatisfiesTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _typeExpression = visitNode3(node.typeExpression, visitor, isTypeNode2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocSatisfiesTag2(node, _tagName, _typeExpression, _comment);
+    },
+    [SyntaxKind3.JSDocThrowsTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _typeExpression = visitNode3(node.typeExpression, visitor, isTypeNode2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocThrowsTag2(node, _tagName, _typeExpression, _comment);
+    },
+    [SyntaxKind3.JSDocThisTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _typeExpression = visitNode3(node.typeExpression, visitor, isTypeNode2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocThisTag2(node, _tagName, _typeExpression, _comment);
+    },
+    [SyntaxKind3.JSDocImportTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _importClause = visitNode3(node.importClause, visitor, isImportClause2);
+      const _moduleSpecifier = visitNode3(node.moduleSpecifier, visitor, isExpression2);
+      const _attributes = visitNode3(node.attributes, visitor, isImportAttributes2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocImportTag2(node, _tagName, _importClause, _moduleSpecifier, _attributes, _comment);
+    },
+    [SyntaxKind3.JSDocCallbackTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _typeExpression = visitNode3(node.typeExpression, visitor, isTypeNode2);
+      const _name = visitNode3(node.name, visitor, isJSDocFullName2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocCallbackTag2(node, _tagName, _typeExpression, _name, _comment);
+    },
+    [SyntaxKind3.JSDocOverloadTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _typeExpression = visitNode3(node.typeExpression, visitor, isTypeNode2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocOverloadTag2(node, _tagName, _typeExpression, _comment);
+    },
+    [SyntaxKind3.JSDocTypedefTag]: (node, visitor) => {
+      const _tagName = visitNode3(node.tagName, visitor, isIdentifier2);
+      const _typeExpression = visitNode3(node.typeExpression, visitor);
+      const _name = visitNode3(node.name, visitor, isJSDocFullName2);
+      const _comment = visitNodes3(node.comment, visitor);
+      return updateJSDocTypedefTag2(node, _tagName, _typeExpression, _name, _comment);
+    },
+    [SyntaxKind3.JSDocSignature]: (node, visitor) => {
+      const _typeParameters = visitNodes3(node.typeParameters, visitor);
+      const _parameters = visitNodes3(node.parameters, visitor);
+      const _type = visitNode3(node.type, visitor, isTypeNode2);
+      return updateJSDocSignature2(node, _typeParameters, _parameters, _type);
+    },
+    [SyntaxKind3.JSDocNameReference]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isEntityName2);
+      return updateJSDocNameReference2(node, _name);
+    },
+    [SyntaxKind3.SourceFile]: (node, visitor) => {
+      const _statements = visitNodes3(node.statements, visitor);
+      const _endOfFileToken = visitNode3(node.endOfFileToken, visitor, isEndOfFile2);
+      return updateSourceFile2(node, _statements, _endOfFileToken);
+    },
+    [SyntaxKind3.ModuleDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isModuleName2);
+      const _body = visitNode3(node.body, visitor, isModuleBody2);
+      return updateModuleDeclaration2(node, _modifiers, _name, _body);
+    },
+    [SyntaxKind3.ImportEqualsDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _moduleReference = visitNode3(node.moduleReference, visitor, isModuleReference2);
+      return updateImportEqualsDeclaration2(node, _modifiers, _name, _moduleReference);
+    },
+    [SyntaxKind3.ExportDeclaration]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _exportClause = visitNode3(node.exportClause, visitor, isNamedExportBindings2);
+      const _moduleSpecifier = visitNode3(node.moduleSpecifier, visitor, isExpression2);
+      const _attributes = visitNode3(node.attributes, visitor, isImportAttributes2);
+      return updateExportDeclaration2(node, _modifiers, _exportClause, _moduleSpecifier, _attributes);
+    },
+    [SyntaxKind3.ImportType]: (node, visitor) => {
+      const _argument = visitNode3(node.argument, visitor, isTypeNode2);
+      const _attributes = visitNode3(node.attributes, visitor, isImportAttributes2);
+      const _qualifier = visitNode3(node.qualifier, visitor, isEntityName2);
+      const _typeArguments = visitNodes3(node.typeArguments, visitor);
+      return updateImportTypeNode2(node, _argument, _attributes, _qualifier, _typeArguments);
+    },
+    [SyntaxKind3.ImportClause]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _namedBindings = visitNode3(node.namedBindings, visitor, isNamedImportBindings2);
+      return updateImportClause2(node, _name, _namedBindings);
+    },
+    [SyntaxKind3.ImportSpecifier]: (node, visitor) => {
+      const _propertyName = visitNode3(node.propertyName, visitor, isModuleExportName2);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      return updateImportSpecifier2(node, _propertyName, _name);
+    },
+    [SyntaxKind3.JSDocLink]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isEntityName2);
+      return updateJSDocLink2(node, _name);
+    },
+    [SyntaxKind3.JSDocLinkPlain]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isEntityName2);
+      return updateJSDocLinkPlain2(node, _name);
+    },
+    [SyntaxKind3.JSDocLinkCode]: (node, visitor) => {
+      const _name = visitNode3(node.name, visitor, isEntityName2);
+      return updateJSDocLinkCode2(node, _name);
+    },
+    [SyntaxKind3.TypeParameter]: (node, visitor) => {
+      const _modifiers = visitNodes3(node.modifiers, visitor);
+      const _name = visitNode3(node.name, visitor, isIdentifier2);
+      const _constraint = visitNode3(node.constraint, visitor, isTypeNode2);
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _defaultType = visitNode3(node.defaultType, visitor, isTypeNode2);
+      return updateTypeParameterDeclaration2(node, _modifiers, _name, _constraint, _expression, _defaultType);
+    },
+    [SyntaxKind3.SyntheticReferenceExpression]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _thisArg = visitNode3(node.thisArg, visitor, isExpression2);
+      return updateSyntheticReferenceExpression2(node, _expression, _thisArg);
+    },
+    [SyntaxKind3.JSDocTypeLiteral]: (node, visitor) => {
+      const _jsdocPropertyTags = visitNodesArray2(node.jsdocPropertyTags, visitor);
+      return updateJSDocTypeLiteral2(node, _jsdocPropertyTags);
+    },
+    [SyntaxKind3.ForInStatement]: (node, visitor) => {
+      const _awaitModifier = visitNode3(node.awaitModifier, visitor, isAwaitKeyword2);
+      const _initializer = visitNode3(node.initializer, visitor, isForInitializer2);
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _statement = visitNode3(node.statement, visitor, isStatement2);
+      return updateForInStatement2(node, _awaitModifier, _initializer, _expression, _statement);
+    },
+    [SyntaxKind3.ForOfStatement]: (node, visitor) => {
+      const _awaitModifier = visitNode3(node.awaitModifier, visitor, isAwaitKeyword2);
+      const _initializer = visitNode3(node.initializer, visitor, isForInitializer2);
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _statement = visitNode3(node.statement, visitor, isStatement2);
+      return updateForOfStatement2(node, _awaitModifier, _initializer, _expression, _statement);
+    },
+    [SyntaxKind3.CaseClause]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _statements = visitNodes3(node.statements, visitor);
+      return updateCaseClause2(node, _expression, _statements);
+    },
+    [SyntaxKind3.DefaultClause]: (node, visitor) => {
+      const _expression = visitNode3(node.expression, visitor, isExpression2);
+      const _statements = visitNodes3(node.statements, visitor);
+      return updateDefaultClause2(node, _expression, _statements);
+    },
+    [SyntaxKind3.ObjectBindingPattern]: (node, visitor) => {
+      const _elements = visitNodes3(node.elements, visitor);
+      return updateObjectBindingPattern2(node, _elements);
+    },
+    [SyntaxKind3.ArrayBindingPattern]: (node, visitor) => {
+      const _elements = visitNodes3(node.elements, visitor);
+      return updateArrayBindingPattern2(node, _elements);
+    },
+    [SyntaxKind3.JSDocParameterTag]: visitEachChildOfJSDocParameterOrPropertyTag2,
+    [SyntaxKind3.JSDocPropertyTag]: visitEachChildOfJSDocParameterOrPropertyTag2
+  };
+  forEachChildTable2 = {
+    [SyntaxKind3.QualifiedName]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.left) || visitNode22(cbNode, data.right),
+    [SyntaxKind3.ComputedPropertyName]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.Decorator]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.IfStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.thenStatement) || visitNode22(cbNode, data.elseStatement),
+    [SyntaxKind3.DoStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.statement) || visitNode22(cbNode, data.expression),
+    [SyntaxKind3.WhileStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.statement),
+    [SyntaxKind3.ForStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.initializer) || visitNode22(cbNode, data.condition) || visitNode22(cbNode, data.incrementor) || visitNode22(cbNode, data.statement),
+    [SyntaxKind3.BreakStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.label),
+    [SyntaxKind3.ContinueStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.label),
+    [SyntaxKind3.ReturnStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.WithStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.statement),
+    [SyntaxKind3.SwitchStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.caseBlock),
+    [SyntaxKind3.CaseBlock]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.clauses),
+    [SyntaxKind3.ThrowStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.TryStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tryBlock) || visitNode22(cbNode, data.catchClause) || visitNode22(cbNode, data.finallyBlock),
+    [SyntaxKind3.CatchClause]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.variableDeclaration) || visitNode22(cbNode, data.block),
+    [SyntaxKind3.LabeledStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.label) || visitNode22(cbNode, data.statement),
+    [SyntaxKind3.ExpressionStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.Block]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.statements),
+    [SyntaxKind3.VariableStatement]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.declarationList),
+    [SyntaxKind3.VariableDeclaration]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name) || visitNode22(cbNode, data.exclamationToken) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.initializer),
+    [SyntaxKind3.VariableDeclarationList]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.declarations),
+    [SyntaxKind3.Parameter]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.dotDotDotToken) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.questionToken) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.initializer),
+    [SyntaxKind3.BindingElement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.dotDotDotToken) || visitNode22(cbNode, data.propertyName) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.initializer),
+    [SyntaxKind3.MissingDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers),
+    [SyntaxKind3.FunctionDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.asteriskToken) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.ClassDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.heritageClauses) || visitNodes22(cbNode, cbNodes, data.members),
+    [SyntaxKind3.ClassExpression]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.heritageClauses) || visitNodes22(cbNode, cbNodes, data.members),
+    [SyntaxKind3.HeritageClause]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.types),
+    [SyntaxKind3.InterfaceDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.heritageClauses) || visitNodes22(cbNode, cbNodes, data.members),
+    [SyntaxKind3.TypeAliasDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.JSTypeAliasDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.EnumMember]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name) || visitNode22(cbNode, data.initializer),
+    [SyntaxKind3.EnumDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.members),
+    [SyntaxKind3.ModuleBlock]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.statements),
+    [SyntaxKind3.ImportDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.importClause) || visitNode22(cbNode, data.moduleSpecifier) || visitNode22(cbNode, data.attributes),
+    [SyntaxKind3.JSImportDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.importClause) || visitNode22(cbNode, data.moduleSpecifier) || visitNode22(cbNode, data.attributes),
+    [SyntaxKind3.ExternalModuleReference]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.NamespaceImport]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name),
+    [SyntaxKind3.NamedImports]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.elements),
+    [SyntaxKind3.ExportAssignment]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.expression),
+    [SyntaxKind3.NamespaceExportDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name),
+    [SyntaxKind3.NamespaceExport]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name),
+    [SyntaxKind3.NamedExports]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.elements),
+    [SyntaxKind3.ExportSpecifier]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.propertyName) || visitNode22(cbNode, data.name),
+    [SyntaxKind3.CallSignature]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.ConstructSignature]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.Constructor]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.GetAccessor]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.SetAccessor]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.IndexSignature]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.MethodSignature]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.postfixToken) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.MethodDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.asteriskToken) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.postfixToken) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.PropertySignature]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.postfixToken) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.initializer),
+    [SyntaxKind3.PropertyDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.postfixToken) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.initializer),
+    [SyntaxKind3.ClassStaticBlockDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.BinaryExpression]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.left) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.operatorToken) || visitNode22(cbNode, data.right),
+    [SyntaxKind3.PrefixUnaryExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.operand),
+    [SyntaxKind3.PostfixUnaryExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.operand),
+    [SyntaxKind3.YieldExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.asteriskToken) || visitNode22(cbNode, data.expression),
+    [SyntaxKind3.ArrowFunction]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.equalsGreaterThanToken) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.FunctionExpression]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.asteriskToken) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.AsExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.SatisfiesExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.ConditionalExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.condition) || visitNode22(cbNode, data.questionToken) || visitNode22(cbNode, data.whenTrue) || visitNode22(cbNode, data.colonToken) || visitNode22(cbNode, data.whenFalse),
+    [SyntaxKind3.PropertyAccessExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.questionDotToken) || visitNode22(cbNode, data.name),
+    [SyntaxKind3.ElementAccessExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.questionDotToken) || visitNode22(cbNode, data.argumentExpression),
+    [SyntaxKind3.CallExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.questionDotToken) || visitNodes22(cbNode, cbNodes, data.typeArguments) || visitNodes22(cbNode, cbNodes, data.arguments),
+    [SyntaxKind3.NewExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNodes22(cbNode, cbNodes, data.typeArguments) || visitNodes22(cbNode, cbNodes, data.arguments),
+    [SyntaxKind3.MetaProperty]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name),
+    [SyntaxKind3.NonNullExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.SpreadElement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.TemplateExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.head) || visitNodes22(cbNode, cbNodes, data.templateSpans),
+    [SyntaxKind3.TemplateSpan]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.literal),
+    [SyntaxKind3.TaggedTemplateExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tag) || visitNode22(cbNode, data.questionDotToken) || visitNodes22(cbNode, cbNodes, data.typeArguments) || visitNode22(cbNode, data.template),
+    [SyntaxKind3.ParenthesizedExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.ArrayLiteralExpression]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.elements),
+    [SyntaxKind3.ObjectLiteralExpression]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.properties),
+    [SyntaxKind3.SpreadAssignment]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.PropertyAssignment]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.postfixToken) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.initializer),
+    [SyntaxKind3.ShorthandPropertyAssignment]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.postfixToken) || visitNode22(cbNode, data.type) || visitNode22(cbNode, data.equalsToken) || visitNode22(cbNode, data.objectAssignmentInitializer),
+    [SyntaxKind3.DeleteExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.TypeOfExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.VoidExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.AwaitExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.TypeAssertionExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type) || visitNode22(cbNode, data.expression),
+    [SyntaxKind3.UnionType]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.types),
+    [SyntaxKind3.IntersectionType]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.types),
+    [SyntaxKind3.ConditionalType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.checkType) || visitNode22(cbNode, data.extendsType) || visitNode22(cbNode, data.trueType) || visitNode22(cbNode, data.falseType),
+    [SyntaxKind3.TypeOperator]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.InferType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.typeParameter),
+    [SyntaxKind3.ArrayType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.elementType),
+    [SyntaxKind3.IndexedAccessType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.objectType) || visitNode22(cbNode, data.indexType),
+    [SyntaxKind3.TypeReference]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.typeName) || visitNodes22(cbNode, cbNodes, data.typeArguments),
+    [SyntaxKind3.ExpressionWithTypeArguments]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNodes22(cbNode, cbNodes, data.typeArguments),
+    [SyntaxKind3.LiteralType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.literal),
+    [SyntaxKind3.TypePredicate]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.assertsModifier) || visitNode22(cbNode, data.parameterName) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.ImportAttribute]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name) || visitNode22(cbNode, data.value),
+    [SyntaxKind3.ImportAttributes]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.attributes),
+    [SyntaxKind3.TypeQuery]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.exprName) || visitNodes22(cbNode, cbNodes, data.typeArguments),
+    [SyntaxKind3.MappedType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.readonlyToken) || visitNode22(cbNode, data.typeParameter) || visitNode22(cbNode, data.nameType) || visitNode22(cbNode, data.questionToken) || visitNode22(cbNode, data.type) || visitNodes22(cbNode, cbNodes, data.members),
+    [SyntaxKind3.TypeLiteral]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.members),
+    [SyntaxKind3.TupleType]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.elements),
+    [SyntaxKind3.NamedTupleMember]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.dotDotDotToken) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.questionToken) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.OptionalType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.RestType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.ParenthesizedType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.FunctionType]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.ConstructorType]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.TemplateLiteralType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.head) || visitNodes22(cbNode, cbNodes, data.templateSpans),
+    [SyntaxKind3.TemplateLiteralTypeSpan]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type) || visitNode22(cbNode, data.literal),
+    [SyntaxKind3.SyntheticExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tupleNameSource),
+    [SyntaxKind3.PartiallyEmittedExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.JsxElement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.openingElement) || visitNodes22(cbNode, cbNodes, data.children) || visitNode22(cbNode, data.closingElement),
+    [SyntaxKind3.JsxAttributes]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.properties),
+    [SyntaxKind3.JsxNamespacedName]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.namespace) || visitNode22(cbNode, data.name),
+    [SyntaxKind3.JsxOpeningElement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.typeArguments) || visitNode22(cbNode, data.attributes),
+    [SyntaxKind3.JsxSelfClosingElement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.typeArguments) || visitNode22(cbNode, data.attributes),
+    [SyntaxKind3.JsxFragment]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.openingFragment) || visitNodes22(cbNode, cbNodes, data.children) || visitNode22(cbNode, data.closingFragment),
+    [SyntaxKind3.JsxAttribute]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name) || visitNode22(cbNode, data.initializer),
+    [SyntaxKind3.JsxSpreadAttribute]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression),
+    [SyntaxKind3.JsxClosingElement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName),
+    [SyntaxKind3.JsxExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.dotDotDotToken) || visitNode22(cbNode, data.expression),
+    [SyntaxKind3.SyntaxList]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.children),
+    [SyntaxKind3.JSDoc]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.comment) || visitNodes22(cbNode, cbNodes, data.tags),
+    [SyntaxKind3.JSDocTypeExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.JSDocNonNullableType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.JSDocNullableType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.JSDocVariadicType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.JSDocOptionalType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.type),
+    [SyntaxKind3.JSDocTypeTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.typeExpression) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocUnknownTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocTemplateTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.constraint) || visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocReturnTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.typeExpression) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocPublicTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocPrivateTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocProtectedTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocReadonlyTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocOverrideTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocDeprecatedTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocSeeTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.nameExpression) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocImplementsTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.className) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocAugmentsTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.className) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocSatisfiesTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.typeExpression) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocThrowsTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.typeExpression) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocThisTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.typeExpression) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocImportTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.importClause) || visitNode22(cbNode, data.moduleSpecifier) || visitNode22(cbNode, data.attributes) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocCallbackTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.typeExpression) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocOverloadTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.typeExpression) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocTypedefTag]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.tagName) || visitNode22(cbNode, data.typeExpression) || visitNode22(cbNode, data.name) || visitNodes22(cbNode, cbNodes, data.comment),
+    [SyntaxKind3.JSDocSignature]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.typeParameters) || visitNodes22(cbNode, cbNodes, data.parameters) || visitNode22(cbNode, data.type),
+    [SyntaxKind3.JSDocNameReference]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name),
+    [SyntaxKind3.ModuleDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.body),
+    [SyntaxKind3.ImportEqualsDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.moduleReference),
+    [SyntaxKind3.ExportDeclaration]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.exportClause) || visitNode22(cbNode, data.moduleSpecifier) || visitNode22(cbNode, data.attributes),
+    [SyntaxKind3.ImportType]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.argument) || visitNode22(cbNode, data.attributes) || visitNode22(cbNode, data.qualifier) || visitNodes22(cbNode, cbNodes, data.typeArguments),
+    [SyntaxKind3.ImportClause]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name) || visitNode22(cbNode, data.namedBindings),
+    [SyntaxKind3.ImportSpecifier]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.propertyName) || visitNode22(cbNode, data.name),
+    [SyntaxKind3.JSDocLink]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name),
+    [SyntaxKind3.JSDocLinkPlain]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name),
+    [SyntaxKind3.JSDocLinkCode]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.name),
+    [SyntaxKind3.TypeParameter]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.modifiers) || visitNode22(cbNode, data.name) || visitNode22(cbNode, data.constraint) || visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.defaultType),
+    [SyntaxKind3.SyntheticReferenceExpression]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.thisArg),
+    [SyntaxKind3.JSDocTypeLiteral]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.jsdocPropertyTags),
+    [SyntaxKind3.ForInStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.awaitModifier) || visitNode22(cbNode, data.initializer) || visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.statement),
+    [SyntaxKind3.ForOfStatement]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.awaitModifier) || visitNode22(cbNode, data.initializer) || visitNode22(cbNode, data.expression) || visitNode22(cbNode, data.statement),
+    [SyntaxKind3.CaseClause]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNodes22(cbNode, cbNodes, data.statements),
+    [SyntaxKind3.DefaultClause]: (data, cbNode, cbNodes) => visitNode22(cbNode, data.expression) || visitNodes22(cbNode, cbNodes, data.statements),
+    [SyntaxKind3.ObjectBindingPattern]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.elements),
+    [SyntaxKind3.ArrayBindingPattern]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.elements),
+    [SyntaxKind3.JSDocParameterTag]: forEachChildOfJSDocParameterOrPropertyTag2,
+    [SyntaxKind3.JSDocPropertyTag]: forEachChildOfJSDocParameterOrPropertyTag2,
+    [SyntaxKind3.SourceFile]: (data, cbNode, cbNodes) => visitNodes22(cbNode, cbNodes, data.statements) || visitNode22(cbNode, data.endOfFileToken)
+  };
+  EscapeSequenceScanningFlags2 = {
+    String: 1 << 0,
+    ReportErrors: 1 << 1,
+    RegularExpression: 1 << 2,
+    AnnexB: 1 << 3,
+    AnyUnicodeMode: 1 << 4,
+    AtomEscape: 1 << 5,
+    ReportInvalidEscapeErrors: 1 << 2 | 1 << 1,
+    AllowExtendedUnicodeEscape: 1 << 0 | 1 << 4
+  };
+  textToKeywordObj2 = {
+    abstract: SyntaxKind3.AbstractKeyword,
+    accessor: SyntaxKind3.AccessorKeyword,
+    any: SyntaxKind3.AnyKeyword,
+    as: SyntaxKind3.AsKeyword,
+    asserts: SyntaxKind3.AssertsKeyword,
+    assert: SyntaxKind3.AssertKeyword,
+    bigint: SyntaxKind3.BigIntKeyword,
+    boolean: SyntaxKind3.BooleanKeyword,
+    break: SyntaxKind3.BreakKeyword,
+    case: SyntaxKind3.CaseKeyword,
+    catch: SyntaxKind3.CatchKeyword,
+    class: SyntaxKind3.ClassKeyword,
+    continue: SyntaxKind3.ContinueKeyword,
+    const: SyntaxKind3.ConstKeyword,
+    ["" + "constructor"]: SyntaxKind3.ConstructorKeyword,
+    debugger: SyntaxKind3.DebuggerKeyword,
+    declare: SyntaxKind3.DeclareKeyword,
+    default: SyntaxKind3.DefaultKeyword,
+    defer: SyntaxKind3.DeferKeyword,
+    delete: SyntaxKind3.DeleteKeyword,
+    do: SyntaxKind3.DoKeyword,
+    else: SyntaxKind3.ElseKeyword,
+    enum: SyntaxKind3.EnumKeyword,
+    export: SyntaxKind3.ExportKeyword,
+    extends: SyntaxKind3.ExtendsKeyword,
+    false: SyntaxKind3.FalseKeyword,
+    finally: SyntaxKind3.FinallyKeyword,
+    for: SyntaxKind3.ForKeyword,
+    from: SyntaxKind3.FromKeyword,
+    function: SyntaxKind3.FunctionKeyword,
+    get: SyntaxKind3.GetKeyword,
+    if: SyntaxKind3.IfKeyword,
+    implements: SyntaxKind3.ImplementsKeyword,
+    import: SyntaxKind3.ImportKeyword,
+    in: SyntaxKind3.InKeyword,
+    infer: SyntaxKind3.InferKeyword,
+    instanceof: SyntaxKind3.InstanceOfKeyword,
+    interface: SyntaxKind3.InterfaceKeyword,
+    intrinsic: SyntaxKind3.IntrinsicKeyword,
+    is: SyntaxKind3.IsKeyword,
+    keyof: SyntaxKind3.KeyOfKeyword,
+    let: SyntaxKind3.LetKeyword,
+    module: SyntaxKind3.ModuleKeyword,
+    namespace: SyntaxKind3.NamespaceKeyword,
+    never: SyntaxKind3.NeverKeyword,
+    new: SyntaxKind3.NewKeyword,
+    null: SyntaxKind3.NullKeyword,
+    number: SyntaxKind3.NumberKeyword,
+    object: SyntaxKind3.ObjectKeyword,
+    package: SyntaxKind3.PackageKeyword,
+    private: SyntaxKind3.PrivateKeyword,
+    protected: SyntaxKind3.ProtectedKeyword,
+    public: SyntaxKind3.PublicKeyword,
+    override: SyntaxKind3.OverrideKeyword,
+    out: SyntaxKind3.OutKeyword,
+    readonly: SyntaxKind3.ReadonlyKeyword,
+    require: SyntaxKind3.RequireKeyword,
+    global: SyntaxKind3.GlobalKeyword,
+    return: SyntaxKind3.ReturnKeyword,
+    satisfies: SyntaxKind3.SatisfiesKeyword,
+    set: SyntaxKind3.SetKeyword,
+    static: SyntaxKind3.StaticKeyword,
+    string: SyntaxKind3.StringKeyword,
+    super: SyntaxKind3.SuperKeyword,
+    switch: SyntaxKind3.SwitchKeyword,
+    symbol: SyntaxKind3.SymbolKeyword,
+    this: SyntaxKind3.ThisKeyword,
+    throw: SyntaxKind3.ThrowKeyword,
+    true: SyntaxKind3.TrueKeyword,
+    try: SyntaxKind3.TryKeyword,
+    type: SyntaxKind3.TypeKeyword,
+    typeof: SyntaxKind3.TypeOfKeyword,
+    undefined: SyntaxKind3.UndefinedKeyword,
+    unique: SyntaxKind3.UniqueKeyword,
+    unknown: SyntaxKind3.UnknownKeyword,
+    using: SyntaxKind3.UsingKeyword,
+    var: SyntaxKind3.VarKeyword,
+    void: SyntaxKind3.VoidKeyword,
+    while: SyntaxKind3.WhileKeyword,
+    with: SyntaxKind3.WithKeyword,
+    yield: SyntaxKind3.YieldKeyword,
+    async: SyntaxKind3.AsyncKeyword,
+    await: SyntaxKind3.AwaitKeyword,
+    of: SyntaxKind3.OfKeyword
+  };
+  textToKeyword2 = new Map(Object.entries(textToKeywordObj2));
+  textToToken2 = new Map(Object.entries({
+    ...textToKeywordObj2,
+    "{": SyntaxKind3.OpenBraceToken,
+    "}": SyntaxKind3.CloseBraceToken,
+    "(": SyntaxKind3.OpenParenToken,
+    ")": SyntaxKind3.CloseParenToken,
+    "[": SyntaxKind3.OpenBracketToken,
+    "]": SyntaxKind3.CloseBracketToken,
+    ".": SyntaxKind3.DotToken,
+    "...": SyntaxKind3.DotDotDotToken,
+    ";": SyntaxKind3.SemicolonToken,
+    ",": SyntaxKind3.CommaToken,
+    "<": SyntaxKind3.LessThanToken,
+    ">": SyntaxKind3.GreaterThanToken,
+    "<=": SyntaxKind3.LessThanEqualsToken,
+    ">=": SyntaxKind3.GreaterThanEqualsToken,
+    "==": SyntaxKind3.EqualsEqualsToken,
+    "!=": SyntaxKind3.ExclamationEqualsToken,
+    "===": SyntaxKind3.EqualsEqualsEqualsToken,
+    "!==": SyntaxKind3.ExclamationEqualsEqualsToken,
+    "=>": SyntaxKind3.EqualsGreaterThanToken,
+    "+": SyntaxKind3.PlusToken,
+    "-": SyntaxKind3.MinusToken,
+    "**": SyntaxKind3.AsteriskAsteriskToken,
+    "*": SyntaxKind3.AsteriskToken,
+    "/": SyntaxKind3.SlashToken,
+    "%": SyntaxKind3.PercentToken,
+    "++": SyntaxKind3.PlusPlusToken,
+    "--": SyntaxKind3.MinusMinusToken,
+    "<<": SyntaxKind3.LessThanLessThanToken,
+    "</": SyntaxKind3.LessThanSlashToken,
+    ">>": SyntaxKind3.GreaterThanGreaterThanToken,
+    ">>>": SyntaxKind3.GreaterThanGreaterThanGreaterThanToken,
+    "&": SyntaxKind3.AmpersandToken,
+    "|": SyntaxKind3.BarToken,
+    "^": SyntaxKind3.CaretToken,
+    "!": SyntaxKind3.ExclamationToken,
+    "~": SyntaxKind3.TildeToken,
+    "&&": SyntaxKind3.AmpersandAmpersandToken,
+    "||": SyntaxKind3.BarBarToken,
+    "?": SyntaxKind3.QuestionToken,
+    "??": SyntaxKind3.QuestionQuestionToken,
+    "?.": SyntaxKind3.QuestionDotToken,
+    ":": SyntaxKind3.ColonToken,
+    "=": SyntaxKind3.EqualsToken,
+    "+=": SyntaxKind3.PlusEqualsToken,
+    "-=": SyntaxKind3.MinusEqualsToken,
+    "*=": SyntaxKind3.AsteriskEqualsToken,
+    "**=": SyntaxKind3.AsteriskAsteriskEqualsToken,
+    "/=": SyntaxKind3.SlashEqualsToken,
+    "%=": SyntaxKind3.PercentEqualsToken,
+    "<<=": SyntaxKind3.LessThanLessThanEqualsToken,
+    ">>=": SyntaxKind3.GreaterThanGreaterThanEqualsToken,
+    ">>>=": SyntaxKind3.GreaterThanGreaterThanGreaterThanEqualsToken,
+    "&=": SyntaxKind3.AmpersandEqualsToken,
+    "|=": SyntaxKind3.BarEqualsToken,
+    "^=": SyntaxKind3.CaretEqualsToken,
+    "||=": SyntaxKind3.BarBarEqualsToken,
+    "&&=": SyntaxKind3.AmpersandAmpersandEqualsToken,
+    "??=": SyntaxKind3.QuestionQuestionEqualsToken,
+    "@": SyntaxKind3.AtToken,
+    "#": SyntaxKind3.HashToken,
+    "`": SyntaxKind3.BacktickToken
+  }));
+  charCodeToRegExpFlag2 = new Map([
+    [CharacterCodes4.d, RegularExpressionFlags2.HasIndices],
+    [CharacterCodes4.g, RegularExpressionFlags2.Global],
+    [CharacterCodes4.i, RegularExpressionFlags2.IgnoreCase],
+    [CharacterCodes4.m, RegularExpressionFlags2.Multiline],
+    [CharacterCodes4.s, RegularExpressionFlags2.DotAll],
+    [CharacterCodes4.u, RegularExpressionFlags2.Unicode],
+    [CharacterCodes4.v, RegularExpressionFlags2.UnicodeSets],
+    [CharacterCodes4.y, RegularExpressionFlags2.Sticky]
+  ]);
+  jsDocTagTerminators2 = new Set([" ", "\t", `
+`, "\r", "}", "*"]);
+  tokenStrings2 = makeReverseMap2(textToToken2);
+  childProperties2 = {
+    [SyntaxKind3.QualifiedName]: ["left", "right"],
+    [SyntaxKind3.ComputedPropertyName]: ["expression"],
+    [SyntaxKind3.Decorator]: ["expression"],
+    [SyntaxKind3.IfStatement]: ["expression", "thenStatement", "elseStatement"],
+    [SyntaxKind3.DoStatement]: ["statement", "expression"],
+    [SyntaxKind3.WhileStatement]: ["expression", "statement"],
+    [SyntaxKind3.ForStatement]: ["initializer", "condition", "incrementor", "statement"],
+    [SyntaxKind3.ForInStatement]: ["awaitModifier", "initializer", "expression", "statement"],
+    [SyntaxKind3.ForOfStatement]: ["awaitModifier", "initializer", "expression", "statement"],
+    [SyntaxKind3.BreakStatement]: ["label"],
+    [SyntaxKind3.ContinueStatement]: ["label"],
+    [SyntaxKind3.ReturnStatement]: ["expression"],
+    [SyntaxKind3.WithStatement]: ["expression", "statement"],
+    [SyntaxKind3.SwitchStatement]: ["expression", "caseBlock"],
+    [SyntaxKind3.CaseBlock]: ["clauses"],
+    [SyntaxKind3.CaseClause]: ["expression", "statements"],
+    [SyntaxKind3.DefaultClause]: ["expression", "statements"],
+    [SyntaxKind3.ThrowStatement]: ["expression"],
+    [SyntaxKind3.TryStatement]: ["tryBlock", "catchClause", "finallyBlock"],
+    [SyntaxKind3.CatchClause]: ["variableDeclaration", "block"],
+    [SyntaxKind3.LabeledStatement]: ["label", "statement"],
+    [SyntaxKind3.ExpressionStatement]: ["expression"],
+    [SyntaxKind3.Block]: ["statements"],
+    [SyntaxKind3.VariableStatement]: ["modifiers", "declarationList"],
+    [SyntaxKind3.VariableDeclaration]: ["name", "exclamationToken", "type", "initializer"],
+    [SyntaxKind3.VariableDeclarationList]: ["declarations"],
+    [SyntaxKind3.ObjectBindingPattern]: ["elements"],
+    [SyntaxKind3.ArrayBindingPattern]: ["elements"],
+    [SyntaxKind3.Parameter]: ["modifiers", "dotDotDotToken", "name", "questionToken", "type", "initializer"],
+    [SyntaxKind3.BindingElement]: ["dotDotDotToken", "propertyName", "name", "initializer"],
+    [SyntaxKind3.MissingDeclaration]: ["modifiers"],
+    [SyntaxKind3.FunctionDeclaration]: ["modifiers", "asteriskToken", "name", "typeParameters", "parameters", "type", "body"],
+    [SyntaxKind3.ClassDeclaration]: ["modifiers", "name", "typeParameters", "heritageClauses", "members"],
+    [SyntaxKind3.ClassExpression]: ["modifiers", "name", "typeParameters", "heritageClauses", "members"],
+    [SyntaxKind3.HeritageClause]: ["types"],
+    [SyntaxKind3.InterfaceDeclaration]: ["modifiers", "name", "typeParameters", "heritageClauses", "members"],
+    [SyntaxKind3.TypeAliasDeclaration]: ["modifiers", "name", "typeParameters", "type"],
+    [SyntaxKind3.JSTypeAliasDeclaration]: ["modifiers", "name", "typeParameters", "type"],
+    [SyntaxKind3.EnumMember]: ["name", "initializer"],
+    [SyntaxKind3.EnumDeclaration]: ["modifiers", "name", "members"],
+    [SyntaxKind3.ModuleBlock]: ["statements"],
+    [SyntaxKind3.ImportDeclaration]: ["modifiers", "importClause", "moduleSpecifier", "attributes"],
+    [SyntaxKind3.JSImportDeclaration]: ["modifiers", "importClause", "moduleSpecifier", "attributes"],
+    [SyntaxKind3.ExternalModuleReference]: ["expression"],
+    [SyntaxKind3.NamespaceImport]: ["name"],
+    [SyntaxKind3.NamedImports]: ["elements"],
+    [SyntaxKind3.ExportAssignment]: ["modifiers", "type", "expression"],
+    [SyntaxKind3.NamespaceExportDeclaration]: ["modifiers", "name"],
+    [SyntaxKind3.NamespaceExport]: ["name"],
+    [SyntaxKind3.NamedExports]: ["elements"],
+    [SyntaxKind3.ExportSpecifier]: ["propertyName", "name"],
+    [SyntaxKind3.CallSignature]: ["typeParameters", "parameters", "type"],
+    [SyntaxKind3.ConstructSignature]: ["typeParameters", "parameters", "type"],
+    [SyntaxKind3.Constructor]: ["modifiers", "typeParameters", "parameters", "type", "body"],
+    [SyntaxKind3.GetAccessor]: ["modifiers", "name", "typeParameters", "parameters", "type", "body"],
+    [SyntaxKind3.SetAccessor]: ["modifiers", "name", "typeParameters", "parameters", "type", "body"],
+    [SyntaxKind3.IndexSignature]: ["modifiers", "parameters", "type"],
+    [SyntaxKind3.MethodSignature]: ["modifiers", "name", "postfixToken", "typeParameters", "parameters", "type"],
+    [SyntaxKind3.MethodDeclaration]: ["modifiers", "asteriskToken", "name", "postfixToken", "typeParameters", "parameters", "type", "body"],
+    [SyntaxKind3.PropertySignature]: ["modifiers", "name", "postfixToken", "type", "initializer"],
+    [SyntaxKind3.PropertyDeclaration]: ["modifiers", "name", "postfixToken", "type", "initializer"],
+    [SyntaxKind3.ClassStaticBlockDeclaration]: ["modifiers", "body"],
+    [SyntaxKind3.BinaryExpression]: ["modifiers", "left", "type", "operatorToken", "right"],
+    [SyntaxKind3.PrefixUnaryExpression]: ["operand"],
+    [SyntaxKind3.PostfixUnaryExpression]: ["operand"],
+    [SyntaxKind3.YieldExpression]: ["asteriskToken", "expression"],
+    [SyntaxKind3.ArrowFunction]: ["modifiers", "typeParameters", "parameters", "type", "equalsGreaterThanToken", "body"],
+    [SyntaxKind3.FunctionExpression]: ["modifiers", "asteriskToken", "name", "typeParameters", "parameters", "type", "body"],
+    [SyntaxKind3.AsExpression]: ["expression", "type"],
+    [SyntaxKind3.SatisfiesExpression]: ["expression", "type"],
+    [SyntaxKind3.ConditionalExpression]: ["condition", "questionToken", "whenTrue", "colonToken", "whenFalse"],
+    [SyntaxKind3.PropertyAccessExpression]: ["expression", "questionDotToken", "name"],
+    [SyntaxKind3.ElementAccessExpression]: ["expression", "questionDotToken", "argumentExpression"],
+    [SyntaxKind3.CallExpression]: ["expression", "questionDotToken", "typeArguments", "arguments"],
+    [SyntaxKind3.NewExpression]: ["expression", "typeArguments", "arguments"],
+    [SyntaxKind3.MetaProperty]: ["name"],
+    [SyntaxKind3.NonNullExpression]: ["expression"],
+    [SyntaxKind3.SpreadElement]: ["expression"],
+    [SyntaxKind3.TemplateExpression]: ["head", "templateSpans"],
+    [SyntaxKind3.TemplateSpan]: ["expression", "literal"],
+    [SyntaxKind3.TaggedTemplateExpression]: ["tag", "questionDotToken", "typeArguments", "template"],
+    [SyntaxKind3.ParenthesizedExpression]: ["expression"],
+    [SyntaxKind3.ArrayLiteralExpression]: ["elements"],
+    [SyntaxKind3.ObjectLiteralExpression]: ["properties"],
+    [SyntaxKind3.SpreadAssignment]: ["expression"],
+    [SyntaxKind3.PropertyAssignment]: ["modifiers", "name", "postfixToken", "type", "initializer"],
+    [SyntaxKind3.ShorthandPropertyAssignment]: ["modifiers", "name", "postfixToken", "type", "equalsToken", "objectAssignmentInitializer"],
+    [SyntaxKind3.DeleteExpression]: ["expression"],
+    [SyntaxKind3.TypeOfExpression]: ["expression"],
+    [SyntaxKind3.VoidExpression]: ["expression"],
+    [SyntaxKind3.AwaitExpression]: ["expression"],
+    [SyntaxKind3.TypeAssertionExpression]: ["type", "expression"],
+    [SyntaxKind3.UnionType]: ["types"],
+    [SyntaxKind3.IntersectionType]: ["types"],
+    [SyntaxKind3.ConditionalType]: ["checkType", "extendsType", "trueType", "falseType"],
+    [SyntaxKind3.TypeOperator]: ["type"],
+    [SyntaxKind3.InferType]: ["typeParameter"],
+    [SyntaxKind3.ArrayType]: ["elementType"],
+    [SyntaxKind3.IndexedAccessType]: ["objectType", "indexType"],
+    [SyntaxKind3.TypeReference]: ["typeName", "typeArguments"],
+    [SyntaxKind3.ExpressionWithTypeArguments]: ["expression", "typeArguments"],
+    [SyntaxKind3.LiteralType]: ["literal"],
+    [SyntaxKind3.TypePredicate]: ["assertsModifier", "parameterName", "type"],
+    [SyntaxKind3.ImportAttribute]: ["name", "value"],
+    [SyntaxKind3.ImportAttributes]: ["attributes"],
+    [SyntaxKind3.TypeQuery]: ["exprName", "typeArguments"],
+    [SyntaxKind3.MappedType]: ["readonlyToken", "typeParameter", "nameType", "questionToken", "type", "members"],
+    [SyntaxKind3.TypeLiteral]: ["members"],
+    [SyntaxKind3.TupleType]: ["elements"],
+    [SyntaxKind3.NamedTupleMember]: ["dotDotDotToken", "name", "questionToken", "type"],
+    [SyntaxKind3.OptionalType]: ["type"],
+    [SyntaxKind3.RestType]: ["type"],
+    [SyntaxKind3.ParenthesizedType]: ["type"],
+    [SyntaxKind3.FunctionType]: ["typeParameters", "parameters", "type"],
+    [SyntaxKind3.ConstructorType]: ["modifiers", "typeParameters", "parameters", "type"],
+    [SyntaxKind3.TemplateLiteralType]: ["head", "templateSpans"],
+    [SyntaxKind3.TemplateLiteralTypeSpan]: ["type", "literal"],
+    [SyntaxKind3.SyntheticExpression]: ["tupleNameSource"],
+    [SyntaxKind3.PartiallyEmittedExpression]: ["expression"],
+    [SyntaxKind3.JsxElement]: ["openingElement", "children", "closingElement"],
+    [SyntaxKind3.JsxAttributes]: ["properties"],
+    [SyntaxKind3.JsxNamespacedName]: ["namespace", "name"],
+    [SyntaxKind3.JsxOpeningElement]: ["tagName", "typeArguments", "attributes"],
+    [SyntaxKind3.JsxSelfClosingElement]: ["tagName", "typeArguments", "attributes"],
+    [SyntaxKind3.JsxFragment]: ["openingFragment", "children", "closingFragment"],
+    [SyntaxKind3.JsxAttribute]: ["name", "initializer"],
+    [SyntaxKind3.JsxSpreadAttribute]: ["expression"],
+    [SyntaxKind3.JsxClosingElement]: ["tagName"],
+    [SyntaxKind3.JsxExpression]: ["dotDotDotToken", "expression"],
+    [SyntaxKind3.SyntaxList]: ["children"],
+    [SyntaxKind3.JSDoc]: ["comment", "tags"],
+    [SyntaxKind3.JSDocTypeExpression]: ["type"],
+    [SyntaxKind3.JSDocNonNullableType]: ["type"],
+    [SyntaxKind3.JSDocNullableType]: ["type"],
+    [SyntaxKind3.JSDocVariadicType]: ["type"],
+    [SyntaxKind3.JSDocOptionalType]: ["type"],
+    [SyntaxKind3.JSDocTypeTag]: ["tagName", "typeExpression", "comment"],
+    [SyntaxKind3.JSDocUnknownTag]: ["tagName", "comment"],
+    [SyntaxKind3.JSDocTemplateTag]: ["tagName", "constraint", "typeParameters", "comment"],
+    [SyntaxKind3.JSDocReturnTag]: ["tagName", "typeExpression", "comment"],
+    [SyntaxKind3.JSDocPublicTag]: ["tagName", "comment"],
+    [SyntaxKind3.JSDocPrivateTag]: ["tagName", "comment"],
+    [SyntaxKind3.JSDocProtectedTag]: ["tagName", "comment"],
+    [SyntaxKind3.JSDocReadonlyTag]: ["tagName", "comment"],
+    [SyntaxKind3.JSDocOverrideTag]: ["tagName", "comment"],
+    [SyntaxKind3.JSDocDeprecatedTag]: ["tagName", "comment"],
+    [SyntaxKind3.JSDocSeeTag]: ["tagName", "nameExpression", "comment"],
+    [SyntaxKind3.JSDocImplementsTag]: ["tagName", "className", "comment"],
+    [SyntaxKind3.JSDocAugmentsTag]: ["tagName", "className", "comment"],
+    [SyntaxKind3.JSDocSatisfiesTag]: ["tagName", "typeExpression", "comment"],
+    [SyntaxKind3.JSDocThrowsTag]: ["tagName", "typeExpression", "comment"],
+    [SyntaxKind3.JSDocThisTag]: ["tagName", "typeExpression", "comment"],
+    [SyntaxKind3.JSDocImportTag]: ["tagName", "importClause", "moduleSpecifier", "attributes", "comment"],
+    [SyntaxKind3.JSDocCallbackTag]: ["tagName", "typeExpression", "name", "comment"],
+    [SyntaxKind3.JSDocOverloadTag]: ["tagName", "typeExpression", "comment"],
+    [SyntaxKind3.JSDocTypedefTag]: ["tagName", "typeExpression", "name", "comment"],
+    [SyntaxKind3.JSDocSignature]: ["typeParameters", "parameters", "type"],
+    [SyntaxKind3.JSDocNameReference]: ["name"],
+    [SyntaxKind3.SourceFile]: ["statements", "endOfFileToken"],
+    [SyntaxKind3.ModuleDeclaration]: ["modifiers", "name", "body"],
+    [SyntaxKind3.ImportEqualsDeclaration]: ["modifiers", "name", "moduleReference"],
+    [SyntaxKind3.ExportDeclaration]: ["modifiers", "exportClause", "moduleSpecifier", "attributes"],
+    [SyntaxKind3.ImportType]: ["argument", "attributes", "qualifier", "typeArguments"],
+    [SyntaxKind3.ImportClause]: ["name", "namedBindings"],
+    [SyntaxKind3.ImportSpecifier]: ["propertyName", "name"],
+    [SyntaxKind3.JSDocLink]: ["name"],
+    [SyntaxKind3.JSDocLinkPlain]: ["name"],
+    [SyntaxKind3.JSDocLinkCode]: ["name"],
+    [SyntaxKind3.TypeParameter]: ["modifiers", "name", "constraint", "expression", "defaultType"],
+    [SyntaxKind3.SyntheticReferenceExpression]: ["expression", "thisArg"],
+    [SyntaxKind3.JSDocTypeLiteral]: ["jsdocPropertyTags"],
+    [SyntaxKind3.JSDocParameterTag]: ["tagName", "name", "typeExpression", "comment"],
+    [SyntaxKind3.JSDocPropertyTag]: ["tagName", "name", "typeExpression", "comment"]
+  };
+  singleChildNodePropertyNames2 = {
+    [SyntaxKind3.ComputedPropertyName]: "expression",
+    [SyntaxKind3.Decorator]: "expression",
+    [SyntaxKind3.BreakStatement]: "label",
+    [SyntaxKind3.ContinueStatement]: "label",
+    [SyntaxKind3.ReturnStatement]: "expression",
+    [SyntaxKind3.CaseBlock]: "clauses",
+    [SyntaxKind3.ThrowStatement]: "expression",
+    [SyntaxKind3.ExpressionStatement]: "expression",
+    [SyntaxKind3.Block]: "statements",
+    [SyntaxKind3.VariableDeclarationList]: "declarations",
+    [SyntaxKind3.ObjectBindingPattern]: "elements",
+    [SyntaxKind3.ArrayBindingPattern]: "elements",
+    [SyntaxKind3.MissingDeclaration]: "modifiers",
+    [SyntaxKind3.HeritageClause]: "types",
+    [SyntaxKind3.ModuleBlock]: "statements",
+    [SyntaxKind3.ExternalModuleReference]: "expression",
+    [SyntaxKind3.NamespaceImport]: "name",
+    [SyntaxKind3.NamedImports]: "elements",
+    [SyntaxKind3.NamespaceExport]: "name",
+    [SyntaxKind3.NamedExports]: "elements",
+    [SyntaxKind3.PrefixUnaryExpression]: "operand",
+    [SyntaxKind3.PostfixUnaryExpression]: "operand",
+    [SyntaxKind3.MetaProperty]: "name",
+    [SyntaxKind3.NonNullExpression]: "expression",
+    [SyntaxKind3.SpreadElement]: "expression",
+    [SyntaxKind3.ParenthesizedExpression]: "expression",
+    [SyntaxKind3.ArrayLiteralExpression]: "elements",
+    [SyntaxKind3.ObjectLiteralExpression]: "properties",
+    [SyntaxKind3.SpreadAssignment]: "expression",
+    [SyntaxKind3.DeleteExpression]: "expression",
+    [SyntaxKind3.TypeOfExpression]: "expression",
+    [SyntaxKind3.VoidExpression]: "expression",
+    [SyntaxKind3.AwaitExpression]: "expression",
+    [SyntaxKind3.UnionType]: "types",
+    [SyntaxKind3.IntersectionType]: "types",
+    [SyntaxKind3.TypeOperator]: "type",
+    [SyntaxKind3.InferType]: "typeParameter",
+    [SyntaxKind3.ArrayType]: "elementType",
+    [SyntaxKind3.LiteralType]: "literal",
+    [SyntaxKind3.ImportAttributes]: "attributes",
+    [SyntaxKind3.TypeLiteral]: "members",
+    [SyntaxKind3.TupleType]: "elements",
+    [SyntaxKind3.OptionalType]: "type",
+    [SyntaxKind3.RestType]: "type",
+    [SyntaxKind3.ParenthesizedType]: "type",
+    [SyntaxKind3.SyntheticExpression]: "tupleNameSource",
+    [SyntaxKind3.PartiallyEmittedExpression]: "expression",
+    [SyntaxKind3.JsxAttributes]: "properties",
+    [SyntaxKind3.JsxSpreadAttribute]: "expression",
+    [SyntaxKind3.JsxClosingElement]: "tagName",
+    [SyntaxKind3.SyntaxList]: "children",
+    [SyntaxKind3.JSDocTypeExpression]: "type",
+    [SyntaxKind3.JSDocNonNullableType]: "type",
+    [SyntaxKind3.JSDocNullableType]: "type",
+    [SyntaxKind3.JSDocVariadicType]: "type",
+    [SyntaxKind3.JSDocOptionalType]: "type",
+    [SyntaxKind3.JSDocNameReference]: "name",
+    [SyntaxKind3.JSDocLink]: "name",
+    [SyntaxKind3.JSDocLinkPlain]: "name",
+    [SyntaxKind3.JSDocLinkCode]: "name",
+    [SyntaxKind3.JSDocTypeLiteral]: "jsdocPropertyTags"
+  };
+  Wtf8Decoder2 = class Wtf8Decoder2 extends TextDecoder {
+    decode(input, options) {
+      if (input === undefined) {
+        return super.decode(input, options);
+      }
+      const bytes = toUint8Array2(input);
+      if (!hasSurrogateLeadByte2(bytes)) {
+        return super.decode(bytes, options);
+      }
+      const parts = [];
+      let segmentStart = 0;
+      for (let i = 0;i < bytes.length; i++) {
+        if (!isWtf8Surrogate2(bytes, i)) {
+          continue;
+        }
+        if (segmentStart < i) {
+          parts.push(super.decode(bytes.subarray(segmentStart, i), options));
+        }
+        parts.push(String.fromCharCode(getSurrogateCodeUnit2(bytes, i)));
+        i += 2;
+        segmentStart = i + 1;
+      }
+      if (segmentStart === 0) {
+        return super.decode(bytes, options);
+      }
+      if (segmentStart < bytes.length) {
+        parts.push(super.decode(bytes.subarray(segmentStart), options));
+      }
+      return parts.join("");
+    }
+  };
+  encoder4 = new TextEncoder;
+  decoder2 = new Wtf8Decoder2;
+  NODE_FIELDS2 = NODE_LEN2 / 4;
+  popcount82 = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8];
+  RemoteNodeList2 = class RemoteNodeList2 extends Array {
+    static get [Symbol.species]() {
+      return Array;
+    }
+    parent;
+    hasTrailingComma;
+    transformFlags = 0;
+    view;
+    index;
+    _byteIndex;
+    _cursorIndex = 0;
+    _cursorNodeIndex = 0;
+    get pos() {
+      return this.view.getUint32(this._byteIndex + NODE_OFFSET_POS2, true);
+    }
+    get end() {
+      return this.view.getUint32(this._byteIndex + NODE_OFFSET_END2, true);
+    }
+    get next() {
+      return this.view.getUint32(this._byteIndex + NODE_OFFSET_NEXT2, true);
+    }
+    get data() {
+      return this.view.getUint32(this._byteIndex + NODE_OFFSET_DATA2, true);
+    }
+    sourceFile;
+    constructor(view, index, parent, sourceFile, offsetNodes) {
+      super();
+      this.view = view;
+      this.index = index;
+      this.parent = parent;
+      this.sourceFile = sourceFile;
+      this._byteIndex = offsetNodes + index * NODE_LEN2;
+      this.length = this.data;
+      this._cursorNodeIndex = index + 1;
+      const length = this.length;
+      for (let i = 16;i < length; i++) {
+        Object.defineProperty(this, i, {
+          get() {
+            return this.at(i);
+          }
+        });
+      }
+    }
+    get 0() {
+      return this.at(0);
+    }
+    get 1() {
+      return this.at(1);
+    }
+    get 2() {
+      return this.at(2);
+    }
+    get 3() {
+      return this.at(3);
+    }
+    get 4() {
+      return this.at(4);
+    }
+    get 5() {
+      return this.at(5);
+    }
+    get 6() {
+      return this.at(6);
+    }
+    get 7() {
+      return this.at(7);
+    }
+    get 8() {
+      return this.at(8);
+    }
+    get 9() {
+      return this.at(9);
+    }
+    get 10() {
+      return this.at(10);
+    }
+    get 11() {
+      return this.at(11);
+    }
+    get 12() {
+      return this.at(12);
+    }
+    get 13() {
+      return this.at(13);
+    }
+    get 14() {
+      return this.at(14);
+    }
+    get 15() {
+      return this.at(15);
+    }
+    *[Symbol.iterator]() {
+      if (!this.length)
+        return;
+      let next = this.index + 1;
+      while (next) {
+        const child = this.getOrCreateChildAtNodeIndex(next);
+        next = child.next;
+        yield child;
+      }
+    }
+    forEachNode(visitNode) {
+      if (!this.length)
+        return;
+      let next = this.index + 1;
+      while (next) {
+        const child = this.getOrCreateChildAtNodeIndex(next);
+        next = child.next;
+        const result = visitNode(child);
+        if (result)
+          return result;
+      }
+    }
+    at(index) {
+      if (!Number.isInteger(index)) {
+        return;
+      }
+      if (index >= this.data || index < 0 && -index > this.data) {
+        return;
+      }
+      if (index < 0) {
+        index = this.length + index;
+      }
+      const offsetNodes = this.sourceFile._offsetNodes;
+      let i;
+      let next;
+      if (index >= this._cursorIndex) {
+        i = this._cursorIndex;
+        next = this._cursorNodeIndex;
+      } else {
+        i = 0;
+        next = this.index + 1;
+      }
+      for (;i < index; i++) {
+        next = this.view.getUint32(offsetNodes + next * NODE_LEN2 + NODE_OFFSET_NEXT2, true);
+      }
+      this._cursorIndex = index;
+      this._cursorNodeIndex = next;
+      return this.getOrCreateChildAtNodeIndex(next);
+    }
+    getOrCreateChildAtNodeIndex(index) {
+      let child = this.sourceFile.nodes[index];
+      if (!child) {
+        const kind = this.view.getUint32(this.sourceFile._offsetNodes + index * NODE_LEN2 + NODE_OFFSET_KIND2, true);
+        if (kind === KIND_NODE_LIST2) {
+          throw new Error("NodeList cannot directly contain another NodeList");
+        }
+        const sf = this.sourceFile;
+        child = new RemoteNode2(this.view, index, this.parent, sf, sf._offsetNodes);
+        sf.nodes[index] = child;
+        sf._timing?.recordMaterialization();
+      }
+      return child;
+    }
+    __print() {
+      const result = [];
+      result.push(`kind: NodeList`);
+      result.push(`index: ${this.index}`);
+      result.push(`byteIndex: ${this._byteIndex}`);
+      result.push(`length: ${this.length}`);
+      return result.join(`
+`);
+    }
+  };
+  RemoteNode2 = class RemoteNode2 extends RemoteNodeBase2 {
+    static NODE_LEN = NODE_LEN2;
+    get sourceFile() {
+      return this._sourceFile;
+    }
+    _sourceFile;
+    get id() {
+      return `${this.index}.${this.kind}.${this.sourceFile.path}`;
+    }
+    constructor(view, index, parent, sourceFile, offsetNodes) {
+      super(view, index, parent, offsetNodes + index * NODE_LEN2);
+      this._sourceFile = sourceFile;
+    }
+    forEachChild(visitNode, visitList) {
+      if (this.hasChildren()) {
+        let next = this.index + 1;
+        do {
+          const child = this.getOrCreateChildAtNodeIndex(next);
+          if (child instanceof RemoteNodeList2) {
+            if (visitList) {
+              const result = visitList(child);
+              if (result) {
+                return result;
+              }
+            } else {
+              const result = child.forEachNode(visitNode);
+              if (result) {
+                return result;
+              }
+            }
+          } else if (child.kind !== SyntaxKind3.JSDoc) {
+            const result = visitNode(child);
+            if (result) {
+              return result;
+            }
+          }
+          next = child.next;
+        } while (next);
+      }
+    }
+    get jsDoc() {
+      if (!this.hasChildren()) {
+        return;
+      }
+      let result;
+      let next = this.index + 1;
+      do {
+        const child = this.getOrCreateChildAtNodeIndex(next);
+        if (!(child instanceof RemoteNodeList2) && child.kind === SyntaxKind3.JSDoc) {
+          (result ??= []).push(child);
+        }
+        next = child.next;
+      } while (next);
+      return result;
+    }
+    getSourceFile() {
+      return this.sourceFile;
+    }
+    getStart(sourceFile, includeJsDocComment) {
+      return getTokenPosOfNode2(this, sourceFile ?? this.getSourceFile(), includeJsDocComment);
+    }
+    getFullStart() {
+      return this.pos;
+    }
+    getEnd() {
+      return this.end;
+    }
+    getWidth(sourceFile) {
+      return this.getEnd() - this.getStart(sourceFile);
+    }
+    getFullWidth() {
+      return this.end - this.pos;
+    }
+    getLeadingTriviaWidth(sourceFile) {
+      return this.getStart(sourceFile) - this.pos;
+    }
+    getFullText(sourceFile) {
+      return (sourceFile ?? this.getSourceFile()).text.substring(this.pos, this.end);
+    }
+    getText(sourceFile) {
+      sourceFile ??= this.getSourceFile();
+      return sourceFile.text.substring(this.getStart(sourceFile), this.end);
+    }
+    getString(index) {
+      const offsetStringTableOffsets = this.sourceFile._offsetStringTableOffsets;
+      const start = this.view.getUint32(offsetStringTableOffsets + index * 4, true);
+      const end = this.view.getUint32(offsetStringTableOffsets + (index + 1) * 4, true);
+      const offsetStringTable = this.sourceFile._offsetStringTable;
+      const text = new Uint8Array(this.view.buffer, this.view.byteOffset + offsetStringTable + start, end - start);
+      return this.sourceFile._decoder.decode(text);
+    }
+    getOrCreateChildAtNodeIndex(index) {
+      let child = this.sourceFile.nodes[index];
+      if (!child) {
+        const sf = this.sourceFile;
+        const offsetNodes = sf._offsetNodes;
+        const kind = this.view.getUint32(offsetNodes + index * NODE_LEN2 + NODE_OFFSET_KIND2, true);
+        child = kind === KIND_NODE_LIST2 ? new RemoteNodeList2(this.view, index, this, sf, offsetNodes) : new RemoteNode2(this.view, index, this, sf, offsetNodes);
+        sf.nodes[index] = child;
+        sf._timing?.recordMaterialization();
+      }
+      return child;
+    }
+    hasChildren() {
+      if (this._byteIndex >= this.view.byteLength - NODE_LEN2) {
+        return false;
+      }
+      const nextNodeParent = this.view.getUint32(this.sourceFile._offsetNodes + (this.index + 1) * NODE_LEN2 + NODE_OFFSET_PARENT2, true);
+      return nextNodeParent === this.index;
+    }
+    getNamedChild(propertyName) {
+      const kind = this.kind;
+      const propertyNames = childProperties2[kind];
+      if (!propertyNames) {
+        return;
+      }
+      const order = propertyNames.indexOf(propertyName);
+      if (order === -1) {
+        return;
+      }
+      return this.getChildAtOrder(order);
+    }
+    getChildAtOrder(order) {
+      const mask = this.childMask;
+      if (!(mask & 1 << order)) {
+        return;
+      }
+      const propertyIndex = order - popcount82[~(mask | 255 << order & 255) & 255];
+      let childIndex = this.index + 1;
+      for (let i = 0;i < propertyIndex; i++) {
+        childIndex = this.view.getUint32(this.sourceFile._offsetNodes + childIndex * NODE_LEN2 + NODE_OFFSET_NEXT2, true);
+      }
+      return this.getOrCreateChildAtNodeIndex(childIndex);
+    }
+    __print() {
+      const result = [];
+      result.push(`index: ${this.index}`);
+      result.push(`byteIndex: ${this._byteIndex}`);
+      result.push(`kind: ${SyntaxKind3[this.kind]}`);
+      result.push(`pos: ${this.pos}`);
+      result.push(`end: ${this.end}`);
+      result.push(`next: ${this.next}`);
+      result.push(`parent: ${this.parentIndex}`);
+      result.push(`data: ${this.data.toString(2).padStart(32, "0")}`);
+      const dataType = this.dataType === NODE_DATA_TYPE_CHILDREN2 ? "children" : this.dataType === NODE_DATA_TYPE_STRING2 ? "string" : "extended";
+      result.push(`dataType: ${dataType}`);
+      if (this.dataType === NODE_DATA_TYPE_CHILDREN2) {
+        result.push(`childMask: ${this.childMask.toString(2).padStart(8, "0")}`);
+        result.push(`childProperties: ${childProperties2[this.kind]?.join(", ")}`);
+      }
+      return result.join(`
+`);
+    }
+    __printChildren() {
+      const result = [];
+      let next = this.index + 1;
+      while (next) {
+        const child = this.getOrCreateChildAtNodeIndex(next);
+        next = child.next;
+        result.push(child.__print());
+      }
+      return result.join(`
+
+`);
+    }
+    __printSubtree() {
+      const result = [this.__print()];
+      this.forEachChild(function visitNode(node) {
+        result.push(node.__print());
+        node.forEachChild(visitNode);
+      }, (visitList) => {
+        result.push(visitList.__print());
+      });
+      return result.join(`
+
+`);
+    }
+    get containsOnlyTriviaWhiteSpaces() {
+      return (this.data & 1 << 24) !== 0;
+    }
+    get isArrayType() {
+      return (this.data & 1 << 24) !== 0;
+    }
+    get isBracketed() {
+      return (this.data & 1 << 24) !== 0;
+    }
+    get isExportEquals() {
+      return (this.data & 1 << 24) !== 0;
+    }
+    get isNameFirst() {
+      return (this.data & 1 << 25) !== 0;
+    }
+    get isTypeOf() {
+      return (this.data & 1 << 24) !== 0;
+    }
+    get isTypeOnly() {
+      return (this.data & 1 << 24) !== 0;
+    }
+    get multiLine() {
+      return (this.data & 1 << 24) !== 0;
+    }
+    get keyword() {
+      switch (this.kind) {
+        case SyntaxKind3.ModuleDeclaration:
+          return this.data >> 24 & 1 ? SyntaxKind3.NamespaceKeyword : SyntaxKind3.ModuleKeyword;
+      }
+    }
+    get keywordToken() {
+      switch (this.kind) {
+        case SyntaxKind3.MetaProperty:
+          return this.data >> 24 & 1 ? SyntaxKind3.NewKeyword : SyntaxKind3.ImportKeyword;
+      }
+    }
+    get operator() {
+      switch (this.kind) {
+        case SyntaxKind3.PrefixUnaryExpression: {
+          const idx = this.data >> 24 & 7;
+          if (idx === 1)
+            return SyntaxKind3.MinusToken;
+          if (idx === 2)
+            return SyntaxKind3.TildeToken;
+          if (idx === 3)
+            return SyntaxKind3.ExclamationToken;
+          if (idx === 4)
+            return SyntaxKind3.PlusPlusToken;
+          if (idx === 5)
+            return SyntaxKind3.MinusMinusToken;
+          return SyntaxKind3.PlusToken;
+        }
+        case SyntaxKind3.PostfixUnaryExpression:
+          return this.data >> 24 & 1 ? SyntaxKind3.MinusMinusToken : SyntaxKind3.PlusPlusToken;
+        case SyntaxKind3.TypeOperator: {
+          const idx = this.data >> 24 & 3;
+          if (idx === 1)
+            return SyntaxKind3.ReadonlyKeyword;
+          if (idx === 2)
+            return SyntaxKind3.UniqueKeyword;
+          return SyntaxKind3.KeyOfKeyword;
+        }
+      }
+    }
+    get phaseModifier() {
+      switch (this.kind) {
+        case SyntaxKind3.ImportClause: {
+          const idx = this.data >> 24 & 3;
+          if (idx === 0)
+            return;
+          return idx === 1 ? SyntaxKind3.TypeKeyword : idx === 2 ? SyntaxKind3.DeferKeyword : undefined;
+        }
+      }
+    }
+    get token() {
+      switch (this.kind) {
+        case SyntaxKind3.HeritageClause:
+          return this.data >> 24 & 1 ? SyntaxKind3.ImplementsKeyword : SyntaxKind3.ExtendsKeyword;
+        case SyntaxKind3.ImportAttributes:
+          return this.data >> 25 & 1 ? SyntaxKind3.AssertKeyword : SyntaxKind3.WithKeyword;
+      }
+    }
+    get templateFlags() {
+      switch (this.kind) {
+        case SyntaxKind3.TemplateHead:
+        case SyntaxKind3.TemplateMiddle:
+        case SyntaxKind3.TemplateTail:
+          const extendedDataOffset = this.sourceFile._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK2);
+          return this.view.getUint32(extendedDataOffset + 8, true);
+      }
+    }
+    get tokenFlags() {
+      switch (this.kind) {
+        case SyntaxKind3.StringLiteral:
+        case SyntaxKind3.NumericLiteral:
+        case SyntaxKind3.BigIntLiteral:
+        case SyntaxKind3.RegularExpressionLiteral:
+          const extendedDataOffset = this.sourceFile._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK2);
+          return this.view.getUint32(extendedDataOffset + 4, true);
+        default:
+          return 0;
+      }
+    }
+    get argument() {
+      return this.getNamedChild("argument");
+    }
+    get argumentExpression() {
+      return this.getNamedChild("argumentExpression");
+    }
+    get arguments() {
+      return this.getNamedChild("arguments");
+    }
+    get assertsModifier() {
+      return this.getNamedChild("assertsModifier");
+    }
+    get asteriskToken() {
+      return this.getNamedChild("asteriskToken");
+    }
+    get attributes() {
+      return this.getNamedChild("attributes");
+    }
+    get awaitModifier() {
+      return this.getNamedChild("awaitModifier");
+    }
+    get block() {
+      return this.getNamedChild("block");
+    }
+    get body() {
+      return this.getNamedChild("body");
+    }
+    get caseBlock() {
+      return this.getNamedChild("caseBlock");
+    }
+    get catchClause() {
+      return this.getNamedChild("catchClause");
+    }
+    get checkType() {
+      return this.getNamedChild("checkType");
+    }
+    get children() {
+      return this.getNamedChild("children");
+    }
+    get className() {
+      return this.getNamedChild("className");
+    }
+    get clauses() {
+      return this.getNamedChild("clauses");
+    }
+    get closingElement() {
+      return this.getNamedChild("closingElement");
+    }
+    get closingFragment() {
+      return this.getNamedChild("closingFragment");
+    }
+    get colonToken() {
+      return this.getNamedChild("colonToken");
+    }
+    get comment() {
+      return this.getNamedChild("comment");
+    }
+    get condition() {
+      return this.getNamedChild("condition");
+    }
+    get constraint() {
+      return this.getNamedChild("constraint");
+    }
+    get declarationList() {
+      return this.getNamedChild("declarationList");
+    }
+    get declarations() {
+      return this.getNamedChild("declarations");
+    }
+    get defaultType() {
+      return this.getNamedChild("defaultType");
+    }
+    get dotDotDotToken() {
+      return this.getNamedChild("dotDotDotToken");
+    }
+    get elements() {
+      return this.getNamedChild("elements");
+    }
+    get elementType() {
+      return this.getNamedChild("elementType");
+    }
+    get elseStatement() {
+      return this.getNamedChild("elseStatement");
+    }
+    get endOfFileToken() {
+      return this.getNamedChild("endOfFileToken");
+    }
+    get equalsGreaterThanToken() {
+      return this.getNamedChild("equalsGreaterThanToken");
+    }
+    get equalsToken() {
+      return this.getNamedChild("equalsToken");
+    }
+    get exclamationToken() {
+      return this.getNamedChild("exclamationToken");
+    }
+    get exportClause() {
+      return this.getNamedChild("exportClause");
+    }
+    get expression() {
+      return this.getNamedChild("expression");
+    }
+    get exprName() {
+      return this.getNamedChild("exprName");
+    }
+    get extendsType() {
+      return this.getNamedChild("extendsType");
+    }
+    get falseType() {
+      return this.getNamedChild("falseType");
+    }
+    get finallyBlock() {
+      return this.getNamedChild("finallyBlock");
+    }
+    get head() {
+      return this.getNamedChild("head");
+    }
+    get heritageClauses() {
+      return this.getNamedChild("heritageClauses");
+    }
+    get importClause() {
+      return this.getNamedChild("importClause");
+    }
+    get incrementor() {
+      return this.getNamedChild("incrementor");
+    }
+    get indexType() {
+      return this.getNamedChild("indexType");
+    }
+    get initializer() {
+      return this.getNamedChild("initializer");
+    }
+    get jsdocPropertyTags() {
+      return this.getNamedChild("jsdocPropertyTags");
+    }
+    get label() {
+      return this.getNamedChild("label");
+    }
+    get left() {
+      return this.getNamedChild("left");
+    }
+    get literal() {
+      return this.getNamedChild("literal");
+    }
+    get members() {
+      return this.getNamedChild("members");
+    }
+    get modifiers() {
+      return this.getNamedChild("modifiers");
+    }
+    get moduleReference() {
+      return this.getNamedChild("moduleReference");
+    }
+    get moduleSpecifier() {
+      return this.getNamedChild("moduleSpecifier");
+    }
+    get name() {
+      return this.getNamedChild("name");
+    }
+    get namedBindings() {
+      return this.getNamedChild("namedBindings");
+    }
+    get nameExpression() {
+      return this.getNamedChild("nameExpression");
+    }
+    get namespace() {
+      return this.getNamedChild("namespace");
+    }
+    get nameType() {
+      return this.getNamedChild("nameType");
+    }
+    get objectAssignmentInitializer() {
+      return this.getNamedChild("objectAssignmentInitializer");
+    }
+    get objectType() {
+      return this.getNamedChild("objectType");
+    }
+    get openingElement() {
+      return this.getNamedChild("openingElement");
+    }
+    get openingFragment() {
+      return this.getNamedChild("openingFragment");
+    }
+    get operand() {
+      return this.getNamedChild("operand");
+    }
+    get operatorToken() {
+      return this.getNamedChild("operatorToken");
+    }
+    get parameterName() {
+      return this.getNamedChild("parameterName");
+    }
+    get parameters() {
+      return this.getNamedChild("parameters");
+    }
+    get postfixToken() {
+      return this.getNamedChild("postfixToken");
+    }
+    get properties() {
+      return this.getNamedChild("properties");
+    }
+    get propertyName() {
+      return this.getNamedChild("propertyName");
+    }
+    get qualifier() {
+      return this.getNamedChild("qualifier");
+    }
+    get questionDotToken() {
+      return this.getNamedChild("questionDotToken");
+    }
+    get questionToken() {
+      return this.getNamedChild("questionToken");
+    }
+    get readonlyToken() {
+      return this.getNamedChild("readonlyToken");
+    }
+    get right() {
+      return this.getNamedChild("right");
+    }
+    get statement() {
+      return this.getNamedChild("statement");
+    }
+    get statements() {
+      return this.getNamedChild("statements");
+    }
+    get tag() {
+      return this.getNamedChild("tag");
+    }
+    get tagName() {
+      return this.getNamedChild("tagName");
+    }
+    get tags() {
+      return this.getNamedChild("tags");
+    }
+    get template() {
+      return this.getNamedChild("template");
+    }
+    get templateSpans() {
+      return this.getNamedChild("templateSpans");
+    }
+    get thenStatement() {
+      return this.getNamedChild("thenStatement");
+    }
+    get thisArg() {
+      return this.getNamedChild("thisArg");
+    }
+    get trueType() {
+      return this.getNamedChild("trueType");
+    }
+    get tryBlock() {
+      return this.getNamedChild("tryBlock");
+    }
+    get tupleNameSource() {
+      return this.getNamedChild("tupleNameSource");
+    }
+    get type() {
+      return this.getNamedChild("type");
+    }
+    get typeArguments() {
+      return this.getNamedChild("typeArguments");
+    }
+    get typeExpression() {
+      return this.getNamedChild("typeExpression");
+    }
+    get typeName() {
+      return this.getNamedChild("typeName");
+    }
+    get typeParameter() {
+      return this.getNamedChild("typeParameter");
+    }
+    get typeParameters() {
+      return this.getNamedChild("typeParameters");
+    }
+    get types() {
+      return this.getNamedChild("types");
+    }
+    get value() {
+      return this.getNamedChild("value");
+    }
+    get variableDeclaration() {
+      return this.getNamedChild("variableDeclaration");
+    }
+    get whenFalse() {
+      return this.getNamedChild("whenFalse");
+    }
+    get whenTrue() {
+      return this.getNamedChild("whenTrue");
+    }
+    get text() {
+      switch (this.kind) {
+        case SyntaxKind3.Identifier:
+        case SyntaxKind3.PrivateIdentifier:
+        case SyntaxKind3.JsxText:
+        case SyntaxKind3.JSDocText:
+        case SyntaxKind3.JSDocLink:
+        case SyntaxKind3.JSDocLinkPlain:
+        case SyntaxKind3.JSDocLinkCode: {
+          const stringIndex = this.data & NODE_STRING_INDEX_MASK2;
+          return this.getString(stringIndex);
+        }
+        case SyntaxKind3.StringLiteral:
+        case SyntaxKind3.NumericLiteral:
+        case SyntaxKind3.BigIntLiteral:
+        case SyntaxKind3.RegularExpressionLiteral:
+        case SyntaxKind3.NoSubstitutionTemplateLiteral:
+        case SyntaxKind3.TemplateHead:
+        case SyntaxKind3.TemplateMiddle:
+        case SyntaxKind3.TemplateTail:
+        case SyntaxKind3.SourceFile: {
+          const extendedDataOffset = this.sourceFile._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK2);
+          const stringIndex = this.view.getUint32(extendedDataOffset, true);
+          return this.getString(stringIndex);
+        }
+      }
+    }
+    get rawText() {
+      switch (this.kind) {
+        case SyntaxKind3.TemplateHead:
+        case SyntaxKind3.TemplateMiddle:
+        case SyntaxKind3.TemplateTail:
+          const extendedDataOffset = this.sourceFile._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK2);
+          const stringIndex = this.view.getUint32(extendedDataOffset + 4, true);
+          return this.getString(stringIndex);
+      }
+    }
+    get flags() {
+      return this.view.getUint32(this._byteIndex + NODE_OFFSET_FLAGS2, true);
+    }
+    get modifierFlags() {
+      const mods = this.modifiers;
+      if (!mods)
+        return ModifierFlags2.None;
+      let flags = ModifierFlags2.None;
+      for (const mod of mods) {
+        flags |= modifierToFlag2(mod.kind);
+      }
+      return flags;
+    }
+  };
+  RemoteSourceFile2 = class RemoteSourceFile2 extends RemoteNode2 {
+    nodes;
+    _offsetNodes;
+    _offsetStringTableOffsets;
+    _offsetStringTable;
+    _offsetExtendedData;
+    _offsetStructuredData;
+    _decoder;
+    _timing;
+    _lineStarts;
+    _cachedText;
+    _cachedReferencedFiles;
+    _cachedTypeReferenceDirectives;
+    _cachedLibReferenceDirectives;
+    _cachedImports;
+    _cachedModuleAugmentations;
+    _cachedAmbientModuleNames;
+    constructor(data, decoder, timing) {
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const offsetNodes = view.getUint32(HEADER_OFFSET_NODES2, true);
+      super(view, 1, undefined, undefined, offsetNodes);
+      this._sourceFile = this;
+      this._offsetNodes = offsetNodes;
+      this._offsetStringTableOffsets = view.getUint32(HEADER_OFFSET_STRING_TABLE_OFFSETS2, true);
+      this._offsetStringTable = view.getUint32(HEADER_OFFSET_STRING_TABLE2, true);
+      this._offsetExtendedData = view.getUint32(HEADER_OFFSET_EXTENDED_DATA2, true);
+      this._offsetStructuredData = view.getUint32(HEADER_OFFSET_STRUCTURED_DATA2, true);
+      this._decoder = decoder;
+      this._timing = timing;
+      this.nodes = Array((view.byteLength - offsetNodes) / NODE_LEN2);
+      this.nodes[1] = this;
+      timing?.recordSourceFileFetched(Math.max(0, this.nodes.length - 2));
+    }
+    readFileReferences(structuredDataOffset) {
+      if (structuredDataOffset === NO_STRUCTURED_DATA22) {
+        return [];
+      }
+      const buf = new Uint8Array(this.view.buffer, this.view.byteOffset, this.view.byteLength);
+      const reader = new MsgpackReader2(buf, this._offsetStructuredData + structuredDataOffset);
+      const count = reader.readArrayHeader();
+      const result = [];
+      for (let i = 0;i < count; i++) {
+        reader.readArrayHeader();
+        const pos = reader.readUint();
+        const end = reader.readUint();
+        const fileName = reader.readString();
+        const resolutionMode = reader.readUint();
+        const preserve = reader.readBool();
+        result.push({ pos, end, fileName, resolutionMode, preserve });
+      }
+      return result;
+    }
+    readNodeIndexArray(structuredDataOffset) {
+      if (structuredDataOffset === NO_STRUCTURED_DATA22) {
+        return [];
+      }
+      const buf = new Uint8Array(this.view.buffer, this.view.byteOffset, this.view.byteLength);
+      const reader = new MsgpackReader2(buf, this._offsetStructuredData + structuredDataOffset);
+      const count = reader.readArrayHeader();
+      const result = [];
+      for (let i = 0;i < count; i++) {
+        const nodeIndex = reader.readUint();
+        result.push(this.getOrCreateNodeAtIndex(nodeIndex));
+      }
+      return result;
+    }
+    readStringArray(structuredDataOffset) {
+      if (structuredDataOffset === NO_STRUCTURED_DATA22) {
+        return [];
+      }
+      const buf = new Uint8Array(this.view.buffer, this.view.byteOffset, this.view.byteLength);
+      const reader = new MsgpackReader2(buf, this._offsetStructuredData + structuredDataOffset);
+      const count = reader.readArrayHeader();
+      const result = [];
+      for (let i = 0;i < count; i++) {
+        result.push(reader.readString());
+      }
+      return result;
+    }
+    getOrCreateNodeAtIndex(index) {
+      let node = this.nodes[index];
+      if (!node) {
+        let parentIndex = this.view.getUint32(this._offsetNodes + index * NODE_LEN2 + NODE_OFFSET_PARENT2, true);
+        while (parentIndex !== index && this.view.getUint32(this._offsetNodes + parentIndex * NODE_LEN2 + NODE_OFFSET_KIND2, true) === KIND_NODE_LIST2) {
+          parentIndex = this.view.getUint32(this._offsetNodes + parentIndex * NODE_LEN2 + NODE_OFFSET_PARENT2, true);
+        }
+        const parent = parentIndex === index ? this : this.getOrCreateNodeAtIndex(parentIndex);
+        node = new RemoteNode2(this.view, index, parent, this, this._offsetNodes);
+        this.nodes[index] = node;
+        this._timing?.recordMaterialization();
+      }
+      return node;
+    }
+    get extendedDataOffset() {
+      return this._offsetExtendedData + (this.data & NODE_EXTENDED_DATA_MASK2);
+    }
+    get fileName() {
+      const stringIndex = this.view.getUint32(this.extendedDataOffset + 4, true);
+      return this.getString(stringIndex);
+    }
+    get path() {
+      const stringIndex = this.view.getUint32(this.extendedDataOffset + 8, true);
+      return this.getString(stringIndex);
+    }
+    get languageVariant() {
+      return this.view.getUint32(this.extendedDataOffset + 12, true);
+    }
+    get scriptKind() {
+      return this.view.getUint32(this.extendedDataOffset + 16, true);
+    }
+    get referencedFiles() {
+      if (this._cachedReferencedFiles !== undefined)
+        return this._cachedReferencedFiles;
+      const offset = this.view.getUint32(this.extendedDataOffset + 20, true);
+      const files = this.readFileReferences(offset);
+      this._cachedReferencedFiles = files;
+      return files;
+    }
+    get typeReferenceDirectives() {
+      if (this._cachedTypeReferenceDirectives !== undefined)
+        return this._cachedTypeReferenceDirectives;
+      const offset = this.view.getUint32(this.extendedDataOffset + 24, true);
+      const directives = this.readFileReferences(offset);
+      this._cachedTypeReferenceDirectives = directives;
+      return directives;
+    }
+    get libReferenceDirectives() {
+      if (this._cachedLibReferenceDirectives !== undefined)
+        return this._cachedLibReferenceDirectives;
+      const offset = this.view.getUint32(this.extendedDataOffset + 28, true);
+      const directives = this.readFileReferences(offset);
+      this._cachedLibReferenceDirectives = directives;
+      return directives;
+    }
+    get imports() {
+      if (this._cachedImports !== undefined)
+        return this._cachedImports;
+      const offset = this.view.getUint32(this.extendedDataOffset + 32, true);
+      const imports = this.readNodeIndexArray(offset);
+      this._cachedImports = imports;
+      return imports;
+    }
+    get moduleAugmentations() {
+      if (this._cachedModuleAugmentations !== undefined)
+        return this._cachedModuleAugmentations;
+      const offset = this.view.getUint32(this.extendedDataOffset + 36, true);
+      const moduleAugmentations = this.readNodeIndexArray(offset);
+      this._cachedModuleAugmentations = moduleAugmentations;
+      return moduleAugmentations;
+    }
+    get ambientModuleNames() {
+      if (this._cachedAmbientModuleNames !== undefined)
+        return this._cachedAmbientModuleNames;
+      const offset = this.view.getUint32(this.extendedDataOffset + 40, true);
+      const names = this.readStringArray(offset);
+      this._cachedAmbientModuleNames = names;
+      return names;
+    }
+    get externalModuleIndicator() {
+      const nodeIndex = this.view.getUint32(this.extendedDataOffset + 44, true);
+      if (nodeIndex === 0)
+        return;
+      if (nodeIndex === this.index)
+        return true;
+      return this.getOrCreateNodeAtIndex(nodeIndex);
+    }
+    get isDeclarationFile() {
+      return (this.flags & NodeFlags2.Ambient) !== 0;
+    }
+    get text() {
+      if (this._cachedText !== undefined)
+        return this._cachedText;
+      const text = super.text;
+      this._cachedText = text;
+      return text;
+    }
+    getLineStarts() {
+      return this._lineStarts ??= computeLineStarts2(this.text ?? "");
+    }
+    getLineAndCharacterOfPosition(position) {
+      const lineStarts = this.getLineStarts();
+      const line = computeLineOfPosition2(lineStarts, position);
+      return { line, character: position - lineStarts[line] };
+    }
+    getPositionOfLineAndCharacter(line, character) {
+      const lineStarts = this.getLineStarts();
+      if (line < 0 || line >= lineStarts.length) {
+        throw new Error(`Bad line number. Line: ${line}, lineStarts.length: ${lineStarts.length}`);
+      }
+      return lineStarts[line] + character;
+    }
+  };
+  backslashRegExp2 = /\\/g;
+  relativePathSegmentRegExp2 = /\/\/|(?:^|\/)\.\.?(?:$|\/)/;
+  fsCallbackNames2 = ["readFile", "fileExists", "directoryExists", "getAccessibleEntries", "realpath"];
+  sleepBuf2 = new Int32Array(new SharedArrayBuffer(4));
+  EMPTY_BUF2 = Buffer.alloc(0);
+  liveChildren2 = new Set;
+  process.on("exit", () => {
+    for (const child of liveChildren2) {
+      try {
+        child.kill();
+      } catch {}
+    }
+    liveChildren2.clear();
+  });
+  Snapshot2 = class Snapshot2 {
+    id;
+    projectMap;
+    toPath;
+    client;
+    disposed = false;
+    onDispose;
+    snapshotRegistry;
+    constructor(data, client, sourceFileCache, toPath, onDispose) {
+      this.id = data.snapshot;
+      this.client = client;
+      this.toPath = toPath;
+      this.onDispose = onDispose;
+      this.projectMap = new Map;
+      this.snapshotRegistry = new SnapshotObjectRegistry2(client, this.id, (projectId) => this.projectMap.get(projectId));
+      for (const projData of data.projects) {
+        const project = new Project2(projData, this.id, client, sourceFileCache, toPath, this.snapshotRegistry);
+        this.projectMap.set(toPath(projData.configFileName), project);
+      }
+    }
+    getProjects() {
+      this.ensureNotDisposed();
+      return [...this.projectMap.values()];
+    }
+    getProject(configFileName) {
+      this.ensureNotDisposed();
+      return this.projectMap.get(this.toPath(configFileName));
+    }
+    getDefaultProjectForFile(file) {
+      this.ensureNotDisposed();
+      const data = this.client.apiRequest("getDefaultProjectForFile", {
+        snapshot: this.id,
+        file
+      });
+      if (!data)
+        return;
+      return this.projectMap.get(this.toPath(data.configFileName));
+    }
+    [globalThis.Symbol.dispose]() {
+      this.dispose();
+    }
+    dispose() {
+      if (this.disposed)
+        return;
+      this.disposed = true;
+      for (const project of this.projectMap.values()) {
+        project.dispose();
+      }
+      this.projectMap.clear();
+      this.snapshotRegistry.clear();
+      this.onDispose();
+      this.client.apiRequest("release", { snapshot: this.id });
+    }
+    isDisposed() {
+      return this.disposed;
+    }
+    ensureNotDisposed() {
+      if (this.disposed) {
+        throw new Error("Snapshot is disposed");
+      }
+    }
+  };
+  STALE_AFTER_MS3 = 7 * 24 * 60 * 60 * 1000;
+  MAX_CONTENT_FILE_BYTES2 = 256 * 1024;
+  LANGUAGE_ALIASES = {
+    typescript: "ts",
+    javascript: "js"
+  };
+  RECORD_ID3 = /^pk-[0-9a-f]{12}$/;
+  SEARCH_RANK2 = {
+    "exact-name": 0,
+    "exact-qualified": 1,
+    prefix: 2,
+    token: 3,
+    substring: 4,
+    fuzzy: 5
+  };
+  SUPPORTED_FILE2 = /\.[cm]?[tj]sx?$/;
+  KIND_PRIORITY2 = {
+    TESTS: 0,
+    IMPORTS: 1,
+    CALLS_STATIC: 2,
+    CALLS_UNRESOLVED: 3
+  };
+  CONFIRMED_EVIDENCE_KINDS2 = new Set([
+    "DEFINES",
+    "EXPORTS",
+    "IMPORTS",
+    "CALLS_STATIC",
+    "TESTS"
+  ]);
+  snapshotIndexes2 = new WeakMap;
+  UNANALYZED_NOTE2 = "non-TypeScript files are not analysed; entry points, framework conventions, " + "CLI registries, schedulers and build config can reach a file outside the analysed " + "edge set, so every candidate is only potentially unreferenced, never proven unused.";
+});
 
 // ../../../../omo-engine/omo-opencode/src/config/validate.ts
 import { relative as relative2 } from "node:path";
@@ -25055,6 +37299,14 @@ var UNRESOLVED_CONFIDENCE = 0.5;
 var UNKNOWN = "unknown";
 var RECORD_ID = /^pk-[0-9a-f]{12}$/;
 var MAX_ALIAS_DEPTH = 10;
+function buildFailure(code, message) {
+  return Object.assign(new Error(message), { code, name: code === "CANCELLED" ? "AbortError" : "Error" });
+}
+function throwIfAborted(signal) {
+  if (signal?.aborted === true) {
+    throw buildFailure("CANCELLED", "code-graph: indexing cancelled (AbortSignal aborted)");
+  }
+}
 function isTestPath(path) {
   const normalized = path.replace(/\\/g, "/");
   return /(^|\/)__tests__\//.test(normalized) || /\.test\.[cm]?[tj]sx?$/.test(normalized) || /\.spec\.[cm]?[tj]sx?$/.test(normalized) || /(^|\/)(test|tests)\//.test(normalized);
@@ -25079,6 +37331,19 @@ function commonDir(paths) {
   }
   return firstSegments.slice(0, length).join("/") || "/";
 }
+function preferUnpacked(candidate) {
+  for (const marker of ["/app.asar/", "\\app.asar\\"]) {
+    const at = candidate.indexOf(marker);
+    if (at < 0)
+      continue;
+    const twin = candidate.slice(0, at) + marker.replace("app.asar", "app.asar.unpacked") + candidate.slice(at + marker.length);
+    try {
+      if (existsSync7(twin))
+        return twin;
+    } catch {}
+  }
+  return candidate;
+}
 function defaultTsServerPath() {
   const require2 = createRequire(import.meta.url);
   const tsDir = dirname4(require2.resolve("typescript/package.json"));
@@ -25091,14 +37356,14 @@ function defaultTsServerPath() {
       for (const binary of ["tsc.exe", "tsgo", "tsc"]) {
         const candidate = join8(platformRoot, name, "lib", binary);
         if (existsSync7(candidate))
-          return candidate;
+          return preferUnpacked(candidate);
       }
     }
   }
   for (const binary of process.platform === "win32" ? ["tsc.exe", "tsc"] : ["tsc"]) {
     const candidate = join8(tsDir, "..", ".bin", binary);
     if (existsSync7(candidate))
-      return candidate;
+      return preferUnpacked(candidate);
   }
   throw new Error("code-graph: TypeScript native server binary not found inside typescript@7.0.2; " + "pass IndexOptions.tsserverPath explicitly");
 }
@@ -25178,6 +37443,9 @@ class GraphBuilder {
       byFile[entry.file] = entry;
     const skipped = [...this.contentSkipped].sort((left, right) => left.file < right.file ? -1 : 1);
     return { nodes, edges, content: { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: byFile, skipped } };
+  }
+  size() {
+    return { nodes: this.nodes.size, edges: this.edges.size, files: this.files.size };
   }
   addEntries(project, entries) {
     const program = project.program;
@@ -25714,6 +37982,11 @@ class GraphBuilder {
 function indexFiles(entryFiles, options = {}) {
   if (entryFiles.length === 0)
     return { nodes: [], edges: [], content: emptyContentIndex() };
+  throwIfAborted(options.signal);
+  const maxFiles = options.budgets?.maxFiles;
+  if (maxFiles !== undefined && Number.isFinite(maxFiles) && entryFiles.length > maxFiles) {
+    throw buildFailure("BUDGET_FILES", `code-graph: entry budget exceeded (${entryFiles.length} entries > maxFiles ${maxFiles})`);
+  }
   const absoluteEntries = entryFiles.map((entry) => resolve4(entry));
   if (options.rootDir === undefined) {
     const root = commonDir(absoluteEntries.map(toPosixPath2));
@@ -25750,10 +38023,34 @@ function indexFiles(entryFiles, options = {}) {
 function buildGraph(absoluteEntries, root, strictRoot, options) {
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
   const report = options.onProgress;
+  const signal = options.signal;
+  const budgets = options.budgets;
+  const generation = options.generation;
+  const startMs = Date.now();
+  const elapsed = () => Date.now() - startMs;
+  const checkTimeBudget = () => {
+    const maxMs = budgets?.maxMs;
+    if (maxMs !== undefined && Number.isFinite(maxMs) && elapsed() > maxMs) {
+      throw buildFailure("BUDGET_TIME", `code-graph: time budget exceeded (${elapsed()}ms > maxMs ${maxMs})`);
+    }
+  };
+  const checkSizeBudgets = (size) => {
+    const maxNodes = budgets?.maxNodes;
+    if (maxNodes !== undefined && Number.isFinite(maxNodes) && size.nodes > maxNodes) {
+      throw buildFailure("BUDGET_NODES", `code-graph: node budget exceeded (${size.nodes} nodes > maxNodes ${maxNodes})`);
+    }
+    const maxEdges = budgets?.maxEdges;
+    if (maxEdges !== undefined && Number.isFinite(maxEdges) && size.edges > maxEdges) {
+      throw buildFailure("BUDGET_EDGES", `code-graph: edge budget exceeded (${size.edges} edges > maxEdges ${maxEdges})`);
+    }
+  };
+  throwIfAborted(signal);
   const api = new API({ tsserverPath, cwd: root });
   try {
     const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
-    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0 });
+    throwIfAborted(signal);
+    checkTimeBudget();
+    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0, elapsedMs: elapsed(), generation });
     try {
       const builder = new GraphBuilder(root, strictRoot);
       const byProject = new Map;
@@ -25770,17 +38067,29 @@ function buildGraph(absoluteEntries, root, strictRoot, options) {
       const projectsTotal = byProject.size;
       let projectsDone = 0;
       for (const [project, entries] of byProject) {
+        throwIfAborted(signal);
+        checkTimeBudget();
         builder.addEntries(project, entries);
         projectsDone += 1;
-        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+        const size = builder.size();
+        checkSizeBudgets(size);
+        checkTimeBudget();
+        throwIfAborted(signal);
+        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: size.nodes, edges: size.edges, elapsedMs: elapsed(), generation });
         if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
           options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
         }
       }
-      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
+      throwIfAborted(signal);
+      checkTimeBudget();
+      const preEdges = builder.size();
+      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: preEdges.nodes, edges: preEdges.edges, elapsedMs: elapsed(), generation });
       builder.addKnowledgeLinks(options.knowledge ?? []);
       const snapshotOut = builder.snapshot();
-      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal });
+      checkSizeBudgets({ nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length });
+      checkTimeBudget();
+      throwIfAborted(signal);
+      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length, elapsedMs: elapsed(), generation });
       return { snapshot: snapshotOut, dropped: builder.dropped };
     } finally {
       snapshot.dispose();
@@ -26650,224 +38959,6 @@ function impact(snapshot, symbolId, options) {
     }
   };
 }
-function trace(snapshot, fromId, toId, options) {
-  const scope = resolveScope(options);
-  const freshness = options.freshness ?? "fresh";
-  const limit = clampLimit(options.limit);
-  const maxDepth = clampDepth(options.maxDepth);
-  for (const id of [fromId, toId]) {
-    const filePart = symbolFilePart(id);
-    if (filePart !== undefined && !isSupportedPath(filePart)) {
-      return {
-        ...baseEnvelope(scope, freshness),
-        suggestedMode: "trace",
-        coverage: "unindexed",
-        truncated: false,
-        knowledgeIds: [],
-        unresolved: [],
-        unsupported: [unsupportedNote(filePart)],
-        items: [],
-        totals: { displayed: 0, known: 0, hidden: 0 },
-        completeness: "partial",
-        completenessReason: "unsupported-files",
-        path: [],
-        summary: {
-          found: false,
-          hops: null,
-          alternativePaths: null,
-          reason: id === fromId ? "start-unresolved" : "destination-unresolved"
-        }
-      };
-    }
-  }
-  const fromNode = findNode(snapshot, fromId);
-  const toNode = findNode(snapshot, toId);
-  if (fromNode === undefined || toNode === undefined) {
-    const missing = fromNode === undefined ? fromId : toId;
-    return {
-      ...baseEnvelope(scope, freshness),
-      suggestedMode: "trace",
-      coverage: "unindexed",
-      truncated: false,
-      knowledgeIds: [],
-      unresolved: [`no definition for ${missing} in this snapshot`],
-      unsupported: [],
-      items: [],
-      totals: { displayed: 0, known: 0, hidden: 0 },
-      completeness: "partial",
-      completenessReason: "index-excluded",
-      path: [],
-      summary: {
-        found: false,
-        hops: null,
-        alternativePaths: null,
-        reason: fromNode === undefined ? "start-unresolved" : "destination-unresolved"
-      }
-    };
-  }
-  if (fromId === toId) {
-    const self = nodeItem(snapshot, fromNode, [indexedEvidence(fromNode)]);
-    return {
-      ...baseEnvelope(scope, freshness),
-      suggestedMode: "trace",
-      ...ambiguousExtra([self]),
-      coverage: "indexed",
-      truncated: false,
-      knowledgeIds: [...self.knowledgeIds],
-      unresolved: [],
-      unsupported: [],
-      items: [self],
-      totals: { displayed: 1, known: 1, hidden: 0, byKind: byKindFor([self]) },
-      completeness: "complete",
-      path: [],
-      summary: { found: true, hops: 0, alternativePaths: null, reason: "same-node" }
-    };
-  }
-  const parents = new Map;
-  const seen = new Set([fromId]);
-  const visitCap = limit * 20;
-  let frontier = [fromId];
-  let found = false;
-  let abandoned = false;
-  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !found && !abandoned; depth += 1) {
-    const next = [];
-    for (const current of frontier) {
-      for (const { callee, ref } of calleesOf(snapshot, current)) {
-        if (seen.has(callee.id))
-          continue;
-        seen.add(callee.id);
-        parents.set(callee.id, { via: current, ref });
-        if (callee.id === toId) {
-          found = true;
-          break;
-        }
-        next.push(callee.id);
-        if (seen.size > visitCap) {
-          abandoned = true;
-          break;
-        }
-      }
-      if (found || abandoned)
-        break;
-    }
-    frontier = next;
-  }
-  const indexNote = indexTruncationNote(snapshot);
-  if (abandoned && !found) {
-    const decided = decideCompleteness({
-      unsupported: false,
-      excluded: false,
-      indexPartial: indexNote !== undefined,
-      depthBudget: false,
-      unresolvedEdges: false,
-      cut: true
-    });
-    return {
-      ...baseEnvelope(scope, freshness),
-      suggestedMode: "trace",
-      coverage: "partial",
-      truncated: true,
-      knowledgeIds: [],
-      unresolved: [
-        `trace abandoned: call frontier exceeded ${visitCap} nodes (bounded, never the whole graph)`,
-        ...indexNote === undefined ? [] : [indexNote]
-      ],
-      unsupported: [],
-      items: [],
-      totals: { displayed: 0, known: null, hidden: null },
-      ...decided,
-      path: [],
-      summary: { found: false, hops: null, alternativePaths: null, reason: "budget-exhausted" }
-    };
-  }
-  if (!found) {
-    let blockedEdge;
-    for (const id of seen) {
-      blockedEdge = unresolvedEdgesFrom(snapshot, id)[0];
-      if (blockedEdge !== undefined)
-        break;
-    }
-    const depthBudgetHit = frontier.length > 0;
-    const reason = blockedEdge !== undefined ? "blocked-by-unresolved" : depthBudgetHit ? "budget-exhausted" : "no-path-in-graph";
-    const decided = decideCompleteness({
-      unsupported: false,
-      excluded: false,
-      indexPartial: indexNote !== undefined,
-      depthBudget: depthBudgetHit && blockedEdge === undefined,
-      unresolvedEdges: blockedEdge !== undefined,
-      cut: false
-    });
-    return {
-      ...baseEnvelope(scope, freshness),
-      suggestedMode: "trace",
-      coverage: indexCoverage(snapshot),
-      truncated: depthBudgetHit,
-      knowledgeIds: [],
-      unresolved: [
-        blockedEdge === undefined && !depthBudgetHit ? `no static call path from ${fromId} to ${toId} (never guessed)` : `no static call path from ${fromId} to ${toId} within budget (never guessed)`,
-        ...blockedEdge === undefined ? [] : [`${blockedEdge.ref} calls an unknown callee (manual review, never proven)`],
-        ...indexNote === undefined ? [] : [indexNote],
-        ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callees still unexplored`] : []
-      ],
-      unsupported: [],
-      items: [],
-      totals: { displayed: 0, known: 0, hidden: 0 },
-      ...decided,
-      path: [],
-      summary: { found: false, hops: null, alternativePaths: null, reason }
-    };
-  }
-  const chain = [toId];
-  while (chain[0] !== fromId) {
-    const head = chain[0];
-    const parent = parents.get(head);
-    if (parent === undefined)
-      break;
-    chain.unshift(parent.via);
-  }
-  const path = [];
-  for (let index = 0;index < chain.length - 1; index += 1) {
-    const child = chain[index + 1];
-    const parent = parents.get(child);
-    path.push({ from: chain[index], to: child, ref: parent?.ref ?? "", confidence: 1 });
-  }
-  const items = chain.map((id) => findNode(snapshot, id)).filter((node) => node !== undefined).map((node) => {
-    const step = path.find((entry) => entry.from === node.id || entry.to === node.id);
-    return nodeItem(snapshot, node, step ? [{ edge: "CALLS_STATIC", ref: step.ref, confidence: 1 }] : [indexedEvidence(node)]);
-  });
-  const foundNotes = unresolvedFor(snapshot, fromId);
-  const foundDecided = decideCompleteness({
-    unsupported: false,
-    excluded: false,
-    indexPartial: indexNote !== undefined,
-    depthBudget: false,
-    unresolvedEdges: false,
-    cut: false
-  });
-  const dedupedFound = dedupeById(items);
-  const uniqueFound = [...dedupedFound.items];
-  return {
-    ...baseEnvelope(scope, freshness),
-    suggestedMode: "trace",
-    ...duplicatesExtra(dedupedFound.dropped),
-    ...ambiguousExtra(uniqueFound),
-    coverage: "indexed",
-    truncated: false,
-    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(uniqueFound.map((item) => item.id)))),
-    unresolved: [...foundNotes, ...indexNote === undefined ? [] : [indexNote]],
-    unsupported: [],
-    items: uniqueFound,
-    totals: {
-      displayed: uniqueFound.length,
-      known: indexNote === undefined ? uniqueFound.length : null,
-      hidden: indexNote === undefined ? 0 : null,
-      byKind: byKindFor(uniqueFound)
-    },
-    ...foundDecided,
-    path,
-    summary: { found: true, hops: path.length, alternativePaths: null }
-  };
-}
 function subjectFileFor(snapshot, target) {
   if (!target.includes("@") && !target.startsWith("fn:") && !target.startsWith("class:") && !target.startsWith("const:")) {
     return target;
@@ -26997,61 +39088,6 @@ function findTests(snapshot, target, options) {
   };
 }
 var UNANALYZED_NOTE = "non-TypeScript files are not analysed; entry points, framework conventions, " + "CLI registries, schedulers and build config can reach a file outside the analysed " + "edge set, so every candidate is only potentially unreferenced, never proven unused.";
-// ../../../../omo-engine/code-graph/src/snapshot-store.ts
-var SNAPSHOT_STORE_VERSION = 1;
-function isRecord10(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function parseSnapshotManifest(text) {
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return { kind: "corrupt", reason: "manifest is not JSON" };
-  }
-  if (!isRecord10(parsed))
-    return { kind: "corrupt", reason: "manifest is not an object" };
-  if (parsed.version !== SNAPSHOT_STORE_VERSION) {
-    return { kind: "corrupt", reason: `unsupported manifest version: ${String(parsed.version)}` };
-  }
-  const scope = parsed.scope;
-  if (!isRecord10(scope))
-    return { kind: "corrupt", reason: "manifest has no scope" };
-  const scopeKeys = ["projectId", "worktreeId", "revision", "fingerprint"];
-  for (const key of scopeKeys) {
-    if (typeof scope[key] !== "string" || String(scope[key]).length === 0) {
-      return { kind: "corrupt", reason: `scope.${key} is missing` };
-    }
-  }
-  if (!Array.isArray(parsed.shards) || parsed.shards.some((entry) => typeof entry !== "string")) {
-    return { kind: "corrupt", reason: "manifest shards are not a string list" };
-  }
-  if (!Number.isFinite(parsed.nodeCount) || !Number.isFinite(parsed.edgeCount)) {
-    return { kind: "corrupt", reason: "manifest counts are not numbers" };
-  }
-  return {
-    kind: "manifest",
-    manifest: {
-      version: SNAPSHOT_STORE_VERSION,
-      scope: {
-        projectId: String(scope.projectId),
-        worktreeId: String(scope.worktreeId),
-        revision: String(scope.revision),
-        fingerprint: String(scope.fingerprint)
-      },
-      observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
-      entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
-      entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
-      root: typeof parsed.root === "string" ? parsed.root : null,
-      nodeCount: Number(parsed.nodeCount),
-      edgeCount: Number(parsed.edgeCount),
-      contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
-      contentSkipped: Array.isArray(parsed.contentSkipped) ? parsed.contentSkipped : [],
-      dropped: Array.isArray(parsed.dropped) ? parsed.dropped : [],
-      shards: parsed.shards
-    }
-  };
-}
 // ../../../../omo-engine/code-graph/src/agent-context.ts
 var AGENT_CONTEXT_DEFAULT_MAX_BYTES = 8192;
 function estimateTokens(text) {
@@ -31391,10 +43427,9 @@ function buildToolRegistry(args) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/code-graph.ts
-import { promises as fs4 } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile as execFile3 } from "node:child_process";
 import { promisify } from "node:util";
-import path5 from "node:path";
+import path7 from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/ulw/errors.ts
 function describeMissing(missing) {
@@ -31459,28 +43494,2360 @@ var CodeGraphArgsSchema = object({
   maxBytes: number2().int().min(512).max(16384).optional()
 });
 
-// ../../../../omo-engine/omo-opencode/src/tools/code-graph/code-graph.ts
-var CODE_GRAPH_NAME = "code_graph";
-var CODE_GRAPH_DESCRIPTION = "Query the repository code graph: status, symbol context, search, call trace, blast-radius impact, or owning tests.";
-var CODE_GRAPH_MAX_FILES = 2000;
-var SOURCE_EXTENSIONS2 = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
-var SKIPPED_DIRECTORIES2 = new Set([
+// ../../../../omo-engine/omo-opencode/src/tools/code-graph/canonical-runtime.ts
+import { execFile as execFile2 } from "node:child_process";
+import { promises as fsPromises } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import path6 from "node:path";
+
+// ../code-graph/runtime.js
+import { createHash as createHash6 } from "node:crypto";
+import { execFile } from "node:child_process";
+
+// ../code-graph/snapshot-storage.js
+import crypto from "node:crypto";
+var STORE_VERSION = 1;
+var safeSegment = (value) => String(value ?? "").replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 80);
+var shardName = (text) => `${crypto.createHash("sha256").update(text).digest("hex").slice(0, 32)}.json`;
+var recordsName = (text) => `files-${crypto.createHash("sha256").update(text).digest("hex").slice(0, 32)}.json`;
+var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
+  const enabled = typeof storeDir === "string" && storeDir.length > 0;
+  const scopeDir = (projectId, worktreeId) => path.join(storeDir, `${safeSegment(projectId)}--${safeSegment(worktreeId)}`);
+  const writeAtomic = async (target, text) => {
+    const temporary = `${target}.tmp-${process.pid}`;
+    await fsPromises.writeFile(temporary, text, "utf8");
+    await fsPromises.rename(temporary, target);
+  };
+  return {
+    enabled,
+    async write(directory, entry) {
+      if (!enabled)
+        return { written: false, reason: "store-disabled" };
+      const dir = scopeDir(entry.scope.projectId, entry.scope.worktreeId);
+      const shardsDir = path.join(dir, "shards");
+      try {
+        await fsPromises.mkdir(shardsDir, { recursive: true });
+        const shards = engine.splitSnapshotIntoShards(entry.snapshot);
+        const names = [];
+        let written = 0;
+        let reused = 0;
+        for (const shard of shards) {
+          const text = engine.serializeSnapshotShard(shard);
+          const name = shardName(text);
+          names.push(name);
+          const target = path.join(shardsDir, name);
+          const alreadyThere = await fsPromises.stat(target).then(() => true, () => false);
+          if (alreadyThere) {
+            reused += 1;
+            continue;
+          }
+          await fsPromises.writeFile(target, text, "utf8");
+          written += 1;
+        }
+        let recordsNameWritten = null;
+        if (entry.fileRecords !== undefined && entry.fileRecords !== null) {
+          const recordsText = engine.serializeFileRecordsDoc(entry.fileRecords);
+          recordsNameWritten = recordsName(recordsText);
+          const recordsTarget = path.join(dir, recordsNameWritten);
+          const recordsThere = await fsPromises.stat(recordsTarget).then(() => true, () => false);
+          if (!recordsThere)
+            await fsPromises.writeFile(recordsTarget, recordsText, "utf8");
+        }
+        const manifest = engine.createSnapshotManifest(entry.snapshot, {
+          scope: entry.scope,
+          observedAtMs: entry.observedAtMs,
+          entryCap: entry.entryCap ?? 0,
+          entryCount: entry.entryCount ?? 0,
+          ...recordsNameWritten !== null ? { fileRecords: recordsNameWritten } : {},
+          buildSeq: entry.buildSeq ?? null
+        });
+        await writeAtomic(path.join(dir, "manifest.json"), engine.serializeSnapshotManifest({ ...manifest, shards: names, storeVersion: STORE_VERSION }));
+        await this.prune(dir, new Set(recordsNameWritten !== null ? [...names, recordsNameWritten] : names));
+        return { written: true, shards: names.length, writtenShards: written, reusedShards: reused };
+      } catch (error) {
+        return { written: false, reason: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    async prune(dir, keep) {
+      if (!enabled)
+        return 0;
+      const shardsDir = path.join(dir, "shards");
+      const existing = await fsPromises.readdir(shardsDir).catch(() => []);
+      let removed = 0;
+      for (const name of existing) {
+        if (keep.has(name))
+          continue;
+        await fsPromises.rm(path.join(shardsDir, name), { force: true }).catch(() => {
+          return;
+        });
+        removed += 1;
+      }
+      return removed;
+    },
+    async read(directory, scope) {
+      if (!enabled)
+        return { status: "miss", reason: "store-disabled" };
+      const dir = scopeDir(scope.projectId, scope.worktreeId);
+      let text;
+      try {
+        text = await fsPromises.readFile(path.join(dir, "manifest.json"), "utf8");
+      } catch {
+        return { status: "miss", reason: "no-store" };
+      }
+      const parsed = engine.parseSnapshotManifest(text);
+      if (parsed.kind !== "manifest")
+        return { status: "miss", reason: parsed.reason };
+      const manifest = parsed.manifest;
+      if (manifest.scope.revision !== scope.revision || manifest.scope.fingerprint !== scope.fingerprint) {
+        return { status: "stale", reason: "scope-mismatch", manifest };
+      }
+      const shards = [];
+      try {
+        for (const name of manifest.shards) {
+          const shardText = await fsPromises.readFile(path.join(dir, "shards", name), "utf8");
+          const shard = engine.parseSnapshotShard(shardText);
+          if (shard.kind !== "shard")
+            return { status: "miss", reason: `${name}: ${shard.reason}` };
+          shards.push(shard.shard);
+        }
+      } catch (error) {
+        return { status: "miss", reason: error instanceof Error ? error.message : String(error) };
+      }
+      const joined = engine.joinSnapshotShards(manifest, shards);
+      if (joined.kind !== "snapshot")
+        return { status: "miss", reason: joined.reason };
+      let fileRecords = null;
+      if (typeof manifest.fileRecords === "string" && manifest.fileRecords.length > 0) {
+        try {
+          const recordsText = await fsPromises.readFile(path.join(dir, manifest.fileRecords), "utf8");
+          fileRecords = engine.parseFileRecordsDoc(JSON.parse(recordsText));
+        } catch {
+          fileRecords = null;
+        }
+      }
+      return { status: "hit", snapshot: joined.snapshot, manifest, fileRecords };
+    },
+    async clear(scope) {
+      if (!enabled)
+        return false;
+      await fsPromises.rm(scopeDir(scope.projectId, scope.worktreeId), { recursive: true, force: true });
+      return true;
+    }
+  };
+};
+
+// ../code-graph/runtime.js
+var enginePromise = null;
+var loadEngine = () => {
+  if (!enginePromise) {
+    enginePromise = Promise.resolve().then(() => (init_code_graph_bundle(), exports_code_graph_bundle));
+  }
+  return enginePromise;
+};
+var GIT_STATUS_TTL_MS = 1500;
+var FAILURE_RETRY_COOLDOWN_MS = 60000;
+var MAX_UNREADABLE_FILES = 100;
+var DEFAULT_MAX_ENTRY_FILES = 5000;
+var HARD_MAX_ENTRY_FILES = 20000;
+var MAX_EXCLUDED_SAMPLE = 10;
+var MAX_CONFIG_FILES_SEEN = 64;
+var DEFAULT_MAX_DIRS_VISITED = 25000;
+var HARD_MAX_DIRS_VISITED = 1e5;
+var DEFAULT_MAX_FILES_DISCOVERED = 120000;
+var HARD_MAX_FILES_DISCOVERED = 500000;
+var DEFAULT_MAX_CANDIDATE_FILES = 20000;
+var DEFAULT_MAX_TRAVERSAL_DEPTH = 25;
+var HARD_MAX_TRAVERSAL_DEPTH = 64;
+var DEFAULT_MAX_FILE_SIZE_BYTES = 1048576;
+var DEFAULT_TRAVERSAL_TIME_BUDGET_MS = 30000;
+var clampInt = (value, fallback, min, max) => {
+  const num = Number(value);
+  if (!Number.isFinite(num))
+    return fallback;
+  return Math.min(max, Math.max(min, Math.floor(num)));
+};
+var resolveMaxEntryFiles = (value) => {
+  if (value === undefined || value === null || !Number.isFinite(Number(value))) {
+    return DEFAULT_MAX_ENTRY_FILES;
+  }
+  return Math.min(HARD_MAX_ENTRY_FILES, Math.max(1, Math.floor(Number(value))));
+};
+var resolveTraversalBudgets = (options = {}) => ({
+  maxDirsVisited: clampInt(options.maxDirsVisited, DEFAULT_MAX_DIRS_VISITED, 1, HARD_MAX_DIRS_VISITED),
+  maxFilesDiscovered: clampInt(options.maxFilesDiscovered, DEFAULT_MAX_FILES_DISCOVERED, 1, HARD_MAX_FILES_DISCOVERED),
+  maxCandidateFiles: clampInt(options.maxCandidateFiles, DEFAULT_MAX_CANDIDATE_FILES, 1, HARD_MAX_ENTRY_FILES),
+  maxDepth: clampInt(options.maxDepth, DEFAULT_MAX_TRAVERSAL_DEPTH, 1, HARD_MAX_TRAVERSAL_DEPTH),
+  maxFileSizeBytes: clampInt(options.maxFileSizeBytes, DEFAULT_MAX_FILE_SIZE_BYTES, 1, 33554432),
+  timeBudgetMs: clampInt(options.timeBudgetMs, DEFAULT_TRAVERSAL_TIME_BUDGET_MS, 1000, 300000)
+});
+var SKIPPED_DIRS = new Set([
   "node_modules",
   ".git",
+  ".omo",
+  "web-dist",
   "dist",
+  "dist-bundle",
   "build",
   "out",
   "coverage",
   ".next",
-  ".turbo",
+  ".nuxt",
   "vendor",
-  "__pycache__",
-  ".venv"
+  "ios",
+  "android",
+  "Pods",
+  ".turbo",
+  ".parcel-cache",
+  ".tsbuild"
 ]);
-var STATUS_MANIFEST_CANDIDATES = [
-  ".omo/code-graph/manifest.json",
-  ".omo/code-graph/snapshot-manifest.json"
-];
+var ENTRY_FILE = /\.[cm]?[tj]sx?$/;
+var isConfigBasename = (name) => /^tsconfig(\..*)?\.json$/i.test(name);
+var HEX402 = /^[0-9a-f]{40}$/;
+var sanitizeSlug = (value, fallback) => {
+  const cleaned = String(value ?? "").replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? "";
+  const slug = cleaned.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  return slug || fallback;
+};
+var sha256Hex4 = (value) => createHash6("sha256").update(value, "utf8").digest("hex");
+var sha1Hex = (value) => createHash6("sha1").update(value, "utf8").digest("hex");
+var isString = (value) => Object.prototype.toString.call(value) === "[object String]";
+var isFunction2 = (value) => {
+  const tag = Object.prototype.toString.call(value);
+  return tag === "[object Function]" || tag === "[object AsyncFunction]";
+};
+var runGitHead = (spawnGit, directory) => new Promise((resolve) => {
+  spawnGit("git", ["-C", directory, "rev-parse", "HEAD"], { timeout: 1e4 }, (error, stdout) => {
+    if (error) {
+      resolve(null);
+      return;
+    }
+    const revision = String(stdout ?? "").trim().toLowerCase();
+    resolve(HEX402.test(revision) ? revision : null);
+  });
+});
+var createGitHeadReader = ({ fsPromises, path }) => {
+  const memo = new Map;
+  const statKey = async (file) => {
+    try {
+      const stat = await fsPromises.stat(file);
+      return `${stat.mtimeMs}:${stat.size}`;
+    } catch {
+      return null;
+    }
+  };
+  const readText = async (file) => {
+    try {
+      return await fsPromises.readFile(file, "utf8");
+    } catch {
+      return null;
+    }
+  };
+  const resolveGitDir = async (directory) => {
+    const dotGit = path.join(directory, ".git");
+    let dotStat = null;
+    try {
+      dotStat = await fsPromises.stat(dotGit);
+    } catch {
+      dotStat = null;
+    }
+    if (dotStat) {
+      if (dotStat.isDirectory())
+        return { gitDir: dotGit, bare: false };
+      const pointer = await readText(dotGit);
+      if (pointer !== null) {
+        const match = /^gitdir:\s*(.+?)\s*$/.exec(pointer.trim());
+        if (match) {
+          const target = match[1];
+          return { gitDir: path.isAbsolute(target) ? target : path.resolve(directory, target), bare: false };
+        }
+      }
+      return { gitDir: null, bare: false, unreadable: true };
+    }
+    const topHead = await statKey(path.join(directory, "HEAD"));
+    if (topHead !== null)
+      return { gitDir: directory, bare: true };
+    return { gitDir: null, bare: false, unreadable: false };
+  };
+  const shaFromGitDir = async (gitDir) => {
+    const raw = await readText(path.join(gitDir, "HEAD"));
+    if (raw === null)
+      return { status: "unreadable" };
+    const trimmed = raw.trim();
+    if (HEX402.test(trimmed.toLowerCase())) {
+      return { status: "ok", head: trimmed.toLowerCase(), refPath: null };
+    }
+    const match = /^ref:\s*(.+?)\s*$/.exec(trimmed);
+    if (!match)
+      return { status: "unreadable" };
+    const ref = match[1];
+    if (ref.includes("..") || ref.startsWith("/"))
+      return { status: "unreadable" };
+    const refPath = path.join(gitDir, ...ref.split("/"));
+    const loose = await readText(refPath);
+    if (loose !== null) {
+      const sha = loose.trim().toLowerCase();
+      if (HEX402.test(sha))
+        return { status: "ok", head: sha, refPath };
+      return { status: "unreadable" };
+    }
+    const packed = await readText(path.join(gitDir, "packed-refs"));
+    if (packed !== null) {
+      for (const line of packed.split(`
+`)) {
+        const text = line.trim();
+        if (!text || text.startsWith("#") || text.startsWith("^"))
+          continue;
+        const parts = text.split(/\s+/);
+        if (parts.length >= 2 && parts[1] === ref && HEX402.test((parts[0] ?? "").toLowerCase())) {
+          return { status: "ok", head: parts[0].toLowerCase(), refPath };
+        }
+      }
+    }
+    return { status: "unreadable" };
+  };
+  return async (directory) => {
+    const resolved = await resolveGitDir(directory);
+    if (!resolved.gitDir) {
+      return resolved.unreadable ? { status: "unreadable" } : { status: "absent" };
+    }
+    const { gitDir } = resolved;
+    const headPath = path.join(gitDir, "HEAD");
+    const headKey = await statKey(headPath);
+    if (headKey === null)
+      return { status: "unreadable" };
+    const cached = memo.get(gitDir);
+    if (cached && cached.headKey === headKey) {
+      if (cached.refPath === null)
+        return { status: "ok", head: cached.value };
+      const refKey = await statKey(cached.refPath);
+      const extraKey = cached.extraPath ? await statKey(cached.extraPath) : null;
+      if (refKey === cached.refKey && extraKey === cached.extraKey) {
+        return { status: "ok", head: cached.value };
+      }
+    }
+    const parsed = await shaFromGitDir(gitDir);
+    if (parsed.status !== "ok")
+      return parsed;
+    const refKey = parsed.refPath ? await statKey(parsed.refPath) : null;
+    const packedPath = parsed.refPath && refKey === null ? path.join(gitDir, "packed-refs") : null;
+    memo.set(gitDir, {
+      headKey,
+      refPath: parsed.refPath,
+      refKey,
+      extraPath: packedPath,
+      extraKey: packedPath ? await statKey(packedPath) : null,
+      value: parsed.head
+    });
+    return parsed;
+  };
+};
+var stripTrailingSep = (value, sep) => {
+  if (value.length > 1 && value.endsWith(sep))
+    return value.replace(/[/\\]+$/, "") || sep;
+  return value;
+};
+var scopeKeyOf = (value, pathLike) => {
+  const canonical = stripTrailingSep(pathLike.normalize(String(value ?? "")), pathLike.sep);
+  return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+};
+var createDirectoryNormalizer = ({ fsPromises, path }) => async (directory) => {
+  const trimmed = isString(directory) ? directory.trim() : "";
+  if (!trimmed) {
+    return { error: "directory is required" };
+  }
+  const normalized = stripTrailingSep(path.normalize(trimmed), path.sep);
+  let canonical = normalized;
+  try {
+    canonical = stripTrailingSep(path.normalize(await fsPromises.realpath(normalized)), path.sep);
+  } catch {
+    canonical = normalized;
+  }
+  let stat = null;
+  try {
+    stat = await fsPromises.stat(canonical);
+  } catch {
+    return { error: `directory not found: ${trimmed}`, status: 404 };
+  }
+  if (!stat.isDirectory()) {
+    return { error: `not a directory: ${trimmed}`, status: 404 };
+  }
+  return { directory: canonical };
+};
+var findGitRoot = async ({ fsPromises, path }, startDir) => {
+  let current = startDir;
+  const seen = new Set;
+  for (let depth = 0;depth < HARD_MAX_TRAVERSAL_DEPTH; depth += 1) {
+    const key = String(current).toLowerCase();
+    if (seen.has(key))
+      return null;
+    seen.add(key);
+    try {
+      await fsPromises.lstat(path.join(current, ".git"));
+      return current;
+    } catch {}
+    const parent = path.dirname(current);
+    if (parent === current)
+      return null;
+    current = parent;
+  }
+  return null;
+};
+var resolveIndexScope = async ({ fsPromises, path }, directory, mode = "auto") => {
+  const requested = directory;
+  if (mode === "directory")
+    return { scopeRoot: requested, gitRoot: await findGitRoot({ fsPromises, path }, requested), mode: "directory" };
+  const gitRoot = await findGitRoot({ fsPromises, path }, requested);
+  if (gitRoot)
+    return { scopeRoot: gitRoot, gitRoot, mode: "repo" };
+  return { scopeRoot: requested, gitRoot: null, mode: "directory" };
+};
+var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, runtimeOptions = {}) => {
+  if (!fsPromises || !path) {
+    throw new Error("code-graph runtime requires fsPromises and path");
+  }
+  const spawnGit = injectedExecFile ?? execFile;
+  const blockOnRead = runtimeOptions.blockOnRead === true;
+  const defaultMaxEntryFiles = resolveMaxEntryFiles(runtimeOptions.maxEntryFiles);
+  const readGitHead = createGitHeadReader({ fsPromises, path });
+  const gitStatusTTLMs = (() => {
+    const override = Number(runtimeOptions.gitStatusTTLMs);
+    return Number.isFinite(override) && override > 0 ? override : GIT_STATUS_TTL_MS;
+  })();
+  const gitStatusCache = new Map;
+  const runGitStatus = (directory) => new Promise((resolve) => {
+    spawnGit("git", ["-C", directory, "status", "--porcelain=v1", "-z", "--untracked-files=all"], { timeout: 1e4, maxBuffer: 16777216 }, (error, stdout) => {
+      if (error) {
+        resolve({ ok: false });
+        return;
+      }
+      resolve({ ok: true, stdout: String(stdout ?? "") });
+    });
+  });
+  const parseGitStatusZ = (stdout) => {
+    const entries = [];
+    const tokens = String(stdout ?? "").split("\x00");
+    for (let index = 0;index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (token.length < 4 || token[2] !== " ")
+        continue;
+      const code = token.slice(0, 2);
+      const first = token.slice(3);
+      if (code[0] === "R" || code[0] === "C") {
+        const second = tokens[index + 1] ?? "";
+        if (second.length > 0)
+          index += 1;
+        entries.push({ code, paths: second.length > 0 ? [first, second] : [first] });
+      } else {
+        entries.push({ code, paths: [first] });
+      }
+    }
+    return entries;
+  };
+  const isEntryCandidateRel = (rel) => ENTRY_FILE.test(path.basename(rel));
+  const stampDirtyPath = async (directory, rel) => {
+    let stat = null;
+    try {
+      stat = await fsPromises.stat(path.join(directory, ...rel.split("/")));
+    } catch {
+      stat = null;
+    }
+    if (!stat || !stat.isFile())
+      return `${rel}:deleted`;
+    return `${rel}:${stat.size}:${Math.trunc(stat.mtimeMs)}`;
+  };
+  const readDirtyFingerprint = async (directory, { force = false } = {}) => {
+    const key = path.normalize(directory);
+    const now = Date.now();
+    if (!force) {
+      const hit = gitStatusCache.get(key);
+      if (hit && now - hit.atMs < gitStatusTTLMs)
+        return hit.result;
+    }
+    const ran = await runGitStatus(directory);
+    let result;
+    if (!ran.ok) {
+      result = { ok: false };
+    } else {
+      const lines = [];
+      for (const entry of parseGitStatusZ(ran.stdout)) {
+        if (!entry.paths.some((rel) => isEntryCandidateRel(rel) || isConfigBasename(path.basename(rel))))
+          continue;
+        for (const rel of entry.paths) {
+          lines.push(`${entry.code} ${await stampDirtyPath(directory, rel)}`);
+        }
+      }
+      lines.sort();
+      result = { ok: true, lines };
+    }
+    gitStatusCache.set(key, { atMs: Date.now(), result });
+    return result;
+  };
+  let buildSeq = 0;
+  const MAX_CACHED_QUERIES = 200;
+  const snapshots = new Map;
+  const completeSnapshots = new Map;
+  const requestToScope = new Map;
+  const MAX_SCOPE_ALIASES = 200;
+  const rememberScopeAlias = (requestedKey, key) => {
+    requestToScope.delete(requestedKey);
+    requestToScope.set(requestedKey, key);
+    while (requestToScope.size > MAX_SCOPE_ALIASES) {
+      requestToScope.delete(requestToScope.keys().next().value);
+    }
+  };
+  const partialByDirectory = new Map;
+  const jobs = new Map;
+  const lastTerminalFailure = new Map;
+  const pendingCancels = new Set;
+  const MAX_PENDING_CANCELS = 200;
+  const rememberPendingCancel = (key) => {
+    pendingCancels.delete(key);
+    pendingCancels.add(key);
+    while (pendingCancels.size > MAX_PENDING_CANCELS) {
+      pendingCancels.delete(pendingCancels.values().next().value);
+    }
+  };
+  const takePendingCancel = (key) => {
+    if (!pendingCancels.has(key))
+      return false;
+    pendingCancels.delete(key);
+    return true;
+  };
+  const MAX_RETAINED_SNAPSHOTS = 3;
+  const normalizeDirectory = createDirectoryNormalizer({ fsPromises, path });
+  const deriveScopeIds = (directory) => {
+    const canonical = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
+    const digest = sha256Hex4(canonical.toLowerCase());
+    return {
+      projectId: `${sanitizeSlug(path.basename(canonical), "project")}-${digest.slice(0, 8)}`,
+      worktreeId: sanitizeSlug(path.basename(canonical), "worktree")
+    };
+  };
+  const deriveScopeIdsForRoot = (scopeRoot) => {
+    const canonicalRoot = stripTrailingSep(path.normalize(String(scopeRoot ?? "")), path.sep);
+    const digest = sha256Hex4(canonicalRoot.toLowerCase());
+    return {
+      projectId: `${sanitizeSlug(path.basename(canonicalRoot), "project")}-${digest.slice(0, 8)}`,
+      worktreeId: sanitizeSlug(path.basename(canonicalRoot), "worktree"),
+      scopeRoot: canonicalRoot
+    };
+  };
+  const MAX_SKIPPED_SCAN_FILES = 1e4;
+  const bucketOfRel = (rel) => {
+    const segments = String(rel ?? "").split("/").filter((segment) => segment.length > 0);
+    return segments.length > 1 ? segments[0] : "(root)";
+  };
+  const extOf = (name) => {
+    const ext = path.extname(String(name ?? "")).toLowerCase();
+    return ext.length > 0 ? ext : "(no-extension)";
+  };
+  const listEntryFiles = async (directory, maxEntryFiles, walkOptions = {}) => {
+    const cap = resolveMaxEntryFiles(maxEntryFiles ?? defaultMaxEntryFiles);
+    const budgets = resolveTraversalBudgets({ ...runtimeOptions, ...walkOptions });
+    const shouldCancel = walkOptions.shouldCancel;
+    const checkCancelled = () => {
+      if (isFunction2(shouldCancel) && shouldCancel()) {
+        const err = new Error("code-graph index cancelled");
+        err.code = "CANCELLED";
+        throw err;
+      }
+    };
+    let canonicalRoot = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
+    try {
+      canonicalRoot = stripTrailingSep(path.normalize(await fsPromises.realpath(directory)), path.sep);
+    } catch {
+      canonicalRoot = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
+    }
+    const canonicalRootLower = canonicalRoot.toLowerCase();
+    const visitedInodes = new Set;
+    const visitedReals = new Set([canonicalRootLower]);
+    const deadlineMs = Date.now() + budgets.timeBudgetMs;
+    let opsSinceYield = 0;
+    const maybeYield = async () => {
+      opsSinceYield += 1;
+      if (opsSinceYield >= 200) {
+        opsSinceYield = 0;
+        checkCancelled();
+        if (Date.now() > deadlineMs) {
+          const err = new Error("code-graph discovery time budget exceeded");
+          err.code = "TRUNCATED";
+          err.reason = "time-budget";
+          throw err;
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    };
+    const isWithinRoot = (real) => {
+      const lower = String(real ?? "").toLowerCase();
+      return lower === canonicalRootLower || lower.startsWith(`${canonicalRootLower}${path.sep}`.toLowerCase()) || lower.startsWith(`${canonicalRootLower}/`);
+    };
+    const entries = [];
+    let scanned = 0;
+    let excludedCount = 0;
+    const excludedSample = [];
+    const configFiles = [];
+    let configTruncated = false;
+    const skippedDirs = [];
+    const unreadableDirs = [];
+    const skippedSymlinks = [];
+    const nestedRepoRoots = [];
+    let dirsVisited = 0;
+    let filesDiscovered = 0;
+    let symlinksSkipped = 0;
+    let maxDepthSeen = 0;
+    let truncationReason = null;
+    const byModule = new Map;
+    const bucketStats = (bucket) => {
+      let stats = byModule.get(bucket);
+      if (!stats) {
+        stats = { analyzedFiles: 0, unanalyzedFiles: 0, unanalyzedByExtension: {}, excludedFiles: 0 };
+        byModule.set(bucket, stats);
+      }
+      return stats;
+    };
+    const relOf = (full) => path.relative(directory, full).split(path.sep).join("/");
+    const scanState = { count: 0, truncated: false };
+    const countSkipped = async (dir, bucket) => {
+      if (scanState.count >= MAX_SKIPPED_SCAN_FILES) {
+        scanState.truncated = true;
+        return;
+      }
+      let names = [];
+      try {
+        names = await fsPromises.readdir(dir);
+      } catch {
+        return;
+      }
+      for (const name of names) {
+        if (scanState.count >= MAX_SKIPPED_SCAN_FILES) {
+          scanState.truncated = true;
+          return;
+        }
+        if (name === "." || name === "..")
+          continue;
+        scanState.count += 1;
+        await maybeYield();
+        const full = path.join(dir, name);
+        let linkStat = null;
+        try {
+          linkStat = await fsPromises.lstat(full);
+        } catch {
+          continue;
+        }
+        if (linkStat.isSymbolicLink()) {
+          symlinksSkipped += 1;
+          continue;
+        }
+        if (linkStat.isDirectory()) {
+          let real = null;
+          try {
+            real = await fsPromises.realpath(full);
+          } catch {
+            continue;
+          }
+          if (!isWithinRoot(real))
+            continue;
+          const lower = String(real).toLowerCase();
+          if (visitedReals.has(lower))
+            continue;
+          if (visitedReals.size > budgets.maxDirsVisited) {
+            scanState.truncated = true;
+            truncationReason = truncationReason ?? "dirs-visited";
+            return;
+          }
+          visitedReals.add(lower);
+          await countSkipped(full, bucket);
+        } else if (linkStat.isFile()) {
+          bucketStats(bucket).excludedFiles += 1;
+        }
+      }
+    };
+    const visit = async (dir, depth) => {
+      checkCancelled();
+      if (depth > budgets.maxDepth) {
+        truncationReason = truncationReason ?? "max-depth";
+        return;
+      }
+      if (dirsVisited >= budgets.maxDirsVisited) {
+        truncationReason = truncationReason ?? "dirs-visited";
+        return;
+      }
+      if (filesDiscovered >= budgets.maxFilesDiscovered) {
+        truncationReason = truncationReason ?? "files-discovered";
+        return;
+      }
+      if (Date.now() > deadlineMs) {
+        truncationReason = truncationReason ?? "time-budget";
+        return;
+      }
+      let realDir = null;
+      try {
+        realDir = await fsPromises.realpath(dir);
+      } catch {
+        const rel = relOf(dir);
+        unreadableDirs.push(rel.length > 0 ? rel : ".");
+        return;
+      }
+      if (!isWithinRoot(realDir))
+        return;
+      const realLower = String(realDir).toLowerCase();
+      let dirStat = null;
+      try {
+        dirStat = await fsPromises.stat(realDir);
+      } catch {
+        const rel = relOf(dir);
+        unreadableDirs.push(rel.length > 0 ? rel : ".");
+        return;
+      }
+      const inodeKey = `${Number(dirStat.dev ?? 0)}:${Number(dirStat.ino ?? 0)}`;
+      if (visitedInodes.has(inodeKey))
+        return;
+      visitedInodes.add(inodeKey);
+      dirsVisited += 1;
+      maxDepthSeen = Math.max(maxDepthSeen, depth);
+      let names = [];
+      try {
+        names = await fsPromises.readdir(dir);
+      } catch {
+        const rel = relOf(dir);
+        unreadableDirs.push(rel.length > 0 ? rel : ".");
+        return;
+      }
+      if (depth > 0 && names.includes(".git")) {
+        const rel = relOf(dir);
+        nestedRepoRoots.push(rel.length > 0 ? rel : ".");
+        return;
+      }
+      names.sort();
+      for (const name of names) {
+        if (name === "." || name === "..")
+          continue;
+        const full = path.join(dir, name);
+        let linkStat = null;
+        try {
+          linkStat = await fsPromises.lstat(full);
+        } catch {
+          const rel = relOf(full);
+          unreadableDirs.push(rel.length > 0 ? rel : ".");
+          continue;
+        }
+        if (linkStat.isSymbolicLink()) {
+          symlinksSkipped += 1;
+          const rel = relOf(full);
+          if (skippedSymlinks.length < MAX_EXCLUDED_SAMPLE)
+            skippedSymlinks.push(rel);
+          continue;
+        }
+        await maybeYield();
+        filesDiscovered += 1;
+        if (filesDiscovered > budgets.maxFilesDiscovered) {
+          truncationReason = truncationReason ?? "files-discovered";
+          return;
+        }
+        if (linkStat.isDirectory()) {
+          if (SKIPPED_DIRS.has(name)) {
+            const rel = relOf(full);
+            skippedDirs.push(rel);
+            await countSkipped(full, bucketOfRel(rel));
+            continue;
+          }
+          let realChild = null;
+          try {
+            realChild = await fsPromises.realpath(full);
+          } catch {
+            const rel = relOf(full);
+            unreadableDirs.push(rel.length > 0 ? rel : ".");
+            continue;
+          }
+          if (!isWithinRoot(realChild))
+            continue;
+          const childLower = String(realChild).toLowerCase();
+          if (visitedReals.has(childLower))
+            continue;
+          visitedReals.add(childLower);
+          await visit(full, depth + 1);
+        } else if (linkStat.isFile()) {
+          scanned += 1;
+          const rel = relOf(full);
+          const bucket = bucketOfRel(rel);
+          if (!ENTRY_FILE.test(name)) {
+            if (isConfigBasename(name)) {
+              if (configFiles.length < MAX_CONFIG_FILES_SEEN)
+                configFiles.push(full);
+              else
+                configTruncated = true;
+            }
+            const stats = bucketStats(bucket);
+            stats.unanalyzedFiles += 1;
+            const ext = extOf(name);
+            stats.unanalyzedByExtension[ext] = (stats.unanalyzedByExtension[ext] ?? 0) + 1;
+            continue;
+          }
+          if (entries.length >= cap) {
+            excludedCount += 1;
+            truncationReason = truncationReason ?? "entry-cap";
+            bucketStats(bucket).excludedFiles += 1;
+            if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
+              excludedSample.push(rel);
+            }
+            continue;
+          }
+          if (entries.length >= budgets.maxCandidateFiles) {
+            excludedCount += 1;
+            truncationReason = truncationReason ?? "candidate-cap";
+            bucketStats(bucket).excludedFiles += 1;
+            if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
+              excludedSample.push(rel);
+            }
+            continue;
+          }
+          if (Number(linkStat.size ?? 0) > budgets.maxFileSizeBytes) {
+            excludedCount += 1;
+            truncationReason = truncationReason ?? "file-size";
+            bucketStats(bucket).excludedFiles += 1;
+            if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
+              excludedSample.push(rel);
+            }
+            continue;
+          }
+          entries.push(full);
+          bucketStats(bucket).analyzedFiles += 1;
+        }
+      }
+    };
+    let walkError = null;
+    try {
+      await visit(canonicalRoot, 0);
+    } catch (error) {
+      if (error?.code === "CANCELLED")
+        throw error;
+      if (error?.code === "TRUNCATED") {
+        truncationReason = truncationReason ?? error.reason ?? "time-budget";
+      } else {
+        walkError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    entries.sort();
+    skippedDirs.sort();
+    unreadableDirs.sort();
+    const buckets = [...byModule.keys()].sort();
+    const modules = {};
+    for (const bucket of buckets) {
+      const stats = byModule.get(bucket);
+      modules[bucket] = {
+        analyzedFiles: stats.analyzedFiles,
+        unanalyzedFiles: stats.unanalyzedFiles,
+        unanalyzedByExtension: Object.fromEntries(Object.entries(stats.unanalyzedByExtension).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)),
+        excludedFiles: stats.excludedFiles
+      };
+    }
+    const totals = { analyzedFiles: 0, unanalyzedFiles: 0, unanalyzedByExtension: {}, excludedFiles: 0 };
+    for (const stats of Object.values(modules)) {
+      totals.analyzedFiles += stats.analyzedFiles;
+      totals.unanalyzedFiles += stats.unanalyzedFiles;
+      totals.excludedFiles += stats.excludedFiles;
+      for (const [ext, count] of Object.entries(stats.unanalyzedByExtension)) {
+        totals.unanalyzedByExtension[ext] = (totals.unanalyzedByExtension[ext] ?? 0) + count;
+      }
+    }
+    totals.unanalyzedByExtension = Object.fromEntries(Object.entries(totals.unanalyzedByExtension).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+    const truncated = excludedCount > 0 || truncationReason !== null || scanState.truncated;
+    if (truncationReason === null && scanState.truncated)
+      truncationReason = "skipped-scan";
+    if (truncationReason === null && excludedCount > 0)
+      truncationReason = "entry-cap";
+    skippedSymlinks.sort();
+    nestedRepoRoots.sort();
+    return {
+      entries,
+      scanned,
+      truncated,
+      truncationReason,
+      excludedCount,
+      excludedSample,
+      maxEntryFiles: cap,
+      configFiles,
+      configTruncated,
+      dirsVisited,
+      filesDiscovered,
+      symlinksSkipped,
+      skippedSymlinks,
+      nestedRepoRoots,
+      maxDepthSeen,
+      scopeRoot: canonicalRoot,
+      walkError,
+      budgets: { maxDirsVisited: budgets.maxDirsVisited, maxFilesDiscovered: budgets.maxFilesDiscovered, maxDepth: budgets.maxDepth },
+      coverage: { byModule: modules, totals, skippedDirs, unreadableDirs, excludedTruncated: scanState.truncated, skippedSymlinks, nestedRepoRoots, dirsVisited, filesDiscovered, symlinksSkipped, truncationReason }
+    };
+  };
+  const readRevision = async (directory, entryFiles, { forceStatus = false } = {}) => {
+    const local = await readGitHead(directory);
+    let head = null;
+    if (local.status === "ok") {
+      head = local.head;
+    } else if (local.status === "unreadable") {
+      head = await runGitHead(spawnGit, directory);
+    }
+    if (head !== null) {
+      const dirty = await readDirtyFingerprint(directory, { force: forceStatus });
+      if (!dirty.ok) {
+        return { revision: head, binding: "git-head", dirty: "unknown", dirtyReason: "git-status-unavailable" };
+      }
+      if (dirty.lines.length === 0)
+        return { revision: head, binding: "git-head", dirty: "clean" };
+      return {
+        revision: sha1Hex(`${head}
+${dirty.lines.join(`
+`)}`),
+        binding: "git-head",
+        dirty: "dirty"
+      };
+    }
+    const stamped = await Promise.all(entryFiles.map(async (entry) => {
+      const rel = path.relative(directory, entry).split(path.sep).join("/");
+      const stat = await fsPromises.stat(entry).catch(() => null);
+      return stat === null ? `${rel}:unreadable` : `${rel}:${stat.size}:${Math.trunc(stat.mtimeMs)}`;
+    }));
+    return { revision: sha1Hex(`${directory}
+${stamped.join(`
+`)}`), binding: "content" };
+  };
+  const PARTIAL_MODULE_LIMIT = 12;
+  const summarizePartialSnapshot = (snapshot) => {
+    const modules = new Map;
+    for (const node of snapshot.nodes ?? []) {
+      const file = node?.file ?? "";
+      if (file === "")
+        continue;
+      const segments = file.split("/");
+      const bucket = segments.length > 2 ? `${segments[0]}/${segments[1]}` : segments[0] ?? file;
+      modules.set(bucket, (modules.get(bucket) ?? 0) + 1);
+    }
+    const ranked = [...modules.entries()].sort((left, right) => right[1] - left[1]);
+    return {
+      nodes: (snapshot.nodes ?? []).length,
+      edges: (snapshot.edges ?? []).length,
+      modules: ranked.slice(0, PARTIAL_MODULE_LIMIT).map(([module, count]) => ({ module, count })),
+      modulesTotal: ranked.length
+    };
+  };
+  const buildSnapshot = async (key, requestedKey, scopeRoot, mode, maxEntryFiles, { forceStatus = false, onProgress = null, shouldCancel = null, scopeMode = "auto", walkBudgets = {}, prewalked = null } = {}) => {
+    const engine = await loadEngine();
+    const indexRoot = scopeRoot;
+    const walk = prewalked ?? await listEntryFiles(indexRoot, maxEntryFiles, { ...walkBudgets, shouldCancel });
+    const { entries, truncated, truncationReason, excludedCount, excludedSample, maxEntryFiles: cap, coverage } = walk;
+    const { revision, binding, dirty, dirtyReason } = await readRevision(indexRoot, entries, { forceStatus });
+    if (isFunction2(shouldCancel) && shouldCancel()) {
+      const err = new Error("code-graph index cancelled");
+      err.code = "CANCELLED";
+      throw err;
+    }
+    const ids = deriveScopeIdsForRoot(scopeRoot);
+    const projectId = ids.projectId;
+    const worktreeId = ids.worktreeId;
+    const fingerprint = engine.computeScopeFingerprint(projectId, worktreeId, revision);
+    if (isFunction2(shouldCancel) && shouldCancel()) {
+      const err = new Error("code-graph index cancelled");
+      err.code = "CANCELLED";
+      throw err;
+    }
+    const posixRootOf = (value) => {
+      const slashed = String(value ?? "").replace(/\\/g, "/");
+      return /^[a-zA-Z]:\//.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
+    };
+    const relOfEntry = (abs) => {
+      const prefix = `${posixRootOf(indexRoot).replace(/\/+$/, "")}/`;
+      const key = posixRootOf(abs);
+      if (!key.startsWith(prefix))
+        return null;
+      const rel = key.slice(prefix.length);
+      return rel.length > 0 ? rel : null;
+    };
+    const previousForReuse = completeSnapshots.get(key) ?? snapshots.get(key) ?? null;
+    const fingerprints = new Map;
+    const fileStats = new Map;
+    const relByAbs = new Map;
+    const unreadableFiles = [];
+    let statHits = 0;
+    {
+      const previousRecords = previousForReuse?.fileRecords?.files ?? {};
+      let fingerprinted = 0;
+      for (const abs of entries) {
+        if (isFunction2(shouldCancel) && shouldCancel()) {
+          const err = new Error("code-graph index cancelled");
+          err.code = "CANCELLED";
+          throw err;
+        }
+        const rel = relOfEntry(abs);
+        relByAbs.set(abs, rel);
+        if (rel !== null) {
+          const record = previousRecords[rel];
+          let stat = null;
+          try {
+            stat = await fsPromises.stat(abs);
+          } catch {
+            stat = null;
+          }
+          const statMatch = stat !== null && stat.isFile() && record !== undefined && Number.isFinite(record.size) && Number.isFinite(record.mtimeMs) && record.size === stat.size && record.mtimeMs === stat.mtimeMs;
+          if (statMatch && record !== undefined) {
+            fingerprints.set(rel, record.blob);
+            fileStats.set(rel, { size: stat.size, mtimeMs: stat.mtimeMs });
+            statHits += 1;
+          } else {
+            try {
+              const bytes = await fsPromises.readFile(abs);
+              fingerprints.set(rel, engine.fingerprintBytes(bytes));
+              if (stat !== null && stat.isFile())
+                fileStats.set(rel, { size: stat.size, mtimeMs: stat.mtimeMs });
+            } catch {
+              unreadableFiles.push(rel);
+            }
+          }
+        }
+        fingerprinted += 1;
+        if (fingerprinted % 200 === 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+      }
+    }
+    for (const abs of walk.configFiles ?? []) {
+      if (isFunction2(shouldCancel) && shouldCancel()) {
+        const err = new Error("code-graph index cancelled");
+        err.code = "CANCELLED";
+        throw err;
+      }
+      const rel = relOfEntry(abs);
+      if (rel === null)
+        continue;
+      try {
+        const bytes = await fsPromises.readFile(abs);
+        fingerprints.set(rel, engine.fingerprintBytes(bytes));
+        const stat = await fsPromises.stat(abs).catch(() => null);
+        if (stat !== null && stat.isFile())
+          fileStats.set(rel, { size: stat.size, mtimeMs: stat.mtimeMs });
+      } catch {}
+    }
+    const validated = engine.validateFileRecords(previousForReuse?.fileRecords ?? null, fingerprints);
+    const configMoved = [...validated.changed, ...validated.added, ...validated.deleted].some((rel) => isConfigBasename(rel.split("/").pop() ?? rel));
+    const buildEntries = entries.filter((abs) => {
+      const rel = relByAbs.get(abs);
+      return rel === null || rel === undefined || fingerprints.has(rel);
+    });
+    const unreadableFileSet = new Set(unreadableFiles);
+    const unreadableFileRels = [...unreadableFileSet].sort().slice(0, MAX_UNREADABLE_FILES);
+    const buildCoverage = unreadableFileSet.size === 0 ? coverage : {
+      ...coverage,
+      unreadableFiles: unreadableFileRels,
+      unreadableFileCount: unreadableFileSet.size
+    };
+    const buildTruncationReason = truncationReason ?? (unreadableFileSet.size > 0 ? "unreadable-files" : null);
+    const buildTruncated = truncated || unreadableFileSet.size > 0;
+    if (entries.length > 0 && buildEntries.length === 0) {
+      const error = new Error(`code-graph: no readable source files in scope (${entries.length} listed, all unreadable)`);
+      error.code = "NO_READABLE_ENTRIES";
+      throw error;
+    }
+    const triggerRels = new Set([...validated.changed, ...validated.added, ...validated.deleted]);
+    const expandDependents = (seed) => {
+      const out = new Set;
+      if (previousForReuse === null || seed.size === 0)
+        return out;
+      const fileByNodeId = new Map;
+      for (const node of previousForReuse.snapshot.nodes ?? []) {
+        if (typeof node?.id === "string" && typeof node?.file === "string" && node.file.length > 0) {
+          fileByNodeId.set(node.id, node.file);
+        }
+      }
+      const dependentKinds = new Set(["IMPORTS", "EXPORTS", "TESTS", "CALLS_STATIC", "CALLS_UNRESOLVED"]);
+      for (const edge of previousForReuse.snapshot.edges ?? []) {
+        if (!dependentKinds.has(edge?.kind))
+          continue;
+        const toFile = edge.to === "unknown" ? null : fileByNodeId.get(edge.to) ?? null;
+        if (toFile === null || !seed.has(toFile))
+          continue;
+        const fromFile = fileByNodeId.get(edge.from) ?? null;
+        if (fromFile !== null && !seed.has(fromFile))
+          out.add(fromFile);
+      }
+      return out;
+    };
+    const reuseActive = previousForReuse !== null && !configMoved && validated.reused.size > 0;
+    const subsetFor = (rels) => entries.filter((abs) => {
+      const rel = relByAbs.get(abs);
+      return rel === null || rel === undefined || rels.has(rel);
+    });
+    const recordsDoc = {
+      version: engine.FILE_RECORDS_VERSION,
+      parser: engine.PARSER_RECORD_VERSION,
+      schema: engine.SNAPSHOT_STORE_VERSION,
+      files: Object.fromEntries([...fingerprints].map(([file, blob]) => {
+        const stat = fileStats.get(file);
+        return stat !== undefined ? [file, { file, blob, size: stat.size, mtimeMs: stat.mtimeMs }] : [file, { file, blob }];
+      }))
+    };
+    const runCompiler = (targetAbs) => engine.indexFiles(targetAbs, {
+      rootDir: indexRoot,
+      onProgress: onProgress ?? undefined,
+      onPartialSnapshot: (partialSnapshot, progress) => {
+        if (isFunction2(shouldCancel) && shouldCancel()) {
+          const err = new Error("code-graph index cancelled");
+          err.code = "CANCELLED";
+          throw err;
+        }
+        partialByDirectory.set(key, assembleEntry({
+          snapshot: partialSnapshot,
+          scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey },
+          binding,
+          dirty,
+          dirtyReason,
+          truncated,
+          truncationReason,
+          excludedCount,
+          excludedSample,
+          cap,
+          entries: targetAbs,
+          coverage,
+          metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen }
+        }));
+        onProgress?.({
+          phase: "projects",
+          files: targetAbs.length,
+          projectsDone: progress.projectsDone,
+          projectsTotal: progress.projectsTotal,
+          partial: summarizePartialSnapshot(partialSnapshot)
+        });
+      }
+    });
+    const concatSnapshots = (left, right) => ({
+      nodes: [...left.nodes ?? [], ...right.nodes ?? []],
+      edges: [...left.edges ?? [], ...right.edges ?? []],
+      root: left.root ?? right.root,
+      dropped: [...left.dropped ?? [], ...right.dropped ?? []],
+      ...(left.content ?? null) !== null || (right.content ?? null) !== null ? {
+        content: {
+          tokenCap: left.content?.tokenCap ?? right.content?.tokenCap,
+          files: { ...left.content?.files ?? {}, ...right.content?.files ?? {} },
+          skipped: [...left.content?.skipped ?? [], ...right.content?.skipped ?? []]
+        }
+      } : {}
+    });
+    const shardSurface = (shards, file) => {
+      const shard = shards.get(file);
+      if (shard === undefined)
+        return null;
+      return engine.exportSurfaceKey(shard);
+    };
+    let finalSnapshot;
+    let incremental;
+    let analyzedCount = 0;
+    if (!reuseActive) {
+      const snapshot = runCompiler(buildEntries);
+      analyzedCount = buildEntries.length;
+      finalSnapshot = snapshot;
+      incremental = {
+        statReused: statHits,
+        reused: 0,
+        reanalyzed: buildEntries.length,
+        added: validated.added.size,
+        deleted: validated.deleted.size,
+        invalidatedEdges: 0,
+        unreadableFiles: unreadableFileRels,
+        unreadableFileCount: unreadableFileSet.size
+      };
+    } else if (triggerRels.size === 0) {
+      finalSnapshot = previousForReuse.snapshot;
+      incremental = {
+        statReused: statHits,
+        reused: validated.reused.size,
+        reanalyzed: 0,
+        added: 0,
+        deleted: 0,
+        invalidatedEdges: 0,
+        unreadableFiles: [],
+        unreadableFileCount: 0
+      };
+    } else {
+      const phaseASet = new Set([...validated.changed, ...validated.added]);
+      const subsetA = subsetFor(phaseASet);
+      const freshA = runCompiler(subsetA);
+      analyzedCount += subsetA.length;
+      const prevShards = new Map(engine.splitSnapshotIntoShards(previousForReuse.snapshot).map((shard) => [shard.file, shard]));
+      const freshShards = new Map(engine.splitSnapshotIntoShards(freshA).map((shard) => [shard.file, shard]));
+      const differers = new Set;
+      for (const rel of validated.changed) {
+        if (shardSurface(prevShards, rel) !== shardSurface(freshShards, rel))
+          differers.add(rel);
+      }
+      const dependents = expandDependents(new Set([...differers, ...validated.deleted]));
+      const analysisRels = new Set([...triggerRels, ...dependents]);
+      const reusedFiles = [...validated.reused].filter((file) => !analysisRels.has(file));
+      if ([...fingerprints.keys()].every((file) => analysisRels.has(file))) {
+        const snapshot = runCompiler(buildEntries);
+        analyzedCount = buildEntries.length;
+        finalSnapshot = snapshot;
+        incremental = {
+          statReused: statHits,
+          reused: 0,
+          reanalyzed: buildEntries.length,
+          added: validated.added.size,
+          deleted: validated.deleted.size,
+          invalidatedEdges: 0,
+          unreadableFiles: unreadableFileRels,
+          unreadableFileCount: unreadableFileSet.size
+        };
+      } else {
+        if (isFunction2(shouldCancel) && shouldCancel()) {
+          const err = new Error("code-graph index cancelled");
+          err.code = "CANCELLED";
+          throw err;
+        }
+        const subsetB = entries.filter((abs) => {
+          const rel = relByAbs.get(abs);
+          return rel !== null && rel !== undefined && dependents.has(rel) && !phaseASet.has(rel);
+        });
+        const freshB = subsetB.length > 0 ? runCompiler(subsetB) : null;
+        analyzedCount += subsetB.length;
+        const combined = freshB === null ? freshA : concatSnapshots(freshA, freshB);
+        const merged = engine.rebuildIncremental(previousForReuse.snapshot, analysisRels, combined);
+        finalSnapshot = merged.snapshot;
+        incremental = {
+          statReused: statHits,
+          reused: reusedFiles.length,
+          reanalyzed: analyzedCount,
+          added: validated.added.size,
+          deleted: validated.deleted.size,
+          invalidatedEdges: merged.invalidatedEdges,
+          unreadableFiles: unreadableFileRels,
+          unreadableFileCount: unreadableFileSet.size
+        };
+      }
+    }
+    const built = assembleEntry({ snapshot: finalSnapshot, scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey }, binding, dirty, dirtyReason, truncated: buildTruncated, truncationReason: buildTruncationReason, excludedCount, excludedSample, cap, entries, coverage: buildCoverage, metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen }, fileRecords: recordsDoc, incremental });
+    partialByDirectory.delete(key);
+    await persistEntry(key, built);
+    lastTerminalFailure.delete(key);
+    return built;
+  };
+  const assembleEntry = ({ snapshot, scope, binding, dirty, dirtyReason, truncated, truncationReason = null, excludedCount, excludedSample, cap, entries, coverage, metrics = null, observedAtMs, fileRecords = null, incremental = null, buildSeq: buildSeqOverride = null }) => {
+    if (buildSeqOverride === null || !Number.isFinite(buildSeqOverride)) {
+      buildSeq += 1;
+    } else {
+      buildSeq = Math.max(buildSeq, buildSeqOverride);
+    }
+    const built = {
+      snapshot,
+      scope,
+      observedAtMs: observedAtMs ?? Date.now(),
+      binding,
+      dirty: dirty ?? null,
+      truncated,
+      truncationReason: truncationReason ?? null,
+      indexTruncated: truncated,
+      excludedCount,
+      excludedSample,
+      entryCap: cap,
+      entryCount: entries.length,
+      entryFiles: entries,
+      fileRecords: fileRecords ?? null,
+      incremental: incremental ?? null,
+      coverage,
+      metrics,
+      buildSeq: buildSeqOverride === null || !Number.isFinite(buildSeqOverride) ? buildSeq : buildSeqOverride,
+      queryCache: new Map
+    };
+    if (dirtyReason) {
+      built.dirtyReason = dirtyReason;
+    }
+    return built;
+  };
+  let snapshotStorage = null;
+  const getStorage = async () => {
+    if (typeof runtimeOptions.storeDir !== "string" || runtimeOptions.storeDir.length === 0)
+      return null;
+    if (snapshotStorage === null) {
+      const engine = await loadEngine();
+      snapshotStorage = createSnapshotStorage({ fsPromises, path, engine, storeDir: runtimeOptions.storeDir });
+    }
+    return snapshotStorage;
+  };
+  const persistEntry = async (scopeKey, entry) => {
+    if (entry.truncated)
+      return;
+    const storage = await getStorage();
+    if (!storage)
+      return;
+    const result = await storage.write(scopeKey, entry);
+    if (!result.written) {
+      emitProgress(scopeKey, { state: "ready", storeWriteFailed: result.reason ?? "unknown" });
+    }
+  };
+  const restoreFromStore = async ({ requestedKey, scopeRoot, mode }, cap, shareWalk = false) => {
+    const storage = await getStorage();
+    if (!storage)
+      return null;
+    const engine = await loadEngine();
+    const walk = await listEntryFiles(scopeRoot, cap);
+    if (walk.truncated)
+      return null;
+    const { entries, excludedCount, excludedSample, coverage } = walk;
+    const { revision, binding, dirty, dirtyReason } = await readRevision(scopeRoot, entries, { forceStatus: false });
+    const ids = deriveScopeIdsForRoot(scopeRoot);
+    const projectId = ids.projectId;
+    const worktreeId = ids.worktreeId;
+    const fingerprint = engine.computeScopeFingerprint(projectId, worktreeId, revision);
+    let read;
+    try {
+      read = await storage.read(requestedKey, { projectId, worktreeId, revision, fingerprint });
+    } catch (error) {
+      emitProgress(requestedKey, { state: "discovering", storeReadFailed: error instanceof Error ? error.message : String(error) });
+      return shareWalk ? { miss: true, walk } : null;
+    }
+    if (read.status !== "hit")
+      return shareWalk ? { miss: true, walk } : null;
+    const built = assembleEntry({
+      snapshot: read.snapshot,
+      scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey },
+      binding,
+      dirty,
+      dirtyReason,
+      truncated: false,
+      truncationReason: null,
+      excludedCount,
+      excludedSample,
+      cap,
+      entries,
+      coverage,
+      metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen },
+      observedAtMs: read.manifest.observedAtMs,
+      fileRecords: read.fileRecords ?? null,
+      buildSeq: read.manifest?.buildSeq ?? null
+    });
+    emitProgress(requestedKey, {
+      state: "ready",
+      seeded: true,
+      restoredFromStore: true,
+      generation: built.buildSeq,
+      nodes: built.snapshot.nodes.length,
+      edges: built.snapshot.edges.length,
+      entryCount: built.entryCount
+    });
+    return built;
+  };
+  const serveBuilt = (entry) => entry.truncated ? { ...entry, freshness: "stale", staleReason: "index-truncated" } : { ...entry, freshness: "fresh" };
+  const ensureIndex = async (directory, { refresh = false, maxEntryFiles, block = false, scopeMode = "auto", walkBudgets = {} } = {}) => {
+    const engine = await loadEngine();
+    const cap = resolveMaxEntryFiles(maxEntryFiles ?? defaultMaxEntryFiles);
+    const rawCanonical = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
+    const rawKey = scopeKeyOf(rawCanonical, path);
+    let scopeRoot = rawCanonical;
+    try {
+      scopeRoot = stripTrailingSep(path.normalize(await fsPromises.realpath(scopeRoot)), path.sep);
+    } catch {}
+    const requestedKey = scopeKeyOf(scopeRoot, path);
+    const resolved = await resolveIndexScope({ fsPromises, path }, scopeRoot, scopeMode);
+    let resolvedRoot = stripTrailingSep(path.normalize(String(resolved.scopeRoot ?? scopeRoot)), path.sep);
+    try {
+      resolvedRoot = stripTrailingSep(path.normalize(await fsPromises.realpath(resolvedRoot)), path.sep);
+    } catch {}
+    scopeRoot = resolvedRoot;
+    const key = scopeKeyOf(scopeRoot, path);
+    const mode = resolved.mode;
+    rememberScopeAlias(rawKey, key);
+    rememberScopeAlias(requestedKey, key);
+    const cached = snapshots.get(key);
+    const revisionMatches = async (entry) => {
+      if (!entry || entry.entryCap !== cap)
+        return false;
+      const { revision } = await readRevision(scopeRoot, entry.entryFiles ?? []);
+      return revision === entry.scope.revision && Date.now() - entry.observedAtMs <= engine.STALE_AFTER_MS;
+    };
+    const fallbackEntry = () => completeSnapshots.get(key) ?? snapshots.get(key) ?? null;
+    const serveFallback = (staleReason, extra = {}) => {
+      const fallback = fallbackEntry();
+      if (!fallback)
+        return null;
+      return {
+        ...fallback,
+        freshness: "stale",
+        staleReason: fallback.truncated ? "index-truncated" : staleReason,
+        ...extra
+      };
+    };
+    const refreshErrorOf = (error) => error instanceof Error ? error.message : String(error);
+    const cancelBeforeStart = !refresh && takePendingCancel(key);
+    let prewalked = null;
+    if (!refresh) {
+      const complete = !cached || cached.truncated ? completeSnapshots.get(key) : cached;
+      if (complete && await revisionMatches(complete)) {
+        return { entry: { ...complete, freshness: "fresh" }, scopeKey: key, scopeRoot, scopeMode: mode };
+      }
+      if (cached && cached.truncated && await revisionMatches(cached)) {
+        return { entry: serveFallback("index-truncated"), scopeKey: key, scopeRoot, scopeMode: mode };
+      }
+      const shareWalk = Object.keys(walkBudgets).length === 0;
+      const restored = await restoreFromStore({ requestedKey, scopeRoot, mode }, cap, shareWalk).catch(() => null);
+      if (restored !== null && restored.miss !== true) {
+        retainSnapshot(key, restored);
+        return { entry: { ...restored, freshness: "fresh" }, scopeKey: key, scopeRoot, scopeMode: mode };
+      }
+      if (restored !== null && restored.miss === true)
+        prewalked = restored.walk ?? null;
+    }
+    if (refresh)
+      takePendingCancel(key);
+    else if (cancelBeforeStart) {
+      if (block) {
+        const cancelled = new Error("code-graph index cancelled");
+        cancelled.code = "CANCELLED";
+        throw cancelled;
+      }
+      return { pending: { state: "cancelled", startedAtMs: Date.now(), progress: null, cancelRequested: true, superseded: false, error: null, truncationReason: null }, cached: serveFallback("rebuild-cancelled"), scopeKey: key, scopeRoot, scopeMode: mode };
+    }
+    const running = jobs.get(key);
+    if (running && refresh) {
+      running.superseded = true;
+      running.cancelRequested = true;
+      jobs.delete(key);
+      emitProgress(running.directory, { state: "superseded", supersededBy: "refresh" });
+    }
+    const active = jobs.get(key);
+    if (active) {
+      active.requesters.add(requestedKey);
+      announceJobState(active, requestedKey);
+      if (!block)
+        return { pending: jobFacts(active), cached: serveFallback("rebuild-pending"), scopeKey: key, scopeRoot, scopeMode: mode };
+      try {
+        return { entry: serveBuilt(await active.promise), scopeKey: key, scopeRoot, scopeMode: mode };
+      } catch (error) {
+        const fallback = fallbackEntry();
+        return fallback ? { entry: serveFallback("rebuild-failed", { refreshError: refreshErrorOf(error) }), refreshFailed: error, scopeKey: key, scopeRoot, scopeMode: mode } : Promise.reject(error);
+      }
+    }
+    if (!refresh) {
+      const failure = lastTerminalFailure.get(key);
+      if (failure !== undefined && Date.now() - failure.atMs < FAILURE_RETRY_COOLDOWN_MS) {
+        return { pending: { state: failure.state, startedAtMs: failure.atMs, progress: null, cancelRequested: false, superseded: false, error: failure.error, truncationReason: null }, cached: serveFallback("rebuild-failed"), scopeKey: key, scopeRoot, scopeMode: mode };
+      }
+      if (failure !== undefined)
+        lastTerminalFailure.delete(key);
+    } else {
+      lastTerminalFailure.delete(key);
+    }
+    const job = startJob(key, requestedKey, scopeRoot, mode, cap, { refresh, scopeMode, walkBudgets, prewalked });
+    if (!block)
+      return { pending: jobFacts(job), cached: serveFallback("rebuild-pending"), scopeKey: key, scopeRoot, scopeMode: mode };
+    try {
+      return { entry: serveBuilt(await job.promise), scopeKey: key, scopeRoot, scopeMode: mode };
+    } catch (error) {
+      const fallback = fallbackEntry();
+      if (fallback) {
+        return { entry: serveFallback("rebuild-failed", { refreshError: refreshErrorOf(error) }), refreshFailed: error, scopeKey: key, scopeRoot, scopeMode: mode };
+      }
+      throw error;
+    }
+  };
+  const jobFacts = (job) => ({
+    state: job.state,
+    startedAtMs: job.startedAtMs,
+    progress: job.progress ?? null,
+    cancelRequested: job.cancelRequested === true,
+    superseded: job.superseded === true,
+    error: job.error ?? null,
+    truncationReason: job.truncationReason ?? null
+  });
+  const emitProgress = (directory, event) => {
+    if (typeof runtimeOptions.onProgress !== "function")
+      return;
+    try {
+      runtimeOptions.onProgress({ directory, atMs: Date.now(), ...event });
+    } catch {}
+  };
+  const evictOldest = (map, protectKey) => {
+    const oldest = [...map.entries()].filter(([mapKey]) => mapKey !== protectKey).sort((left, right) => (left[1].observedAtMs ?? 0) - (right[1].observedAtMs ?? 0))[0];
+    if (!oldest)
+      return;
+    map.delete(oldest[0]);
+    return oldest[0];
+  };
+  const retainSnapshot = (key, entry) => {
+    partialByDirectory.delete(key);
+    snapshots.set(key, entry);
+    if (!entry.truncated) {
+      completeSnapshots.set(key, entry);
+      while (completeSnapshots.size > MAX_RETAINED_SNAPSHOTS) {
+        evictOldest(completeSnapshots, key);
+      }
+    }
+    while (snapshots.size > MAX_RETAINED_SNAPSHOTS) {
+      const evicted = evictOldest(snapshots, key);
+      if (!evicted)
+        break;
+      completeSnapshots.delete(evicted);
+      for (const [requestedKey, scopeKey] of requestToScope) {
+        if (scopeKey === evicted)
+          requestToScope.delete(requestedKey);
+      }
+    }
+  };
+  const announceJobState = (job, requestedKey) => {
+    emitProgress(requestedKey, {
+      state: job.state,
+      phase: job.progress?.phase ?? null,
+      files: job.progress?.files ?? null,
+      projectsDone: job.progress?.projectsDone ?? null,
+      projectsTotal: job.progress?.projectsTotal ?? null
+    });
+  };
+  const startJob = (key, requestedKey, scopeRoot, mode, cap, { refresh, scopeMode = "auto", walkBudgets = {}, prewalked = null } = {}) => {
+    const job = {
+      key,
+      directory: requestedKey,
+      scopeRoot,
+      scopeMode: mode,
+      requesters: new Set([requestedKey]),
+      startedAtMs: Date.now(),
+      state: "queued",
+      progress: null,
+      cancelRequested: false,
+      superseded: false,
+      truncationReason: null,
+      error: null
+    };
+    const emitJob = (event) => {
+      for (const requester of job.requesters)
+        emitProgress(requester, event);
+    };
+    jobs.set(key, job);
+    job.promise = (async () => {
+      job.state = "discovering";
+      emitJob({ state: "discovering", elapsedMs: 0 });
+      try {
+        const entry = await buildSnapshot(key, requestedKey, scopeRoot, mode, cap, {
+          forceStatus: refresh,
+          scopeMode,
+          walkBudgets,
+          prewalked,
+          shouldCancel: () => job.cancelRequested === true,
+          onProgress: (event) => {
+            if (job.cancelRequested) {
+              const cancelled = new Error("code-graph index cancelled");
+              cancelled.code = "CANCELLED";
+              throw cancelled;
+            }
+            job.state = event.phase === "done" ? "persisting" : "analyzing";
+            job.progress = event;
+            emitJob({
+              state: job.state,
+              phase: event.phase,
+              files: event.files,
+              projectsDone: event.projectsDone,
+              projectsTotal: event.projectsTotal,
+              elapsedMs: event.elapsedMs ?? Date.now() - job.startedAtMs,
+              generation: event.generation ?? null,
+              partial: event.partial ?? null
+            });
+          }
+        });
+        retainSnapshot(key, entry);
+        job.truncationReason = entry.truncationReason ?? null;
+        job.state = entry.truncated ? "truncated" : "ready";
+        emitJob({
+          state: job.state,
+          truncationReason: job.truncationReason,
+          generation: entry.buildSeq,
+          nodes: entry.snapshot.nodes.length,
+          edges: entry.snapshot.edges.length,
+          entryCount: entry.entryCount,
+          projectId: entry.scope.projectId,
+          worktreeId: entry.scope.worktreeId,
+          revision: entry.scope.revision,
+          fingerprint: entry.scope.fingerprint,
+          binding: entry.binding ?? null,
+          snapshotRoot: entry.snapshot.root ?? null
+        });
+        return entry;
+      } catch (error) {
+        if (job.superseded === true) {
+          job.state = "superseded";
+          job.error = null;
+        } else {
+          const cancelled = job.cancelRequested === true || error?.code === "CANCELLED";
+          job.state = cancelled ? "cancelled" : "failed";
+          job.error = cancelled ? null : error instanceof Error ? error.message : String(error);
+        }
+        if (job.state === "failed") {
+          lastTerminalFailure.set(key, { atMs: Date.now(), state: job.state, error: job.error });
+          while (lastTerminalFailure.size > MAX_RETAINED_SNAPSHOTS * 8) {
+            lastTerminalFailure.delete(lastTerminalFailure.keys().next().value);
+          }
+        }
+        partialByDirectory.delete(key);
+        emitJob({ state: job.state, error: job.error });
+        throw error;
+      } finally {
+        jobs.delete(key);
+      }
+    })();
+    job.promise.catch(() => {});
+    return job;
+  };
+  const cancelIndex = (directory) => {
+    const wanted = scopeKeyOf(directory, path);
+    const key = requestToScope.get(wanted) ?? wanted;
+    const job = jobs.get(key);
+    if (!job) {
+      rememberPendingCancel(key);
+      return { cancelled: false, state: "idle" };
+    }
+    job.cancelRequested = true;
+    emitProgress(job.directory, { state: "cancelled" });
+    return { cancelled: true, state: job.state };
+  };
+  const awaitIndex = async (directory, options = {}) => {
+    const { entry } = await ensureIndex(directory, { ...options, block: true });
+    const engine = await loadEngine();
+    return { ...freshnessFields({ ...entry, staleAfterMs: engine.STALE_AFTER_MS }), ready: true };
+  };
+  const indexState = (directory) => {
+    const wanted = scopeKeyOf(directory, path);
+    const key = requestToScope.get(wanted) ?? wanted;
+    const job = jobs.get(key);
+    if (job)
+      return jobFacts(job);
+    const entry = snapshots.get(key);
+    if (entry) {
+      return {
+        state: "ready",
+        startedAtMs: entry.observedAtMs,
+        progress: null,
+        cancelRequested: false,
+        error: null,
+        generation: entry.buildSeq,
+        nodes: entry.snapshot.nodes.length,
+        edges: entry.snapshot.edges.length,
+        entryCount: entry.entryCount,
+        scopeRoot: entry.scope?.scopeRoot ?? null,
+        scopeMode: entry.scope?.scopeMode ?? null
+      };
+    }
+    return { state: "not-indexed", startedAtMs: null, progress: null, cancelRequested: false, error: null };
+  };
+  const seedSnapshot = (directory, entry) => {
+    const key = entry?.scope?.scopeRoot ? scopeKeyOf(entry.scope.scopeRoot, path) : scopeKeyOf(directory, path);
+    rememberScopeAlias(scopeKeyOf(directory, path), key);
+    retainSnapshot(key, entry);
+    buildSeq = Math.max(buildSeq, Number(entry.buildSeq) || 0);
+    emitProgress(key, {
+      state: "ready",
+      seeded: true,
+      generation: entry.buildSeq,
+      nodes: entry.snapshot.nodes.length,
+      edges: entry.snapshot.edges.length,
+      entryCount: entry.entryCount
+    });
+    return { generation: entry.buildSeq, nodes: entry.snapshot.nodes.length };
+  };
+  const freshnessFields = (entry) => {
+    const fields = {
+      projectId: entry.scope.projectId,
+      worktreeId: entry.scope.worktreeId,
+      revision: entry.scope.revision,
+      fingerprint: entry.scope.fingerprint,
+      freshness: entry.freshness,
+      observedAtMs: entry.observedAtMs,
+      staleAfterMs: entry.staleAfterMs,
+      generation: entry.buildSeq,
+      indexTruncated: entry.indexTruncated === true,
+      truncationReason: entry.truncationReason ?? null,
+      excludedCount: entry.excludedCount ?? 0,
+      excludedSample: entry.excludedSample ?? [],
+      scopeRoot: entry.scope?.scopeRoot ?? null,
+      scopeMode: entry.scope?.scopeMode ?? null,
+      metrics: entry.metrics ?? null
+    };
+    if (entry.dirty) {
+      fields.dirty = entry.dirty;
+    }
+    if (entry.dirtyReason) {
+      fields.dirtyReason = entry.dirtyReason;
+    }
+    if (entry.staleReason) {
+      fields.staleReason = entry.staleReason;
+    }
+    if (entry.refreshError) {
+      fields.refreshError = entry.refreshError;
+    }
+    return fields;
+  };
+  const indexExclusionNote = (entry) => {
+    const reason = entry.truncationReason ? ` (${entry.truncationReason})` : "";
+    return `index incomplete: ${entry.excludedCount ?? 0} files excluded by the entry cap (${entry.entryCap ?? defaultMaxEntryFiles} max)${reason}`;
+  };
+  const applyUnreadableCoverage = (envelope, entry) => {
+    const unreadable = entry.coverage?.unreadableDirs;
+    const unreadableFiles = entry.coverage?.unreadableFiles;
+    const fileCount = Number.isFinite(entry.coverage?.unreadableFileCount) ? entry.coverage.unreadableFileCount : Array.isArray(unreadableFiles) ? unreadableFiles.length : 0;
+    const hasDirs = Array.isArray(unreadable) && unreadable.length > 0;
+    const hasFiles = Array.isArray(unreadableFiles) && unreadableFiles.length > 0;
+    if (!hasDirs && !hasFiles)
+      return envelope;
+    if (envelope.coverage !== "indexed" && envelope.coverage !== "partial")
+      return envelope;
+    const unresolved = Array.isArray(envelope.unresolved) ? envelope.unresolved : [];
+    const notes = [];
+    if (hasDirs)
+      notes.push(`walk could not read ${unreadable.length} directorie(s): ${unreadable.join(", ")}`);
+    if (hasFiles)
+      notes.push(`${fileCount} file(s) unreadable: ${unreadableFiles.join(", ")}`);
+    const next = {
+      ...envelope,
+      unresolved: [...unresolved]
+    };
+    const kinds = notes.map((note) => note.startsWith("walk could not read") ? "walk could not read" : "file(s) unreadable");
+    notes.forEach((note, index) => {
+      if (!next.unresolved.some((line) => typeof line === "string" && line.includes(kinds[index])))
+        next.unresolved.push(note);
+    });
+    if (next.coverage === "indexed")
+      next.coverage = "partial";
+    if (next.completeness === "complete" || next.completeness === "truncated") {
+      next.completeness = "partial";
+      next.completenessReason = hasFiles ? "unreadable-files" : "unreadable-dirs";
+    }
+    return next;
+  };
+  const applyIndexCoverage = (envelope, entry) => {
+    if (!entry.indexTruncated)
+      return applyUnreadableCoverage(envelope, entry);
+    if (envelope.coverage !== "indexed" && envelope.coverage !== "partial")
+      return applyUnreadableCoverage(envelope, entry);
+    const note = indexExclusionNote(entry);
+    const unresolved = Array.isArray(envelope.unresolved) ? envelope.unresolved : [];
+    const next = {
+      ...envelope,
+      unresolved: unresolved.some((line) => line.includes("index incomplete")) ? unresolved : [...unresolved, note]
+    };
+    if (next.coverage === "indexed")
+      next.coverage = "partial";
+    if (next.completeness === "complete" || next.completeness === "truncated") {
+      next.completeness = "partial";
+      next.completenessReason = "index-truncated";
+    }
+    return applyUnreadableCoverage(next, entry);
+  };
+  const readIndex = async (directory, options = {}) => {
+    const engine = await loadEngine();
+    const outcome = await ensureIndex(directory, options.block === true || blockOnRead ? { ...options, block: true } : options);
+    if (!outcome.entry) {
+      const cached = outcome.cached ?? null;
+      const base = cached ? freshnessFields({ ...cached, freshness: "stale", staleAfterMs: engine.STALE_AFTER_MS }) : null;
+      return {
+        ready: false,
+        indexState: outcome.pending,
+        scopeRoot: outcome.scopeRoot ?? null,
+        scopeMode: outcome.scopeMode ?? null,
+        ...base ?? {
+          projectId: null,
+          worktreeId: null,
+          revision: null,
+          fingerprint: null,
+          freshness: "unindexed",
+          observedAtMs: null,
+          generation: null,
+          indexTruncated: false,
+          excludedCount: 0,
+          excludedSample: []
+        },
+        truncated: cached ? cached.indexTruncated === true : false,
+        binding: cached?.binding ?? null,
+        snapshotRoot: cached?.snapshot?.root ?? null,
+        nodeCount: cached?.snapshot.nodes.length ?? 0,
+        edgeCount: cached?.snapshot.edges.length ?? 0,
+        entryCount: cached?.entryCount ?? 0,
+        entryCap: cached?.entryCap ?? defaultMaxEntryFiles
+      };
+    }
+    const entry = outcome.entry;
+    const fields = freshnessFields({
+      ...entry,
+      staleAfterMs: engine.STALE_AFTER_MS,
+      ...outcome.refreshFailed ? { refreshError: outcome.refreshFailed instanceof Error ? outcome.refreshFailed.message : String(outcome.refreshFailed) } : {}
+    });
+    return {
+      ready: true,
+      indexState: { state: "ready", error: null, progress: null, startedAtMs: entry.observedAtMs, cancelRequested: false },
+      ...fields,
+      truncated: fields.indexTruncated,
+      binding: entry.binding,
+      snapshotRoot: entry.snapshot.root ?? null,
+      nodeCount: entry.snapshot.nodes.length,
+      edgeCount: entry.snapshot.edges.length,
+      entryCount: entry.entryCount,
+      entryCap: entry.entryCap ?? defaultMaxEntryFiles,
+      incremental: entry.incremental ?? null
+    };
+  };
+  const resolveFileId = (entry, rel) => {
+    const nodeById = new Map(entry.snapshot.nodes.map((node) => [node.id, node]));
+    const direct = `file:${rel}`;
+    if (nodeById.has(direct))
+      return direct;
+    let match = null;
+    for (const id of nodeById.keys()) {
+      if (!id.startsWith("file:"))
+        continue;
+      const rest = id.slice("file:".length);
+      if (rest === rel || rest.endsWith(`/${rel}`) || rel.endsWith(`/${rest}`)) {
+        if (match !== null)
+          return null;
+        match = id;
+      }
+    }
+    return match;
+  };
+  const fileView = (entry, file, limit) => {
+    const { snapshot, scope, freshness } = entry;
+    const rel = String(file ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
+    const fileId = `file:${rel}`;
+    const nodeById = new Map(snapshot.nodes.map((node) => [node.id, node]));
+    const resolvedId = resolveFileId(entry, rel);
+    if (resolvedId === null || !nodeById.has(resolvedId)) {
+      return {
+        projectId: scope.projectId,
+        worktreeId: scope.worktreeId,
+        revision: scope.revision,
+        fingerprint: scope.fingerprint,
+        freshness,
+        coverage: "unindexed",
+        truncated: false,
+        knowledgeIds: [],
+        unresolved: [`no definition for ${fileId} in this snapshot`],
+        unsupported: [],
+        items: [],
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial",
+        completenessReason: "index-excluded"
+      };
+    }
+    const knowledgeByNode = new Map;
+    for (const edge of snapshot.edges) {
+      if (edge.kind !== "LINKS_KNOWLEDGE")
+        continue;
+      const recordId = String(edge.to).startsWith("knowledge:") ? String(edge.to).slice("knowledge:".length) : null;
+      if (!recordId)
+        continue;
+      const list = knowledgeByNode.get(edge.from) ?? [];
+      if (!list.includes(recordId))
+        list.push(recordId);
+      knowledgeByNode.set(edge.from, list);
+    }
+    const toItem = (node, evidence) => {
+      const item = {
+        id: node.id,
+        file: node.file,
+        line: node.line,
+        evidence,
+        confidence: 1,
+        knowledgeIds: knowledgeByNode.get(node.id) ?? []
+      };
+      if (node.name !== undefined) {
+        item.name = node.name;
+      }
+      return item;
+    };
+    const FILE_EDGE_RANK = { DEFINES: 0, EXPORTS: 0, IMPORTS: 1, TESTS: 2 };
+    const ranked = [];
+    const subject = nodeById.get(resolvedId);
+    ranked.push({ item: toItem(subject, []), distance: 0, rank: -1 });
+    for (const edge of snapshot.edges) {
+      if (edge.kind !== "DEFINES" && edge.kind !== "IMPORTS" && edge.kind !== "EXPORTS" && edge.kind !== "TESTS")
+        continue;
+      if (edge.from !== resolvedId && edge.to !== resolvedId)
+        continue;
+      const otherId = edge.from === resolvedId ? edge.to : edge.from;
+      const other = nodeById.get(otherId);
+      if (!other)
+        continue;
+      ranked.push({
+        item: toItem(other, [{ edge: edge.kind, ref: edge.ref, confidence: edge.confidence }]),
+        distance: 1,
+        rank: FILE_EDGE_RANK[edge.kind] ?? 3
+      });
+    }
+    ranked.sort((left, right) => {
+      if (left.distance !== right.distance)
+        return left.distance - right.distance;
+      if (left.rank !== right.rank)
+        return left.rank - right.rank;
+      return left.item.id < right.item.id ? -1 : left.item.id > right.item.id ? 1 : 0;
+    });
+    const items = ranked.map((entry) => entry.item);
+    const limited = items.slice(0, limit);
+    return {
+      projectId: scope.projectId,
+      worktreeId: scope.worktreeId,
+      revision: scope.revision,
+      fingerprint: scope.fingerprint,
+      freshness,
+      coverage: "indexed",
+      truncated: items.length > limit,
+      knowledgeIds: [...new Set(limited.flatMap((item) => item.knowledgeIds))],
+      unresolved: items.length > limit ? [`truncated to ${limit} of ${items.length} rows`] : [],
+      unsupported: [],
+      items: limited,
+      totals: { displayed: limited.length, known: items.length, hidden: items.length - limited.length },
+      completeness: "complete"
+    };
+  };
+  const exploreModules = (entry, limit, directory) => {
+    const { snapshot, scope, freshness } = entry;
+    const rootPrefix = String(directory ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+    const base = {
+      projectId: scope.projectId,
+      worktreeId: scope.worktreeId,
+      revision: scope.revision,
+      fingerprint: scope.fingerprint,
+      freshness
+    };
+    const fileNodes = snapshot.nodes.filter((node) => node.kind === "file");
+    const walkCoverage = entry.coverage ?? null;
+    const walkByModule = walkCoverage?.byModule ?? {};
+    const emptyTotals = { analyzedFiles: 0, unanalyzedFiles: 0, unanalyzedByExtension: {}, excludedFiles: 0 };
+    if (fileNodes.length === 0 && Object.keys(walkByModule).length === 0) {
+      return {
+        ...base,
+        coverage: "unindexed",
+        truncated: false,
+        knowledgeIds: [],
+        unresolved: ["empty index: no files in this snapshot"],
+        unsupported: [],
+        items: [],
+        modules: [],
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial",
+        repositoryTotals: walkCoverage?.totals ?? emptyTotals,
+        skippedDirs: walkCoverage?.skippedDirs ?? [],
+        unreadableDirs: walkCoverage?.unreadableDirs ?? []
+      };
+    }
+    const bucketOf = (file) => {
+      const raw = String(file ?? "").replace(/\\/g, "/");
+      const lower = raw.toLowerCase();
+      const relative = rootPrefix.length > 0 && lower.startsWith(rootPrefix + "/") ? raw.slice(rootPrefix.length + 1) : raw;
+      const segments = relative.split("/").filter((segment) => segment.length > 0);
+      if (segments.length === 0)
+        return "(root)";
+      const first = segments[0];
+      if (/^[a-z]:$/i.test(first)) {
+        return segments.length > 1 ? segments[1] : "(root)";
+      }
+      return segments.length > 1 ? first : "(root)";
+    };
+    const fileIdsByBucket = new Map;
+    const bucketByNodeId = new Map;
+    for (const node of fileNodes) {
+      const bucket = bucketOf(node.file);
+      bucketByNodeId.set(node.id, bucket);
+      let set = fileIdsByBucket.get(bucket);
+      if (!set) {
+        set = new Set;
+        fileIdsByBucket.set(bucket, set);
+      }
+      set.add(node.id);
+    }
+    for (const node of snapshot.nodes) {
+      if (node.kind !== "symbol")
+        continue;
+      bucketByNodeId.set(node.id, bucketOf(node.file));
+    }
+    const names = [...new Set([...fileIdsByBucket.keys(), ...Object.keys(walkByModule)])].sort();
+    const modules = names.map((name) => {
+      const fileIds = fileIdsByBucket.get(name) ?? new Set;
+      const walk = walkByModule[name] ?? emptyTotals;
+      const files = fileNodes.filter((node) => fileIds.has(node.id));
+      const symbols = snapshot.nodes.filter((node) => node.kind === "symbol" && bucketByNodeId.get(node.id) === name).sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+      let symbolCount = 0;
+      let edgeCount = 0;
+      for (const edge of snapshot.edges) {
+        if (edge.kind === "DEFINES" && fileIds.has(edge.from))
+          symbolCount += 1;
+        if (bucketByNodeId.get(edge.from) === name || bucketByNodeId.get(edge.to) === name)
+          edgeCount += 1;
+      }
+      return {
+        name,
+        fileCount: files.length,
+        testFileCount: files.filter((node) => node.isTest === true).length,
+        symbolCount,
+        edgeCount,
+        sampleSymbols: symbols.slice(0, 5).map((node) => {
+          const sample = {
+            id: node.id,
+            file: node.file,
+            line: node.line
+          };
+          if (node.name !== undefined) {
+            sample.name = node.name;
+          }
+          return sample;
+        }),
+        analyzedFiles: walk.analyzedFiles ?? 0,
+        unanalyzedFiles: walk.unanalyzedFiles ?? 0,
+        unanalyzedByExtension: walk.unanalyzedByExtension ?? {},
+        excludedFiles: walk.excludedFiles ?? 0
+      };
+    });
+    const limited = modules.slice(0, limit);
+    const skippedDirs = walkCoverage?.skippedDirs ?? [];
+    const unreadableDirs = walkCoverage?.unreadableDirs ?? [];
+    const unresolved = [
+      ...modules.length > limit ? [`truncated to ${limit} of ${modules.length} modules`] : [],
+      ...unreadableDirs.length > 0 ? [`walk could not read ${unreadableDirs.length} directorie(s): ${unreadableDirs.join(", ")}`] : [],
+      ...skippedDirs.length > 0 ? [`walk skipped generated/vendored directorie(s): ${skippedDirs.join(", ")}`] : []
+    ];
+    const unreadable = unreadableDirs.length > 0;
+    return {
+      ...base,
+      coverage: unreadable ? "partial" : "indexed",
+      truncated: modules.length > limit,
+      knowledgeIds: [],
+      unresolved,
+      unsupported: [],
+      items: [],
+      modules: limited,
+      totals: { displayed: limited.length, known: modules.length, hidden: modules.length - limited.length },
+      completeness: unreadable ? "partial" : "complete",
+      ...unreadable ? { completenessReason: "unreadable-dirs" } : {},
+      repositoryTotals: walkCoverage?.totals ?? emptyTotals,
+      skippedDirs,
+      unreadableDirs
+    };
+  };
+  const GRAPH_EDGE_KINDS = new Set(["DEFINES", "IMPORTS", "EXPORTS", "TESTS", "CALLS_STATIC", "CALLS_UNRESOLVED"]);
+  const MAX_GRAPH_NODES = 40;
+  const graphView = (entry, subjectId, limit) => {
+    const nodeById = new Map(entry.snapshot.nodes.map((node) => [node.id, node]));
+    if (!nodeById.has(subjectId)) {
+      return null;
+    }
+    const maxNodes = Math.min(MAX_GRAPH_NODES, Math.max(2, limit));
+    const kept = new Set([subjectId]);
+    let truncated = false;
+    for (const edge of entry.snapshot.edges) {
+      if (!GRAPH_EDGE_KINDS.has(edge.kind))
+        continue;
+      if (edge.from !== subjectId && edge.to !== subjectId)
+        continue;
+      const other = edge.from === subjectId ? edge.to : edge.from;
+      if (kept.has(other) || !nodeById.has(other))
+        continue;
+      if (kept.size >= maxNodes) {
+        truncated = true;
+        continue;
+      }
+      kept.add(other);
+    }
+    const edges = [];
+    for (const edge of entry.snapshot.edges) {
+      if (!GRAPH_EDGE_KINDS.has(edge.kind))
+        continue;
+      if (!kept.has(edge.from) || !kept.has(edge.to))
+        continue;
+      edges.push({ id: edge.id, kind: edge.kind, from: edge.from, to: edge.to, confidence: edge.confidence });
+    }
+    const nodes = [...kept].map((id) => {
+      const node = nodeById.get(id);
+      const row = {
+        id: node.id,
+        kind: node.kind,
+        subject: id === subjectId
+      };
+      if (node.name !== undefined) {
+        row.name = node.name;
+      }
+      if (node.file !== undefined) {
+        row.file = node.file;
+      }
+      if (node.line !== undefined) {
+        row.line = node.line;
+      }
+      return row;
+    });
+    return { subjectId, nodes, edges, truncated };
+  };
+  const query = async (directory, input = {}) => {
+    const engine = await loadEngine();
+    const kind = input.kind;
+    const limit = input.limit === undefined ? 20 : Math.min(50, Math.max(1, Math.floor(input.limit)));
+    const rawDepth = Number(input.depth);
+    const depth = Number.isFinite(rawDepth) ? Math.min(3, Math.max(1, Math.floor(rawDepth))) : 1;
+    const outcome = await ensureIndex(directory, { refresh: input.refresh === true, block: blockOnRead, scopeMode: input.scopeMode ?? "auto" });
+    const entry = outcome.entry ?? outcome.cached ?? null;
+    if (!entry) {
+      const pending = outcome.pending ?? { state: "not-indexed" };
+      return {
+        projectId: null,
+        worktreeId: null,
+        revision: null,
+        fingerprint: null,
+        freshness: "unindexed",
+        generation: null,
+        ready: false,
+        indexState: pending,
+        coverage: "unindexed",
+        knowledgeIds: [],
+        unresolved: [`index ${pending.state}: no graph published yet for this directory`],
+        unsupported: [],
+        items: [],
+        totals: { displayed: 0, known: 0, hidden: 0 },
+        completeness: "partial",
+        completenessReason: "index-building"
+      };
+    }
+    const indexBuilding = outcome.entry ? null : outcome.pending ?? null;
+    const cacheKey = JSON.stringify([
+      kind,
+      input.symbol ?? null,
+      input.query ?? null,
+      input.target ?? null,
+      input.file ?? null,
+      input.from ?? null,
+      input.to ?? null,
+      input.pathPrefix ?? null,
+      input.language ?? null,
+      input.contentKind ?? null,
+      input.directory ?? null,
+      limit,
+      depth
+    ]);
+    const stored = snapshots.get(outcome.scopeKey ?? scopeKeyOf(directory, path));
+    const queryCache = stored && stored.buildSeq === entry.buildSeq && stored.queryCache instanceof Map ? stored.queryCache : null;
+    const cachedAnswer = queryCache?.get(cacheKey);
+    if (cachedAnswer !== undefined)
+      return cachedAnswer;
+    const options = { scope: entry.scope, freshness: entry.freshness, limit };
+    const reachOptions = { ...options, maxDepth: depth };
+    let envelope = null;
+    if (kind === "context") {
+      if (!input.symbol)
+        return { error: "symbol is required for kind=context", status: 400 };
+      envelope = engine.symbolContext(entry.snapshot, input.symbol, reachOptions);
+    } else if (kind === "impact") {
+      if (!input.symbol)
+        return { error: "symbol is required for kind=impact", status: 400 };
+      envelope = engine.impact(entry.snapshot, input.symbol, reachOptions);
+    } else if (kind === "search") {
+      if (!input.query)
+        return { error: "query is required for kind=search", status: 400 };
+      envelope = engine.search(entry.snapshot, input.query, options);
+    } else if (kind === "tests") {
+      if (!input.target)
+        return { error: "target is required for kind=tests", status: 400 };
+      envelope = engine.findTests(entry.snapshot, input.target, options);
+    } else if (kind === "file") {
+      if (!input.file)
+        return { error: "file is required for kind=file", status: 400 };
+      envelope = fileView(entry, input.file, limit);
+    } else if (kind === "explore") {
+      envelope = exploreModules(entry, limit, directory);
+    } else if (kind === "trace") {
+      if (!input.from || !input.to)
+        return { error: "from and to are required for kind=trace", status: 400 };
+      envelope = engine.trace(entry.snapshot, input.from, input.to, reachOptions);
+    } else if (kind === "content") {
+      if (!input.query)
+        return { error: "query is required for kind=content", status: 400 };
+      const contentOptions = { limit };
+      if (input.pathPrefix !== undefined) {
+        contentOptions.pathPrefix = String(input.pathPrefix);
+      }
+      if (input.language !== undefined) {
+        contentOptions.language = String(input.language);
+      }
+      if (input.contentKind === "test" || input.contentKind === "source") {
+        contentOptions.kind = input.contentKind;
+      }
+      if (input.directory !== undefined) {
+        contentOptions.directory = String(input.directory);
+      }
+      envelope = engine.searchContent(entry.snapshot, input.query, contentOptions);
+    } else if (kind === "unreferenced") {
+      envelope = engine.findUnreferenced(entry.snapshot, options);
+    } else {
+      return { error: "kind must be context, impact, search, content, tests, file, explore, trace, or unreferenced", status: 400 };
+    }
+    const subjectId = kind === "file" ? resolveFileId(entry, String(input.file ?? "").replace(/\\/g, "/").replace(/^\.\//, "")) ?? "" : kind === "context" || kind === "impact" ? String(input.symbol ?? "") : "";
+    const graph = subjectId.length > 0 ? graphView(entry, subjectId, limit) : null;
+    const answer = {
+      ...applyIndexCoverage(envelope, entry),
+      snapshotRoot: entry.snapshot.root ?? null,
+      ...freshnessFields({ ...entry, staleAfterMs: engine.STALE_AFTER_MS }),
+      ...indexBuilding ? { ready: outcome.entry !== undefined, freshness: "stale", indexState: indexBuilding } : { ready: true }
+    };
+    if (graph !== null) {
+      answer.graph = graph;
+    }
+    if (queryCache) {
+      if (queryCache.size >= MAX_CACHED_QUERIES) {
+        queryCache.delete(queryCache.keys().next().value);
+      }
+      queryCache.set(cacheKey, answer);
+    }
+    return answer;
+  };
+  const compareKey = (value) => {
+    const stripped = value.startsWith("\\\\?\\") ? value.slice(4) : value;
+    const slashed = stripped.replace(/\\/g, "/").replace(/\/$/, "");
+    return process.platform === "win32" ? slashed.toLowerCase() : slashed;
+  };
+  const isInside = (parent, child) => {
+    const parentKey = compareKey(path.resolve(parent));
+    const childKey = compareKey(path.resolve(child));
+    return childKey === parentKey || childKey.startsWith(`${parentKey}/`);
+  };
+  const resolveFile = async (directory, file, { scopeMode = "auto" } = {}) => {
+    const raw = isString(file) ? file.trim() : "";
+    if (raw.length === 0) {
+      return { ok: false, reason: "missing-file-id" };
+    }
+    const relative = raw;
+    const outcome = await ensureIndex(directory, { block: blockOnRead, scopeMode });
+    const entry = outcome.entry ?? outcome.cached ?? null;
+    if (!entry) {
+      return { ok: false, reason: "index-not-ready", indexState: outcome.pending ?? { state: "not-indexed" }, snapshotRoot: null };
+    }
+    const snapshotRoot = entry.snapshot.root ?? null;
+    const isAbsoluteId = /^[a-zA-Z]:[\\/]/.test(relative) || relative.startsWith("\\\\") || relative.startsWith("/");
+    if (!isAbsoluteId && !snapshotRoot) {
+      return { ok: false, reason: "no-snapshot-root" };
+    }
+    const candidate = isAbsoluteId ? path.resolve(relative) : path.resolve(snapshotRoot, relative);
+    if (!isAbsoluteId && !isInside(snapshotRoot, candidate)) {
+      return { ok: false, reason: "outside-snapshot-root" };
+    }
+    let real;
+    try {
+      real = await fsPromises.realpath(candidate);
+    } catch {
+      return { ok: false, reason: "missing", snapshotRoot, candidate };
+    }
+    let projectReal;
+    try {
+      projectReal = await fsPromises.realpath(directory);
+    } catch {
+      projectReal = path.resolve(directory);
+    }
+    if (!isInside(projectReal, real)) {
+      return { ok: false, reason: "outside-project", snapshotRoot, candidate: real };
+    }
+    return {
+      ok: true,
+      absolute: real,
+      projectRelative: path.relative(projectReal, real).replace(/\\/g, "/"),
+      snapshotRoot
+    };
+  };
+  return {
+    normalizeDirectory,
+    deriveScopeIds,
+    listEntryFiles: (directory, maxEntryFiles, walkOptions) => listEntryFiles(directory, maxEntryFiles, walkOptions),
+    resolveIndexScope: (directory, mode) => resolveIndexScope({ fsPromises, path }, directory, mode),
+    readIndex,
+    query,
+    resolveFile,
+    indexState,
+    cancelIndex,
+    awaitIndex,
+    seedSnapshot
+  };
+};
+
+// ../../../../omo-engine/omo-opencode/src/tools/code-graph/canonical-runtime.ts
+var isRecord11 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var asNumberOrNull = (value) => typeof value === "number" && Number.isFinite(value) ? value : null;
+var asStringOrNull = (value) => typeof value === "string" ? value : null;
+function resolveCanonicalStoreDir() {
+  const root = process.env.ALCODE_DATA_DIR !== undefined && process.env.ALCODE_DATA_DIR.length > 0 ? path6.resolve(process.env.ALCODE_DATA_DIR) : path6.join(homedir5(), ".config", "alcode");
+  return path6.join(root, "code-graph-store");
+}
+var asFactory = (value) => {
+  if (typeof value !== "function")
+    throw new Error("canonical code-graph runtime factory is not a function");
+  return value;
+};
+var toCanonicalSummary = (raw) => {
+  if (!isRecord11(raw))
+    return null;
+  if (typeof raw["ready"] !== "boolean")
+    return null;
+  const state = isRecord11(raw["indexState"]) ? asStringOrNull(raw["indexState"]["state"]) : null;
+  return {
+    ready: raw["ready"],
+    generation: asNumberOrNull(raw["generation"]),
+    projectId: asStringOrNull(raw["projectId"]),
+    worktreeId: asStringOrNull(raw["worktreeId"]),
+    revision: asStringOrNull(raw["revision"]),
+    fingerprint: asStringOrNull(raw["fingerprint"]),
+    freshness: typeof raw["freshness"] === "string" ? raw["freshness"] : "unindexed",
+    indexTruncated: raw["indexTruncated"] === true,
+    nodeCount: typeof raw["nodeCount"] === "number" ? raw["nodeCount"] : 0,
+    edgeCount: typeof raw["edgeCount"] === "number" ? raw["edgeCount"] : 0,
+    entryCount: typeof raw["entryCount"] === "number" ? raw["entryCount"] : 0,
+    entryCap: typeof raw["entryCap"] === "number" ? raw["entryCap"] : 0,
+    indexState: state
+  };
+};
+var toCanonicalAnswer = (raw) => {
+  if (!isRecord11(raw))
+    return null;
+  const envelope = raw;
+  if (!Array.isArray(envelope.items))
+    return null;
+  if (!isRecord11(envelope.totals))
+    return null;
+  if (!Array.isArray(envelope.unresolved) || !Array.isArray(envelope.unsupported))
+    return null;
+  if (typeof envelope["coverage"] !== "string")
+    return null;
+  return {
+    envelope: raw,
+    generation: asNumberOrNull(raw["generation"]),
+    freshness: typeof raw["freshness"] === "string" ? raw["freshness"] : "unindexed",
+    coverage: envelope["coverage"],
+    ready: raw["ready"] !== false
+  };
+};
+var wrapRawRuntime = (raw) => ({
+  readIndex: async (directory, options = {}) => {
+    const summary = toCanonicalSummary(await raw.readIndex(directory, { ...options }));
+    if (summary === null)
+      throw new Error("canonical code-graph readIndex answered outside its contract");
+    return summary;
+  },
+  query: async (directory, input = {}) => {
+    const answer = toCanonicalAnswer(await raw.query(directory, { ...input }));
+    if (answer === null)
+      throw new Error("canonical code-graph query answered outside its contract");
+    return answer;
+  }
+});
+var sharedByStoreDir = new Map;
+function getCanonicalRuntime(deps = {}) {
+  if (deps.runtime !== undefined)
+    return deps.runtime;
+  const storeDir = deps.storeDir ?? resolveCanonicalStoreDir();
+  const existing = sharedByStoreDir.get(storeDir);
+  if (existing !== undefined)
+    return existing;
+  const created = wrapRawRuntime(asFactory(createCodeGraphRuntime)({ fsPromises, path: path6, execFile: execFile2 }, { storeDir, blockOnRead: false }));
+  sharedByStoreDir.set(storeDir, created);
+  return created;
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/code-graph/code-graph.ts
+var CODE_GRAPH_NAME = "code_graph";
+var CODE_GRAPH_DESCRIPTION = "Query the repository code graph: status, symbol context, search, call trace, blast-radius impact, or owning tests.";
+var SOURCE_EXTENSIONS2 = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 var FALLBACK_REVISION = "0".repeat(40);
 function resolveDirectory(deps, context) {
   if (context?.directory !== undefined && context.directory.length > 0)
@@ -31491,39 +45858,8 @@ function resolveDirectory(deps, context) {
     return deps.directory;
   return process.cwd();
 }
-async function collectSourceFiles2(directory, maxFiles = CODE_GRAPH_MAX_FILES) {
-  const collected = [];
-  const walk = async (current) => {
-    if (collected.length >= maxFiles)
-      return;
-    let entries;
-    try {
-      entries = await fs4.readdir(current, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (collected.length >= maxFiles)
-        return;
-      if (entry.isDirectory()) {
-        if (SKIPPED_DIRECTORIES2.has(entry.name))
-          continue;
-        await walk(path5.join(current, entry.name));
-        continue;
-      }
-      if (!entry.isFile())
-        continue;
-      if (!SOURCE_EXTENSIONS2.has(path5.extname(entry.name)))
-        continue;
-      collected.push(path5.join(current, entry.name));
-    }
-  };
-  await walk(directory);
-  collected.sort();
-  return collected;
-}
 async function collectChangedPaths(directory) {
-  const run = promisify(execFile);
+  const run = promisify(execFile3);
   let stdout;
   try {
     ({ stdout } = await run("git", ["status", "--porcelain"], { cwd: directory, maxBuffer: 1 << 20 }));
@@ -31531,37 +45867,37 @@ async function collectChangedPaths(directory) {
     return [];
   }
   return stdout.split(`
-`).map((line) => line.trim()).filter((line) => line.length > 3).map((line) => line.slice(2).trim().replace(/^"|"$/g, "")).flatMap((entry) => entry.includes(" -> ") ? entry.split(" -> ") : [entry]).filter((entry) => SOURCE_EXTENSIONS2.has(path5.extname(entry))).sort();
+`).map((line) => line.trim()).filter((line) => line.length > 3).map((line) => line.slice(2).trim().replace(/^"|"$/g, "")).flatMap((entry) => entry.includes(" -> ") ? entry.split(" -> ") : [entry]).filter((entry) => SOURCE_EXTENSIONS2.has(path7.extname(entry))).sort();
 }
 function looksLikeNodeId(subject) {
   return subject.includes(":") || subject.includes("@") || subject.includes("/") || subject.includes("\\");
 }
-function resolveSymbolId(snapshot, subject, options) {
-  const normalized = subject.replace(/\\/g, "/").replace(/^\.\//, "");
-  const directFileId = `file:${normalized}`;
-  if (snapshot.nodes.some((node) => node.id === directFileId))
-    return directFileId;
-  if (looksLikeNodeId(subject)) {
-    if (snapshot.nodes.some((node) => node.id === subject))
-      return subject;
+var normalizeRel = (subject) => subject.replace(/\\/g, "/").replace(/^\.\//, "");
+async function resolveSubjectId(runtime, track, directory, subject, limit) {
+  const normalized = normalizeRel(subject);
+  const fileLike = subject.startsWith("file:") || normalized.includes("/") || subject.includes("\\") || /\.[a-z0-9]+$/i.test(normalized);
+  if (fileLike) {
+    const probe = track(await runtime.query(directory, { kind: "file", file: normalized, limit: 1 }));
+    const hit = probe.envelope.items[0];
+    if (hit !== undefined && hit.id.startsWith("file:"))
+      return hit.id;
+    if (!looksLikeNodeId(subject)) {
+      const found = track(await runtime.query(directory, { kind: "search", query: subject, limit }));
+      const exact = found.envelope.items.find((item) => item.name === subject) ?? found.envelope.items[0];
+      return exact?.id ?? subject;
+    }
     const base = normalized.split("/").pop() ?? normalized;
-    const byName = search(snapshot, base, options);
-    const fileHit = byName.items.find((item) => item.id.startsWith("file:"));
-    return fileHit === undefined ? subject : fileHit.id;
+    const byName = track(await runtime.query(directory, { kind: "search", query: base, limit }));
+    return byName.envelope.items.find((item) => item.id.startsWith("file:"))?.id ?? subject;
   }
-  const found = search(snapshot, subject, options);
-  const exact = found.items.find((item) => item.name === subject) ?? found.items[0];
-  return exact === undefined ? subject : exact.id;
+  if (!looksLikeNodeId(subject)) {
+    const found = track(await runtime.query(directory, { kind: "search", query: subject, limit }));
+    const exact = found.envelope.items.find((item) => item.name === subject) ?? found.envelope.items[0];
+    return exact?.id ?? subject;
+  }
+  return subject;
 }
-function symbolsDefinedIn(snapshot, fileId) {
-  return snapshot.edges.filter((edge) => edge.kind === "DEFINES" && edge.from === fileId).map((edge) => edge.to).sort();
-}
-function unresolvedEdgesFor(snapshot, fileId) {
-  const fragment = fileId.replace(/^file:/, "");
-  const involvesFile = (id) => id === fileId || id.includes(fragment);
-  return snapshot.edges.filter((edge) => edge.kind === "CALLS_UNRESOLVED" && involvesFile(edge.from)).map((edge) => `${edge.from} -> ${edge.to} (unresolved, manual review)`);
-}
-function mergedImpactEnvelope(snapshot, scope, paths, options) {
+function mergedImpactEnvelope(summary, directory, paths, parts) {
   const seen = new Set;
   const items = [];
   const unresolved = [];
@@ -31569,38 +45905,34 @@ function mergedImpactEnvelope(snapshot, scope, paths, options) {
   let deduped = 0;
   let everyPartComplete = true;
   let partsRun = 0;
-  for (const file of paths) {
-    const fileId = resolveSymbolId(snapshot, file, options);
-    const subjects = symbolsDefinedIn(snapshot, fileId);
-    unresolved.push(...unresolvedEdgesFor(snapshot, fileId));
-    for (const subject of subjects.length > 0 ? subjects : [fileId]) {
-      const part = impact(snapshot, subject, options);
-      partsRun += 1;
-      if (part.completeness !== undefined && part.completeness !== "complete")
-        everyPartComplete = false;
-      if (typeof part.totals?.known === "number")
-        knownParts.push(part.totals.known);
-      for (const item of part.items) {
-        if (seen.has(item.id)) {
-          deduped += 1;
-          continue;
-        }
-        seen.add(item.id);
-        items.push(item);
+  for (const part of parts) {
+    partsRun += 1;
+    if (part.envelope.completeness !== undefined && part.envelope.completeness !== "complete")
+      everyPartComplete = false;
+    if (typeof part.envelope.totals?.known === "number")
+      knownParts.push(part.envelope.totals.known);
+    for (const item of part.envelope.items) {
+      if (seen.has(item.id)) {
+        deduped += 1;
+        continue;
       }
-      unresolved.push(...part.unresolved);
+      seen.add(item.id);
+      items.push(item);
     }
+    unresolved.push(...part.envelope.unresolved);
   }
   const uniqueUnresolved = [...new Set(unresolved)];
+  const coverRank = (coverage) => coverage === "indexed" ? 0 : coverage === "partial" ? 1 : 2;
+  const coverage = paths.length === 0 ? "indexed" : parts.map((part) => part.envelope.coverage).sort((a, b) => coverRank(b) - coverRank(a))[0] ?? "partial";
   const complete = paths.length === 0 || everyPartComplete && deduped === 0 && knownParts.length > 0;
   const known = paths.length === 0 ? 0 : partsRun === 1 && knownParts.length === 1 ? knownParts[0] : null;
   return {
-    projectId: scope.projectId,
-    worktreeId: scope.worktreeId,
-    revision: scope.revision,
-    fingerprint: scope.fingerprint,
+    projectId: summary.projectId ?? "project-00000000",
+    worktreeId: summary.worktreeId ?? directory,
+    revision: summary.revision ?? FALLBACK_REVISION,
+    fingerprint: summary.fingerprint ?? "",
     freshness: "fresh",
-    coverage: paths.length === 0 ? "indexed" : "partial",
+    coverage,
     truncated: false,
     knowledgeIds: [],
     unresolved: paths.length === 0 ? ["no-changes"] : uniqueUnresolved,
@@ -31610,99 +45942,6 @@ function mergedImpactEnvelope(snapshot, scope, paths, options) {
     completeness: complete ? "complete" : "partial",
     ...complete ? {} : { completenessReason: "result-limit" }
   };
-}
-async function resolveGitDir2(directory) {
-  const dotGit = path5.join(directory, ".git");
-  try {
-    const stat = await fs4.stat(dotGit);
-    if (stat.isDirectory())
-      return dotGit;
-    const content = (await fs4.readFile(dotGit, "utf8")).trim();
-    if (!content.startsWith("gitdir:"))
-      return;
-    const target = content.slice("gitdir:".length).trim();
-    if (target.length === 0)
-      return;
-    return path5.isAbsolute(target) ? target : path5.resolve(directory, target);
-  } catch {
-    return;
-  }
-}
-async function refRoots2(gitDir) {
-  const roots = [gitDir];
-  try {
-    const common = (await fs4.readFile(path5.join(gitDir, "commondir"), "utf8")).trim();
-    if (common.length > 0) {
-      roots.push(path5.isAbsolute(common) ? common : path5.resolve(gitDir, common));
-    }
-  } catch {
-    return roots;
-  }
-  return roots;
-}
-async function readRefValue2(gitDir, ref) {
-  for (const root of await refRoots2(gitDir)) {
-    try {
-      const value = (await fs4.readFile(path5.join(root, ref), "utf8")).trim();
-      if (/^[0-9a-f]{7,64}$/.test(value))
-        return value;
-    } catch {}
-    try {
-      const packed = await fs4.readFile(path5.join(root, "packed-refs"), "utf8");
-      for (const line of packed.split(`
-`)) {
-        const trimmed = line.trim();
-        if (trimmed.length === 0 || trimmed.startsWith("#") || trimmed.startsWith("^"))
-          continue;
-        const [sha, name] = trimmed.split(" ");
-        if (name === ref && sha !== undefined && /^[0-9a-f]{7,64}$/.test(sha))
-          return sha;
-      }
-    } catch {}
-  }
-  return;
-}
-async function readWorktreeRevision2(directory) {
-  const gitDir = await resolveGitDir2(directory);
-  if (gitDir === undefined)
-    return;
-  let head;
-  try {
-    head = (await fs4.readFile(path5.join(gitDir, "HEAD"), "utf8")).trim();
-  } catch {
-    return;
-  }
-  if (!head.startsWith("ref:"))
-    return /^[0-9a-f]{7,64}$/.test(head) ? head : undefined;
-  const ref = head.slice(4).trim();
-  return await readRefValue2(gitDir, ref);
-}
-function resolveProjectId(directory) {
-  try {
-    return resolveProjectIdentity(directory).projectId;
-  } catch {
-    return "project-00000000";
-  }
-}
-async function buildScope(directory) {
-  const projectId = resolveProjectId(directory);
-  const worktreeId = path5.resolve(directory);
-  const revision = await readWorktreeRevision2(directory) ?? FALLBACK_REVISION;
-  return { projectId, worktreeId, revision, fingerprint: computeScopeFingerprint(projectId, worktreeId, revision) };
-}
-async function readStatusManifest(directory) {
-  for (const relative of STATUS_MANIFEST_CANDIDATES) {
-    let text;
-    try {
-      text = await fs4.readFile(path5.join(directory, relative), "utf8");
-    } catch {
-      continue;
-    }
-    const parsed = parseSnapshotManifest(text);
-    if (parsed.kind === "manifest")
-      return parsed.manifest;
-  }
-  return;
 }
 function inferSubjectKind(subject) {
   if (subject.includes("@") || subject.startsWith("fn:") || subject.startsWith("file:"))
@@ -31725,11 +45964,12 @@ function toSubjects(op, args) {
   }
   return subjects;
 }
-function queryOptions2(scope, args) {
+function correlationOf(summary, directory) {
   return {
-    scope,
-    limit: args.limit,
-    maxDepth: args.depth
+    projectId: summary.projectId ?? "project-00000000",
+    worktreeId: summary.worktreeId ?? directory,
+    revision: summary.revision ?? FALLBACK_REVISION,
+    ...summary.generation === null ? {} : { generation: summary.generation }
   };
 }
 function createCodeGraphTool(deps = {}) {
@@ -31764,22 +46004,57 @@ function createCodeGraphTool(deps = {}) {
       const args = parsed.data;
       const op = args.op;
       const maxBytes = args.maxBytes ?? AGENT_CONTEXT_DEFAULT_MAX_BYTES;
-      const scope = await buildScope(directory);
-      const correlation = {
-        projectId: scope.projectId,
-        worktreeId: scope.worktreeId,
-        revision: scope.revision
-      };
+      const runtime = getCanonicalRuntime(deps);
       if (op === "status") {
-        const manifest = await readStatusManifest(directory);
-        const coverage = manifest !== undefined && manifest.nodeCount > 0 ? "partial" : "unindexed";
-        const reasons = manifest === undefined ? ["no-snapshot"] : [`snapshot-metadata-only nodes=${manifest.nodeCount} edges=${manifest.edgeCount}`];
+        let summary;
+        try {
+          summary = await runtime.readIndex(directory);
+        } catch {
+          return stringifyEnvelope(buildAgentContext({
+            op,
+            level: 0,
+            subjects: [],
+            correlation: correlationOf({
+              ready: false,
+              generation: null,
+              projectId: null,
+              worktreeId: null,
+              revision: null,
+              fingerprint: null,
+              freshness: "unindexed",
+              indexTruncated: false,
+              nodeCount: 0,
+              edgeCount: 0,
+              entryCount: 0,
+              entryCap: 0,
+              indexState: null
+            }, directory),
+            status: { freshness: "unindexed", coverage: "unindexed", queryServable: false, reasons: ["index-failed"] },
+            maxBytes
+          }));
+        }
+        const servable = summary.ready === true;
+        const coverage = !servable ? summary.generation !== null ? "partial" : "unindexed" : summary.indexTruncated ? "partial" : "indexed";
+        const reasons = [
+          `generation:${summary.generation ?? "none"}`,
+          `freshness:${summary.freshness}`,
+          ...summary.indexState !== null ? [`index-state:${summary.indexState}`] : [],
+          ...servable ? [`nodes:${summary.nodeCount}`, `edges:${summary.edgeCount}`] : [],
+          ...summary.indexTruncated ? ["index-truncated"] : []
+        ];
         const envelope = buildAgentContext({
           op,
           level: 0,
           subjects: [],
-          correlation,
-          status: { freshness: "fresh", coverage, queryServable: false, reasons },
+          correlation: correlationOf(summary, directory),
+          status: {
+            freshness: summary.freshness,
+            coverage,
+            ...summary.generation === null ? {} : { generation: summary.generation },
+            ...summary.revision === null ? {} : { revision: summary.revision },
+            queryServable: servable,
+            reasons
+          },
           maxBytes
         });
         return stringifyEnvelope(envelope);
@@ -31792,57 +46067,168 @@ function createCodeGraphTool(deps = {}) {
       if (op === "trace" && args.to === undefined) {
         refuseArgs("", "code_graph op 'trace' needs both subject and to symbol ids.");
       }
-      const files = await collectSourceFiles2(directory);
-      if (files.length === 0) {
-        const envelope = buildAgentContext({
-          op,
-          level: args.depth ?? 2,
-          subjects: toSubjects(op, args),
-          correlation,
-          status: { freshness: "fresh", coverage: "unindexed", queryServable: false, reasons: ["no-source-files"] },
-          maxBytes
-        });
-        return stringifyEnvelope(envelope);
-      }
-      let snapshot;
+      const unavailable = (reasons) => stringifyEnvelope(buildAgentContext({
+        op,
+        level: args.depth ?? 2,
+        subjects: toSubjects(op, args),
+        correlation: correlationOf({
+          ready: false,
+          generation: null,
+          projectId: null,
+          worktreeId: null,
+          revision: null,
+          fingerprint: null,
+          freshness: "unindexed",
+          indexTruncated: false,
+          nodeCount: 0,
+          edgeCount: 0,
+          entryCount: 0,
+          entryCap: 0,
+          indexState: null
+        }, directory),
+        status: { freshness: "unindexed", coverage: "unindexed", queryServable: false, reasons: [...reasons] },
+        maxBytes
+      }));
+      let summary;
       try {
-        snapshot = indexFiles(files);
+        summary = await runtime.readIndex(directory, { block: true });
       } catch {
-        const envelope = buildAgentContext({
+        return unavailable(["index-failed"]);
+      }
+      if (!summary.ready) {
+        return stringifyEnvelope(buildAgentContext({
           op,
           level: args.depth ?? 2,
           subjects: toSubjects(op, args),
-          correlation,
-          status: { freshness: "fresh", coverage: "unindexed", queryServable: false, reasons: ["index-failed"] },
+          correlation: correlationOf(summary, directory),
+          status: {
+            freshness: summary.freshness,
+            coverage: summary.generation !== null ? "partial" : "unindexed",
+            ...summary.generation === null ? {} : { generation: summary.generation },
+            ...summary.revision === null ? {} : { revision: summary.revision },
+            queryServable: false,
+            reasons: [
+              `generation:${summary.generation ?? "none"}`,
+              ...summary.indexState !== null ? [`index-state:${summary.indexState}`] : []
+            ]
+          },
           maxBytes
-        });
-        return stringifyEnvelope(envelope);
+        }));
       }
-      const options = queryOptions2(scope, args);
-      let queryEnvelope;
-      if (op === "search") {
-        queryEnvelope = search(snapshot, subject, options);
-      } else if (op === "context") {
-        const kind = args.subjectKind ?? inferSubjectKind(subject);
-        const resolved = resolveSymbolId(snapshot, subject, options);
-        const resolvedBy = resolved === subject ? undefined : resolved;
-        queryEnvelope = kind === "file" || kind === "changes" ? search(snapshot, subject, options) : kind === "query" ? search(snapshot, subject, options) : symbolContext(snapshot, resolved, options);
-        if (resolvedBy !== undefined) {
-          queryEnvelope = { ...queryEnvelope, unresolved: [...queryEnvelope.unresolved, `resolved-from-name:${resolvedBy}`] };
+      if (summary.entryCount === 0) {
+        return stringifyEnvelope(buildAgentContext({
+          op,
+          level: args.depth ?? 2,
+          subjects: toSubjects(op, args),
+          correlation: correlationOf(summary, directory),
+          status: {
+            freshness: summary.freshness,
+            coverage: "unindexed",
+            ...summary.generation === null ? {} : { generation: summary.generation },
+            ...summary.revision === null ? {} : { revision: summary.revision },
+            queryServable: false,
+            reasons: ["no-source-files"]
+          },
+          maxBytes
+        }));
+      }
+      const generations = [];
+      const track = (answer) => {
+        generations.push(answer.generation);
+        return answer;
+      };
+      const limit = args.limit;
+      const depth = args.depth;
+      const runOp = async () => {
+        if (op === "search") {
+          const answer = track(await runtime.query(directory, { kind: "search", query: subject, limit }));
+          return { envelope: answer.envelope, extraUnresolved: [] };
         }
-      } else if (op === "trace") {
-        queryEnvelope = trace(snapshot, resolveSymbolId(snapshot, subject, options), resolveSymbolId(snapshot, args.to, options), options);
-      } else if (op === "impact") {
-        queryEnvelope = changesMode && subject === undefined ? mergedImpactEnvelope(snapshot, scope, await collectChangedPaths(directory), options) : mergedImpactEnvelope(snapshot, scope, [subject], options);
-      } else {
-        queryEnvelope = findTests(snapshot, resolveSymbolId(snapshot, subject, options), options);
+        if (op === "context") {
+          const kind = args.subjectKind ?? inferSubjectKind(subject);
+          if (kind === "file" || kind === "changes" || kind === "query") {
+            const answer = track(await runtime.query(directory, { kind: "search", query: subject, limit }));
+            return { envelope: answer.envelope, extraUnresolved: [] };
+          }
+          const resolved = await resolveSubjectId(runtime, track, directory, subject, limit ?? 20);
+          const answer = track(await runtime.query(directory, { kind: "context", symbol: resolved, limit, depth }));
+          return {
+            envelope: answer.envelope,
+            extraUnresolved: resolved === subject ? [] : [`resolved-from-name:${resolved}`]
+          };
+        }
+        if (op === "trace") {
+          const from = await resolveSubjectId(runtime, track, directory, subject, limit ?? 20);
+          const to = await resolveSubjectId(runtime, track, directory, args.to, limit ?? 20);
+          const answer = track(await runtime.query(directory, { kind: "trace", from, to, limit, depth }));
+          return { envelope: answer.envelope, extraUnresolved: [] };
+        }
+        if (op === "impact") {
+          const impactSubjectsForFile = async (rel) => {
+            const view = track(await runtime.query(directory, { kind: "file", file: rel, limit }));
+            const symbols = view.envelope.items.map((item) => item.id).filter((id) => !id.startsWith("file:"));
+            const subjects = symbols.length > 0 ? symbols : [`file:${rel}`];
+            const parts = [];
+            for (const symbol of subjects) {
+              parts.push(track(await runtime.query(directory, { kind: "impact", symbol, limit, depth })));
+            }
+            return parts;
+          };
+          if (changesMode) {
+            const changed = await collectChangedPaths(directory);
+            const parts = [];
+            for (const file of changed) {
+              parts.push(...await impactSubjectsForFile(normalizeRel(file)));
+            }
+            return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] };
+          }
+          const kind = args.subjectKind ?? inferSubjectKind(subject);
+          if (kind === "file" || kind === "changes") {
+            const rel = normalizeRel(subject);
+            const parts = await impactSubjectsForFile(rel);
+            return { envelope: mergedImpactEnvelope(summary, directory, [subject], parts), extraUnresolved: [] };
+          }
+          const resolved = await resolveSubjectId(runtime, track, directory, subject, limit ?? 20);
+          const answer = track(await runtime.query(directory, { kind: "impact", symbol: resolved, limit, depth }));
+          return { envelope: answer.envelope, extraUnresolved: [] };
+        }
+        const resolved = await resolveSubjectId(runtime, track, directory, subject, limit ?? 20);
+        const answer = track(await runtime.query(directory, { kind: "tests", target: resolved, limit }));
+        return { envelope: answer.envelope, extraUnresolved: [] };
+      };
+      let pin = summary.generation;
+      let built = await runOp().catch(() => null);
+      if (built === null)
+        return unavailable(["index-failed"]);
+      let restarted = false;
+      if (pin !== null && generations.some((generation) => generation !== null && generation !== pin)) {
+        restarted = true;
+        generations.length = 0;
+        try {
+          summary = await runtime.readIndex(directory, { block: true });
+        } catch {
+          return unavailable(["index-failed"]);
+        }
+        pin = summary.generation;
+        built = await runOp().catch(() => null);
+        if (built === null)
+          return unavailable(["index-failed"]);
       }
       const envelope = buildAgentContext({
         op,
         level: args.depth ?? 2,
-        envelope: queryEnvelope,
+        envelope: built.envelope,
         subjects: toSubjects(op, args),
-        correlation,
+        correlation: correlationOf(summary, directory),
+        status: {
+          ...pin === null ? {} : { generation: pin },
+          reasons: [
+            `generation:${pin ?? "none"}`,
+            ...restarted ? ["generation-changed-restarted"] : [],
+            ...summary.indexTruncated ? ["index-truncated"] : []
+          ]
+        },
+        unresolved: built.extraUnresolved.map((reason) => ({ kind: "unresolved", id: reason, reason })),
         maxBytes
       });
       return stringifyEnvelope(envelope);
@@ -33011,7 +47397,7 @@ class TeamSpecError extends Error {
   }
 }
 var TEAM_LEAD_SENTINEL = "lead";
-function isRecord11(value) {
+function isRecord12(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function coerceStringSpec(rawSpec, teamName) {
@@ -33025,7 +47411,7 @@ function coerceStringSpec(rawSpec, teamName) {
   }
 }
 function wrapSingleMember(rawSpec) {
-  if (isRecord11(rawSpec) && isRecord11(rawSpec.members)) {
+  if (isRecord12(rawSpec) && isRecord12(rawSpec.members)) {
     return { ...rawSpec, members: [rawSpec.members] };
   }
   return rawSpec;
@@ -33040,17 +47426,17 @@ function describeReceived(rawSpec) {
   return `a ${typeof rawSpec}`;
 }
 function assertNoRawLeadField(rawSpec, teamName) {
-  if (isRecord11(rawSpec) && rawSpec.lead !== undefined && rawSpec.lead !== null) {
+  if (isRecord12(rawSpec) && rawSpec.lead !== undefined && rawSpec.lead !== null) {
     throw new TeamSpecError(`Team '${teamName}' declares a 'lead' field. '${TEAM_LEAD_SENTINEL}' is reserved for the calling-session sentinel; declare workers under 'members' only.`, "RESERVED_LEAD_FIELD", teamName);
   }
 }
 function remapAgentAliasRaw(rawSpec) {
-  if (!isRecord11(rawSpec) || !Array.isArray(rawSpec.members))
+  if (!isRecord12(rawSpec) || !Array.isArray(rawSpec.members))
     return rawSpec;
   return {
     ...rawSpec,
     members: rawSpec.members.map((member) => {
-      if (!isRecord11(member))
+      if (!isRecord12(member))
         return member;
       const remapped = { ...member };
       if (typeof remapped.agent === "string" && remapped.subagent_type === undefined) {
@@ -33066,7 +47452,7 @@ function remapAgentAliasRaw(rawSpec) {
 }
 function remapAgentAliasKind(members) {
   return members.map((member) => {
-    if (isRecord11(member) && member.kind === "agent") {
+    if (isRecord12(member) && member.kind === "agent") {
       return { ...member, kind: "subagent_type" };
     }
     return member;
@@ -33074,7 +47460,7 @@ function remapAgentAliasKind(members) {
 }
 function assertNoReservedMemberName(members, teamName) {
   for (const member of members) {
-    if (isRecord11(member) && member.name === TEAM_LEAD_SENTINEL) {
+    if (isRecord12(member) && member.name === TEAM_LEAD_SENTINEL) {
       throw new TeamSpecError(`Team '${teamName}' has a member named '${TEAM_LEAD_SENTINEL}', which is reserved for the calling-session sentinel. Rename the member.`, "RESERVED_LEAD_MEMBER", teamName);
     }
   }
@@ -33083,7 +47469,7 @@ function normalizeTeamSpec(rawSpec, teamName) {
   const coerced = wrapSingleMember(coerceStringSpec(rawSpec, teamName));
   assertNoRawLeadField(coerced, teamName);
   const normalized = normalizeTeamSpecInput(remapAgentAliasRaw(coerced));
-  if (!isRecord11(normalized)) {
+  if (!isRecord12(normalized)) {
     throw new TeamSpecError(`Team '${teamName}' spec must be an object like { name?, members: [...] }; received ${describeReceived(rawSpec)}. Pass the spec as a nested object, or as a valid JSON string of that object.`, "INVALID_SPEC", teamName);
   }
   const preNormalized = { ...normalized };
@@ -33213,24 +47599,24 @@ function getServerBasicAuthHeader() {
   return `Basic ${token}`;
 }
 // ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-9rqn6x4v.js
-var __defProp = Object.defineProperty;
-var __returnValue = (v) => v;
-function __exportSetter(name, newValue) {
-  this[name] = __returnValue.bind(null, newValue);
+var __defProp2 = Object.defineProperty;
+var __returnValue2 = (v) => v;
+function __exportSetter2(name, newValue) {
+  this[name] = __returnValue2.bind(null, newValue);
 }
-var __export = (target, all) => {
+var __export2 = (target, all) => {
   for (var name in all)
-    __defProp(target, name, {
+    __defProp2(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: __exportSetter.bind(all, name)
+      set: __exportSetter2.bind(all, name)
     });
 };
 
 // ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-frbwqjmf.js
 var exports_shared_events = {};
-__export(exports_shared_events, {
+__export2(exports_shared_events, {
   SharedEvents: () => exports_shared_events,
   make: () => make7
 });
@@ -33381,7 +47767,7 @@ class ClientError2 extends Error {
 
 // ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-hqeq47hr.js
 var exports_client2 = {};
-__export(exports_client2, {
+__export2(exports_client2, {
   make: () => make3
 });
 var maxSseEventBytes = 16 * 1024 * 1024;
@@ -34928,7 +49314,7 @@ function eventType(definition, name) {
 
 // ../../../../../node_modules/.bun/@opencode+client@2.0.32+43902b222b0d7d3e/node_modules/@opencode/client/dist/chunks/shared-events-q008jpwa.js
 var exports_client = {};
-__export(exports_client, {
+__export2(exports_client, {
   OpenCode: () => exports_client,
   make: () => make2
 });
@@ -36231,7 +50617,7 @@ async function resolveLoader() {
   }
   return null;
 }
-function isRecord12(value) {
+function isRecord13(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function tryDiscover(discover, directory) {
@@ -36250,7 +50636,7 @@ async function tryDiscover(discover, directory) {
       const out = await call(...callArgs);
       if (Array.isArray(out))
         return out;
-      if (isRecord12(out) && Array.isArray(out["skills"])) {
+      if (isRecord13(out) && Array.isArray(out["skills"])) {
         return out["skills"];
       }
     } catch {}
@@ -36260,10 +50646,10 @@ async function tryDiscover(discover, directory) {
 function normalizeSkills(raw) {
   const merged = [];
   for (const entry of raw) {
-    if (!isRecord12(entry))
+    if (!isRecord13(entry))
       continue;
     const name = typeof entry["name"] === "string" && entry["name"].length > 0 ? entry["name"] : "skill";
-    const def = isRecord12(entry["definition"]) ? entry["definition"] : {};
+    const def = isRecord13(entry["definition"]) ? entry["definition"] : {};
     const description = typeof def["description"] === "string" ? def["description"] : typeof entry["description"] === "string" ? entry["description"] : "";
     const template = typeof def["template"] === "string" ? def["template"] : "";
     merged.push({
@@ -36538,11 +50924,11 @@ ${notes.join(`
 
 // ../../../../omo-engine/omo-opencode/src/shared/load-opencode-plugins.ts
 import * as fs5 from "node:fs";
-import * as path6 from "node:path";
+import * as path8 from "node:path";
 // ../../../../omo-engine/omo-opencode/src/shared/opencode-config-dir.ts
-import { existsSync as existsSync15, realpathSync as realpathSync5 } from "node:fs";
-import { homedir as homedir5 } from "node:os";
-import { join as join12, posix as posix2, resolve as resolve6, win32 } from "node:path";
+import { existsSync as existsSync16, realpathSync as realpathSync5 } from "node:fs";
+import { homedir as homedir6 } from "node:os";
+import { join as join13, posix as posix2, resolve as resolve7, win32 } from "node:path";
 var TAURI_APP_IDENTIFIER = "ai.opencode.desktop";
 var TAURI_APP_IDENTIFIER_DEV = "ai.opencode.desktop.dev";
 function isDevBuild(version) {
@@ -36554,15 +50940,15 @@ function getTauriConfigDir(identifier) {
   const platform = process.platform;
   switch (platform) {
     case "darwin":
-      return join12(homedir5(), "Library", "Application Support", identifier);
+      return join13(homedir6(), "Library", "Application Support", identifier);
     case "win32": {
-      const appData = process.env.APPDATA || join12(homedir5(), "AppData", "Roaming");
+      const appData = process.env.APPDATA || join13(homedir6(), "AppData", "Roaming");
       return win32.join(appData, identifier);
     }
     case "linux":
     default: {
-      const xdgConfig = process.env.XDG_CONFIG_HOME || join12(homedir5(), ".config");
-      return join12(xdgConfig, identifier);
+      const xdgConfig = process.env.XDG_CONFIG_HOME || join13(homedir6(), ".config");
+      return join13(xdgConfig, identifier);
     }
   }
 }
@@ -36570,8 +50956,8 @@ function resolveConfigPath(pathValue) {
   if (isWslEnvironment() && pathValue.startsWith("/")) {
     return posix2.normalize(pathValue);
   }
-  const resolvedPath = resolve6(pathValue);
-  if (!existsSync15(resolvedPath))
+  const resolvedPath = resolve7(pathValue);
+  if (!existsSync16(resolvedPath))
     return resolvedPath;
   try {
     return realpathSync5(resolvedPath);
@@ -36605,8 +50991,8 @@ function getWslLinuxHomeDir(windowsConfigRoot) {
 function getCliDefaultConfigDir() {
   const envXdgConfig = process.env.XDG_CONFIG_HOME?.trim();
   const shouldIgnoreWindowsXdg = envXdgConfig !== undefined && envXdgConfig.length > 0 && isWslEnvironment() && isWindowsUserConfigRoot(envXdgConfig);
-  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join12(homedir5(), ".config");
-  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join12(xdgConfig, "opencode");
+  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join13(homedir6(), ".config");
+  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join13(xdgConfig, "opencode");
   return resolveConfigPath(configDir);
 }
 function getCliCustomConfigDir() {
@@ -36639,9 +51025,9 @@ function getOpenCodeConfigDir(options) {
   const tauriDir = process.platform === "win32" ? win32.isAbsolute(tauriDirBase) ? win32.normalize(tauriDirBase) : win32.resolve(tauriDirBase) : resolveConfigPath(tauriDirBase);
   if (checkExisting) {
     const legacyDir = getCliConfigDir();
-    const legacyConfig = join12(legacyDir, "opencode.json");
-    const legacyConfigC = join12(legacyDir, "opencode.jsonc");
-    if (existsSync15(legacyConfig) || existsSync15(legacyConfigC)) {
+    const legacyConfig = join13(legacyDir, "opencode.json");
+    const legacyConfigC = join13(legacyDir, "opencode.jsonc");
+    if (existsSync16(legacyConfig) || existsSync16(legacyConfigC)) {
       return legacyDir;
     }
   }
@@ -36651,9 +51037,9 @@ function getOpenCodeConfigPaths(options) {
   const configDir = getOpenCodeConfigDir(options);
   return {
     configDir,
-    configJson: join12(configDir, "opencode.json"),
-    configJsonc: join12(configDir, "opencode.jsonc"),
-    packageJson: join12(configDir, "package.json")
+    configJson: join13(configDir, "opencode.json"),
+    configJsonc: join13(configDir, "opencode.jsonc"),
+    packageJson: join13(configDir, "package.json")
   };
 }
 
@@ -36662,11 +51048,11 @@ var opencodePluginsCache = new Map;
 function getConfigPaths(directory) {
   const configDirs = getOpenCodeConfigDirs({ binary: "opencode" });
   return [
-    path6.join(directory, ".opencode", "opencode.json"),
-    path6.join(directory, ".opencode", "opencode.jsonc"),
+    path8.join(directory, ".opencode", "opencode.json"),
+    path8.join(directory, ".opencode", "opencode.jsonc"),
     ...configDirs.flatMap((dir) => [
-      path6.join(dir, "opencode.json"),
-      path6.join(dir, "opencode.jsonc")
+      path8.join(dir, "opencode.json"),
+      path8.join(dir, "opencode.jsonc")
     ])
   ];
 }
@@ -36778,8 +51164,8 @@ Multiple ${PLUGIN_NAME} instances can inject internal prompts into the same live
 }
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
-import { existsSync as existsSync17, readFileSync as readFileSync10 } from "node:fs";
-import { join as join14 } from "node:path";
+import { existsSync as existsSync18, readFileSync as readFileSync10 } from "node:fs";
+import { join as join15 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/plugin-entry-shape.ts
 function isPluginTupleEntry(entry) {
@@ -36795,18 +51181,18 @@ function withPluginEntryName(entry, name) {
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
 function getOpenCodeConfigPath(overrideConfigDir) {
   if (overrideConfigDir) {
-    const jsonPath = join14(overrideConfigDir, "opencode.json");
-    const jsoncPath = join14(overrideConfigDir, "opencode.jsonc");
-    if (existsSync17(jsoncPath))
+    const jsonPath = join15(overrideConfigDir, "opencode.json");
+    const jsoncPath = join15(overrideConfigDir, "opencode.jsonc");
+    if (existsSync18(jsoncPath))
       return jsoncPath;
-    if (existsSync17(jsonPath))
+    if (existsSync18(jsonPath))
       return jsonPath;
     return null;
   }
   const { configJsonc, configJson } = getOpenCodeConfigPaths({ binary: "opencode", version: null });
-  if (existsSync17(configJsonc))
+  if (existsSync18(configJsonc))
     return configJsonc;
-  if (existsSync17(configJson))
+  if (existsSync18(configJson))
     return configJson;
   return null;
 }
@@ -36846,49 +51232,49 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
-import { existsSync as existsSync20, readdirSync as readdirSync7 } from "node:fs";
-import { join as join16 } from "node:path";
+import { existsSync as existsSync21, readdirSync as readdirSync8 } from "node:fs";
+import { join as join17 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-workspace-migration.ts
-import { copyFileSync, existsSync as existsSync18, lstatSync as lstatSync3, mkdirSync as mkdirSync6, readdirSync as readdirSync6 } from "node:fs";
-import { dirname as dirname6, join as join15, relative as relative3 } from "node:path";
+import { copyFileSync, existsSync as existsSync19, lstatSync as lstatSync3, mkdirSync as mkdirSync6, readdirSync as readdirSync7 } from "node:fs";
+import { dirname as dirname7, join as join16, relative as relative3 } from "node:path";
 var LEGACY_WORKSPACE_DIR = ".sisyphus";
 var WORKSPACE_DIR = ".omo";
 function copyMissingEntries(legacyPath, targetPath, targetRoot, skipped) {
   const legacyStat = lstatSync3(legacyPath);
   if (legacyStat.isSymbolicLink()) {
-    skipped.push(join15(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join16(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
     return false;
   }
-  if (existsSync18(targetPath)) {
+  if (existsSync19(targetPath)) {
     if (legacyStat.isDirectory() && lstatSync3(targetPath).isDirectory()) {
       let copiedChild = false;
-      for (const entry of readdirSync6(legacyPath)) {
-        copiedChild = copyMissingEntries(join15(legacyPath, entry), join15(targetPath, entry), targetRoot, skipped) || copiedChild;
+      for (const entry of readdirSync7(legacyPath)) {
+        copiedChild = copyMissingEntries(join16(legacyPath, entry), join16(targetPath, entry), targetRoot, skipped) || copiedChild;
       }
       return copiedChild;
     }
-    skipped.push(join15(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join16(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
     return false;
   }
   if (legacyStat.isDirectory()) {
     mkdirSync6(targetPath, { recursive: true });
     let copiedChild = false;
-    for (const entry of readdirSync6(legacyPath)) {
-      copiedChild = copyMissingEntries(join15(legacyPath, entry), join15(targetPath, entry), targetRoot, skipped) || copiedChild;
+    for (const entry of readdirSync7(legacyPath)) {
+      copiedChild = copyMissingEntries(join16(legacyPath, entry), join16(targetPath, entry), targetRoot, skipped) || copiedChild;
     }
     return copiedChild;
   }
-  mkdirSync6(dirname6(targetPath), { recursive: true });
+  mkdirSync6(dirname7(targetPath), { recursive: true });
   copyFileSync(legacyPath, targetPath);
   return true;
 }
 function migrateLegacyWorkspaceDirectory(directory) {
-  const legacyDirectory = join15(directory, LEGACY_WORKSPACE_DIR);
-  if (!existsSync18(legacyDirectory)) {
+  const legacyDirectory = join16(directory, LEGACY_WORKSPACE_DIR);
+  if (!existsSync19(legacyDirectory)) {
     return { migrated: false, skipped: [] };
   }
-  const targetDirectory = join15(directory, WORKSPACE_DIR);
+  const targetDirectory = join16(directory, WORKSPACE_DIR);
   const skipped = [];
   try {
     const migrated = copyMissingEntries(legacyDirectory, targetDirectory, targetDirectory, skipped);
@@ -36994,11 +51380,11 @@ function migrateLegacyPluginEntry(configPath) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
-function isRecord13(value) {
+function isRecord14(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function stringFieldOf(value, field) {
-  if (isRecord13(value)) {
+  if (isRecord14(value)) {
     const candidate = value[field];
     if (typeof candidate === "string")
       return candidate;
@@ -37010,7 +51396,7 @@ function sessionIDOf(event) {
   if (typeof direct === "string")
     return direct;
   const session = event["session"];
-  if (isRecord13(session) && typeof session["id"] === "string")
+  if (isRecord14(session) && typeof session["id"] === "string")
     return session["id"];
   return "";
 }
@@ -37028,10 +51414,10 @@ function planArtifactTouched(directory) {
   try {
     if (!directory)
       return false;
-    const plansDir = join16(directory, ".omo", "plans");
-    if (!existsSync20(plansDir))
+    const plansDir = join17(directory, ".omo", "plans");
+    if (!existsSync21(plansDir))
       return false;
-    return readdirSync7(plansDir).some((entry) => entry.endsWith(".md"));
+    return readdirSync8(plansDir).some((entry) => entry.endsWith(".md"));
   } catch {
     return false;
   }
@@ -37051,14 +51437,14 @@ function denyWithoutPlanEvidence(sessionID, requested, pluginDirectory) {
   }
 }
 function toOmoEvent(event) {
-  if (!isRecord13(event) || typeof event["type"] !== "string")
+  if (!isRecord14(event) || typeof event["type"] !== "string")
     return;
   const type = event["type"];
-  const properties = isRecord13(event["properties"]) ? event["properties"] : event;
+  const properties = isRecord14(event["properties"]) ? event["properties"] : event;
   const sessionString = (value) => typeof value === "string" ? value : undefined;
   switch (type) {
     case "session.created": {
-      const info = isRecord13(properties["info"]) ? properties["info"] : properties;
+      const info = isRecord14(properties["info"]) ? properties["info"] : properties;
       const sessionID = sessionString(info["id"]) ?? sessionString(properties["sessionID"]);
       if (!sessionID)
         return;
@@ -37072,7 +51458,7 @@ function toOmoEvent(event) {
       };
     }
     case "session.deleted": {
-      const sessionID = sessionString(properties["sessionID"]) ?? (isRecord13(properties["info"]) ? sessionString(properties["info"]["id"]) : undefined);
+      const sessionID = sessionString(properties["sessionID"]) ?? (isRecord14(properties["info"]) ? sessionString(properties["info"]["id"]) : undefined);
       if (!sessionID)
         return;
       return { name: "session.deleted", sessionID };
@@ -37082,7 +51468,7 @@ function toOmoEvent(event) {
       if (!sessionID)
         return;
       const status = properties["status"];
-      const label = isRecord13(status) && typeof status["type"] === "string" ? status["type"] : typeof status === "string" ? status : "unknown";
+      const label = isRecord14(status) && typeof status["type"] === "string" ? status["type"] : typeof status === "string" ? status : "unknown";
       return { name: "session.status", sessionID, status: label };
     }
     case "session.idle": {
@@ -37096,7 +51482,7 @@ function toOmoEvent(event) {
       if (!sessionID)
         return;
       const data = properties["error"];
-      const message = isRecord13(data) ? stringFieldOf(data["data"] ?? data, "message") : "";
+      const message = isRecord14(data) ? stringFieldOf(data["data"] ?? data, "message") : "";
       return {
         name: "session.error",
         sessionID,
@@ -37136,7 +51522,7 @@ async function fanOutTiers(hooks, input, sink) {
   }
 }
 function toJsonObject(value) {
-  return isRecord13(value) ? value : {};
+  return isRecord14(value) ? value : {};
 }
 function textOf(value) {
   return typeof value === "string" ? value : "";
@@ -37280,7 +51666,7 @@ function createPluginSetup() {
       });
     }
     await ctx.session.hook("prompt", async (event) => {
-      const prompt = isRecord13(event["prompt"]) ? event["prompt"] : {};
+      const prompt = isRecord14(event["prompt"]) ? event["prompt"] : {};
       const text = textOf(prompt["text"]);
       const sessionID = sessionIDOf(event);
       if (sessionID && isExplicitPlanRequest(text)) {
@@ -37300,13 +51686,13 @@ ${parts.map((part) => part.text).join(`
     });
     await ctx.session.hook("context", async (event) => {
       const sessionID = sessionIDOf(event);
-      const model = isRecord13(event["model"]) ? {
+      const model = isRecord14(event["model"]) ? {
         providerID: textOf(event["model"]["providerID"]) || "unknown",
         modelID: textOf(event["model"]["id"] ?? event["model"]["modelID"]) || "unknown"
       } : { providerID: "unknown", modelID: "unknown" };
       const paramsOutput = {};
       await iface["chat.params"]?.({ sessionID, agent: textOf(event["agent"]) || "unknown", model }, paramsOutput);
-      const options = isRecord13(event["options"]) ? event["options"] : {};
+      const options = isRecord14(event["options"]) ? event["options"] : {};
       if (paramsOutput.temperature !== undefined)
         options["temperature"] = paramsOutput.temperature;
       if (paramsOutput.topP !== undefined)
@@ -37332,11 +51718,11 @@ ${parts.map((part) => part.text).join(`
     });
     await ctx.session.hook("model.request", async (event) => {
       const sessionID = sessionIDOf(event);
-      const model = isRecord13(event["model"]) ? {
+      const model = isRecord14(event["model"]) ? {
         providerID: textOf(event["model"]["providerID"]) || "unknown",
         modelID: textOf(event["model"]["id"] ?? event["model"]["modelID"]) || "unknown"
       } : { providerID: "unknown", modelID: "unknown" };
-      const headers = isRecord13(event["headers"]) ? { ...event["headers"] } : {};
+      const headers = isRecord14(event["headers"]) ? { ...event["headers"] } : {};
       await iface["chat.headers"]?.({
         sessionID,
         agent: textOf(event["agent"]) || "unknown",
@@ -37373,9 +51759,9 @@ ${parts.map((part) => part.text).join(`
       const args = toJsonObject(event["input"] ?? event["args"]);
       const output = { args };
       await iface["tool.execute.before"]?.({ tool: toolName, sessionID, callID: textOf(event["callID"] ?? event["id"]) }, output);
-      if (isRecord13(event["input"]))
+      if (isRecord14(event["input"]))
         event["input"] = output.args;
-      if (isRecord13(event["args"]))
+      if (isRecord14(event["args"]))
         event["args"] = output.args;
       await fanOutTiers(hooks, { sessionID, toolName });
     });
@@ -37383,13 +51769,13 @@ ${parts.map((part) => part.text).join(`
       const toolName = textOf(event["tool"] ?? event["toolName"]);
       const sessionID = sessionIDOf(event) || textOf(event["sessionID"]);
       const rawOutput = event["output"];
-      const outputText = typeof rawOutput === "string" ? rawOutput : isRecord13(rawOutput) ? textOf(rawOutput["output"] ?? rawOutput["content"]) : "";
+      const outputText = typeof rawOutput === "string" ? rawOutput : isRecord14(rawOutput) ? textOf(rawOutput["output"] ?? rawOutput["content"]) : "";
       if (/(?:\.omo\/plans|plans\/[^"'`\s]*\.md)/i.test(outputText)) {
         notePlanArtifact(sessionID);
       }
       const notes = [];
       const afterOutput = {
-        title: isRecord13(rawOutput) ? textOf(rawOutput["title"]) : "",
+        title: isRecord14(rawOutput) ? textOf(rawOutput["title"]) : "",
         output: outputText,
         truncated: false
       };
@@ -37399,13 +51785,13 @@ ${parts.map((part) => part.text).join(`
         callID: textOf(event["callID"] ?? event["id"]),
         args: toJsonObject(event["input"] ?? event["args"])
       }, afterOutput);
-      if (isRecord13(rawOutput)) {
+      if (isRecord14(rawOutput)) {
         rawOutput["output"] = afterOutput.output;
         if (afterOutput.title)
           rawOutput["title"] = afterOutput.title;
       }
       await fanOutTiers(hooks, { sessionID, toolName, text: outputText }, notes);
-      if (notes.length > 0 && isRecord13(rawOutput)) {
+      if (notes.length > 0 && isRecord14(rawOutput)) {
         const existing = textOf(rawOutput["note"]);
         rawOutput["note"] = existing ? `${existing}
 ${notes.join(`
