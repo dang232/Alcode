@@ -75,15 +75,15 @@ describe('code graph canvas bounded render + edge keyboard', () => {
       truncated: false,
     });
     if (!model) throw new Error('model missing');
-    let picked: CodeGraphSelectedEdge | null | 'unset' = 'unset';
-    const host = await renderCanvas(model, (e: CodeGraphSelectedEdge | null) => { picked = e; });
+    const seen: { id?: string } = {};
+    const host = await renderCanvas(model, (e) => { if (e) seen.id = e.id; });
     const edge = host.querySelector('path[role="button"]') as HTMLElement;
     expect(edge).not.toBeNull();
     expect(edge.getAttribute('aria-label')).toContain('CALLS_STATIC');
     expect(edge.tabIndex).toBe(0);
     await act(async () => {
-      edge.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      edge.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }) as unknown as Event);
     });
-    expect(picked === null || (typeof picked === 'object' && picked !== null && picked.id)).toBeTruthy();
+    expect(seen.id).toBeTruthy();
   });
 });
