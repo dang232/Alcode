@@ -16,7 +16,9 @@
  * Plain Node only (no Electron, no display, no network): every assertion
  * names its evidence, and any failure exits non-zero with the step that
  * broke. OS-specific read denial uses icacls on Windows and chmod
- * elsewhere, verified effective by reading the file back, never assumed.
+ * elsewhere, verified effective by reading the file back, never assumed;
+ * where ACLs cannot bind Node reads (elevated tokens bypass them),
+ * Windows falls back to an exclusive lock holder for the same phases.
  */
 import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -176,22 +178,18 @@ const denyRead = async (file) => {
         }
       };
     }
-    // Some hosted runners resolve the user principal such that a
-    // name-based deny does not stick; an Everyone deny (SID S-1-1-0)
-    // applies to every token and restores symmetrically.
-    runIcacls([file, '/deny', '*S-1-1-0:(R)']);
-    if (await isDenied(file)) {
-      return async () => {
-        runIcacls([file, '/remove:d', '*S-1-1-0']);
-        if (await isDenied(file)) {
-          fail('restore', `icacls /remove:d did not restore readability for ${file} [${attempts.join(' | ')}]`);
-        }
-      };
-    }
-    // Last resort on privilege-immune hosts: an exclusive OS lock held by
-    // a short-lived helper blocks every opener regardless of ACLs and
-    // restores by killing the holder. The engine classifies any read
-    // error as unreadable, so lock failures exercise the same path.
+    // A Node read can still succeed here when the token bypasses ACLs
+    // (elevated hosts enable SeBackupPrivilege, and libuv opens carry
+    // backup intent) — while plain opens such as the engine's spawned
+    // compiler are still denied. ACLs therefore cannot isolate the
+    // engine on such hosts, and any ACE we just added would only block
+    // the lock helper below. Clear them, then deny with an exclusive
+    // lock instead: sharing violations bind every opener, privileged
+    // or not, and the engine classifies any read error as unreadable.
+    runIcacls([file, '/remove:d', USERNAME]);
+    runIcacls([file, '/remove:d', '*S-1-1-0']);
+    // Exclusive OS lock held by a short-lived helper blocks every opener
+    // regardless of ACLs and restores by killing the holder.
     // Attached with piped stdio: detached+ignored holders die on some
     // hosts before taking the lock; the command prints nothing on the
     // success path, so the pipes cannot fill.
