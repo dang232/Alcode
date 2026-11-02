@@ -200,8 +200,22 @@ const denyRead = async (file) => {
     ], { stdio: 'pipe', windowsHide: true });
     holder.stdout.resume();
     holder.stderr.resume();
-    await sleep(2500);
-    if (await isDenied(file)) {
+    // PowerShell cold start on a loaded host can take seconds; poll for
+    // the lock instead of trusting a fixed delay, and stop early if the
+    // helper itself is gone.
+    let holderGone = false;
+    holder.on('exit', () => { holderGone = true; });
+    holder.on('error', () => { holderGone = true; });
+    let locked = false;
+    for (let waited = 0; waited < 30000; waited += 1000) {
+      await sleep(1000);
+      if (holderGone) break;
+      if (await isDenied(file)) {
+        locked = true;
+        break;
+      }
+    }
+    if (locked) {
       step('deny-fallback', `exclusive lock holder for ${path.basename(file)} (ACL denies ineffective on this host)`);
       return async () => {
         for (let attempt = 0; attempt < 3; attempt += 1) {
