@@ -251,7 +251,11 @@ const denyRead = async (file) => {
       }
       // Phase 2: the lock is held; readability must now fail. A sharing
       // violation binds every opener, so surviving reads here would mean
-      // privilege bypass rather than timing.
+      // privilege bypass rather than timing. Probe with a fresh Node
+      // process too, so a bug in this process's own read path cannot
+      // masquerade as bypass.
+      const probe = spawnSync(process.execPath, ['-e', 'require("fs").readFileSync(process.argv[1])', file], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+      step('deny-probe', `fresh node read under confirmed lock: exit=${probe.status ?? 'spawn-failed'}${probe.stderr ? ` ${(probe.stderr ?? '').trim().slice(0, 120)}` : ''}`);
       for (let waited = 0; waited < 8000; waited += 1000) {
         if (await isDenied(file)) return { locked: true, child, note: output.trim().slice(0, 120) };
         await sleep(1000);
