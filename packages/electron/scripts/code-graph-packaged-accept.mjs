@@ -233,19 +233,36 @@ const denyRead = async (file) => {
         gone = true;
         exitNote = `spawn-error ${String(error).slice(0, 160)}`;
       });
+      // Phase 1: wait for the helper to confirm the lock itself
+      // (REOPEN-BLOCKED). Checking readability blindly from second one
+      // races a slow cold start: the lock can land after the last check.
+      let confirmed = false;
       for (let waited = 0; waited < budgetMs; waited += 1000) {
         await sleep(1000);
         if (gone) return { locked: false, child, note: exitNote };
-        if (await isDenied(file)) return { locked: true, child, note: output.trim().slice(0, 120) };
+        if (output.includes('REOPEN-BLOCKED')) {
+          confirmed = true;
+          break;
+        }
       }
-      return { locked: false, child, note: `no lock after ${budgetMs}ms, silent=${!output.includes('HELPER-START')}, out=${output.trim().slice(0, 300) || 'empty'}` };
+      if (!confirmed) {
+        return { locked: false, child, note: `no lock confirmation after ${budgetMs}ms, silent=${!output.includes('HELPER-START')}, out=${output.trim().slice(0, 300) || 'empty'}` };
+      }
+      // Phase 2: the lock is held; readability must now fail. A sharing
+      // violation binds every opener, so surviving reads here would mean
+      // privilege bypass rather than timing.
+      for (let waited = 0; waited < 8000; waited += 1000) {
+        if (await isDenied(file)) return { locked: true, child, note: output.trim().slice(0, 120) };
+        await sleep(1000);
+      }
+      return { locked: false, child, note: 'lock confirmed by helper yet Node reads still succeed' };
     };
     const killChild = (child) => { try { process.kill(child.pid, 'SIGKILL'); } catch { /* already gone */ } };
-    let attempt = await tryHolder('powershell', 12000);
+    let attempt = await tryHolder('powershell', 25000);
     if (!attempt.locked) {
       step('deny-holder-note', `powershell: ${attempt.note}`);
       killChild(attempt.child);
-      attempt = await tryHolder('pwsh', 12000);
+      attempt = await tryHolder('pwsh', 25000);
     }
     if (!attempt.locked) {
       step('deny-holder-note', `pwsh: ${attempt.note}`);
