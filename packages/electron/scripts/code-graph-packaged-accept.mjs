@@ -247,7 +247,7 @@ const denyRead = async (file) => {
         }
       }
       if (!confirmed) {
-        return { locked: false, child, note: `no lock confirmation after ${budgetMs}ms, silent=${!output.includes('HELPER-START')}, out=${output.trim().slice(0, 300) || 'empty'}` };
+        return { locked: false, child, note: `no lock confirmation after ${budgetMs}ms, silent=${!output.includes('HELPER-START')}, transcript=${output.trim().slice(0, 1500) || 'empty'}` };
       }
       // Phase 2: the lock is held; readability must now fail. A sharing
       // violation binds every opener, so surviving reads here would mean
@@ -293,6 +293,20 @@ const denyRead = async (file) => {
       };
     }
   }
+  // Read matrix: short vs long spelling, proving whether they diverge on
+  // this host. Identical results mean one object (bypass is real);
+  // diverging results name the spelling the lock actually binds.
+  let longSpelling = file;
+  try { longSpelling = fs.realpathSync(file); } catch { /* keep the given spelling */ }
+  const readAs = async (p) => {
+    try {
+      await fs.promises.readFile(p);
+      return 'readable';
+    } catch (error) {
+      return `unreadable(${error && error.code ? error.code : '?'})`;
+    }
+  };
+  step('deny-readmatrix', `short=${await readAs(file)} long=${await readAs(longSpelling)}${longSpelling === file ? ' (identical spelling)' : ''}`);
   fail('deny', `OS read denial unsupported for ${file} (user=${process.env.USERNAME ?? '?'}, domain=${process.env.USERDOMAIN ?? '?'}; attempts: ${attempts.join(' | ') || 'none'})`);
 };
 
