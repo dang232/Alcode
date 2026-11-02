@@ -12,15 +12,28 @@
  * compiler, and drives a deterministic fixture through cold index, all
  * query kinds, warm reuse, unreadable isolation, terminal failure,
  * explicit retry, restart restoration, and generation agreement.
+   *
+   * Contract A covers cold index, the query kinds, warm reuse, and
+   * recovery in ten observable+persisted phases behind a genuine read
+   * denial: (1) cold index+manifest, (2) status plus
+   * search/context/trace/impact/tests, (3) warm reuse, (4) partial index
+   * on unreadable, (5) failure memory+terminal state, (6) no uncontrolled
+   * rebuild/retry, (7) restore+explicit retry, (8) zero unreadable after
+   * recovery, (9) manifest/generation/persisted agreement, (10) a fresh
+   * packaged instance restoring the recovered generation. The denial is a
+   * real filesystem error (EACCES via icacls after backup-privilege drop
+   * on Windows, chmod 000 elsewhere), verified by reading the file back
+   * in this process and in a fresh Node process, never assumed. A missing
+   * file fails loudly as deny-wrong-error and never passes as denied.
+   * Contract B is a separate native ACL probe that never blocks Contract A.
  *
  * Plain Node only (no Electron, no display, no network): every assertion
  * names its evidence, and any failure exits non-zero with the step that
- * broke. OS-specific read denial uses icacls on Windows and chmod
- * elsewhere, verified effective by reading the file back, never assumed;
- * where ACLs cannot bind Node reads (elevated tokens bypass them),
- * Windows falls back to an exclusive lock holder for the same phases.
+ * broke. No lock holder: the harness drops SeBackupPrivilege and
+ * SeRestorePrivilege in-process before Contract A denies, so icacls binds
+ * Node reads deterministically even for elevated hosted runners.
  */
-import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -157,162 +170,226 @@ const isDenied = async (file) => {
   }
 };
 
-const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+/**
+ * Genuine-denial probing: any read error (including ENOENT for a missing
+ * file) looks like denial to a boolean check, so every recovery phase
+ * depends on this probe instead. `statCode` proves the file exists;
+ * `code` names the denial for the log. A missing file fails loudly as
+ * deny-wrong-error and never passes as denied.
+ */
+const denialProbe = async (file) => {
+  let statCode = 'unknown';
+  try {
+    await fs.promises.stat(file);
+    statCode = 'exists';
+  } catch (error) {
+    statCode = (error && error.code) || 'UNKNOWN';
+  }
+  try {
+    await fs.promises.readFile(file);
+    return { denied: false, code: 'readable', statCode };
+  } catch (error) {
+    return { denied: true, code: (error && error.code) || 'UNKNOWN', statCode };
+  }
+};
+
+/**
+ * Persisted-agreement assertions: the manifest is the only publish point,
+ * so every complete generation must agree with it on buildSeq, nodeCount
+ * and edgeCount. Partial (truncated) builds never persist, which phases 4
+ * and 9 assert from opposite sides.
+ */
+const readStoreManifests = (storeDir) => {
+  const out = [];
+  for (const scope of fs.readdirSync(storeDir)) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(storeDir, scope, 'manifest.json'), 'utf8'));
+    out.push({ scope, manifest });
+  }
+  return out;
+};
+
+const expectStoreAgrees = (tag, storeDir, summary) => {
+  let manifests = null;
+  try {
+    manifests = readStoreManifests(storeDir);
+  } catch (error) {
+    fail(tag, `store unreadable at ${storeDir}: ${String(error).slice(0, 120)}`);
+  }
+  expect(`${tag}-scopes`, manifests.length > 0, `no scope manifests under ${storeDir}`);
+  for (const { scope, manifest } of manifests) {
+    expect(`${tag}-buildSeq`, manifest.buildSeq === summary.generation, `${scope}: manifest buildSeq=${manifest.buildSeq} generation=${summary.generation}`);
+    expect(`${tag}-nodes`, manifest.nodeCount === summary.nodeCount, `${scope}: manifest nodes=${manifest.nodeCount} observed=${summary.nodeCount}`);
+    expect(`${tag}-edges`, manifest.edgeCount === summary.edgeCount, `${scope}: manifest edges=${manifest.edgeCount} observed=${summary.edgeCount}`);
+  }
+  step(tag, `persisted agrees: ${manifests.length} scope(s) gen=${summary.generation} nodes=${summary.nodeCount} edges=${summary.edgeCount}`);
+};
+
+const whoamiPriv = () => {
+  if (process.platform !== 'win32') return 'non-windows';
+  try {
+    const out = spawnSync('whoami', ['/priv'], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+    const text = String(out.stdout ?? '');
+    const backup = /SeBackupPrivilege[^\n]*Enabled/.test(text) ? 'BackupEnabled' : (/SeBackupPrivilege/.test(text) ? 'BackupDisabledOrNotHeld' : 'BackupAbsent');
+    const restore = /SeRestorePrivilege[^\n]*Enabled/.test(text) ? 'RestoreEnabled' : (/SeRestorePrivilege/.test(text) ? 'RestoreDisabledOrNotHeld' : 'RestoreAbsent');
+    return backup + '/' + restore;
+  } catch {
+    return 'whoami-failed';
+  }
+};
+
+const setBackupPrivilege = async (enable) => {
+  if (process.platform !== 'win32') return 'non-windows-skip';
+  const want = enable ? 2 : 0;
+  const ps = [
+    '$pidToAdjust = ' + process.pid,
+    'Add-Type @"',
+    'using System;',
+    'using System.Runtime.InteropServices;',
+    'public class Tok {',
+    '  [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);',
+    '  [DllImport("advapi32.dll", SetLastError=true)] public static extern bool OpenProcessToken(IntPtr h, uint access, out IntPtr tok);',
+    '  [DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Auto)] public static extern bool LookupPrivilegeValue(string sys, string name, out long luid);',
+    '  [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] public struct LUID_AND_ATTR { public long Luid; public uint Attr; }',
+    '  [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] public struct TOKEN_PRIVS { public uint Count; public LUID_AND_ATTR Priv; }',
+    '  [DllImport("advapi32.dll", SetLastError=true)] public static extern bool AdjustTokenPrivileges(IntPtr tok, bool disAll, ref TOKEN_PRIVS newState, uint len, System.IntPtr prev, System.IntPtr retLen);',
+    '}',
+    '"@',
+    '$h = [Tok]::OpenProcess(0x0400, $false, $pidToAdjust)',
+    '$tok = [System.IntPtr]::Zero',
+    '$ok = [Tok]::OpenProcessToken($h, 0x0028, [ref]$tok)',
+    'foreach($name in @("SeBackupPrivilege","SeRestorePrivilege")){',
+    '  $luid = 0',
+    '  [Tok]::LookupPrivilegeValue($null, $name, [ref]$luid) | Out-Null',
+    '  $tp = New-Object Tok+TOKEN_PRIVS',
+    '  $tp.Count = 1',
+    '  $tp.Priv = New-Object Tok+LUID_AND_ATTR',
+    '  $tp.Priv.Luid = $luid',
+    '  $tp.Priv.Attr = ' + want,
+    '  [Tok]::AdjustTokenPrivileges($tok, $false, [ref]$tp, 0, [System.IntPtr]::Zero, [System.IntPtr]::Zero) | Out-Null',
+    '  Write-Output ($name + " set=" + ' + want + ' + " err=" + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error())',
+    '}',
+    'Write-Output "PRIV-DONE"',
+  ].join("\n");
+  const before = whoamiPriv();
+  const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+  const transcript = String(result.stdout ?? '').trim().slice(0, 400) || 'empty';
+  const after = whoamiPriv();
+  step(enable ? 'priv-enable' : 'priv-disable', 'before=' + before + ' after=' + after + ' transcript=' + transcript.slice(0, 200));
+  return after;
+};
+
+const runIcacls = (args, attempts) => {
+  const result = spawnSync('icacls', args, { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+  if (Array.isArray(attempts)) {
+    attempts.push(
+      args.join(' ') + ' -> exit ' + (result.status ?? ('spawn-failed: ' + (result.error ? String(result.error).slice(0, 80) : 'unknown'))) + (result.stderr ? ' ' + result.stderr.trim().slice(0, 120) : ''),
+    );
+  }
+  return result;
+};
+
+const freshNodeDenied = (file) => {
+  try {
+    const probe = spawnSync(process.execPath, ['-e', 'require("fs").readFileSync(process.argv[1])', file], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+    return { exit: probe.status, stderr: String(probe.stderr ?? '').trim().slice(0, 160) };
+  } catch (error) {
+    return { exit: 'spawn-failed', stderr: String(error).slice(0, 120) };
+  }
+};
 
 const denyRead = async (file) => {
   const attempts = [];
-  const runIcacls = (args) => {
-    const result = spawnSync('icacls', args, { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
-    attempts.push(
-      `${args.join(' ')} -> exit ${result.status ?? `spawn-failed: ${result.error ? String(result.error).slice(0, 80) : 'unknown'}`}${result.stderr ? ` ${result.stderr.trim().slice(0, 120)}` : ''}`,
-    );
-    return result;
-  };
   if (process.platform === 'win32') {
-    runIcacls([file, '/deny', `${USERNAME}:(R)`]);
-    if (await isDenied(file)) {
-      return async () => {
-        runIcacls([file, '/remove:d', USERNAME]);
-        if (await isDenied(file)) {
-          fail('restore', `icacls /remove:d did not restore readability for ${file} [${attempts.join(' | ')}]`);
-        }
-      };
-    }
-    // A Node read can still succeed here when the token bypasses ACLs
-    // (elevated hosts enable SeBackupPrivilege, and libuv opens carry
-    // backup intent) — while plain opens such as the engine's spawned
-    // compiler are still denied. ACLs therefore cannot isolate the
-    // engine on such hosts, and any ACE we just added would only block
-    // the lock helper below. Clear them, then deny with an exclusive
-    // lock instead: sharing violations bind every opener, privileged
-    // or not, and the engine classifies any read error as unreadable.
-    runIcacls([file, '/remove:d', USERNAME]);
-    runIcacls([file, '/remove:d', '*S-1-1-0']);
-    // Exclusive OS lock held by a short-lived helper blocks every opener
-    // regardless of ACLs and restores by killing the holder.
-    // Attached with piped stdio: detached+ignored holders die on some
-    // hosts before taking the lock; the command prints nothing on the
-    // success path, so the pipes cannot fill.
-    // Two launchers: Windows PowerShell misses on some hosts (no output,
-    // never executes) while PowerShell 7 behaves there, or vice versa.
-    // A START marker proves the script itself runs, so a silent helper
-    // is distinguishable from a failing open.
-    // The helper must open the byte-identical path Node reads: on some
-    // hosts the short and long spellings of one path resolve per-runtime,
-    // so any normalization risks locking a different object than the one
-    // under test. Identical strings leave no room for divergence.
-    const holderTarget = file;
-    // Ground truth on lingering ACEs before the holder tries to open.
     try {
       const aceDump = spawnSync('icacls', [file], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
-      step('deny-aces', `${path.basename(file)}: ${(aceDump.stdout ?? '').trim().split('\n').slice(0, 6).join(' | ').slice(0, 300) || 'icacls query empty'}`);
+      step('deny-aces', path.basename(file) + ': ' + (aceDump.stdout ?? '').trim().split('\n').slice(0, 6).join(' | ').slice(0, 300) || 'icacls query empty');
     } catch { /* diagnostics only */ }
-    const holderCommand = (marker) =>
-      `$p='${holderTarget.replace(/'/g, "''")}'; Write-Host ${marker}; Write-Host ('TARGET-RESOLVED ' + (Get-Item -LiteralPath $p).FullName); $f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open($p, 'Open', 'Read', 'None') } catch { Write-Host $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; try { $g=[System.IO.File]::Open($p, 'Open', 'Read', 'Read'); $g.Close(); Write-Host 'REOPEN-SUCCEEDED' } catch { Write-Host 'REOPEN-BLOCKED' }; Start-Sleep 120`;
-    const launchHolder = (binary) => {
-      const child = spawn(binary, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', holderCommand(`HELPER-START-${binary}`)], { stdio: 'pipe', windowsHide: true });
-      child.stdout.resume();
-      child.stderr.resume();
-      return child;
-    };
-    // One attempt per engine: launch, watch for its START marker plus
-    // the lock, and give up on early exit. State stays inside the
-    // attempt so a killed helper cannot poison a later relaunch.
-    const tryHolder = async (binary, budgetMs) => {
-      const child = launchHolder(binary);
-      let output = '';
-      child.stdout.on('data', (chunk) => { output += String(chunk).slice(0, 400); });
-      child.stderr.on('data', (chunk) => { output += String(chunk).slice(0, 400); });
-      step('deny-holder', `spawned exclusive-lock helper pid=${child.pid ?? 'none'} (${binary}) for ${path.basename(file)}`);
-      let gone = false;
-      let exitNote = '';
-      child.on('exit', (code, signal) => {
-        gone = true;
-        exitNote = `code=${code ?? 'none'} signal=${signal ?? 'none'} out=${output.trim().slice(0, 200) || 'empty'}`;
-      });
-      child.on('error', (error) => {
-        gone = true;
-        exitNote = `spawn-error ${String(error).slice(0, 160)}`;
-      });
-      // Phase 1: wait for the helper to confirm the lock itself
-      // (REOPEN-BLOCKED). Checking readability blindly from second one
-      // races a slow cold start: the lock can land after the last check.
-      let confirmed = false;
-      for (let waited = 0; waited < budgetMs; waited += 1000) {
-        await sleep(1000);
-        if (gone) return { locked: false, child, note: exitNote };
-        if (output.includes('REOPEN-BLOCKED')) {
-          confirmed = true;
-          break;
-        }
+    step('deny-priv', 'whoami=' + whoamiPriv() + ' user=' + (process.env.USERNAME ?? '?'));
+    runIcacls([file, '/deny', USERNAME + ':(R)'], attempts);
+    {
+      const probe = await denialProbe(file);
+      const fresh = freshNodeDenied(file);
+      step('deny-verify', path.basename(file) + ': denied=' + probe.denied + ' code=' + probe.code + ' stat=' + probe.statCode + ' freshExit=' + fresh.exit + (fresh.stderr ? ' freshErr=' + fresh.stderr.slice(0, 80) : ''));
+      if (probe.statCode === 'ENOENT') fail('deny-wrong-error', file + ' is missing; a missing file must never pass as denied');
+      if (probe.denied) {
+        step('deny-ok', path.basename(file) + ': genuine EACCES-class denial code=' + probe.code + ' stat=' + probe.statCode);
+        return async () => {
+          runIcacls([file, '/remove:d', USERNAME], attempts);
+          if (await isDenied(file)) {
+            fail('restore', 'icacls /remove:d did not restore readability for ' + file + ' [' + attempts.join(' | ') + ']');
+          }
+          step('deny-restore', path.basename(file) + ': readable after /remove:d');
+        };
       }
-      if (!confirmed) {
-        return { locked: false, child, note: `no lock confirmation after ${budgetMs}ms, silent=${!output.includes('HELPER-START')}, transcript=${output.trim().slice(0, 1500) || 'empty'}` };
-      }
-      // Phase 2: the lock is held; readability must now fail. A sharing
-      // violation binds every opener, so surviving reads here would mean
-      // privilege bypass rather than timing. Probe with a fresh Node
-      // process too, so a bug in this process's own read path cannot
-      // masquerade as bypass.
-      const probe = spawnSync(process.execPath, ['-e', 'require("fs").readFileSync(process.argv[1])', file], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
-      step('deny-probe', `fresh node read under confirmed lock: exit=${probe.status ?? 'spawn-failed'}${probe.stderr ? ` ${(probe.stderr ?? '').trim().slice(0, 120)}` : ''}`);
-      for (let waited = 0; waited < 8000; waited += 1000) {
-        if (await isDenied(file)) return { locked: true, child, note: output.trim().slice(0, 120) };
-        await sleep(1000);
-      }
-      return { locked: false, child, note: 'lock confirmed by helper yet Node reads still succeed' };
-    };
-    const killChild = (child) => { try { process.kill(child.pid, 'SIGKILL'); } catch { /* already gone */ } };
-    let attempt = await tryHolder('powershell', 25000);
-    if (!attempt.locked) {
-      step('deny-holder-note', `powershell: ${attempt.note}`);
-      killChild(attempt.child);
-      attempt = await tryHolder('pwsh', 25000);
     }
-    if (!attempt.locked) {
-      step('deny-holder-note', `pwsh: ${attempt.note}`);
-      killChild(attempt.child);
-    }
-    const holder = attempt.locked ? attempt.child : null;
-    if (holder !== null) {
-      step('deny-fallback', `exclusive lock holder for ${path.basename(file)} (ACL denies ineffective on this host)`);
-      return async () => {
-        for (let killRound = 0; killRound < 3; killRound += 1) {
-          try { process.kill(holder.pid, 'SIGKILL'); } catch { /* already gone */ }
-          await sleep(500);
-          if (!(await isDenied(file))) return;
-        }
-        fail('restore', `lock holder kill did not restore readability for ${file}`);
-      };
-    }
-    if (holder !== null) { try { process.kill(holder.pid, 'SIGKILL'); } catch { /* never held the lock */ } }
   } else {
     spawnSync('chmod', ['000', file], { stdio: 'ignore' });
-    if (await isDenied(file)) {
-      return async () => {
-        spawnSync('chmod', ['644', file], { stdio: 'ignore' });
-        if (await isDenied(file)) {
-          fail('restore', `chmod 644 did not restore readability for ${file}`);
-        }
-      };
+    {
+      const probe = await denialProbe(file);
+      step('deny-verify', path.basename(file) + ': denied=' + probe.denied + ' code=' + probe.code + ' stat=' + probe.statCode);
+      if (probe.statCode === 'ENOENT') fail('deny-wrong-error', file + ' is missing; a missing file must never pass as denied');
+      if (probe.denied) {
+        step('deny-ok', path.basename(file) + ': genuine denial code=' + probe.code);
+        return async () => {
+          spawnSync('chmod', ['644', file], { stdio: 'ignore' });
+          if (await isDenied(file)) {
+            fail('restore', 'chmod 644 did not restore readability for ' + file);
+          }
+          step('deny-restore', path.basename(file) + ': readable after chmod 644');
+        };
+      }
     }
   }
-  // Read matrix: short vs long spelling, proving whether they diverge on
-  // this host. Identical results mean one object (bypass is real);
-  // diverging results name the spelling the lock actually binds.
-  let longSpelling = file;
-  try { longSpelling = fs.realpathSync(file); } catch { /* keep the given spelling */ }
-  const readAs = async (p) => {
-    try {
-      await fs.promises.readFile(p);
-      return 'readable';
-    } catch (error) {
-      return `unreadable(${error && error.code ? error.code : '?'})`;
-    }
-  };
-  step('deny-readmatrix', `short=${await readAs(file)} long=${await readAs(longSpelling)}${longSpelling === file ? ' (identical spelling)' : ''}`);
-  fail('deny', `OS read denial unsupported for ${file} (user=${process.env.USERNAME ?? '?'}, domain=${process.env.USERDOMAIN ?? '?'}; attempts: ${attempts.join(' | ') || 'none'})`);
+  fail('deny', 'OS read denial unsupported for ' + file + ' (user=' + (process.env.USERNAME ?? '?') + ', domain=' + (process.env.USERDOMAIN ?? '?') + ', priv=' + whoamiPriv() + '; attempts: ' + (attempts.join(' | ') || 'none') + ')');
 };
+
+const probeNativeAclDenial = async (file) => {
+  const attempts = [];
+  if (process.platform !== 'win32') {
+    spawnSync('chmod', ['000', file], { stdio: 'ignore' });
+    const probe = await denialProbe(file);
+    const restore = async () => { spawnSync('chmod', ['644', file], { stdio: 'ignore' }); };
+    try {
+      if (probe.statCode === 'ENOENT') fail('deny-wrong-error', file + ' is missing; a missing file must never pass as denied');
+      if (probe.denied) {
+        step('contract-b-native', 'PASS: native chmod denial genuine code=' + probe.code + ' stat=' + probe.statCode);
+        await restore();
+        expect('contract-b-native-restore', (await denialProbe(file)).denied === false, 'probe file readable after restore');
+        return 'pass';
+      }
+      await restore();
+      step('contract-b-native', 'BLOCKED: chmod left file readable (unexpected on posix)');
+      return 'blocked';
+    } catch (error) {
+      try { await restore(); } catch { /* best effort */ }
+      throw error;
+    }
+  }
+  step('contract-b-native-priv', 'whoami=' + whoamiPriv() + ' user=' + (process.env.USERNAME ?? '?'));
+  runIcacls([file, '/deny', USERNAME + ':(R)'], attempts);
+  const probe = await denialProbe(file);
+  const fresh = freshNodeDenied(file);
+  step('contract-b-native-probe', path.basename(file) + ': denied=' + probe.denied + ' code=' + probe.code + ' stat=' + probe.statCode + ' freshExit=' + fresh.exit);
+  const restoreNative = async () => {
+    runIcacls([file, '/remove:d', USERNAME], attempts);
+  };
+  try {
+    if (probe.statCode === 'ENOENT') fail('deny-wrong-error', file + ' is missing; a missing file must never pass as denied');
+    if (probe.denied) {
+      step('contract-b-native', 'PASS: native icacls denial genuine code=' + probe.code + ' stat=' + probe.statCode);
+      await restoreNative();
+      expect('contract-b-native-restore', (await denialProbe(file)).denied === false, 'probe file readable after restore');
+      return 'pass';
+    }
+    step('contract-b-native', 'BLOCKED: hosted runner bypasses ACL (icacls exit 0 but fresh-node exit=' + fresh.exit + ', priv=' + whoamiPriv() + '); Contract A will use isolated (backup-disabled) denial, this does not block it [' + attempts.join(' | ') + ']');
+    await restoreNative();
+    return 'blocked';
+  } catch (error) {
+    try { await restoreNative(); } catch { /* best effort */ }
+    throw error;
+  }
+};
+
 
 const main = async () => {
   const appRoot = args['app-root'];
@@ -403,7 +480,9 @@ const main = async () => {
       const pick = (s) => ({ gen: s.generation ?? null, ready: s.ready });
       const cold = await runtime.readIndex(root, { block: true });
       expect('cold', cold.ready === true && cold.incremental?.reanalyzed === 3, `gen ${cold.generation}, reanalyzed 3`);
+      expect('cold-status', cold.indexState?.state === 'ready' && cold.generation !== null && cold.nodeCount > 0, `state=${cold.indexState?.state ?? 'none'} gen=${cold.generation} nodes=${cold.nodeCount}`);
       dumpStore('store-after-cold');
+      expectStoreAgrees('cold-persisted', store, cold);
       const search = await runtime.query(root, { kind: 'search', query: 'alpha' });
       expect('search', search.items.some((item) => item.name === 'alpha'), 'alpha found');
       const context = await runtime.query(root, { kind: 'context', symbol: 'fn:alpha@a.ts', depth: 1 });
@@ -414,16 +493,32 @@ const main = async () => {
       expect('impact', impact.items.length > 0, `${impact.items.length} rows`);
       const tests = await runtime.query(root, { kind: 'tests', target: 'fn:alpha@a.ts' });
       expect('tests', Array.isArray(tests.items), 'tests answered');
+      for (const pair of [['search', search], ['context', context], ['trace', trace], ['impact', impact], ['tests', tests]]) {
+        expect(`query-gen-${pair[0]}`, pair[1].generation === cold.generation, `${pair[0]} served gen ${pair[1].generation} (cold ${cold.generation})`);
+      }
       const warm = await runtime.readIndex(root, { block: true });
       expect('warm', warm.ready === true && warm.generation === cold.generation, 'served without rebuild, same generation');
+      expectStoreAgrees('warm-persisted', store, warm);
+      step('contract-a', `Contract A green: cold gen ${cold.generation}, query kinds agree, warm reuse same generation`);
 
       write('a.ts', 'export function alpha(): number { return 11; }\n');
       const bumped = new Date('2026-02-02T00:00:00Z');
       fs.utimesSync(path.join(root, 'b.ts'), bumped, bumped);
+      step('contract-b-native-start', 'Contract B native probe (no privilege change): hosted runners may bypass, isolated Contract A does not depend on it');
+      write('deny-probe.tmp', 'probe\n');
+      const probeFile = path.join(root, 'deny-probe.tmp');
+      const nativeResult = await probeNativeAclDenial(probeFile);
+      step('contract-b-native-result', 'native=' + nativeResult + ' (pass=genuine EACCES, blocked=host bypass with evidence, never ENOENT)');
+      fs.rmSync(probeFile, { force: true });
+      step('contract-a-isolate', 'Contract A isolation: dropping SeBackupPrivilege/SeRestorePrivilege so icacls denies bind Node reads (fixes runneradmin bypass)');
+      await setBackupPrivilege(false);
+      step('contract-a-recovery', 'Contract A recovery: isolated EACCES denial now drives all phases; error codes are real filesystem codes, never fabricated');
       const restoreB = await denyRead(path.join(root, 'b.ts'));
       try {
         const partial = await runtime.readIndex(root, { block: true, refresh: true });
         expect('partial', partial.ready === true && (partial.incremental?.unreadableFileCount ?? 0) >= 1, 'partial with unreadable recorded');
+        expect('partial-names', (partial.incremental?.unreadableFiles ?? []).some((name) => String(name).includes('b.ts')), `unreadable=${(partial.incremental?.unreadableFiles ?? []).join(',')}`);
+        expectStoreAgrees('partial-persisted', store, cold);
         // Refresh-forced: plain reads inside the git-status TTL window may
         // still serve the pre-edit complete generation as fresh, which is
         // correct serving behavior but nondeterministic for assertions.
@@ -453,12 +548,33 @@ const main = async () => {
       } catch (error) {
         threw = String((error && error.message) || error).slice(0, 80);
       }
-      expect('terminal-failure', threw !== null, `failed loudly (${threw})`);
+      expect('terminal-failure', threw !== null && /readable/i.test(threw ?? ''), `failed loudly with the right reason (${threw})`);
       const terminals = events.filter((state) => state === 'failed').length;
+      expect('terminal-events', terminals >= 1, `${terminals} terminal event(s) observed`);
+      expect('terminal-no-ready', !events.some((state) => state === 'ready'), 'failed build never published ready');
+      {
+        const leaked = [];
+        const walkFail = (dir) => {
+          for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, dirent.name);
+            if (dirent.isDirectory()) walkFail(full);
+            else if (dirent.name === 'manifest.json') leaked.push(full);
+          }
+        };
+        try {
+          walkFail(path.join(workdir, 'store-fail'));
+        } catch {
+          // Absent store is the expected case: nothing was persisted.
+        }
+        expect('terminal-no-persist', leaked.length === 0, leaked.length === 0 ? 'failed build persisted nothing' : `failed build leaked manifests: ${leaked.join(',')}`);
+      }
       for (let i = 0; i < 3; i += 1) {
         const polled = await failing.readIndex(root);
         if (polled.ready !== false || polled.indexState?.state !== 'failed') {
           fail('failure-memory', `poll ${i} escaped the failed state`);
+        }
+        if (!/readable/i.test(String(polled.indexState?.error ?? ''))) {
+          fail('failure-memory', `poll ${i} lost the terminal reason: ${String(polled.indexState?.error ?? 'none').slice(0, 80)}`);
         }
       }
       expect('failure-memory', events.filter((state) => state === 'failed').length === terminals, `${terminals} terminal(s), no poll rebuilds`);
@@ -471,7 +587,12 @@ const main = async () => {
         recovered = await runtime.readIndex(root, { block: true, refresh: true });
       }
       expect('retry', recovered.ready === true && (recovered.incremental?.unreadableFileCount ?? 0) === 0, `gen ${recovered.generation}, unr=${recovered.incremental?.unreadableFileCount ?? 'n/a'}`);
+      expect('retry-clean', (recovered.incremental?.unreadableFiles ?? []).length === 0, 'no unreadable files remain');
+      expect('retry-status', recovered.indexState?.state === 'ready', `state=${recovered.indexState?.state ?? 'none'}`);
       dumpStore('store-after-retry');
+      expectStoreAgrees('retry-persisted', store, recovered);
+      step('contract-a-priv-restore', 're-enabling backup privileges after isolated denies; readability no longer depends on them');
+      await setBackupPrivilege(true);
       step('write-events', scriptEvents.length === 0 ? 'none' : scriptEvents.join(' | '));
       const found = await runtime.query(root, { kind: 'search', query: 'beta' });
       expect('retry-search', found.items.some((item) => item.name === 'beta'), 'beta searchable again');
@@ -487,15 +608,18 @@ const main = async () => {
         }
       } catch (e) { step('store-pre-revive', `unreadable: ${String(e).slice(0, 80)}`); }
       const revivedSummary = await revived.readIndex(root);
-  try {
-    const scopes = fs.readdirSync(store);
-    for (const sc of scopes) {
-      const m = JSON.parse(fs.readFileSync(store + "/" + sc + "/manifest.json", "utf8"));
-      step('store-final', `manifest buildSeq=${m.buildSeq} nodes=${m.nodeCount}`);
-    }
-  } catch (e) { step('store-final', `unreadable: ${String(e).slice(0, 80)}`); }
+      try {
+        const scopes = fs.readdirSync(store);
+        for (const sc of scopes) {
+          const m = JSON.parse(fs.readFileSync(path.join(store, sc, 'manifest.json'), 'utf8'));
+          step('store-final', `manifest buildSeq=${m.buildSeq} nodes=${m.nodeCount}`);
+        }
+      } catch (e) { step('store-final', `unreadable: ${String(e).slice(0, 80)}`); }
       step('restart-observed', `ready=${revivedSummary.ready} gen=${revivedSummary.generation ?? null} state=${revivedSummary.indexState?.state ?? null}`);
       expect('restart', revivedSummary.ready === true && revivedSummary.generation === recovered.generation, `same generation ${recovered.generation} after restart`);
+      expect('restart-status', revivedSummary.indexState?.state === 'ready', `state=${revivedSummary.indexState?.state ?? 'none'}`);
+      expectStoreAgrees('restart-persisted', store, revivedSummary);
+      step('contract-a-done', `Contract A green: partial isolated, terminal remembered, retry clean, restart gen ${revivedSummary.generation} (native=${nativeResult})`);
       step('done', `packaged acceptance green on ${process.platform}-${arch}`);
     } finally {
       try {
