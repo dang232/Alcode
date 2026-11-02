@@ -474,10 +474,15 @@ const main = async () => {
     const { createCodeGraphRuntime } = await import(
       pathToFileURL(path.join(workdir, 'node_modules', '@alcode', 'web', 'server', 'lib', 'code-graph', 'runtime.js')).href
     );
-    let root = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-pkg-fx-'));
+    const fixtureBase = process.env.GITHUB_WORKSPACE ? path.dirname(process.env.GITHUB_WORKSPACE) : os.tmpdir();
+    step('fixture-base', 'GITHUB_WORKSPACE=' + (process.env.GITHUB_WORKSPACE ?? 'unset') + ' base=' + fixtureBase);
+    let root = fs.mkdtempSync(path.join(fixtureBase, 'cg-pkg-fx-'));
     // Normalize to the long path once: on hosts where 8.3 spellings
     // resolve per-runtime, every later path (engine walks, denial
-    // targets, holders, verification) must name one identical object.
+    // targets, verification) must name one identical object. Prefer the
+    // workspace volume (D: on hosted runners) because C: Temp ignores
+    // even Everyone DENY entries with backup absent (proven by post-deny
+    // ACEs showing DENY yet readable).
     try {
       const canonical = fs.realpathSync(root);
       if (canonical !== root) step('fixture-canonical', `${root} -> ${canonical}`);
