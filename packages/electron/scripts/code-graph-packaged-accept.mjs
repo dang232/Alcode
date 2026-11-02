@@ -193,41 +193,60 @@ const denyRead = async (file) => {
     // Attached with piped stdio: detached+ignored holders die on some
     // hosts before taking the lock; the command prints nothing on the
     // success path, so the pipes cannot fill.
-    const holder = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
-      `$f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open('${file.replace(/'/g, "''")}', 'Open', 'Read', 'None') } catch { Write-Host $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; Start-Sleep 120`,
-    ], { stdio: 'pipe', windowsHide: true });
-    let holderStderr = '';
-    const captureOutput = (chunk) => { holderStderr += String(chunk).slice(0, 400); };
-    holder.stdout.on('data', captureOutput);
-    holder.stdout.resume();
-    holder.stderr.on('data', captureOutput);
-    holder.stderr.resume();
-    step('deny-holder', `spawned exclusive-lock helper pid=${holder.pid ?? 'none'} for ${path.basename(file)}`);
-    // PowerShell cold start on a loaded host can take seconds; poll for
-    // the lock instead of trusting a fixed delay, and stop early if the
-    // helper itself is gone.
-    let holderGone = false;
-    holder.on('exit', (code, signal) => {
-      holderGone = true;
-      step('deny-holder-exit', `helper exited early code=${code ?? 'none'} signal=${signal ?? 'none'} stderr=${holderStderr.trim().slice(0, 300) || 'empty'}`);
-    });
-    holder.on('error', (error) => {
-      holderGone = true;
-      step('deny-holder-error', String(error).slice(0, 160));
-    });
-    let locked = false;
-    for (let waited = 0; waited < 30000; waited += 1000) {
-      await sleep(1000);
-      if (holderGone) break;
-      if (await isDenied(file)) {
-        locked = true;
-        break;
+    // Two launchers: Windows PowerShell misses on some hosts (no output,
+    // never executes) while PowerShell 7 behaves there, or vice versa.
+    // A START marker proves the script itself runs, so a silent helper
+    // is distinguishable from a failing open.
+    const holderCommand = (marker) =>
+      `Write-Host ${marker}; $f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open('${file.replace(/'/g, "''")}', 'Open', 'Read', 'None') } catch { Write-Host $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; Start-Sleep 120`;
+    const launchHolder = (binary) => {
+      const child = spawn(binary, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', holderCommand(`HELPER-START-${binary}`)], { stdio: 'pipe', windowsHide: true });
+      child.stdout.resume();
+      child.stderr.resume();
+      return child;
+    };
+    // One attempt per engine: launch, watch for its START marker plus
+    // the lock, and give up on early exit. State stays inside the
+    // attempt so a killed helper cannot poison a later relaunch.
+    const tryHolder = async (binary, budgetMs) => {
+      const child = launchHolder(binary);
+      let output = '';
+      child.stdout.on('data', (chunk) => { output += String(chunk).slice(0, 400); });
+      child.stderr.on('data', (chunk) => { output += String(chunk).slice(0, 400); });
+      step('deny-holder', `spawned exclusive-lock helper pid=${child.pid ?? 'none'} (${binary}) for ${path.basename(file)}`);
+      let gone = false;
+      let exitNote = '';
+      child.on('exit', (code, signal) => {
+        gone = true;
+        exitNote = `code=${code ?? 'none'} signal=${signal ?? 'none'} out=${output.trim().slice(0, 200) || 'empty'}`;
+      });
+      child.on('error', (error) => {
+        gone = true;
+        exitNote = `spawn-error ${String(error).slice(0, 160)}`;
+      });
+      for (let waited = 0; waited < budgetMs; waited += 1000) {
+        await sleep(1000);
+        if (gone) return { locked: false, child, note: exitNote };
+        if (await isDenied(file)) return { locked: true, child, note: output.trim().slice(0, 120) };
       }
+      return { locked: false, child, note: `no lock after ${budgetMs}ms, silent=${!output.includes('HELPER-START')}` };
+    };
+    const killChild = (child) => { try { process.kill(child.pid, 'SIGKILL'); } catch { /* already gone */ } };
+    let attempt = await tryHolder('powershell', 12000);
+    if (!attempt.locked) {
+      step('deny-holder-note', `powershell: ${attempt.note}`);
+      killChild(attempt.child);
+      attempt = await tryHolder('pwsh', 12000);
     }
-    if (locked) {
+    if (!attempt.locked) {
+      step('deny-holder-note', `pwsh: ${attempt.note}`);
+      killChild(attempt.child);
+    }
+    const holder = attempt.locked ? attempt.child : null;
+    if (holder !== null) {
       step('deny-fallback', `exclusive lock holder for ${path.basename(file)} (ACL denies ineffective on this host)`);
       return async () => {
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        for (let killRound = 0; killRound < 3; killRound += 1) {
           try { process.kill(holder.pid, 'SIGKILL'); } catch { /* already gone */ }
           await sleep(500);
           if (!(await isDenied(file))) return;
@@ -235,7 +254,7 @@ const denyRead = async (file) => {
         fail('restore', `lock holder kill did not restore readability for ${file}`);
       };
     }
-    try { process.kill(holder.pid, 'SIGKILL'); } catch { /* never held the lock */ }
+    if (holder !== null) { try { process.kill(holder.pid, 'SIGKILL'); } catch { /* never held the lock */ } }
   } else {
     spawnSync('chmod', ['000', file], { stdio: 'ignore' });
     if (await isDenied(file)) {
