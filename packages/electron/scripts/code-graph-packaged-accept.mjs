@@ -156,13 +156,33 @@ const isDenied = async (file) => {
 };
 
 const denyRead = async (file) => {
+  const attempts = [];
+  const runIcacls = (args) => {
+    const result = spawnSync('icacls', args, { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+    attempts.push(
+      `${args.join(' ')} -> exit ${result.status ?? `spawn-failed: ${result.error ? String(result.error).slice(0, 80) : 'unknown'}`}${result.stderr ? ` ${result.stderr.trim().slice(0, 120)}` : ''}`,
+    );
+    return result;
+  };
   if (process.platform === 'win32') {
-    spawnSync('icacls', [file, '/deny', `${USERNAME}:(R)`], { stdio: 'ignore' });
+    runIcacls([file, '/deny', `${USERNAME}:(R)`]);
     if (await isDenied(file)) {
       return async () => {
-        spawnSync('icacls', [file, '/remove:d', USERNAME], { stdio: 'ignore' });
+        runIcacls([file, '/remove:d', USERNAME]);
         if (await isDenied(file)) {
-          fail('restore', `icacls /remove:d did not restore readability for ${file}`);
+          fail('restore', `icacls /remove:d did not restore readability for ${file} [${attempts.join(' | ')}]`);
+        }
+      };
+    }
+    // Some hosted runners resolve the user principal such that a
+    // name-based deny does not stick; an Everyone deny (SID S-1-1-0)
+    // applies to every token and restores symmetrically.
+    runIcacls([file, '/deny', '*S-1-1-0:(R)']);
+    if (await isDenied(file)) {
+      return async () => {
+        runIcacls([file, '/remove:d', '*S-1-1-0']);
+        if (await isDenied(file)) {
+          fail('restore', `icacls /remove:d did not restore readability for ${file} [${attempts.join(' | ')}]`);
         }
       };
     }
@@ -177,7 +197,7 @@ const denyRead = async (file) => {
       };
     }
   }
-  fail('deny', `OS read denial unsupported for ${file}`);
+  fail('deny', `OS read denial unsupported for ${file} (user=${process.env.USERNAME ?? '?'}, domain=${process.env.USERDOMAIN ?? '?'}; attempts: ${attempts.join(' | ') || 'none'})`);
 };
 
 const main = async () => {

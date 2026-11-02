@@ -183,6 +183,11 @@ const main = async () => {
   });
 };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// process.argv[1] uses platform separators while import.meta.url never
+// does, so a raw string comparison never matches on Windows and main()
+// silently never runs there. Compare resolved paths instead.
+const invokedAsScript =
+  typeof process.argv[1] === 'string' && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedAsScript) {
   await main();
 }
