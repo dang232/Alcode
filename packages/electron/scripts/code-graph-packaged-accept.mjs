@@ -197,8 +197,17 @@ const denyRead = async (file) => {
     // never executes) while PowerShell 7 behaves there, or vice versa.
     // A START marker proves the script itself runs, so a silent helper
     // is distinguishable from a failing open.
+    // Resolve the long path for the helper: 8.3 short names do not
+    // always resolve the same way from every runtime on hosted images.
+    let holderTarget = file;
+    try { holderTarget = fs.realpathSync(file); } catch { /* keep the given spelling */ }
+    // Ground truth on lingering ACEs before the holder tries to open.
+    try {
+      const aceDump = spawnSync('icacls', [file], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+      step('deny-aces', `${path.basename(file)}: ${(aceDump.stdout ?? '').trim().split('\n').slice(0, 6).join(' | ').slice(0, 300) || 'icacls query empty'}`);
+    } catch { /* diagnostics only */ }
     const holderCommand = (marker) =>
-      `Write-Host ${marker}; $f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open('${file.replace(/'/g, "''")}', 'Open', 'Read', 'None') } catch { Write-Host $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; Start-Sleep 120`;
+      `Write-Host ${marker}; $f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open('${holderTarget.replace(/'/g, "''")}', 'Open', 'Read', 'None') } catch { Write-Host $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; Start-Sleep 120`;
     const launchHolder = (binary) => {
       const child = spawn(binary, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', holderCommand(`HELPER-START-${binary}`)], { stdio: 'pipe', windowsHide: true });
       child.stdout.resume();
@@ -229,7 +238,7 @@ const denyRead = async (file) => {
         if (gone) return { locked: false, child, note: exitNote };
         if (await isDenied(file)) return { locked: true, child, note: output.trim().slice(0, 120) };
       }
-      return { locked: false, child, note: `no lock after ${budgetMs}ms, silent=${!output.includes('HELPER-START')}` };
+      return { locked: false, child, note: `no lock after ${budgetMs}ms, silent=${!output.includes('HELPER-START')}, out=${output.trim().slice(0, 300) || 'empty'}` };
     };
     const killChild = (child) => { try { process.kill(child.pid, 'SIGKILL'); } catch { /* already gone */ } };
     let attempt = await tryHolder('powershell', 12000);
