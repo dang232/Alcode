@@ -120,10 +120,179 @@ cover staleness, and a disk cache would add invalidation, migration, and
 downgrade behavior for no freshness the memory cache does not provide.
 Restarting the server simply re-indexes on the next request.
 
-### Why the walk is bounded at 500 files and skips build outputs
+### Why the walk is bounded by discovery budgets and never follows symlinks
 
 `indexFiles` runs the TypeScript compiler over every entry; an unbounded
 walk of a monorepo checkout would stall the request and grow the snapshot
-past what the bounded panel can show. The walk skips `node_modules`,
-`.git`, and build outputs, caps entries, and reports `truncated`, so the
-panel says what was cut instead of showing a partial graph as complete.
+past what the bounded panel can show. The walk uses `lstat` and never
+follows symlinks, contains every real path to the scope root, tracks
+visited inodes and real paths, and enforces independent budgets for
+directories visited, files discovered, depth, file size, and wall-clock
+time. It reports `truncated` with `truncationReason` and metrics instead of
+showing a partial graph as complete. A truncated in-memory entry is never
+persisted as a generation and never served as fresh.
+
+### Why nested repositories are boundaries and not merged graphs
+
+A parent directory holding sibling checkouts has no single revision,
+so indexing it as one graph would mix unrelated projects. The walk stops
+at nested `.git` boundaries and names them in `nestedRepoRoots`. Index one
+repository at a time; the parent stays a directory scope with only its own
+top-level files.
+
+### Why cancellation is honoured at discovery and phase boundaries
+
+The engine build is synchronous, so a worker cannot answer IPC while it
+runs. The walk yields to the event loop and checks cancellation, the build
+checks before parsing and persisting, and refresh supersedes a running job
+instead of duplicating work. Terminal states are `completed`, `cancelled`,
+`failed`, `truncated`, and `superseded`; only `completed` persists.
+
+### Why per-file records ride the manifest instead of a second store
+
+Incremental reuse needs fingerprints, not a new cache: the manifest gains an
+optional `fileRecords` pointer to a content-addressed records document, and
+pruning keeps it by reference like shards. A rebuild fingerprints the walked
+entries, reanalyzes changed, added, and transitively dependent files
+(importers and callers, never dependencies) through a subset program, and
+merges over the previous snapshot dropping every edge that touches a
+reanalyzed file. When the closure covers every entry the build falls back
+to a full rebuild instead of merging a subset that equals the whole scope. Unchanged files keep byte-identical nodes
+(fingerprints pin content, and node ids embed lines). A corrupt records file
+disables reuse but never the snapshot already joined.
+
+### Why dependent reanalysis follows export surfaces, not edges alone
+
+Two-phase analysis compiles changed files first, then compares each
+changed file's export surface (export-contract identities plus export
+edge identities, derived from shards, never parsed) against the previous
+generation. Only differing files pull their direct importers and callers
+into phase B; a transitive fixed point would reanalyze chains that
+deterministically re-emit identical output. Deletions always expand.
+Unreachable or wildcard-resolved edges still pull their owners, because
+the expansion follows actual emitted edges rather than lexical imports.
+
+### Who shares the canonical generations
+
+The panel and the `code_graph` agent tool are consumers of one service,
+not two indexers. The agent tool drives the same runtime module and the
+same store directory (`code-graph-store` under the user root), so its
+queries resolve against the same persisted generations the panel serves:
+repeated queries reuse the generation, concurrent callers share in-flight
+jobs per process, and coverage, staleness, and generation identity mean
+the same thing on both surfaces.
+
+### Why export surfaces are not persisted to skip phase A
+
+Phase A compiles exactly the changed and added files; their new surfaces
+are unknown until compiled, so no persisted metadata can supply them.
+Unchanged files already skip compilation through stat-validated records
+with zero content hashes. The residual cost is compiler setup per project
+in the subset program, and reusing compiler state across builds (a pooled
+`tsserver` session) was measured unsafe and reverted: document bytes pin
+at first open with no synchronous reload path. Persisted surfaces would
+save nothing phase A does not already skip, so they stay unimplemented.
+
+### Why unreadable files degrade instead of failing the build
+
+A file the walk lists but whose bytes cannot be read (denied permissions,
+transient locks) is excluded from every compiler input: an unreadable entry
+aborts the whole program with no project covering it. Files with no
+reusable record ride the coverage as `unreadableFiles` (capped sample plus
+exact count) and force the entry truncated, so a partial generation can
+never overwrite a previous complete one; files with a prior record read as
+deleted, so dependents still re-resolve safely. Queries downgrade to
+partial and name the files. If every listed file is unreadable the build
+fails closed with `NO_READABLE_ENTRIES` instead of publishing an empty
+graph. Restoring access and rebuilding reanalyzes the file (it was never
+recorded), which is the retry path.
+
+### Why terminal failures are remembered
+
+A failed build stays failed for plain reads until an explicit refresh or a
+60-second cooldown permits a new attempt: without the memory, every status
+poll relaunches the doomed build and only ever observes `discovering`.
+The previous complete generation still serves as stale underneath the failed
+state, and success clears the memory at publish. Cancelled builds record
+nothing: a cancel is consumed intent and the next plain read must rebuild.
+
+### Why generated declaration caches are excluded from discovery
+
+The walk skips `.tsbuild` (TypeScript build-mode declaration caches) the
+same way it skips `dist` and `build`: those generated `.d.ts` files would
+otherwise index as duplicate sources beside the real files they mirror.
+Caps are unchanged; exclusion is by generated-directory name, never by
+file extension, so real `.d.ts` sources still index.
+
+### Why truncated generations are not persisted
+
+Only complete builds reach the store: a partial manifest overwriting the
+complete one would destroy the good generation on disk (pruning drops
+unreferenced shards), and stacking generations is a larger change. A
+restart therefore rebuilds a partial scope instead of restoring it; the
+previous complete generation, when one exists, still serves as stale.
+
+A safe partial-persistence design would additionally require, at minimum:
+atomic publication of the partial generation beside (never over) the
+complete one; a generation identity that stays unique across processes
+and restarts so dependents cannot mix rows; a recovery path that
+re-analyzes excluded files without a full rebuild when they become
+readable; and a served-coverage contract proving the partial never
+answers as complete. None of this is implemented; the rule above stands.
+
+### Why fingerprints prefer stat matches and hash the rest
+
+Hashing every file on every build re-reads the whole tree. A record also
+keeps size and mtimeMs: when both still match, reuse skips hashing (the
+same trust model as git's racy-clean detection). Any stat difference
+hashes raw bytes, so an mtime-only bump still reuses on equal content and
+no byte change ever slips through. Records without stats hash always, so
+older generations stay valid.
+
+### Why one walk serves restore and build
+
+The restore listing and the build walk used to traverse the tree twice
+with identical inputs. The restore hands its listing to the job when the
+build would walk identically (default budgets); custom budgets walk
+separately. A readdir-count test pins one traversal per build.
+
+### Why compiler sessions were rejected
+
+Nine probes proved the embedded tsserver pins document bytes at first
+open: change announcements, closes, reopens, cache clears, project resets,
+and waiting all serve stale content. Only unseen keys read fresh. Reusing
+a session across content edits would serve stale graphs, so each build
+spawns its own process. Session-shaped code must not return without a
+synchronous reload primitive from the compiler.
+
+### Why config edits force full reanalysis
+
+Compiler options change what every file means, so a moved tsconfig
+fingerprint disables reuse even when no entry changed. The dirty
+fingerprint covers tsconfig files for the same reason. The rebuild runs
+the full entry set under the new options; records from the old options
+never validate.
+
+Precise cancellation limits: `host.cancelIndex` kills the worker process when its app-side state shows a build in flight, so cancellation is effective even while the synchronous engine holds the worker loop. A cancel that lands before any job exists is recorded as an intent: the next `ensureIndex` for the scope settles cancelled instead of starting the refused build, and an explicit refresh consumes the intent and starts anew. A bare runtime without the host only observes cancellation at discovery yields and engine progress boundaries; a single huge synchronous project segment cannot be preempted mid-segment. Do not describe runtime-level cancellation as fully interruptible.
+
+### Why a stall flag and not a timeout that fails the build
+
+The engine's `program` phase (TypeScript program creation) runs synchronously
+with no per-project progress: a 5000-file scope reports `files: 5000` with
+`projectsDone: 0, projectsTotal: 0` for minutes while it works. Failing the
+job there would discard real progress and restart the same minutes on retry.
+The host therefore reports silence past `DEFAULT_STALLED_AFTER_MS` (120 s) as
+`indexState.stalled: true` with `elapsedMs` and `lastProgressAtMs`, keeping the
+phase name and the underlying state. A stall is reported, never failed,
+killed, or restarted; Cancel stays available and the poll loop continues.
+
+### Diagnostics
+
+Server progress events carry `elapsedMs` (and `generation` when the engine
+reports it) from the first `discovering` emit onward. Client route calls log
+one line at start and one at finish under `console.debug('[code-graph] …')`
+when `localStorage.alcode.codeGraph.debug` is `'1'`, each carrying a
+correlation id, the directory, the kind, the duration, the outcome, and — when
+the server sent one — the generation, scope root, phase, and stall flag. Logs
+are bounded (one line per request and per phase transition, never per file)
+and never include source contents, secrets, tokens, or environment values.

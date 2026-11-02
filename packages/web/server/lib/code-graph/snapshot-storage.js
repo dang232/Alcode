@@ -23,6 +23,9 @@ const safeSegment = (value) => String(value ?? '').replace(/[^A-Za-z0-9._-]+/g, 
  */
 const shardName = (text) => `${crypto.createHash('sha256').update(text).digest('hex').slice(0, 32)}.json`;
 
+/** Records documents share the shard philosophy: content-addressed, immutable, pruned by reference. */
+const recordsName = (text) => `files-${crypto.createHash('sha256').update(text).digest('hex').slice(0, 32)}.json`;
+
 export const createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
   const enabled = typeof storeDir === 'string' && storeDir.length > 0;
   const scopeDir = (projectId, worktreeId) => path.join(storeDir, `${safeSegment(projectId)}--${safeSegment(worktreeId)}`);
@@ -60,11 +63,26 @@ export const createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) =>
           await fsPromises.writeFile(target, text, 'utf8');
           written += 1;
         }
+        let recordsNameWritten = null;
+        if (entry.fileRecords !== undefined && entry.fileRecords !== null) {
+          const recordsText = engine.serializeFileRecordsDoc(entry.fileRecords);
+          recordsNameWritten = recordsName(recordsText);
+          const recordsTarget = path.join(dir, recordsNameWritten);
+          const recordsThere = await fsPromises.stat(recordsTarget).then(() => true, () => false);
+          if (!recordsThere) await fsPromises.writeFile(recordsTarget, recordsText, 'utf8');
+        }
+        // The published number rides the manifest so a restart restores the
+        // same generation instead of minting a fresh local one: surfaces
+        // sharing one store agree on it. Partial builds never reach this
+        // writer (persistEntry skips truncated entries), so a stored
+        // generation is always complete and needs no partiality fields.
         const manifest = engine.createSnapshotManifest(entry.snapshot, {
           scope: entry.scope,
           observedAtMs: entry.observedAtMs,
           entryCap: entry.entryCap ?? 0,
           entryCount: entry.entryCount ?? 0,
+          ...(recordsNameWritten !== null ? { fileRecords: recordsNameWritten } : {}),
+          buildSeq: entry.buildSeq ?? null,
         });
         await writeAtomic(
           path.join(dir, 'manifest.json'),
@@ -73,7 +91,7 @@ export const createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) =>
         // Only after the manifest points at them: a shard no generation
         // references is dead weight, but pruning before publish would delete
         // files the current generation still needs.
-        await this.prune(dir, new Set(names));
+        await this.prune(dir, new Set(recordsNameWritten !== null ? [...names, recordsNameWritten] : names));
         return { written: true, shards: names.length, writtenShards: written, reusedShards: reused };
       } catch (error) {
         return { written: false, reason: error instanceof Error ? error.message : String(error) };
@@ -127,7 +145,18 @@ export const createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) =>
       }
       const joined = engine.joinSnapshotShards(manifest, shards);
       if (joined.kind !== 'snapshot') return { status: 'miss', reason: joined.reason };
-      return { status: 'hit', snapshot: joined.snapshot, manifest };
+      // Records are advisory: a corrupt or missing records file disables
+      // reuse for the next build but never the snapshot already joined.
+      let fileRecords = null;
+      if (typeof manifest.fileRecords === 'string' && manifest.fileRecords.length > 0) {
+        try {
+          const recordsText = await fsPromises.readFile(path.join(dir, manifest.fileRecords), 'utf8');
+          fileRecords = engine.parseFileRecordsDoc(JSON.parse(recordsText));
+        } catch {
+          fileRecords = null;
+        }
+      }
+      return { status: 'hit', snapshot: joined.snapshot, manifest, fileRecords };
     },
 
     async clear(scope) {

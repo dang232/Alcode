@@ -39,6 +39,12 @@ export interface SnapshotShard {
 export interface SnapshotManifest {
   readonly version: typeof SNAPSHOT_STORE_VERSION;
   readonly scope: GraphScopeKey;
+  /**
+   * Content-addressed per-file records document (`files-<sha>.json` beside
+   * the manifest), absent on generations written before records existed.
+   * Absence disables reuse, never the snapshot itself.
+   */
+  readonly fileRecords?: string | null;
   readonly observedAtMs: number;
   readonly entryCap: number;
   readonly entryCount: number;
@@ -49,6 +55,18 @@ export interface SnapshotManifest {
   readonly contentSkipped: readonly ContentSkip[];
   readonly dropped: readonly DroppedFile[];
   readonly shards: readonly string[];
+  /**
+   * Generation state carried across restarts: a restored partial must stay
+   * partial (never overwrite into complete), and a restored build keeps its
+   * published number so surfaces sharing one store agree on it. Absent on
+   * generations written before this existed; absence reads as complete with
+   * an unnumbered build, which matches everything previously persisted.
+   */
+  readonly truncated: boolean;
+  readonly truncationReason: string | null;
+  readonly buildSeq: number | null;
+  readonly unreadableFiles: readonly string[];
+  readonly unreadableFileCount: number;
 }
 
 export type ParseSnapshotManifest =
@@ -60,8 +78,18 @@ export type ParseSnapshotShard =
   | { readonly kind: "corrupt"; readonly reason: string };
 
 /** The file a node id belongs to: `file:x` is the file itself, `fn:v@x:12` is `x`. */
-function fileOfNodeId(id: string): string | null {
+export function fileOfNodeId(id: string): string | null {
   if (id.startsWith("file:")) return id.slice("file:".length);
+  if (id.startsWith("call:")) {
+    // call:<file>:<line>:<col>: the call site lives in its file. A call
+    // site misattributed to the unattributed bucket would survive every
+    // merge even after its file was reanalyzed.
+    const rest = id.slice("call:".length);
+    const parts = rest.split(":");
+    if (parts.length < 3) return null;
+    const file = parts.slice(0, -2).join(":");
+    return file.length > 0 ? file : null;
+  }
   const at = id.lastIndexOf("@");
   if (at < 0) return null;
   const withLine = id.slice(at + 1);
@@ -115,7 +143,7 @@ export function splitSnapshotIntoShards(snapshot: GraphSnapshot): SnapshotShard[
 
 export function createSnapshotManifest(
   snapshot: GraphSnapshot,
-  meta: { scope: GraphScopeKey; observedAtMs: number; entryCap: number; entryCount: number },
+  meta: { scope: GraphScopeKey; observedAtMs: number; entryCap: number; entryCount: number; fileRecords?: string | null; truncated?: boolean; truncationReason?: string | null; buildSeq?: number | null; unreadableFiles?: readonly string[]; unreadableFileCount?: number },
 ): SnapshotManifest {
   return {
     version: SNAPSHOT_STORE_VERSION,
@@ -130,6 +158,14 @@ export function createSnapshotManifest(
     contentSkipped: snapshot.content?.skipped ?? [],
     dropped: snapshot.dropped ?? [],
     shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file),
+    ...(meta.fileRecords !== undefined && meta.fileRecords !== null ? { fileRecords: meta.fileRecords } : {}),
+    truncated: meta.truncated === true,
+    truncationReason: typeof meta.truncationReason === "string" ? meta.truncationReason : null,
+    buildSeq: typeof meta.buildSeq === "number" && Number.isFinite(meta.buildSeq) ? meta.buildSeq : null,
+    unreadableFiles: Array.isArray(meta.unreadableFiles) ? [...meta.unreadableFiles] : [],
+    unreadableFileCount: typeof meta.unreadableFileCount === "number" && Number.isFinite(meta.unreadableFileCount)
+      ? meta.unreadableFileCount
+      : 0,
   };
 }
 
@@ -186,6 +222,16 @@ export function parseSnapshotManifest(text: string): ParseSnapshotManifest {
       contentSkipped: Array.isArray(parsed.contentSkipped) ? (parsed.contentSkipped as ContentSkip[]) : [],
       dropped: Array.isArray(parsed.dropped) ? (parsed.dropped as DroppedFile[]) : [],
       shards: parsed.shards as string[],
+      ...(typeof parsed.fileRecords === "string" && parsed.fileRecords.length > 0 ? { fileRecords: parsed.fileRecords } : {}),
+      truncated: parsed.truncated === true,
+      truncationReason: typeof parsed.truncationReason === "string" ? parsed.truncationReason : null,
+      buildSeq: typeof parsed.buildSeq === "number" && Number.isFinite(parsed.buildSeq) ? parsed.buildSeq : null,
+      unreadableFiles: Array.isArray(parsed.unreadableFiles)
+        ? (parsed.unreadableFiles as unknown[]).filter((entry): entry is string => typeof entry === "string")
+        : [],
+      unreadableFileCount: typeof parsed.unreadableFileCount === "number" && Number.isFinite(parsed.unreadableFileCount)
+        ? parsed.unreadableFileCount
+        : 0,
     },
   };
 }

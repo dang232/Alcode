@@ -11,8 +11,19 @@
  * half-wired tools.
  */
 
+import nodeFs from "node:fs"
+
 import { gateCheckpoint } from "../../ulw/checkpoint.ts"
+import { FileUlwPersistence } from "../../ulw/persistence.ts"
 import { UlwStore } from "../../ulw/store.ts"
+
+/**
+ * Environment pointer for the durable store file. Hosts that know their
+ * data directory (Electron main, the web server when it launches managed
+ * OpenCode) set it to `<dataDir>/ulw/store.json`; the plugin host then
+ * recovers runs across restarts. Unset means process-scoped and in-memory.
+ */
+export const ULW_STORE_FILE_ENV = "ALCODE_ULW_STORE_FILE"
 
 /**
  * Proves the store lane's exports work before any tool uses them: a probe
@@ -39,10 +50,25 @@ try {
 
 let shared: UlwStore | undefined
 
+/**
+ * Points the process-wide store at a durable file. The next `getUlwStore`
+ * call loads it (recovering runs) and every later mutation saves
+ * atomically. Call once at host startup, before any tool runs.
+ */
+export function configureUlwStorePersistence(options: { filePath: string }): void {
+  shared = new UlwStore({
+    persistence: new FileUlwPersistence({ fs: nodeFs, filePath: options.filePath }),
+  })
+}
+
 /** Returns the process-wide store, creating it on first use. */
 export function getUlwStore(): UlwStore {
   if (shared === undefined) {
-    shared = new UlwStore()
+    const filePath = process.env[ULW_STORE_FILE_ENV]?.trim()
+    shared =
+      filePath !== undefined && filePath.length > 0
+        ? new UlwStore({ persistence: new FileUlwPersistence({ fs: nodeFs, filePath }) })
+        : new UlwStore()
   }
   return shared
 }

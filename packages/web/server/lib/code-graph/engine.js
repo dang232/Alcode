@@ -36,6 +36,7 @@ export {
 } from '../../../../omo-engine/code-graph/src/schema.ts';
 export {
   SNAPSHOT_STORE_VERSION,
+  fileOfNodeId,
   createSnapshotManifest,
   joinSnapshotShards,
   parseSnapshotManifest,
@@ -44,3 +45,14 @@ export {
   serializeSnapshotShard,
   splitSnapshotIntoShards,
 } from '../../../../omo-engine/code-graph/src/snapshot-store.ts';
+export {
+  FILE_RECORDS_VERSION,
+  PARSER_RECORD_VERSION,
+  exportSurfaceKey,
+  fingerprintBytes,
+  fingerprintContent,
+  parseFileRecordsDoc,
+  serializeFileRecordsDoc,
+  validateFileRecords,
+} from '../../../../omo-engine/code-graph/src/file-records.ts';
+export { rebuildIncremental } from '../../../../omo-engine/code-graph/src/lifecycle.ts';

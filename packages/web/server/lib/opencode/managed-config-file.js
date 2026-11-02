@@ -51,6 +51,9 @@ const DISABLED_BUILTIN_PLUGINS = ['-opencode.browser'];
  * @param {typeof import('node:fs/promises')} dependencies.fsPromises
  * @param {typeof import('node:path')} dependencies.path
  * @param {string} dependencies.instanceDir this server's own directory (`instance-dir.js`)
+ * @param {string} [dependencies.dataDir] Alcode data directory; when set, the managed
+ *   child learns `ALCODE_ULW_STORE_FILE` (`<dataDir>/ulw/store.json`) so the native
+ *   ULW store persists runs across backend restarts instead of staying in-memory
  * @param {NodeJS.ProcessEnv} [dependencies.env] environment the managed child inherits
  * @param {object} [dependencies.versions] host version map (`process.versions`); Electron hosts set `versions.electron`
  * @param {object|null} [dependencies.agentToolRuntime]
@@ -73,6 +76,7 @@ export const createManagedConfigRuntime = ({
   fsPromises,
   path,
   instanceDir,
+  dataDir = null,
   env = process.env,
   versions = process.versions,
   agentToolRuntime = null,
@@ -234,12 +238,23 @@ export const createManagedConfigRuntime = ({
    * token are always present, so a tool enabled later in the session can still
    * call back without a restart.
    */
+  // Durable ULW pointer: the managed child runs the native ULW tools in its
+  // own process, so the store file must live somewhere the child can reach
+  // and the server owns across restarts. The per-pid instance dir is wrong
+  // for that (pids change); the shared data dir is stable, so the pointer
+  // names `<dataDir>/ulw/store.json`. Absent without a data dir, exactly
+  // like every other managed pointer that needs one.
+  const ulwStoreEnv = () =>
+    ((dataDir ?? '').length > 0
+      ? { ALCODE_ULW_STORE_FILE: path.join(dataDir, 'ulw', 'store.json') }
+      : {});
+
   const buildManagedChildEnv = async () => {
     const directories = await materializeEnabledPlugins();
     const childEnv = agentToolRuntime ? agentToolRuntime.createChildEnv() : {};
     if (ownsConfigFile()) {
       await writeConfigFile(directories);
-      return { ...childEnv, OPENCODE_CONFIG: filePath };
+      return { ...childEnv, OPENCODE_CONFIG: filePath, ...ulwStoreEnv() };
     }
     let content = env.OPENCODE_CONFIG_CONTENT;
     for (const directory of [...DISABLED_BUILTIN_PLUGINS, ...directories]) {
@@ -247,7 +262,7 @@ export const createManagedConfigRuntime = ({
     }
     content = appendManagedMcpServer(content, ULW_MCP_SERVER_NAME, resolveUlwMcpEntry(), 'managed MCP server');
     content = mergeManagedAgents(content, { ...(await resolveNativeAgentMap()), ...(await readUserAgentMap()) }, 'managed agents');
-    return { ...childEnv, OPENCODE_CONFIG_CONTENT: content };
+    return { ...childEnv, OPENCODE_CONFIG_CONTENT: content, ...ulwStoreEnv() };
   };
 
   /**

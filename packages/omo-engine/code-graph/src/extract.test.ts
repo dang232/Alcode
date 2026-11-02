@@ -10,7 +10,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { indexFiles, invalidateEdges } from "./extract";
+import { indexFiles, invalidateEdges, preferUnpacked } from "./extract";
 
 const FIXTURE_DIR = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "graph-basic");
 const TEST_TIMEOUT_MS = 60000;
@@ -387,6 +387,42 @@ describe("code-graph extract with rootDir", () => {
         expect(graph.dropped).toBeUndefined();
       } finally {
         rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe("preferUnpacked", () => {
+  it(
+    "#given an archive path with an unpacked twin #when resolved #then the real twin wins for spawning",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "code-graph-unpack-"));
+      try {
+        const archived = join(dir, "app.asar", "node_modules", "tsc.exe");
+        const twin = join(dir, "app.asar.unpacked", "node_modules", "tsc.exe");
+        mkdirSync(join(dir, "app.asar.unpacked", "node_modules"), { recursive: true });
+        writeFileSync(twin, "binary");
+        expect(preferUnpacked(archived)).toBe(twin);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a checkout path or a missing twin #when resolved #then the candidate is unchanged",
+    () => {
+      expect(preferUnpacked(join("repo", "node_modules", "tsc.exe"))).toBe(
+        join("repo", "node_modules", "tsc.exe"),
+      );
+      const dir = mkdtempSync(join(tmpdir(), "code-graph-unpack-"));
+      try {
+        const archived = join(dir, "app.asar", "node_modules", "tsc.exe");
+        expect(preferUnpacked(archived)).toBe(archived);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
     },
     TEST_TIMEOUT_MS,

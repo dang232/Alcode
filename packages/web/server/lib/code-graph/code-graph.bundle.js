@@ -9866,6 +9866,14 @@ var UNRESOLVED_CONFIDENCE = 0.5;
 var UNKNOWN = "unknown";
 var RECORD_ID = /^pk-[0-9a-f]{12}$/;
 var MAX_ALIAS_DEPTH = 10;
+function buildFailure(code, message) {
+  return Object.assign(new Error(message), { code, name: code === "CANCELLED" ? "AbortError" : "Error" });
+}
+function throwIfAborted(signal) {
+  if (signal?.aborted === true) {
+    throw buildFailure("CANCELLED", "code-graph: indexing cancelled (AbortSignal aborted)");
+  }
+}
 function isTestPath(path) {
   const normalized = path.replace(/\\/g, "/");
   return /(^|\/)__tests__\//.test(normalized) || /\.test\.[cm]?[tj]sx?$/.test(normalized) || /\.spec\.[cm]?[tj]sx?$/.test(normalized) || /(^|\/)(test|tests)\//.test(normalized);
@@ -9890,6 +9898,19 @@ function commonDir(paths) {
   }
   return firstSegments.slice(0, length).join("/") || "/";
 }
+function preferUnpacked(candidate) {
+  for (const marker of ["/app.asar/", "\\app.asar\\"]) {
+    const at = candidate.indexOf(marker);
+    if (at < 0)
+      continue;
+    const twin = candidate.slice(0, at) + marker.replace("app.asar", "app.asar.unpacked") + candidate.slice(at + marker.length);
+    try {
+      if (existsSync(twin))
+        return twin;
+    } catch {}
+  }
+  return candidate;
+}
 function defaultTsServerPath() {
   const require2 = createRequire(import.meta.url);
   const tsDir = dirname(require2.resolve("typescript/package.json"));
@@ -9902,14 +9923,14 @@ function defaultTsServerPath() {
       for (const binary of ["tsc.exe", "tsgo", "tsc"]) {
         const candidate = join(platformRoot, name, "lib", binary);
         if (existsSync(candidate))
-          return candidate;
+          return preferUnpacked(candidate);
       }
     }
   }
   for (const binary of process.platform === "win32" ? ["tsc.exe", "tsc"] : ["tsc"]) {
     const candidate = join(tsDir, "..", ".bin", binary);
     if (existsSync(candidate))
-      return candidate;
+      return preferUnpacked(candidate);
   }
   throw new Error("code-graph: TypeScript native server binary not found inside typescript@7.0.2; " + "pass IndexOptions.tsserverPath explicitly");
 }
@@ -9989,6 +10010,9 @@ class GraphBuilder {
       byFile[entry.file] = entry;
     const skipped = [...this.contentSkipped].sort((left, right) => left.file < right.file ? -1 : 1);
     return { nodes, edges, content: { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: byFile, skipped } };
+  }
+  size() {
+    return { nodes: this.nodes.size, edges: this.edges.size, files: this.files.size };
   }
   addEntries(project, entries) {
     const program = project.program;
@@ -10525,6 +10549,11 @@ class GraphBuilder {
 function indexFiles(entryFiles, options = {}) {
   if (entryFiles.length === 0)
     return { nodes: [], edges: [], content: emptyContentIndex() };
+  throwIfAborted(options.signal);
+  const maxFiles = options.budgets?.maxFiles;
+  if (maxFiles !== undefined && Number.isFinite(maxFiles) && entryFiles.length > maxFiles) {
+    throw buildFailure("BUDGET_FILES", `code-graph: entry budget exceeded (${entryFiles.length} entries > maxFiles ${maxFiles})`);
+  }
   const absoluteEntries = entryFiles.map((entry) => resolve(entry));
   if (options.rootDir === undefined) {
     const root = commonDir(absoluteEntries.map(toPosixPath));
@@ -10561,10 +10590,34 @@ function indexFiles(entryFiles, options = {}) {
 function buildGraph(absoluteEntries, root, strictRoot, options) {
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
   const report = options.onProgress;
+  const signal = options.signal;
+  const budgets = options.budgets;
+  const generation = options.generation;
+  const startMs = Date.now();
+  const elapsed = () => Date.now() - startMs;
+  const checkTimeBudget = () => {
+    const maxMs = budgets?.maxMs;
+    if (maxMs !== undefined && Number.isFinite(maxMs) && elapsed() > maxMs) {
+      throw buildFailure("BUDGET_TIME", `code-graph: time budget exceeded (${elapsed()}ms > maxMs ${maxMs})`);
+    }
+  };
+  const checkSizeBudgets = (size) => {
+    const maxNodes = budgets?.maxNodes;
+    if (maxNodes !== undefined && Number.isFinite(maxNodes) && size.nodes > maxNodes) {
+      throw buildFailure("BUDGET_NODES", `code-graph: node budget exceeded (${size.nodes} nodes > maxNodes ${maxNodes})`);
+    }
+    const maxEdges = budgets?.maxEdges;
+    if (maxEdges !== undefined && Number.isFinite(maxEdges) && size.edges > maxEdges) {
+      throw buildFailure("BUDGET_EDGES", `code-graph: edge budget exceeded (${size.edges} edges > maxEdges ${maxEdges})`);
+    }
+  };
+  throwIfAborted(signal);
   const api = new API({ tsserverPath, cwd: root });
   try {
     const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
-    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0 });
+    throwIfAborted(signal);
+    checkTimeBudget();
+    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0, elapsedMs: elapsed(), generation });
     try {
       const builder = new GraphBuilder(root, strictRoot);
       const byProject = new Map;
@@ -10581,17 +10634,29 @@ function buildGraph(absoluteEntries, root, strictRoot, options) {
       const projectsTotal = byProject.size;
       let projectsDone = 0;
       for (const [project, entries] of byProject) {
+        throwIfAborted(signal);
+        checkTimeBudget();
         builder.addEntries(project, entries);
         projectsDone += 1;
-        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+        const size = builder.size();
+        checkSizeBudgets(size);
+        checkTimeBudget();
+        throwIfAborted(signal);
+        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: size.nodes, edges: size.edges, elapsedMs: elapsed(), generation });
         if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
           options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
         }
       }
-      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
+      throwIfAborted(signal);
+      checkTimeBudget();
+      const preEdges = builder.size();
+      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: preEdges.nodes, edges: preEdges.edges, elapsedMs: elapsed(), generation });
       builder.addKnowledgeLinks(options.knowledge ?? []);
       const snapshotOut = builder.snapshot();
-      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal });
+      checkSizeBudgets({ nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length });
+      checkTimeBudget();
+      throwIfAborted(signal);
+      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length, elapsedMs: elapsed(), generation });
       return { snapshot: snapshotOut, dropped: builder.dropped };
     } finally {
       snapshot.dispose();
@@ -11942,6 +12007,14 @@ var UNATTRIBUTED_SHARD = "__unattributed__";
 function fileOfNodeId(id) {
   if (id.startsWith("file:"))
     return id.slice("file:".length);
+  if (id.startsWith("call:")) {
+    const rest = id.slice("call:".length);
+    const parts = rest.split(":");
+    if (parts.length < 3)
+      return null;
+    const file = parts.slice(0, -2).join(":");
+    return file.length > 0 ? file : null;
+  }
   const at = id.lastIndexOf("@");
   if (at < 0)
     return null;
@@ -12007,7 +12080,13 @@ function createSnapshotManifest(snapshot, meta) {
     contentTokenCap: snapshot.content?.tokenCap ?? null,
     contentSkipped: snapshot.content?.skipped ?? [],
     dropped: snapshot.dropped ?? [],
-    shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file)
+    shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file),
+    ...meta.fileRecords !== undefined && meta.fileRecords !== null ? { fileRecords: meta.fileRecords } : {},
+    truncated: meta.truncated === true,
+    truncationReason: typeof meta.truncationReason === "string" ? meta.truncationReason : null,
+    buildSeq: typeof meta.buildSeq === "number" && Number.isFinite(meta.buildSeq) ? meta.buildSeq : null,
+    unreadableFiles: Array.isArray(meta.unreadableFiles) ? [...meta.unreadableFiles] : [],
+    unreadableFileCount: typeof meta.unreadableFileCount === "number" && Number.isFinite(meta.unreadableFileCount) ? meta.unreadableFileCount : 0
   };
 }
 function serializeSnapshotShard(shard) {
@@ -12062,7 +12141,13 @@ function parseSnapshotManifest(text) {
       contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
       contentSkipped: Array.isArray(parsed.contentSkipped) ? parsed.contentSkipped : [],
       dropped: Array.isArray(parsed.dropped) ? parsed.dropped : [],
-      shards: parsed.shards
+      shards: parsed.shards,
+      ...typeof parsed.fileRecords === "string" && parsed.fileRecords.length > 0 ? { fileRecords: parsed.fileRecords } : {},
+      truncated: parsed.truncated === true,
+      truncationReason: typeof parsed.truncationReason === "string" ? parsed.truncationReason : null,
+      buildSeq: typeof parsed.buildSeq === "number" && Number.isFinite(parsed.buildSeq) ? parsed.buildSeq : null,
+      unreadableFiles: Array.isArray(parsed.unreadableFiles) ? parsed.unreadableFiles.filter((entry) => typeof entry === "string") : [],
+      unreadableFileCount: typeof parsed.unreadableFileCount === "number" && Number.isFinite(parsed.unreadableFileCount) ? parsed.unreadableFileCount : 0
     }
   };
 }
@@ -12118,24 +12203,236 @@ function joinSnapshotShards(manifest, shards) {
   };
   return { kind: "snapshot", snapshot };
 }
+// ../../../../omo-engine/code-graph/src/file-records.ts
+import { createHash as createHash2 } from "node:crypto";
+var PARSER_RECORD_VERSION = 1;
+var FILE_RECORDS_VERSION = 1;
+function exportSurfaceKey(shard) {
+  const parts = [];
+  for (const node of shard.nodes ?? []) {
+    if (node.kind === "export-contract")
+      parts.push(`contract:${node.id}=>${node.target ?? ""}`);
+  }
+  for (const edge of shard.edges ?? []) {
+    if (edge.kind === "EXPORTS")
+      parts.push(`exports:${edge.id}`);
+  }
+  return parts.sort().join(`
+`);
+}
+function fingerprintContent(text) {
+  return createHash2("sha256").update(text, "utf8").digest("hex");
+}
+function fingerprintBytes(bytes) {
+  return createHash2("sha256").update(bytes).digest("hex");
+}
+var isRecord2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var isHex64 = (value) => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+function parseFileRecordsDoc(value) {
+  if (!isRecord2(value))
+    return null;
+  if (value.version !== FILE_RECORDS_VERSION)
+    return null;
+  if (value.parser !== PARSER_RECORD_VERSION)
+    return null;
+  if (value.schema !== SNAPSHOT_STORE_VERSION)
+    return null;
+  if (!isRecord2(value.files))
+    return null;
+  const files = {};
+  for (const [key, entry] of Object.entries(value.files)) {
+    if (typeof key !== "string" || key.length === 0)
+      return null;
+    if (!isRecord2(entry))
+      return null;
+    if (entry.file !== key || !isHex64(entry.blob))
+      return null;
+    const size = entry.size;
+    const mtimeMs = entry.mtimeMs;
+    const stat = typeof size === "number" && Number.isFinite(size) && size >= 0 && typeof mtimeMs === "number" && Number.isFinite(mtimeMs) && mtimeMs >= 0 ? { size, mtimeMs } : undefined;
+    files[key] = stat === undefined ? { file: key, blob: entry.blob } : { file: key, blob: entry.blob, ...stat };
+  }
+  return { version: FILE_RECORDS_VERSION, parser: PARSER_RECORD_VERSION, schema: SNAPSHOT_STORE_VERSION, files };
+}
+function serializeFileRecordsDoc(doc) {
+  const files = {};
+  for (const key of Object.keys(doc.files).sort()) {
+    const entry = doc.files[key];
+    files[key] = entry.size !== undefined && entry.mtimeMs !== undefined ? { file: entry.file, blob: entry.blob, size: entry.size, mtimeMs: entry.mtimeMs } : { file: entry.file, blob: entry.blob };
+  }
+  return JSON.stringify({ version: doc.version, parser: doc.parser, schema: doc.schema, files });
+}
+function validateFileRecords(doc, current) {
+  const reused = new Set;
+  const changed = new Set;
+  const added = new Set;
+  const deleted = new Set;
+  if (doc === null) {
+    for (const file of current.keys())
+      added.add(file);
+    return { reused, changed, added, deleted };
+  }
+  for (const [file, blob] of current) {
+    const record = doc.files[file];
+    if (record === undefined)
+      added.add(file);
+    else if (record.blob === blob)
+      reused.add(file);
+    else
+      changed.add(file);
+  }
+  for (const file of Object.keys(doc.files)) {
+    if (!current.has(file))
+      deleted.add(file);
+  }
+  return { reused, changed, added, deleted };
+}
+// ../../../../omo-engine/code-graph/src/lifecycle.ts
+function rebuildIncremental(previous, changedFiles, freshChanged) {
+  const previousShards = splitSnapshotIntoShards(previous);
+  const keptShards = [];
+  for (const shard of previousShards) {
+    if (!changedFiles.has(shard.file))
+      keptShards.push(shard);
+  }
+  const freshShards = splitSnapshotIntoShards(freshChanged);
+  const changedFreshShards = [];
+  for (const shard of freshShards) {
+    if (changedFiles.has(shard.file))
+      changedFreshShards.push(shard);
+  }
+  const nodeById = new Map;
+  for (const shard of keptShards) {
+    for (const node of shard.nodes) {
+      if (!nodeById.has(node.id))
+        nodeById.set(node.id, node);
+    }
+  }
+  for (const shard of changedFreshShards) {
+    for (const node of shard.nodes)
+      nodeById.set(node.id, node);
+  }
+  const fileOfId = (id) => {
+    if (id === "unknown")
+      return null;
+    const known = nodeById.get(id);
+    if (known !== undefined && typeof known.file === "string" && known.file.length > 0)
+      return known.file;
+    return fileOfNodeId(id);
+  };
+  let invalidatedEdges = 0;
+  const keptEdges = [];
+  for (const shard of keptShards) {
+    for (const edge of shard.edges) {
+      const fromFile = fileOfId(edge.from);
+      const toFile = fileOfId(edge.to);
+      const fromAlive = nodeById.has(edge.from);
+      const toAlive = edge.to === "unknown" || nodeById.has(edge.to);
+      if (!fromAlive || !toAlive) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      if (fromFile === null && toFile === null) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      if (fromFile !== null && changedFiles.has(fromFile)) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      keptEdges.push(edge);
+    }
+  }
+  const seenEdgeIds = new Set(keptEdges.map((edge) => edge.id));
+  const freshEdges = [];
+  for (const shard of changedFreshShards) {
+    for (const edge of shard.edges) {
+      if (seenEdgeIds.has(edge.id))
+        continue;
+      seenEdgeIds.add(edge.id);
+      freshEdges.push(edge);
+    }
+  }
+  const nodes = [...nodeById.values()].sort((a, b) => a.id < b.id ? -1 : 1);
+  const edges = [...keptEdges, ...freshEdges].sort((a, b) => a.id < b.id ? -1 : 1);
+  const byFile = {};
+  const skippedMap = new Map;
+  for (const entry of previous.content?.skipped ?? []) {
+    const fileOf = entry.file;
+    if (!changedFiles.has(fileOf))
+      skippedMap.set(fileOf, entry);
+  }
+  for (const entry of freshChanged.content?.skipped ?? []) {
+    skippedMap.set(entry.file, entry);
+  }
+  const prevFiles = previous.content?.files ?? {};
+  for (const entry of Object.entries(prevFiles)) {
+    const file = entry[0];
+    const record = entry[1];
+    if (!changedFiles.has(file))
+      byFile[file] = record;
+  }
+  const freshFiles = freshChanged.content?.files ?? {};
+  for (const entry of Object.entries(freshFiles)) {
+    const file = entry[0];
+    const record = entry[1];
+    if (changedFiles.has(file))
+      byFile[file] = record;
+  }
+  const mergedDroppedMap = new Map;
+  for (const drop of previous.dropped ?? [])
+    mergedDroppedMap.set(drop.file, drop);
+  for (const drop of freshChanged.dropped ?? [])
+    mergedDroppedMap.set(drop.file, drop);
+  for (const file of Object.keys(byFile)) {
+    for (const key of [...mergedDroppedMap.keys()]) {
+      if (key.endsWith("/" + file) || key === file)
+        mergedDroppedMap.delete(key);
+    }
+  }
+  const mergedDropped = [...mergedDroppedMap.values()].sort((a, b) => a.file < b.file ? -1 : 1);
+  const tokenCap = previous.content?.tokenCap ?? freshChanged.content?.tokenCap ?? 5000;
+  const snapshot = {
+    nodes,
+    edges,
+    content: {
+      tokenCap,
+      files: byFile,
+      skipped: [...skippedMap.values()].sort((a, b) => a.file < b.file ? -1 : 1)
+    },
+    ...previous.root !== undefined || freshChanged.root !== undefined ? { root: freshChanged.root ?? previous.root } : {},
+    ...mergedDropped.length > 0 ? { dropped: mergedDropped } : {}
+  };
+  return { snapshot, reusedFiles: keptShards.length, invalidatedEdges };
+}
 export {
+  FILE_RECORDS_VERSION,
   MAX_CONTENT_TOKENS_PER_FILE,
+  PARSER_RECORD_VERSION,
   SNAPSHOT_STORE_VERSION,
   STALE_AFTER_MS,
   computeScopeFingerprint,
   createSnapshotManifest,
+  exportSurfaceKey,
+  fileOfNodeId,
   findTests,
   findUnreferenced,
+  fingerprintBytes,
+  fingerprintContent,
   impact,
   indexFiles,
   joinSnapshotShards,
+  parseFileRecordsDoc,
   parseSnapshotManifest,
   parseSnapshotShard,
+  rebuildIncremental,
   search,
   searchContent,
+  serializeFileRecordsDoc,
   serializeSnapshotManifest,
   serializeSnapshotShard,
   splitSnapshotIntoShards,
   symbolContext,
-  trace
+  trace,
+  validateFileRecords
 };

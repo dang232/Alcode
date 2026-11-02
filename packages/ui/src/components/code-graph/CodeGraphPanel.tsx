@@ -25,6 +25,7 @@ import {
   cancelCodeGraphIndex,
   isFiniteJsonNumber,
   isJsonArray,
+  isJsonNumber,
   isJsonRecord,
   isJsonText,
   queryCodeGraph,
@@ -85,6 +86,13 @@ const completenessReasonKey = (reason: string) => {
  * this constant is only the engine's answer cap, never a UI control.
  */
 const SUBJECT_FETCH_LIMIT = 20;
+
+/** Client-side bounds for change-set impact: one query per symbol would fan out
+ *  without a cap (20 symbols/file x N files). Files and symbols past these
+ *  caps are not queried; the view states how many were skipped. */
+const MAX_IMPACT_FILES = 8;
+const MAX_IMPACT_SYMBOLS = 12;
+const IMPACT_QUERY_CONCURRENCY = 4;
 
 const DEFAULT_GRAPH_FILTERS: CodeGraphToolbarFilters = {
   kinds: ['function', 'class', 'interface', 'file'],
@@ -340,13 +348,28 @@ const parseImpactAnswer = (payload: CodeGraphJsonField): CodeGraphImpactAnswer =
  * an explicit error with a retry, never a fake empty list.
  */
 export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; focusFile?: string | null }> = ({
-  directory,
+  directory: directoryProp,
   focusFile,
 }) => {
   const { t } = useI18n();
+  const [scopeOverride, setScopeOverride] = React.useState<string | null>(null);
+  const directory = scopeOverride ?? directoryProp;
+  const directoryPropRef = React.useRef(directoryProp);
+  React.useEffect(() => {
+    if (directoryPropRef.current !== directoryProp) {
+      directoryPropRef.current = directoryProp;
+      setScopeOverride(null);
+    }
+  }, [directoryProp]);
   const [index, setIndex] = React.useState<CodeGraphIndexSummary | null>(null);
   const [indexError, setIndexError] = React.useState<string | null>(null);
   const [indexLoading, setIndexLoading] = React.useState(false);
+  // Generation guard for the index load: every loadIndex call mints the next
+  // id, so an aborted load clears the spinner only when no newer load took
+  // over. Without this, a stolen request (refresh, focus revalidate, or a
+  // poll tick aborted by its own cleanup) leaves indexLoading true forever,
+  // and the header spinner plus disabled Refresh never recover.
+  const indexRef = React.useRef(0);
   const [searchText, setSearchText] = React.useState('');
   const [search, setSearch] = React.useState<CodeGraphQueryResult | null>(null);
   const [searchScope, setSearchScope] = React.useState<'symbols' | 'content'>('symbols');
@@ -394,6 +417,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
   const [impactAggregate, setImpactAggregate] = React.useState<CodeGraphImpactAnswer | null>(null);
   const [impactRunsLoading, setImpactRunsLoading] = React.useState(false);
   const [impactRunsError, setImpactRunsError] = React.useState<string | null>(null);
+  const [impactTruncated, setImpactTruncated] = React.useState<{ filesSkipped: number; symbolsSkipped: number }>({ filesSkipped: 0, symbolsSkipped: 0 });
   const [peek, setPeek] = React.useState<{
     file: string; line: number; text: string | null; error: string | null; loading: boolean;
   } | null>(null);
@@ -640,19 +664,23 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
   const lastIndexReadAtRef = React.useRef(0);
   const loadIndex = React.useCallback(async (refresh: boolean, signal: AbortSignal) => {
     if (!directory) return;
+    const request = indexRef.current + 1;
+    indexRef.current = request;
     setIndexLoading(true);
     setIndexError(null);
     try {
       const summary = await fetchCodeGraphIndex(directory, { refresh, signal });
-      if (signal.aborted) return;
+      if (signal.aborted || indexRef.current !== request) return;
       lastIndexReadAtRef.current = Date.now();
       setIndex(summary);
     } catch (error) {
-      if (signal.aborted) return;
+      if (signal.aborted || indexRef.current !== request) return;
       setIndex(null);
       setIndexError(error instanceof Error ? error.message : String(error));
     } finally {
-      if (!signal.aborted) setIndexLoading(false);
+      // An aborted load with no successor owns nothing else to clear it:
+      // a newer loadIndex owns the flag once the generation moved on.
+      if (indexRef.current === request) setIndexLoading(false);
     }
   }, [directory]);
 
@@ -693,7 +721,11 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
   React.useEffect(() => {
     if (!directory || index === null || index.ready !== false) return undefined;
     const state = index.indexState?.state;
-    if (state === 'failed' || state === 'cancelled') return undefined;
+    // Terminal states stop the poll: failed and cancelled have no future
+    // update, and truncated publishes no further generations — the panel
+    // already shows the stale labelling with its refresh action. Without the
+    // truncated stop this chained timeout re-polled forever on over-cap scopes.
+    if (state === 'failed' || state === 'cancelled' || state === 'truncated') return undefined;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       void loadIndex(false, controller.signal);
@@ -750,6 +782,9 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     setSearchLoading(false);
     setDetailLoading(false);
     setIndexLoading(false);
+    setExploreLoading(false);
+    setTrailLoading(false);
+    setImpactRunsLoading(false);
     setDepth(1);
     setSubjectChangeFiles([]);
     explicitRef.current = false;
@@ -799,7 +834,10 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       .then((result) => { if (!controller.signal.aborted) setFileDetail(result); })
       .catch((error) => { if (!controller.signal.aborted) setDetailError(error instanceof Error ? error.message : String(error)); })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
-    return () => controller.abort();
+    // Aborting without a successor must still release the spinner: the next
+    // effect run either starts a new load (which sets it again) or bails out
+    // early, in which case nothing else would clear it.
+    return () => { controller.abort(); setDetailLoading(false); };
   }, [directory, focusFile, indexStamp]);
 
   const fetchSubject = React.useCallback(async (
@@ -913,7 +951,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       setSearch(null);
       setSearchError(error instanceof Error ? error.message : String(error));
     } finally {
-      if (!signal.aborted && searchRef.current === request) setSearchLoading(false);
+      if (searchRef.current === request) setSearchLoading(false);
     }
   }, [directory, fetchSubject]);
 
@@ -973,7 +1011,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       setDetailError(error instanceof Error ? error.message : String(error));
       setPreview(null);
     } finally {
-      if (!signal.aborted && requestRef.current === request) setDetailLoading(false);
+      if (requestRef.current === request) setDetailLoading(false);
     }
   }, [directory, fetchSubject, commitSelection, detailSubjectId, traceFrom]);
 
@@ -999,16 +1037,24 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       setExplore(null);
       setExploreError(error instanceof Error ? error.message : String(error));
     } finally {
-      if (!signal.aborted && exploreRef.current === request) setExploreLoading(false);
+      if (exploreRef.current === request) setExploreLoading(false);
     }
   }, [directory, cacheKey, queryOnce]);
 
   React.useEffect(() => {
     if (mode !== 'explore' || !directory) return undefined;
+    // The module list is only honest once a generation exists: while the
+    // index is still building there are no modules to group, and fetching
+    // then would flash the finished-empty message mid-build.
+    if (index?.ready !== true) return undefined;
     const controller = new AbortController();
     void loadExplore(false, controller.signal);
-    return () => controller.abort();
-  }, [mode, directory, loadExplore]);
+    // Same release rule as the focus effect: the next run either reloads or
+    // bails on a ready index, so an aborted tick must not keep the spinner.
+    // (No generation check here: loadExplore owns its own request ids, and
+    // the next run re-sets the flag whenever it loads.)
+    return () => { controller.abort(); setExploreLoading(false); };
+  }, [mode, directory, loadExplore, index?.ready]);
 
   // Trace endpoints: the inspector's trace actions name a slot. The query
   // effect below fires once both slots hold an endpoint at the current
@@ -1074,18 +1120,22 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       signal,
     ).then(
       (answer) => {
-        if (signal.aborted || trailRef.current !== request) return;
+        // A newer trace owns the flag once the generation moved on; an
+        // aborted trace with no successor must still release the spinner.
+        if (trailRef.current !== request) return;
+        if (signal.aborted) { setTrailLoading(false); return; }
         setTrail(answer);
         setTrailLoading(false);
       },
       (error) => {
-        if (signal.aborted || trailRef.current !== request) return;
+        if (trailRef.current !== request) return;
+        if (signal.aborted) { setTrailLoading(false); return; }
         setTrail(null);
         setTrailError(error instanceof Error ? error.message : String(error));
         setTrailLoading(false);
       },
     );
-    return () => controller.abort();
+    return () => { controller.abort(); if (trailRef.current === request) setTrailLoading(false); };
   }, [mode, directory, traceFrom, traceTo, depth, trackPending, cacheKey, queryRaw, queryRawOnce]);
 
   // The default subject carries a fresh files array per render (the resolver
@@ -1111,10 +1161,18 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       setImpactAggregate(null);
       setImpactRunsError(message);
       setImpactRunsLoading(false);
+      setImpactTruncated({ filesSkipped: 0, symbolsSkipped: 0 });
       return undefined;
+    };
+    // An aborted run with no successor must still release the spinner: a
+    // newer run owns the flag once the generation moved on, so this
+    // only clears when nothing newer took over.
+    const settleImpact = (): void => {
+      if (impactRef.current === request) setImpactRunsLoading(false);
     };
     setImpactRunsLoading(true);
     setImpactRunsError(null);
+    setImpactTruncated({ filesSkipped: 0, symbolsSkipped: 0 });
     const changeFiles = subjectChangeFiles.length > 0
       ? subjectChangeFiles
       : (defaultSubject.source === 'changes' ? (defaultChangesKey.length > 0 ? defaultChangesKey.split('\u0000') : []) : []);
@@ -1126,9 +1184,10 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
         signal,
       ).then(
         (answer) => {
-          if (signal.aborted || impactRef.current !== request) return;
+          if (signal.aborted || impactRef.current !== request) { settleImpact(); return; }
           setImpactRuns([{ symbol, answer }]);
           setImpactAggregate(answer);
+          setImpactTruncated({ filesSkipped: 0, symbolsSkipped: 0 });
           setImpactRunsLoading(false);
         },
         (error) => {
@@ -1137,21 +1196,25 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       );
       return () => controller.abort();
     }
-    const files = changeFiles.length > 0
+    const allFiles = changeFiles.length > 0
       ? changeFiles
       : (selectedId !== null && selectedId.startsWith('file:')
         ? [selectedId.slice('file:'.length)]
         : []);
+    const filesSkipped = Math.max(0, allFiles.length - MAX_IMPACT_FILES);
+    const files = allFiles.slice(0, MAX_IMPACT_FILES);
     if (files.length === 0) {
       setImpactRuns([]);
       setImpactAggregate(null);
       setImpactRunsLoading(false);
+      setImpactTruncated({ filesSkipped: 0, symbolsSkipped: 0 });
       return undefined;
     }
     void (async () => {
       const symbols: string[] = [];
+      const seenSymbols = new Set<string>();
       for (const file of files) {
-        if (signal.aborted || impactRef.current !== request) return;
+        if (signal.aborted || impactRef.current !== request) { settleImpact(); return; }
         try {
           const fileAnswer = await queryOnce(
             cacheKey('file', `file:${file}`, queryDepth),
@@ -1160,37 +1223,60 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
             signal,
           );
           for (const item of fileAnswer.items) {
-            if (!item.id.startsWith('file:') && !symbols.includes(item.id)) symbols.push(item.id);
+            if (!item.id.startsWith('file:') && !seenSymbols.has(item.id)) {
+              seenSymbols.add(item.id);
+              symbols.push(item.id);
+            }
           }
         } catch {
           // One unreadable file never erases the symbols the graph knew.
         }
       }
-      if (signal.aborted || impactRef.current !== request) return;
+      if (signal.aborted || impactRef.current !== request) { settleImpact(); return; }
       if (symbols.length === 0) {
         setImpactRuns([]);
         setImpactAggregate(null);
         setImpactRunsLoading(false);
+        setImpactTruncated({ filesSkipped, symbolsSkipped: 0 });
         return;
       }
-      const settled = await Promise.all(symbols.map((symbol) => queryRawOnce(
-        cacheKey('impact-raw', symbol, queryDepth),
-        () => queryRaw({ kind: 'impact', symbol }, queryDepth, signal).then(parseImpactAnswer),
-        signal,
-      ).then(
-        (answer) => ({ symbol, answer }),
-        (): null => null,
-      )));
-      if (signal.aborted || impactRef.current !== request) return;
+      const symbolsSkipped = Math.max(0, symbols.length - MAX_IMPACT_SYMBOLS);
+      const queried = symbols.slice(0, MAX_IMPACT_SYMBOLS);
+      // Bounded concurrency: 4 in flight at most, so a large change set cannot
+      // open dozens of /api/code-graph/query streams at once. Abort short-circuits.
+      const settled: Array<{ symbol: string; answer: CodeGraphImpactAnswer } | null> = new Array(queried.length).fill(null);
+      let cursor = 0;
+      const worker = async (): Promise<void> => {
+        while (true) {
+          if (signal.aborted || impactRef.current !== request) { settleImpact(); return; }
+          const index = cursor;
+          cursor += 1;
+          if (index >= queried.length) return;
+          const symbol = queried[index];
+          try {
+            const answer = await queryRawOnce(
+              cacheKey('impact-raw', symbol, queryDepth),
+              () => queryRaw({ kind: 'impact', symbol }, queryDepth, signal).then(parseImpactAnswer),
+              signal,
+            );
+            settled[index] = { symbol, answer };
+          } catch {
+            settled[index] = null;
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(IMPACT_QUERY_CONCURRENCY, queried.length) }, () => worker()));
+      if (signal.aborted || impactRef.current !== request) { settleImpact(); return; }
       const ok = settled.filter((entry): entry is { symbol: string; answer: CodeGraphImpactAnswer } => entry !== null);
       setImpactRuns(ok);
       setImpactAggregate(ok[0]?.answer ?? null);
+      setImpactTruncated({ filesSkipped, symbolsSkipped });
       if (ok.length === 0) {
         setImpactRunsError('Failed to query code graph');
       }
       setImpactRunsLoading(false);
     })();
-    return () => controller.abort();
+    return () => { controller.abort(); if (impactRef.current === request) setImpactRunsLoading(false); };
   }, [mode, directory, depth, selectedId, subjectChangeFiles, defaultChangesKey, defaultSubject.source, cacheKey, queryOnce, queryRaw, queryRawOnce]);
 
   const handlePeek = React.useCallback(async (file: string, line: number) => {
@@ -1303,6 +1389,11 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     if ((subject.source !== 'active-file' && subject.source !== 'changes') || !file) return;
     if (subject.source === 'changes') setSubjectChangeFiles(subject.files);
     const subjectId = `file:${file}`;
+    // The adopted subject drives the same detail view as an explicit pick:
+    // share selectItem's generation so the newest of the two owns the flag
+    // and the loser never writes stale answers nor strands the spinner.
+    const request = requestRef.current + 1;
+    requestRef.current = request;
     setDetailLoading(true);
     setDetailError(null);
     setDetail(null);
@@ -1331,13 +1422,13 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
         refresh,
         signal,
       );
-      if (signal.aborted) return;
+      if (signal.aborted || requestRef.current !== request) return;
       setFileDetail(result);
     } catch (error) {
-      if (signal.aborted) return;
+      if (signal.aborted || requestRef.current !== request) return;
       setDetailError(error instanceof Error ? error.message : String(error));
     } finally {
-      if (!signal.aborted) setDetailLoading(false);
+      if (requestRef.current === request) setDetailLoading(false);
     }
   }, [directory, cacheKey, queryOnce, detailSubjectId]);
 
@@ -1568,10 +1659,29 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
   const revisionMismatch = committedRevision !== null && index !== null && committedRevision !== index.revision;
   const effectiveFreshness = revisionMismatch ? 'stale' : index?.freshness;
   const showStaleBanner = index !== null && (index.freshness === 'stale' || revisionMismatch);
-  const indexStateName = index?.indexState?.state ?? 'queued';
+  const indexStateName = index?.indexState?.state ?? (index?.ready === false ? 'queued' : 'ready');
   const indexBuilding =
     index !== null && index.ready === false && indexStateName !== 'failed' && indexStateName !== 'cancelled';
   const indexEnded = index !== null && index.ready === false && (indexStateName === 'failed' || indexStateName === 'cancelled');
+  const indexTruncated = index?.indexTruncated === true || (index?.truncationReason ?? null) !== null;
+  // While a build runs the panel has no graph to show: the empty-modules
+  // message belongs to a finished empty index, never to a job in flight.
+  const isIndexing = indexBuilding || (index !== null && index.ready === false);
+  const currentScopeRoot = index?.scopeRoot ?? null;
+  const currentScopeMode = index?.scopeMode ?? null;
+  const nestedRoots = index?.nestedRepoRoots ?? explore?.nestedRepoRoots ?? [];
+  const exploreModules = explore?.modules ?? [];
+  const modulesCollapseToRoot = exploreModules.length > 0 && exploreModules.every((entry) => entry.name === '(root)');
+  const showNestedPicker =
+    index !== null &&
+    index.ready !== false &&
+    nestedRoots.length > 0 &&
+    (exploreModules.length === 0 || modulesCollapseToRoot);
+  const joinScopePath = (root: string, rel: string): string => {
+    const cleanRoot = root.replace(/[\\/]+$/, '');
+    const cleanRel = rel.replace(/^[\\/]+/, '');
+    return `${cleanRoot}/${cleanRel}`;
+  };
   const indexProgressLabel = React.useMemo(() => {
     if (index === null || index.ready !== false) return '';
     const state = index.indexState;
@@ -1586,13 +1696,21 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
               ? t('codeGraph.index.state.failed')
               : indexStateName === 'cancelled'
                 ? t('codeGraph.index.state.cancelled')
-                : t('codeGraph.index.state.queued');
+                : indexStateName === 'truncated'
+                  ? t('codeGraph.index.state.truncated')
+                  : t('codeGraph.index.state.queued');
     const parts = [phase];
-    if (typeof state?.projectsTotal === 'number' && state.projectsTotal > 0) {
-      parts.push(t('codeGraph.index.projects', { done: String(state.projectsDone ?? 0), total: String(state.projectsTotal) }));
-    } else if (typeof state?.files === 'number' && state.files > 0) {
-      parts.push(t('codeGraph.index.files', { count: String(state.files) }));
+    // Tag reads prove the same representation the banned `typeof` probes did:
+    // only real JSON numbers reach the counts, never strings or missing fields.
+    const projectsTotal = state?.projectsTotal;
+    const files = state?.files;
+    if (isJsonNumber(projectsTotal) && projectsTotal > 0) {
+      parts.push(t('codeGraph.index.projects', { done: String(state?.projectsDone ?? 0), total: String(projectsTotal) }));
+    } else if (isJsonNumber(files) && files > 0) {
+      parts.push(t('codeGraph.index.files', { count: String(files) }));
     }
+    const jobReason = state?.truncationReason ?? index?.truncationReason ?? null;
+    if (jobReason) parts.push(String(jobReason));
     return parts.join(' · ');
   }, [index, indexStateName, t]);
 
@@ -1774,6 +1892,9 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
   React.useEffect(() => {
     if (!directory || focusFile) return undefined;
     if (explicitRef.current || selectedId !== null || committedQuery !== null || subjectLoading) return undefined;
+    // A subject query without a published generation would answer empty:
+    // wait for the first ready generation instead of adopting into a void.
+    if (index?.ready === false) return undefined;
     const saved = useUIStore.getState().codeGraphStateByDirectory[String(directory).trim()];
     if (saved?.query) return undefined;
     const key = `${directory}|${defaultSubject.source}|${defaultSubject.file ?? defaultSubject.files[0] ?? ''}`;
@@ -1786,7 +1907,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     const signal = trackPending(controller);
     void adoptDefaultSubject(false, signal, defaultSubject, depthRef.current);
     return () => controller.abort();
-  }, [directory, focusFile, defaultSubject, subjectLoading, selectedId, committedQuery, adoptDefaultSubject, trackPending]);
+  }, [directory, focusFile, defaultSubject, subjectLoading, selectedId, committedQuery, adoptDefaultSubject, trackPending, index?.ready]);
 
   const activeAnswer = detail ?? fileDetail ?? search ?? explore ?? impactAggregate ?? trail ?? null;
 
@@ -2004,10 +2125,16 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
               : 'border-[var(--status-info-border)] bg-[var(--status-info-background)]',
           )}
           data-code-graph-index-state={indexStateName}
+          data-testid={indexEnded ? 'code-graph-index-failed' : 'code-graph-index-building'}
         >
           <p className="typography-ui text-foreground">{indexProgressLabel}</p>
           {index.indexState?.error ? (
             <p className="typography-micro mt-1 break-words text-[var(--status-error)]">{index.indexState.error}</p>
+          ) : null}
+          {(index.indexState?.truncationReason ?? index.truncationReason) ? (
+            <p className="typography-micro mt-1 break-words text-muted-foreground" data-testid="code-graph-index-truncation">
+              {`truncation: ${index.indexState?.truncationReason ?? index.truncationReason}`}
+            </p>
           ) : null}
           <div className="mt-2 flex gap-2">
             {indexBuilding ? (
@@ -2024,10 +2151,15 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       ) : null}
 
       {showStaleBanner && index && index.ready !== false ? (
-        <div className="rounded-md border border-[var(--status-warning-border)] bg-[var(--status-warning-background)] p-3">
+        <div
+          className="rounded-md border border-[var(--status-warning-border)] bg-[var(--status-warning-background)] p-3"
+          data-testid={indexTruncated ? 'code-graph-index-truncated' : 'code-graph-index-stale'}
+        >
           <p className="typography-ui text-[var(--status-warning)]">
-            {t('codeGraph.freshness.stale')}
+            {indexTruncated ? t('codeGraph.index.state.truncated') : t('codeGraph.freshness.stale')}
             {index.staleReason ? ` · ${index.staleReason}` : ''}
+            {index.truncationReason ? ` · ${index.truncationReason}` : ''}
+            {(index.excludedCount ?? 0) > 0 ? ` · excluded ${(index.excludedCount ?? 0)}` : ''}
             {revisionMismatch && committedRevision ? ` · ${committedRevision.slice(0, 8)}` : ''}
           </p>
           {index.refreshError ? (
@@ -2040,17 +2172,95 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
       ) : null}
 
       {index && index.ready !== false ? (
-        <p className="typography-micro text-muted-foreground">
-          <span className={cn(
-            'me-2 inline-block rounded px-1.5 py-0.5',
-            effectiveFreshness === 'fresh'
-              ? 'bg-[var(--status-success-background)] text-[var(--status-success)]'
-              : 'bg-[var(--status-warning-background)] text-[var(--status-warning)]',
-          )}>
-            {effectiveFreshness === 'fresh' ? t('codeGraph.freshness.fresh') : t('codeGraph.freshness.stale')}
-          </span>
-          {index.nodeCount} / {index.edgeCount} · {(index.revision ?? '').slice(0, 8)}
-        </p>
+        <div className="flex flex-col gap-1">
+          <p className="typography-micro text-muted-foreground">
+            <span className={cn(
+              'me-2 inline-block rounded px-1.5 py-0.5',
+              effectiveFreshness === 'fresh'
+                ? 'bg-[var(--status-success-background)] text-[var(--status-success)]'
+                : 'bg-[var(--status-warning-background)] text-[var(--status-warning)]',
+            )}>
+              {effectiveFreshness === 'fresh' ? t('codeGraph.freshness.fresh') : t('codeGraph.freshness.stale')}
+            </span>
+            {index.nodeCount} / {index.edgeCount} · {(index.revision ?? '').slice(0, 8)}
+          </p>
+          {(currentScopeRoot || currentScopeMode || index.metrics) ? (
+            <p className="typography-micro text-muted-foreground" data-testid="code-graph-scope-current">
+              {t('codeGraph.scope.current', { scope: currentScopeRoot ?? directory ?? '' })}
+              {currentScopeMode ? ` · ${currentScopeMode}` : ''}
+              {index.metrics?.dirsVisited !== undefined ? ` · ${index.metrics.dirsVisited} dirs` : ''}
+              {index.metrics?.filesDiscovered !== undefined ? ` · ${index.metrics.filesDiscovered} files` : ''}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showNestedPicker && currentScopeRoot ? (
+        <div
+          className="rounded-md border border-border p-3"
+          data-testid="code-graph-scope-picker"
+        >
+          <p className="typography-ui text-foreground">{t('codeGraph.scope.nestedHint', { scope: currentScopeRoot })}</p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {nestedRoots.map((rel) => {
+              const abs = joinScopePath(currentScopeRoot, rel);
+              const selected = scopeOverride === abs;
+              return (
+                <li key={rel}>
+                  <Button
+                    variant={selected ? 'default' : 'outline'}
+                    size="sm"
+                    type="button"
+                    data-testid={`code-graph-scope-pick-${rel}`}
+                    aria-pressed={selected}
+                    onClick={() => {
+                      if (selected) return;
+                      setModuleOpen(null);
+                      setScopeOverride(abs);
+                    }}
+                  >
+                    {rel}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+          {scopeOverride ? (
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              className="mt-2"
+              data-testid="code-graph-scope-reset"
+              onClick={() => {
+                setModuleOpen(null);
+                setScopeOverride(null);
+              }}
+            >
+              {t('codeGraph.scope.parent')}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {scopeOverride ? (
+        <div className="flex items-center gap-2" data-testid="code-graph-scope-active">
+          <p className="typography-micro text-muted-foreground">
+            {t('codeGraph.scope.current', { scope: scopeOverride })}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            data-testid="code-graph-scope-reset-inline"
+            onClick={() => {
+              setModuleOpen(null);
+              setScopeOverride(null);
+            }}
+          >
+            {t('codeGraph.scope.parent')}
+          </Button>
+        </div>
       ) : null}
 
       <div
@@ -2091,7 +2301,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
             </p>
           ) : null}
 
-          {mode === 'explore' ? (
+          {mode === 'explore' && !isIndexing ? (
             <section aria-label={t('codeGraph.explore.title')} className="flex flex-col gap-1">
               <SectionTitle>{t('codeGraph.explore.title')}</SectionTitle>
               <p className="typography-micro text-muted-foreground">{t('codeGraph.explore.hint')}</p>
@@ -2422,6 +2632,14 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
               ) : null}
               {impactAggregate && !impactRunsLoading && !impactRunsError && impactTotalsText ? (
                 <p className="typography-micro text-muted-foreground" data-testid="code-graph-impact-totals">{impactTotalsText}</p>
+              ) : null}
+              {(impactTruncated.filesSkipped > 0 || impactTruncated.symbolsSkipped > 0) && impactAggregate && !impactRunsLoading && !impactRunsError ? (
+                <p className="typography-micro text-muted-foreground" data-testid="code-graph-impact-bounded">
+                  {`Bounded analysis: showing first ${MAX_IMPACT_FILES} files and ${MAX_IMPACT_SYMBOLS} symbols`}
+                  {impactTruncated.filesSkipped > 0 ? ` (${impactTruncated.filesSkipped} files not queried)` : ''}
+                  {impactTruncated.symbolsSkipped > 0 ? ` (${impactTruncated.symbolsSkipped} symbols not queried)` : ''}
+                  {`. ${t('codeGraph.graph.truncated')}`}
+                </p>
               ) : null}
               {impactAggregate ? [...impactAggregate.unsupported, ...impactAggregate.unresolved].map((note) => (
                 <p key={note} className="typography-micro break-words text-muted-foreground">{note}</p>

@@ -174,6 +174,18 @@ export interface KnowledgeLinkInput {
   readonly sourceRevision: string;
 }
 
+/** Bounded build budgets for extraction. All fields optional; absent means unbounded (legacy). */
+export interface IndexBuildBudgets {
+  /** Max entry files (before discovery). Exceeding fails closed with BUDGET_FILES. */
+  readonly maxFiles?: number;
+  /** Max graph nodes (checked at each project boundary). Exceeding fails closed with BUDGET_NODES. */
+  readonly maxNodes?: number;
+  /** Max graph edges (checked at each project boundary). Exceeding fails closed with BUDGET_EDGES. */
+  readonly maxEdges?: number;
+  /** Max wall-clock ms for the whole build (checked at each project boundary). Exceeding fails closed with BUDGET_TIME. */
+  readonly maxMs?: number;
+}
+
 export interface IndexOptions {
   /** Override for the vendored TypeScript server binary. Defaults to the binary inside `typescript@7.0.2`. */
   readonly tsserverPath?: string;
@@ -206,6 +218,28 @@ export interface IndexOptions {
     snapshot: GraphSnapshot,
     progress: { readonly projectsDone: number; readonly projectsTotal: number },
   ) => void;
+  /**
+   * Cooperative cancellation. Checked before each project and after each
+   * project boundary; when aborted the build throws an AbortError-named
+   * Error with `code: "CANCELLED"` (finally blocks still dispose/close).
+   * The async lifecycle wrapper maps this to `{ status: "cancelled" }`
+   * instead of letting it escape as an untyped throw.
+   */
+  readonly signal?: AbortSignal;
+  /**
+   * Bounded build budgets (files/nodes/edges/time). Checked upfront
+   * (files) and at each project boundary (nodes/edges/time). Exceeding
+   * throws an Error with `code: "BUDGET_FILES" | "BUDGET_NODES" |
+   * "BUDGET_EDGES" | "BUDGET_TIME"`; the lifecycle wrapper maps it to
+   * `{ status: "truncated" }` with the budget reason, never a silent cut.
+   */
+  readonly budgets?: IndexBuildBudgets;
+  /**
+   * Caller generation for observability only. Carried into progress events
+   * so a worker can discard stale callbacks; never enforced here (the
+   * lifecycle coordinator owns generation safety).
+   */
+  readonly generation?: string | number;
 }
 
 /** One measured step of a build: nothing here is extrapolated. */
@@ -216,6 +250,13 @@ export interface IndexProgressEvent {
   /** Projects whose entries have been analysed, and how many there are. */
   readonly projectsDone: number;
   readonly projectsTotal: number;
+  /** Graph size so far (present on projects/edges/done when known). */
+  readonly nodes?: number;
+  readonly edges?: number;
+  /** Wall-clock ms since build start (present when the builder tracks it). */
+  readonly elapsedMs?: number;
+  /** Caller generation echoed back for stale-callback discard. */
+  readonly generation?: string | number;
 }
 
 /** A file refused during extraction because it sits outside `IndexOptions.rootDir`. */
@@ -230,6 +271,19 @@ const UNRESOLVED_CONFIDENCE = 0.5;
 const UNKNOWN = "unknown";
 const RECORD_ID = /^pk-[0-9a-f]{12}$/;
 const MAX_ALIAS_DEPTH = 10;
+
+/** Structured build failure code (thrown on Error.code, mapped by the lifecycle wrapper). */
+export type IndexBuildFailureCode = "CANCELLED" | "BUDGET_FILES" | "BUDGET_NODES" | "BUDGET_EDGES" | "BUDGET_TIME";
+
+function buildFailure(code: IndexBuildFailureCode, message: string): Error {
+  return Object.assign(new Error(message), { code, name: code === "CANCELLED" ? "AbortError" : "Error" });
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw buildFailure("CANCELLED", "code-graph: indexing cancelled (AbortSignal aborted)");
+  }
+}
 
 export function isTestPath(path: string): boolean {
   const normalized = path.replace(/\\/g, "/");
@@ -272,6 +326,29 @@ function commonDir(paths: readonly string[]): string {
  * launcher). Throws when neither is present so the failure is explicit
  * instead of a silent empty graph.
  */
+/**
+ * Inside a packaged app the compiler binary must run from real files, not
+ * from inside the archive: when the candidate sits under `app.asar` and an
+ * `app.asar.unpacked` twin exists, the twin wins. In a checkout there is no
+ * twin and the candidate is used unchanged, so development behavior never
+ * moves. Whether plain spawn resolves archive paths depends on Electron
+ * internals; the twin is a real path under every runtime.
+ */
+export function preferUnpacked(candidate: string): string {
+  for (const marker of ["/app.asar/", "\\app.asar\\"]) {
+    const at = candidate.indexOf(marker);
+    if (at < 0) continue;
+    const twin =
+      candidate.slice(0, at) + marker.replace("app.asar", "app.asar.unpacked") + candidate.slice(at + marker.length);
+    try {
+      if (existsSync(twin)) return twin;
+    } catch {
+      // An unreadable twin is no twin; fall through to the candidate.
+    }
+  }
+  return candidate;
+}
+
 function defaultTsServerPath(): string {
   const require = createRequire(import.meta.url);
   const tsDir = dirname(require.resolve("typescript/package.json"));
@@ -283,13 +360,13 @@ function defaultTsServerPath(): string {
     for (const name of ordered) {
       for (const binary of ["tsc.exe", "tsgo", "tsc"]) {
         const candidate = join(platformRoot, name, "lib", binary);
-        if (existsSync(candidate)) return candidate;
+        if (existsSync(candidate)) return preferUnpacked(candidate);
       }
     }
   }
   for (const binary of process.platform === "win32" ? ["tsc.exe", "tsc"] : ["tsc"]) {
     const candidate = join(tsDir, "..", ".bin", binary);
-    if (existsSync(candidate)) return candidate;
+    if (existsSync(candidate)) return preferUnpacked(candidate);
   }
   throw new Error(
     "code-graph: TypeScript native server binary not found inside typescript@7.0.2; " +
@@ -400,6 +477,11 @@ class GraphBuilder {
     for (const entry of files) byFile[entry.file] = entry;
     const skipped = [...this.contentSkipped].sort((left, right) => (left.file < right.file ? -1 : 1));
     return { nodes, edges, content: { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: byFile, skipped } };
+  }
+
+  /** Cheap size probe for budget enforcement (no sorting, no copy). */
+  size(): { readonly nodes: number; readonly edges: number; readonly files: number } {
+    return { nodes: this.nodes.size, edges: this.edges.size, files: this.files.size };
   }
 
   addEntries(project: Project, entries: readonly string[]): void {
@@ -949,6 +1031,14 @@ class GraphBuilder {
 
 export function indexFiles(entryFiles: readonly string[], options: IndexOptions = {}): GraphSnapshot {
   if (entryFiles.length === 0) return { nodes: [], edges: [], content: emptyContentIndex() };
+  throwIfAborted(options.signal);
+  const maxFiles = options.budgets?.maxFiles;
+  if (maxFiles !== undefined && Number.isFinite(maxFiles) && entryFiles.length > maxFiles) {
+    throw buildFailure(
+      "BUDGET_FILES",
+      `code-graph: entry budget exceeded (${entryFiles.length} entries > maxFiles ${maxFiles})`,
+    );
+  }
   const absoluteEntries = entryFiles.map((entry) => resolve(entry));
   if (options.rootDir === undefined) {
     // Legacy path: `commonDir(entryFiles)` identity, byte-identical to before.
@@ -996,12 +1086,45 @@ function buildGraph(
 ) {
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
   const report = options.onProgress;
+  const signal = options.signal;
+  const budgets = options.budgets;
+  const generation = options.generation;
+  const startMs = Date.now();
+  const elapsed = (): number => Date.now() - startMs;
+  const checkTimeBudget = (): void => {
+    const maxMs = budgets?.maxMs;
+    if (maxMs !== undefined && Number.isFinite(maxMs) && elapsed() > maxMs) {
+      throw buildFailure(
+        "BUDGET_TIME",
+        `code-graph: time budget exceeded (${elapsed()}ms > maxMs ${maxMs})`,
+      );
+    }
+  };
+  const checkSizeBudgets = (size: { readonly nodes: number; readonly edges: number }): void => {
+    const maxNodes = budgets?.maxNodes;
+    if (maxNodes !== undefined && Number.isFinite(maxNodes) && size.nodes > maxNodes) {
+      throw buildFailure(
+        "BUDGET_NODES",
+        `code-graph: node budget exceeded (${size.nodes} nodes > maxNodes ${maxNodes})`,
+      );
+    }
+    const maxEdges = budgets?.maxEdges;
+    if (maxEdges !== undefined && Number.isFinite(maxEdges) && size.edges > maxEdges) {
+      throw buildFailure(
+        "BUDGET_EDGES",
+        `code-graph: edge budget exceeded (${size.edges} edges > maxEdges ${maxEdges})`,
+      );
+    }
+  };
+  throwIfAborted(signal);
   const api = new API({ tsserverPath, cwd: root });
   try {
     const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
     // Program construction is the expensive step and it completes in one call,
     // so this is the first moment a true count exists.
-    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0 });
+    throwIfAborted(signal);
+    checkTimeBudget();
+    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0, elapsedMs: elapsed(), generation });
     try {
       const builder = new GraphBuilder(root, strictRoot);
       const byProject = new Map<Project, string[]>();
@@ -1015,17 +1138,29 @@ function buildGraph(
       const projectsTotal = byProject.size;
       let projectsDone = 0;
       for (const [project, entries] of byProject) {
+        throwIfAborted(signal);
+        checkTimeBudget();
         builder.addEntries(project, entries);
         projectsDone += 1;
-        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+        const size = builder.size();
+        checkSizeBudgets(size);
+        checkTimeBudget();
+        throwIfAborted(signal);
+        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: size.nodes, edges: size.edges, elapsedMs: elapsed(), generation });
         if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
           options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
         }
       }
-      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
+      throwIfAborted(signal);
+      checkTimeBudget();
+      const preEdges = builder.size();
+      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: preEdges.nodes, edges: preEdges.edges, elapsedMs: elapsed(), generation });
       builder.addKnowledgeLinks(options.knowledge ?? []);
       const snapshotOut = builder.snapshot();
-      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal });
+      checkSizeBudgets({ nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length });
+      checkTimeBudget();
+      throwIfAborted(signal);
+      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length, elapsedMs: elapsed(), generation });
       return { snapshot: snapshotOut, dropped: builder.dropped };
     } finally {
       snapshot.dispose();

@@ -19,6 +19,9 @@ export type {
   GraphSnapshot,
   KnowledgeLinkInput,
   IndexOptions,
+  IndexBuildBudgets,
+  IndexBuildFailureCode,
+  IndexProgressEvent,
 } from "./extract";
 export { indexFiles, invalidateEdges, isTestPath } from "./extract";
 
@@ -120,6 +123,7 @@ export type {
 export {
   SNAPSHOT_STORE_VERSION,
   UNATTRIBUTED_SHARD,
+  fileOfNodeId,
   splitSnapshotIntoShards,
   createSnapshotManifest,
   serializeSnapshotShard,
@@ -128,3 +132,34 @@ export {
   parseSnapshotShard,
   joinSnapshotShards,
 } from "./snapshot-store";
+
+export type {
+  LifecycleBudgets,
+  LifecycleProgress,
+  LifecycleStatus,
+  LifecycleStats,
+  LifecycleScope,
+  LifecycleResult,
+  LifecycleRequest,
+} from "./lifecycle";
+export {
+  yieldToEventLoop,
+  snapshotBytes,
+  redactDropped,
+  validateSnapshotForScope,
+  runLifecycleIndex,
+  IndexCoordinator,
+  rebuildIncremental,
+  lifecycleScopeKey,
+} from "./lifecycle";
+export type { FileRecord, FileRecordsDoc, SurfaceShard, ValidatedFiles } from "./file-records";
+export {
+  PARSER_RECORD_VERSION,
+  FILE_RECORDS_VERSION,
+  exportSurfaceKey,
+  fingerprintBytes,
+  fingerprintContent,
+  parseFileRecordsDoc,
+  serializeFileRecordsDoc,
+  validateFileRecords,
+} from "./file-records";

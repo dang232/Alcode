@@ -2,19 +2,19 @@
  * code-graph.ts — the `code_graph` native tool.
  *
  * Exposes the repository code graph over one op surface: `status` reports
- * whether a persisted snapshot exists (cheap — it never indexes),
- * `context`/`search`/`trace`/`impact`/`tests` run the engine directly over
- * a bounded file walk (capped at 2000 files, same approach as the CLI run
- * path's plan evidence) and wrap the engine QueryEnvelope through
+ * the canonical index state (cheap — it never blocks on a build),
+ * `context`/`search`/`trace`/`impact`/`tests` query the one canonical
+ * Code Graph service (the same runtime, store directory, and persisted
+ * generations the panel serves) and wrap the canonical answer through
  * `buildAgentContext`. The tool returns one JSON string carrying both the
- * rendered text and the structured envelope.
+ * rendered text and the structured envelope. Repeated queries against an
+ * unchanged repository reuse its generation instead of rebuilding.
  *
  * Every caller-fixable problem is refused with the shared `refuseArgs`
- * usage error; engine failures (no sources, index failure) answer as an
+ * usage error; service failures (no sources, index failure) answer as an
  * honest unavailable envelope, never a raw throw.
  */
 
-import { promises as fs, type Dirent } from "node:fs"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import path from "node:path"
@@ -28,23 +28,15 @@ import {
   type GraphContextEnvelope,
   type GraphContextOp,
   type GraphContextSubject,
-} from "../../../../code-graph/src/index.ts"
-import {
-  computeScopeFingerprint,
-  findTests,
-  impact,
-  indexFiles,
-  parseSnapshotManifest,
-  search,
-  symbolContext,
-  trace,
   type QueryEnvelope,
-  type QueryOptions,
-  type QueryScope,
-  type SnapshotManifest,
 } from "../../../../code-graph/src/index.ts"
-import { resolveProjectIdentity } from "../../../../memory-core/src/project-knowledge/identity.ts"
 import { CodeGraphArgsSchema, type CodeGraphArgs } from "./args.ts"
+import {
+  getCanonicalRuntime,
+  type CanonicalAnswer,
+  type CanonicalRuntime,
+  type CanonicalSummary,
+} from "./canonical-runtime.ts"
 
 export const CODE_GRAPH_NAME = "code_graph"
 
@@ -54,32 +46,13 @@ export const CODE_GRAPH_DESCRIPTION =
 export type CodeGraphToolDeps = {
   /** Working directory override (tests); defaults to the tool context directory. */
   readonly directory?: string
+  /** Canonical store directory override (tests); defaults to the shared panel store. */
+  readonly storeDir?: string
+  /** Canonical runtime override (tests); defaults to the shared singleton. */
+  readonly runtime?: CanonicalRuntime
 }
 
-/** Bounded walk cap shared with the CLI run path's plan evidence. */
-const CODE_GRAPH_MAX_FILES = 2000
-
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"])
-
-const SKIPPED_DIRECTORIES = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  "out",
-  "coverage",
-  ".next",
-  ".turbo",
-  "vendor",
-  "__pycache__",
-  ".venv",
-])
-
-/** Manifest locations the cheap `status` op reads; nothing else is touched. */
-const STATUS_MANIFEST_CANDIDATES = [
-  ".omo/code-graph/manifest.json",
-  ".omo/code-graph/snapshot-manifest.json",
-]
 
 const FALLBACK_REVISION = "0".repeat(40)
 
@@ -88,33 +61,6 @@ function resolveDirectory(deps: CodeGraphToolDeps, context: OmoToolContext | und
   if (context?.worktree !== undefined && context.worktree.length > 0) return context.worktree
   if (deps.directory !== undefined && deps.directory.length > 0) return deps.directory
   return process.cwd()
-}
-
-async function collectSourceFiles(directory: string, maxFiles = CODE_GRAPH_MAX_FILES): Promise<string[]> {
-  const collected: string[] = []
-  const walk = async (current: string): Promise<void> => {
-    if (collected.length >= maxFiles) return
-    let entries: Dirent[]
-    try {
-      entries = await fs.readdir(current, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const entry of entries) {
-      if (collected.length >= maxFiles) return
-      if (entry.isDirectory()) {
-        if (SKIPPED_DIRECTORIES.has(entry.name)) continue
-        await walk(path.join(current, entry.name))
-        continue
-      }
-      if (!entry.isFile()) continue
-      if (!SOURCE_EXTENSIONS.has(path.extname(entry.name))) continue
-      collected.push(path.join(current, entry.name))
-    }
-  }
-  await walk(directory)
-  collected.sort()
-  return collected
 }
 
 async function collectChangedPaths(directory: string): Promise<string[]> {
@@ -139,90 +85,90 @@ function looksLikeNodeId(subject: string): boolean {
   return subject.includes(":") || subject.includes("@") || subject.includes("/") || subject.includes("\\")
 }
 
-function resolveSymbolId(
-  snapshot: ReturnType<typeof indexFiles>,
+const normalizeRel = (subject: string): string => subject.replace(/\\/g, "/").replace(/^\.\//, "")
+
+/**
+ * Resolve a subject against the canonical generation: file-like subjects
+ * probe the file view (falling back to a basename search, as the old
+ * snapshot-membership check did), bare names search once, and symbol ids
+ * pass through — the engine answers an honest empty result when unknown.
+ */
+async function resolveSubjectId(
+  runtime: CanonicalRuntime,
+  track: (answer: CanonicalAnswer) => CanonicalAnswer,
+  directory: string,
   subject: string,
-  options: QueryOptions,
-): string {
-  const normalized = subject.replace(/\\/g, "/").replace(/^\.\//, "")
-  const directFileId = `file:${normalized}`
-  if (snapshot.nodes.some((node) => node.id === directFileId)) return directFileId
-  if (looksLikeNodeId(subject)) {
-    if (snapshot.nodes.some((node) => node.id === subject)) return subject
+  limit: number,
+): Promise<string> {
+  const normalized = normalizeRel(subject)
+  const fileLike =
+    subject.startsWith("file:") || normalized.includes("/") || subject.includes("\\") || /\.[a-z0-9]+$/i.test(normalized)
+  if (fileLike) {
+    const probe = track(await runtime.query(directory, { kind: "file", file: normalized, limit: 1 }))
+    const hit = probe.envelope.items[0]
+    if (hit !== undefined && hit.id.startsWith("file:")) return hit.id
+    if (!looksLikeNodeId(subject)) {
+      const found = track(await runtime.query(directory, { kind: "search", query: subject, limit }))
+      const exact = found.envelope.items.find((item) => item.name === subject) ?? found.envelope.items[0]
+      return exact?.id ?? subject
+    }
     const base = normalized.split("/").pop() ?? normalized
-    const byName = search(snapshot, base, options)
-    const fileHit = byName.items.find((item) => item.id.startsWith("file:"))
-    return fileHit === undefined ? subject : fileHit.id
+    const byName = track(await runtime.query(directory, { kind: "search", query: base, limit }))
+    return byName.envelope.items.find((item) => item.id.startsWith("file:"))?.id ?? subject
   }
-  const found = search(snapshot, subject, options)
-  const exact = found.items.find((item) => item.name === subject) ?? found.items[0]
-  return exact === undefined ? subject : exact.id
-}
-
-function symbolsDefinedIn(snapshot: ReturnType<typeof indexFiles>, fileId: string): string[] {
-  return snapshot.edges
-    .filter((edge) => edge.kind === "DEFINES" && edge.from === fileId)
-    .map((edge) => edge.to)
-    .sort()
-}
-
-function unresolvedEdgesFor(snapshot: ReturnType<typeof indexFiles>, fileId: string): string[] {
-  const fragment = fileId.replace(/^file:/, "")
-  const involvesFile = (id: string): boolean => id === fileId || id.includes(fragment)
-  return snapshot.edges
-    .filter((edge) => edge.kind === "CALLS_UNRESOLVED" && involvesFile(edge.from))
-    .map((edge) => `${edge.from} -> ${edge.to} (unresolved, manual review)`)
+  if (!looksLikeNodeId(subject)) {
+    const found = track(await runtime.query(directory, { kind: "search", query: subject, limit }))
+    const exact = found.envelope.items.find((item) => item.name === subject) ?? found.envelope.items[0]
+    return exact?.id ?? subject
+  }
+  return subject
 }
 
 function mergedImpactEnvelope(
-  snapshot: ReturnType<typeof indexFiles>,
-  scope: QueryScope,
+  summary: CanonicalSummary,
+  directory: string,
   paths: readonly string[],
-  options: QueryOptions,
+  parts: readonly CanonicalAnswer[],
 ): QueryEnvelope {
   const seen = new Set<string>()
-  const items: (QueryEnvelope["items"][number])[] = []
+  const items: QueryEnvelope["items"][number][] = []
   const unresolved: string[] = []
   const knownParts: number[] = []
   let deduped = 0
   let everyPartComplete = true
   let partsRun = 0
-  for (const file of paths) {
-    const fileId = resolveSymbolId(snapshot, file, options)
-    // impact() walks symbol subjects; a file contributes every symbol it defines.
-    const subjects = symbolsDefinedIn(snapshot, fileId)
-    unresolved.push(...unresolvedEdgesFor(snapshot, fileId))
-    for (const subject of subjects.length > 0 ? subjects : [fileId]) {
-      const part = impact(snapshot, subject, options)
-      partsRun += 1
-      if (part.completeness !== undefined && part.completeness !== "complete") everyPartComplete = false
-      if (typeof part.totals?.known === "number") knownParts.push(part.totals.known)
-      for (const item of part.items) {
-        if (seen.has(item.id)) {
-          deduped += 1
-          continue
-        }
-        seen.add(item.id)
-        items.push(item)
+  for (const part of parts) {
+    partsRun += 1
+    if (part.envelope.completeness !== undefined && part.envelope.completeness !== "complete") everyPartComplete = false
+    if (typeof part.envelope.totals?.known === "number") knownParts.push(part.envelope.totals.known)
+    for (const item of part.envelope.items) {
+      if (seen.has(item.id)) {
+        deduped += 1
+        continue
       }
-      unresolved.push(...part.unresolved)
+      seen.add(item.id)
+      items.push(item)
     }
+    unresolved.push(...part.envelope.unresolved)
   }
   const uniqueUnresolved = [...new Set(unresolved)]
+  const coverRank = (coverage: string): number =>
+    coverage === "indexed" ? 0 : coverage === "partial" ? 1 : 2
+  const coverage =
+    paths.length === 0
+      ? "indexed"
+      : (parts.map((part) => part.envelope.coverage).sort((a, b) => coverRank(b) - coverRank(a))[0] ?? "partial")
   const complete = paths.length === 0 || (everyPartComplete && deduped === 0 && knownParts.length > 0)
-  // A single part's engine total is exact; across parts a node reachable from
-  // two of them is counted twice by the engine but once in `items`, so the
-  // union is reported as unknown instead of summed.
   const known = paths.length === 0
     ? 0
     : partsRun === 1 && knownParts.length === 1 ? knownParts[0] : null
   return {
-    projectId: scope.projectId,
-    worktreeId: scope.worktreeId,
-    revision: scope.revision,
-    fingerprint: scope.fingerprint,
+    projectId: summary.projectId ?? "project-00000000",
+    worktreeId: summary.worktreeId ?? directory,
+    revision: summary.revision ?? FALLBACK_REVISION,
+    fingerprint: summary.fingerprint ?? "",
     freshness: "fresh",
-    coverage: paths.length === 0 ? "indexed" : "partial",
+    coverage,
     truncated: false,
     knowledgeIds: [],
     unresolved: paths.length === 0 ? ["no-changes"] : uniqueUnresolved,
@@ -232,101 +178,6 @@ function mergedImpactEnvelope(
     completeness: complete ? "complete" : "partial",
     ...(complete ? {} : { completenessReason: "result-limit" as const }),
   }
-}
-
-async function resolveGitDir(directory: string): Promise<string | undefined> {
-  const dotGit = path.join(directory, ".git")
-  try {
-    const stat = await fs.stat(dotGit)
-    if (stat.isDirectory()) return dotGit
-    const content = (await fs.readFile(dotGit, "utf8")).trim()
-    if (!content.startsWith("gitdir:")) return undefined
-    const target = content.slice("gitdir:".length).trim()
-    if (target.length === 0) return undefined
-    return path.isAbsolute(target) ? target : path.resolve(directory, target)
-  } catch {
-    return undefined
-  }
-}
-
-async function refRoots(gitDir: string): Promise<string[]> {
-  const roots = [gitDir]
-  try {
-    const common = (await fs.readFile(path.join(gitDir, "commondir"), "utf8")).trim()
-    if (common.length > 0) {
-      roots.push(path.isAbsolute(common) ? common : path.resolve(gitDir, common))
-    }
-  } catch {
-    return roots
-  }
-  return roots
-}
-
-async function readRefValue(gitDir: string, ref: string): Promise<string | undefined> {
-  for (const root of await refRoots(gitDir)) {
-    try {
-      const value = (await fs.readFile(path.join(root, ref), "utf8")).trim()
-      if (/^[0-9a-f]{7,64}$/.test(value)) return value
-    } catch {
-      // loose ref absent; packed-refs below may still carry it
-    }
-    try {
-      const packed = await fs.readFile(path.join(root, "packed-refs"), "utf8")
-      for (const line of packed.split("\n")) {
-        const trimmed = line.trim()
-        if (trimmed.length === 0 || trimmed.startsWith("#") || trimmed.startsWith("^")) continue
-        const [sha, name] = trimmed.split(" ")
-        if (name === ref && sha !== undefined && /^[0-9a-f]{7,64}$/.test(sha)) return sha
-      }
-    } catch {
-      // no packed refs in this root
-    }
-  }
-  return undefined
-}
-
-async function readWorktreeRevision(directory: string): Promise<string | undefined> {
-  const gitDir = await resolveGitDir(directory)
-  if (gitDir === undefined) return undefined
-  let head: string
-  try {
-    head = (await fs.readFile(path.join(gitDir, "HEAD"), "utf8")).trim()
-  } catch {
-    return undefined
-  }
-  if (!head.startsWith("ref:")) return /^[0-9a-f]{7,64}$/.test(head) ? head : undefined
-  const ref = head.slice(4).trim()
-  return await readRefValue(gitDir, ref)
-}
-
-function resolveProjectId(directory: string): string {
-  try {
-    return resolveProjectIdentity(directory).projectId
-  } catch {
-    return "project-00000000"
-  }
-}
-
-async function buildScope(directory: string): Promise<QueryScope> {
-  const projectId = resolveProjectId(directory)
-  const worktreeId = path.resolve(directory)
-  const revision = (await readWorktreeRevision(directory)) ?? FALLBACK_REVISION
-  return { projectId, worktreeId, revision, fingerprint: computeScopeFingerprint(projectId, worktreeId, revision) }
-}
-
-/** Cheap manifest read for `status`: no indexing, no graph build. */
-async function readStatusManifest(directory: string): Promise<SnapshotManifest | undefined> {
-  for (const relative of STATUS_MANIFEST_CANDIDATES) {
-    let text: string
-    try {
-      text = await fs.readFile(path.join(directory, relative), "utf8")
-    } catch {
-      continue
-    }
-    const parsed = parseSnapshotManifest(text)
-    if (parsed.kind === "manifest") return parsed.manifest
-  }
-  return undefined
 }
 
 function inferSubjectKind(subject: string): CodeGraphArgs["subjectKind"] {
@@ -349,11 +200,17 @@ function toSubjects(op: GraphContextOp, args: CodeGraphArgs): readonly GraphCont
   return subjects
 }
 
-function queryOptions(scope: QueryScope, args: CodeGraphArgs): QueryOptions {
+function correlationOf(summary: CanonicalSummary, directory: string): {
+  projectId: string
+  worktreeId: string
+  revision: string
+  generation?: number
+} {
   return {
-    scope,
-    limit: args.limit,
-    maxDepth: args.depth,
+    projectId: summary.projectId ?? "project-00000000",
+    worktreeId: summary.worktreeId ?? directory,
+    revision: summary.revision ?? FALLBACK_REVISION,
+    ...(summary.generation === null ? {} : { generation: summary.generation }),
   }
 }
 
@@ -389,26 +246,55 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
       const args = parsed.data
       const op: GraphContextOp = args.op
       const maxBytes = args.maxBytes ?? AGENT_CONTEXT_DEFAULT_MAX_BYTES
-      const scope = await buildScope(directory)
-      const correlation = {
-        projectId: scope.projectId,
-        worktreeId: scope.worktreeId,
-        revision: scope.revision,
-      }
+      const runtime = getCanonicalRuntime(deps)
 
       if (op === "status") {
-        const manifest = await readStatusManifest(directory)
-        const coverage = manifest !== undefined && manifest.nodeCount > 0 ? "partial" : "unindexed"
-        const reasons =
-          manifest === undefined
-            ? ["no-snapshot"]
-            : [`snapshot-metadata-only nodes=${manifest.nodeCount} edges=${manifest.edgeCount}`]
+        let summary: CanonicalSummary
+        try {
+          summary = await runtime.readIndex(directory)
+        } catch {
+          return stringifyEnvelope(
+            buildAgentContext({
+              op,
+              level: 0,
+              subjects: [],
+              correlation: correlationOf(
+                {
+                  ready: false, generation: null, projectId: null, worktreeId: null, revision: null,
+                  fingerprint: null, freshness: "unindexed", indexTruncated: false, nodeCount: 0,
+                  edgeCount: 0, entryCount: 0, entryCap: 0, indexState: null,
+                },
+                directory,
+              ),
+              status: { freshness: "unindexed", coverage: "unindexed", queryServable: false, reasons: ["index-failed"] },
+              maxBytes,
+            }),
+          )
+        }
+        const servable = summary.ready === true
+        const coverage = !servable
+          ? (summary.generation !== null ? "partial" : "unindexed")
+          : summary.indexTruncated ? "partial" : "indexed"
+        const reasons = [
+          `generation:${summary.generation ?? "none"}`,
+          `freshness:${summary.freshness}`,
+          ...(summary.indexState !== null ? [`index-state:${summary.indexState}`] : []),
+          ...(servable ? [`nodes:${summary.nodeCount}`, `edges:${summary.edgeCount}`] : []),
+          ...(summary.indexTruncated ? ["index-truncated"] : []),
+        ]
         const envelope = buildAgentContext({
           op,
           level: 0,
           subjects: [],
-          correlation,
-          status: { freshness: "fresh", coverage, queryServable: false, reasons },
+          correlation: correlationOf(summary, directory),
+          status: {
+            freshness: summary.freshness,
+            coverage,
+            ...(summary.generation === null ? {} : { generation: summary.generation }),
+            ...(summary.revision === null ? {} : { revision: summary.revision }),
+            queryServable: servable,
+            reasons,
+          },
           maxBytes,
         })
         return stringifyEnvelope(envelope)
@@ -423,72 +309,180 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
         refuseArgs("", "code_graph op 'trace' needs both subject and to symbol ids.")
       }
 
-      const files = await collectSourceFiles(directory)
-      if (files.length === 0) {
-        const envelope = buildAgentContext({
-          op,
-          level: (args.depth ?? 2) as 1 | 2 | 3,
-          subjects: toSubjects(op, args),
-          correlation,
-          status: { freshness: "fresh", coverage: "unindexed", queryServable: false, reasons: ["no-source-files"] },
-          maxBytes,
-        })
-        return stringifyEnvelope(envelope)
-      }
-
-      let snapshot: ReturnType<typeof indexFiles>
-      try {
-        snapshot = indexFiles(files)
-      } catch {
-        const envelope = buildAgentContext({
-          op,
-          level: (args.depth ?? 2) as 1 | 2 | 3,
-          subjects: toSubjects(op, args),
-          correlation,
-          status: { freshness: "fresh", coverage: "unindexed", queryServable: false, reasons: ["index-failed"] },
-          maxBytes,
-        })
-        return stringifyEnvelope(envelope)
-      }
-
-      const options = queryOptions(scope, args)
-      let queryEnvelope: QueryEnvelope
-      if (op === "search") {
-        queryEnvelope = search(snapshot, subject as string, options)
-      } else if (op === "context") {
-        const kind = args.subjectKind ?? inferSubjectKind(subject as string)
-        const resolved = resolveSymbolId(snapshot, subject as string, options)
-        const resolvedBy = resolved === subject ? undefined : resolved
-        queryEnvelope =
-          kind === "file" || kind === "changes"
-            ? search(snapshot, subject as string, options)
-            : kind === "query"
-              ? search(snapshot, subject as string, options)
-              : symbolContext(snapshot, resolved, options)
-        if (resolvedBy !== undefined) {
-          queryEnvelope = { ...queryEnvelope, unresolved: [...queryEnvelope.unresolved, `resolved-from-name:${resolvedBy}`] }
-        }
-      } else if (op === "trace") {
-        queryEnvelope = trace(
-          snapshot,
-          resolveSymbolId(snapshot, subject as string, options),
-          resolveSymbolId(snapshot, args.to as string, options),
-          options,
+      const unavailable = (reasons: readonly string[]): string =>
+        stringifyEnvelope(
+          buildAgentContext({
+            op,
+            level: (args.depth ?? 2) as 1 | 2 | 3,
+            subjects: toSubjects(op, args),
+            correlation: correlationOf(
+              {
+                ready: false, generation: null, projectId: null, worktreeId: null, revision: null,
+                fingerprint: null, freshness: "unindexed", indexTruncated: false, nodeCount: 0,
+                edgeCount: 0, entryCount: 0, entryCap: 0, indexState: null,
+              },
+              directory,
+            ),
+            status: { freshness: "unindexed", coverage: "unindexed", queryServable: false, reasons: [...reasons] },
+            maxBytes,
+          }),
         )
-      } else if (op === "impact") {
-        queryEnvelope = changesMode && subject === undefined
-          ? mergedImpactEnvelope(snapshot, scope, await collectChangedPaths(directory), options)
-          : mergedImpactEnvelope(snapshot, scope, [subject as string], options)
-      } else {
-        queryEnvelope = findTests(snapshot, resolveSymbolId(snapshot, subject as string, options), options)
+
+      let summary: CanonicalSummary
+      try {
+        summary = await runtime.readIndex(directory, { block: true })
+      } catch {
+        return unavailable(["index-failed"])
+      }
+      if (!summary.ready) {
+        return stringifyEnvelope(
+          buildAgentContext({
+            op,
+            level: (args.depth ?? 2) as 1 | 2 | 3,
+            subjects: toSubjects(op, args),
+            correlation: correlationOf(summary, directory),
+            status: {
+              freshness: summary.freshness,
+              coverage: summary.generation !== null ? "partial" : "unindexed",
+              ...(summary.generation === null ? {} : { generation: summary.generation }),
+              ...(summary.revision === null ? {} : { revision: summary.revision }),
+              queryServable: false,
+              reasons: [
+                `generation:${summary.generation ?? "none"}`,
+                ...(summary.indexState !== null ? [`index-state:${summary.indexState}`] : []),
+              ],
+            },
+            maxBytes,
+          }),
+        )
+      }
+      if (summary.entryCount === 0) {
+        return stringifyEnvelope(
+          buildAgentContext({
+            op,
+            level: (args.depth ?? 2) as 1 | 2 | 3,
+            subjects: toSubjects(op, args),
+            correlation: correlationOf(summary, directory),
+            status: {
+              freshness: summary.freshness,
+              coverage: "unindexed",
+              ...(summary.generation === null ? {} : { generation: summary.generation }),
+              ...(summary.revision === null ? {} : { revision: summary.revision }),
+              queryServable: false,
+              reasons: ["no-source-files"],
+            },
+            maxBytes,
+          }),
+        )
+      }
+
+      const generations: (number | null)[] = []
+      const track = (answer: CanonicalAnswer): CanonicalAnswer => {
+        generations.push(answer.generation)
+        return answer
+      }
+      const limit = args.limit
+      const depth = args.depth
+
+      const runOp = async (): Promise<{
+        envelope: QueryEnvelope
+        extraUnresolved: string[]
+      }> => {
+        if (op === "search") {
+          const answer = track(await runtime.query(directory, { kind: "search", query: subject as string, limit }))
+          return { envelope: answer.envelope, extraUnresolved: [] }
+        }
+        if (op === "context") {
+          const kind = args.subjectKind ?? inferSubjectKind(subject as string)
+          if (kind === "file" || kind === "changes" || kind === "query") {
+            const answer = track(await runtime.query(directory, { kind: "search", query: subject as string, limit }))
+            return { envelope: answer.envelope, extraUnresolved: [] }
+          }
+          const resolved = await resolveSubjectId(runtime, track, directory, subject as string, limit ?? 20)
+          const answer = track(
+            await runtime.query(directory, { kind: "context", symbol: resolved, limit, depth }),
+          )
+          return {
+            envelope: answer.envelope,
+            extraUnresolved: resolved === subject ? [] : [`resolved-from-name:${resolved}`],
+          }
+        }
+        if (op === "trace") {
+          const from = await resolveSubjectId(runtime, track, directory, subject as string, limit ?? 20)
+          const to = await resolveSubjectId(runtime, track, directory, args.to as string, limit ?? 20)
+          const answer = track(await runtime.query(directory, { kind: "trace", from, to, limit, depth }))
+          return { envelope: answer.envelope, extraUnresolved: [] }
+        }
+        if (op === "impact") {
+          // Files expand to the symbols they define before impact runs: the
+          // engine walks from symbol subjects, and a bare file id answers
+          // empty. The file view names those symbols over the same
+          // generation, so the expansion never mixes generations.
+          const impactSubjectsForFile = async (rel: string): Promise<CanonicalAnswer[]> => {
+            const view = track(await runtime.query(directory, { kind: "file", file: rel, limit }))
+            const symbols = view.envelope.items.map((item) => item.id).filter((id) => !id.startsWith("file:"))
+            const subjects = symbols.length > 0 ? symbols : [`file:${rel}`]
+            const parts: CanonicalAnswer[] = []
+            for (const symbol of subjects) {
+              parts.push(track(await runtime.query(directory, { kind: "impact", symbol, limit, depth })))
+            }
+            return parts
+          }
+          if (changesMode) {
+            const changed = await collectChangedPaths(directory)
+            const parts: CanonicalAnswer[] = []
+            for (const file of changed) {
+              parts.push(...(await impactSubjectsForFile(normalizeRel(file))))
+            }
+            return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] }
+          }
+          const kind = args.subjectKind ?? inferSubjectKind(subject as string)
+          if (kind === "file" || kind === "changes") {
+            const rel = normalizeRel(subject as string)
+            const parts = await impactSubjectsForFile(rel)
+            return { envelope: mergedImpactEnvelope(summary, directory, [subject as string], parts), extraUnresolved: [] }
+          }
+          const resolved = await resolveSubjectId(runtime, track, directory, subject as string, limit ?? 20)
+          const answer = track(await runtime.query(directory, { kind: "impact", symbol: resolved, limit, depth }))
+          return { envelope: answer.envelope, extraUnresolved: [] }
+        }
+        const resolved = await resolveSubjectId(runtime, track, directory, subject as string, limit ?? 20)
+        const answer = track(await runtime.query(directory, { kind: "tests", target: resolved, limit }))
+        return { envelope: answer.envelope, extraUnresolved: [] }
+      }
+
+      let pin = summary.generation
+      let built = await runOp().catch((): null => null)
+      if (built === null) return unavailable(["index-failed"])
+      let restarted = false
+      if (pin !== null && generations.some((generation) => generation !== null && generation !== pin)) {
+        restarted = true
+        generations.length = 0
+        try {
+          summary = await runtime.readIndex(directory, { block: true })
+        } catch {
+          return unavailable(["index-failed"])
+        }
+        pin = summary.generation
+        built = await runOp().catch((): null => null)
+        if (built === null) return unavailable(["index-failed"])
       }
 
       const envelope = buildAgentContext({
         op,
         level: (args.depth ?? 2) as 1 | 2 | 3,
-        envelope: queryEnvelope,
+        envelope: built.envelope,
         subjects: toSubjects(op, args),
-        correlation,
+        correlation: correlationOf(summary, directory),
+        status: {
+          ...(pin === null ? {} : { generation: pin }),
+          reasons: [
+            `generation:${pin ?? "none"}`,
+            ...(restarted ? ["generation-changed-restarted"] : []),
+            ...(summary.indexTruncated ? ["index-truncated"] : []),
+          ],
+        },
+        unresolved: built.extraUnresolved.map((reason) => ({ kind: "unresolved" as const, id: reason, reason })),
         maxBytes,
       })
       return stringifyEnvelope(envelope)

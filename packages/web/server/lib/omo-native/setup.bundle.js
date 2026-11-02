@@ -31872,6 +31872,276 @@ function gateCheckpoint(store, runId, scope = { kind: "run" }) {
   return { runId, checkedGoalIds, missingGoalIds: missing };
 }
 
+// ../../../../omo-engine/omo-opencode/src/tools/ulw/store-instance.ts
+import nodeFs from "node:fs";
+
+// ../../../../omo-engine/omo-opencode/src/ulw/persistence.ts
+var STATUS_PRIORITY = ["active", "complete", "blocked", "failed"];
+function mergeStatus(left, right) {
+  return STATUS_PRIORITY.indexOf(right) >= STATUS_PRIORITY.indexOf(left) ? right : left;
+}
+function mergeReceipts(left, right) {
+  const merged = {};
+  for (const [goalId, receipt] of Object.entries({ ...left, ...right })) {
+    const other = (left[goalId] === receipt ? right : left)[goalId];
+    if (other === undefined || receipt.recordedAt >= other.recordedAt) {
+      merged[goalId] = { ...receipt };
+    } else {
+      merged[goalId] = { ...other };
+    }
+  }
+  return merged;
+}
+function unionWorkers(left = [], right = []) {
+  return [...left, ...right.filter((worker) => !left.includes(worker))];
+}
+function mergePersistedStates(file, memory) {
+  const runs = [];
+  const byId = new Map;
+  for (const run of [...file.runs, ...memory.runs]) {
+    const kept = byId.get(run.record.id);
+    if (kept === undefined) {
+      byId.set(run.record.id, {
+        record: { ...run.record },
+        roster: Object.fromEntries(Object.entries(run.roster).map(([goal, workers]) => [goal, [...workers]])),
+        receipts: Object.fromEntries(Object.entries(run.receipts).map(([goal, receipt]) => [goal, { ...receipt }])),
+        deadWorkers: Object.fromEntries(Object.entries(run.deadWorkers).map(([goal, workers]) => [goal, [...workers]]))
+      });
+      continue;
+    }
+    const roster = { ...kept.roster };
+    for (const [goal, workers] of Object.entries(run.roster)) {
+      roster[goal] = unionWorkers(roster[goal] ?? [], workers);
+    }
+    const deadWorkers = { ...kept.deadWorkers };
+    for (const [goal, workers] of Object.entries(run.deadWorkers)) {
+      deadWorkers[goal] = unionWorkers(deadWorkers[goal] ?? [], workers);
+    }
+    const receipts = mergeReceipts(kept.receipts, run.receipts);
+    const status = mergeStatus(kept.record.status, run.record.status);
+    const updatedAt = kept.record.updatedAt >= run.record.updatedAt ? kept.record.updatedAt : run.record.updatedAt;
+    byId.set(run.record.id, {
+      record: { ...kept.record, status, updatedAt },
+      roster,
+      receipts,
+      deadWorkers
+    });
+  }
+  runs.push(...byId.values());
+  const submissionClaims = { ...memory.submissionClaims, ...file.submissionClaims };
+  return {
+    version: ULW_STORE_SCHEMA_VERSION,
+    savedAt: file.savedAt,
+    generation: Math.max(file.generation, memory.generation),
+    runs,
+    submissionClaims
+  };
+}
+var ULW_STORE_SCHEMA_VERSION = 1;
+var ULW_STORE_LOCK_STALE_MS = 30000;
+var lockCounter = 0;
+var ReceiptSchema = object({
+  goalId: string2().min(1),
+  childSessionId: string2().min(1),
+  status: _enum(["completed", "failed"]),
+  recordedAt: string2().min(1),
+  resultRef: string2().optional(),
+  reason: string2().optional()
+}).strict();
+var RunSchema = object({
+  record: object({
+    id: string2().min(1),
+    brief: string2(),
+    sessionScope: string2(),
+    status: _enum(["active", "complete", "failed", "blocked"]),
+    createdAt: string2(),
+    updatedAt: string2()
+  }).strict(),
+  roster: record(string2(), array(string2())),
+  receipts: record(string2(), ReceiptSchema),
+  deadWorkers: record(string2(), array(string2())).optional()
+}).strict().superRefine((run, context) => {
+  for (const [goalId, receipt] of Object.entries(run.receipts)) {
+    if (!(run.roster[goalId] ?? []).includes(receipt.childSessionId)) {
+      context.addIssue({ code: "custom", message: `receipt for '${goalId}' settles no dispatch` });
+    }
+  }
+  for (const [goalId, workers] of Object.entries(run.deadWorkers ?? {})) {
+    if (!workers.every((worker) => (run.roster[goalId] ?? []).includes(worker))) {
+      context.addIssue({ code: "custom", message: `dead worker for '${goalId}' was never dispatched` });
+    }
+  }
+});
+var holderTimestampSchema = object({
+  at: number2()
+});
+var SnapshotSchema = object({
+  version: literal(ULW_STORE_SCHEMA_VERSION),
+  savedAt: string2(),
+  generation: number2().int().nonnegative().default(0),
+  runs: array(RunSchema),
+  submissionClaims: record(string2(), string2().min(1)).default({})
+}).strict();
+function parsePersistedUlwState(value) {
+  const parsed = SnapshotSchema.safeParse(value);
+  if (!parsed.success)
+    return null;
+  return {
+    version: parsed.data.version,
+    savedAt: parsed.data.savedAt,
+    generation: parsed.data.generation,
+    submissionClaims: { ...parsed.data.submissionClaims },
+    runs: parsed.data.runs.map((run) => ({
+      record: run.record,
+      roster: Object.fromEntries(Object.entries(run.roster).map(([goal, workers]) => [goal, [...workers]])),
+      receipts: Object.fromEntries(Object.entries(run.receipts).map(([goal, receipt]) => [goal, { ...receipt }])),
+      deadWorkers: Object.fromEntries(Object.entries(run.deadWorkers ?? {}).map(([goal, workers]) => [goal, [...workers]]))
+    }))
+  };
+}
+
+class FileUlwPersistence {
+  fs;
+  filePath;
+  now;
+  constructor(options) {
+    this.fs = options.fs;
+    this.filePath = options.filePath;
+    this.now = options.now ?? Date.now;
+  }
+  load() {
+    let text;
+    try {
+      text = this.fs.readFileSync(this.filePath, "utf8");
+    } catch (error) {
+      const code = error?.code;
+      if (code === "ENOENT")
+        return { ok: false, reason: "no-store" };
+      return { ok: false, reason: `unreadable-store: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { ok: false, reason: "corrupt-store" };
+    }
+    const state = parsePersistedUlwState(parsed);
+    if (state === null) {
+      return { ok: false, reason: "corrupt-store" };
+    }
+    return { ok: true, state };
+  }
+  save(state) {
+    this.transact(() => ({ state, result: undefined }));
+  }
+  transact(next) {
+    const lastSeparator = Math.max(this.filePath.lastIndexOf("/"), this.filePath.lastIndexOf("\\"));
+    if (lastSeparator > 0) {
+      this.fs.mkdirSync(this.filePath.slice(0, lastSeparator), { recursive: true });
+    }
+    const lockDir = `${this.filePath}.lockdir`;
+    const holderFile = `${lockDir}/holder.json`;
+    const token = this.acquireLock(lockDir, holderFile);
+    try {
+      const loaded = this.load();
+      const { state, result } = next(loaded.ok ? loaded.state : null);
+      this.checkLock(holderFile, token);
+      this.publish(state);
+      return result;
+    } finally {
+      this.releaseLock(lockDir, holderFile, token);
+    }
+  }
+  acquireLock(lockDir, holderFile) {
+    const token = `${process.pid}-${lockCounter++}-${Math.random().toString(36).slice(2, 10)}`;
+    try {
+      this.fs.mkdirSync(lockDir);
+    } catch (error) {
+      if (error?.code !== "EEXIST")
+        throw error;
+      if (!this.breakStaleLock(lockDir, holderFile)) {
+        throw new Error(`ulw store locked by another writer: ${lockDir}`);
+      }
+      try {
+        this.fs.mkdirSync(lockDir);
+      } catch (retryError) {
+        if (retryError?.code === "EEXIST") {
+          throw new Error(`ulw store locked by another writer: ${lockDir}`);
+        }
+        throw retryError;
+      }
+    }
+    this.fs.writeFileSync(holderFile, JSON.stringify({ token, at: this.now() }), "utf8");
+    return token;
+  }
+  checkLock(holderFile, token) {
+    let current;
+    try {
+      current = JSON.parse(this.fs.readFileSync(holderFile, "utf8"));
+    } catch {
+      throw new Error(`ulw store lock lost before publish: ${this.filePath}`);
+    }
+    const parsed = object({ token: string2() }).safeParse(current);
+    if (!parsed.success || parsed.data.token !== token) {
+      throw new Error(`ulw store lock lost before publish: ${this.filePath}`);
+    }
+  }
+  releaseLock(lockDir, holderFile, token) {
+    try {
+      let current;
+      try {
+        current = JSON.parse(this.fs.readFileSync(holderFile, "utf8"));
+      } catch {
+        return;
+      }
+      const parsed = object({ token: string2() }).safeParse(current);
+      if (!parsed.success || parsed.data.token !== token)
+        return;
+      this.fs.rmSync(lockDir, { force: true, recursive: true });
+    } catch {}
+  }
+  breakStaleLock(lockDir, holderFile) {
+    let at = Number.NaN;
+    try {
+      const holder = holderTimestampSchema.safeParse(JSON.parse(this.fs.readFileSync(holderFile, "utf8")));
+      at = holder.success ? holder.data.at : Number.NaN;
+    } catch {
+      at = Number.NaN;
+    }
+    if (Number.isNaN(at)) {
+      try {
+        at = this.fs.statSync(lockDir).mtimeMs;
+      } catch {
+        return true;
+      }
+    }
+    if (this.now() - at <= ULW_STORE_LOCK_STALE_MS)
+      return false;
+    try {
+      this.fs.rmSync(lockDir, { force: true, recursive: true });
+    } catch {
+      return false;
+    }
+    return true;
+  }
+  publish(state) {
+    const lastSeparator = Math.max(this.filePath.lastIndexOf("/"), this.filePath.lastIndexOf("\\"));
+    if (lastSeparator > 0) {
+      this.fs.mkdirSync(this.filePath.slice(0, lastSeparator), { recursive: true });
+    }
+    const temporary = `${this.filePath}.tmp-${process.pid}`;
+    try {
+      this.fs.writeFileSync(temporary, JSON.stringify({ ...state, savedAt: new Date(this.now()).toISOString() }), "utf8");
+      this.fs.renameSync(temporary, this.filePath);
+    } catch (error) {
+      try {
+        this.fs.rmSync(temporary, { force: true });
+      } catch {}
+      throw error;
+    }
+  }
+}
+
 // ../../../../omo-engine/omo-opencode/src/ulw/store.ts
 import { randomUUID } from "node:crypto";
 function isoNow(now) {
@@ -31898,11 +32168,100 @@ class UlwStore {
   runs = new Map;
   now;
   newRunId;
+  persistence;
+  loadReport;
+  lastSaveError = null;
+  generation = 0;
+  submissionClaims = new Map;
   constructor(options = {}) {
     this.now = options.now ?? Date.now;
     this.newRunId = options.newRunId ?? randomUUID;
+    this.persistence = options.persistence ?? null;
+    if (this.persistence === null) {
+      this.loadReport = { durable: false, reason: "ephemeral" };
+    } else {
+      const loaded = this.persistence.load();
+      if (!loaded.ok) {
+        this.loadReport = { durable: true, reason: loaded.reason, recoveredRuns: 0 };
+      } else {
+        this.restoreState(loaded.state);
+        this.generation = loaded.state.generation;
+        this.loadReport = loaded.state.runs.length === 0 ? { durable: true, reason: "no-store", recoveredRuns: 0 } : { durable: true, reason: "recovered", recoveredRuns: loaded.state.runs.length };
+      }
+    }
+  }
+  getLoadReport() {
+    return this.loadReport;
+  }
+  getLastSaveError() {
+    return this.lastSaveError;
   }
   createRun(input) {
+    const submissionId = input.submissionId?.trim();
+    if (submissionId !== undefined && submissionId.length > 0 && this.submissionClaims.has(submissionId)) {
+      throw invalidInputError(this.submissionClaims.get(submissionId) ?? "", `ULW submission '${submissionId}' was already accepted; open it instead of creating a duplicate run.`);
+    }
+    const record = this.insertRun(input, submissionId);
+    this.save();
+    return record;
+  }
+  runIdForSubmission(submissionId) {
+    return this.submissionClaims.get(submissionId);
+  }
+  openRun(input) {
+    const submissionId = input.submissionId?.trim();
+    if (submissionId === undefined || submissionId.length === 0) {
+      return { record: this.createRun(input), deduped: false };
+    }
+    if (this.persistence !== null) {
+      try {
+        return this.persistence.transact((current) => {
+          if (current !== null && current.generation > this.generation) {
+            this.restoreState(mergePersistedStates(current, this.snapshotState()));
+            this.generation = current.generation;
+          }
+          const claimed = this.claimedRecord(submissionId);
+          if (claimed !== undefined) {
+            this.generation += 1;
+            return {
+              state: { ...this.snapshotState(), generation: this.generation },
+              result: { record: claimed, deduped: true }
+            };
+          }
+          const record = this.insertRun(input, submissionId);
+          this.generation += 1;
+          return {
+            state: { ...this.snapshotState(), generation: this.generation },
+            result: { record, deduped: false }
+          };
+        });
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("locked by another writer"))
+          throw error;
+        const loaded = this.persistence.load();
+        if (loaded.ok) {
+          const claimedId = loaded.state.submissionClaims[submissionId];
+          const claimed = claimedId === undefined ? undefined : loaded.state.runs.find((run) => run.record.id === claimedId)?.record;
+          if (claimed !== undefined)
+            return { record: claimed, deduped: true };
+        }
+        throw error;
+      }
+    }
+    const claimed = this.claimedRecord(submissionId);
+    if (claimed !== undefined)
+      return { record: claimed, deduped: true };
+    const record = this.insertRun(input, submissionId);
+    this.save();
+    return { record, deduped: false };
+  }
+  claimedRecord(submissionId) {
+    const claimedId = this.submissionClaims.get(submissionId);
+    if (claimedId === undefined)
+      return;
+    return this.runs.get(claimedId)?.record;
+  }
+  insertRun(input, submissionId) {
     const brief = input.brief.trim();
     if (brief.length === 0) {
       throw invalidInputError("", "ULW run brief must be a non-empty string.");
@@ -31918,7 +32277,10 @@ class UlwStore {
     }
     const at = isoNow(now);
     const record = { id, brief, sessionScope, status: "active", createdAt: at, updatedAt: at };
-    this.runs.set(id, { record, roster: new Map, receipts: new Map });
+    this.runs.set(id, { record, roster: new Map, receipts: new Map, deadWorkers: new Map });
+    if (submissionId !== undefined && submissionId.length > 0) {
+      this.submissionClaims.set(submissionId, id);
+    }
     return record;
   }
   getRun(runId) {
@@ -31931,6 +32293,7 @@ class UlwStore {
     const state = this.requireActiveState(runId);
     const at = isoNow(now ?? this.now);
     state.record = { ...state.record, status, updatedAt: at };
+    this.save();
     return state.record;
   }
   dispatchGoal(runId, goalId, workerSessionId) {
@@ -31942,6 +32305,7 @@ class UlwStore {
       entry.push(worker);
       state.roster.set(goal, entry);
     }
+    this.save();
     return [...entry];
   }
   dispatchedGoalIds(runId) {
@@ -31972,6 +32336,7 @@ class UlwStore {
       recordedAt: isoNow(input.now ?? this.now)
     }, input.resultRef?.trim() || undefined, input.reason?.trim() || undefined);
     state.receipts.set(goal, receipt);
+    this.save();
     return receipt;
   }
   receiptFor(runId, goalId) {
@@ -31988,6 +32353,91 @@ class UlwStore {
     const state = this.requireState(runId);
     const candidates = goalIds === undefined ? [...state.roster.keys()] : goalIds.filter((goalId) => state.roster.has(goalId));
     return candidates.filter((goalId) => !state.receipts.has(goalId)).sort();
+  }
+  snapshotState() {
+    return {
+      version: ULW_STORE_SCHEMA_VERSION,
+      savedAt: isoNow(this.now),
+      generation: this.generation,
+      submissionClaims: Object.fromEntries(this.submissionClaims),
+      runs: [...this.runs.values()].map((state) => ({
+        record: state.record,
+        roster: Object.fromEntries([...state.roster.entries()].map(([goal, workers]) => [goal, [...workers]])),
+        receipts: Object.fromEntries([...state.receipts.entries()].map(([goal, receipt]) => [goal, { ...receipt }])),
+        deadWorkers: Object.fromEntries([...state.deadWorkers.entries()].map(([goal, workers]) => [goal, [...workers]]))
+      }))
+    };
+  }
+  restoreState(state) {
+    this.submissionClaims = new Map(Object.entries(state.submissionClaims ?? {}));
+    for (const run of state.runs) {
+      this.runs.set(run.record.id, {
+        record: run.record,
+        roster: new Map(Object.entries(run.roster).map(([goal, workers]) => [goal, [...workers]])),
+        receipts: new Map(Object.entries(run.receipts).map(([goal, receipt]) => [goal, { ...receipt }])),
+        deadWorkers: new Map(Object.entries(run.deadWorkers ?? {}).map(([goal, workers]) => [goal, [...workers]]))
+      });
+    }
+  }
+  save() {
+    if (this.persistence === null)
+      return;
+    try {
+      this.persistence.transact((current) => {
+        let state = this.snapshotState();
+        if (current !== null && current.generation > this.generation) {
+          state = mergePersistedStates(current, state);
+          this.restoreState(state);
+        }
+        this.generation += 1;
+        return { state: { ...state, generation: this.generation }, result: undefined };
+      });
+      this.lastSaveError = null;
+    } catch (error) {
+      this.lastSaveError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  interruptedFor(runId) {
+    const state = this.requireState(runId);
+    const interrupted = [];
+    for (const [goal, workers] of state.roster) {
+      if (state.receipts.has(goal))
+        continue;
+      const dead = state.deadWorkers.get(goal) ?? [];
+      for (const workerSessionId of workers) {
+        interrupted.push({ goalId: goal, workerSessionId, state: dead.includes(workerSessionId) ? "dead" : "awaiting" });
+      }
+    }
+    return interrupted;
+  }
+  reconcileRun(runId, isSessionAlive) {
+    const state = this.requireState(runId);
+    const alive = [];
+    const dead = [];
+    for (const [goal, workers] of state.roster) {
+      if (state.receipts.has(goal))
+        continue;
+      for (const workerSessionId of workers) {
+        if ((state.deadWorkers.get(goal) ?? []).includes(workerSessionId)) {
+          dead.push(workerSessionId);
+          continue;
+        }
+        let aliveNow = false;
+        try {
+          aliveNow = isSessionAlive(workerSessionId) === true;
+        } catch {
+          aliveNow = false;
+        }
+        if (aliveNow) {
+          alive.push(workerSessionId);
+        } else {
+          dead.push(workerSessionId);
+          state.deadWorkers.set(goal, [...state.deadWorkers.get(goal) ?? [], workerSessionId]);
+        }
+      }
+    }
+    this.save();
+    return { alive, dead };
   }
   requireState(runId) {
     const state = this.runs.get(runId);
@@ -32006,6 +32456,7 @@ class UlwStore {
 }
 
 // ../../../../omo-engine/omo-opencode/src/tools/ulw/store-instance.ts
+var ULW_STORE_FILE_ENV = "ALCODE_ULW_STORE_FILE";
 function checkStoreModule() {
   const probe = new UlwStore({ now: () => 0, newRunId: () => "probe" });
   probe.createRun({ id: "probe", brief: "probe", sessionScope: "probe" });
@@ -32021,7 +32472,8 @@ try {
 var shared;
 function getUlwStore() {
   if (shared === undefined) {
-    shared = new UlwStore;
+    const filePath = process.env[ULW_STORE_FILE_ENV]?.trim();
+    shared = filePath !== undefined && filePath.length > 0 ? new UlwStore({ persistence: new FileUlwPersistence({ fs: nodeFs, filePath }) }) : new UlwStore;
   }
   return shared;
 }
@@ -35661,11 +36113,12 @@ function createUlwEvidenceTool(deps = {}) {
 
 // ../../../../omo-engine/omo-opencode/src/tools/ulw/goal-create.ts
 var ULW_GOAL_CREATE_NAME = "ulw_goal_create";
-var ULW_GOAL_CREATE_DESCRIPTION = "Open a native ULW run from a brief; returns the run record.";
+var ULW_GOAL_CREATE_DESCRIPTION = "Open a native ULW run from a brief; returns the run record. With submissionId the open is idempotent: a duplicate delivery resolves to the accepted run instead of forking another. A transient store lock held by another writer fails the call instead of risking a fork — retry with the same submissionId to resolve to the accepted run.";
 var UlwGoalCreateArgs = object({
   brief: NonEmptyText,
   sessionScope: NonEmptyText.optional(),
-  id: NonEmptyText.optional()
+  id: NonEmptyText.optional(),
+  submissionId: NonEmptyText.optional()
 });
 function createUlwGoalCreateTool(deps = {}) {
   const store = deps.store ?? getUlwStore();
@@ -35678,7 +36131,11 @@ function createUlwGoalCreateTool(deps = {}) {
           type: "string",
           description: "Owning session id; defaults to the calling session."
         },
-        id: { type: "string", description: "Optional run id; generated when omitted." }
+        id: { type: "string", description: "Optional run id; generated when omitted." },
+        submissionId: {
+          type: "string",
+          description: "Optional pending-submission identity; when accepted before, answers the same run instead of opening another."
+        }
       },
       required: ["brief"]
     },
@@ -35686,20 +36143,23 @@ function createUlwGoalCreateTool(deps = {}) {
       const parsed = UlwGoalCreateArgs.safeParse(toolArgs);
       if (!parsed.success)
         refuseArgs(runIdOf(toolArgs), "ULW brief must be a non-empty string.");
-      return JSON.stringify(store.createRun({
+      const opened = store.openRun({
         brief: parsed.data.brief,
         sessionScope: parsed.data.sessionScope ?? context.sessionID,
-        id: parsed.data.id
-      }));
+        id: parsed.data.id,
+        submissionId: parsed.data.submissionId
+      });
+      return JSON.stringify({ ...opened.record, deduped: opened.deduped });
     }
   };
 }
 
 // ../../../../omo-engine/omo-opencode/src/tools/ulw/status.ts
 var ULW_STATUS_NAME = "ulw_status";
-var ULW_STATUS_DESCRIPTION = "Report a native ULW run (record, roster, receipts, missing) or list runs.";
+var ULW_STATUS_DESCRIPTION = "Report a native ULW run (record, roster, receipts, missing, interrupted, durable) or list runs. A submissionId resolves the run an accepted submission opened.";
 var UlwStatusArgs = object({
-  runId: NonEmptyText.optional()
+  runId: NonEmptyText.optional(),
+  submissionId: NonEmptyText.optional()
 });
 function createUlwStatusTool(deps = {}) {
   const store = deps.store ?? getUlwStore();
@@ -35707,16 +36167,21 @@ function createUlwStatusTool(deps = {}) {
     description: ULW_STATUS_DESCRIPTION,
     args: {
       properties: {
-        runId: { type: "string", description: "Run to inspect; omitted lists every run." }
+        runId: { type: "string", description: "Run to inspect; omitted lists every run." },
+        submissionId: { type: "string", description: "Accepted submission to resolve; names its run." }
       }
     },
     execute: async (toolArgs) => {
       const parsed = UlwStatusArgs.safeParse(toolArgs);
       if (!parsed.success)
         refuseArgs(runIdOf(toolArgs), "ULW runId must be a non-empty string when provided.");
-      const runId = parsed.data.runId;
+      const submissionId = parsed.data.submissionId;
+      const runId = submissionId === undefined ? parsed.data.runId : store.runIdForSubmission(submissionId);
       if (runId === undefined) {
-        return JSON.stringify({ runs: store.listRuns() });
+        if (submissionId === undefined) {
+          return JSON.stringify({ runs: store.listRuns() });
+        }
+        throw runNotFoundError(submissionId);
       }
       const run = store.getRun(runId);
       if (run === undefined) {
@@ -35726,7 +36191,9 @@ function createUlwStatusTool(deps = {}) {
         run,
         roster: store.rosterFor(runId),
         receipts: store.receiptsFor(runId),
-        missingReceipts: store.missingReceipts(runId)
+        missingReceipts: store.missingReceipts(runId),
+        interrupted: store.interruptedFor(runId),
+        durable: store.getLoadReport().durable
       });
     }
   };

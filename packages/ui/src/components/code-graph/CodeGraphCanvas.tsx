@@ -117,6 +117,12 @@ const nodeTone = (node: CodeGraphDrawnNode, subject: boolean): string => {
 /** Maximum kind swatches before the legend collapses the rest into `+N`. */
 const LEGEND_LIMIT = 5;
 
+/** Client render caps: the engine already truncates the neighbourhood, but a
+ *  dense depth-3 answer can still hand the DOM hundreds of buttons/paths.
+ *  Nodes past the cap are not mounted; the header states how many are hidden. */
+const MAX_RENDER_NODES = 250;
+const MAX_RENDER_EDGES = 400;
+
 /**
  * One-line disambiguator under the display name: `file:line` when both are
  * known, plain `file` when only the file is, the kind name otherwise. Short
@@ -161,6 +167,28 @@ export const CodeGraphCanvas: React.FC<Props> = ({
   const fittedSignature = React.useRef<string | null>(null);
   const dragRef = React.useRef<{ startX: number; startY: number; base: GraphView; moved: boolean } | null>(null);
   const layout = React.useMemo(() => layoutCodeGraph(graph), [graph]);
+  // Bounded render: keep the selected/hovered nodes mounted so keyboard focus
+  // and selection never vanish under the cap, then first-seen order.
+  const rendered = React.useMemo(() => {
+    const keep = new Set<string>();
+    if (selectedId) keep.add(selectedId);
+    if (hoverNodeId) keep.add(hoverNodeId);
+    const ordered = [...layout.nodes].sort((a, b) => {
+      const ka = keep.has(a.id) ? 0 : 1;
+      const kb = keep.has(b.id) ? 0 : 1;
+      return ka - kb;
+    });
+    const nodes = ordered.slice(0, MAX_RENDER_NODES);
+    const mounted = new Set(nodes.map((node) => node.id));
+    const visibleEdges = layout.edges.filter((edge) => mounted.has(edge.from) && mounted.has(edge.to));
+    const edges = visibleEdges.slice(0, MAX_RENDER_EDGES);
+    return {
+      nodes,
+      edges,
+      hiddenNodes: Math.max(0, layout.nodes.length - nodes.length),
+      hiddenEdges: Math.max(0, layout.edges.length - edges.length),
+    };
+  }, [layout, selectedId, hoverNodeId]);
 
   // Kinds actually present, first-seen order, plus the subject's kind when a
   // subject node exists: its warning tone differs from its kind tone, so it
@@ -178,12 +206,12 @@ export const CodeGraphCanvas: React.FC<Props> = ({
   const hiddenKindCount = legend.kinds.length - shownKinds.length;
 
   const hoverEdge = React.useMemo(
-    () => layout.edges.find((edge) => edgeKey(edge) === hoverEdgeKey) ?? null,
-    [layout.edges, hoverEdgeKey],
+    () => rendered.edges.find((edge) => edgeKey(edge) === hoverEdgeKey) ?? layout.edges.find((edge) => edgeKey(edge) === hoverEdgeKey) ?? null,
+    [rendered.edges, layout.edges, hoverEdgeKey],
   );
   const hoverNode = React.useMemo(
-    () => layout.nodes.find((node) => node.id === hoverNodeId) ?? null,
-    [layout.nodes, hoverNodeId],
+    () => rendered.nodes.find((node) => node.id === hoverNodeId) ?? layout.nodes.find((node) => node.id === hoverNodeId) ?? null,
+    [rendered.nodes, layout.nodes, hoverNodeId],
   );
 
   /** Nodes that stay lit while a hover is active; null means no hover, dim nothing. */
@@ -191,27 +219,27 @@ export const CodeGraphCanvas: React.FC<Props> = ({
     if (hoverEdge) return new Set([hoverEdge.from, hoverEdge.to]);
     if (hoverNode) {
       const lit = new Set<string>([hoverNode.id]);
-      for (const edge of layout.edges) {
+      for (const edge of rendered.edges) {
         if (edge.from === hoverNode.id) lit.add(edge.to);
         if (edge.to === hoverNode.id) lit.add(edge.from);
       }
       return lit;
     }
     return null;
-  }, [hoverEdge, hoverNode, layout.edges]);
+  }, [hoverEdge, hoverNode, rendered.edges]);
 
   /** Edge keys that stay lit while a hover is active; null means no hover. */
   const litEdges = React.useMemo((): Set<string> | null => {
     if (hoverEdge) return new Set([edgeKey(hoverEdge)]);
     if (hoverNode) {
       const lit = new Set<string>();
-      for (const edge of layout.edges) {
+      for (const edge of rendered.edges) {
         if (edge.from === hoverNode.id || edge.to === hoverNode.id) lit.add(edgeKey(edge));
       }
       return lit;
     }
     return null;
-  }, [hoverEdge, hoverNode, layout.edges]);
+  }, [hoverEdge, hoverNode, rendered.edges]);
 
   const clearHover = React.useCallback(() => {
     setHoverNodeId(null);
@@ -256,9 +284,14 @@ export const CodeGraphCanvas: React.FC<Props> = ({
           <span className="rounded border border-[var(--surface-border)] px-1.5 py-0.5">{previewLabel}</span>
         ) : null}
         <span aria-live="off">
-          {edgesLabel} {layout.edges.length}
+          {edgesLabel} {rendered.edges.length}
         </span>
         {graph.truncated ? <span>{truncatedLabel} · {t('codeGraph.graph.expand')}</span> : null}
+        {rendered.hiddenNodes > 0 || rendered.hiddenEdges > 0 ? (
+          <span data-testid="code-graph-canvas-bounded">
+            {`+${rendered.hiddenNodes} nodes, +${rendered.hiddenEdges} edges not rendered (bounded)`}
+          </span>
+        ) : null}
         {legend.kinds.length > 0 ? (
           <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
             {legend.subjectKind !== null ? (
@@ -316,7 +349,7 @@ export const CodeGraphCanvas: React.FC<Props> = ({
                 <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--text-tertiary)" />
               </marker>
             </defs>
-            {layout.edges.map((edge) => {
+            {rendered.edges.map((edge) => {
               const midX = (edge.x1 + edge.x2) / 2;
               const key = edgeKey(edge);
               const tone = edgeTone(edge.kind, edge.confidence);
@@ -354,7 +387,18 @@ export const CodeGraphCanvas: React.FC<Props> = ({
                     onClick={pick}
                     onMouseEnter={() => setHoverEdgeKey(key)}
                     onMouseLeave={() => setHoverEdgeKey((current) => (current === key ? null : current))}
-                    style={{ cursor: 'pointer' }}
+                    onFocus={() => setHoverEdgeKey(key)}
+                    onBlur={() => setHoverEdgeKey((current) => (current === key ? null : current))}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        pick();
+                      }
+                    }}
+                    tabIndex={onSelectEdge ? 0 : -1}
+                    role={onSelectEdge ? 'button' : undefined}
+                    aria-label={onSelectEdge ? `${edge.kind} ${edge.from} to ${edge.to} confidence ${edge.confidence.toFixed(2)}` : undefined}
+                    style={{ cursor: 'pointer', outlineOffset: 2 }}
                   >
                     <title>{`${edge.kind} · ${edge.confidence.toFixed(2)}`}</title>
                   </path>
@@ -373,7 +417,7 @@ export const CodeGraphCanvas: React.FC<Props> = ({
               );
             })}
           </svg>
-          {layout.nodes.map((node) => {
+          {rendered.nodes.map((node) => {
             const selected = node.id === selectedId;
             const dimmed = litNodes !== null && !litNodes.has(node.id);
             const hovered = hoverNodeId === node.id || (hoverEdge !== null && (hoverEdge.from === node.id || hoverEdge.to === node.id));

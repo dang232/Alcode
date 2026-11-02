@@ -34,7 +34,7 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })));
 });
 
-const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, versions, listUserCustomAgents, listConnectedProviders, readUserAgentModels } = {}) => {
+const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, versions, listUserCustomAgents, listConnectedProviders, readUserAgentModels, storeDataDir } = {}) => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'alcode-managed-config-'));
   temporaryDirectories.push(dataDir);
   const agentToolRuntime = {
@@ -62,6 +62,7 @@ const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, 
   };
   // Test-only seam, attached only when a test opts in: the default keeps
   // unit tests without a home directory hermetic.
+  if (storeDataDir !== undefined) dependencies.dataDir = storeDataDir;
   if (listUserCustomAgents !== undefined) dependencies.listUserCustomAgents = listUserCustomAgents;
   if (listConnectedProviders !== undefined) dependencies.listConnectedProviders = listConnectedProviders;
   if (readUserAgentModels !== undefined) dependencies.readUserAgentModels = readUserAgentModels;
@@ -101,6 +102,23 @@ describe('managed OpenCode config file', () => {
     // The repo's own config reader lists it: this is the default-config dump.
     const dumped = readLayeredMcpEntries([await readConfigFile()]);
     expect(dumped.get(ULW_MCP_SERVER_NAME)?.key).toBe('mcp.servers');
+  });
+
+  it('points the managed child at the durable ULW store file when a data dir is known', async () => {
+    const storeDataDir = path.join(os.tmpdir(), 'ulw-store-data-dir');
+    const { runtime } = await createHarness({ settings: {}, storeDataDir });
+
+    const childEnv = await runtime.buildManagedChildEnv();
+
+    expect(childEnv.ALCODE_ULW_STORE_FILE).toBe(path.join(storeDataDir, 'ulw', 'store.json'));
+  });
+
+  it('leaves the ULW store pointer unset without a data dir', async () => {
+    const { runtime } = await createHarness({ settings: {} });
+
+    const childEnv = await runtime.buildManagedChildEnv();
+
+    expect(childEnv.ALCODE_ULW_STORE_FILE).toBeUndefined();
   });
 
   it('tells the Electron host binary to behave as Node', async () => {

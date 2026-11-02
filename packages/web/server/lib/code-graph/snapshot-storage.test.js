@@ -38,7 +38,8 @@ const entry = (overrides = {}) => ({
   ...overrides,
 });
 
-const storeIn = (name) => createSnapshotStorage({ fsPromises, path, engine, storeDir: path.join(root, name) });
+const storeInDir = (name) => path.join(root, name);
+const storeIn = (name) => createSnapshotStorage({ fsPromises, path, engine, storeDir: storeInDir(name) });
 
 describe('snapshot storage', () => {
   it('publishes a generation and restores the same graph for the same scope', async () => {
@@ -108,6 +109,48 @@ describe('snapshot storage', () => {
     const read = await storage.read('I:/demo', scope);
     expect(read.status).toBe('hit');
     expect(read.snapshot.nodes.length).toBe(changed.nodes.length);
+  });
+
+  it('persists per-file records alongside the generation and returns them on hit', async () => {
+    const storage = storeIn('records');
+    const records = {
+      version: 1,
+      parser: 1,
+      schema: 1,
+      files: { 'src/a.ts': { file: 'src/a.ts', blob: 'a'.repeat(64) } },
+    };
+    const written = await storage.write('I:/demo', entry({ fileRecords: records }));
+    expect(written.written).toBe(true);
+
+    const read = await storage.read('I:/demo', scope);
+    expect(read.status).toBe('hit');
+    expect(read.fileRecords).toEqual(records);
+  });
+
+  it('keeps the snapshot hit when the records file is corrupt', async () => {
+    const storage = storeIn('records-corrupt');
+    const records = {
+      version: 1,
+      parser: 1,
+      schema: 1,
+      files: { 'src/a.ts': { file: 'src/a.ts', blob: 'a'.repeat(64) } },
+    };
+    await storage.write('I:/demo', entry({ fileRecords: records }));
+    const names = await fsPromises.readdir(storeInDir('records-corrupt'));
+    const scopeDir = names[0];
+    const manifest = JSON.parse(
+      await fsPromises.readFile(path.join(storeInDir('records-corrupt'), scopeDir, 'manifest.json'), 'utf8'),
+    );
+    await fsPromises.writeFile(
+      path.join(storeInDir('records-corrupt'), scopeDir, manifest.fileRecords),
+      'corrupt{{{',
+      'utf8',
+    );
+
+    const read = await storage.read('I:/demo', scope);
+    expect(read.status).toBe('hit');
+    expect(read.fileRecords).toBe(null);
+    expect(read.snapshot.nodes.length).toBe(snapshot.nodes.length);
   });
 
   it('is disabled, not broken, when no store directory is configured', async () => {

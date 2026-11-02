@@ -47,9 +47,43 @@ const makeMonorepo = (name) => {
   return dir;
 };
 
+/**
+ * Fail-closed fixture readiness: freshly written files can be briefly
+ * unstatted under on-access scanning, and the walk skips what lstat
+ * refuses. Polling for visibility (bounded, failing loudly) separates
+ * that environment race from product behavior under test.
+ */
+const awaitFilesVisible = async (dir, rels, budgetMs = 10000) => {
+  const start = Date.now();
+  for (;;) {
+    const missing = [];
+    for (const rel of rels) {
+      try {
+        await fsPromises.stat(join(dir, ...rel.split('/')));
+      } catch {
+        missing.push(rel);
+      }
+    }
+    if (missing.length === 0) return;
+    if (Date.now() - start > budgetMs) {
+      throw new Error(`fixture files never became visible: ${missing.join(', ')}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
+
+const FIXTURE_FILES = [
+  'packages/alpha/tsconfig.json',
+  'packages/alpha/src/alpha.ts',
+  'packages/beta/tsconfig.json',
+  'packages/beta/src/beta.ts',
+];
+
 const completeNodeCount = async (name) => {
   const runtime = createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true });
-  return (await runtime.readIndex(makeMonorepo(name))).nodeCount;
+  const fixture = makeMonorepo(name);
+  await awaitFilesVisible(fixture, FIXTURE_FILES);
+  return (await runtime.readIndex(fixture)).nodeCount;
 };
 
 describe('a partial build is never served as a generation', () => {
@@ -110,7 +144,10 @@ describe('a partial build is never served as a generation', () => {
     expect(goodNodes).toBeGreaterThan(0);
 
     // A refresh that gets cancelled must not replace the good graph with its
-    // own half-built projection.
+    // own half-built projection. The comment-only edit forces real analysis:
+    // without a content change the refresh reuses every record and the
+    // cancel trigger below would never fire.
+    writeFileSync(join(dir, 'packages', 'beta', 'src', 'beta.ts'), 'export function betaFn(): number {\n  return 2;\n}\n// refresh\n');
     armed = true;
     await runtime.readIndex(dir, { refresh: true }).catch(() => null);
     expect(cancelled).toBe(true);

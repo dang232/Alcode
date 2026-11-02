@@ -18,7 +18,95 @@
  * its own.
  */
 
-import { runtimeFetch } from './runtime-fetch';
+import { runtimeFetch, type RuntimeFetchOptions } from './runtime-fetch';
+
+/**
+ * Client-side diagnostics. Disabled by default; enable in the browser console with
+ * `localStorage.setItem('alcode.codeGraph.debug', '1')` (same key read in tests
+ * via the `CODE_GRAPH_DEBUG_KEY`). When on, every route call logs one line at
+ * start and one at finish carrying a correlation id, the directory, kind,
+ * duration, outcome, and — when the server sent one — the generation, scope root,
+ * phase, and stalled flag, so a UI state can be correlated with the server job
+ * that produced it. Payload bodies, secrets, and tokens are never logged.
+ */
+export const CODE_GRAPH_DEBUG_KEY = 'alcode.codeGraph.debug';
+
+export const CODE_GRAPH_REQUEST_TIMEOUT_MS = 60_000;
+
+let codeGraphRequestSeq = 0;
+
+/** Correlation id for one panel-initiated request, carried on start/finish debug lines. */
+const mintCorrelationId = (): string => {
+  codeGraphRequestSeq += 1;
+  try {
+    const uuid = globalThis.crypto?.randomUUID?.();
+    if (typeof uuid === 'string' && uuid.length > 0) return `${uuid.slice(0, 8)}-${codeGraphRequestSeq}`;
+  } catch {
+    // Fall through to the counter-only id below.
+  }
+  return `cg-${Date.now().toString(36)}-${codeGraphRequestSeq}`;
+};
+
+const isDebugEnabled = (): boolean => {
+  try {
+    return globalThis.localStorage?.getItem(CODE_GRAPH_DEBUG_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const debugLog = (message: string, detail?: Record<string, string | number | boolean | null | undefined>): void => {
+  if (!isDebugEnabled()) return;
+  try {
+    // eslint-disable-next-line no-console
+    console.debug(`[code-graph] ${message}`, detail ?? {});
+  } catch {
+    // Diagnostics must never break the request they observe.
+  }
+};
+
+/**
+ * Bounds a panel-initiated request. The index and query routes answer from
+ * memory (a pending job or a served snapshot), so tens of seconds without a
+ * byte means the server side is wedged, not slow: abort with a labelled
+ * error the panel already renders with its retry action instead of spinning
+ * forever. Callers may pass `timeoutMs` (tests use tens of milliseconds).
+ */
+const fetchWithTimeout = async (
+  url: string,
+  init: RuntimeFetchOptions,
+  label: string,
+  timeoutMs: number | undefined,
+): Promise<Response> => {
+  const budget = timeoutMs ?? CODE_GRAPH_REQUEST_TIMEOUT_MS;
+  const controller = new AbortController();
+  const callerSignal = init.signal ?? null;
+  const onCallerAbort = (): void => controller.abort();
+  if (callerSignal !== null) {
+    if (callerSignal.aborted) controller.abort();
+    else callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+  }
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(new Error(`${label} timed out after ${budget}ms without a server answer; the indexer may be wedged — retry once, then report the scope`));
+    }, budget);
+  });
+  try {
+    // Race, not just abort: a wedged transport may ignore the abort signal
+    // and never settle, so the timeout must reject on its own.
+    return await Promise.race([runtimeFetch(url, { ...init, signal: controller.signal }), timeout]);
+  } catch (error) {
+    if (timedOut) throw error;
+    throw error;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    callerSignal?.removeEventListener('abort', onCallerAbort);
+  }
+};
 
 export type CodeGraphFreshness = 'fresh' | 'stale' | 'unindexed';
 export type CodeGraphCoverage = 'indexed' | 'partial' | 'unindexed';
@@ -119,15 +207,39 @@ export interface CodeGraphFreshnessBinding {
   truncated?: boolean;
 }
 
+export interface CodeGraphIndexMetrics {
+  dirsVisited?: number;
+  filesDiscovered?: number;
+  symlinksSkipped?: number;
+  maxDepthSeen?: number;
+}
+
+export interface CodeGraphRepositoryTotals {
+  analyzedFiles?: number;
+  unanalyzedFiles?: number;
+  excludedFiles?: number;
+}
+
 export interface CodeGraphIndexSummary extends Partial<CodeGraphFreshnessBinding> {
   binding?: string;
   snapshotRoot?: string | null;
   nodeCount: number;
   edgeCount: number;
   entryCount: number;
+  entryCap?: number;
+  generation?: number;
   indexTruncated?: boolean;
+  truncationReason?: string | null;
   excludedCount?: number;
   excludedSample?: string[];
+  scopeRoot?: string | null;
+  scopeMode?: string | null;
+  metrics?: CodeGraphIndexMetrics | null;
+  nestedRepoRoots?: string[];
+  /** Working-tree dirtiness of the indexed scope, exactly as the server reports it. */
+  dirty?: string | null;
+  /** Why the scope reads dirty, when the server says so. */
+  dirtyReason?: string | null;
   /**
    * False while a build runs and nothing has been published yet. The panel must
    * render progress from `indexState` instead of an empty graph, and must not
@@ -150,7 +262,25 @@ export interface CodeGraphIndexState {
   projectsTotal?: number;
   startedAtMs?: number | null;
   error?: string | null;
+  truncationReason?: string | null;
   generation?: number | null;
+  /** Milliseconds since the job started, when the server reported it. */
+  elapsedMs?: number;
+  /** Last time the server observed build progress, when reported. */
+  lastProgressAtMs?: number;
+  /** True when building but silent past the server watchdog threshold. */
+  stalled?: boolean;
+  /**
+   * Bounded projection of the projects analysed so far, carried on the progress
+   * message while a build runs: the worker's loop is blocked by the build, so
+   * this is the only answer available until the finished graph lands.
+   */
+  partial?: {
+    nodes?: number;
+    edges?: number;
+    modules?: Array<{ module: string; count: number }>;
+    modulesTotal?: number;
+  } | null;
   /**
    * Bounded projection of the projects analysed so far, carried on the progress
    * message while a build runs: the worker's loop is blocked by the build, so
@@ -270,8 +400,16 @@ export interface CodeGraphQueryResult extends Partial<CodeGraphFreshnessBinding>
   truncated?: boolean;
   /** True when the index walk skipped files, so `coverage` reads `partial`. */
   indexTruncated?: boolean;
+  truncationReason?: string | null;
   excludedCount?: number;
   excludedSample?: string[];
+  scopeRoot?: string | null;
+  scopeMode?: string | null;
+  metrics?: CodeGraphIndexMetrics | null;
+  nestedRepoRoots?: string[];
+  repositoryTotals?: CodeGraphRepositoryTotals;
+  skippedDirs?: string[];
+  unreadableDirs?: string[];
   items: CodeGraphItem[];
   /** Present only on `kind: 'content'`: source-text hits with excerpts. */
   contentItems?: CodeGraphContentItem[];
@@ -324,6 +462,8 @@ export interface CodeGraphQueryInput {
   to?: string;
   limit?: number;
   refresh?: boolean;
+  /** Per-request budget override; the default bounds every panel-initiated call. */
+  timeoutMs?: number;
   /** Neighborhood depth for subject-bearing kinds; clamped to 1..3 when sent. */
   depth?: number;
   signal?: AbortSignal;
@@ -509,9 +649,98 @@ const parseContentItems = (value: CodeGraphJsonField): CodeGraphContentItem[] =>
 /** Truncation counters shared by the index and query answers. */
 export interface CodeGraphIndexTruncation {
   indexTruncated?: boolean;
+  truncationReason?: string | null;
   excludedCount?: number;
   excludedSample?: string[];
+  scopeRoot?: string | null;
+  scopeMode?: string | null;
+  metrics?: CodeGraphIndexMetrics | null;
+  nestedRepoRoots?: string[];
+  generation?: number;
 }
+
+const parseTruncationReason = (value: CodeGraphJsonField): string | null | undefined => {
+  const text = asText(value);
+  if (text === undefined) return undefined;
+  return text.length > 0 ? text : null;
+};
+
+const parseScopeRoot = (value: CodeGraphJsonField): string | null | undefined => {
+  const text = asText(value);
+  if (text === undefined) return undefined;
+  return text.length > 0 ? text : null;
+};
+
+const parseScopeMode = (value: CodeGraphJsonField): string | null | undefined => {
+  const text = asText(value);
+  if (text === undefined) return undefined;
+  return text.length > 0 ? text : null;
+};
+
+const parseMetrics = (value: CodeGraphJsonField): CodeGraphIndexMetrics | null | undefined => {
+  if (value === null) return null;
+  if (!isJsonRecord(value)) return undefined;
+  const out: CodeGraphIndexMetrics = {};
+  let seen = false;
+  for (const key of ['dirsVisited', 'filesDiscovered', 'symlinksSkipped', 'maxDepthSeen'] as const) {
+    const count = value[key];
+    if (isFiniteJsonNumber(count)) {
+      out[key] = count;
+      seen = true;
+    }
+  }
+  return seen ? out : undefined;
+};
+
+const parseNestedRepoRoots = (value: CodeGraphJsonField): string[] | undefined => {
+  if (!isJsonArray(value)) return undefined;
+  const roots = asStringArray(value).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  return roots;
+};
+
+const parseSkippedDirs = (value: CodeGraphJsonField): string[] | undefined => {
+  if (!isJsonArray(value)) return undefined;
+  return asStringArray(value);
+};
+
+const parseRepositoryTotals = (value: CodeGraphJsonField): CodeGraphRepositoryTotals | undefined => {
+  if (!isJsonRecord(value)) return undefined;
+  const out: CodeGraphRepositoryTotals = {};
+  let seen = false;
+  for (const key of ['analyzedFiles', 'unanalyzedFiles', 'excludedFiles'] as const) {
+    const count = value[key];
+    if (isFiniteJsonNumber(count)) {
+      out[key] = count;
+      seen = true;
+    }
+  }
+  return seen ? out : undefined;
+};
+
+const parsePartialModule = (value: CodeGraphJsonField): { module: string; count: number } | null => {
+  if (!isJsonRecord(value)) return null;
+  const module = asNonEmptyText(value.module);
+  if (module === undefined) return null;
+  return { module, count: isFiniteJsonNumber(value.count) ? value.count : 0 };
+};
+
+const parsePartialProjection = (value: CodeGraphJsonField): CodeGraphIndexState['partial'] | undefined => {
+  if (value === null) return null;
+  if (!isJsonRecord(value)) return undefined;
+  const partial: NonNullable<CodeGraphIndexState['partial']> = {};
+  if (isFiniteJsonNumber(value.nodes)) partial.nodes = value.nodes;
+  if (isFiniteJsonNumber(value.edges)) partial.edges = value.edges;
+  if (isJsonArray(value.modules)) {
+    const modules = [];
+    for (const entry of value.modules) {
+      const parsed = parsePartialModule(entry);
+      if (parsed) modules.push(parsed);
+    }
+    partial.modules = modules;
+  }
+  if (isFiniteJsonNumber(value.modulesTotal)) partial.modulesTotal = value.modulesTotal;
+  return partial;
+};
 
 const parseIndexState = (value: CodeGraphJsonField): CodeGraphIndexState | undefined => {
   if (!isJsonRecord(value)) return undefined;
@@ -521,6 +750,8 @@ const parseIndexState = (value: CodeGraphJsonField): CodeGraphIndexState | undef
   const failure = asText(value.error);
   if (failure !== undefined) state.error = failure;
   if (isFiniteJsonNumber(value.generation)) state.generation = value.generation;
+  const jobReason = parseTruncationReason(value.truncationReason);
+  if (jobReason !== undefined) state.truncationReason = jobReason;
   if (isFiniteJsonNumber(value.startedAtMs)) state.startedAtMs = value.startedAtMs;
   // Counts arrive either flattened (indexState) or inside the job's own
   // `progress` record; both describe the same measured work.
@@ -530,13 +761,30 @@ const parseIndexState = (value: CodeGraphJsonField): CodeGraphIndexState | undef
   if (isFiniteJsonNumber(progress.files)) state.files = progress.files;
   if (isFiniteJsonNumber(progress.projectsDone)) state.projectsDone = progress.projectsDone;
   if (isFiniteJsonNumber(progress.projectsTotal)) state.projectsTotal = progress.projectsTotal;
+  if (isFiniteJsonNumber(value.elapsedMs)) state.elapsedMs = value.elapsedMs;
+  else if (isFiniteJsonNumber(progress.elapsedMs)) state.elapsedMs = progress.elapsedMs;
+  if (isFiniteJsonNumber(value.lastProgressAtMs)) state.lastProgressAtMs = value.lastProgressAtMs;
+  if (value.stalled === true) state.stalled = true;
+  const partial = parsePartialProjection(value.partial);
+  if (partial !== undefined) state.partial = partial;
   return state;
 };
 
 const parseIndexTruncation = (value: CodeGraphJsonRecord): CodeGraphIndexTruncation => {  const truncation: CodeGraphIndexTruncation = {};
   if (value.indexTruncated === true) truncation.indexTruncated = true;
+  const reason = parseTruncationReason(value.truncationReason);
+  if (reason !== undefined) truncation.truncationReason = reason;
   if (isFiniteJsonNumber(value.excludedCount)) truncation.excludedCount = value.excludedCount;
   if (isJsonArray(value.excludedSample)) truncation.excludedSample = asStringArray(value.excludedSample);
+  const scopeRoot = parseScopeRoot(value.scopeRoot);
+  if (scopeRoot !== undefined) truncation.scopeRoot = scopeRoot;
+  const scopeMode = parseScopeMode(value.scopeMode);
+  if (scopeMode !== undefined) truncation.scopeMode = scopeMode;
+  const metrics = parseMetrics(value.metrics);
+  if (metrics !== undefined) truncation.metrics = metrics;
+  const nested = parseNestedRepoRoots(value.nestedRepoRoots);
+  if (nested !== undefined) truncation.nestedRepoRoots = nested;
+  if (isFiniteJsonNumber(value.generation)) truncation.generation = value.generation;
   return truncation;
 };
 
@@ -971,17 +1219,26 @@ export const cancelCodeGraphIndex = async (
 
 export const fetchCodeGraphIndex = async (
   directory: string | null | undefined,
-  options: { signal?: AbortSignal; refresh?: boolean } = {},
+  options: { signal?: AbortSignal; refresh?: boolean; timeoutMs?: number } = {},
 ): Promise<CodeGraphIndexSummary> => {
   const resolved = requireDirectory(directory);
+  const startedAt = Date.now();
+  const correlationId = mintCorrelationId();
+  debugLog('index request started', { correlationId, directory: resolved, refresh: options.refresh === true });
   const query: CodeGraphIndexQueryParams = { directory: resolved };
   if (options.refresh) query.refresh = '1';
-  const response = await runtimeFetch(`${BASE_PATH}/index`, {
-    query,
-    directory: resolved,
-    cache: 'no-store',
-    signal: options.signal,
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${BASE_PATH}/index`, {
+      query,
+      directory: resolved,
+      cache: 'no-store',
+      signal: options.signal,
+    }, 'Code graph index request', options.timeoutMs);
+  } catch (error) {
+    debugLog('index request failed', { correlationId, directory: resolved, elapsedMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
   if (!response.ok) {
     return failed(response, 'Failed to load code graph index');
   }
@@ -1006,6 +1263,12 @@ export const fetchCodeGraphIndex = async (
   if (binding !== undefined) summary.binding = binding;
   const snapshotRoot = asNonEmptyText(payload.snapshotRoot);
   if (snapshotRoot !== undefined) summary.snapshotRoot = snapshotRoot;
+  if (isFiniteJsonNumber(payload.entryCap)) summary.entryCap = payload.entryCap;
+  const dirty = asText(payload.dirty);
+  if (dirty !== undefined) summary.dirty = dirty;
+  const dirtyReason = asText(payload.dirtyReason);
+  if (dirtyReason !== undefined) summary.dirtyReason = dirtyReason;
+  debugLog('index request finished', { correlationId, directory: resolved, elapsedMs: Date.now() - startedAt, ready: summary.ready === true, freshness: summary.freshness ?? 'unknown', generation: summary.generation ?? null, scopeRoot: summary.scopeRoot ?? null, state: summary.indexState?.state ?? null, phase: summary.indexState?.phase ?? null, stalled: summary.indexState?.stalled === true });
   return summary;
 };
 
@@ -1052,12 +1315,22 @@ export const queryCodeGraph = async (
   if (input.language) query.language = input.language;
   if (input.contentKind) query.contentKind = input.contentKind;
   if (input.contentDirectory) query.contentDirectory = input.contentDirectory;
-  const response = await runtimeFetch(`${BASE_PATH}/query`, {
-    query,
-    directory: resolved,
-    cache: 'no-store',
-    signal: input.signal,
-  });
+  const startedAt = Date.now();
+  const correlationId = mintCorrelationId();
+  debugLog('query request started', { correlationId, directory: resolved, kind: input.kind });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${BASE_PATH}/query`, {
+      query,
+      directory: resolved,
+      cache: 'no-store',
+      signal: input.signal,
+    }, `Code graph ${input.kind} query`, input.timeoutMs);
+  } catch (error) {
+    debugLog('query request failed', { correlationId, directory: resolved, kind: input.kind, elapsedMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
+  debugLog('query request finished', { correlationId, directory: resolved, kind: input.kind, elapsedMs: Date.now() - startedAt, status: response.status });
   if (!response.ok) {
     return failed(response, 'Failed to query code graph');
   }
@@ -1138,5 +1411,11 @@ export const queryCodeGraph = async (
   if (completenessReason !== undefined) result.completenessReason = completenessReason;
   const generation = parseGeneration(payload.generation);
   if (generation !== undefined) result.generation = generation;
+  const repositoryTotals = parseRepositoryTotals(payload.repositoryTotals);
+  if (repositoryTotals) result.repositoryTotals = repositoryTotals;
+  const skippedDirs = parseSkippedDirs(payload.skippedDirs);
+  if (skippedDirs) result.skippedDirs = skippedDirs;
+  const unreadableDirs = parseSkippedDirs(payload.unreadableDirs);
+  if (unreadableDirs) result.unreadableDirs = unreadableDirs;
   return result;
 };

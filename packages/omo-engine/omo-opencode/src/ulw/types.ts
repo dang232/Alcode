@@ -38,6 +38,11 @@ export type CreateUlwRunInput = {
   readonly sessionScope: string
   readonly id?: string
   readonly now?: () => number
+  /**
+   * Pending submission identity claiming this open. When the identity was
+   * already accepted, the existing run is returned instead of a duplicate.
+   */
+  readonly submissionId?: string
 }
 
 /**
@@ -77,3 +82,18 @@ export type RecordUlwChildResultInput = {
 
 /** Goal ids whose dispatch has no matching receipt yet. */
 export type UlwMissingReceipts = readonly string[]
+
+/** Result of opening a run: the accepted record and whether it already existed. */
+export type UlwOpenRunResult = {
+  readonly record: UlwRunRecord
+  readonly deduped: boolean
+}
+
+/** Durable submission identity to run id. One submission opens exactly one root run, across restarts. */
+export type UlwSubmissionClaims = Readonly<Record<string, string>>
+
+/** Reconciled workers: still-alive sessions stay recoverable, dead ones need explicit re-dispatch. */
+export type UlwReconciledWorkers = {
+  readonly alive: readonly string[]
+  readonly dead: readonly string[]
+}
