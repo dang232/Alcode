@@ -45,8 +45,24 @@ test('download path stages a runnable platform lib into an empty root', async ()
 
 test('cross-build signal resolves the target arch, explicit config still wins', () => {
   const base = { ALCODE_TARGET_ARCH: undefined, OPENCHAMBER_TARGET_ARCH: undefined, ELECTRON_BUILDER_ARCH: undefined };
-  assert.equal(resolveTypescriptTarget({ ...base, OPENCHAMBER_TARGET_ARCH: 'arm64' }).node, 'arm64');
-  assert.equal(resolveTypescriptTarget({ ...base, ALCODE_TARGET_ARCH: 'x64', OPENCHAMBER_TARGET_ARCH: 'arm64' }).node, 'x64');
+  const other = process.arch === 'arm64' ? 'x64' : 'arm64';
+  // Explicit config wins over the pipeline signal on every OS (and stays
+  // native here, so the platform rule below never fires for this case).
+  assert.equal(
+    resolveTypescriptTarget({ ...base, ALCODE_TARGET_ARCH: process.arch, OPENCHAMBER_TARGET_ARCH: other }).node,
+    process.arch === 'arm64' ? 'arm64' : 'x64',
+  );
+  if (process.platform === 'linux') {
+    // Linux AppImages build natively only: a cross-arch request must fail
+    // loudly through the shared resolver instead of staging a foreign
+    // compiler (CI covers arm64 on a native arm64 runner).
+    assert.throws(
+      () => resolveTypescriptTarget({ ...base, OPENCHAMBER_TARGET_ARCH: other }),
+      /must be built natively/,
+    );
+  } else {
+    assert.equal(resolveTypescriptTarget({ ...base, OPENCHAMBER_TARGET_ARCH: 'arm64' }).node, 'arm64');
+  }
   assert.equal(resolveTypescriptTarget(base).node, process.arch === 'arm64' ? 'arm64' : 'x64');
 });
 
