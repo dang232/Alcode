@@ -33,7 +33,7 @@
  * SeRestorePrivilege in-process before Contract A denies, so icacls binds
  * Node reads deterministically even for elevated hosted runners.
  */
-import { execFile, execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -160,6 +160,8 @@ const readAsarHeader = (asarPath) => {
     fs.closeSync(descriptor);
   }
 };
+
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 const isDenied = async (file) => {
   try {
@@ -342,6 +344,40 @@ const denyRead = async (file) => {
           step('deny-restore', path.basename(file) + ': readable after /remove:d');
         };
       }
+      step('deny-lock', path.basename(file) + ': ACLs unenforced on this volume (DENY present yet readable), trying exclusive lock (D: may enforce sharing)');
+      runIcacls([file, '/remove:d', USERNAME], attempts);
+      runIcacls([file, '/remove:d', '*S-1-1-0'], attempts);
+      const holderTarget = file;
+      const holderPs = "$p='" + holderTarget.replace(/'/g, "''") + "'; Write-Output 'HELPER-START'; $f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open($p, 'Open', 'Read', 'None') } catch { Write-Output $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; try { $g=[System.IO.File]::Open($p, 'Open', 'Read', 'Read'); $g.Close(); Write-Output 'REOPEN-SUCCEEDED' } catch { Write-Output 'REOPEN-BLOCKED' }; Start-Sleep 120";
+      const launch = (bin) => spawn(bin, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', holderPs], { stdio: 'pipe', windowsHide: true });
+      const tryLock = async (bin, budgetMs) => {
+        const child = launch(bin);
+        let out = '';
+        child.stdout.on('data', (c) => { out += String(c).slice(0, 500); });
+        child.stderr.on('data', (c) => { out += String(c).slice(0, 500); });
+        step('deny-holder', 'spawned lock holder pid=' + (child.pid ?? 'none') + ' (' + bin + ') for ' + path.basename(file));
+        let gone = false;
+        let exitNote = '';
+        child.on('exit', (code, sig) => { gone = true; exitNote = 'code=' + (code ?? 'none') + ' sig=' + (sig ?? 'none') + ' out=' + out.trim().slice(0, 200); });
+        child.on('error', (e) => { gone = true; exitNote = 'spawn-error ' + String(e).slice(0, 120); });
+        let confirmed = false;
+        for (let w = 0; w < budgetMs; w += 1000) { await sleep(1000); if (gone) return { locked: false, child, note: exitNote }; if (out.includes('REOPEN-BLOCKED')) { confirmed = true; break; } }
+        if (!confirmed) return { locked: false, child, note: 'no lock confirmation after ' + budgetMs + 'ms out=' + out.trim().slice(0, 500) };
+        const fr = freshNodeDenied(file);
+        step('deny-probe', 'fresh node under confirmed lock exit=' + fr.exit);
+        for (let w = 0; w < 8000; w += 1000) { const lv = await denialProbe(file); if (lv.statCode === 'ENOENT') fail('deny-wrong-error', file + ' missing under lock'); if (lv.denied) return { locked: true, child, note: 'code=' + lv.code }; await sleep(1000); }
+        return { locked: false, child, note: 'confirmed yet Node reads succeed out=' + out.trim().slice(0, 500) };
+      };
+      const kill = (ch) => { try { process.kill(ch.pid, 'SIGKILL'); } catch { /* gone */ } };
+      let att = await tryLock('powershell', 20000);
+      if (!att.locked) { step('deny-holder-note', 'powershell: ' + att.note); kill(att.child); att = await tryLock('pwsh', 20000); }
+      if (!att.locked) { step('deny-holder-note', 'pwsh: ' + att.note); kill(att.child); }
+      if (att.locked) {
+        const holder = att.child;
+        step('deny-ok', path.basename(file) + ': genuine EBUSY-class denial via exclusive lock (' + att.note + ')');
+        return async () => { for (let k = 0; k < 3; k++) { try { process.kill(holder.pid, 'SIGKILL'); } catch { /* gone */ } await sleep(500); if (!(await isDenied(file))) { step('deny-restore', path.basename(file) + ': readable after holder kill'); return; } } fail('restore', 'holder kill did not restore ' + file); };
+      }
+      if (att.child) { try { process.kill(att.child.pid, 'SIGKILL'); } catch { /* never held */ } }
     }
   } else {
     spawnSync('chmod', ['000', file], { stdio: 'ignore' });
