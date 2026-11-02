@@ -196,9 +196,13 @@ const denyRead = async (file) => {
     // hosts before taking the lock; the command prints nothing on the
     // success path, so the pipes cannot fill.
     const holder = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
-      `$f=[System.IO.File]::Open('${file.replace(/'/g, "''")}', 'Open', 'Read', 'None'); Start-Sleep 120`,
+      `$f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open('${file.replace(/'/g, "''")}', 'Open', 'Read', 'None') } catch { Write-Host $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; Start-Sleep 120`,
     ], { stdio: 'pipe', windowsHide: true });
+    let holderStderr = '';
+    const captureOutput = (chunk) => { holderStderr += String(chunk).slice(0, 400); };
+    holder.stdout.on('data', captureOutput);
     holder.stdout.resume();
+    holder.stderr.on('data', captureOutput);
     holder.stderr.resume();
     step('deny-holder', `spawned exclusive-lock helper pid=${holder.pid ?? 'none'} for ${path.basename(file)}`);
     // PowerShell cold start on a loaded host can take seconds; poll for
@@ -207,7 +211,7 @@ const denyRead = async (file) => {
     let holderGone = false;
     holder.on('exit', (code, signal) => {
       holderGone = true;
-      step('deny-holder-exit', `helper exited early code=${code ?? 'none'} signal=${signal ?? 'none'}`);
+      step('deny-holder-exit', `helper exited early code=${code ?? 'none'} signal=${signal ?? 'none'} stderr=${holderStderr.trim().slice(0, 300) || 'empty'}`);
     });
     holder.on('error', (error) => {
       holderGone = true;
