@@ -25,7 +25,7 @@ Object.assign(globalThis, {
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 import type { Root } from 'react-dom/client';
-import type { CodeGraphIndexState, CodeGraphIndexSummary, CodeGraphQueryResult } from '@/lib/codeGraphApi';
+import type { CodeGraphIndexSummary, CodeGraphQueryResult } from '@/lib/codeGraphApi';
 mock.module('@/lib/codeGraphSubject', () => ({
   resolveCodeGraphSubject: (input: { manual?: unknown }) => (
     input?.manual

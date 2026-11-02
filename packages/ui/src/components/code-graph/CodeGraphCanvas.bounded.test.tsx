@@ -20,6 +20,7 @@ Object.assign(globalThis, {
 const { act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 import type { Root } from 'react-dom/client';
+import type { CodeGraphJsonRecord, CodeGraphSelectedEdge, CodeGraphTopology } from '@/lib/codeGraphApi';
 const { I18nProvider } = await import('@/lib/i18n');
 const { CodeGraphCanvas } = await import('./CodeGraphCanvas');
 const { parseGraph } = await import('@/lib/codeGraphApi');
@@ -32,7 +33,7 @@ describe('code graph canvas bounded render + edge keyboard', () => {
     container?.remove();
     root = null;
   });
-  const renderCanvas = async (graph: any, onSelectEdge?: any) => {
+  const renderCanvas = async (graph: CodeGraphTopology, onSelectEdge?: (edge: CodeGraphSelectedEdge | null) => void) => {
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -46,8 +47,8 @@ describe('code graph canvas bounded render + edge keyboard', () => {
     return container;
   };
   test('caps mounted nodes/edges and keeps selection mounted', async () => {
-    const nodes: any[] = [{ id: 'subj', kind: 'symbol', name: 'subj', file: 'a.ts', line: 1, subject: true }];
-    const edges: any[] = [];
+    const nodes: CodeGraphJsonRecord[] = [{ id: 'subj', kind: 'symbol', name: 'subj', file: 'a.ts', line: 1, subject: true }];
+    const edges: CodeGraphJsonRecord[] = [];
     for (let i = 0; i < 400; i++) {
       const id = 'n' + i;
       nodes.push({ id, kind: 'symbol', name: id, file: 'a.ts', line: i + 2 });
@@ -74,8 +75,8 @@ describe('code graph canvas bounded render + edge keyboard', () => {
       truncated: false,
     });
     if (!model) throw new Error('model missing');
-    let picked: any = 'unset';
-    const host = await renderCanvas(model, (e: any) => { picked = e; });
+    let picked: CodeGraphSelectedEdge | null | 'unset' = 'unset';
+    const host = await renderCanvas(model, (e: CodeGraphSelectedEdge | null) => { picked = e; });
     const edge = host.querySelector('path[role="button"]') as HTMLElement;
     expect(edge).not.toBeNull();
     expect(edge.getAttribute('aria-label')).toContain('CALLS_STATIC');
@@ -83,6 +84,6 @@ describe('code graph canvas bounded render + edge keyboard', () => {
     await act(async () => {
       edge.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
-    expect(picked === null || (picked && picked.id)).toBeTruthy();
+    expect(picked === null || (typeof picked === 'object' && picked !== null && picked.id)).toBeTruthy();
   });
 });
