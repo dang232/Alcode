@@ -23,7 +23,12 @@ permissions:
 
 jobs:
   packaged-accept:
-    name: Packaged code-graph (${{ matrix.platform }})
+    # Entries with scope 'artifacts' cross-build on a foreign-arch host:
+    # they prove the package ships the right files, but the target
+    # compiler cannot start there, so runtime acceptance for that target
+    # comes from its native entry. A green artifacts job is never a
+    # runtime PASS.
+    name: Packaged code-graph (${{ matrix.platform }}${{ matrix.scope == 'artifacts' && ', cross-built artifacts' || '' }})
     strategy:
       fail-fast: false
       matrix:
@@ -33,31 +38,43 @@ jobs:
             platform: win32-x64
             pack-os: win
             electron-builder-arch: --x64
+            scope: runtime
           - os: windows-2022
             arch: arm64
             platform: win32-arm64
             pack-os: win
             electron-builder-arch: --arm64
+            scope: artifacts
+          - os: windows-11-arm
+            arch: arm64
+            platform: win32-arm64
+            pack-os: win
+            electron-builder-arch: --arm64
+            scope: runtime
           - os: macos-15
             arch: arm64
             platform: darwin-arm64
             pack-os: mac
             electron-builder-arch: --arm64
+            scope: runtime
           - os: macos-15-intel
             arch: x64
             platform: darwin-x64
             pack-os: mac
             electron-builder-arch: --x64
+            scope: runtime
           - os: ubuntu-latest
             arch: x64
             platform: linux-x64
             pack-os: linux
             electron-builder-arch: --x64
+            scope: runtime
           - os: ubuntu-24.04-arm
             arch: arm64
             platform: linux-arm64
             pack-os: linux
             electron-builder-arch: --arm64
+            scope: runtime
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     steps:
@@ -96,6 +113,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: code-graph-packaged-${{ matrix.platform }}-${{ github.run_id }}
+          name: code-graph-packaged-${{ matrix.platform }}-${{ matrix.scope }}-${{ github.run_id }}
           path: packages/electron/code-graph-packaged-accept.log
           retention-days: 7
