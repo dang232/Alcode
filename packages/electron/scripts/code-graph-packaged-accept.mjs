@@ -207,7 +207,7 @@ const denyRead = async (file) => {
       step('deny-aces', `${path.basename(file)}: ${(aceDump.stdout ?? '').trim().split('\n').slice(0, 6).join(' | ').slice(0, 300) || 'icacls query empty'}`);
     } catch { /* diagnostics only */ }
     const holderCommand = (marker) =>
-      `Write-Host ${marker}; $f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open('${holderTarget.replace(/'/g, "''")}', 'Open', 'Read', 'None') } catch { Write-Host $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; Start-Sleep 120`;
+      `$p='${holderTarget.replace(/'/g, "''")}'; Write-Host ${marker}; Write-Host ('TARGET-RESOLVED ' + (Get-Item -LiteralPath $p).FullName); $f=$null; for ($i=0; $i -lt 20 -and -not $f; $i++) { try { $f=[System.IO.File]::Open($p, 'Open', 'Read', 'None') } catch { Write-Host $_.Exception.Message; Start-Sleep 1 } }; if (-not $f) { exit 1 }; try { $g=[System.IO.File]::Open($p, 'Open', 'Read', 'Read'); $g.Close(); Write-Host 'REOPEN-SUCCEEDED' } catch { Write-Host 'REOPEN-BLOCKED' }; Start-Sleep 120`;
     const launchHolder = (binary) => {
       const child = spawn(binary, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', holderCommand(`HELPER-START-${binary}`)], { stdio: 'pipe', windowsHide: true });
       child.stdout.resume();
