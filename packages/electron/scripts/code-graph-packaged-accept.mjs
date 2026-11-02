@@ -345,7 +345,15 @@ const main = async () => {
     const { createCodeGraphRuntime } = await import(
       pathToFileURL(path.join(workdir, 'node_modules', '@alcode', 'web', 'server', 'lib', 'code-graph', 'runtime.js')).href
     );
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-pkg-fx-'));
+    let root = fs.mkdtempSync(path.join(os.tmpdir(), 'cg-pkg-fx-'));
+    // Normalize to the long path once: on hosts where 8.3 spellings
+    // resolve per-runtime, every later path (engine walks, denial
+    // targets, holders, verification) must name one identical object.
+    try {
+      const canonical = fs.realpathSync(root);
+      if (canonical !== root) step('fixture-canonical', `${root} -> ${canonical}`);
+      root = canonical;
+    } catch { /* keep the mkdtemp spelling */ }
     try {
       const write = (rel, content) => {
         const full = path.join(root, rel);
