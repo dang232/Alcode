@@ -197,10 +197,11 @@ const denyRead = async (file) => {
     // never executes) while PowerShell 7 behaves there, or vice versa.
     // A START marker proves the script itself runs, so a silent helper
     // is distinguishable from a failing open.
-    // Resolve the long path for the helper: 8.3 short names do not
-    // always resolve the same way from every runtime on hosted images.
-    let holderTarget = file;
-    try { holderTarget = fs.realpathSync(file); } catch { /* keep the given spelling */ }
+    // The helper must open the byte-identical path Node reads: on some
+    // hosts the short and long spellings of one path resolve per-runtime,
+    // so any normalization risks locking a different object than the one
+    // under test. Identical strings leave no room for divergence.
+    const holderTarget = file;
     // Ground truth on lingering ACEs before the holder tries to open.
     try {
       const aceDump = spawnSync('icacls', [file], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
