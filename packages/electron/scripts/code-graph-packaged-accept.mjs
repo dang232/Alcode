@@ -18,7 +18,7 @@
  * broke. OS-specific read denial uses icacls on Windows and chmod
  * elsewhere, verified effective by reading the file back, never assumed.
  */
-import { execFile, execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -155,6 +155,8 @@ const isDenied = async (file) => {
   }
 };
 
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
 const denyRead = async (file) => {
   const attempts = [];
   const runIcacls = (args) => {
@@ -186,6 +188,31 @@ const denyRead = async (file) => {
         }
       };
     }
+    // Last resort on privilege-immune hosts: an exclusive OS lock held by
+    // a short-lived helper blocks every opener regardless of ACLs and
+    // restores by killing the holder. The engine classifies any read
+    // error as unreadable, so lock failures exercise the same path.
+    // Attached with piped stdio: detached+ignored holders die on some
+    // hosts before taking the lock; the command prints nothing on the
+    // success path, so the pipes cannot fill.
+    const holder = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      `try { $f=[System.IO.File]::Open('${file.replace(/'/g, "''")}', 'Open', 'Read', 'None'); Start-Sleep 120 } catch { exit 1 }`,
+    ], { stdio: 'pipe', windowsHide: true });
+    holder.stdout.resume();
+    holder.stderr.resume();
+    await sleep(2500);
+    if (await isDenied(file)) {
+      step('deny-fallback', `exclusive lock holder for ${path.basename(file)} (ACL denies ineffective on this host)`);
+      return async () => {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try { process.kill(holder.pid, 'SIGKILL'); } catch { /* already gone */ }
+          await sleep(500);
+          if (!(await isDenied(file))) return;
+        }
+        fail('restore', `lock holder kill did not restore readability for ${file}`);
+      };
+    }
+    try { process.kill(holder.pid, 'SIGKILL'); } catch { /* never held the lock */ }
   } else {
     spawnSync('chmod', ['000', file], { stdio: 'ignore' });
     if (await isDenied(file)) {
