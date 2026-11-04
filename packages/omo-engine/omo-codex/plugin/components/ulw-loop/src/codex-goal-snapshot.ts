@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-export type CodexGoalSnapshotStatus =
+type CodexGoalSnapshotStatus =
 	| "active"
 	| "complete"
 	| "paused"

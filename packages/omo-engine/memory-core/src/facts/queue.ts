@@ -322,11 +322,6 @@ export class FactsQueue {
 }
 
 export {
-  FACTS_QUEUE_VERSION,
   factsQueuePaths,
-  type FactsConsumedRecord,
-  type FactsConsumedWatermark,
-  type FactsCursor,
   type FactsQueueEntry,
-  type FactsQueueRange,
 } from "./schema"

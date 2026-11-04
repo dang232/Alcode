@@ -19,7 +19,7 @@ function getPathTools(platform: NodeJS.Platform): PathTools {
   return posix
 }
 
-export function collectCandidateBinaryPaths(
+function collectCandidateBinaryPaths(
   pathEnv: string | undefined,
   which: (command: string) => string | null | undefined = bunWhich,
   platform: NodeJS.Platform = process.platform,
@@ -48,7 +48,7 @@ export function collectCandidateBinaryPaths(
   return candidates
 }
 
-export async function canExecuteBinary(
+async function canExecuteBinary(
   binaryPath: string,
   spawn: typeof spawnWithWindowsHide = spawnWithWindowsHide,
 ): Promise<boolean> {
@@ -80,7 +80,7 @@ export async function findWorkingOpencodeBinary(
   return null
 }
 
-export function buildPathWithBinaryFirst(pathEnv: string | undefined, binaryPath: string): string {
+function buildPathWithBinaryFirst(pathEnv: string | undefined, binaryPath: string): string {
   const preferredDir = dirname(binaryPath)
   const existing = (pathEnv ?? "").split(delimiter).filter(
     (entry) => entry.length > 0 && entry !== preferredDir,

@@ -18,7 +18,7 @@ import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_STATUS_NAME = "ulw_status"
 
-export const ULW_STATUS_DESCRIPTION =
+const ULW_STATUS_DESCRIPTION =
   "Report a native ULW run (record, roster, receipts, missing, interrupted, durable) or list runs. A submissionId resolves the run an accepted submission opened."
 
 export type UlwStatusDeps = {

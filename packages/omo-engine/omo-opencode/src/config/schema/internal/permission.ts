@@ -1,7 +1,6 @@
 import { z } from "zod"
 
-export const PermissionValueSchema = z.enum(["ask", "allow", "deny"])
-export type PermissionValue = z.infer<typeof PermissionValueSchema>
+const PermissionValueSchema = z.enum(["ask", "allow", "deny"])
 
 const BashPermissionSchema = z.union([
   PermissionValueSchema,
@@ -17,4 +16,3 @@ export const AgentPermissionSchema = z.object({
   external_directory: PermissionValueSchema.optional(),
 }).catchall(PermissionValueSchema.optional())
 
-export type AgentPermission = z.infer<typeof AgentPermissionSchema>

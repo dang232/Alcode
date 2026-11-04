@@ -2,7 +2,7 @@ export type ContinuationMarkerSource = "todo" | "stop" | "background-task"
 
 export type ContinuationMarkerState = "idle" | "active" | "stopped"
 
-export interface ContinuationMarkerSourceEntry {
+interface ContinuationMarkerSourceEntry {
   state: ContinuationMarkerState
   reason?: string
   updatedAt: string

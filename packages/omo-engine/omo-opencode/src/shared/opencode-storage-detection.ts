@@ -29,6 +29,3 @@ export function isSqliteBackend(): boolean {
   return result
 }
 
-export function resetSqliteBackendCache(): void {
-  cachedResult = NOT_CACHED
-}

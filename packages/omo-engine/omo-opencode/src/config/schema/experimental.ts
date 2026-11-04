@@ -25,4 +25,3 @@ export const ExperimentalConfigSchema = z.object({
   disable_live_parent_wake_routing: z.boolean().optional(),
 })
 
-export type ExperimentalConfig = z.infer<typeof ExperimentalConfigSchema>

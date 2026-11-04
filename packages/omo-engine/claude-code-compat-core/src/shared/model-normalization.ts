@@ -1,1 +1,1 @@
-export { normalizeModel, normalizeModelID } from "../../../model-core/src/index.ts"
+export { normalizeModelID } from "../../../model-core/src/index.ts"

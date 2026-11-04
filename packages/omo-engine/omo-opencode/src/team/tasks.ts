@@ -6,10 +6,6 @@
  * never re-thread them.
  */
 import {
-  AlreadyClaimedError as CoreAlreadyClaimedError,
-  BlockedByError as CoreBlockedByError,
-  CrossOwnerUpdateError as CoreCrossOwnerUpdateError,
-  InvalidTaskTransitionError as CoreInvalidTaskTransitionError,
   canClaim,
   claimTask,
   createTask,
@@ -20,13 +16,6 @@ import {
 import type { Task } from "../../../team-core/src/types.ts"
 
 import type { TeamModeConfig } from "../../../team-core/src/config.ts"
-
-export {
-  CoreAlreadyClaimedError as TeamTaskAlreadyClaimedError,
-  CoreBlockedByError as TeamTaskBlockedByError,
-  CoreCrossOwnerUpdateError as TeamTaskCrossOwnerUpdateError,
-  CoreInvalidTaskTransitionError as TeamTaskInvalidTransitionError,
-}
 
 export type TeamTasklistContext = {
   readonly teamRunId: string

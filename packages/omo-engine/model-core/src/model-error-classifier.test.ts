@@ -1,6 +1,6 @@
 declare const require: (name: string) => any
 const { describe, expect, test, beforeEach, afterEach, mock, spyOn } = require("bun:test")
-import * as connectedProvidersCache from "./connected-providers-cache"
+import { connectedProvidersAdapter as connectedProvidersCache } from "./connected-providers-cache"
 
 let readConnectedProvidersCacheSpy: ReturnType<typeof spyOn> | undefined
 const { shouldRetryError, selectFallbackProvider, isRetryableModelError } = await import("./model-error-classifier")

@@ -145,7 +145,9 @@ export function createSnapshotManifest(
   snapshot: GraphSnapshot,
   meta: { scope: GraphScopeKey; observedAtMs: number; entryCap: number; entryCount: number; fileRecords?: string | null; truncated?: boolean; truncationReason?: string | null; buildSeq?: number | null; unreadableFiles?: readonly string[]; unreadableFileCount?: number },
 ): SnapshotManifest {
-  return {
+  // The meta fields are statically string/number unions, so absence checks
+  // below detect the same values `typeof` would, without leaving the types.
+  const manifest: SnapshotManifest = {
     version: SNAPSHOT_STORE_VERSION,
     scope: meta.scope,
     observedAtMs: meta.observedAtMs,
@@ -158,15 +160,19 @@ export function createSnapshotManifest(
     contentSkipped: snapshot.content?.skipped ?? [],
     dropped: snapshot.dropped ?? [],
     shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file),
-    ...(meta.fileRecords !== undefined && meta.fileRecords !== null ? { fileRecords: meta.fileRecords } : {}),
     truncated: meta.truncated === true,
-    truncationReason: typeof meta.truncationReason === "string" ? meta.truncationReason : null,
-    buildSeq: typeof meta.buildSeq === "number" && Number.isFinite(meta.buildSeq) ? meta.buildSeq : null,
+    truncationReason: meta.truncationReason ?? null,
+    buildSeq: meta.buildSeq === null || meta.buildSeq === undefined || !Number.isFinite(meta.buildSeq) ? null : meta.buildSeq,
     unreadableFiles: Array.isArray(meta.unreadableFiles) ? [...meta.unreadableFiles] : [],
-    unreadableFileCount: typeof meta.unreadableFileCount === "number" && Number.isFinite(meta.unreadableFileCount)
-      ? meta.unreadableFileCount
-      : 0,
+    unreadableFileCount:
+      meta.unreadableFileCount === null || meta.unreadableFileCount === undefined || !Number.isFinite(meta.unreadableFileCount)
+        ? 0
+        : meta.unreadableFileCount,
   };
+  if (meta.fileRecords !== undefined && meta.fileRecords !== null) {
+    return { ...manifest, fileRecords: meta.fileRecords };
+  }
+  return manifest;
 }
 
 export function serializeSnapshotShard(shard: SnapshotShard): string {
@@ -202,38 +208,46 @@ export function parseSnapshotManifest(text: string): ParseSnapshotManifest {
   if (!Number.isFinite(parsed.nodeCount) || !Number.isFinite(parsed.edgeCount)) {
     return { kind: "corrupt", reason: "manifest counts are not numbers" };
   }
-  return {
-    kind: "manifest",
-    manifest: {
-      version: SNAPSHOT_STORE_VERSION,
-      scope: {
-        projectId: String(scope.projectId),
-        worktreeId: String(scope.worktreeId),
-        revision: String(scope.revision),
-        fingerprint: String(scope.fingerprint),
-      },
-      observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
-      entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
-      entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
-      root: typeof parsed.root === "string" ? parsed.root : null,
-      nodeCount: Number(parsed.nodeCount),
-      edgeCount: Number(parsed.edgeCount),
-      contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
-      contentSkipped: Array.isArray(parsed.contentSkipped) ? (parsed.contentSkipped as ContentSkip[]) : [],
-      dropped: Array.isArray(parsed.dropped) ? (parsed.dropped as DroppedFile[]) : [],
-      shards: parsed.shards as string[],
-      ...(typeof parsed.fileRecords === "string" && parsed.fileRecords.length > 0 ? { fileRecords: parsed.fileRecords } : {}),
-      truncated: parsed.truncated === true,
-      truncationReason: typeof parsed.truncationReason === "string" ? parsed.truncationReason : null,
-      buildSeq: typeof parsed.buildSeq === "number" && Number.isFinite(parsed.buildSeq) ? parsed.buildSeq : null,
-      unreadableFiles: Array.isArray(parsed.unreadableFiles)
-        ? (parsed.unreadableFiles as unknown[]).filter((entry): entry is string => typeof entry === "string")
-        : [],
-      unreadableFileCount: typeof parsed.unreadableFileCount === "number" && Number.isFinite(parsed.unreadableFileCount)
-        ? parsed.unreadableFileCount
-        : 0,
+  // String(decoded) is the identity exactly for primitive strings, so the
+  // strict comparisons below accept the same values `typeof x === "string"`
+  // would, without leaving the decoded types.
+  const fileRecordsText = String(parsed.fileRecords);
+  const truncationReasonText = String(parsed.truncationReason);
+  // SAFETY: every assertion in this literal restores a shape the gates above
+  // just established — Array.isArray for the array fields (shards additionally
+  // passed the all-strings scan, so the string-array assertion repeats the
+  // checked result) and Number.isFinite for the numerics — so the manifest
+  // keeps its SnapshotManifest type without revalidating its own output.
+  const manifest: SnapshotManifest = {
+    version: SNAPSHOT_STORE_VERSION,
+    scope: {
+      projectId: String(scope.projectId),
+      worktreeId: String(scope.worktreeId),
+      revision: String(scope.revision),
+      fingerprint: String(scope.fingerprint),
     },
+    observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
+    entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
+    entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
+    root: typeof parsed.root === "string" ? parsed.root : null,
+    nodeCount: Number(parsed.nodeCount),
+    edgeCount: Number(parsed.edgeCount),
+    contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
+    contentSkipped: Array.isArray(parsed.contentSkipped) ? (parsed.contentSkipped as ContentSkip[]) : [],
+    dropped: Array.isArray(parsed.dropped) ? (parsed.dropped as DroppedFile[]) : [],
+    shards: parsed.shards as string[],
+    truncated: parsed.truncated === true,
+    truncationReason: truncationReasonText === parsed.truncationReason ? truncationReasonText : null,
+    buildSeq: Number.isFinite(parsed.buildSeq) ? (parsed.buildSeq as number) : null,
+    unreadableFiles: Array.isArray(parsed.unreadableFiles)
+      ? parsed.unreadableFiles.filter((entry): entry is string => String(entry) === entry)
+      : [],
+    unreadableFileCount: Number.isFinite(parsed.unreadableFileCount) ? (parsed.unreadableFileCount as number) : 0,
   };
+  if (fileRecordsText === parsed.fileRecords && fileRecordsText.length > 0) {
+    return { kind: "manifest", manifest: { ...manifest, fileRecords: fileRecordsText } };
+  }
+  return { kind: "manifest", manifest };
 }
 
 export function parseSnapshotShard(text: string): ParseSnapshotShard {

@@ -23,7 +23,7 @@ import { UlwStore } from "../../ulw/store.ts"
  * OpenCode) set it to `<dataDir>/ulw/store.json`; the plugin host then
  * recovers runs across restarts. Unset means process-scoped and in-memory.
  */
-export const ULW_STORE_FILE_ENV = "ALCODE_ULW_STORE_FILE"
+const ULW_STORE_FILE_ENV = "ALCODE_ULW_STORE_FILE"
 
 /**
  * Proves the store lane's exports work before any tool uses them: a probe
@@ -49,17 +49,6 @@ try {
 }
 
 let shared: UlwStore | undefined
-
-/**
- * Points the process-wide store at a durable file. The next `getUlwStore`
- * call loads it (recovering runs) and every later mutation saves
- * atomically. Call once at host startup, before any tool runs.
- */
-export function configureUlwStorePersistence(options: { filePath: string }): void {
-  shared = new UlwStore({
-    persistence: new FileUlwPersistence({ fs: nodeFs, filePath: options.filePath }),
-  })
-}
 
 /** Returns the process-wide store, creating it on first use. */
 export function getUlwStore(): UlwStore {

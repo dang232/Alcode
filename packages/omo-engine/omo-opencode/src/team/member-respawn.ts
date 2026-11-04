@@ -39,7 +39,7 @@ export type MemberRespawnDeps = {
   readonly memberExtension?: TeamMemberExtensionConfig
 }
 
-export type RecordedMemberLoss = {
+type RecordedMemberLoss = {
   readonly previousTaskId: string
   readonly status: MemberTaskStatus | "unmapped"
 }

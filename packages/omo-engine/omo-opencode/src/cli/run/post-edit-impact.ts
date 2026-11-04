@@ -44,7 +44,7 @@ export interface ChangedFile {
   readonly status: string
 }
 
-export type PostEditRefresh = "reused" | "refreshed" | "unavailable"
+type PostEditRefresh = "reused" | "refreshed" | "unavailable"
 
 export interface PostEditImpact {
   readonly changed: readonly ChangedFile[]
@@ -62,14 +62,14 @@ export interface AnalyzePostEditInput {
 }
 
 /** Injectable git runner for tests: receives the argv, returns stdout. */
-export type ChangedFilesRunner = (cmd: readonly string[]) => Promise<{ stdout: string }>
+type ChangedFilesRunner = (cmd: readonly string[]) => Promise<{ stdout: string }>
 
 /** Bounded re-index cap, shared with the planner evidence path. */
-export const POST_EDIT_MAX_FILES = PLAN_EVIDENCE_MAX_FILES
+const POST_EDIT_MAX_FILES = PLAN_EVIDENCE_MAX_FILES
 /** Cap on symbol subjects per changed file: the impact walk is bounded per subject. */
-export const POST_EDIT_SUBJECTS_PER_FILE = 4
+const POST_EDIT_SUBJECTS_PER_FILE = 4
 /** Cap on symbol subjects across all changed files. */
-export const POST_EDIT_MAX_SUBJECTS = 8
+const POST_EDIT_MAX_SUBJECTS = 8
 
 function defaultRunner(directory: string): ChangedFilesRunner {
   return (cmd) =>

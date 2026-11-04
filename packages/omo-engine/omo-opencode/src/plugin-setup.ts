@@ -69,16 +69,16 @@ import { PLUGIN_NAME } from "./shared/plugin-identity";
 /* Minimal V2 ctx shapes (structural; no host SDK import).              */
 /* ------------------------------------------------------------------ */
 
-export interface V2Registration {
+interface V2Registration {
   dispose(): void | Promise<void>;
 }
 
-export type V2TransformCallback<TEditor> = (editor: TEditor) => void;
+type V2TransformCallback<TEditor> = (editor: TEditor) => void;
 
 // The real V2 host exposes update/list/get/default/remove only: there is no
 // add(), so this plugin never registers agents through the editor. The
 // interface keeps the proven surface exactly.
-export interface V2AgentEditor {
+interface V2AgentEditor {
   update(id: string, update: (agent: Record<string, unknown>) => void): void;
   remove(id: string): void;
   get(id: string): Record<string, unknown> | undefined;
@@ -86,7 +86,7 @@ export interface V2AgentEditor {
   default(id: string | undefined): void;
 }
 
-export interface V2ToolEditor {
+interface V2ToolEditor {
   add(tool: Record<string, unknown>): void;
   update(id: string, update: (tool: Record<string, unknown>) => void): void;
   remove(id: string): void;
@@ -95,15 +95,15 @@ export interface V2ToolEditor {
   namespace(namespace: { name: string; description: string }): void;
 }
 
-export interface V2CommandEditor {
+interface V2CommandEditor {
   add(definition: Record<string, unknown>): void;
 }
 
-export interface V2SkillEditor {
+interface V2SkillEditor {
   add(skill: Record<string, unknown>): void;
 }
 
-export interface V2McpEditor {
+interface V2McpEditor {
   set(name: string, config: Record<string, unknown>): void;
   update(name: string, update: (config: Record<string, unknown>) => void): void;
   remove(name: string): void;
@@ -111,7 +111,7 @@ export interface V2McpEditor {
   list(): readonly (readonly [string, Record<string, unknown>])[];
 }
 
-export interface V2HookEvent {
+interface V2HookEvent {
   [key: string]: unknown;
 }
 
@@ -230,7 +230,7 @@ function denyWithoutPlanEvidence(sessionID: string, requested: string, pluginDir
  * the flat V2 shape (`{ type, sessionID/info... }`); anything else returns
  * undefined and is skipped, mirroring the V1 entry.
  */
-export function toOmoEvent(event: unknown): OmoPluginEvent | undefined {
+function toOmoEvent(event: unknown): OmoPluginEvent | undefined {
   if (!isRecord(event) || typeof event["type"] !== "string") return undefined;
   const type = event["type"] as string;
   const properties = isRecord(event["properties"])
@@ -301,7 +301,7 @@ export function toOmoEvent(event: unknown): OmoPluginEvent | undefined {
  * Convert one Omo tool parameter schema into the JSON Schema the V2 tool
  * editor expects. `allowedValues` become `enum`; `required` passes through.
  */
-export function toJsonSchemaInput(schema: OmoToolParametersSchema): Record<string, unknown> {
+function toJsonSchemaInput(schema: OmoToolParametersSchema): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
   for (const [name, field] of Object.entries(schema.properties)) {
     properties[name] = {

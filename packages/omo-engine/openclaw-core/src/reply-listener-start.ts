@@ -50,7 +50,7 @@ function createStartFailureResult(
   }
 }
 
-export function resolveReplyListenerDaemonScript(currentFileUrl: string): string {
+function resolveReplyListenerDaemonScript(currentFileUrl: string): string {
   const currentFilePath = fileURLToPath(currentFileUrl)
   return currentFilePath.endsWith(".ts")
     ? join(dirname(currentFilePath), "daemon.ts")

@@ -11,14 +11,14 @@ import type { DagDiagnostic, DagNodeId, DagRunId } from "./types"
 
 const SCHEMA_VERSION = 1
 
-export type DagSkillDigest = {
+type DagSkillDigest = {
   readonly name: string
   readonly sha256: string
 }
 
 // Everything the dispatcher and an auditor need about one node's skills, captured once at run
 // creation. `prompt` is the submitted original; `effectivePrompt` is the dispatch material.
-export type DagNodeSkillMaterialization = {
+type DagNodeSkillMaterialization = {
   readonly nodeId: string
   readonly requested: readonly string[]
   readonly resolved: readonly DagSkillDigest[]

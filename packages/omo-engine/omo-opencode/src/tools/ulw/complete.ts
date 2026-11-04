@@ -19,7 +19,7 @@ import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_COMPLETE_NAME = "ulw_complete"
 
-export const ULW_COMPLETE_DESCRIPTION = "Close a ULW run once every dispatched goal has its result."
+const ULW_COMPLETE_DESCRIPTION = "Close a ULW run once every dispatched goal has its result."
 
 export type UlwCompleteDeps = {
   readonly store?: UlwStore

@@ -2,7 +2,7 @@ import * as z from "zod"
 
 import { OmoAgentsConfigSchema } from "./agent"
 import { OmoCategoriesConfigSchema } from "./category"
-import { OmoComputerSettingsLayerSchema, OmoComputerSettingsSchema } from "./computer"
+import { OmoComputerSettingsLayerSchema } from "./computer"
 import { OmoGitMasterSettingsLayerSchema, OmoGitMasterSettingsSchema } from "./git-master"
 import { OmoHarnessIdSchema, type OmoHarnessId } from "./harness"
 import { OmoMemorySettingsLayerSchema, OmoMemorySettingsSchema } from "./memory"
@@ -76,7 +76,7 @@ export const OmoConfigSchema = z.object({
   model_profile: z.string().optional(),
   memory: OmoMemorySettingsSchema.optional(),
   telemetry: OmoTelemetrySettingsSchema.optional(),
-  computer: OmoComputerSettingsSchema.optional(),
+  computer: OmoComputerSettingsLayerSchema.optional(),
   disabled_skills: OmoDisabledSkillsSchema.optional(),
   "[opencode]": OmoOpenCodeHarnessConfigSchema.optional(),
   "[native]": OmoTypedHarnessConfigSchema.optional(),

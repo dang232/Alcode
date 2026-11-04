@@ -41,25 +41,25 @@ export interface OmoJsonObject {
 /* Plugin context: what every stage receives from the entry.           */
 /* ------------------------------------------------------------------ */
 
-export type OmoToastVariant = "info" | "success" | "warning" | "error";
+type OmoToastVariant = "info" | "success" | "warning" | "error";
 
-export interface OmoToastBody {
+interface OmoToastBody {
   readonly title: string;
   readonly message: string;
   readonly variant: OmoToastVariant;
 }
 
-export interface OmoTuiHandle {
+interface OmoTuiHandle {
   showToast: (body: OmoToastBody) => Promise<void>;
 }
 
-export interface OmoSessionHandle {
+interface OmoSessionHandle {
   readonly id: string;
   readonly parentID?: string;
   readonly title?: string;
 }
 
-export interface OmoSessionDirectory {
+interface OmoSessionDirectory {
   fetchSession: (sessionID: string) => Promise<OmoSessionHandle>;
 }
 
@@ -67,7 +67,7 @@ export interface OmoSessionDirectory {
  * The host handle the plugin uses to talk back to OpenCode.
  * Surfaces stay optional because the host exposes them independently.
  */
-export interface OmoPluginClient {
+interface OmoPluginClient {
   readonly tui?: OmoTuiHandle;
   readonly sessions?: OmoSessionDirectory;
 }
@@ -83,41 +83,41 @@ export interface OmoPluginContext {
 /* Managers: created once by the managers lane, consumed downstream.   */
 /* ------------------------------------------------------------------ */
 
-export interface OmoSubagentBirth {
+interface OmoSubagentBirth {
   readonly sessionID: string;
   readonly parentID: string;
   readonly title: string;
 }
 
-export interface OmoSubagentDeath {
+interface OmoSubagentDeath {
   readonly sessionID: string;
 }
 
 /** Owns subagent session tracking and shuts down cleanly on dispose. */
-export interface OmoBackgroundManager {
+interface OmoBackgroundManager {
   shutdown: () => Promise<void>;
   noteSubagentBirth: (event: OmoSubagentBirth) => Promise<void>;
   noteSubagentDeath: (event: OmoSubagentDeath) => Promise<void>;
 }
 
-export interface OmoSkillToolRequest {
+interface OmoSkillToolRequest {
   readonly serverName: string;
   readonly toolName: string;
   readonly args: OmoJsonObject;
 }
 
-export interface OmoSkillToolResponse {
+interface OmoSkillToolResponse {
   readonly output: string;
   readonly isError: boolean;
 }
 
 /** Serves skill-embedded MCP tools and disconnects them on dispose. */
-export interface OmoSkillMcpManager {
+interface OmoSkillMcpManager {
   disconnectAll: () => Promise<void>;
   callSkillTool: (request: OmoSkillToolRequest) => Promise<OmoSkillToolResponse>;
 }
 
-export interface OmoModelFallbackDecision {
+interface OmoModelFallbackDecision {
   readonly fallbackModelID?: string;
   readonly reason: string;
 }
@@ -127,12 +127,12 @@ export interface OmoModelFallbackController {
 }
 
 /** Indirection so hooks always reach the current fallback controller. */
-export interface OmoModelFallbackControllerAccessor {
+interface OmoModelFallbackControllerAccessor {
   current: () => OmoModelFallbackController | undefined;
 }
 
 /** Present only when monitoring is enabled in plugin config. */
-export interface OmoMonitorManager {
+interface OmoMonitorManager {
   readonly enabled: boolean;
   shutdown: () => Promise<void>;
 }
@@ -179,11 +179,11 @@ export interface OmoMcpServerEntry {
   readonly enabled?: boolean;
 }
 
-export interface OmoMcpServerMap {
+interface OmoMcpServerMap {
   [serverName: string]: OmoMcpServerEntry;
 }
 
-export interface OmoCommandConfigMap {
+interface OmoCommandConfigMap {
   [commandName: string]: OmoCommandDefinition;
 }
 
@@ -217,7 +217,7 @@ export interface OmoManagers {
 
 export type OmoSkillScope = "builtin" | "config" | "user" | "project" | "opencode" | "opencode-project" | "shared";
 
-export interface OmoWorkflowHandoff {
+interface OmoWorkflowHandoff {
   readonly label: string;
   readonly agent: string;
   readonly prompt: string;
@@ -236,7 +236,7 @@ export interface OmoCommandDefinition {
   readonly handoffs?: readonly OmoWorkflowHandoff[];
 }
 
-export interface OmoSkillMetadata {
+interface OmoSkillMetadata {
   readonly [key: string]: string;
 }
 
@@ -257,9 +257,9 @@ export interface OmoLoadedSkill {
 /* Tools: the filtered registry handed to the host.                    */
 /* ------------------------------------------------------------------ */
 
-export type OmoToolArgumentFieldType = "string" | "number" | "boolean" | "array" | "object";
+type OmoToolArgumentFieldType = "string" | "number" | "boolean" | "array" | "object";
 
-export interface OmoToolArgumentField {
+interface OmoToolArgumentField {
   readonly type: OmoToolArgumentFieldType;
   readonly description?: string;
   readonly allowedValues?: readonly string[];
@@ -280,14 +280,14 @@ export interface OmoToolContext {
   readonly aborted: () => boolean;
 }
 
-export interface OmoToolAttachment {
+interface OmoToolAttachment {
   readonly kind: "file";
   readonly mime: string;
   readonly url: string;
   readonly filename?: string;
 }
 
-export interface OmoToolStructuredOutcome {
+interface OmoToolStructuredOutcome {
   readonly title?: string;
   readonly output: string;
   readonly note?: string;
@@ -296,7 +296,7 @@ export interface OmoToolStructuredOutcome {
 
 export type OmoToolOutcome = string | OmoToolStructuredOutcome;
 
-export type OmoToolExecute = (args: OmoJsonObject, context: OmoToolContext) => Promise<OmoToolOutcome>;
+type OmoToolExecute = (args: OmoJsonObject, context: OmoToolContext) => Promise<OmoToolOutcome>;
 
 /** One registry entry: documentation, argument shape, and executor. */
 export interface OmoToolDefinition {
@@ -382,23 +382,23 @@ export interface OmoModelRef {
   readonly modelID: string;
 }
 
-export interface OmoHeaderMap {
+interface OmoHeaderMap {
   [headerName: string]: string;
 }
 
-export interface OmoUserMessage {
+interface OmoUserMessage {
   readonly text: string;
   readonly label?: string;
 }
 
-export interface OmoMessagePart {
+interface OmoMessagePart {
   readonly type: string;
   readonly text?: string;
   readonly toolName?: string;
   readonly toolCallID?: string;
 }
 
-export interface OmoChatMessageInput {
+interface OmoChatMessageInput {
   readonly sessionID: string;
   readonly agent?: string;
   readonly model?: OmoModelRef;
@@ -406,12 +406,12 @@ export interface OmoChatMessageInput {
   readonly variant?: string;
 }
 
-export interface OmoChatMessageOutput {
+interface OmoChatMessageOutput {
   message: OmoUserMessage;
   parts: OmoMessagePart[];
 }
 
-export interface OmoChatParamsInput {
+interface OmoChatParamsInput {
   readonly sessionID: string;
   readonly agent: string;
   readonly model: OmoModelRef;
@@ -425,7 +425,7 @@ export interface OmoChatParamsOutput {
   providerOptions?: OmoJsonObject;
 }
 
-export interface OmoChatHeadersInput {
+interface OmoChatHeadersInput {
   readonly sessionID: string;
   readonly agent: string;
   readonly model: OmoModelRef;
@@ -436,17 +436,17 @@ export interface OmoChatHeadersOutput {
   headers: OmoHeaderMap;
 }
 
-export interface OmoCommandInput {
+interface OmoCommandInput {
   readonly command: string;
   readonly sessionID: string;
   readonly argsText: string;
 }
 
-export interface OmoCommandOutput {
+interface OmoCommandOutput {
   parts: OmoMessagePart[];
 }
 
-export interface OmoToolGuardInput {
+interface OmoToolGuardInput {
   readonly tool: string;
   readonly sessionID: string;
   readonly callID: string;
@@ -456,7 +456,7 @@ export interface OmoToolGuardOutput {
   args: OmoJsonObject;
 }
 
-export interface OmoToolAfterInput extends OmoToolGuardInput {
+interface OmoToolAfterInput extends OmoToolGuardInput {
   readonly args: OmoJsonObject;
 }
 
@@ -467,26 +467,26 @@ export interface OmoToolAfterOutput {
   note?: string;
 }
 
-export interface OmoToolDefinitionInput {
+interface OmoToolDefinitionInput {
   readonly toolID: string;
 }
 
-export interface OmoToolDefinitionOutput {
+interface OmoToolDefinitionOutput {
   description: string;
   parameters: OmoToolParametersSchema;
 }
 
-export interface OmoChatMessage {
+interface OmoChatMessage {
   readonly id: string;
   readonly role: "user" | "assistant" | "system";
   readonly parts: OmoMessagePart[];
 }
 
-export interface OmoMessagesTransformOutput {
+interface OmoMessagesTransformOutput {
   messages: OmoChatMessage[];
 }
 
-export interface OmoSystemTransformInput {
+interface OmoSystemTransformInput {
   readonly sessionID?: string;
   readonly model: OmoModelRef;
 }
@@ -502,27 +502,27 @@ export type OmoPluginEvent =
   | { readonly name: "session.error"; readonly sessionID: string; readonly message?: string }
   | { readonly name: "session.status"; readonly sessionID: string; readonly status: string };
 
-export interface OmoEventInput {
+interface OmoEventInput {
   readonly event: OmoPluginEvent;
 }
 
-export interface OmoCompactingInput {
+interface OmoCompactingInput {
   readonly sessionID: string;
 }
 
-export interface OmoCompactingOutput {
+interface OmoCompactingOutput {
   context: string[];
   prompt?: string;
 }
 
-export interface OmoAutocontinueInput {
+interface OmoAutocontinueInput {
   readonly sessionID: string;
   readonly agent: string;
   readonly model: OmoModelRef;
   readonly overflow: boolean;
 }
 
-export interface OmoAutocontinueOutput {
+interface OmoAutocontinueOutput {
   enabled: boolean;
 }
 
@@ -595,13 +595,13 @@ export type OmoCreatePluginInterface = (
   tools: OmoCreatedTools,
 ) => OmoPluginInterface;
 
-export interface OmoDisposeParts {
+interface OmoDisposeParts {
   readonly managers: Pick<OmoManagers, "backgroundManager" | "skillMcpManager">;
   readonly hooks: Pick<OmoCreatedHooks, "disposeHooks">;
 }
 
 /** Single cleanup callback run on plugin teardown. */
-export type OmoPluginDispose = () => Promise<void>;
+type OmoPluginDispose = () => Promise<void>;
 
 /** Builds the idempotent teardown from the live managers and hooks. */
 export type OmoCreatePluginDispose = (parts: OmoDisposeParts) => OmoPluginDispose;
@@ -614,7 +614,7 @@ export interface OmoPluginComponents {
 }
 
 /** Inputs for the agent-config step of the config pipeline. */
-export interface OmoApplyAgentConfigParams {
+interface OmoApplyAgentConfigParams {
   readonly hostConfig: OmoHostConfig;
   readonly pluginConfig: OhMyOpenCodeConfig;
   readonly projectDirectory: string;

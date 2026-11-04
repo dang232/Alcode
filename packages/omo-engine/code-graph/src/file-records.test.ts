@@ -45,7 +45,8 @@ describe('file records', () => {
     expect(doc?.files['sized.ts']).toEqual({ file: 'sized.ts', blob: BLOB_A, size: 12, mtimeMs: 7 });
     expect(doc?.files['plain.ts']).toEqual({ file: 'plain.ts', blob: BLOB_A });
     expect(doc?.files['broken.ts']).toEqual({ file: 'broken.ts', blob: BLOB_A });
-    const roundTripped = parseFileRecordsDoc(JSON.parse(serializeFileRecordsDoc(doc as FileRecordsDoc)));
+    if (doc === null) throw new Error('records doc did not parse');
+    const roundTripped = parseFileRecordsDoc(JSON.parse(serializeFileRecordsDoc(doc)));
     expect(roundTripped).toEqual(doc);
   });
 

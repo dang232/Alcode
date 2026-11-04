@@ -8,7 +8,7 @@ import {
 import { resolveToolkitSurface, reviewerRolesFor, type UlwLoopToolkitSurface } from "./surface.js";
 import type { UlwLoopCodexGoalMode, UlwLoopItem, UlwLoopPlan, UlwLoopSuccessCriterion } from "./types.js";
 
-export interface CodexCreateGoalPayload {
+interface CodexCreateGoalPayload {
 	readonly objective: string;
 }
 

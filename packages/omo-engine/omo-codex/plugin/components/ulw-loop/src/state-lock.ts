@@ -10,7 +10,7 @@ import { UlwLoopError } from "./types.js";
 // Reclaim's reread/unlink is not atomic. On Windows an open inode may not unlink:
 // treat that refusal as a live owner and fail closed. Release checks its token.
 export const ULW_LOOP_LOCK_TIMEOUT_CODE = "ULW_LOOP_LOCK_TIMEOUT";
-export interface StateLockClock {
+interface StateLockClock {
 	readonly now: () => number;
 	readonly schedule: (fn: () => void, ms: number) => { unref(): void; cancel(): void };
 }

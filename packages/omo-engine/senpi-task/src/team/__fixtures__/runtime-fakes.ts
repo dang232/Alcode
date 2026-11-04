@@ -38,7 +38,7 @@ export function taskSettings(team: TeamBoundsOverrides = {}): OmoTaskSettings {
   })
 }
 
-export type StartBehavior =
+type StartBehavior =
   | { readonly kind: "ok"; readonly status?: TaskStatus; readonly resolvedModel?: ResolvedModelRecord }
   | { readonly kind: "throw"; readonly message: string }
   | { readonly kind: "reject"; readonly result: StartResult }

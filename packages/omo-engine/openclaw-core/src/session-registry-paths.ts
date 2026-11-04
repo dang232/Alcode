@@ -28,12 +28,8 @@ function resolveRegistryPaths(): RegistryPaths {
   return cachedRegistryPaths
 }
 
-export function getOpenCodeStorageDir(): string {
+function getOpenCodeStorageDir(): string {
   return join(resolveXdgDataDir("opencode"), "opencode", "storage")
-}
-
-export function getOpenClawStorageDir(): string {
-  return resolveRegistryPaths().openClawStorageDir
 }
 
 export function getRegistryPath(): string {

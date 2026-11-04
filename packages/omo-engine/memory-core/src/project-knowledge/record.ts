@@ -19,19 +19,19 @@ export const PROJECT_KNOWLEDGE_DIR = "project-knowledge";
 export const RECORD_FILE_EXTENSION = ".md";
 
 /** Field 4: the assertion is one statement of at most 500 characters. */
-export const MAX_CLAIM_CHARS = 500;
+const MAX_CLAIM_CHARS = 500;
 
 /** Section 2: evidence older than 7 days is stale. */
 export const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type ProjectKnowledgeCategory =
+type ProjectKnowledgeCategory =
   | "source-verified"
   | "previously-verified"
   | "unverified-hypothesis"
   | "superseded"
   | "environment-specific";
 
-export type ValidationMethod = "rg-resolve" | "test-pass" | "review-accept" | "none";
+type ValidationMethod = "rg-resolve" | "test-pass" | "review-accept" | "none";
 
 /** Section 6 case ids. A record with no invalidation conditions is rejected. */
 export type InvalidationCase =
@@ -46,7 +46,7 @@ export type InvalidationCase =
   | "PROV-BREAK"
   | "ENV-CHANGE";
 
-export function isKnowledgeCategory(value: string): value is ProjectKnowledgeCategory {
+function isKnowledgeCategory(value: string): value is ProjectKnowledgeCategory {
   return (
     value === "source-verified" ||
     value === "previously-verified" ||
@@ -56,11 +56,11 @@ export function isKnowledgeCategory(value: string): value is ProjectKnowledgeCat
   );
 }
 
-export function isValidationMethod(value: string): value is ValidationMethod {
+function isValidationMethod(value: string): value is ValidationMethod {
   return value === "rg-resolve" || value === "test-pass" || value === "review-accept" || value === "none";
 }
 
-export function isInvalidationCase(value: string): value is InvalidationCase {
+function isInvalidationCase(value: string): value is InvalidationCase {
   return (
     value === "SRC-EDIT" ||
     value === "SRC-DELETE" ||
@@ -75,7 +75,7 @@ export function isInvalidationCase(value: string): value is InvalidationCase {
   );
 }
 
-export interface KnowledgeScope {
+interface KnowledgeScope {
   readonly writeScopes: readonly string[];
   readonly runScope?: string;
 }
@@ -90,7 +90,7 @@ export type RationaleKind =
   | "cross-reference"
   | "verification-ref";
 
-export function isRationaleKind(value: string): value is RationaleKind {
+function isRationaleKind(value: string): value is RationaleKind {
   return (
     value === "purpose" ||
     value === "design-intent" ||
@@ -114,7 +114,7 @@ export interface RationaleNote {
   readonly confidence: number;
 }
 
-export interface KnowledgeRationale {
+interface KnowledgeRationale {
   readonly notes: readonly RationaleNote[];
 }
 
@@ -124,14 +124,14 @@ export interface KnowledgeRationale {
    or repeat it; anything higher refuses the write — a model-generated
    explanation is never stored as verified fact.
  */
-export interface NewRationaleNote {
+interface NewRationaleNote {
   readonly kind: RationaleKind;
   readonly text: string;
   readonly confidence: number;
   readonly standing?: ProjectKnowledgeCategory;
 }
 
-export interface NewKnowledgeRationale {
+interface NewKnowledgeRationale {
   readonly notes: readonly NewRationaleNote[];
 }
 
@@ -214,7 +214,7 @@ export function recordFilePath(id: string): string {
   return `${PROJECT_KNOWLEDGE_DIR}/${id}${RECORD_FILE_EXTENSION}`;
 }
 
-export function isRecordFilePath(path: string): boolean {
+function isRecordFilePath(path: string): boolean {
   return path.startsWith(`${PROJECT_KNOWLEDGE_DIR}/`) && path.endsWith(RECORD_FILE_EXTENSION);
 }
 
@@ -545,7 +545,7 @@ export interface CommittedRecordFile {
   readonly content: string;
 }
 
-export interface RecordFileIssue {
+interface RecordFileIssue {
   readonly path: string;
   readonly reason: string;
 }

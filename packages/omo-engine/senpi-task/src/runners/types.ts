@@ -52,7 +52,7 @@ export type RpcRunnerSpec = {
 
 export type ChildEventListener = (event: AgentSessionEvent) => void
 
-export type ChildHandle = {
+type ChildHandle = {
   readonly task_id: string
   readonly sessionId: string | undefined
   readonly pid: number | undefined

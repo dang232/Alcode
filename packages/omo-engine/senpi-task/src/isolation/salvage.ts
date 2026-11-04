@@ -34,7 +34,7 @@ export async function salvageCrashedIsolation(ports: SalvagePorts, record: TaskR
     fresh.isolation === undefined ? fresh : { ...fresh, isolation: { ...fresh.isolation, merge_result } })
 }
 
-export function sweepRootsFor(runtime: IsolationRuntime, records: readonly TaskRecord[]): readonly string[] {
+function sweepRootsFor(runtime: IsolationRuntime, records: readonly TaskRecord[]): readonly string[] {
   const roots = new Set<string>(runtime.sweepRoots)
   for (const record of records) {
     if (record.isolation !== undefined) roots.add(dirname(record.isolation.base_dir))

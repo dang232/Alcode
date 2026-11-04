@@ -17,7 +17,7 @@ function residents(harness: HostChaosHarness): readonly TaskRecord[] {
 }
 
 /** The daemon process is gone. Every child it hosted parks and the bounded reconcile runs. */
-export async function hostKill(harness: HostChaosHarness): Promise<void> {
+async function hostKill(harness: HostChaosHarness): Promise<void> {
   harness.daemon.kill()
   for (const record of residents(harness)) {
     await harness.lifecycle.parkHostSessionOnDaemonLoss(record.task_id)
@@ -25,20 +25,20 @@ export async function hostKill(harness: HostChaosHarness): Promise<void> {
 }
 
 /** A new daemon answers on the same socket; the parked children reattach on the next session start. */
-export async function daemonRestart(harness: HostChaosHarness): Promise<void> {
+async function daemonRestart(harness: HostChaosHarness): Promise<void> {
   harness.daemon.alive = true
   for (const taskId of harness.taskIds) harness.daemon.hold(hostChaosIdentity(taskId).session_path)
   await harness.lifecycle.reconcileOnSessionStart(HOST_CHAOS_SESSION)
 }
 
 /** The daemon parked an idle session to JSONL: it is no longer live, but it is still reopenable. */
-export async function idleEvict(harness: HostChaosHarness): Promise<void> {
+async function idleEvict(harness: HostChaosHarness): Promise<void> {
   for (const taskId of harness.taskIds) harness.daemon.evict(hostChaosIdentity(taskId).session_path)
   await harness.lifecycle.reconcileOnSessionStart(HOST_CHAOS_SESSION)
 }
 
 /** A newer generation took the socket; the old one holds the session paths until it drains. */
-export async function handoff(harness: HostChaosHarness): Promise<void> {
+async function handoff(harness: HostChaosHarness): Promise<void> {
   harness.daemon.alive = true
   harness.daemon.drainingAttemptsLeft = 2
   await harness.lifecycle.reconcileOnSessionStart(HOST_CHAOS_SESSION)

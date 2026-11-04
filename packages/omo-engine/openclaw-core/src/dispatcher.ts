@@ -16,11 +16,11 @@ export function interpolateInstruction(
   })
 }
 
-export function shellEscapeArg(value: string): string {
+function shellEscapeArg(value: string): string {
   return "'" + value.replace(/'/g, "'\\''") + "'"
 }
 
-export function resolveCommandTimeoutMs(
+function resolveCommandTimeoutMs(
   gatewayTimeout?: number,
   envTimeoutRaw = process.env.OMO_OPENCLAW_COMMAND_TIMEOUT_MS,
 ): number {
@@ -226,7 +226,7 @@ type KillableProcess = {
   kill: (signal?: NodeJS.Signals) => void
 }
 
-export function terminateCommandProcess(proc: KillableProcess, signal: NodeJS.Signals): void {
+function terminateCommandProcess(proc: KillableProcess, signal: NodeJS.Signals): void {
   try {
     if (process.platform !== "win32" && proc.pid) {
       try {

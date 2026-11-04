@@ -17,12 +17,12 @@ export const PARENT_SESSION_ID = "session-node-projection-parent"
 
 type Outcome = { readonly status: "completed"; readonly finalResponse: string }
 
-export type HeldChild = {
+type HeldChild = {
   readonly settle: (outcome: Outcome) => void
   readonly emit: (event: ManagedChildEvent) => void
 }
 
-export class HeldRunner implements ManagedRunner {
+class HeldRunner implements ManagedRunner {
   readonly children = new Map<string, HeldChild>()
   readonly #startWaiters: Array<{ readonly count: number; readonly resolve: () => void }> = []
   #started = 0

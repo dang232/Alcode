@@ -4,7 +4,7 @@ import type { TaskToolContext } from "./types"
 
 const PROMPT_CACHE_SAFE_WAIT_ENV = "PI_PROMPT_CACHE_SAFE_WAIT_SECONDS"
 // A 15-minute bound on how long a parent turn blocks on a foreground task, whatever the cache TTL allows.
-export const MAX_FOREGROUND_WAIT_SECONDS = 900
+const MAX_FOREGROUND_WAIT_SECONDS = 900
 
 export type ScheduleDeadline = (callback: () => void, delayMs: number) => () => void
 

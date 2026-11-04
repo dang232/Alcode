@@ -48,6 +48,3 @@ export const DynamicContextPruningConfigSchema = z.object({
     .optional(),
 })
 
-export type DynamicContextPruningConfig = z.infer<
-  typeof DynamicContextPruningConfigSchema
->

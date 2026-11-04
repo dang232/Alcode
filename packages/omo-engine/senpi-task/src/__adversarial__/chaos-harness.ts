@@ -26,7 +26,7 @@ const CLOCK_BASE = 1_800_000_000_000
 const CLOCK_STEP = 1_000
 
 type ScheduledRetry = { readonly run: () => void; readonly delayMs: number }
-export type ChaosRetryScheduler = { readonly pendingCount: number; readonly schedule: CompletionRetrySchedule; run(index: number): boolean }
+type ChaosRetryScheduler = { readonly pendingCount: number; readonly schedule: CompletionRetrySchedule; run(index: number): boolean }
 
 function makeRetryScheduler(): ChaosRetryScheduler {
   const pending = new Map<number, ScheduledRetry>()
@@ -48,7 +48,7 @@ function makeRetryScheduler(): ChaosRetryScheduler {
   }
 }
 
-export type ChaosWaiters = {
+type ChaosWaiters = {
   readonly registrations: number
   readonly settlements: number
   register(taskId: string, abortAfterSteps: number): void

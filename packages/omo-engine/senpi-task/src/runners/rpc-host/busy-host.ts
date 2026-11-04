@@ -2,7 +2,7 @@ import { createConnection } from "node:net"
 
 import { RunnerError } from "../in-process/runner-error"
 
-export const BUSY_HOST_BACKOFF_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000, 15_000]
+const BUSY_HOST_BACKOFF_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000, 15_000]
 
 const BUSY_HOST_NOTE =
   "host_busy - the task host accepts connections but its event loop is not answering; waiting to start task children"

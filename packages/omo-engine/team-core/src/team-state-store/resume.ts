@@ -8,8 +8,6 @@ import { toError } from "./error-normalization"
 import type { ResumeReport } from "./resume-report"
 import { listActiveTeams, loadRuntimeState } from "./store"
 
-export type { ResumeReport } from "./resume-report"
-
 const CREATING_TIMEOUT_MS = 30 * 60 * 1000
 const STALE_RESERVATION_TTL_MS = 10 * 60 * 1000
 

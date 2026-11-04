@@ -81,7 +81,7 @@ class RaceRunner implements ManagedRunner {
   }
 }
 
-export type RaceDestruction = DestructionPort & {
+type RaceDestruction = DestructionPort & {
   readonly calls: Array<{ readonly taskId: string; readonly cause: DestructionCause }>
 }
 

@@ -40,7 +40,7 @@ export type MemberTaskSendDeps = {
   readonly newMessageId?: () => string
 }
 
-export class UnknownMemberRecipientError extends Error {
+class UnknownMemberRecipientError extends Error {
   readonly recipient: string
 
   constructor(recipient: string, members: readonly string[]) {

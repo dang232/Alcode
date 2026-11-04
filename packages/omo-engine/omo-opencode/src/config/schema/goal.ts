@@ -9,4 +9,3 @@ export const GoalConfigSchema = z.object({
   default_max_iterations: z.number().min(1).max(1000).default(100),
 })
 
-export type GoalConfig = z.infer<typeof GoalConfigSchema>

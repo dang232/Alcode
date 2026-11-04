@@ -118,9 +118,6 @@ export type RecordDeliveryFailureInput = {
   readonly error: unknown
 }
 
-/** @deprecated Pre-rename alias kept for the omo-senpi caller until todo 18 updates it. */
-export type ReconcileFailedNotificationsInput = ReconcileUnnotifiedNotificationsInput
-
 export type FlushResult =
   | { readonly kind: "flushed"; readonly count: number }
   | { readonly kind: "dropped"; readonly count: number }

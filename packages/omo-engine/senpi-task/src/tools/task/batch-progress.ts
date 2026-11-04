@@ -8,7 +8,7 @@ import type { ResolvedSpawnItem, TaskSkillSummary, TaskToolDetails } from "./typ
 
 const EMIT_INTERVAL_MS = 250
 
-export type LiveBatchStart = {
+type LiveBatchStart = {
   readonly item: ResolvedSpawnItem
   readonly result: StartedResult
   readonly skills?: TaskSkillSummary

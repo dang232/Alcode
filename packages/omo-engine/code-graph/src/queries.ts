@@ -58,10 +58,12 @@ export interface QueryEvidence {
   readonly ref: string;
   /** Number in [0,1]; always 1 for surfaced static facts. */
   readonly confidence: number;
+  /** Markup NAVIGATES only: internal links are inferred, never confirmed. */
+  readonly inferred?: true;
 }
 
 /** Why a search hit matched, from strongest to weakest. */
-export type SearchMatchReason =
+type SearchMatchReason =
   | "exact-name"
   | "exact-qualified"
   | "prefix"
@@ -84,10 +86,10 @@ const SEARCH_RANK = {
 export type QueryVerdict = "confirmed" | "inferred";
 
 /** Which recon mode the client should render/select for this answer. */
-export type SuggestedMode = "explore" | "trace" | "impact";
+type SuggestedMode = "explore" | "trace" | "impact";
 
 /** Displayed-vs-walked counts for one named row list. */
-export interface ShownCounts {
+interface ShownCounts {
   readonly shown: number;
   readonly total: number;
 }
@@ -196,7 +198,7 @@ export interface QueryEnvelope {
 }
 
 /** "What's connected?" Structured numbers; the client renders the sentence. */
-export interface NeighborhoodSummary {
+interface NeighborhoodSummary {
   readonly subjectId: string | null;
   readonly depth: number;
   readonly incoming: number;
@@ -206,7 +208,7 @@ export interface NeighborhoodSummary {
 }
 
 /** "How does A reach B?" Structured numbers; the client renders the sentence. */
-export interface TraceSummary {
+interface TraceSummary {
   readonly found: boolean;
   readonly hops: number | null;
   /** Always null: alternative paths are not computed within budget. */
@@ -306,10 +308,10 @@ export interface DetectChangesResult extends QueryEnvelope {
 export const DEFAULT_RESULT_LIMIT = 20;
 export const MAX_RESULT_LIMIT = 50;
 /** Reverse-call edges one impact walk may explore before it stops and says so. */
-export const MAX_EXPLORED_EDGES = 20_000;
+const MAX_EXPLORED_EDGES = 20_000;
 /** Wall-clock budget one reachability walk may spend before it stops and says so. */
-export const DEFAULT_QUERY_BUDGET_MS = 2_000;
-export const MAX_QUERY_BUDGET_MS = 60_000;
+const DEFAULT_QUERY_BUDGET_MS = 2_000;
+const MAX_QUERY_BUDGET_MS = 60_000;
 const DEFAULT_MAX_DEPTH = 5;
 const MAX_DEPTH_LIMIT = 10;
 const KNOWLEDGE_PREFIX = "knowledge:";
@@ -347,6 +349,9 @@ interface EdgeKindPriority {
   readonly IMPORTS: number;
   readonly CALLS_STATIC: number;
   readonly CALLS_UNRESOLVED: number;
+  readonly ROUTE: number;
+  readonly REFERENCES: number;
+  readonly NAVIGATES: number;
   readonly [kind: string]: number;
 }
 
@@ -355,6 +360,9 @@ const KIND_PRIORITY: EdgeKindPriority = {
   IMPORTS: 1,
   CALLS_STATIC: 2,
   CALLS_UNRESOLVED: 3,
+  ROUTE: 2,
+  REFERENCES: 2,
+  NAVIGATES: 2,
 };
 
 function kindRank(edge: string): number {
@@ -362,9 +370,12 @@ function kindRank(edge: string): number {
 }
 
 /**
- * Edge kinds backed by compiler-resolved facts. Everything else a row can
- * carry (`indexed` presence, `INVALIDATED_BY`, `LINKS_KNOWLEDGE`,
- * `CALLS_UNRESOLVED`) is not proven, so the row is `inferred`.
+ * Edge kinds backed by compiler-resolved facts (plus S8 literal route hops:
+ * ROUTE file registrations, REFERENCES route bindings, and code NAVIGATES
+ * with a literal destination served in the sender's app). Everything else a
+ * row can carry (`indexed` presence, `INVALIDATED_BY`, `LINKS_KNOWLEDGE`,
+ * `CALLS_UNRESOLVED`, markup NAVIGATES with inferred) is not proven, so the
+ * row is `inferred`.
  */
 const CONFIRMED_EVIDENCE_KINDS: ReadonlySet<string> = new Set([
   "DEFINES",
@@ -372,6 +383,9 @@ const CONFIRMED_EVIDENCE_KINDS: ReadonlySet<string> = new Set([
   "IMPORTS",
   "CALLS_STATIC",
   "TESTS",
+  "ROUTE",
+  "REFERENCES",
+  "NAVIGATES",
 ]);
 
 /**
@@ -664,6 +678,9 @@ function toItem(
   evidence: readonly QueryEvidence[],
   knowledge: readonly string[],
 ): QueryItem {
+  const primary = evidence[0];
+  const verdict: QueryVerdict =
+    primary?.inferred === true ? "inferred" : verdictForEvidenceKind(primary?.edge ?? "indexed");
   const item: QueryItem = {
     id: node.id,
     file: node.file,
@@ -671,7 +688,7 @@ function toItem(
     evidence,
     confidence: 1,
     knowledgeIds: knowledge,
-    verdict: verdictForEvidenceKind(evidence[0]?.edge ?? "indexed"),
+    verdict,
     isTest: isTestPath(node.file),
   };
   return node.name === undefined ? item : { ...item, name: node.name };
@@ -994,25 +1011,47 @@ function findNode(snapshot: GraphSnapshot, id: string): GraphNode | undefined {
   return indexFor(snapshot).nodeById.get(id);
 }
 
-function callersOf(snapshot: GraphSnapshot, symbolId: string): { caller: GraphNode; ref: string }[] {
-  const out: { caller: GraphNode; ref: string }[] = [];
+function isRouteHopKind(kind: string): boolean {
+  return kind === "CALLS_STATIC" || kind === "ROUTE" || kind === "REFERENCES" || kind === "NAVIGATES";
+}
+
+function callersOf(
+  snapshot: GraphSnapshot,
+  symbolId: string,
+): { caller: GraphNode; ref: string; kind: string; inferred?: true }[] {
+  const out: { caller: GraphNode; ref: string; kind: string; inferred?: true }[] = [];
   const index = indexFor(snapshot);
   for (const edge of index.edgesByTo.get(symbolId) ?? []) {
-    if (edge.kind !== "CALLS_STATIC") continue;
+    if (!isRouteHopKind(edge.kind)) continue;
     const caller = index.nodeById.get(edge.from);
-    if (caller !== undefined) out.push({ caller, ref: edge.ref });
+    if (caller !== undefined) {
+      const entry: { caller: GraphNode; ref: string; kind: string; inferred?: true } =
+        edge.inferred === true
+          ? { caller, ref: edge.ref, kind: edge.kind, inferred: true }
+          : { caller, ref: edge.ref, kind: edge.kind };
+      out.push(entry);
+    }
   }
   out.sort((left, right) => (left.caller.id < right.caller.id ? -1 : 1));
   return out;
 }
 
-function calleesOf(snapshot: GraphSnapshot, symbolId: string): { callee: GraphNode; ref: string }[] {
-  const out: { callee: GraphNode; ref: string }[] = [];
+function calleesOf(
+  snapshot: GraphSnapshot,
+  symbolId: string,
+): { callee: GraphNode; ref: string; kind: string; inferred?: true }[] {
+  const out: { callee: GraphNode; ref: string; kind: string; inferred?: true }[] = [];
   const index = indexFor(snapshot);
   for (const edge of index.edgesByFrom.get(symbolId) ?? []) {
-    if (edge.kind !== "CALLS_STATIC") continue;
+    if (!isRouteHopKind(edge.kind)) continue;
     const callee = index.nodeById.get(edge.to);
-    if (callee !== undefined) out.push({ callee, ref: edge.ref });
+    if (callee !== undefined) {
+      const entry: { callee: GraphNode; ref: string; kind: string; inferred?: true } =
+        edge.inferred === true
+          ? { callee, ref: edge.ref, kind: edge.kind, inferred: true }
+          : { callee, ref: edge.ref, kind: edge.kind };
+      out.push(entry);
+    }
   }
   out.sort((left, right) => (left.callee.id < right.callee.id ? -1 : 1));
   return out;
@@ -1106,11 +1145,15 @@ export function symbolContext(
     return unindexedSymbol(scope, freshness, symbolId);
   }
   const definition = nodeItem(snapshot, node, definesEvidence(snapshot, node));
-  const callerItems = callersOf(snapshot, symbolId).map(({ caller, ref }) =>
-    nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]),
+  const callerItems = callersOf(snapshot, symbolId).map(({ caller, ref, kind, inferred }) =>
+    nodeItem(snapshot, caller, [
+      inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 },
+    ]),
   );
-  const calleeItems = calleesOf(snapshot, symbolId).map(({ callee, ref }) =>
-    nodeItem(snapshot, callee, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]),
+  const calleeItems = calleesOf(snapshot, symbolId).map(({ callee, ref, kind, inferred }) =>
+    nodeItem(snapshot, callee, [
+      inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 },
+    ]),
   );
   // Ranked once, server-side: definition (distance 0) first, then the
   // depth-1 neighbourhood by confidence, kind priority, and id. `limit`
@@ -1262,7 +1305,7 @@ export function impact(
     }
     const next: string[] = [];
     for (const current of frontier) {
-      for (const { caller, ref } of callersOf(snapshot, current)) {
+      for (const { caller, ref, kind, inferred } of callersOf(snapshot, current)) {
         explored += 1;
         if (explored > exploredCap) {
           edgeBudgetHit = true;
@@ -1278,10 +1321,12 @@ export function impact(
         if (seen.has(caller.id)) continue;
         seen.add(caller.id);
         walked.push({
-          item: nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]),
+          item: nodeItem(snapshot, caller, [
+            inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 },
+          ]),
           depth,
         });
-        if (caller.kind === "symbol") next.push(caller.id);
+        if (caller.kind === "symbol" || caller.kind === "route") next.push(caller.id);
       }
       if (edgeBudgetHit || timeBudgetHit) break;
     }
@@ -1625,6 +1670,516 @@ export function trace(
   };
 }
 
+/**
+ * Composed explore answer (S5): one call returning the definition bodies,
+ * the call paths between the matched definitions, and the blast-radius
+ * summary together.
+ *
+ * - `definitions`: every matched definition. A bare name (`add`) matches
+ *   every symbol carrying that name, so an ambiguous symbol returns every
+ *   definition's body, never just the first.
+ * - `bodies`: verbatim source lines from the extraction-time content
+ *   index, grouped by file. A body starts at the definition line and runs
+ *   to `EXPLORE_BODY_MAX_LINES` or the file end; longer tails are cut with
+ *   `truncated: true`, never invented. Files absent from the content index
+ *   are reported in `unresolved`, never synthesized.
+ * - `paths`: static call paths between every ordered pair of definitions
+ *   (BFS over CALLS_STATIC, bounded by `maxDepth`). CALLS_UNRESOLVED edges
+ *   are never traversed and never appear as hops: they surface as
+ *   `blockedByDynamic` plus an `unresolved` manual-review note.
+ * - `blastRadius`: reverse reachability over CALLS_STATIC from every
+ *   definition at once, summarized exactly like `impact`.
+ *
+ * Every pre-existing envelope field keeps its established meaning:
+ * `items` (definitions then impacted, ranked, bounded by `limit`),
+ * `totals`, `coverage`, `freshness`, `truncated`, `completeness`,
+ * `suggestedMode: "explore"`, and dynamics only in `unresolved`.
+ */
+
+/** One verbatim source line: 1-based line number plus the exact stored text. */
+interface ExploreBodyLine {
+  readonly line: number;
+  readonly text: string;
+}
+
+/** Verbatim body of one definition, cut only at the documented cap. */
+interface ExploreBody {
+  readonly id: string;
+  readonly name?: string;
+  readonly file: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  /** True when the file continues past `endLine`; the tail is omitted, never guessed. */
+  readonly truncated: boolean;
+  readonly lines: readonly ExploreBodyLine[];
+}
+
+/** All bodies from one file, in definition-line order. */
+interface ExploreBodyGroup {
+  readonly file: string;
+  readonly bodies: readonly ExploreBody[];
+}
+
+/** One static call hop: both endpoints are indexed symbols, never `unknown`. */
+interface ExploreHop {
+  readonly from: string;
+  readonly to: string;
+  readonly ref: string;
+  readonly confidence: number;
+}
+
+/** The static call path between one ordered pair of definitions. */
+interface ExplorePath {
+  readonly from: string;
+  readonly to: string;
+  readonly found: boolean;
+  readonly hops: readonly ExploreHop[];
+  /** True when dynamics on the walked frontier could complete a path the static graph lacks. */
+  readonly blockedByDynamic: boolean;
+}
+
+export interface ExploreResult extends QueryEnvelope {
+  readonly subject: string;
+  readonly definitions: readonly QueryItem[];
+  readonly bodies: readonly ExploreBodyGroup[];
+  readonly paths: readonly ExplorePath[];
+  readonly impacted: readonly QueryItem[];
+  readonly blastRadius: ImpactSummary;
+}
+
+/** Verbatim windowed body for one definition, plus an omission note when lines are absent. */
+interface ExploreBodyResult {
+  readonly body: ExploreBody;
+  readonly missingNote?: string;
+}
+
+/** One static call path over CALLS_STATIC plus the dynamics met along the way. */
+interface ExplorePairResult {
+  readonly path: ExplorePath;
+  readonly dynamicRefs: readonly string[];
+}
+
+/** Verbatim body window per definition: definition line plus this many lines. */
+const EXPLORE_BODY_MAX_LINES = 60;
+/** Ordered definition pairs explored for call paths before the answer says it stopped. */
+const EXPLORE_MAX_PATH_PAIRS = 20;
+
+function exploreUnindexed(
+  scope: QueryScope,
+  freshness: FreshnessStatus,
+  subject: string,
+  note: string,
+  unsupported: readonly string[],
+): ExploreResult {
+  const excluded = unsupported.length === 0;
+  const decided = decideCompleteness({
+    unsupported: !excluded,
+    excluded,
+    indexPartial: false,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: false,
+  });
+  return {
+    ...baseEnvelope(scope, freshness),
+    suggestedMode: "explore",
+    coverage: "unindexed",
+    truncated: false,
+    knowledgeIds: [],
+    unresolved: note === "" ? [] : [note],
+    unsupported: [...unsupported],
+    items: [],
+    totals: { displayed: 0, known: null, hidden: null },
+    ...decided,
+    subject,
+    definitions: [],
+    bodies: [],
+    paths: [],
+    impacted: [],
+    blastRadius: emptyImpactSummary([], "partial"),
+  };
+}
+
+/** Every definition the subject names: an exact id, a file's symbols, or all same-named symbols. */
+function resolveExploreDefinitions(snapshot: GraphSnapshot, subject: string): GraphNode[] | undefined {
+  const index = indexFor(snapshot);
+  const exact = index.nodeById.get(subject);
+  if (exact !== undefined) {
+    if (exact.kind === "symbol") return [exact];
+    if (exact.kind === "file") {
+      const inFile = snapshot.nodes
+        .filter((node) => node.kind === "symbol" && node.file === exact.file)
+        .sort((left, right) => left.line - right.line || (left.id < right.id ? -1 : 1));
+      return inFile.length > 0 ? inFile : undefined;
+    }
+    return undefined;
+  }
+  if (isSupportedPath(subject)) {
+    const inFile = snapshot.nodes
+      .filter((node) => node.kind === "symbol" && node.file === subject)
+      .sort((left, right) => left.line - right.line || (left.id < right.id ? -1 : 1));
+    return inFile.length > 0 ? inFile : undefined;
+  }
+  if (subject.includes("@") || subject.includes("/") || subject.includes("\\")) return undefined;
+  const named = snapshot.nodes
+    .filter((node) => node.kind === "symbol" && node.name === subject)
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+  return named.length > 0 ? named : undefined;
+}
+
+/** Verbatim windowed body for one definition; undefined when the content index has no lines. */
+function exploreBodyFor(
+  snapshot: GraphSnapshot,
+  node: GraphNode,
+): ExploreBodyResult {
+  const stored = snapshot.content?.files[node.file]?.lines;
+  if (stored === undefined) {
+    return {
+      body: {
+        id: node.id,
+        file: node.file,
+        startLine: node.line,
+        endLine: node.line,
+        truncated: false,
+        lines: [],
+      },
+      missingNote: `no source lines for ${node.file} (content index absent); body omitted, never synthesized`,
+    };
+  }
+  const startLine = Math.min(Math.max(1, node.line), stored.length + 1);
+  // A stored file usually ends with a newline, which reads as trailing empty
+  // lines: they carry no source, so neither the body nor the truncation flag
+  // counts them.
+  let effectiveLength = stored.length;
+  while (effectiveLength > startLine && (stored[effectiveLength - 1] ?? "") === "") effectiveLength -= 1;
+  const endLine = Math.min(startLine + EXPLORE_BODY_MAX_LINES - 1, effectiveLength);
+  const lines: ExploreBodyLine[] = [];
+  for (let line = startLine; line <= endLine; line += 1) {
+    lines.push({ line, text: stored[line - 1] ?? "" });
+  }
+  const body: ExploreBody = {
+    id: node.id,
+    file: node.file,
+    startLine,
+    endLine,
+    truncated: effectiveLength > endLine,
+    lines,
+  };
+  return node.name === undefined ? { body } : { body: { ...body, name: node.name } };
+}
+
+/** One static call path over CALLS_STATIC; dynamics are reported, never traversed. */
+function explorePairPath(
+  snapshot: GraphSnapshot,
+  fromId: string,
+  toId: string,
+  maxDepth: number,
+  visitCap: number,
+): ExplorePairResult {
+  if (fromId === toId) {
+    return { path: { from: fromId, to: toId, found: true, hops: [], blockedByDynamic: false }, dynamicRefs: [] };
+  }
+  const parents = new Map<string, { via: string; ref: string }>();
+  const seen = new Set<string>([fromId]);
+  const dynamicRefs: string[] = [];
+  let frontier = [fromId];
+  let found = false;
+  for (let depth = 0; depth < maxDepth && frontier.length > 0 && !found; depth += 1) {
+    const next: string[] = [];
+    for (const current of frontier) {
+      for (const unresolved of unresolvedEdgesFrom(snapshot, current)) {
+        dynamicRefs.push(unresolved.ref);
+      }
+      for (const { callee, ref } of calleesOf(snapshot, current)) {
+        if (seen.has(callee.id)) continue;
+        seen.add(callee.id);
+        parents.set(callee.id, { via: current, ref });
+        if (callee.id === toId) {
+          found = true;
+          break;
+        }
+        next.push(callee.id);
+        if (seen.size > visitCap) {
+          frontier = [];
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (!found) frontier = next;
+  }
+  if (!found) {
+    const blocked = dynamicRefs.length > 0;
+    return {
+      path: { from: fromId, to: toId, found: false, hops: [], blockedByDynamic: blocked },
+      dynamicRefs,
+    };
+  }
+  const chain: string[] = [toId];
+  while (chain[0] !== fromId) {
+    const parent = parents.get(chain[0]);
+    if (parent === undefined) break;
+    chain.unshift(parent.via);
+  }
+  const hops: ExploreHop[] = [];
+  for (let index = 0; index < chain.length - 1; index += 1) {
+    const parent = parents.get(chain[index + 1]);
+    hops.push({ from: chain[index], to: chain[index + 1], ref: parent?.ref ?? "", confidence: 1 });
+  }
+  return { path: { from: fromId, to: toId, found: true, hops, blockedByDynamic: false }, dynamicRefs: [] };
+}
+
+/**
+ * One composed explore answer: every matched definition with its verbatim
+ * body, the static call paths between the definitions, and the joint
+ * blast radius. Dynamics stay in `unresolved`; no hop ever targets
+ * `unknown` and no body is ever synthesized.
+ */
+export function explore(
+  snapshot: GraphSnapshot,
+  subject: string,
+  options: QueryOptions,
+): ExploreResult {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const maxDepth = clampDepth(options.maxDepth);
+  const filePart = symbolFilePart(subject);
+  if (filePart !== undefined && !isSupportedPath(filePart)) {
+    return exploreUnindexed(scope, freshness, subject, "", [unsupportedNote(filePart)]);
+  }
+  if (!subject.includes("@") && !subject.includes(":") && !isSupportedPath(subject) && subject.includes(".") && !snapshot.nodes.some((node) => node.name === subject)) {
+    const maybeFile = subject;
+    if (!isSupportedPath(maybeFile)) {
+      return exploreUnindexed(scope, freshness, subject, "", [unsupportedNote(maybeFile)]);
+    }
+  }
+  const resolved = resolveExploreDefinitions(snapshot, subject);
+  if (resolved === undefined) {
+    const fileLike = subject.includes("/") || subject.includes("\\") || isSupportedPath(subject);
+    return exploreUnindexed(
+      scope,
+      freshness,
+      subject,
+      fileLike ? `${subject} is not in this snapshot` : `no definition for ${subject} in this snapshot`,
+      [],
+    );
+  }
+  const definitions = resolved.map((node) => nodeItem(snapshot, node, definesEvidence(snapshot, node)));
+  const shownDefinitions = definitions.slice(0, limit);
+  const definitionCut = definitions.length > limit;
+
+  // Verbatim bodies, grouped by file in first-seen order.
+  const bodyNotes: string[] = [];
+  const groups = new Map<string, ExploreBody[]>();
+  for (const node of resolved.slice(0, limit)) {
+    const { body, missingNote } = exploreBodyFor(snapshot, node);
+    if (missingNote !== undefined) bodyNotes.push(missingNote);
+    const group = groups.get(node.file);
+    if (group === undefined) groups.set(node.file, [body]);
+    else group.push(body);
+  }
+  const bodies: ExploreBodyGroup[] = [...groups.entries()].map(([file, items]) => ({ file, bodies: items }));
+
+  // Static call paths: every ordered pair of shown definitions (multi-hop
+  // BFS), plus the direct caller and callee hops around each definition so
+  // a single hit still answers with its immediate call paths. Dynamics are
+  // reported, never traversed; no hop ever targets `unknown`.
+  const pairJobs: { readonly from: string; readonly to: string; readonly direct?: ExploreHop }[] = [];
+  const seenPair = new Set<string>();
+  const takePair = (from: string, to: string, direct?: ExploreHop): void => {
+    if (from === to) return;
+    const key = `${from} -> ${to}`;
+    if (seenPair.has(key)) return;
+    seenPair.add(key);
+    pairJobs.push(direct === undefined ? { from, to } : { from, to, direct });
+  };
+  for (const from of shownDefinitions) {
+    for (const to of shownDefinitions) takePair(from.id, to.id);
+  }
+  for (const definition of shownDefinitions) {
+    for (const { caller, ref } of callersOf(snapshot, definition.id)) {
+      takePair(caller.id, definition.id, { from: caller.id, to: definition.id, ref, confidence: 1 });
+    }
+    for (const { callee, ref } of calleesOf(snapshot, definition.id)) {
+      takePair(definition.id, callee.id, { from: definition.id, to: callee.id, ref, confidence: 1 });
+    }
+  }
+  const pairCut = pairJobs.length > EXPLORE_MAX_PATH_PAIRS;
+  const visitCap = Math.max(limit * 20, 20);
+  const paths: ExplorePath[] = [];
+  const pairNotes: string[] = [];
+  let blockedByDynamic = false;
+  for (const job of pairJobs.slice(0, EXPLORE_MAX_PATH_PAIRS)) {
+    if (job.direct !== undefined) {
+      paths.push({ from: job.from, to: job.to, found: true, hops: [job.direct], blockedByDynamic: false });
+      continue;
+    }
+    const { path, dynamicRefs } = explorePairPath(snapshot, job.from, job.to, maxDepth, visitCap);
+    paths.push(path);
+    if (!path.found && path.blockedByDynamic) {
+      blockedByDynamic = true;
+      const [firstRef] = dynamicRefs;
+      pairNotes.push(
+        firstRef === undefined
+          ? `no static call path from ${job.from} to ${job.to} within budget (never guessed)`
+          : `${firstRef} may dispatch dynamically (manual review, never proven)`,
+      );
+    }
+  }
+  if (pairCut) {
+    pairNotes.push(`call paths cut to ${EXPLORE_MAX_PATH_PAIRS} of ${pairJobs.length} definition pairs and hops`);
+  }
+
+  // Joint blast radius: reverse reachability from every definition at once.
+  const seedIds = resolved.map((node) => node.id);
+  const walked: { readonly item: QueryItem; readonly depth: number }[] = [];
+  const seen = new Set<string>(seedIds);
+  const exploredCap = clampExploredEdges(options.maxExploredEdges);
+  const deadlineMs = Date.now() + clampQueryBudgetMs(options.maxQueryMs);
+  let explored = 0;
+  let edgeBudgetHit = false;
+  let timeBudgetHit = false;
+  let frontier = [...seedIds];
+  for (let depth = 1; depth <= maxDepth && frontier.length > 0; depth += 1) {
+    if (Date.now() >= deadlineMs) {
+      timeBudgetHit = true;
+      break;
+    }
+    const next: string[] = [];
+    for (const current of frontier) {
+      for (const { caller, ref, kind, inferred } of callersOf(snapshot, current)) {
+        explored += 1;
+        if (explored > exploredCap) {
+          edgeBudgetHit = true;
+          break;
+        }
+        if (Date.now() >= deadlineMs) {
+          timeBudgetHit = true;
+          break;
+        }
+        if (seen.has(caller.id)) continue;
+        seen.add(caller.id);
+        walked.push({
+          item: nodeItem(snapshot, caller, [
+            inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 },
+          ]),
+          depth,
+        });
+        if (caller.kind === "symbol" || caller.kind === "route") next.push(caller.id);
+      }
+      if (edgeBudgetHit || timeBudgetHit) break;
+    }
+    if (edgeBudgetHit || timeBudgetHit) break;
+    frontier = next;
+  }
+  const depthBudgetHit = frontier.some((id) =>
+    callersOf(snapshot, id).some(({ caller }) => !seen.has(caller.id)),
+  );
+  walked.sort((left, right) => compareRows(left.depth, left.item, right.depth, right.item));
+  const allDependents = walked.map((entry) => entry.item);
+  const dependentFiles = new Set(allDependents.map((item) => item.file));
+  let callersWithoutTestPath = 0;
+  const testFiles = new Set<string>();
+  for (const item of allDependents) {
+    if (isTestPath(item.file)) testFiles.add(item.file);
+    if (!hasTestPath(snapshot, item)) callersWithoutTestPath += 1;
+  }
+  const visitedIds = [...seedIds, ...allDependents.map((item) => item.id)];
+  const walkNotes: string[] = [];
+  let unresolvedEdges = 0;
+  for (const id of visitedIds) {
+    const edges = unresolvedEdgesFrom(snapshot, id);
+    unresolvedEdges += edges.length;
+    for (const edge of edges) {
+      walkNotes.push(`${edge.ref} calls an unknown callee (manual review, never proven)`);
+    }
+  }
+  walkNotes.sort();
+  const blastRadius: ImpactSummary = {
+    subjectIds: seedIds,
+    dependentFiles: dependentFiles.size,
+    dependentSymbols: allDependents.filter((item) => !item.id.startsWith("file:")).length,
+    modules: moduleCounts(allDependents),
+    testsFound: testFiles.size,
+    callersWithoutTestPath,
+    unresolvedEdges,
+    completeness: "complete",
+  };
+
+  // One bounded row list: every definition first, then the ranked dependents.
+  const ranked = [
+    ...shownDefinitions.map((item) => ({ item, depth: 0 })),
+    ...walked,
+  ].sort((left, right) => compareRows(left.depth, left.item, right.depth, right.item));
+  const seenIds = new Set<string>();
+  const uniqueRanked = ranked.filter((entry) => {
+    if (seenIds.has(entry.item.id)) return false;
+    seenIds.add(entry.item.id);
+    return true;
+  });
+  const dropped = ranked.length - uniqueRanked.length;
+  const cut = uniqueRanked.length > limit;
+  const items = uniqueRanked.slice(0, limit).map((entry) => entry.item);
+  const impacted = walked.map((entry) => entry.item);
+  const dedupedImpacted = dedupeById(impacted);
+  const uniqueImpacted = [...dedupedImpacted.items];
+  const indexNote = indexTruncationNote(snapshot);
+  const unresolved = [
+    ...bodyNotes,
+    ...pairNotes,
+    ...walkNotes,
+    ...(indexNote === undefined ? [] : [indexNote]),
+    ...(edgeBudgetHit
+      ? [`edge budget ${exploredCap} stopped the walk after ${explored - 1} caller edges; more dependents may exist`]
+      : []),
+    ...(timeBudgetHit ? [`time budget ${clampQueryBudgetMs(options.maxQueryMs)} ms stopped the walk; more dependents may exist`] : []),
+    ...(depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callers still unexplored`] : []),
+    ...(definitionCut ? [`truncated to ${limit} of ${definitions.length} definitions`] : []),
+    ...(cut && !definitionCut ? [`truncated to ${limit} of ${uniqueRanked.length} rows`] : []),
+  ];
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    edgeBudget: edgeBudgetHit,
+    timeBudget: timeBudgetHit,
+    depthBudget: depthBudgetHit,
+    unresolvedEdges: blockedByDynamic,
+    cut: cut || definitionCut,
+  });
+  const depthCounts = new Map<number, number>();
+  for (const entry of uniqueRanked) depthCounts.set(entry.depth, (depthCounts.get(entry.depth) ?? 0) + 1);
+  const byDepth = [...depthCounts.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([depth, count]) => ({ depth, count }));
+  const completeBlastRadius: ImpactSummary = { ...blastRadius, completeness: decided.completeness };
+  return {
+    ...baseEnvelope(scope, freshness),
+    suggestedMode: "explore",
+    ...duplicatesExtra(dropped + dedupedImpacted.dropped),
+    ...ambiguousExtra(items),
+    shownOf: { impacted: { shown: Math.min(uniqueImpacted.length, limit), total: walked.length } },
+    coverage: indexCoverage(snapshot),
+    truncated: cut || definitionCut,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved,
+    unsupported: [],
+    items,
+    totals:
+      indexNote !== undefined
+        ? { displayed: items.length, known: null, hidden: null, byDepth, byKind: byKindFor(items) }
+        : { displayed: items.length, known: uniqueRanked.length, hidden: uniqueRanked.length - items.length, byDepth, byKind: byKindFor(items) },
+    ...decided,
+    subject,
+    definitions: shownDefinitions,
+    bodies,
+    paths,
+    impacted: uniqueImpacted.slice(0, limit),
+    blastRadius: completeBlastRadius,
+  };
+}
+
 function subjectFileFor(snapshot: GraphSnapshot, target: string): string | undefined {
   if (!target.includes("@") && !target.startsWith("fn:") && !target.startsWith("class:") && !target.startsWith("const:")) {
     return target;
@@ -1771,6 +2326,266 @@ export function findTests(
   };
 }
 
+/**
+ * S8/S9 route queries: callers-of-view to URL pattern and sender to screen one-hop.
+ *
+ * Literal-only framework hops (ROUTE file registrations, REFERENCES route
+ * bindings, NAVIGATES sender links) surface as items with static confidence
+ * 1.00; computed or unserved destinations never produce a hop and fail
+ * closed as CALLS_UNRESOLVED capped at 0.50 (surfaced only in `unresolved`).
+ * Markup links carry `inferred` on the edge and the item verdict, never
+ * confirmed. Multi-app scoping already holds at extraction: a sender only
+ * links routes in its own app.
+ */
+
+interface RouteHop {
+  readonly routeId: string;
+  readonly pattern: string;
+  readonly framework: string;
+  readonly resolver: string;
+  readonly ref: string;
+}
+
+export interface RoutesForHandlerResult extends QueryEnvelope {
+  readonly handlerId: string;
+  readonly routes: readonly RouteHop[];
+}
+
+export function routesForHandler(
+  snapshot: GraphSnapshot,
+  handlerId: string,
+  options: QueryOptions,
+): RoutesForHandlerResult {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const filePart = symbolFilePart(handlerId);
+  if (filePart !== undefined && !isSupportedPath(filePart)) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [],
+      unsupported: [unsupportedNote(filePart)],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files",
+      handlerId,
+      routes: [],
+    };
+  }
+  const index = indexFor(snapshot);
+  const handlerNode = index.nodeById.get(handlerId);
+  if (handlerNode === undefined) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "explore",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [`no definition for ${handlerId} in this snapshot`],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "index-excluded",
+      handlerId,
+      routes: [],
+    };
+  }
+  const hops: { readonly route: GraphNode; readonly edge: GraphEdge }[] = [];
+  for (const edge of index.edgesByTo.get(handlerId) ?? []) {
+    if (edge.kind !== "REFERENCES") continue;
+    const route = index.nodeById.get(edge.from);
+    if (route !== undefined) hops.push({ route, edge });
+  }
+  hops.sort((left, right) => (left.route.id < right.route.id ? -1 : 1));
+  const truncated = hops.length > limit;
+  const kept = hops.slice(0, limit);
+  const items = kept.map(({ route, edge }) =>
+    nodeItem(snapshot, route, [
+      { edge: edge.kind, ref: edge.ref, confidence: 1 },
+    ]),
+  );
+  const routes: RouteHop[] = kept.map(({ route, edge }) => ({
+    routeId: route.id,
+    pattern: route.name ?? route.id,
+    framework: edge.framework ?? "unknown",
+    resolver: edge.resolver ?? "unknown",
+    ref: edge.ref,
+  }));
+  const indexNote = indexTruncationNote(snapshot);
+  const unresolved = [
+    ...(hops.length === 0 ? [`no route references ${handlerId} (never guessed)`] : []),
+    ...(indexNote === undefined ? [] : [indexNote]),
+    ...(truncated ? [`truncated to ${limit} of ${hops.length} routes`] : []),
+  ];
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: truncated,
+  });
+  const deduped = dedupeById(items);
+  const unique = [...deduped.items];
+  return {
+    ...baseEnvelope(scope, freshness),
+    suggestedMode: "explore",
+    ...duplicatesExtra(deduped.dropped),
+    ...ambiguousExtra(unique),
+    coverage: indexCoverage(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(unique.map((item) => item.id)))),
+    unresolved,
+    unsupported: [],
+    items: unique,
+    totals:
+      indexNote !== undefined
+        ? { displayed: unique.length, known: null, hidden: null, byKind: byKindFor(unique) }
+        : { displayed: unique.length, known: hops.length, hidden: hops.length - unique.length, byKind: byKindFor(unique) },
+    ...decided,
+    handlerId,
+    routes,
+  };
+}
+
+interface ScreenHop {
+  readonly routeId: string;
+  readonly pattern: string;
+  readonly framework: string;
+  readonly resolver: string;
+  readonly ref: string;
+  readonly inferred?: true;
+  readonly handlerIds: readonly string[];
+}
+
+export interface ScreensForSenderResult extends QueryEnvelope {
+  readonly senderId: string;
+  readonly screens: readonly ScreenHop[];
+}
+
+export function screensForSender(
+  snapshot: GraphSnapshot,
+  senderId: string,
+  options: QueryOptions,
+): ScreensForSenderResult {
+  const scope = resolveScope(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit(options.limit);
+  const filePart = symbolFilePart(senderId);
+  if (filePart !== undefined && !isSupportedPath(filePart)) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [],
+      unsupported: [unsupportedNote(filePart)],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "unsupported-files",
+      senderId,
+      screens: [],
+    };
+  }
+  const index = indexFor(snapshot);
+  const senderNode = index.nodeById.get(senderId);
+  if (senderNode === undefined) {
+    return {
+      ...baseEnvelope(scope, freshness),
+      suggestedMode: "trace",
+      coverage: "unindexed",
+      truncated: false,
+      knowledgeIds: [],
+      unresolved: [`no definition for ${senderId} in this snapshot`],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: null, hidden: null },
+      completeness: "partial",
+      completenessReason: "index-excluded",
+      senderId,
+      screens: [],
+    };
+  }
+  const hops: { readonly route: GraphNode; readonly edge: GraphEdge }[] = [];
+  for (const edge of index.edgesByFrom.get(senderId) ?? []) {
+    if (edge.kind !== "NAVIGATES") continue;
+    const route = index.nodeById.get(edge.to);
+    if (route !== undefined) hops.push({ route, edge });
+  }
+  hops.sort((left, right) => (left.route.id < right.route.id ? -1 : 1));
+  const truncated = hops.length > limit;
+  const kept = hops.slice(0, limit);
+  const items = kept.map(({ route, edge }) =>
+    nodeItem(snapshot, route, [
+      edge.inferred === true
+        ? { edge: edge.kind, ref: edge.ref, confidence: 1, inferred: true }
+        : { edge: edge.kind, ref: edge.ref, confidence: 1 },
+    ]),
+  );
+  const screens: ScreenHop[] = kept.map(({ route, edge }) => {
+    const handlerIds: string[] = [];
+    for (const refEdge of index.edgesByFrom.get(route.id) ?? []) {
+      if (refEdge.kind !== "REFERENCES") continue;
+      handlerIds.push(refEdge.to);
+    }
+    handlerIds.sort();
+    const base: ScreenHop = {
+      routeId: route.id,
+      pattern: route.name ?? route.id,
+      framework: edge.framework ?? "unknown",
+      resolver: edge.resolver ?? "unknown",
+      ref: edge.ref,
+      handlerIds,
+    };
+    return edge.inferred === true ? { ...base, inferred: true } : base;
+  });
+  const dynamicNotes = unresolvedFor(snapshot, senderId);
+  const indexNote = indexTruncationNote(snapshot);
+  const unresolved = [
+    ...dynamicNotes,
+    ...(hops.length === 0 && dynamicNotes.length === 0 ? [`no navigation from ${senderId} serves a route (never guessed)`] : []),
+    ...(indexNote === undefined ? [] : [indexNote]),
+    ...(truncated ? [`truncated to ${limit} of ${hops.length} screens`] : []),
+  ];
+  const decided = decideCompleteness({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    depthBudget: false,
+    unresolvedEdges: dynamicNotes.length > 0,
+    cut: truncated,
+  });
+  const deduped = dedupeById(items);
+  const unique = [...deduped.items];
+  return {
+    ...baseEnvelope(scope, freshness),
+    suggestedMode: "trace",
+    ...duplicatesExtra(deduped.dropped),
+    ...ambiguousExtra(unique),
+    coverage: indexCoverage(snapshot),
+    truncated,
+    knowledgeIds: unionKnowledge(knowledgeIdsFor(snapshot, new Set(unique.map((item) => item.id)))),
+    unresolved,
+    unsupported: [],
+    items: unique,
+    totals:
+      indexNote !== undefined
+        ? { displayed: unique.length, known: null, hidden: null, byKind: byKindFor(unique) }
+        : { displayed: unique.length, known: hops.length, hidden: hops.length - unique.length, byKind: byKindFor(unique) },
+    ...decided,
+    senderId,
+    screens,
+  };
+}
+
 function changeLine(ref: string): number {
   const line = Number(ref.split(":").pop() ?? "1");
   return Number.isFinite(line) && line >= 1 ? Math.floor(line) : 1;
@@ -1848,7 +2663,7 @@ export function detectChanges(
  * conventions, registries, schedulers, build config, non-TypeScript files)
  * is invisible here by construction.
  */
-export interface UnreferencedCandidate {
+interface UnreferencedCandidate {
   readonly id: string;
   readonly file: string;
   /** 1-based line number. */
@@ -2043,5 +2858,4 @@ export function findUnreferenced(snapshot: GraphSnapshot, options: QueryOptions)
   };
 }
 
-export type { GraphNode, GraphSnapshot, InvalidationCause, StoredBaseline };
 export { KNOWLEDGE_PREFIX };

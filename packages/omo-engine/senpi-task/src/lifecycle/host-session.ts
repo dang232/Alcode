@@ -27,7 +27,7 @@ export function hostSessionResumePath(record: TaskRecord | null | undefined): st
  * `unknown`: the daemon answers but could not list its sessions, so whether this one still runs is
  * unknown. A caller that would otherwise END a child on a "gone" answer must wait instead (omo#9450).
  */
-export type HostSessionLiveness = "live" | "gone" | "unknown"
+type HostSessionLiveness = "live" | "gone" | "unknown"
 
 export type HostSessionProbe = {
   daemonAlive(hostSession: HostSessionIdentity): Promise<boolean>
@@ -121,7 +121,7 @@ function canonicalSessionPath(path: string): string {
   }
 }
 
-export type HostSessionCloseRequest = {
+type HostSessionCloseRequest = {
   readonly hostSession: HostSessionIdentity
   readonly cwd?: string
 }

@@ -31,7 +31,7 @@ function toReadableStream(stream: NodeJS.ReadableStream | null): ReadableStream<
   return Readable.toWeb(readable) as ReadableStream<Uint8Array>
 }
 
-export function wrapNodeProcess(proc: ChildProcess): SpawnedProcess {
+function wrapNodeProcess(proc: ChildProcess): SpawnedProcess {
   let resolveExited: (exitCode: number) => void
   let exitCode: number | null = null
 

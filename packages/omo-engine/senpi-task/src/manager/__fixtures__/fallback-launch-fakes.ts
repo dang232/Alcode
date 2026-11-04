@@ -8,7 +8,7 @@ import { makeHandle, settings } from "./manager-fakes"
 import { NO_HOST_ENDPOINT } from "../../lifecycle/host-session"
 
 export const PRIMARY = "vendor/primary"
-export const NEXT = "vendor/next"
+const NEXT = "vendor/next"
 export const plan: ResolvedChildPlan = {
   model: PRIMARY,
   requested_model: { source: "category", provider: "vendor", model_id: "primary", display: PRIMARY },
@@ -66,7 +66,7 @@ export function managerOver(store: TaskRecordStore, runner: ManagedRunner, proje
   return built
 }
 
-export const HOST_PID = 21_001
+const HOST_PID = 21_001
 
 /** A manager over the REAL destruction port, so a child whose cleanup failed must reach the orphan path. */
 export function managerWithLifecycle(store: TaskRecordStore, runner: ManagedRunner, project: string, alive: Set<number>, now: () => number = Date.now) {

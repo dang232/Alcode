@@ -39,7 +39,7 @@ export function ensuredDaemon(socket: string): EnsuredTaskDaemon {
 }
 
 /** A root session's resolution naming `socket` (a fake host's socket is not a `p-*` name). */
-export function rootResolution(socket: string, key = "0000000000000000"): ShardResolution {
+function rootResolution(socket: string, key = "0000000000000000"): ShardResolution {
   return { socket, shard: { kind: "p", key, ownerSessionId: `root-${key}`, inherited: false }, root: "primary" }
 }
 

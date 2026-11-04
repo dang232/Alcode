@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { computeScopeFingerprint } from './schema';
 import { indexFiles } from './extract';
+import type { GraphNode, GraphSnapshot } from './extract';
 import { impact } from './queries';
 import {
   IndexCoordinator,
@@ -25,13 +26,19 @@ const PROJECT_B = 'other-abcdef12';
 const WORKTREE_A = 'wt-lifecycle-a';
 const REVISION_A = 'a'.repeat(40);
 
-function writeRepo(files: Record<string, string>): { dir: string; entries: string[] } {
+/** Temporary fixture repo: directory plus sorted entry files. */
+interface TempRepo {
+  readonly dir: string;
+  readonly entries: string[];
+}
+
+function writeRepo(files: Record<string, string>): TempRepo {
   const dir = mkdtempSync(join(tmpdir(), 'code-graph-lifecycle-'));
   const entries: string[] = [];
   for (const rel of Object.keys(files)) {
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, files[rel] as string);
+    writeFileSync(abs, files[rel]);
     entries.push(abs);
   }
   entries.sort();
@@ -95,11 +102,12 @@ describe('code-graph lifecycle', () => {
       });
       expect(result.status).toBe('complete');
       expect(result.snapshot?.nodes.length).toBeGreaterThan(0);
+      if (result.snapshot === undefined) throw new Error('lifecycle snapshot missing');
       expect(result.stats?.files).toBe(2);
       expect(result.fingerprint).toBe(computeScopeFingerprint(PROJECT_A, WORKTREE_A, REVISION_A));
       expect(seen).toContain('program');
       expect(seen).toContain('done');
-      expect(snapshotBytes(result.snapshot as never)).toBeGreaterThan(0);
+      expect(snapshotBytes(result.snapshot)).toBeGreaterThan(0);
     } finally {
       rmSync(repo.dir, { recursive: true, force: true });
     }
@@ -158,7 +166,8 @@ describe('code-graph lifecycle', () => {
       const ids = (result.snapshot?.nodes ?? []).map((n) => n.id);
       expect(ids).toContain('file:apps/a/main.ts');
       expect(ids).toContain('file:packages/b/util.ts');
-      expect(validateSnapshotForScope(result.snapshot as never, repo.dir)).toBeUndefined();
+      if (result.snapshot === undefined) throw new Error('lifecycle snapshot missing');
+      expect(validateSnapshotForScope(result.snapshot, repo.dir)).toBeUndefined();
     } finally {
       rmSync(repo.dir, { recursive: true, force: true });
     }
@@ -308,13 +317,13 @@ describe('code-graph lifecycle', () => {
   }, TEST_TIMEOUT_MS);
 
   it('moved call lines recompute refs without keeping stale duplicates', async () => {
-    const nodes = [
+    const nodes: GraphNode[] = [
       { id: 'file:a.ts', kind: 'file', file: 'a.ts', line: 1 },
       { id: 'fn:x@a.ts:1', kind: 'symbol', file: 'a.ts', line: 1, name: 'x' },
       { id: 'file:b.ts', kind: 'file', file: 'b.ts', line: 1 },
       { id: 'fn:y@b.ts:1', kind: 'symbol', file: 'b.ts', line: 1, name: 'y' },
     ];
-    const previous = {
+    const previous: GraphSnapshot = {
       nodes,
       edges: [
         { id: 'calls:1', kind: 'CALLS_STATIC', from: 'fn:x@a.ts:1', to: 'fn:y@b.ts:1', confidence: 1, ref: 'a.ts:5' },
@@ -322,11 +331,11 @@ describe('code-graph lifecycle', () => {
         { id: 'calls:3', kind: 'CALLS_STATIC', from: 'fn:y@b.ts:1', to: 'fn:gone@a.ts:1', confidence: 1, ref: 'b.ts:8' },
       ],
     };
-    const fresh = {
+    const fresh: GraphSnapshot = {
       nodes,
       edges: [{ id: 'calls:1', kind: 'CALLS_STATIC', from: 'fn:x@a.ts:1', to: 'fn:y@b.ts:1', confidence: 1, ref: 'a.ts:9' }],
     };
-    const rebuilt = rebuildIncremental(previous as never, new Set(['a.ts']), fresh as never);
+    const rebuilt = rebuildIncremental(previous, new Set(['a.ts']), fresh);
     const calls = rebuilt.snapshot.edges.filter((edge) => edge.id === 'calls:1');
     expect(calls.length).toBe(1);
     expect(calls[0]?.ref).toBe('a.ts:9');
@@ -338,16 +347,16 @@ describe('code-graph lifecycle', () => {
   });
 
   it('re-emitted unchanged file nodes merge without duplicates', async () => {
-    const fileA = { id: 'file:a.ts', kind: 'file', file: 'a.ts', line: 1 };
-    const previous = {
+    const fileA: GraphNode = { id: 'file:a.ts', kind: 'file', file: 'a.ts', line: 1 };
+    const previous: GraphSnapshot = {
       nodes: [fileA, { id: 'file:b.ts', kind: 'file', file: 'b.ts', line: 1 }],
       edges: [],
     };
-    const fresh = {
+    const fresh: GraphSnapshot = {
       nodes: [fileA, { id: 'file:b.ts', kind: 'file', file: 'b.ts', line: 1 }],
       edges: [],
     };
-    const rebuilt = rebuildIncremental(previous as never, new Set(['b.ts']), fresh as never);
+    const rebuilt = rebuildIncremental(previous, new Set(['b.ts']), fresh);
     expect(rebuilt.snapshot.nodes.filter((node) => node.id === 'file:a.ts').length).toBe(1);
     expect(rebuilt.snapshot.nodes.filter((node) => node.id === 'file:b.ts').length).toBe(1);
   });
@@ -355,8 +364,8 @@ describe('code-graph lifecycle', () => {
   it('cross-repo guard redacts dropped paths and validates scope', async () => {
     const redacted = redactDropped([{ file: 'c:/repo/outside/x.ts', reason: 'outside-root' }]);
     expect(redacted[0]?.file).toBe('x.ts');
-    const bad = { nodes: [{ id: 'file:a.ts', kind: 'file', file: 'a.ts', line: 1 }], edges: [], content: { tokenCap: 5000, files: {}, skipped: [] } };
-    expect(validateSnapshotForScope(bad as never, '/repo')).toBeDefined();
+    const bad: GraphSnapshot = { nodes: [{ id: 'file:a.ts', kind: 'file', file: 'a.ts', line: 1 }], edges: [], content: { tokenCap: 5000, files: {}, skipped: [] } };
+    expect(validateSnapshotForScope(bad, '/repo')).toBeDefined();
     expect(PROJECT_B).not.toBe(PROJECT_A);
   });
 });

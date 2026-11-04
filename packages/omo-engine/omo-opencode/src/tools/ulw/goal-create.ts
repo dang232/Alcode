@@ -18,7 +18,7 @@ import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_GOAL_CREATE_NAME = "ulw_goal_create"
 
-export const ULW_GOAL_CREATE_DESCRIPTION =
+const ULW_GOAL_CREATE_DESCRIPTION =
   "Open a native ULW run from a brief; returns the run record. With submissionId the open is idempotent: a duplicate delivery resolves to the accepted run instead of forking another. A transient store lock held by another writer fails the call instead of risking a fork — retry with the same submissionId to resolve to the accepted run."
 
 export type UlwGoalCreateDeps = {

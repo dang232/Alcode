@@ -27,26 +27,11 @@ export function getCurrentTmuxSession(): string | null {
   return match ? `session-${match[1]}` : null
 }
 
-export async function getTmuxSessionName(): Promise<string | null> {
-  return getTmuxSessionNameWithDeps(defaultTmuxDeps)
-}
-
-export async function getTmuxSessionNameWithDeps(deps: OpenClawTmuxDeps): Promise<string | null> {
-  try {
-    const result = await runOpenClawTmuxCommand(["display-message", "-p", "#S"], deps)
-    if (!result?.success) return null
-    return result.output.trim() || null
-  } catch (error) {
-    if (!(error instanceof Error)) throw error
-    return null
-  }
-}
-
 export async function captureTmuxPane(paneId: string, lines = 15): Promise<string | null> {
   return captureTmuxPaneWithDeps(paneId, lines, defaultTmuxDeps)
 }
 
-export async function captureTmuxPaneWithDeps(
+async function captureTmuxPaneWithDeps(
   paneId: string,
   lines: number,
   deps: OpenClawTmuxDeps,
@@ -65,7 +50,7 @@ export async function sendToPane(paneId: string, text: string, confirm = true): 
   return sendToPaneWithDeps(paneId, text, confirm, defaultTmuxDeps)
 }
 
-export async function sendToPaneWithDeps(
+async function sendToPaneWithDeps(
   paneId: string,
   text: string,
   confirm: boolean,
@@ -89,7 +74,7 @@ export async function isTmuxAvailable(): Promise<boolean> {
   return isTmuxAvailableWithDeps(defaultTmuxDeps)
 }
 
-export async function isTmuxAvailableWithDeps(deps: OpenClawTmuxDeps): Promise<boolean> {
+async function isTmuxAvailableWithDeps(deps: OpenClawTmuxDeps): Promise<boolean> {
   try {
     const result = await runOpenClawTmuxCommand(["-V"], deps)
     return result?.success ?? false

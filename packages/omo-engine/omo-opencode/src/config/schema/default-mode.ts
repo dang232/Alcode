@@ -15,4 +15,3 @@ export const DefaultModeConfigSchema = z.object({
  goal: z.boolean().default(false),
 })
 
-export type DefaultModeConfig = z.infer<typeof DefaultModeConfigSchema>

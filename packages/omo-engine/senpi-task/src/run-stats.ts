@@ -173,7 +173,7 @@ function costStatus(sawCost: boolean, costReported: boolean): CostReportStatus {
   return sawCost ? "invalid" : "unavailable"
 }
 
-export function tokensPerSecond(outputTokens: number, generationMs: number): number | undefined {
+function tokensPerSecond(outputTokens: number, generationMs: number): number | undefined {
   if (outputTokens <= 0 || generationMs <= 0) return undefined
   const raw = outputTokens / (generationMs / 1_000)
   return raw >= 10 ? Math.round(raw) : Math.round(raw * 10) / 10

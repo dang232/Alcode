@@ -49,7 +49,7 @@ export function rollbackOrDeferred(
  * host pid) that claimed and attached the task since - at a later epoch, or at the same one when it
  * revived an interrupted or terminal task - holds a different claim and is never undone by this one.
  */
-export function holdsClaim(context: LifecycleContext, fresh: TaskRecord, claim: TaskRecord | undefined): boolean {
+function holdsClaim(context: LifecycleContext, fresh: TaskRecord, claim: TaskRecord | undefined): boolean {
   if (fresh.host_pid !== context.hostPid || fresh.residency_state !== "resident") return false
   if (claim === undefined) return true
   return fresh.notification.run_epoch === claim.notification.run_epoch && fresh.residency_claim === claim.residency_claim

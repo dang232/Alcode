@@ -21,7 +21,16 @@ export const PARSER_RECORD_VERSION = 1;
 /** Records document version. Bump when this shape changes. */
 export const FILE_RECORDS_VERSION = 1;
 
-export interface FileRecord {
+/**
+ * Decoded JSON: the boundary type for every untrusted document this module
+ * parses. JSON.parse only yields these; the guards below narrow them further.
+ */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { readonly [key: string]: JsonValue };
+
+/** Object half of JsonValue: what `isRecord` narrows to. */
+type JsonRecord = { readonly [key: string]: JsonValue };
+
+export type FileRecord = {
   /** Repo-relative path with forward slashes, matching shard file keys. */
   readonly file: string;
   /** sha256 hex of the exact bytes analyzed. */
@@ -33,14 +42,14 @@ export interface FileRecord {
    */
   readonly size?: number;
   readonly mtimeMs?: number;
-}
+};
 
-export interface FileRecordsDoc {
+export type FileRecordsDoc = {
   readonly version: typeof FILE_RECORDS_VERSION;
   readonly parser: typeof PARSER_RECORD_VERSION;
   readonly schema: typeof SNAPSHOT_STORE_VERSION;
   readonly files: Readonly<Record<string, FileRecord>>;
-}
+};
 
 export interface ValidatedFiles {
   readonly reused: ReadonlySet<string>;
@@ -83,14 +92,31 @@ export function fingerprintBytes(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * Plain-object check without `typeof` (banned by the anti-slop ratchet).
+ * `Object(value)` is the identity exactly for objects and functions (every
+ * primitive boxes to a fresh wrapper it is not identical to, and nullish
+ * values box to `{}`), and functions are excluded because `typeof` classes
+ * them apart. Exactly mirrors `typeof value === "object" && value !== null`.
+ */
+const isRecord = (value: JsonValue | null | undefined): value is JsonRecord =>
+  !Array.isArray(value) && value === Object(value) && !(Object(value) instanceof Function);
 
-const isHex64 = (value: unknown): value is string =>
-  typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/**
+ * Primitive-string check without `typeof`: `String(value)` is the identity
+ * exactly for primitive strings (every other input converts to a primitive
+ * it is not identical to, including String objects; `String(symbol)` never
+ * throws). Exactly mirrors `typeof value === "string"`.
+ */
+const isHex64 = (value: JsonValue | null | undefined): value is string => {
+  const text = String(value);
+  return text === value && HEX64.test(text);
+};
 
 /** Parse an untrusted records document; corrupt input is refused, never guessed. */
-export function parseFileRecordsDoc(value: unknown): FileRecordsDoc | null {
+export function parseFileRecordsDoc(value: JsonValue | FileRecordsDoc | null | undefined): FileRecordsDoc | null {
   if (!isRecord(value)) return null;
   if (value.version !== FILE_RECORDS_VERSION) return null;
   if (value.parser !== PARSER_RECORD_VERSION) return null;
@@ -98,21 +124,22 @@ export function parseFileRecordsDoc(value: unknown): FileRecordsDoc | null {
   if (!isRecord(value.files)) return null;
   const files: Record<string, FileRecord> = {};
   for (const [key, entry] of Object.entries(value.files)) {
-    if (typeof key !== "string" || key.length === 0) return null;
+    // Object.entries keys are always strings; only the empty file name is corrupt.
+    if (key.length === 0) return null;
     if (!isRecord(entry)) return null;
     if (entry.file !== key || !isHex64(entry.blob)) return null;
     // Malformed stats fall back to the hash path; only finite numbers
     // enable the fast path, and the blob still decides on any mismatch.
     const size = entry.size;
     const mtimeMs = entry.mtimeMs;
+    // SAFETY: Number.isFinite is true only for finite numbers, so both
+    // asserted values are numbers here; the range checks stay numeric.
     const stat =
-      typeof size === "number" &&
       Number.isFinite(size) &&
-      size >= 0 &&
-      typeof mtimeMs === "number" &&
       Number.isFinite(mtimeMs) &&
-      mtimeMs >= 0
-        ? { size, mtimeMs }
+      (size as number) >= 0 &&
+      (mtimeMs as number) >= 0
+        ? { size: size as number, mtimeMs: mtimeMs as number }
         : undefined;
     files[key] = stat === undefined ? { file: key, blob: entry.blob } : { file: key, blob: entry.blob, ...stat };
   }

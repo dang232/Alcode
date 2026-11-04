@@ -210,7 +210,7 @@ describe("code-graph freshness cache", () => {
     expect(cache.get(PROJECT_A, WORKTREE_A)?.entities).toHaveLength(3);
   });
 
-  it("#given the binding edge set #when edges validate #then only the eight kinds hold with their confidence rules", () => {
+  it("#given the binding edge set #when edges validate #then only the eleven kinds hold with their confidence rules", () => {
     // given (the exact closed set from schema-draft section 2)
     expect(GRAPH_EDGE_KINDS).toEqual([
       "DEFINES",
@@ -221,6 +221,9 @@ describe("code-graph freshness cache", () => {
       "TESTS",
       "LINKS_KNOWLEDGE",
       "INVALIDATED_BY",
+      "ROUTE",
+      "REFERENCES",
+      "NAVIGATES",
     ]);
     expect(GRAPH_ENTITY_KINDS).toEqual(["file", "symbol"]);
 

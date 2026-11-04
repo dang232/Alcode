@@ -3,7 +3,7 @@ import { analyzePaneContent, captureTmuxPane, sendToPane } from "./tmux"
 import { logReplyListenerMessage } from "./reply-listener-log"
 import type { OpenClawConfig } from "./types"
 
-export function sanitizeReplyInput(text: string): string {
+function sanitizeReplyInput(text: string): string {
   return text
     // biome-ignore lint/suspicious/noControlCharactersInRegex: intentionally strip terminal control characters before tmux send-keys
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")

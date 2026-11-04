@@ -1,5 +1,5 @@
 export { createPlaywrightSkill, playwrightSkill } from "./playwright"
-export type { PlaywrightSkillOptions } from "./playwright"
+
 export { playwrightCliSkill } from "./playwright-cli"
 export { frontendSkill } from "./frontend"
 export { gitMasterSkill } from "./git-master"

@@ -13,7 +13,7 @@ import type { DaemonLaunchSpec } from "../launch-spec"
  */
 const SPEC_DIR = resolve("/opt/omo/plugin")
 
-export const DAEMON_LAUNCH_SPEC_FIXTURE: DaemonLaunchSpec = {
+const DAEMON_LAUNCH_SPEC_FIXTURE: DaemonLaunchSpec = {
   spec_version: 1,
   core: {
     session_runtime: "in-process",
@@ -28,7 +28,7 @@ export const DAEMON_LAUNCH_SPEC_FIXTURE: DaemonLaunchSpec = {
  * A parent env carrying every name the daemon must NOT inherit, plus an idle-eviction window
  * SHORTER than the daemon's idle-exit window (so the raise is exercised rather than assumed).
  */
-export const DAEMON_LAUNCH_PARENT_ENV_FIXTURE: Readonly<Record<string, string | undefined>> = {
+const DAEMON_LAUNCH_PARENT_ENV_FIXTURE: Readonly<Record<string, string | undefined>> = {
   PATH: "/usr/bin",
   // A value the daemon's env must NOT carry: the spec is the whole producer, never a parent copy.
   ANTHROPIC_API_KEY: "fixture-not-a-real-key",

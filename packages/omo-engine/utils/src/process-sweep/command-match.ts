@@ -88,14 +88,14 @@ export function tokenLooksExecutable(command: string, tokenStart: number): boole
   }
 }
 
-export function findTokenStart(command: string, index: number): number {
+function findTokenStart(command: string, index: number): number {
   for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
     if (/\s|["']/.test(command[cursor] ?? "")) return cursor + 1
   }
   return 0
 }
 
-export function findTokenEnd(command: string, index: number): number {
+function findTokenEnd(command: string, index: number): number {
   for (let cursor = index; cursor < command.length; cursor += 1) {
     if (/\s|["']/.test(command[cursor] ?? "")) return cursor
   }
@@ -112,7 +112,7 @@ export function normalizeRoots(roots: readonly string[], platform: NodeJS.Platfo
   return [...normalized].sort((left, right) => right.length - left.length || left.localeCompare(right))
 }
 
-export function resolvePathForPlatform(value: string, platform: NodeJS.Platform): string {
+function resolvePathForPlatform(value: string, platform: NodeJS.Platform): string {
   return platform === "win32" ? win32.resolve(value) : posix.resolve(value)
 }
 

@@ -22,7 +22,6 @@ import type { Message } from "../../../team-core/src/types.ts"
 import { TEAM_LEAD_SENTINEL } from "./runtime-config.ts"
 
 export { buildPeerMessageEnvelope }
-export type { InjectionResult }
 
 export type BuildTeamMessageOptions = {
   readonly now?: () => number

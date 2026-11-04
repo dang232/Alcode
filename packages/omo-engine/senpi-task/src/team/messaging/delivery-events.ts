@@ -10,12 +10,3 @@ export function appendDeliveredEvent(deps: LeadPollerDeps, message: Message): vo
     payload: { message_id: message.messageId, from: message.from, to: message.to, kind: message.kind },
   })
 }
-
-export function appendWaitedEvent(deps: LeadPollerDeps, message: Message): void {
-  const taskId = deps.eventTaskId(message)
-  if (taskId === undefined) return
-  deps.appendEvent?.(taskId, {
-    type: "team_message_waited",
-    payload: { message_id: message.messageId, from: message.from, body: message.body },
-  })
-}

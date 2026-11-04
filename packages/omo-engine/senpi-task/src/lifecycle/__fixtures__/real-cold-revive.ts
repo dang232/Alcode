@@ -33,7 +33,7 @@ const NO_TRANSPILER_CACHE = { BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" } as const
 // The daemon-hosted variant of this fixture: same real manager/lifecycle/steering, child on a
 // session of a (fake) daemon instead of its own process. It lives in its own module for the file
 // size ceiling and is re-exported here so both cold revivals are reached through one fixture name.
-export { realColdReviveHostSession, type HostColdReviveResult } from "./real-cold-revive-host"
+export { realColdReviveHostSession } from "./real-cold-revive-host"
 
 const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }
 const modelDefinition = { id: "fixture", name: "fixture", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 100000, maxTokens: 1000 } as const

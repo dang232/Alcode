@@ -7,7 +7,7 @@ import { applyDagSchedulerEvent, type DagSchedulerOptions } from "./scheduler"
 import type { DagFileStore } from "./store"
 import type { DagNodeError, DagNodeId, DagRunId } from "./types"
 
-export const DAG_NODE_CONTROL_ERROR_CODES = [
+const DAG_NODE_CONTROL_ERROR_CODES = [
   "run_not_found",
   "run_not_owned",
   "run_still_active",

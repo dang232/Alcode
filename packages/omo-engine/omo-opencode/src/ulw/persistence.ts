@@ -33,7 +33,6 @@ import type {
   UlwDispatchRoster,
   UlwRunRecord,
   UlwRunStatus,
-  UlwSubmissionClaims,
 } from "./types.ts"
 
 /** Terminal truth wins: a recorded failure must never be overwritten by a concurrent success. */
@@ -143,7 +142,7 @@ export type PersistedUlwRun = {
   readonly deadWorkers: Readonly<Record<string, readonly string[]>>
 }
 
-export type PersistedUlwSubmissionClaims = Record<string, string>
+type PersistedUlwSubmissionClaims = Record<string, string>
 
 export type UlwLoadResult =
   | { readonly ok: true; readonly state: PersistedUlwState }
@@ -164,7 +163,7 @@ export type UlwPersistence = {
 }
 
 /** How long a lock may be held before it is treated as orphaned by a dead process. */
-export const ULW_STORE_LOCK_STALE_MS = 30_000
+const ULW_STORE_LOCK_STALE_MS = 30_000
 
 /** Per-acquire token suffix; distinguishes lock holders that share a pid. */
 let lockCounter = 0

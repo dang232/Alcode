@@ -46,104 +46,6 @@ export function detectShellType(
 }
 
 /**
- * Shell-escape a value for use in environment variable assignment.
- *
- * @param value - The value to escape
- * @param shellType - The target shell type
- * @returns Escaped value appropriate for the shell
- */
-export function shellEscape(value: string, shellType: ShellType): string {
-  if (value === "") {
-    return shellType === "cmd" ? '""' : "''"
-  }
-
-  switch (shellType) {
-    case "unix":
-    case "csh":
-      if (/[^a-zA-Z0-9_\-.:\/]/.test(value)) {
-        return `'${value.replace(/'/g, "'\\''")}'`
-      }
-      return value
-
-    case "powershell":
-      return `'${value.replace(/'/g, "''")}'`
-
-    case "cmd":
-      // Escape % first (for environment variable expansion), then " (for quoting)
-      return `"${value.replace(/%/g, '%%').replace(/"/g, '""')}"`
-
-    default:
-      return value
-  }
-}
-
-/**
- * Build environment variable prefix command for the target shell.
- *
- * @param env - Record of environment variables to set
- * @param shellType - The target shell type
- * @returns Command prefix string to prepend to the actual command
- *
- * @example
- * ```ts
- * // Unix: "export VAR1=val1 VAR2=val2; command"
- * buildEnvPrefix({ VAR1: "val1", VAR2: "val2" }, "unix")
- * // => "export VAR1=val1 VAR2=val2;"
- *
- * // PowerShell: "$env:VAR1='val1'; $env:VAR2='val2'; command"
- * buildEnvPrefix({ VAR1: "val1", VAR2: "val2" }, "powershell")
- * // => "$env:VAR1='val1'; $env:VAR2='val2';"
- *
- * // cmd.exe: "set VAR1=val1 && set VAR2=val2 && command"
- * buildEnvPrefix({ VAR1: "val1", VAR2: "val2" }, "cmd")
- * // => "set VAR1=\"val1\" && set VAR2=\"val2\" &&"
- * ```
- */
-export function buildEnvPrefix(
-  env: Record<string, string>,
-  shellType: ShellType
-): string {
-  const entries = Object.entries(env)
-
-  if (entries.length === 0) {
-    return ""
-  }
-
-  switch (shellType) {
-    case "unix": {
-      const assignments = entries
-        .map(([key, value]) => `${key}=${shellEscape(value, shellType)}`)
-        .join(" ")
-      return `export ${assignments};`
-    }
-
-    case "csh": {
-      const assignments = entries
-        .map(([key, value]) => `setenv ${key} ${shellEscape(value, shellType)}`)
-        .join("; ")
-      return `${assignments};`
-    }
-
-    case "powershell": {
-      const assignments = entries
-        .map(([key, value]) => `$env:${key}=${shellEscape(value, shellType)}`)
-        .join("; ")
-      return `${assignments};`
-    }
-
-    case "cmd": {
-      const assignments = entries
-        .map(([key, value]) => `set ${key}=${shellEscape(value, shellType)}`)
-        .join(" && ")
-      return `${assignments} &&`
-    }
-
-    default:
-      return ""
-  }
-}
-
-/**
  * Escape a value for use in a double-quoted shell -c command argument.
  *
  * In shell -c "..." strings, these characters have special meaning and must be escaped:
@@ -169,8 +71,4 @@ export function buildEnvPrefix(
  * const cmd = `/bin/sh -c "opencode attach ${escaped} --session ${sessionId}"`
  * ```
  */
-export { shellEscapeForDoubleQuotedCommand } from "../../../utils/src/index.ts"
 
-export function shellSingleQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`
-}

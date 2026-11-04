@@ -5,25 +5,17 @@ export { decideDepthPolicy } from "./depth-policy"
 export type { DepthDecision, DepthPolicyInput } from "./depth-policy"
 export { NameRegistry } from "./names"
 export type { NameRegistration } from "./names"
-export { AUTO_HOST_CAPABILITIES, createExecutionModeGate, resolveAutoExecutionMode, resolveExecutionMode } from "./execution-mode"
+export { createExecutionModeGate, resolveAutoExecutionMode, resolveExecutionMode } from "./execution-mode"
 export type {
-  AutoExecutionModeInput,
   ConfiguredExecutionMode,
   ExecutionMode,
   ExecutionModeGate,
   ExecutionModeSources,
-  ProcessRunnerKind,
 } from "./execution-mode"
 export { adaptInProcessHandle, adaptRpcHandle } from "./child-handle"
 export { HOST_TURN_RESUMED_EVENT } from "./host-turn-resumed"
 export type { ManagedChildEvent, ManagedChildHandle, ManagedChildListener } from "./child-handle"
-export {
-  TRANSCRIPT_ASSISTANT_EVENT,
-  TRANSCRIPT_TOOL_EVENT,
-  logTranscriptEvent,
-  subscribeTranscriptLog,
-} from "./transcript-log"
-export type { TranscriptLogStore } from "./transcript-log"
+
 export { createInProcessManagedRunner, createRpcManagedRunner } from "./runner"
 export type {
   InProcessRunnerLike,

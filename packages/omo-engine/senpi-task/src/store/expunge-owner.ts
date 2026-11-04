@@ -5,7 +5,7 @@ import type { ExpungeOwner } from "./types"
 
 // The owner of a TTL tombstone lives beside it (`<taskId>.json.expunging.owner`), so every name the
 // store lists or loads (`.json`, `.json.expunging`) stays exactly as it was.
-export function expungeOwnerPath(tombstonePath: string): string {
+function expungeOwnerPath(tombstonePath: string): string {
   return `${tombstonePath}.owner`
 }
 

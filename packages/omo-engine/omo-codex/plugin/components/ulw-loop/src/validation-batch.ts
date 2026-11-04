@@ -80,7 +80,7 @@ export function batchUpdateLedgerEntry(before: UlwLoopPlan, after: UlwLoopPlan, 
 	return { at, kind: "batch_updated", before: before.validationBatches ?? [], after: after.validationBatches ?? [], message: "Validation batch membership updated after steering." };
 }
 
-export function batchOf(plan: UlwLoopPlan, goalId: string): UlwLoopValidationBatch | undefined {
+function batchOf(plan: UlwLoopPlan, goalId: string): UlwLoopValidationBatch | undefined {
 	return plan.validationBatches?.find((batch) => batch.memberIds.includes(goalId));
 }
 

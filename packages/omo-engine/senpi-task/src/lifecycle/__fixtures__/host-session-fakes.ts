@@ -20,7 +20,7 @@ export function hostSession(taskId: string, overrides: Partial<HostSessionIdenti
  * The daemon a lifecycle test drives: which sessions it still holds, whether it answers at all, and
  * every close the lifecycle asked for. `listCalls` is what pins "ONE list_sessions per pass".
  */
-export class FakeDaemon {
+class FakeDaemon {
   alive = true
   readonly livePaths = new Set<string>()
   readonly closed: string[] = []

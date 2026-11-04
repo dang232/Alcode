@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync} from "node:fs"
 import { join } from "node:path"
 import { CONTINUATION_MARKER_DIR } from "./constants"
 import type {
@@ -58,21 +58,6 @@ export function setContinuationMarkerSource(
   mkdirSync(join(directory, CONTINUATION_MARKER_DIR), { recursive: true })
   writeFileSync(markerPath, JSON.stringify(next, null, 2), "utf-8")
   return next
-}
-
-export function clearContinuationMarker(directory: string, sessionID: string): void {
-  const markerPath = getMarkerPath(directory, sessionID)
-  if (!existsSync(markerPath)) return
-
-  try {
-    rmSync(markerPath)
-  } catch (error) {
-    if (error instanceof Error) {
-      return
-    }
-
-    return
-  }
 }
 
 export function isContinuationMarkerActive(marker: ContinuationMarker | null): boolean {

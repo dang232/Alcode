@@ -1,1 +1,1 @@
-export { parseFrontmatter, type FrontmatterResult } from "../../../utils/src/index.ts"
+export { parseFrontmatter} from "../../../utils/src/index.ts"

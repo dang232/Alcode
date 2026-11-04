@@ -19,8 +19,6 @@ import type { PersistedTaskEvent } from "../../store"
 import { buildPeerMessageEnvelope } from "../messaging/message"
 import { isMissingPath, sessionJsonlContainsMessage } from "./session-scan"
 
-export { sessionJsonlContainsMessage } from "./session-scan"
-
 const DEAD_PID_LEASE_STALE_MS = 0
 const RESERVED_PREFIX = ".delivering-"
 const RESERVED_SUFFIX = ".json"
@@ -35,7 +33,7 @@ export type MemberSelfPollerDeps = {
   readonly afterInject?: (message: Message) => Promise<void>
 }
 
-export type MemberPollFilter = Readonly<{ from?: string }>
+type MemberPollFilter = Readonly<{ from?: string }>
 
 export type MemberSelfPoller = {
   pollOnce(filter?: MemberPollFilter): Promise<void>
@@ -195,5 +193,4 @@ function appendDeliveredEvent(deps: MemberSelfPollerDeps, message: Message): voi
     payload: { message_id: message.messageId, from: message.from, to: message.to, kind: message.kind },
   })
 }
-
 

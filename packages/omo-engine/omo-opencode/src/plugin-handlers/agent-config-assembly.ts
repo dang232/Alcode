@@ -1,5 +1,4 @@
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import type { ClaudeCodeAgentConfig } from "../../../claude-code-compat-core/src/features/claude-code-agent-loader/types";
 import { buildAgentIdentitySection } from "../agents/dynamic-agent-prompt-builder";
 import type { CategoryConfig } from "../config/schema/categories";
@@ -17,7 +16,7 @@ import {
   DEFAULT_CATEGORIES,
 } from "../tools/delegate-task/builtin-categories";
 
-export type AgentOverride = NonNullable<NonNullable<OhMyOpenCodeConfig["agents"]>[string]>;
+type AgentOverride = NonNullable<NonNullable<OhMyOpenCodeConfig["agents"]>[string]>;
 
 export interface CustomAgentRecord {
   readonly description?: string;
@@ -56,7 +55,7 @@ const MODELISH_KEYS = ["model", "temperature"] as const;
  * characters and display suffixes (" - ...", "(...)") are stripped so a
  * custom entry cannot slip past the guard by dressing up a builtin name.
  */
-export function normalizeProtectedAgentName(name: string): string {
+function normalizeProtectedAgentName(name: string): string {
   return stripInvisibleAgentCharacters(name)
     .trim()
     .toLowerCase()
@@ -75,7 +74,7 @@ export function createProtectedAgentNameSet(names: Iterable<string>): Set<string
   return protectedNames;
 }
 
-export function isProtectedAgentName(name: string, protectedNames: ReadonlySet<string>): boolean {
+function isProtectedAgentName(name: string, protectedNames: ReadonlySet<string>): boolean {
   return protectedNames.has(normalizeProtectedAgentName(name));
 }
 
@@ -227,7 +226,7 @@ const CORE_ROLE_SPECS: readonly CoreRoleSpec[] = [
   },
 ];
 
-export interface CoreAgentBuildInput {
+interface CoreAgentBuildInput {
   readonly pluginConfig: OhMyOpenCodeConfig;
   readonly skills: readonly OmoLoadedSkill[];
 }
@@ -278,7 +277,7 @@ function buildCoreAgentEntry(
  * orchestrator family is disabled, and Prometheus is omitted when the
  * planner is disabled; both default to enabled.
  */
-export function buildCoreAgentEntries(input: CoreAgentBuildInput): OmoAgentConfigMap {
+function buildCoreAgentEntries(input: CoreAgentBuildInput): OmoAgentConfigMap {
   const familyDisabled = input.pluginConfig.sisyphus_agent?.disabled === true;
   const plannerEnabled = input.pluginConfig.sisyphus_agent?.planner_enabled ?? true;
   const entries: OmoAgentConfigMap = {};
@@ -327,7 +326,7 @@ export function normalizeCustomAgent(raw: ClaudeCodeAgentConfig): CustomAgentRec
   };
 }
 
-export function customRecordToEntry(record: CustomAgentRecord): OmoAgentConfigEntry {
+function customRecordToEntry(record: CustomAgentRecord): OmoAgentConfigEntry {
   const toolsPolicy = mergeToolsPolicy(record.tools);
   return {
     ...(record.description ? { description: record.description } : {}),
@@ -342,7 +341,7 @@ export function customRecordToEntry(record: CustomAgentRecord): OmoAgentConfigEn
  * Merges custom tiers in ascending precedence (later tiers win), dropping
  * entries that shadow a protected builtin name or sit on the disabled list.
  */
-export function selectCustomAgents(
+function selectCustomAgents(
   tiers: ReadonlyArray<Readonly<Record<string, CustomAgentRecord>>>,
   protectedNames: ReadonlySet<string>,
   disabledAgentNames: ReadonlySet<string>,
@@ -374,7 +373,7 @@ export function selectCustomAgents(
  * settings from the resolved Prometheus entry, with the plan override
  * winning on every key it sets.
  */
-export function buildPlanEntry(
+function buildPlanEntry(
   prometheusEntry: OmoAgentConfigEntry | undefined,
   planOverride: AgentOverride | undefined,
 ): OmoAgentConfigEntry {

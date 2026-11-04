@@ -159,8 +159,6 @@ export function evaluateTransitions(state: MachineState, event: ReflectionEvent)
     : { state, action: { kind: "none" } }
 }
 
-export const evaluate = evaluateTransitions
-
 export function reserveTransition(
   state: ReservationState,
   request: ReflectionRequest,

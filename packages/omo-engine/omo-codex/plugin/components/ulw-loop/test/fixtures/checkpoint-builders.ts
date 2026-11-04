@@ -9,7 +9,7 @@ import { writePlan } from "../../src/plan-io.js";
 import type { UlwLoopItem, UlwLoopLedgerEntry, UlwLoopPlan, UlwLoopSuccessCriterion } from "../../src/types.js";
 import { UlwLoopError } from "../../src/types.js";
 
-export const NOW = "2026-05-23T00:00:00.000Z";
+const NOW = "2026-05-23T00:00:00.000Z";
 
 export function criterion(
 	id: string,

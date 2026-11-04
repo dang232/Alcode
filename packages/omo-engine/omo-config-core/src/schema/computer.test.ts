@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { OmoConfigSchema } from "./config"
-import { COMPUTER_HARNESS_SUPPORT, OmoComputerSettingsSchema } from "./computer"
+import { COMPUTER_HARNESS_SUPPORT, OmoComputerSettingsLayerSchema } from "./computer"
 
 describe("computer settings schema", () => {
   test("#given every computer key #when parsed #then the block round-trips unchanged", () => {
@@ -22,7 +22,7 @@ describe("computer settings schema", () => {
     } as const
 
     // when
-    const parsed = OmoComputerSettingsSchema.parse(block)
+    const parsed = OmoComputerSettingsLayerSchema.parse(block)
 
     // then
     expect(parsed).toEqual(block)
@@ -33,7 +33,7 @@ describe("computer settings schema", () => {
     const camelCase = { cuaAdapter: true }
 
     // when
-    const result = OmoComputerSettingsSchema.safeParse(camelCase)
+    const result = OmoComputerSettingsLayerSchema.safeParse(camelCase)
 
     // then
     expect(result.success).toBe(false)
@@ -52,7 +52,7 @@ describe("computer settings schema", () => {
 
   test("#given every computer key #when checking harness support #then each is native-only", () => {
     // given
-    const keys = Object.keys(OmoComputerSettingsSchema.shape)
+    const keys = Object.keys(OmoComputerSettingsLayerSchema.shape)
 
     // when
     const supported = keys.map((key) => COMPUTER_HARNESS_SUPPORT[`computer.${key}` as keyof typeof COMPUTER_HARNESS_SUPPORT])

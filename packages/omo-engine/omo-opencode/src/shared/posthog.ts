@@ -34,38 +34,8 @@ function resolveTransportFactory(): TelemetryTransportFactory {
   return transportFactoryOverride ?? createDefaultPostHogTransport
 }
 
-/** @internal test-only */
-export function __setActivityStateProviderForTesting(
-  provider: typeof getPostHogActivityCaptureState,
-): void {
-  activityStateProviderOverride = provider
-}
-
-/** @internal test-only */
-export function __resetActivityStateProviderForTesting(): void {
-  activityStateProviderOverride = null
-}
-
-/** @internal test-only */
-export function __setOsProviderForTesting(provider: TelemetryOsProvider): void {
-  osProviderOverride = provider
-}
-
-/** @internal test-only */
-export function __resetOsProviderForTesting(): void {
-  osProviderOverride = null
-}
-
-export function __setTransportFactoryForTesting(provider: TelemetryTransportFactory): void {
-  transportFactoryOverride = provider
-}
-
-export function __resetTransportFactoryForTesting(): void {
-  transportFactoryOverride = null
-}
-
-export type PostHogSource = "cli" | "plugin"
-export type PostHogActivityReason = "run_started" | "plugin_loaded"
+type PostHogSource = "cli" | "plugin"
+type PostHogActivityReason = "run_started" | "plugin_loaded"
 
 export type PostHogClient = {
   readonly trackActive: (distinctId: string, reason: PostHogActivityReason) => void
@@ -81,10 +51,6 @@ type CreatePostHogOptions = {
 // capture() starts a background flush whose failure posthog-node prints via console.error into the TUI.
 const PLUGIN_TRANSPORT_OPTIONS = { flushAt: 20 }
 
-type RecordPluginTelemetryInput = {
-  readonly configEnabled?: boolean
-}
-
 const NO_OP_POSTHOG: PostHogClient = {
   trackActive: () => undefined,
   flush: async () => undefined,
@@ -96,7 +62,7 @@ const NO_OP_POSTHOG: PostHogClient = {
 // the product-config kill switch, in one place
 // (`telemetry-core/src/telemetry-opt-out.ts`). Kept as the exported name
 // so existing callers do not change.
-export function shouldDisablePostHog(env: TelemetryEnv, configEnabled: boolean | undefined): boolean {
+function shouldDisablePostHog(env: TelemetryEnv, configEnabled: boolean | undefined): boolean {
   return isTelemetryOptedOut({
     env,
     productEnvPrefix: createOpencodeTelemetryProductConfig().productEnvPrefix,
@@ -193,13 +159,3 @@ export function createCliPostHog(options: CreatePostHogOptions = {}): PostHogCli
   return createPostHogClient("cli", options)
 }
 
-export function createPluginPostHog(options: CreatePostHogOptions = {}): PostHogClient {
-  return createPostHogClient("plugin", options)
-}
-
-export function recordPluginTelemetry(input: RecordPluginTelemetryInput): void {
-  const posthog = createPluginPostHog({ configEnabled: input.configEnabled })
-  const distinctId = getPostHogDistinctId()
-  posthog.trackActive(distinctId, "plugin_loaded")
-  void posthog.flush()
-}

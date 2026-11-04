@@ -30,7 +30,7 @@ export interface MemoryApplyPatchResult {
   readonly commit?: MemoryToolCommit
 }
 
-export interface MemoryApplyPatchLock {
+interface MemoryApplyPatchLock {
   <T>(domain: LockDomain, operation: () => Promise<T>): Promise<T>
 }
 
@@ -40,7 +40,7 @@ export interface RunMemoryApplyPatchOptions {
   readonly params: MemoryApplyPatchParams
 }
 
-export class MemoryApplyPatchError extends Error {
+class MemoryApplyPatchError extends Error {
   override readonly name: string = "MemoryApplyPatchError"
 
   constructor(message: string, options?: ErrorOptions) {

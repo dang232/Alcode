@@ -7,4 +7,3 @@ export const ModelCapabilitiesConfigSchema = z.object({
   source_url: z.string().url().optional(),
 })
 
-export type ModelCapabilitiesConfig = z.infer<typeof ModelCapabilitiesConfigSchema>

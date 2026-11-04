@@ -14,7 +14,7 @@ export type ServerConnectionOptions = {
   signal: AbortSignal
 }
 
-export type ServerConnectionDeps<TClient> = {
+type ServerConnectionDeps<TClient> = {
   spawnManagedServer: (options: { port: number, signal: AbortSignal }) => Promise<ManagedV2Server>
   createEngineClient: (options: { baseUrl: string, password?: string }) => TClient
   isPortAvailable: (port: number, hostname?: string) => Promise<boolean>
@@ -60,7 +60,7 @@ async function startServer<TClient>(
   return { client, cleanup: () => { void managed.stop() } }
 }
 
-export async function createServerConnectionWithDeps<TClient>(
+async function createServerConnectionWithDeps<TClient>(
   options: ServerConnectionOptions,
   deps: ServerConnectionDeps<TClient>,
 ): Promise<{ client: TClient, cleanup: () => void }> {

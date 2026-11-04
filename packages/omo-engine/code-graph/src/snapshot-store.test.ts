@@ -83,7 +83,7 @@ describe("snapshot store", () => {
       expect(parsed.manifest.unreadableFiles).toEqual(["gone.ts"]);
       expect(parsed.manifest.unreadableFileCount).toBe(1);
 
-      const legacy = { ...JSON.parse(serializeSnapshotManifest(manifest)) } as Record<string, unknown>;
+      const legacy = { ...JSON.parse(serializeSnapshotManifest(manifest)) };
       delete legacy.truncated;
       delete legacy.truncationReason;
       delete legacy.buildSeq;

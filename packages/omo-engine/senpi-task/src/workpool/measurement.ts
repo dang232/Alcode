@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import { canonicalJson } from "./schema"
 import type { Json } from "./types"
 
-export const MEASUREMENT_MODES = ["fresh", "keep_alive", "keep_alive", "fresh"] as const
+const MEASUREMENT_MODES = ["fresh", "keep_alive", "keep_alive", "fresh"] as const
 export type MeasurementMode = "fresh" | "keep_alive"
 export type TokenSnapshot = {
   readonly total_tokens?: number

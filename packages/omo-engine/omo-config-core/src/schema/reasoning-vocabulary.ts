@@ -7,7 +7,7 @@ export const REASONING_AUTO = "auto" as const
 const REASONING_LEVEL_SET = new Set<string>(REASONING_LEVELS)
 const REASONING_LEVEL_OR_AUTO_SET = new Set<string>([...REASONING_LEVELS, REASONING_AUTO])
 
-export function isReasoningLevel(value: string): value is ReasoningLevel {
+function isReasoningLevel(value: string): value is ReasoningLevel {
   return REASONING_LEVEL_SET.has(value)
 }
 

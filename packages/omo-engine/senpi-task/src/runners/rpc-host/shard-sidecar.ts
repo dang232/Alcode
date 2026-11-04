@@ -17,7 +17,7 @@ export interface ShardOwner {
   readonly ownerSessionFile?: string
 }
 
-export interface ShardSidecar {
+interface ShardSidecar {
   readonly socket: string
   readonly kind: ShardKind
   readonly root: string
@@ -29,7 +29,7 @@ export interface ShardSidecar {
   readonly stores: readonly string[]
 }
 
-export function shardSidecarPath(socket: string): string | undefined {
+function shardSidecarPath(socket: string): string | undefined {
   const parsed = parseShardBasename(socket)
   return parsed === null ? undefined : shardMetaPath(dirname(socket), parsed.kind, parsed.key)
 }
@@ -89,10 +89,6 @@ export async function registerSidecarStore(input: RegisterSidecarStoreInput): Pr
     fs.write(metaPath, `${JSON.stringify(next, null, 2)}\n`)
     return "registered"
   }, DURABLE_JSON_LOCK_OPTIONS)
-}
-
-export function readShardSidecar(metaPath: string, fs: DurableJsonFs = DURABLE_JSON_FS): Record<string, unknown> | undefined {
-  return readSidecarObject(fs, metaPath)
 }
 
 function readSidecarObject(fs: DurableJsonFs, metaPath: string): Record<string, unknown> | undefined {

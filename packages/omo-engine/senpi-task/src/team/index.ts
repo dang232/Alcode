@@ -25,7 +25,6 @@ export type {
   CreateTeamDeps,
   CreateTeamResult,
   CreatedMemberInfo,
-  CreatedMemberRole,
   DeleteTeamDeps,
   DeleteTeamResult,
   TeamRuntimeManagerPort,
@@ -35,16 +34,16 @@ export type {
   SpawnMemberExtensionConfig,
   TeamMemberExtensionConfig,
 } from "./runtime-types"
-export { toTeamCoreConfig, toTeamCoreSpecSource } from "./runtime-config"
-export type { TeamCoreConfig, TeamCoreSpecSource } from "./runtime-config"
-export { memberTaskMapPath, readMemberTaskMap, writeMemberTaskMap } from "./member-map"
+export { toTeamCoreConfig } from "./runtime-config"
+export type { TeamCoreConfig } from "./runtime-config"
+export { readMemberTaskMap } from "./member-map"
 export type { MemberTaskMap } from "./member-map"
-export { projectMemberStatus, refreshTeamMemberStatuses } from "./member-projection"
+export { refreshTeamMemberStatuses } from "./member-projection"
 export { isOwnedTeamMemberTask, parseTeamMemberTaskIdentity } from "./liveness-ownership"
-export type { MemberStatusPort, RefreshTeamMemberStatusesDeps, RuntimeMemberStatus } from "./member-projection"
+export type { MemberStatusPort, RefreshTeamMemberStatusesDeps } from "./member-projection"
 export type { TeamMemberOwnershipDeps, TeamMemberTaskIdentity } from "./liveness-ownership"
-export { memberTaskName, spawnTeamMembers } from "./spawn-members"
-export type { SpawnMembersInput, SpawnMembersResult, SpawnedMember } from "./spawn-members"
+export { spawnTeamMembers } from "./spawn-members"
+
 export { createTeamMemberRespawnLaunchResolver, TeamMemberRespawnLaunchError } from "./member-respawn"
 export type { TeamMemberRespawnLaunchErrorCode, TeamMemberRespawnLaunchResolverOptions } from "./member-respawn"
 export {

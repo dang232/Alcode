@@ -16,7 +16,7 @@ export type ChildSessionEvent = {
 export type ChildSessionListener = (event: ChildSessionEvent) => void
 
 /** The slice of senpi's ExtensionRunner that child teardown needs to run session_shutdown. */
-export type ChildExtensionRunner = {
+type ChildExtensionRunner = {
   hasHandlers(eventType: string): boolean
   emit(event: { readonly type: "session_shutdown"; readonly reason: "quit" }): Promise<unknown>
 }

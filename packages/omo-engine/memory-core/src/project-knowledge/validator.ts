@@ -36,7 +36,7 @@ export interface PromotionEvidence {
   readonly secretClean: boolean;
 }
 
-export type PromotionOutcome = "promoted" | "stays-hypothesis" | "refused-working-tree";
+type PromotionOutcome = "promoted" | "stays-hypothesis" | "refused-working-tree";
 
 export interface PromotionResult {
   readonly outcome: PromotionOutcome;
@@ -94,7 +94,7 @@ export interface RationalePromotionEvidence {
   readonly secretClean: boolean;
 }
 
-export type RationalePromotionOutcome = "promoted" | "stays-hypothesis" | "refused-working-tree";
+type RationalePromotionOutcome = "promoted" | "stays-hypothesis" | "refused-working-tree";
 
 export interface RationalePromotionResult {
   readonly outcome: RationalePromotionOutcome;
@@ -197,7 +197,7 @@ export interface InvalidationInput {
   readonly successorValidated: boolean;
 }
 
-export type RecordDisposition = "SUPERSEDED" | "REVALIDATED" | "FILTERED" | "UNCHANGED";
+type RecordDisposition = "SUPERSEDED" | "REVALIDATED" | "FILTERED" | "UNCHANGED";
 
 export interface InvalidationResult {
   readonly disposition: RecordDisposition;

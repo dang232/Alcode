@@ -106,9 +106,12 @@ export interface LifecycleRequest {
 // Yield one macrotask so the event loop breathes before CPU-bound indexing.
 export function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => {
-    const g = globalThis as unknown as { readonly setImmediate?: (fn: () => void) => void };
-    if (typeof g.setImmediate === 'function') g.setImmediate(() => resolve());
-    else setTimeout(() => resolve(), 0);
+    // setImmediate exists only outside the DOM lib; reading it off a
+    // partially-typed global keeps this branch assertion-free.
+    const nodeGlobal: { readonly setImmediate?: (fn: () => void) => void } = globalThis;
+    const setImmediateFn = nodeGlobal.setImmediate;
+    if (setImmediateFn === undefined) setTimeout(() => resolve(), 0);
+    else setImmediateFn(() => resolve());
   });
 }
 
@@ -162,15 +165,34 @@ export function validateSnapshotForScope(snapshot: GraphSnapshot, expectedRoot: 
   return undefined;
 }
 
+/** Outcome of mapping a thrown extractor failure: status plus reason, never a throw. */
+interface MapBuildErrorOutcome {
+  readonly status: LifecycleStatus;
+  readonly reason: string;
+}
+
+// A thrown build failure is an Error (optionally coded via buildFailure) or,
+// defensively, a coded plain bag. Boxing preserves the bag's code on a real
+// Error while the message stays String(thrown), so the mapping below reads
+// one failure regardless of what was thrown.
+function toBuildError<T>(thrown: T): Error & { readonly code?: unknown } {
+  if (thrown instanceof Error) return thrown;
+  const message = String(thrown);
+  const merged = Object.assign(new Error(message), Object(thrown));
+  merged.message = message;
+  return merged;
+}
+
 // Map a thrown extractor error (with .code) to a lifecycle status plus reason.
-function mapBuildError(error: unknown): { status: LifecycleStatus; reason: string } {
-  const code = (error as { code?: unknown } | null | undefined)?.code;
-  const message = error instanceof Error ? error.message : String(error);
-  const reason = typeof code === 'string' ? '[' + code + '] ' + message : message;
-  if (code === 'CANCELLED' || (error instanceof Error && error.name === 'AbortError')) {
+function mapBuildError(error: Error & { readonly code?: unknown }): MapBuildErrorOutcome {
+  // String(code) is the identity exactly for primitive strings, so the
+  // strict comparison below detects a string code without typeof.
+  const codeText = String(error.code);
+  const reason = codeText === error.code ? '[' + codeText + '] ' + error.message : error.message;
+  if (codeText === 'CANCELLED' || (error instanceof Error && error.name === 'AbortError')) {
     return { status: 'cancelled', reason };
   }
-  if (code === 'BUDGET_FILES' || code === 'BUDGET_NODES' || code === 'BUDGET_EDGES' || code === 'BUDGET_TIME') {
+  if (codeText === 'BUDGET_FILES' || codeText === 'BUDGET_NODES' || codeText === 'BUDGET_EDGES' || codeText === 'BUDGET_TIME') {
     return { status: 'truncated', reason };
   }
   return { status: 'failed', reason };
@@ -232,7 +254,7 @@ export async function runLifecycleIndex(request: LifecycleRequest, generation: n
   try {
     snapshot = indexFiles(entryFiles, indexOptions);
   } catch (error) {
-    const mapped = mapBuildError(error);
+    const mapped = mapBuildError(toBuildError(error));
     return { status: mapped.status, reason: mapped.reason, scope, fingerprint };
   }
   const elapsedMs = Date.now() - startMs;
@@ -339,8 +361,15 @@ export class IndexCoordinator {
   }
 }
 
+/** Linked caller/internal abort signals plus which side aborted and cleanup. */
+interface LinkedSignals {
+  readonly signal: AbortSignal;
+  readonly abortedByCaller: boolean;
+  dispose(): void;
+}
+
 // Link a caller signal to an internal controller signal; reports which side aborted.
-function linkSignals(caller: AbortSignal | undefined, internal: AbortSignal): { readonly signal: AbortSignal; readonly abortedByCaller: boolean; dispose(): void } {
+function linkSignals(caller: AbortSignal | undefined, internal: AbortSignal): LinkedSignals {
   let abortedByCaller = false;
   const linked = new AbortController();
   const onCallerAbort = (): void => {
@@ -384,11 +413,18 @@ function linkSignals(caller: AbortSignal | undefined, internal: AbortSignal): { 
 // graph-internal endpoint after the merge is withheld (like the dirty overlay) and
 // reported as invalidated. Provenance preserved: kept nodes/edges keep ids,
 // confidence, and refs byte-identical.
+/** Incremental rebuild outcome: the merged snapshot plus reuse accounting. */
+export interface RebuildOutcome {
+  readonly snapshot: GraphSnapshot;
+  readonly reusedFiles: number;
+  readonly invalidatedEdges: number;
+}
+
 export function rebuildIncremental(
   previous: GraphSnapshot,
   changedFiles: ReadonlySet<string>,
   freshChanged: GraphSnapshot,
-): { readonly snapshot: GraphSnapshot; readonly reusedFiles: number; readonly invalidatedEdges: number } {
+): RebuildOutcome {
   const previousShards = splitSnapshotIntoShards(previous);
   const keptShards: SnapshotShard[] = [];
   for (const shard of previousShards) {
@@ -414,7 +450,8 @@ export function rebuildIncremental(
   const fileOfId = (id: string): string | null => {
     if (id === 'unknown') return null;
     const known = nodeById.get(id);
-    if (known !== undefined && typeof known.file === 'string' && known.file.length > 0) return known.file;
+    // GraphNode.file is statically a string; only the empty file name falls through.
+    if (known !== undefined && known.file.length > 0) return known.file;
     // Shared attribution with sharding: call-site ids carry their file,
     // everything else parses the same grammar as splitSnapshotIntoShards.
     return fileOfNodeId(id);
@@ -461,22 +498,21 @@ export function rebuildIncremental(
   const byFile: Record<string, NonNullable<NonNullable<GraphSnapshot['content']>['files'][string]>> = {};
   const skippedMap = new Map<string, { readonly file: string; readonly reason: 'binary' | 'too-large'; readonly language: string; readonly isTest: boolean }>();
   for (const entry of previous.content?.skipped ?? []) {
-    const fileOf = (entry as { file: string }).file;
-    if (!changedFiles.has(fileOf)) skippedMap.set(fileOf, entry as { readonly file: string; readonly reason: 'binary' | 'too-large'; readonly language: string; readonly isTest: boolean });
+    if (!changedFiles.has(entry.file)) skippedMap.set(entry.file, entry);
   }
   for (const entry of freshChanged.content?.skipped ?? []) {
-    skippedMap.set((entry as { file: string }).file, entry as { readonly file: string; readonly reason: 'binary' | 'too-large'; readonly language: string; readonly isTest: boolean });
+    skippedMap.set(entry.file, entry);
   }
   const prevFiles = previous.content?.files ?? {};
   for (const entry of Object.entries(prevFiles)) {
     const file = entry[0];
-    const record = entry[1] as NonNullable<NonNullable<GraphSnapshot['content']>['files'][string]>;
+    const record = entry[1];
     if (!changedFiles.has(file)) byFile[file] = record;
   }
   const freshFiles = freshChanged.content?.files ?? {};
   for (const entry of Object.entries(freshFiles)) {
     const file = entry[0];
-    const record = entry[1] as NonNullable<NonNullable<GraphSnapshot['content']>['files'][string]>;
+    const record = entry[1];
     if (changedFiles.has(file)) byFile[file] = record;
   }
   const mergedDroppedMap = new Map<string, DroppedFile>();
@@ -489,7 +525,7 @@ export function rebuildIncremental(
   }
   const mergedDropped = [...mergedDroppedMap.values()].sort((a, b) => (a.file < b.file ? -1 : 1));
   const tokenCap = previous.content?.tokenCap ?? freshChanged.content?.tokenCap ?? 5000;
-  const snapshot: GraphSnapshot = {
+  let snapshot: GraphSnapshot = {
     nodes,
     edges,
     content: {
@@ -497,9 +533,13 @@ export function rebuildIncremental(
       files: byFile,
       skipped: [...skippedMap.values()].sort((a, b) => (a.file < b.file ? -1 : 1)),
     },
-    ...(previous.root !== undefined || freshChanged.root !== undefined ? { root: freshChanged.root ?? previous.root } : {}),
-    ...(mergedDropped.length > 0 ? { dropped: mergedDropped } : {}),
   };
+  if (previous.root !== undefined || freshChanged.root !== undefined) {
+    snapshot = { ...snapshot, root: freshChanged.root ?? previous.root };
+  }
+  if (mergedDropped.length > 0) {
+    snapshot = { ...snapshot, dropped: mergedDropped };
+  }
   return { snapshot, reusedFiles: keptShards.length, invalidatedEdges };
 }
 

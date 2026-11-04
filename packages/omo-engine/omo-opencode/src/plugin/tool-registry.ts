@@ -5,7 +5,7 @@
 // is filtered by user config (disabledTools), an optional size cap, and
 // optional per-agent deny overrides.
 
-export interface RegistryEntry {
+interface RegistryEntry {
   readonly description: string;
 }
 

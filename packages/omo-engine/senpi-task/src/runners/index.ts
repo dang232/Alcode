@@ -32,8 +32,6 @@ export {
   ensureTaskDaemon,
   HostUnavailableError,
   resolveTaskHostSocket,
-  TASK_DAEMON_REQUIRED_CAPABILITIES,
-  TASK_HOST_SOCKET_ENV_NAMES,
 } from "./rpc-host/daemon"
 export type { EnsuredTaskDaemon, EnsureTaskDaemonInput, HostUnavailableReason } from "./rpc-host/daemon"
 export {
@@ -43,7 +41,6 @@ export {
   readSessionAncestry,
   readSessionContext,
   readSessionRole,
-  SESSION_ROLES,
 } from "./rpc-host/session-role"
 export { HOST_WARMUP_TASK_ID, HostWarmRefusedError, warmTaskHost } from "./rpc-host/host-warmup"
 export type { TaskHostWarmth, WarmHostSessionInput } from "./rpc-host/host-warmup"

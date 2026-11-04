@@ -47,16 +47,13 @@ export function invalid(message: string, field: string): undefined {
 export function isPoisoned(field: string): boolean {
 	return activeCollector?.poisonedFields.has(field) ?? false;
 }
-export function poisonField(field: string): void {
-	activeCollector?.poisonedFields.add(field);
-}
 export function markPoisonedArtifactKind(id: string): void {
 	activeCollector?.poisonedArtifactKinds.add(id);
 }
 export function isPoisonedArtifactKind(id: string): boolean {
 	return activeCollector?.poisonedArtifactKinds.has(id) ?? false;
 }
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 export function section(value: unknown, field: string): Record<string, unknown> {

@@ -26,8 +26,6 @@ export const ULW_TOOL_NAMES = [
   ULW_COMPLETE_NAME,
 ] as const
 
-export type UlwToolName = (typeof ULW_TOOL_NAMES)[number]
-
 export type UlwToolsDeps = {
   readonly store?: UlwStore
   readonly dispatch?: Omit<UlwDispatchDeps, "store">

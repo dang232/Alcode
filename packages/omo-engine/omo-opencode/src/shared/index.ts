@@ -19,11 +19,7 @@ export * from "./migration"
 export * from "./opencode-config-dir"
 export * from "./opencode-plugin-sandbox"
 export * from "./resolve-agent-definition-paths"
-export type {
-  OpenCodeBinaryType,
-  OpenCodeConfigDirOptions,
-  OpenCodeConfigPaths,
-} from "./opencode-config-dir-types"
+
 export * from "./opencode-version"
 export * from "./opencode-storage-detection"
 export * from "./permission-compat"
@@ -38,14 +34,7 @@ export * from "./system-directive"
 export * from "./agent-tool-restrictions"
 export * from "./model-requirements"
 export * from "./model-resolver"
-export { normalizeModel, normalizeModelID } from "./model-normalization"
-export { normalizeFallbackModels, flattenToFallbackModelStrings } from "./model-resolver"
-export { resolveModelPipeline } from "./model-resolution-pipeline"
-export type {
-  ModelResolutionRequest,
-  ModelResolutionProvenance,
-  ModelResolutionResult,
-} from "./model-resolution-types"
+
 export * from "./model-availability"
 export * from "./model-capabilities"
 export * from "./model-capabilities-cache"
@@ -78,12 +67,12 @@ export * from "./compaction-marker"
 export * from "./internal-initiator-marker"
 export * from "./runtime-fallback-retry-marker"
 export * from "./plugin-command-discovery"
-export { SessionCategoryRegistry } from "./session-category-registry"
+
 export * from "./plugin-identity"
 export * from "./plugin-entry-shape"
 export * from "./log-legacy-plugin-startup-warning"
 export * from "./legacy-workspace-migration"
 export * from "./task-system-enabled"
 export * from "./parse-tools-config"
-export { parseModelString } from "./model-string-parser"
+
 export * from "./replace-tool-args"

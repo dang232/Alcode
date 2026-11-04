@@ -4,21 +4,6 @@ import { existsSync, readFileSync, realpathSync } from "fs"
 import { dirname, join } from "path"
 
 /**
- * Minimum OpenCode version required for this plugin.
- * This plugin only supports OpenCode 1.4.0+.
- */
-export const MINIMUM_OPENCODE_VERSION = "1.4.0"
-
-/**
- * OpenCode version that introduced native AGENTS.md injection.
- * PR #10678 merged on Jan 26, 2026 - OpenCode now dynamically resolves
- * AGENTS.md files from subdirectories as the agent explores them.
- * When this version is detected, the directory-agents-injector hook
- * is auto-disabled to prevent duplicate AGENTS.md loading.
- */
-export const OPENCODE_NATIVE_AGENTS_INJECTION_VERSION = "1.1.37"
-
-/**
  * OpenCode version that introduced SQLite backend for storage.
  * When this version is detected AND opencode.db exists, SQLite backend is used.
  */
@@ -39,7 +24,7 @@ type ExecCommandOptions = {
   stdio: ["pipe", "pipe", "pipe"]
 }
 
-export type OpenCodeVersionDeps = {
+type OpenCodeVersionDeps = {
   execCommand: (command: string, options: ExecCommandOptions) => string
   getBinaryPath: () => string | null
   exists: (filePath: string) => boolean
@@ -59,12 +44,12 @@ const defaultDeps: OpenCodeVersionDeps = {
   readText: (filePath) => readFileSync(filePath, "utf-8"),
 }
 
-export function parseVersion(version: string): number[] {
+function parseVersion(version: string): number[] {
   const cleaned = version.replace(/^v/, "").split("-")[0]
   return cleaned.split(".").map((n) => parseInt(n, 10) || 0)
 }
 
-export function compareVersions(a: string, b: string): -1 | 0 | 1 {
+function compareVersions(a: string, b: string): -1 | 0 | 1 {
   const partsA = parseVersion(a)
   const partsB = parseVersion(b)
   const maxLen = Math.max(partsA.length, partsB.length)
@@ -77,8 +62,6 @@ export function compareVersions(a: string, b: string): -1 | 0 | 1 {
   }
   return 0
 }
-
-
 
 function parsePackageVersion(content: string): string | null {
   try {
@@ -113,7 +96,7 @@ function getPackageVersionFromBinary(binaryPath: string, deps: OpenCodeVersionDe
   }
 }
 
-export function getOpenCodeVersion(deps: Partial<OpenCodeVersionDeps> = {}): string | null {
+function getOpenCodeVersion(deps: Partial<OpenCodeVersionDeps> = {}): string | null {
   if (cachedVersion !== NOT_CACHED) {
     return cachedVersion
   }
@@ -153,10 +136,3 @@ export function isOpenCodeVersionAtLeast(version: string): boolean {
   return compareVersions(current, version) >= 0
 }
 
-export function resetVersionCache(): void {
-  cachedVersion = NOT_CACHED
-}
-
-export function setVersionCache(version: string | null): void {
-  cachedVersion = version
-}

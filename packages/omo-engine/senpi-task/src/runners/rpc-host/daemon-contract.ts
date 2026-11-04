@@ -82,7 +82,7 @@ export interface LoadedDaemonLaunchSpec {
   readonly spec: DaemonLaunchSpec
 }
 
-export interface TaskDaemonPorts {
+interface TaskDaemonPorts {
   readonly host?: TaskDaemonHostPort
   readonly launchSpec?: LoadedDaemonLaunchSpec
   readonly launchSpecPath?: string

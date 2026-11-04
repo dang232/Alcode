@@ -74,7 +74,7 @@ export function senpiBarrel(): SenpiBarrelModule {
 export type HostEnginePolicy = "upgrade" | "fallback" | "never"
 
 /** CalVer build identity: `ordinal` is `[year, month, day, postRelease, buildEpoch]`. */
-export interface EngineBuildIdentity {
+interface EngineBuildIdentity {
   readonly text: string
   readonly ordinal: readonly number[]
   readonly scheme: "epoch" | "nodef"
@@ -93,7 +93,7 @@ export interface SenpiHostProtocolInfo {
   readonly platform?: string
 }
 
-export interface HostDecisionClient {
+interface HostDecisionClient {
   readonly protocolVersion: number
   readonly requiredCapabilities: readonly string[]
   readonly identity: EngineBuildIdentity
@@ -214,19 +214,6 @@ export function senpiDecideHostAction(): DecideHostActionFn {
 
 export function senpiEngineBuildIdentity(): EngineBuildIdentityFn {
   return requireHostSymbol<EngineBuildIdentityFn>("engineBuildIdentity")
-}
-
-export type CreateHostDaemonPathsFn = (target: { readonly socket: string; readonly agentDir?: string }) => { readonly dir: string }
-
-/**
- * The engine's own answer to "which directory holds this endpoint's daemon state". Undefined while
- * the barrel is not loaded yet or when the pinned engine predates the export: the caller keeps its
- * own fallback instead of forcing the barrel onto a path that does not otherwise need it.
- */
-export function senpiCreateHostDaemonPaths(): CreateHostDaemonPathsFn | undefined {
-  if (sharedState().module === undefined) return undefined
-  const value = barrelExports().createHostDaemonPaths
-  return isHostSymbol<CreateHostDaemonPathsFn>(value) ? value : undefined
 }
 
 /** The engine's RPC client constructor, for the per-child session client (one client per child). */

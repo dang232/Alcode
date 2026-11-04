@@ -4,8 +4,6 @@ export { TRANSCRIPT_MAX_CHARS, renderTranscript } from "./render"
 export type { RenderOptions, RenderedTranscript } from "./render"
 export { buildTaskSnapshot } from "./snapshot"
 export {
-  TRANSCRIPT_ASSISTANT_EVENT,
-  TRANSCRIPT_TOOL_EVENT,
   childSessionDir,
   defaultTranscriptReader,
   parseSessionTranscript,

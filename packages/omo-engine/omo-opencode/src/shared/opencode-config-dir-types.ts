@@ -1,4 +1,4 @@
-export type OpenCodeBinaryType = "opencode" | "opencode-desktop"
+type OpenCodeBinaryType = "opencode" | "opencode-desktop"
 
 export type OpenCodeConfigDirOptions = {
   binary: OpenCodeBinaryType

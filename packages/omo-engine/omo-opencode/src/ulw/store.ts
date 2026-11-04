@@ -33,7 +33,6 @@ import type {
   RecordUlwChildResultInput,
   UlwChildReceipts,
   UlwChildResultReceipt,
-  UlwChildResultStatus,
   UlwDispatchRoster,
   UlwMissingReceipts,
   UlwOpenRunResult,

@@ -169,10 +169,4 @@ export class FactsFailureStore {
   }
 }
 
-export {
-  applyFailure,
-  clearForRetry,
-  clearOnSuccess,
-  type FactsFailureFilter,
-  type FactsFailureTarget,
-} from "./failures-backoff"
+

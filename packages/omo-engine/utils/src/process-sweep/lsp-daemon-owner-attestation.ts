@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { createConnection } from "node:net"
 
-export interface LspDaemonOwnerEndpoint {
+interface LspDaemonOwnerEndpoint {
   readonly dev: number
   readonly ino: number
   readonly kind: "unix"

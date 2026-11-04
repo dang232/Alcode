@@ -3,11 +3,11 @@ import { dirname, join } from "node:path"
 
 import type { WorktreeBaseline } from "./runtime"
 
-export function isolationArtifactsDir(stateDir: string, taskId: string): string {
+function isolationArtifactsDir(stateDir: string, taskId: string): string {
   return join(stateDir, "isolation", taskId)
 }
 
-export function baselinePath(stateDir: string, taskId: string): string {
+function baselinePath(stateDir: string, taskId: string): string {
   return join(isolationArtifactsDir(stateDir, taskId), "baseline.json")
 }
 

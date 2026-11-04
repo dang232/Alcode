@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { getPlanChecklist, type PlanChecklist } from "./plan-checklist.js";
 
-export type { PlanChecklist } from "./plan-checklist.js";
 export { getPlanChecklist } from "./plan-checklist.js";
 
 type BoulderWorkStatus = "active" | "paused" | "completed" | "abandoned";

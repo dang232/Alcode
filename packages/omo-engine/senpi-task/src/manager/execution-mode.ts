@@ -4,7 +4,7 @@ export type ExecutionMode = "in-process" | "process"
 export type ConfiguredExecutionMode = ExecutionMode | "auto"
 
 /** Which runner a `process` child gets (omo.json `task.process_runner`). */
-export type ProcessRunnerKind = "host" | "child-process"
+type ProcessRunnerKind = "host" | "child-process"
 
 export type ExecutionModeSources = {
   readonly specMode?: ExecutionMode

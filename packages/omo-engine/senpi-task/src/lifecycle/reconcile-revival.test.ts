@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { afterEach, describe, expect, test } from "bun:test"
 
 import { FakeRunner, flush } from "../manager/__fixtures__/manager-fakes"
@@ -19,7 +20,9 @@ afterEach(cleanupProjects)
 const parentSessionId = "session-resumed"
 const hostPid = 2222
 const now = () => 9_000_000
-const raceWorkerPath = resolve(import.meta.dir, "__fixtures__", "reconcile-race-worker.ts")
+const raceWorkerPath = fileURLToPath(
+  new URL("./__fixtures__/reconcile-race-worker.ts", import.meta.url),
+)
 
 type Launch = { readonly taskId: string; readonly sessionPath: string | undefined }
 

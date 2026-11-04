@@ -39,7 +39,7 @@ export function stripInvisibleAgentCharacters(agentName: string): string {
   return agentName.replace(INVISIBLE_AGENT_CHARACTERS_REGEX, "")
 }
 
-export function stripAgentListSortPrefix(agentName: string): string {
+function stripAgentListSortPrefix(agentName: string): string {
   return stripInvisibleAgentCharacters(agentName).replace(VISIBLE_AGENT_LIST_SORT_PREFIX_REGEX, "").replace(AGENT_WRAPPER_CHARS_REGEX, "")
 }
 
@@ -75,22 +75,6 @@ export function getAgentDisplayName(
 
   // Unknown agent: return original key
   return configKey
-}
-
-/**
- * Thin alias for `getAgentDisplayName` preserved for external imports.
- *
- * Earlier versions injected zero-width prefixes here to bias OpenCode's
- * `agent.name` sort. Sort ordering is now enforced by
- * `src/shared/agent-sort-shim.ts`, so this function emits the canonical
- * display name verbatim. Kept exported because downstream modules still
- * import this symbol; do not collapse the call sites without coordinating.
- */
-export function getAgentListDisplayName(
-  configKey: string,
-  overrides?: Record<string, { displayName?: string } | undefined>,
-): string {
-  return getAgentDisplayName(configKey, overrides)
 }
 
 const REVERSE_DISPLAY_NAMES: Record<string, string> = Object.fromEntries(
@@ -129,39 +113,3 @@ export function getAgentConfigKey(agentName: string): string {
   return resolveKnownAgentConfigKey(agentName) ?? lower
 }
 
-/**
- * Normalize an agent name for prompt APIs.
- * - Known display names -> canonical display names
- * - Known config keys (any case) -> canonical display names
- * - Unknown/custom names -> preserved as-is (trimmed)
- */
-export function normalizeAgentForPrompt(agentName: string | undefined): string | undefined {
-  if (typeof agentName !== "string") {
-    return undefined
-  }
-
-  const trimmed = stripAgentListSortPrefix(agentName).trim()
-  if (!trimmed) {
-    return undefined
-  }
-
-  const configKey = resolveKnownAgentConfigKey(trimmed)
-  if (configKey !== undefined) {
-    return AGENT_DISPLAY_NAMES[configKey] ?? trimmed
-  }
-
-  return trimmed
-}
-
-export function normalizeAgentForPromptKey(agentName: string | undefined): string | undefined {
-  if (typeof agentName !== "string") {
-    return undefined
-  }
-
-  const trimmed = stripAgentListSortPrefix(agentName).trim()
-  if (!trimmed) {
-    return undefined
-  }
-
-  return resolveKnownAgentConfigKey(trimmed) ?? trimmed
-}

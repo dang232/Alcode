@@ -7,7 +7,7 @@ import type { ChildSpec } from "../in-process"
 
 export const PROVIDER = "caller-settings-test"
 
-export type ProviderCall = {
+type ProviderCall = {
   readonly modelId: string
   readonly timeoutMs: unknown
   readonly aborted: Promise<string>

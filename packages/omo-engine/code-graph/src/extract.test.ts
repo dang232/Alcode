@@ -331,6 +331,55 @@ describe("code-graph extract with rootDir", () => {
   );
 
   it(
+    "#given two tsconfig projects #when the scope builds #then call sites are emitted once, not once per project",
+    () => {
+      // given: two packages with their own tsconfig, one call per line,
+      // one call crossing the project boundary
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-shardded-"));
+      try {
+        for (const pkg of ["pkg-a", "pkg-b"]) {
+          mkdirSync(join(repo, pkg), { recursive: true });
+          writeFileSync(
+            join(repo, pkg, "tsconfig.json"),
+            JSON.stringify({ compilerOptions: { strict: true }, include: ["*.ts"] }),
+          );
+        }
+        writeFileSync(join(repo, "pkg-a", "a.ts"), "export function inner(): number {\n  return 1;\n}\n");
+        writeFileSync(
+          join(repo, "pkg-b", "b.ts"),
+          "import { inner } from \"../pkg-a/a.js\";\nexport function outer(): number {\n  return inner() + 1;\n}\n",
+        );
+
+        // when
+        const graph = indexFiles([join(repo, "pkg-a", "a.ts"), join(repo, "pkg-b", "b.ts")], {
+          rootDir: repo,
+        });
+
+        // then: the cross-project call resolves inside one id space
+        expect(
+          graph.edges.some(
+            (edge) =>
+              edge.kind === "CALLS_STATIC" &&
+              edge.from === "fn:outer@pkg-b/b.ts" &&
+              edge.to === "fn:inner@pkg-a/a.ts",
+          ),
+        ).toBe(true);
+
+        // then: no node or edge id repeats. Re-emission used to mint a
+        // fresh ordinal call-site id on every project pass, duplicating
+        // the whole call graph once per project.
+        const nodeIds = graph.nodes.map((node) => node.id);
+        expect(new Set(nodeIds).size).toBe(nodeIds.length);
+        const edgeIds = graph.edges.map((edge) => edge.id);
+        expect(new Set(edgeIds).size).toBe(edgeIds.length);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     "#given a file outside rootDir #when indexed #then it is refused with a recorded reason",
     () => {
       // given: the id base narrowed to apps/a, excluding packages/b
@@ -423,6 +472,615 @@ describe("preferUnpacked", () => {
         expect(preferUnpacked(archived)).toBe(archived);
       } finally {
         rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe("code-graph routes S8", () => {
+  function writeFiles(repo: string, files: Record<string, string>): void {
+    for (const [rel, text] of Object.entries(files)) {
+      const abs = join(repo, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, text);
+    }
+  }
+
+  it(
+    "#given express routes #when indexed #then route to handler hops carry framework tags at confidence 1",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-express-"));
+      try {
+        writeFiles(repo, {
+          "server.ts":
+            `import express from "express";\n` +
+            `export function listUsers(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `export function getUser(): number {\n` +
+            `  return 2;\n` +
+            `}\n` +
+            `const app = express();\n` +
+            `app.get('/users', listUsers);\n` +
+            `app.get('/users/:id', getUser);\n`,
+        });
+        const graph = indexFiles([join(repo, "server.ts")]);
+        const routes = graph.edges.filter((edge) => edge.kind === "ROUTE");
+        expect(routes.length).toBe(2);
+        for (const edge of routes) {
+          expect(edge.confidence).toBe(1);
+          expect(edge.uncertain).toBeUndefined();
+          expect(edge.resolvedBy).toBe("framework");
+          expect(edge.framework).toBe("express");
+          expect(edge.resolver).toBe("express-route-detector");
+        }
+        const refs = graph.edges.filter((edge) => edge.kind === "REFERENCES");
+        expect(refs.length).toBe(2);
+        expect(refs.some((edge) => edge.to === "fn:listUsers@server.ts" && edge.confidence === 1)).toBe(true);
+        expect(refs.some((edge) => edge.to === "fn:getUser@server.ts" && edge.confidence === 1)).toBe(true);
+        for (const edge of refs) {
+          expect(edge.resolvedBy).toBe("framework");
+          expect(edge.framework).toBe("express");
+          expect(edge.resolver).toBe("express-route-detector");
+        }
+        const routeNode = graph.nodes.find((node) => node.kind === "route" && node.name === "/users");
+        expect(routeNode).toBeDefined();
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given next app and pages routes #when indexed with rootDir #then file routes bind handlers per framework",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-next-"));
+      try {
+        writeFiles(repo, {
+          "app/users/page.tsx":
+            `export default function UsersPage(): number {\n` + `  return 1;\n` + `}\n`,
+          "pages/about.tsx":
+            `export default function AboutPage(): number {\n` + `  return 2;\n` + `}\n`,
+        });
+        const graph = indexFiles(
+          [join(repo, "app", "users", "page.tsx"), join(repo, "pages", "about.tsx")],
+          { rootDir: repo },
+        );
+        const appRoute = graph.edges.find(
+          (edge) => edge.kind === "ROUTE" && edge.framework === "next-app" && edge.to.includes("/users"),
+        );
+        expect(appRoute).toBeDefined();
+        expect(appRoute?.confidence).toBe(1);
+        expect(appRoute?.resolver).toBe("next-app-detector");
+        const pagesRoute = graph.edges.find(
+          (edge) => edge.kind === "ROUTE" && edge.framework === "next-pages" && edge.to.includes("/about"),
+        );
+        expect(pagesRoute).toBeDefined();
+        expect(pagesRoute?.resolver).toBe("next-pages-detector");
+        const refs = graph.edges.filter((edge) => edge.kind === "REFERENCES");
+        expect(refs.some((edge) => edge.to === "fn:UsersPage@app/users/page.tsx")).toBe(true);
+        expect(refs.some((edge) => edge.to === "fn:AboutPage@pages/about.tsx")).toBe(true);
+        for (const edge of [...graph.edges.filter((e) => e.kind === "ROUTE" || e.kind === "REFERENCES")]) {
+          expect(edge.resolvedBy).toBe("framework");
+        }
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given react router routes #when indexed #then literal paths bind components",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-rr-"));
+      try {
+        writeFiles(repo, {
+          "routes.tsx":
+            `import { Route } from "react-router-dom";\n` +
+            `export function Home(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `export function App(): unknown {\n` +
+            `  return <Route path="/home" element={<Home />} />;\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "routes.tsx")]);
+        const route = graph.edges.find((edge) => edge.kind === "ROUTE" && edge.framework === "react-router");
+        expect(route).toBeDefined();
+        expect(route?.confidence).toBe(1);
+        expect(route?.resolver).toBe("react-router-detector");
+        expect(
+          graph.edges.some(
+            (edge) => edge.kind === "REFERENCES" && edge.to === "fn:Home@routes.tsx" && edge.confidence === 1,
+          ),
+        ).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given code senders #when indexed #then literal fetches hop to screens while computed and unserved stay unresolved",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-send-"));
+      try {
+        writeFiles(repo, {
+          "server.ts":
+            `import express from "express";\n` +
+            `export function listUsers(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `const app = express();\n` +
+            `app.get('/users', listUsers);\n`,
+          "client.ts":
+            `export function loadUsers(): unknown {\n` +
+            `  return fetch('/users');\n` +
+            `}\n` +
+            `export function goDynamic(dest: string): unknown {\n` +
+            `  return fetch(dest);\n` +
+            `}\n` +
+            `export function goMissing(): unknown {\n` +
+            `  return fetch('/nope');\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "server.ts"), join(repo, "client.ts")]);
+        const hops = graph.edges.filter((edge) => edge.kind === "NAVIGATES");
+        expect(hops.length).toBe(1);
+        const hop = hops[0];
+        expect(hop?.from).toBe("fn:loadUsers@client.ts");
+        expect(hop?.to.includes("/users")).toBe(true);
+        expect(hop?.confidence).toBe(1);
+        expect(hop?.resolvedBy).toBe("framework");
+        expect(hop?.resolver).toBe("navigation-detector");
+        expect(hop?.inferred).toBeUndefined();
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:goDynamic@client.ts")).toBe(false);
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:goMissing@client.ts")).toBe(false);
+        const unresolved = graph.edges.filter((edge) => edge.kind === "CALLS_UNRESOLVED");
+        expect(unresolved.some((edge) => edge.from === "fn:goDynamic@client.ts")).toBe(true);
+        expect(unresolved.some((edge) => edge.from === "fn:goMissing@client.ts")).toBe(true);
+        for (const edge of unresolved) {
+          expect(edge.to).toBe("unknown");
+          expect(edge.confidence).toBeLessThanOrEqual(0.5);
+          expect(edge.uncertain).toBe(true);
+        }
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given markup links #when indexed #then internal links hop inferred while computed and unserved stay unresolved",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-markup-"));
+      try {
+        writeFiles(repo, {
+          "app/users/page.tsx":
+            `export default function UsersPage(): number {\n` + `  return 1;\n` + `}\n`,
+          "app/nav.tsx":
+            `import { Link } from "next/link";\n` +
+            `export function Nav(): unknown {\n` +
+            `  return <Link href="/users">users</Link>;\n` +
+            `}\n` +
+            `export function NavDynamic(dest: string): unknown {\n` +
+            `  return <Link href={dest}>x</Link>;\n` +
+            `}\n` +
+            `export function NavMissing(): unknown {\n` +
+            `  return <Link href="/nope">x</Link>;\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "app", "users", "page.tsx"), join(repo, "app", "nav.tsx")], {
+          rootDir: repo,
+        });
+        const hops = graph.edges.filter((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:Nav@app/nav.tsx");
+        expect(hops.length).toBe(1);
+        expect(hops[0]?.inferred).toBe(true);
+        expect(hops[0]?.confidence).toBe(1);
+        expect(hops[0]?.resolver).toBe("markup-navigation-detector");
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:NavDynamic@app/nav.tsx")).toBe(
+          false,
+        );
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:NavMissing@app/nav.tsx")).toBe(
+          false,
+        );
+        const unresolved = graph.edges.filter((edge) => edge.kind === "CALLS_UNRESOLVED");
+        expect(unresolved.some((edge) => edge.from === "fn:NavDynamic@app/nav.tsx")).toBe(true);
+        expect(unresolved.some((edge) => edge.from === "fn:NavMissing@app/nav.tsx")).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given two apps sharing a path #when indexed with rootDir #then navigation stays inside its own app",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-multi-"));
+      try {
+        writeFiles(repo, {
+          "apps/a/server.ts":
+            `import express from "express";\n` +
+            `export function handlerA(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `const app = express();\n` +
+            `app.get('/shared', handlerA);\n`,
+          "apps/a/client.ts":
+            `export function goA(): unknown {\n` + `  return fetch('/shared');\n` + `}\n`,
+          "apps/b/client.ts":
+            `export function goB(): unknown {\n` + `  return fetch('/shared');\n` + `}\n`,
+        });
+        const graph = indexFiles(
+          [join(repo, "apps", "a", "server.ts"), join(repo, "apps", "a", "client.ts"), join(repo, "apps", "b", "client.ts")],
+          { rootDir: repo },
+        );
+        expect(
+          graph.edges.some(
+            (edge) =>
+              edge.kind === "NAVIGATES" &&
+              edge.from === "fn:goA@apps/a/client.ts" &&
+              edge.to === "route:express:GET /shared@apps/a/server.ts",
+          ),
+        ).toBe(true);
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:goB@apps/b/client.ts")).toBe(
+          false,
+        );
+        expect(
+          graph.edges.some(
+            (edge) => edge.kind === "CALLS_UNRESOLVED" && edge.from === "fn:goB@apps/b/client.ts",
+          ),
+        ).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a computed express path #when indexed #then no route is guessed and the site stays unresolved",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-computed-"));
+      try {
+        writeFiles(repo, {
+          "server.ts":
+            `import express from "express";\n` +
+            `export function handler(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `const app = express();\n` +
+            `const base = "/api";\n` +
+            `app.get(base + '/users', handler);\n`,
+        });
+        const graph = indexFiles([join(repo, "server.ts")]);
+        expect(graph.edges.some((edge) => edge.kind === "ROUTE")).toBe(false);
+        expect(graph.edges.some((edge) => edge.kind === "REFERENCES")).toBe(false);
+        const unresolved = graph.edges.filter((edge) => edge.kind === "CALLS_UNRESOLVED");
+        expect(unresolved.length).toBeGreaterThanOrEqual(1);
+        for (const edge of unresolved) {
+          expect(edge.confidence).toBeLessThanOrEqual(0.5);
+          expect(edge.uncertain).toBe(true);
+        }
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe("code-graph routes S9", () => {
+  function writeS9Files(repo: string, files: Record<string, string>): void {
+    for (const [rel, text] of Object.entries(files)) {
+      const abs = join(repo, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, text);
+    }
+  }
+
+  function tagAsserts(edges: { kind: string; confidence: number; uncertain?: true; resolvedBy?: string; framework?: string; resolver?: string }[], framework: string, resolver: string): void {
+    expect(edges.length).toBeGreaterThan(0);
+    for (const edge of edges) {
+      expect(edge.confidence).toBe(1);
+      expect(edge.uncertain).toBeUndefined();
+      expect(edge.resolvedBy).toBe("framework");
+      expect(edge.framework).toBe(framework);
+      expect(edge.resolver).toBe(resolver);
+    }
+  }
+
+  it(
+    "#given react router useRoutes with nested children #when indexed #then literal paths bind and computed fail closed",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-rr-"));
+      try {
+        writeS9Files(repo, {
+          "routes.tsx":
+            `import { useRoutes } from "react-router-dom";\n` +
+            `export function Home(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `export function Profile(): number {\n` +
+            `  return 2;\n` +
+            `}\n` +
+            `export function App(): unknown {\n` +
+            `  return useRoutes([\n` +
+            `    { path: "/dashboard", element: <Home />, children: [{ path: "profile", element: <Profile /> }] },\n` +
+            `    { path: computedPath, element: <Home /> },\n` +
+            `  ]);\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "routes.tsx")]);
+        const routes = graph.edges.filter((edge) => edge.kind === "ROUTE" && edge.framework === "react-router");
+        expect(routes.map((edge) => edge.to).some((id) => id.includes("/dashboard"))).toBe(true);
+        expect(routes.map((edge) => edge.to).some((id) => id.includes("/profile"))).toBe(true);
+        tagAsserts(routes, "react-router", "react-router-detector");
+        const refs = graph.edges.filter((edge) => edge.kind === "REFERENCES" && edge.framework === "react-router");
+        expect(refs.some((edge) => edge.to === "fn:Home@routes.tsx")).toBe(true);
+        expect(refs.some((edge) => edge.to === "fn:Profile@routes.tsx")).toBe(true);
+        tagAsserts(refs, "react-router", "react-router-detector");
+        const unresolved = graph.edges.filter((edge) => edge.kind === "CALLS_UNRESOLVED");
+        expect(unresolved.length).toBeGreaterThanOrEqual(1);
+        for (const edge of unresolved) {
+          expect(edge.to).toBe("unknown");
+          expect(edge.confidence).toBeLessThanOrEqual(0.5);
+          expect(edge.uncertain).toBe(true);
+        }
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given tanstack routes #when indexed #then file and config paths bind with literal-only tagging",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-tanstack-"));
+      try {
+        writeS9Files(repo, {
+          "routes.tsx":
+            `import { createFileRoute, createRoute, useNavigate } from "@tanstack/react-router";\n` +
+            `export function UsersPage(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `export const usersRoute = createFileRoute("/users")({ component: UsersPage });\n` +
+            `export const profileRoute = createRoute({ path: "profile", component: UsersPage });\n` +
+            `export function Go(): unknown {\n` +
+            `  const navigate = useNavigate();\n` +
+            `  return navigate({ to: "/users" });\n` +
+            `}\n` +
+            `export function GoDynamic(dest: string): unknown {\n` +
+            `  const navigate = useNavigate();\n` +
+            `  return navigate({ to: dest });\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "routes.tsx")]);
+        const routes = graph.edges.filter((edge) => edge.kind === "ROUTE" && edge.framework === "tanstack-router");
+        expect(routes.length).toBe(2);
+        tagAsserts(routes, "tanstack-router", "tanstack-router-detector");
+        const refs = graph.edges.filter((edge) => edge.kind === "REFERENCES" && edge.framework === "tanstack-router");
+        expect(refs.some((edge) => edge.to === "fn:UsersPage@routes.tsx" && edge.confidence === 1)).toBe(true);
+        const hops = graph.edges.filter((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:Go@routes.tsx");
+        expect(hops.length).toBe(1);
+        expect(hops[0]?.to.includes("/users")).toBe(true);
+        expect(hops[0]?.resolvedBy).toBe("framework");
+        expect(hops[0]?.framework).toBe("tanstack-router");
+        expect(hops[0]?.resolver).toBe("navigation-detector");
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:GoDynamic@routes.tsx")).toBe(false);
+        expect(graph.edges.some((edge) => edge.kind === "CALLS_UNRESOLVED" && edge.from === "fn:GoDynamic@routes.tsx")).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given vue router records #when indexed #then literal paths bind and router push hops to params",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-vue-"));
+      try {
+        writeS9Files(repo, {
+          "router.ts":
+            `import { createRouter, createWebHistory } from "vue-router";\n` +
+            `export function HomeView(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `export function UserView(): number {\n` +
+            `  return 2;\n` +
+            `}\n` +
+            `const routes = [\n` +
+            `  { path: "/", component: HomeView },\n` +
+            `  { path: "/users/:id", component: UserView, children: [{ path: "profile", component: HomeView }] },\n` +
+            `];\n` +
+            `export const router = createRouter({ history: createWebHistory(), routes });\n` +
+            `export function go(): unknown {\n` +
+            `  return router.push("/users/7");\n` +
+            `}\n` +
+            `export function goMissing(): unknown {\n` +
+            `  return router.push("/nope");\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "router.ts")]);
+        const routes = graph.edges.filter((edge) => edge.kind === "ROUTE" && edge.framework === "vue-router");
+        expect(routes.length).toBe(3);
+        tagAsserts(routes, "vue-router", "vue-router-detector");
+        const refs = graph.edges.filter((edge) => edge.kind === "REFERENCES" && edge.framework === "vue-router");
+        expect(refs.some((edge) => edge.to === "fn:UserView@router.ts")).toBe(true);
+        tagAsserts(refs, "vue-router", "vue-router-detector");
+        const hops = graph.edges.filter((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:go@router.ts");
+        expect(hops.length).toBe(1);
+        expect(hops[0]?.to.includes("/users")).toBe(true);
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:goMissing@router.ts")).toBe(false);
+        expect(graph.edges.some((edge) => edge.kind === "CALLS_UNRESOLVED" && edge.from === "fn:goMissing@router.ts")).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given nuxt server routes #when indexed with rootDir #then file paths bind and navigateTo hops",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-nuxt-"));
+      try {
+        writeS9Files(repo, {
+          "server/api/hello.ts": `export default function handler(): number {\n  return 1;\n}\n`,
+          "server/utils/caller.ts":
+            `import { navigateTo } from "#app";\n` +
+            `export function go(): unknown {\n` +
+            `  return navigateTo("/api/hello");\n` +
+            `}\n` +
+            `export function goDynamic(dest: string): unknown {\n` +
+            `  return navigateTo(dest);\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "server", "api", "hello.ts"), join(repo, "server", "utils", "caller.ts")], { rootDir: repo });
+        const routes = graph.edges.filter((edge) => edge.kind === "ROUTE" && edge.framework === "nuxt");
+        expect(routes.length).toBe(1);
+        expect(routes[0]?.to.includes("/api/hello")).toBe(true);
+        tagAsserts(routes, "nuxt", "nuxt-detector");
+        const hops = graph.edges.filter((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:go@server/utils/caller.ts");
+        expect(hops.length).toBe(1);
+        expect(hops[0]?.framework).toBe("nuxt");
+        expect(hops[0]?.resolver).toBe("navigation-detector");
+        expect(hops[0]?.confidence).toBe(1);
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:goDynamic@server/utils/caller.ts")).toBe(false);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given sveltekit page companions #when indexed with rootDir #then file paths bind and goto hops",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-svelte-"));
+      try {
+        writeS9Files(repo, {
+          "routes/about/+page.ts": `export function load(): number {\n  return 1;\n}\n`,
+          "routes/home/+page.ts":
+            `import { goto } from "$app/navigation";\n` +
+            `export function go(): unknown {\n` +
+            `  return goto("/about");\n` +
+            `}\n` +
+            `export function goMissing(): unknown {\n` +
+            `  return goto("/nope");\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "routes", "about", "+page.ts"), join(repo, "routes", "home", "+page.ts")], { rootDir: repo });
+        const routes = graph.edges.filter((edge) => edge.kind === "ROUTE" && edge.framework === "sveltekit");
+        expect(routes.length).toBe(2);
+        expect(routes.some((edge) => edge.to.includes("/about"))).toBe(true);
+        tagAsserts(routes, "sveltekit", "sveltekit-detector");
+        const hops = graph.edges.filter((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:go@routes/home/+page.ts");
+        expect(hops.length).toBe(1);
+        expect(hops[0]?.framework).toBe("sveltekit");
+        expect(hops[0]?.confidence).toBe(1);
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:goMissing@routes/home/+page.ts")).toBe(false);
+        expect(graph.edges.some((edge) => edge.kind === "CALLS_UNRESOLVED" && edge.from === "fn:goMissing@routes/home/+page.ts")).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given angular route arrays #when indexed #then literal paths bind and navigate arrays hop",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-angular-"));
+      try {
+        writeS9Files(repo, {
+          "app.routes.ts":
+            `import { RouterModule } from "@angular/router";\n` +
+            `export function HomeComponent(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `export function AdminComponent(): number {\n` +
+            `  return 2;\n` +
+            `}\n` +
+            `const routes = [\n` +
+            `  { path: "home", component: HomeComponent },\n` +
+            `  { path: "admin", component: AdminComponent, children: [{ path: "users", component: HomeComponent }] },\n` +
+            `];\n` +
+            `export const routing = RouterModule.forRoot(routes);\n` +
+            `export function go(router: { navigate: (parts: string[]) => unknown }): unknown {\n` +
+            `  return router.navigate(["home"]);\n` +
+            `}\n` +
+            `export function goDynamic(router: { navigate: (parts: string[]) => unknown }, dest: string[]): unknown {\n` +
+            `  return router.navigate(dest);\n` +
+            `}\n`,
+        });
+        const graph = indexFiles([join(repo, "app.routes.ts")]);
+        const routes = graph.edges.filter((edge) => edge.kind === "ROUTE" && edge.framework === "angular");
+        expect(routes.length).toBe(3);
+        tagAsserts(routes, "angular", "angular-detector");
+        const refs = graph.edges.filter((edge) => edge.kind === "REFERENCES" && edge.framework === "angular");
+        expect(refs.some((edge) => edge.to === "fn:HomeComponent@app.routes.ts")).toBe(true);
+        tagAsserts(refs, "angular", "angular-detector");
+        const hops = graph.edges.filter((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:go@app.routes.ts");
+        expect(hops.length).toBe(1);
+        expect(hops[0]?.to.includes("/home")).toBe(true);
+        expect(hops[0]?.framework).toBe("angular");
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:goDynamic@app.routes.ts")).toBe(false);
+        expect(graph.edges.some((edge) => edge.kind === "CALLS_UNRESOLVED" && edge.from === "fn:goDynamic@app.routes.ts")).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given two s9 apps sharing a path #when indexed with rootDir #then navigation stays inside its own app",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-multi-"));
+      try {
+        writeS9Files(repo, {
+          "apps/a/router.ts":
+            `import { createRouter, createWebHistory } from "vue-router";\n` +
+            `export function handlerA(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `export const router = createRouter({ history: createWebHistory(), routes: [{ path: "/shared", component: handlerA }] });\n`,
+          "apps/a/client.ts":
+            `export function goA(): unknown {\n` + `  return fetch("/shared");\n` + `}\n`,
+          "apps/b/client.ts":
+            `export function goB(): unknown {\n` + `  return fetch("/shared");\n` + `}\n`,
+        });
+        const graph = indexFiles(
+          [join(repo, "apps", "a", "router.ts"), join(repo, "apps", "a", "client.ts"), join(repo, "apps", "b", "client.ts")],
+          { rootDir: repo },
+        );
+        expect(
+          graph.edges.some(
+            (edge) =>
+              edge.kind === "NAVIGATES" &&
+              edge.from === "fn:goA@apps/a/client.ts" &&
+              edge.to === "route:vue-router:/shared@apps/a/router.ts",
+          ),
+        ).toBe(true);
+        expect(graph.edges.some((edge) => edge.kind === "NAVIGATES" && edge.from === "fn:goB@apps/b/client.ts")).toBe(
+          false,
+        );
+        expect(
+          graph.edges.some(
+            (edge) => edge.kind === "CALLS_UNRESOLVED" && edge.from === "fn:goB@apps/b/client.ts",
+          ),
+        ).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
       }
     },
     TEST_TIMEOUT_MS,

@@ -26,15 +26,6 @@ import { ensureTeamRuntimeDirs, resolveTeamRuntimeDirs, teamStorageBaseDir } fro
 const MS_PER_MINUTE = 60_000
 
 export { SenpiTeamRuntimeError } from "./runtime-types"
-export type {
-  CreateTeamDeps,
-  CreateTeamResult,
-  CreatedMemberInfo,
-  CreatedMemberRole,
-  DeleteTeamDeps,
-  DeleteTeamResult,
-  TeamRuntimeManagerPort,
-} from "./runtime-types"
 
 /**
  * Creates a team run over the task manager: enforce the `max_members` bound BEFORE any spawn, seed

@@ -29,4 +29,3 @@ export * from "./schema/tmux"
 export * from "./schema/tui"
 export * from "./schema/websearch"
 
-export { AnyMcpNameSchema, type AnyMcpName, McpNameSchema, type McpName } from "../mcp/types"

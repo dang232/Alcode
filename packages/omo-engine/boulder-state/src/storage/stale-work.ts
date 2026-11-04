@@ -156,7 +156,7 @@ function resolveLastActivityMs(input: {
  * layouts, flat at the root). Only session directories that look like one of `sessionCwds` are
  * read: an agent home accumulates thousands of them and reading them all costs seconds.
  */
-export function findNewestSessionTranscriptMs(input: {
+function findNewestSessionTranscriptMs(input: {
   sessionsDirectory: string
   sessionIds: readonly string[]
   sessionCwds: readonly (string | undefined)[]

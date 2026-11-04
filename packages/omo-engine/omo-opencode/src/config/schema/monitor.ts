@@ -14,4 +14,3 @@ export const MonitorConfigSchema = z.object({
   pattern_max_length: z.number().int().min(1).default(512),
 })
 
-export type MonitorConfig = z.infer<typeof MonitorConfigSchema>

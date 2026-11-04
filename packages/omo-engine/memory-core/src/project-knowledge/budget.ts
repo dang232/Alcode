@@ -15,7 +15,7 @@ import type { ProjectKnowledgeRecord } from "./record";
 export const KNOWLEDGE_BLOCK_MAX_BYTES = 4096;
 export const KNOWLEDGE_BLOCK_MAX_RECORDS = 12;
 /** INV-10: at most one hypothesis per injected block. */
-export const HYPOTHESIS_CAP = 1;
+const HYPOTHESIS_CAP = 1;
 
 /** Section 5(d): the H1 header travels with the data. */
 export const UNTRUSTED_MEMORY_HEADER =
@@ -29,9 +29,9 @@ export interface BudgetedEntry {
   readonly scopeNote: ScopeNote;
 }
 
-export type BudgetDropReason = "hypothesis-cap" | "fresh-cover" | "budget-records" | "budget-bytes";
+type BudgetDropReason = "hypothesis-cap" | "fresh-cover" | "budget-records" | "budget-bytes";
 
-export interface BudgetDrop {
+interface BudgetDrop {
   readonly record: ProjectKnowledgeRecord;
   readonly reason: BudgetDropReason;
 }
@@ -57,7 +57,7 @@ function shortRevision(value: string): string {
  * `fingerprint` prefix), the category label, and the environment qualifier
  * are always present; entries are truncated only as a whole.
  */
-export function renderBlockEntry(entry: BudgetedEntry): string {
+function renderBlockEntry(entry: BudgetedEntry): string {
   const record = entry.record;
   const lines = [
     `[${record.id} | ${record.category}]`,
@@ -69,12 +69,12 @@ export function renderBlockEntry(entry: BudgetedEntry): string {
   return lines.join("\n");
 }
 
-export interface RenderedKnowledgeBlock {
+interface RenderedKnowledgeBlock {
   readonly text: string;
   readonly bytes: number;
 }
 
-export function renderKnowledgeBlock(entries: readonly BudgetedEntry[]): RenderedKnowledgeBlock {
+function renderKnowledgeBlock(entries: readonly BudgetedEntry[]): RenderedKnowledgeBlock {
   const text =
     entries.length === 0
       ? UNTRUSTED_MEMORY_HEADER

@@ -10,7 +10,7 @@
  */
 
 import { resolveProjectIdentity } from "../../../../memory-core/src/project-knowledge/identity.ts"
-import { createHash } from "node:crypto"
+
 import { promises as fs, type Dirent } from "node:fs"
 import path from "node:path"
 
@@ -50,8 +50,8 @@ import type {
   UnderstandingScope,
 } from "../../../../senpi-task/src/dag/intelligence/types.ts"
 
-export const PLAN_EVIDENCE_DISABLED_ENV = "OMO_PLAN_EVIDENCE"
-export const PLAN_EVIDENCE_KNOWLEDGE_ENV = "OMO_PLAN_EVIDENCE_KNOWLEDGE"
+const PLAN_EVIDENCE_DISABLED_ENV = "OMO_PLAN_EVIDENCE"
+const PLAN_EVIDENCE_KNOWLEDGE_ENV = "OMO_PLAN_EVIDENCE_KNOWLEDGE"
 export const PLAN_EVIDENCE_MAX_BYTES = 4096
 export const PLAN_EVIDENCE_MAX_FILES = 2000
 /**
@@ -66,8 +66,8 @@ export const PLAN_EVIDENCE_LEVEL_MAX_FILES: Record<1 | 2 | 3, number> = {
   2: 400,
   3: 800,
 }
-export const PLAN_EVIDENCE_MAX_KEYWORDS = 8
-export const PLAN_EVIDENCE_MAX_SUBJECTS = 3
+const PLAN_EVIDENCE_MAX_KEYWORDS = 8
+const PLAN_EVIDENCE_MAX_SUBJECTS = 3
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"])
 const SKIPPED_DIRECTORIES = new Set([
@@ -93,7 +93,7 @@ const KEYWORD_STOPWORDS = new Set([
   "list", "tell", "before", "after", "state", "include", "including", "also", "them",
 ])
 
-export type PlannerEvidenceDiagnostics = {
+type PlannerEvidenceDiagnostics = {
   readonly reason?: string
   readonly files: number
   readonly indexedFiles: number
@@ -153,7 +153,7 @@ export type PlannerTurn = {
   readonly skipped?: "disabled" | "disabled-env" | "strategy-direct" | string
 }
 
-export function isPlanningStrategy(strategy: string): boolean {
+function isPlanningStrategy(strategy: string): boolean {
   return strategy !== "direct"
 }
 
@@ -665,7 +665,7 @@ export type RunPromptInput = {
   readonly evidence?: PlannerEvidence
 }
 
-export type RunPromptBody = {
+type RunPromptBody = {
   readonly agent: string
   readonly model?: { readonly providerID: string; readonly modelID: string }
   readonly tools: { readonly question: false }

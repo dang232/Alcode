@@ -23,7 +23,6 @@ export const WorkpoolCommandSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("cancel"), pool_id: poolId }),
   WorkpoolYieldSchema,
 ])
-export type WorkpoolCommand = z.infer<typeof WorkpoolCommandSchema>
 
 export function parsePoolId(value: string): PoolId {
   if (!isPoolId(value)) throw new WorkpoolError("invalid_pool_id", "Expected a wp_ pool identifier.")

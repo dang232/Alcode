@@ -52,7 +52,7 @@ export type CreateUlwRunInput = {
 export type UlwDispatchRoster = Readonly<Record<string, readonly string[]>>
 
 /** Terminal state recorded for one dispatched child. */
-export type UlwChildResultStatus = "completed" | "failed"
+type UlwChildResultStatus = "completed" | "failed"
 
 /**
  * Receipt proving a dispatched child's result was collected. Keyed by goal
@@ -88,9 +88,6 @@ export type UlwOpenRunResult = {
   readonly record: UlwRunRecord
   readonly deduped: boolean
 }
-
-/** Durable submission identity to run id. One submission opens exactly one root run, across restarts. */
-export type UlwSubmissionClaims = Readonly<Record<string, string>>
 
 /** Reconciled workers: still-alive sessions stay recoverable, dead ones need explicit re-dispatch. */
 export type UlwReconciledWorkers = {

@@ -5,7 +5,7 @@ import type { HostSessionParked } from "./session-client"
 type ChildEvent = Parameters<ChildEventListener>[0]
 
 /** The handle's listener-registration surface, spread 1:1 onto the returned handle. */
-export interface ListenerRegistrations {
+interface ListenerRegistrations {
   subscribe(listener: ChildEventListener): () => boolean
   subscribeExtensionEvents(listener: ChildExtensionListener): () => void
   onParked(listener: (event: HostSessionParked) => void): () => boolean

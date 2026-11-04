@@ -31,7 +31,7 @@ export function withCommitHooks<T>(value: CommitHooks, fn: () => Promise<T>): Pr
 export async function beforePlanMutation(): Promise<void> {
 	await hooks.getStore()?.beforeMutation?.();
 }
-export async function writeViewFile(path: string, content: string): Promise<void> {
+async function writeViewFile(path: string, content: string): Promise<void> {
 	await (hooks.getStore()?.writeView ?? writeFile)(path, content);
 }
 

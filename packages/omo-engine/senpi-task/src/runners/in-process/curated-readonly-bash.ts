@@ -8,7 +8,7 @@ import { loadSenpiBarrel, senpiBarrel } from "../../lazy/senpi-barrel"
 const CurlProgram = Type.Literal("curl")
 const GitHubProgram = Type.Literal("gh")
 
-export const CuratedReadonlyBashParams = Type.Object({
+const CuratedReadonlyBashParams = Type.Object({
   program: Type.Union([CurlProgram, GitHubProgram], {
     description: "Read-only client to invoke directly. No shell is used.",
   }),
@@ -20,7 +20,7 @@ export const CuratedReadonlyBashParams = Type.Object({
   timeout_seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 120 })),
 })
 
-export type CuratedReadonlyBashInput = Static<typeof CuratedReadonlyBashParams>
+type CuratedReadonlyBashInput = Static<typeof CuratedReadonlyBashParams>
 
 export type CuratedReadonlyRequest = {
   readonly program: "curl" | "gh"

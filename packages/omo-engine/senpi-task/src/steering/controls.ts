@@ -4,7 +4,7 @@ import type { TaskRecord } from "../state"
 import { runMoved, staleCancel } from "./stale-run"
 import type { CancelOptions, CancelOutcome, InterruptOutcome, SteeringPort } from "./types"
 
-export const CANCEL_PENDING_REASON = "cancel requested, child unreachable"
+const CANCEL_PENDING_REASON = "cancel requested, child unreachable"
 
 export function createSteeringControls(
   port: SteeringPort,

@@ -3,8 +3,10 @@ import type { FallbackModelObject } from "./fallback-model-object"
 import { normalizeModel } from "./model-normalization"
 import { resolveModelPipeline } from "./model-resolution-pipeline"
 import { isReasoningLevel } from "./reasoning-level"
-import type { ConnectedProvidersAdapter } from "./connected-providers-cache"
-import * as connectedProvidersCache from "./connected-providers-cache"
+import {
+	connectedProvidersAdapter as connectedProvidersCache,
+	type ConnectedProvidersAdapter,
+} from "./connected-providers-cache"
 
 export type ModelResolutionInput = {
 	userModel?: string

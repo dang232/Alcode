@@ -13,11 +13,11 @@ export function createSessionState(cwd?: string): SessionState {
 	};
 }
 
-export function staticDedupKey(cwd: string, rulePath: string, contentHash: string): string {
+function staticDedupKey(cwd: string, rulePath: string, contentHash: string): string {
 	return `${cwd}::${rulePath}::${contentHash}`;
 }
 
-export function dynamicDedupKey(rulePath: string, contentHash: string): string {
+function dynamicDedupKey(rulePath: string, contentHash: string): string {
 	return `${rulePath}::${contentHash}`;
 }
 

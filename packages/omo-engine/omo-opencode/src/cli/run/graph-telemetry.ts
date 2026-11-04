@@ -9,7 +9,7 @@
  * trail is safe to persist and ship.
  */
 
-export type GraphTelemetryEventType = "graph-preflight" | "graph-tool" | "graph-post-edit"
+type GraphTelemetryEventType = "graph-preflight" | "graph-tool" | "graph-post-edit"
 
 export interface GraphTelemetryEvent {
   readonly type: GraphTelemetryEventType
@@ -35,9 +35,9 @@ export interface GraphTelemetryRecorder {
   events(): readonly GraphTelemetryEvent[]
 }
 
-export const GRAPH_TELEMETRY_DISABLED_ENV = "OMO_GRAPH_TELEMETRY"
+const GRAPH_TELEMETRY_DISABLED_ENV = "OMO_GRAPH_TELEMETRY"
 
-export function isGraphTelemetryEnabled(env: Readonly<Record<string, string | undefined>>): boolean {
+function isGraphTelemetryEnabled(env: Readonly<Record<string, string | undefined>>): boolean {
   return env[GRAPH_TELEMETRY_DISABLED_ENV] !== "0"
 }
 

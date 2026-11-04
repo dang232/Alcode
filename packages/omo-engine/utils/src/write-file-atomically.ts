@@ -1,1 +1,1 @@
-export { writeFileAtomically, type AtomicWriteOptions } from "./atomic-write"
+export { writeFileAtomically } from "./atomic-write"

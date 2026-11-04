@@ -99,7 +99,7 @@ export function admissionLeasePath(stateDir: string, parentSessionId: string): s
   return join(stateDir, "locks", `session-${parentSessionId}.lock`)
 }
 
-export function resolveAdmissionLeaseTiming(overrides: Partial<AdmissionLeaseTiming> = {}): AdmissionLeaseTiming {
+function resolveAdmissionLeaseTiming(overrides: Partial<AdmissionLeaseTiming> = {}): AdmissionLeaseTiming {
   const renewMs = overrides.renewMs ?? 1_000
   return {
     renewMs,

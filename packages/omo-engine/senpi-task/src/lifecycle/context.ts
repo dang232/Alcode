@@ -17,7 +17,7 @@ import type { IdleReclaimerScheduler, LifecycleDeps, LifecycleReattachPorts, Pro
 import type { BatchAdmissionOptions } from "./residency"
 
 import { defaultIdleReclaimerScheduler } from "./idle-reclaimer-scheduler"
-export { createIdleReclaimerScheduler, defaultIdleReclaimerScheduler } from "./idle-reclaimer-scheduler"
+export { createIdleReclaimerScheduler } from "./idle-reclaimer-scheduler"
 
 const DEFAULT_ORPHAN_KILL_DELAY_MS = 5_000
 const DEFAULT_HOST_CLOSE_TIMEOUT_MS = 10_000

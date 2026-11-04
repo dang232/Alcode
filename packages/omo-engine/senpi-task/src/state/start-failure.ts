@@ -1,4 +1,4 @@
-export const TASK_START_FAILURE_KINDS = [
+const TASK_START_FAILURE_KINDS = [
   "child-prompt-failed",
   "child-turn-failed",
   "session-create-failed",
@@ -11,7 +11,7 @@ export const TASK_START_FAILURE_KINDS = [
 
 export type TaskStartFailureKind = (typeof TASK_START_FAILURE_KINDS)[number]
 
-export const MODEL_START_FAILURE_REASONS = [
+const MODEL_START_FAILURE_REASONS = [
   "model_not_in_child_profile",
   "catalog_probe_timed_out",
   "catalog_probe_failed",

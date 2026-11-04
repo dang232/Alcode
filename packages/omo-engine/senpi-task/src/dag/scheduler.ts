@@ -64,10 +64,10 @@ import type {
 
 // The per-node control verbs live beside the scheduler but keep one public entry point: callers
 // import the whole run surface (run, cancel, retry, send, re-entry) from here.
-export { DAG_NODE_CONTROL_ERROR_CODES, DagNodeControlError } from "./node-control-context"
-export type { DagNodeControlErrorCode } from "./node-control-context"
+export { DagNodeControlError } from "./node-control-context"
+
 export { reenterDagRun } from "./node-retry"
-export type { DagRetryOptions, DagRunReentry } from "./node-retry"
+export type { DagRunReentry } from "./node-retry"
 export type { DagNodeSendResult } from "./node-send"
 
 const TERMINAL_NODE_STATES: ReadonlySet<DagNodeState> = new Set([
@@ -76,7 +76,6 @@ const TERMINAL_NODE_STATES: ReadonlySet<DagNodeState> = new Set([
   "cancelled",
   "skipped",
 ])
-
 
 export type DagSchedulerOptions = {
   readonly store: DagFileStore
@@ -172,16 +171,6 @@ export type DagScheduler = {
 type DagSchedulerObserver = (scheduler: DagScheduler) => void
 
 const schedulerObservers = new WeakMap<TaskManager, Set<DagSchedulerObserver>>()
-
-export function observeDagSchedulers(taskManager: TaskManager, observer: DagSchedulerObserver): () => void {
-  const observers = schedulerObservers.get(taskManager) ?? new Set<DagSchedulerObserver>()
-  observers.add(observer)
-  schedulerObservers.set(taskManager, observers)
-  return () => {
-    observers.delete(observer)
-    if (observers.size === 0) schedulerObservers.delete(taskManager)
-  }
-}
 
 type AttachedTaskSettlement =
   | { readonly nodeId: DagNodeId; readonly kind: "record"; readonly record: TaskRecord }
@@ -653,7 +642,7 @@ async function runFrontier(context: SchedulerContext): Promise<DagRunRecordV1> {
   return context.journal.snapshot()
 }
 
-export type AcceptedRunKnowledgeHook = (input: {
+type AcceptedRunKnowledgeHook = (input: {
   readonly snapshot: DagRunRecordV1
   readonly store: DagFileStore
   readonly revision: string

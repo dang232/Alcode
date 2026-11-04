@@ -22,9 +22,9 @@ const USAGE_LIMIT =
   /quota|usage[_ ]limit|\bhit\s+your\b[^.]*\blimit\b|\b(?:session|weekly|monthly|daily|hourly|\d+[- ]hour)\s+limit\b|limit\s+exhausted|insufficient[_ ](?:quota|credits?|balance)|credit[_ ]balance|credits?[_ ]required|billing|blocking_limit/i
 const MODEL_SCOPED_LIMIT = /\bmodels?\b|\bpremium\b|\b(?:opus|sonnet|haiku|fable|mythos)\b/i
 
-export type UsageLimitScope = "model" | "account"
+type UsageLimitScope = "model" | "account"
 
-export function usageLimitScope(message: string): UsageLimitScope | undefined {
+function usageLimitScope(message: string): UsageLimitScope | undefined {
   if (!USAGE_LIMIT.test(message)) return undefined
   return MODEL_SCOPED_LIMIT.test(message) ? "model" : "account"
 }

@@ -12,9 +12,9 @@ import type {
  * exactly as the producer does (deny wins, an allow list refuses every name it does not carry,
  * a malformed list fails closed), so a test asserting the refusal is asserting real semantics.
  */
-export type FakeHostCall = (toolName: string) => Promise<unknown>
+type FakeHostCall = (toolName: string) => Promise<unknown>
 
-export type FakeKernelToolDefinition = {
+type FakeKernelToolDefinition = {
   readonly name: string
   readonly description?: string
   readonly input_schema?: Record<string, unknown>
@@ -23,7 +23,7 @@ export type FakeKernelToolDefinition = {
 }
 
 /** One `invoke` exactly as the consumer made it, including how many arguments it passed. */
-export type FakeInvokeCall = {
+type FakeInvokeCall = {
   readonly request: KernelToolInvokeRequest
   readonly options: AbortSignal | KernelToolInvokeOptions | undefined
   readonly argCount: number

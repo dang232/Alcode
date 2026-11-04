@@ -82,8 +82,6 @@ class PriorRun {
   }
 }
 
-export type { PriorRun, RunAfterEngine }
-
 /** Fences the ref before the engine is called (owner, current run). */
 export function fenceBeforeEngine(tasks: TaskReader, ref: HandleRef, ctx: HandleCallContext): PriorRun {
   return new PriorRun(loadFencedTask(tasks, ref, ctx))

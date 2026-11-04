@@ -194,4 +194,4 @@ export function writePreparedTarget(input: {
   })
 }
 
-export { parseDocument, targetDocument }
+export { targetDocument }

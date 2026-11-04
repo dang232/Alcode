@@ -16,4 +16,3 @@ export const RuntimeFallbackConfigSchema = z.object({
   restore_primary_after_cooldown: z.boolean().optional(),
 })
 
-export type RuntimeFallbackConfig = z.infer<typeof RuntimeFallbackConfigSchema>
