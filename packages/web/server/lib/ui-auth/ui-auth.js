@@ -480,7 +480,7 @@ const alcoreKeySetSchema = z.object({
   previousKid: z.string().optional(),
 });
 
-export const verifyAlcoreAccessToken = (token, keys, issuer) => {
+const verifyAlcoreAccessToken = (token, keys, issuer) => {
   const clean = z.string().min(1).safeParse(token).data;
   if (!clean) throw new Error('malformed jwt');
   const parts = clean.split('.');

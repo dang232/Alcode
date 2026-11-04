@@ -170,8 +170,12 @@ describe('failure recovery', () => {
     try {
       const settled = await Promise.all([runtime.readIndex(dir), runtime.readIndex(dir), runtime.readIndex(dir)]);
       expect(settled.every((s) => s.ready === false)).toBe(true);
-      await expect(runtime.readIndex(dir, { block: true, refresh: true })).rejects.toThrow('no readable source files');
+      // The concurrent polls shared a single build: exactly one failure.
       expect(events.filter((event) => event.state === 'failed').length).toBe(1);
+      await expect(runtime.readIndex(dir, { block: true, refresh: true })).rejects.toThrow('no readable source files');
+      // An explicit refresh retries the doomed build (documented
+      // refresh-retries contract) and fails a second time.
+      expect(events.filter((event) => event.state === 'failed').length).toBe(2);
     } finally {
       await restore();
     }

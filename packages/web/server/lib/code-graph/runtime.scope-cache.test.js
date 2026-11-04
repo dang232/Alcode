@@ -146,8 +146,10 @@ describe('truncated scope with a previous complete generation', () => {
     expect(pending.freshness).toBe('stale');
     expect(pending.staleReason).toBe('rebuild-pending');
 
-    // Joining the running build publishes a newer complete generation.
-    const rebuilt = await runtime.readIndex(dir, { block: true });
+    // Joining a refresh build publishes a newer complete generation: the
+    // explicit refresh supersedes the running build and rebuilds instead
+    // of re-serving the current one (no cap distinguishes them anymore).
+    const rebuilt = await runtime.readIndex(dir, { block: true, refresh: true });
     expect(rebuilt.ready).toBe(true);
     expect(rebuilt.freshness).toBe('fresh');
     expect(rebuilt.generation).toBeGreaterThan(complete.generation);
@@ -215,7 +217,7 @@ describe('truncated scope with a previous complete generation', () => {
     expect(seen.filter((event) => event.state === 'discovering' || event.state === 'analyzing')).toEqual([]);
   }, 120_000);
 
-  it('a cap switchback reuses the matching complete generation without rebuilding', async () => {
+  it('legacy caps are ignored: every read serves one fresh complete generation', async () => {
     const dir = makeRepo({
       'a.ts': 'export const alpha = 1;\n',
       'b.ts': 'export const beta = 2;\n',
@@ -225,13 +227,22 @@ describe('truncated scope with a previous complete generation', () => {
 
     const complete = await runtime.readIndex(dir, { block: true, maxEntryFiles: 10 });
     expect(complete.truncated).toBe(false);
+    expect(complete.freshness).toBe('fresh');
+    expect(complete.excludedCount).toBe(0);
+    expect(complete.entryCount).toBe(2);
 
-    const truncated = await runtime.readIndex(dir, { block: true, maxEntryFiles: 1 });
-    expect(truncated.truncated).toBe(true);
-    expect(truncated.generation).not.toBe(complete.generation);
+    // A legacy per-call cap binds nothing: the same complete generation
+    // serves fresh with no rebuild.
+    events.length = 0;
+    const second = await runtime.readIndex(dir, { block: true, maxEntryFiles: 1 });
+    expect(second.truncated).toBe(false);
+    expect(second.freshness).toBe('fresh');
+    expect(second.excludedCount).toBe(0);
+    expect(second.generation).toBe(complete.generation);
+    expect(events.filter((event) => event.state === 'discovering' || event.state === 'analyzing')).toEqual([]);
 
-    // Reopening under the earlier cap finds the previous complete generation
-    // (same cap, same revision) and serves it fresh - no rebuild.
+    // Reopening under the earlier cap finds the same complete generation
+    // (same revision) and serves it fresh - no rebuild.
     events.length = 0;
     const switchback = await runtime.readIndex(dir, { block: true, maxEntryFiles: 10 });
     expect(switchback.freshness).toBe('fresh');
@@ -241,8 +252,8 @@ describe('truncated scope with a previous complete generation', () => {
   }, 120_000);
 });
 
-describe('truncated-only scope', () => {
-  it('is exposed as explicitly partial and settles instead of rebuilding on every open', async () => {
+describe('uncapped-only scope', () => {
+  it('serves a fresh complete generation and reuses it on every open', async () => {
     const dir = makeRepo({
       'a.ts': 'export const alpha = 1;\n',
       'b.ts': 'export const beta = 2;\n',
@@ -253,35 +264,118 @@ describe('truncated-only scope', () => {
 
     const first = await runtime.readIndex(dir, { block: true });
     expect(first.ready).toBe(true);
-    // Never advertised as fresh or complete.
-    expect(first.truncated).toBe(true);
-    expect(first.indexTruncated).toBe(true);
-    expect(first.truncationReason).toBe('entry-cap');
-    expect(first.excludedCount).toBe(2);
-    expect(first.freshness).toBe('stale');
-    expect(first.staleReason).toBe('index-truncated');
+    // Advertised as fresh and complete: the legacy runtime cap binds nothing.
+    expect(first.truncated).toBe(false);
+    expect(first.indexTruncated).toBe(false);
+    expect(first.truncationReason).toBe(null);
+    expect(first.excludedCount).toBe(0);
+    expect(first.entryCount).toBe(3);
+    expect(first.entryCap).toBe(null);
+    expect(first.freshness).toBe('fresh');
 
-    // The existing partial contract holds: queries downgrade to partial and
-    // name the exclusion instead of claiming a complete index.
+    // Queries answer at full coverage on a complete index.
     const explore = await runtime.query(dir, { kind: 'explore' });
-    expect(explore.coverage).toBe('partial');
-    expect(explore.unresolved.some((line) => line.includes('index incomplete'))).toBe(true);
+    expect(explore.coverage).toBe('indexed');
+    expect(explore.unresolved.some((line) => line.includes('index incomplete'))).toBe(false);
 
-    // No rebuild loop: repeat opens of the unchanged truncated scope reuse
-    // the entry - same generation, no build progress - in both modes.
+    // Repeat opens of the unchanged scope reuse the entry - same
+    // generation, no build progress - in both modes.
     events.length = 0;
     const second = await runtime.readIndex(dir, { block: true });
     expect(second.generation).toBe(first.generation);
-    expect(second.freshness).toBe('stale');
-    expect(second.staleReason).toBe('index-truncated');
+    expect(second.freshness).toBe('fresh');
     expect(events.filter((event) => event.state === 'discovering' || event.state === 'analyzing')).toEqual([]);
 
     events.length = 0;
     const passive = await runtime.readIndex(dir, {});
     expect(passive.ready).toBe(true);
     expect(passive.generation).toBe(first.generation);
-    expect(passive.freshness).toBe('stale');
-    expect(passive.staleReason).toBe('index-truncated');
+    expect(passive.freshness).toBe('fresh');
+    expect(events.filter((event) => event.state === 'discovering' || event.state === 'analyzing')).toEqual([]);
+  }, 120_000);
+});
+
+describe('project config and ignore scope rules (S7)', () => {
+  const walkRels = (walk, scope) => walk.entries.map((e) => path.relative(scope, e).split(path.sep).join('/')).sort();
+
+  it('committed files need exclude: gitignore does not drop them', async () => {
+    const dir = makeRepo({
+      'tracked.ts': 'export const tracked = 1;\n',
+      'gen/out.ts': 'export const out = 1;\n',
+    });
+    writeFileSync(join(dir, '.gitignore'), 'tracked.ts\ngen/out.ts\n');
+    const runtime = makeRuntime([]);
+    // Both files are committed, so the ignore file cannot drop them.
+    const immune = await runtime.listEntryFiles(dir, 50);
+    expect(walkRels(immune, dir)).toEqual(['gen/out.ts', 'tracked.ts']);
+    expect(immune.excludedCount).toBe(0);
+    expect(immune.gitignoreFiles).toEqual(['.gitignore']);
+    // An explicit config exclude removes the committed path.
+    writeFileSync(join(dir, 'codegraph.json'), JSON.stringify({ exclude: ['gen/**'] }));
+    const excluded = await runtime.listEntryFiles(dir, 50);
+    expect(walkRels(excluded, dir)).toEqual(['tracked.ts']);
+    expect(excluded.excludedCount).toBe(1);
+    expect(excluded.truncationReason).toBe('project-config');
+    expect(excluded.excludedSample).toContain('gen/out.ts');
+  });
+
+  it('nested-repo boundary holds despite include', async () => {
+    const parent = join(root, `s7-nested-${seq++}`);
+    mkdirSync(join(parent, 'repoA', '.git'), { recursive: true });
+    writeFileSync(join(parent, 'repoA', 'a.ts'), 'export const a = 1;\n');
+    writeFileSync(join(parent, 'top.ts'), 'export const t = 1;\n');
+    writeFileSync(join(parent, 'codegraph.json'), JSON.stringify({ include: ['repoA/**'] }));
+    const runtime = makeRuntime([]);
+    const walk = await runtime.listEntryFiles(parent, 50);
+    expect(walkRels(walk, parent)).toEqual(['top.ts']);
+    expect(walk.nestedRepoRoots).toContain('repoA');
+  });
+
+  it('served index reflects config bucket moves and rollback restores them', async () => {
+    const dir = makeRepo({
+      'a.ts': 'export const alpha = 1;\n',
+      'b.ts': 'export const beta = 2;\n',
+    });
+    const events = [];
+    const runtime = makeRuntime(events);
+    const complete = await runtime.readIndex(dir, { block: true });
+    expect(complete.ready).toBe(true);
+    expect(complete.freshness).toBe('fresh');
+    expect(complete.excludedCount).toBe(0);
+    // Excluding one file rebuilds (the config joins the revision) and the
+    // served index names the gap the S1/S6 surfaces render.
+    writeFileSync(join(dir, 'codegraph.json'), JSON.stringify({ exclude: ['b.ts'] }));
+    events.length = 0;
+    const moved = await runtime.readIndex(dir, { block: true });
+    expect(moved.ready).toBe(true);
+    expect(moved.generation).toBeGreaterThan(complete.generation);
+    expect(moved.freshness).toBe('stale');
+    expect(moved.staleReason).toBe('index-truncated');
+    expect(moved.excludedCount).toBe(1);
+    expect(moved.truncationReason).toBe('project-config');
+    expect(moved.excludedSample).toContain('b.ts');
+    // A scope first built under a config has no previous complete
+    // generation, so queries downgrade and name the exclusion.
+    const fresh = makeRepo({
+      'a.ts': 'export const alpha = 1;\n',
+      'b.ts': 'export const beta = 2;\n',
+    });
+    writeFileSync(join(fresh, 'codegraph.json'), JSON.stringify({ exclude: ['b.ts'] }));
+    const first = await runtime.readIndex(fresh, { block: true });
+    expect(first.ready).toBe(true);
+    expect(first.staleReason).toBe('index-truncated');
+    const explore = await runtime.query(fresh, { kind: 'explore' });
+    expect(explore.coverage).toBe('partial');
+    expect(explore.unresolved.some((line) => line.includes('index incomplete'))).toBe(true);
+    // Rollback is deleting the file: the pre-config complete generation
+    // still matches, so the scope reuses it with no rebuild.
+    await fsPromises.rm(join(dir, 'codegraph.json'), { force: true });
+    events.length = 0;
+    const restored = await runtime.readIndex(dir, { block: true });
+    expect(restored.ready).toBe(true);
+    expect(restored.freshness).toBe('fresh');
+    expect(restored.excludedCount).toBe(0);
+    expect(restored.generation).toBe(complete.generation);
     expect(events.filter((event) => event.state === 'discovering' || event.state === 'analyzing')).toEqual([]);
   }, 120_000);
 });

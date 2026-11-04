@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { dropdownTriggerVariants } from '@/components/ui/dropdown-trigger';
 import { useI18n, type I18nKey, type I18nParams } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import type { CodeGraphTruncationView } from './codeGraphModes';
 
 export type CodeGraphToolbarMode = 'explore' | 'trace' | 'impact';
 export type CodeGraphToolbarSubjectKind = 'file' | 'symbol';
@@ -33,6 +34,18 @@ export interface CodeGraphToolbarTotals {
   hidden: number | null;
 }
 
+/**
+ * Index-truncation facts the toolbar surfaces next to totals: how many
+ * files the index excludes, why, which paths name it, and which modules
+ * carry the exclusions, plus the S6 visible budget (the entry cap behind
+ * the generation). Null on a fully indexed scope, when the toolbar stays
+ * quiet instead of stating a zero-exclusion fact. `entryCap` rides the
+ * truncation when the server sent it; the separate `entryCap` prop covers
+ * callers holding the index summary directly. Either is optional so S1
+ * callers compile unchanged.
+ */
+export type CodeGraphToolbarTruncation = CodeGraphTruncationView & { entryCap?: number | null };
+
 export interface CodeGraphToolbarProps {
   directory: string;
   subject: CodeGraphToolbarSubject | null;
@@ -43,6 +56,9 @@ export interface CodeGraphToolbarProps {
   filters: CodeGraphToolbarFilters;
   totals: CodeGraphToolbarTotals | null;
   completeness: CodeGraphToolbarCompleteness | null;
+  truncation?: CodeGraphToolbarTruncation | null;
+  /** S6 visible budget: the entry cap behind the served generation. Optional so S1 callers compile unchanged. */
+  entryCap?: number | null;
   busy: boolean;
   onModeChange: (mode: CodeGraphToolbarMode) => void;
   onDepthChange: (depth: 1 | 2 | 3) => void;
@@ -114,6 +130,10 @@ const toggleValue = (values: string[], value: string): string[] => (
   values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value]
 );
 
+/** Finite-number probe for the S6 visible budget; nullish or non-finite budgets never reach the copy. */
+const isFiniteBudget = (value: number | null | undefined): value is number =>
+  value !== null && value !== undefined && Number.isFinite(value);
+
 /**
  * The toolbar above the code graph. The three modes ask the graph's three
  * questions, depth walks 1–3 hops out from the subject, and kinds/edges/
@@ -130,6 +150,8 @@ export const CodeGraphToolbar: React.FC<CodeGraphToolbarProps> = ({
   filters,
   totals,
   completeness,
+  truncation,
+  entryCap,
   busy,
   onModeChange,
   onDepthChange,
@@ -156,6 +178,8 @@ export const CodeGraphToolbar: React.FC<CodeGraphToolbarProps> = ({
   React.useEffect(() => {
     setQuery(search);
   }, [search]);
+
+  const budget = truncation ? (entryCap ?? truncation.entryCap ?? null) : null;
 
   return (
     <div data-testid="code-graph-toolbar" className="flex flex-wrap items-center gap-2">
@@ -339,6 +363,30 @@ export const CodeGraphToolbar: React.FC<CodeGraphToolbarProps> = ({
       {(completeness === 'truncated' || completeness === 'partial') && (
         <p data-testid="code-graph-completeness" className="typography-ui-label text-muted-foreground">
           {text(completeness === 'truncated' ? 'codeGraph.toolbar.completenessTruncated' : 'codeGraph.toolbar.completenessPartial')}
+        </p>
+      )}
+      {truncation && (
+        <p
+          data-testid="code-graph-index-truncation"
+          title={truncation.excludedSample.length > 0 ? truncation.excludedSample.join(', ') : undefined}
+          className="typography-ui-label text-muted-foreground"
+        >
+          {text('codeGraph.toolbar.truncationExcluded', { count: truncation.excludedCount })}
+          {truncation.reason ? ` · ${truncation.reason}` : ''}
+        </p>
+      )}
+      {truncation && truncation.modules.length > 0 && (
+        <p data-testid="code-graph-truncation-modules" className="typography-ui-label text-muted-foreground">
+          {text('codeGraph.toolbar.truncationModules', {
+            modules: truncation.modules
+              .map((bucket) => `${bucket.name} (${bucket.excludedFiles})`)
+              .join(', '),
+          })}
+        </p>
+      )}
+      {isFiniteBudget(budget) && (
+        <p data-testid="code-graph-budget" className="typography-ui-label text-muted-foreground">
+          {text('codeGraph.toolbar.truncationBudget', { cap: budget })}
         </p>
       )}
 

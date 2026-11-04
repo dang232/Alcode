@@ -28,10 +28,10 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
 
-export const IDE_GATE_CAPABILITY_VERSION = 1;
+const IDE_GATE_CAPABILITY_VERSION = 1;
 export const IDE_GATE_DEFAULT_TTL_MINUTES = 15;
-export const IDE_GATE_MINUTE_MS = 60_000;
-export const IDE_GATE_ALL_FEATURES = ['basic-ide', 'full-access'];
+const IDE_GATE_MINUTE_MS = 60_000;
+const IDE_GATE_ALL_FEATURES = ['basic-ide', 'full-access'];
 
 const tierSchema = z.enum(['free-tier', 'pending-payment', 'paid']);
 const ideAccessSchema = z.enum(['allow', 'deny']);
@@ -74,7 +74,7 @@ const fixtureSchema = z.object({
   tiers: z.array(fixtureTierSchema).min(1),
 });
 
-export class IdeGateError extends Error {
+class IdeGateError extends Error {
   constructor(code, message) {
     super(message);
     this.name = 'IdeGateError';
@@ -84,7 +84,7 @@ export class IdeGateError extends Error {
 
 const isRecord = (value) => value instanceof Object && !Array.isArray(value);
 
-export const ttlMsForMinutes = (minutes, fallback = IDE_GATE_DEFAULT_TTL_MINUTES) => {
+const ttlMsForMinutes = (minutes, fallback = IDE_GATE_DEFAULT_TTL_MINUTES) => {
   const parsed = z.number().int().min(1).max(1440).safeParse(minutes);
   const valid = parsed.success ? parsed.data : fallback;
   return valid * IDE_GATE_MINUTE_MS;

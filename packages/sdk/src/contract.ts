@@ -654,7 +654,7 @@ export type HostSessionMessage = Envelope & { type: 'session'; payload: { sessio
  * the engine session the model was built for, so a stale post can never
  * paint a foreign conversation's graph.
  */
-export type HostRunModelMessage = Envelope & { type: 'run-model'; payload: { conversationId: string; snapshot: JsonValue | null } };
+type HostRunModelMessage = Envelope & { type: 'run-model'; payload: { conversationId: string; snapshot: JsonValue | null } };
 export type HostConnectionMessage = Envelope & { type: 'connection'; payload: { connection: GuestConnection } };
 export type HostSettingsMessage = Envelope & { type: 'settings'; payload: { settings: GuestSettings } };
 export type HostSessionLifecycleMessage = Envelope & { type: 'session-lifecycle'; payload: SessionLifecycleEvent };

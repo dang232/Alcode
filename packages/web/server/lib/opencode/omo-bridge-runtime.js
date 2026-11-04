@@ -57,16 +57,16 @@ import { probeToolkit, OMO_TOOLKIT_PROBE_TIMEOUT_MS } from './omo-toolkit-probe.
 
 export const OMO_BRIDGE_EVENT_DAG_UPDATED = 'omo.dag.updated';
 export const OMO_BRIDGE_EVENT_TASK_UPDATED = 'omo.task.updated';
-export const OMO_BRIDGE_KNOWN_EVENTS = [OMO_BRIDGE_EVENT_DAG_UPDATED, OMO_BRIDGE_EVENT_TASK_UPDATED];
-export const OMO_BRIDGE_SNAPSHOT_SCHEMA_VERSION = 1;
+const OMO_BRIDGE_KNOWN_EVENTS = [OMO_BRIDGE_EVENT_DAG_UPDATED, OMO_BRIDGE_EVENT_TASK_UPDATED];
+const OMO_BRIDGE_SNAPSHOT_SCHEMA_VERSION = 1;
 // Wrapper `run` flags the handshake requires (cli-program.ts: `run <message>`
 // with `--port` / `--attach` / `--session-id` / `--json`).
-export const OMO_BRIDGE_REQUIRED_RUN_FLAGS = ['--port', '--attach', '--session-id', '--json'];
-export const OMO_BRIDGE_PROBE_TIMEOUT_MS = 10_000;
-export const OMO_BRIDGE_CANCEL_GRACE_MS = 2_000;
+const OMO_BRIDGE_REQUIRED_RUN_FLAGS = ['--port', '--attach', '--session-id', '--json'];
+const OMO_BRIDGE_PROBE_TIMEOUT_MS = 10_000;
+const OMO_BRIDGE_CANCEL_GRACE_MS = 2_000;
 // A snapshot file holds the last dag + task payloads only; past this the
 // writer drops the update and counts it instead of growing the file.
-export const OMO_BRIDGE_MAX_SNAPSHOT_BYTES = 1_000_000;
+const OMO_BRIDGE_MAX_SNAPSHOT_BYTES = 1_000_000;
 // Model→provider binding (task 52, Slice E / Gap 5): harness runs pick
 // models from the engine catalog, which pins non-alcore IDs
 // (model-catalog.json: gpt-6-astra everywhere) — an Alcore login only
@@ -74,15 +74,15 @@ export const OMO_BRIDGE_MAX_SNAPSHOT_BYTES = 1_000_000;
 // alcore model IDs; every binding input is injectable per runtime/call.
 export const OMO_BRIDGE_DEFAULT_ALCORE_MODELS = ['al-1-2', 'al-1-2-flash', 'al-1-3-max'];
 export const OMO_BRIDGE_DEFAULT_MODEL_ROLE = 'default';
-export const OMO_NATIVE_RUN_ENV = 'OMO_NATIVE_RUN';
-export const OMO_BUN_PATH_ENV = 'OMO_BUN_PATH';
-export const OMO_ENGINE_ROOT_ENV = 'OMO_ENGINE_ROOT';
+const OMO_NATIVE_RUN_ENV = 'OMO_NATIVE_RUN';
+const OMO_BUN_PATH_ENV = 'OMO_BUN_PATH';
+const OMO_ENGINE_ROOT_ENV = 'OMO_ENGINE_ROOT';
 // Subpath from an engine checkout root to the run barrel (see
 // cli-program.ts run contract + run/index.ts barrel).
-export const OMO_ENGINE_RUN_BARREL = 'packages/omo-opencode/src/cli/run/index.ts';
+const OMO_ENGINE_RUN_BARREL = 'packages/omo-opencode/src/cli/run/index.ts';
 // In-tree engine (direct vendor): no wrapper, no download, no env.
-export const OMO_VENDORED_ENGINE_DIR = 'omo-engine';
-export const OMO_VENDORED_RUN_BARREL = 'omo-opencode/src/cli/run/index.ts';
+const OMO_VENDORED_ENGINE_DIR = 'omo-engine';
+const OMO_VENDORED_RUN_BARREL = 'omo-opencode/src/cli/run/index.ts';
 
 export class OmoBridgeError extends Error {
   constructor(code, message, details) {
@@ -343,8 +343,8 @@ export const isProviderReadyFromCardSnapshot = (snapshot, { signInIntegrations =
 // is `packages/omo-engine` in dev and `resources/omo-engine` packaged).
 // First candidate whose run barrel exists wins; all probes go through the
 // injected existsSync, so hermetic no-engine fixtures keep failing closed.
-export const OMO_VENDORED_SEARCH_DEPTH = 8;
-export const resolveVendoredRootCandidates = ({ bridgeDir, packageCwd, resourcesPath } = {}) => {
+const OMO_VENDORED_SEARCH_DEPTH = 8;
+const resolveVendoredRootCandidates = ({ bridgeDir, packageCwd, resourcesPath } = {}) => {
   const candidates = [];
   const dir = bridgeDir ?? nodeDirname(nodeFileURLToPath(import.meta.url));
   candidates.push(nodeJoinPath(dir, '..', '..', '..', '..', OMO_VENDORED_ENGINE_DIR));

@@ -51,8 +51,6 @@ const resolveRequestedModel = (payload) => {
   return providerID && modelID ? { providerID, modelID } : null;
 };
 
-const FALLBACK_PROVIDER_ID = 'opencode';
-const FALLBACK_MODEL_ID = 'big-pickle';
 const MIN_GOAL_TOKEN_BUDGET = 1_000;
 const MAX_GOAL_TOKEN_BUDGET = 100_000_000;
 
@@ -101,23 +99,6 @@ const resolveVariant = (models, providerID, modelID, variant) => {
 const isModelHidden = (hiddenModels, providerID, modelID) => hiddenModels.some(
   (hidden) => hidden?.providerID === providerID && hidden?.modelID === modelID,
 );
-
-// The pick when nothing is configured or remembered: Big Pickle, else the first
-// model. A model the user hid in the picker is skipped; configured defaults never
-// come through here, so they stay honoured even when hidden. With every model
-// hidden the session still needs one, so the unfiltered pick stands.
-const resolveFallbackModel = (models, hiddenModels) => {
-  const isVisible = (providerID, modelID) => !isModelHidden(hiddenModels, providerID, modelID);
-  const candidates = models.filter(
-    (entry) => asNonEmptyString(entry?.providerID) && asNonEmptyString(entry?.modelID),
-  );
-  const bigPickle = findCatalogModel(candidates, FALLBACK_PROVIDER_ID, FALLBACK_MODEL_ID);
-  const pick = (bigPickle && isVisible(bigPickle.providerID, bigPickle.modelID) ? bigPickle : null)
-    || candidates.find((entry) => isVisible(entry.providerID, entry.modelID))
-    || bigPickle
-    || candidates[0];
-  return pick ? { providerID: pick.providerID, modelID: pick.modelID } : null;
-};
 
 const resolveProjectDefaults = (settings, directory, projectId) => {
   const projects = Array.isArray(settings?.projects) ? settings.projects : [];
@@ -233,8 +214,8 @@ const resolveDefaultSelection = ({ agents, models, settings, projectDefaults, op
     model = lastSelectedModel;
   }
 
-  if (!model) model = resolveFallbackModel(models, hiddenModels);
-
+  // Unresolved stays unresolved here: the send path answers 400 naming the
+  // missing model instead of silently sending with another provider.
   return {
     agent: resolvedAgent?.id,
     model,

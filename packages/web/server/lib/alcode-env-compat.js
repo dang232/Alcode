@@ -136,7 +136,7 @@ const COMPAT_SUFFIXES = Object.freeze([
 ]);
 
 /** `[legacyName, currentName]` pairs, in forwarding order. */
-export const LEGACY_ENV_ALIASES = Object.freeze(
+const LEGACY_ENV_ALIASES = Object.freeze(
   COMPAT_SUFFIXES.map((suffix) => Object.freeze([`${LEGACY_PREFIX}${suffix}`, `${CURRENT_PREFIX}${suffix}`])),
 );
 
@@ -149,7 +149,7 @@ const isUnset = (value) => typeof value !== 'string' || value.trim().length === 
  * Returns the current names that were populated. Safe to call more than
  * once; each key warns at most once per process.
  */
-export const applyLegacyEnvCompat = (env = process.env) => {
+const applyLegacyEnvCompat = (env = process.env) => {
   const applied = [];
   for (const [legacyName, currentName] of LEGACY_ENV_ALIASES) {
     if (!isUnset(env[currentName]) || isUnset(env[legacyName])) continue;

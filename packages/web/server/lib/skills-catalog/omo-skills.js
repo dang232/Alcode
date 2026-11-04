@@ -10,7 +10,7 @@
 import { SKILL_DIR, writeMdFile } from '../opencode/shared.js';
 
 export const OMO_CATALOG_SOURCE_ID = 'omo';
-export const OMO_CATALOG_SOURCE_TYPE = 'omo';
+const OMO_CATALOG_SOURCE_TYPE = 'omo';
 
 export function createOmoSkillCatalog({ userSkillDir = SKILL_DIR, writeSkillFile = writeMdFile } = {}) {
   void userSkillDir;

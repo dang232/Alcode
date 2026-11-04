@@ -67,13 +67,12 @@ writeFileSync(
   `import { add } from "./math";\n\nexport function run(): number {\n  return add(1, 2);\n}\n`,
 );
 
-// Four entries against a cap of two: the index is incomplete by construction.
-const capDir = join(root, 'capped');
-mkdirSync(capDir, { recursive: true });
+// Four entries, no cap: the uncapped walk covers every entry by construction.
+const fullDir = join(root, 'full');
+mkdirSync(fullDir, { recursive: true });
 for (let index = 0; index < 4; index += 1) {
-  writeFileSync(join(capDir, `m${index}.ts`), `export const v${index} = ${index};\n`);
+  writeFileSync(join(fullDir, `m${index}.ts`), `export const v${index} = ${index};\n`);
 }
-const capRuntime = createCodeGraphRuntime({ fsPromises, path }, { maxEntryFiles: 2, blockOnRead: true });
 
 const ids = (rows) => (rows ?? []).map((row) => row.id);
 
@@ -196,22 +195,29 @@ describe('repo-root-relative ids', () => {
   );
 });
 
-describe('partial-coverage index', () => {
+describe('uncapped index', () => {
   it(
-    'surfaces completeness partial when the entry cap cuts the index',
+    'indexes every entry with zero excluded and a fresh generation',
     async () => {
-      const index = await capRuntime.readIndex(capDir);
-      expect(index.indexTruncated).toBe(true);
-      expect(index.excludedCount).toBe(2);
+      const index = await runtime.readIndex(fullDir);
+      expect(index.ready).toBe(true);
+      expect(index.freshness).toBe('fresh');
+      expect(index.indexTruncated).toBe(false);
+      expect(index.truncated).toBe(false);
+      expect(index.truncationReason).toBe(null);
+      expect(index.excludedCount).toBe(0);
+      expect(index.excludedSample).toEqual([]);
+      expect(index.entryCount).toBe(4);
+      expect(index.entryCap).toBe(null);
 
-      const answer = await capRuntime.query(capDir, { kind: 'search', query: 'v', limit: 20 });
-      expect(answer.coverage).toBe('partial');
-      expect(answer.completeness).toBe('partial');
-      expect(answer.unresolved.some((line) => line.includes('index incomplete'))).toBe(true);
+      const answer = await runtime.query(fullDir, { kind: 'search', query: 'v', limit: 20 });
+      expect(answer.coverage).toBe('indexed');
+      expect(answer.completeness).toBe('complete');
+      expect(answer.unresolved.some((line) => line.includes('index incomplete'))).toBe(false);
 
-      const explore = await capRuntime.query(capDir, { kind: 'explore' });
-      expect(explore.coverage).toBe('partial');
-      expect(explore.completeness).toBe('partial');
+      const explore = await runtime.query(fullDir, { kind: 'explore' });
+      expect(explore.coverage).toBe('indexed');
+      expect(explore.completeness).toBe('complete');
     },
     120_000,
   );

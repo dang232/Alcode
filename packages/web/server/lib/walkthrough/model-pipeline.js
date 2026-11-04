@@ -43,7 +43,7 @@ import { readWalkthroughModelOverride } from './model-settings.js';
 export const WALKTHROUGH_MODEL_CHAIN =
   CATEGORY_MODEL_REQUIREMENTS?.quick?.fallbackChain ?? [];
 
-export const parseModelRef = (value) => {
+const parseModelRef = (value) => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   const slash = trimmed.indexOf('/');

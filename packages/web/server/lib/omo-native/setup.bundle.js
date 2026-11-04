@@ -47,12 +47,14 @@ __export(exports_code_graph_bundle, {
   STALE_AFTER_MS: () => STALE_AFTER_MS3,
   computeScopeFingerprint: () => computeScopeFingerprint2,
   createSnapshotManifest: () => createSnapshotManifest,
+  explore: () => explore,
   exportSurfaceKey: () => exportSurfaceKey,
   fileOfNodeId: () => fileOfNodeId,
   findTests: () => findTests2,
   findUnreferenced: () => findUnreferenced,
   fingerprintBytes: () => fingerprintBytes,
   fingerprintContent: () => fingerprintContent,
+  groupEntriesByProject: () => groupEntriesByProject,
   impact: () => impact2,
   indexFiles: () => indexFiles2,
   joinSnapshotShards: () => joinSnapshotShards,
@@ -66,6 +68,7 @@ __export(exports_code_graph_bundle, {
   serializeSnapshotManifest: () => serializeSnapshotManifest,
   serializeSnapshotShard: () => serializeSnapshotShard,
   splitSnapshotIntoShards: () => splitSnapshotIntoShards,
+  staleFileNotes: () => staleFileNotes,
   symbolContext: () => symbolContext2,
   trace: () => trace2,
   validateFileRecords: () => validateFileRecords
@@ -169,11 +172,17 @@ function isMethodDeclaration2(node) {
 function isStringLiteral2(node) {
   return node.kind === SyntaxKind3.StringLiteral;
 }
+function isNoSubstitutionTemplateLiteral2(node) {
+  return node.kind === SyntaxKind3.NoSubstitutionTemplateLiteral;
+}
 function isArrowFunction2(node) {
   return node.kind === SyntaxKind3.ArrowFunction;
 }
 function isFunctionExpression2(node) {
   return node.kind === SyntaxKind3.FunctionExpression;
+}
+function isPropertyAccessExpression2(node) {
+  return node.kind === SyntaxKind3.PropertyAccessExpression;
 }
 function isElementAccessExpression2(node) {
   return node.kind === SyntaxKind3.ElementAccessExpression;
@@ -184,6 +193,21 @@ function isCallExpression2(node) {
 function isNewExpression2(node) {
   return node.kind === SyntaxKind3.NewExpression;
 }
+function isTemplateExpression2(node) {
+  return node.kind === SyntaxKind3.TemplateExpression;
+}
+function isArrayLiteralExpression2(node) {
+  return node.kind === SyntaxKind3.ArrayLiteralExpression;
+}
+function isObjectLiteralExpression2(node) {
+  return node.kind === SyntaxKind3.ObjectLiteralExpression;
+}
+function isPropertyAssignment2(node) {
+  return node.kind === SyntaxKind3.PropertyAssignment;
+}
+function isShorthandPropertyAssignment2(node) {
+  return node.kind === SyntaxKind3.ShorthandPropertyAssignment;
+}
 function isExpressionWithTypeArguments2(node) {
   return node.kind === SyntaxKind3.ExpressionWithTypeArguments;
 }
@@ -192,6 +216,9 @@ function isImportAttributes2(node) {
 }
 function isTemplateHead2(node) {
   return node.kind === SyntaxKind3.TemplateHead;
+}
+function isJsxElement2(node) {
+  return node.kind === SyntaxKind3.JsxElement;
 }
 function isJsxAttributes2(node) {
   return node.kind === SyntaxKind3.JsxAttributes;
@@ -208,8 +235,14 @@ function isJsxOpeningFragment2(node) {
 function isJsxClosingFragment2(node) {
   return node.kind === SyntaxKind3.JsxClosingFragment;
 }
+function isJsxAttribute2(node) {
+  return node.kind === SyntaxKind3.JsxAttribute;
+}
 function isJsxClosingElement2(node) {
   return node.kind === SyntaxKind3.JsxClosingElement;
+}
+function isJsxExpression2(node) {
+  return node.kind === SyntaxKind3.JsxExpression;
 }
 function isSourceFile2(node) {
   return node.kind === SyntaxKind3.SourceFile;
@@ -6229,6 +6262,501 @@ function symbolIdForDecl2(declaration, nameText, fileRel) {
 function isCallableDeclKind2(kind) {
   return kind === SyntaxKind3.FunctionDeclaration || kind === SyntaxKind3.FunctionExpression || kind === SyntaxKind3.ArrowFunction || kind === SyntaxKind3.MethodDeclaration || kind === SyntaxKind3.Constructor || kind === SyntaxKind3.ClassDeclaration || kind === SyntaxKind3.ClassExpression;
 }
+function isExpressMethod2(name) {
+  const lower = name.toLowerCase();
+  return EXPRESS_METHODS2.includes(lower);
+}
+function expressMethodOf2(name) {
+  return name.toUpperCase();
+}
+function appScopeOf2(rel) {
+  const segments = rel.split("/");
+  if (segments.length <= 1)
+    return "(root)";
+  const head = segments[0] ?? "";
+  if (head === "apps")
+    return `apps/${segments[1] ?? ""}`;
+  return head;
+}
+function stripQueryHash2(value) {
+  const query = value.indexOf("?");
+  const hash = value.indexOf("#");
+  let end = value.length;
+  if (query >= 0 && query < end)
+    end = query;
+  if (hash >= 0 && hash < end)
+    end = hash;
+  return value.slice(0, end);
+}
+function normalizePattern2(value) {
+  const clean = stripQueryHash2(value);
+  const leading = clean.startsWith("/") ? clean : `/${clean}`;
+  if (leading.length > 1 && leading.endsWith("/"))
+    return leading.slice(0, -1);
+  return leading;
+}
+function splitSegments2(path) {
+  const clean = stripQueryHash2(path);
+  const trimmed = clean.length > 1 && clean.endsWith("/") ? clean.slice(0, -1) : clean;
+  return trimmed.split("/").filter((segment) => segment.length > 0);
+}
+function routeMatches2(pattern, dest) {
+  const normalizedDest = normalizePattern2(dest);
+  const normalizedPattern = normalizePattern2(pattern);
+  if (normalizedPattern === normalizedDest)
+    return true;
+  const patternSegments = splitSegments2(normalizedPattern);
+  const destSegments = splitSegments2(normalizedDest);
+  let patternIndex = 0;
+  let destIndex = 0;
+  while (patternIndex < patternSegments.length) {
+    const patternSegment = patternSegments[patternIndex] ?? "";
+    const isParam = patternSegment.startsWith(":");
+    const isMulti = patternSegment.endsWith("*");
+    const isOptional = patternSegment.endsWith("?");
+    if (!isParam) {
+      const destSegment = destSegments[destIndex];
+      if (destSegment === undefined || destSegment !== patternSegment)
+        return false;
+      patternIndex += 1;
+      destIndex += 1;
+      continue;
+    }
+    if (isMulti) {
+      const restPattern = patternSegments.length - patternIndex - 1;
+      const restDest = destSegments.length - destIndex;
+      if (restDest < restPattern)
+        return false;
+      if (restPattern === 0) {
+        if (isOptional)
+          return true;
+        return restDest >= 1;
+      }
+      const consume = restDest - restPattern;
+      if (!isOptional && consume < 1)
+        return false;
+      destIndex += consume;
+      patternIndex += 1;
+      continue;
+    }
+    const destSegment = destSegments[destIndex];
+    if (destSegment === undefined) {
+      if (isOptional) {
+        patternIndex += 1;
+        continue;
+      }
+      return false;
+    }
+    if (destSegment.length === 0)
+      return false;
+    patternIndex += 1;
+    destIndex += 1;
+  }
+  return destIndex === destSegments.length;
+}
+function mapRouteSegment2(segment) {
+  if (segment.startsWith("(") && segment.endsWith(")"))
+    return;
+  if (segment.startsWith("@"))
+    return;
+  if (segment.startsWith("_") && segment.length > 1)
+    return;
+  const optionalCatchAll = segment.match(/^\[\[\.\.\.(.+)\]\]$/);
+  if (optionalCatchAll !== null) {
+    const name = (optionalCatchAll[1] ?? "").split("=")[0]?.split(":")[0] ?? "";
+    if (name.length === 0)
+      return;
+    return `:${name}*?`;
+  }
+  const catchAll = segment.match(/^\[\.\.\.(.+)\]$/);
+  if (catchAll !== null) {
+    const name = (catchAll[1] ?? "").split("=")[0]?.split(":")[0] ?? "";
+    if (name.length === 0)
+      return;
+    return `:${name}*`;
+  }
+  const dynamic = segment.match(/^\[(.+)\]$/);
+  if (dynamic !== null) {
+    const name = (dynamic[1] ?? "").split("=")[0]?.split(":")[0] ?? "";
+    if (name.length === 0)
+      return;
+    return `:${name}`;
+  }
+  if (segment === "*")
+    return ":wild*";
+  return segment;
+}
+function joinRouteSegments2(segments) {
+  const kept = [];
+  for (const segment of segments) {
+    if (segment !== undefined && segment.length > 0)
+      kept.push(segment);
+  }
+  if (kept.length === 0)
+    return "/";
+  return `/${kept.join("/")}`;
+}
+function nextAppPattern2(rel) {
+  const marker = "/app/";
+  const at = rel.lastIndexOf(marker);
+  let after;
+  if (at >= 0)
+    after = rel.slice(at + marker.length);
+  else if (rel.startsWith("app/"))
+    after = rel.slice("app/".length);
+  else
+    return;
+  if (after === undefined)
+    return;
+  if (/^page\.[tj]sx?$/.test(after))
+    return "/";
+  const suffix = after.match(/^(.*)\/page\.[tj]sx?$/);
+  if (suffix === null)
+    return;
+  const dir = suffix[1] ?? "";
+  if (dir.length === 0)
+    return "/";
+  const mapped = dir.split("/").map(mapRouteSegment2);
+  return joinRouteSegments2(mapped);
+}
+function nextAppRoutePattern2(rel) {
+  const marker = "/app/";
+  const at = rel.lastIndexOf(marker);
+  let after;
+  if (at >= 0)
+    after = rel.slice(at + marker.length);
+  else if (rel.startsWith("app/"))
+    after = rel.slice("app/".length);
+  else
+    return;
+  if (after === undefined)
+    return;
+  if (/^route\.[tj]s$/.test(after))
+    return "/";
+  const suffix = after.match(/^(.*)\/route\.[tj]s$/);
+  if (suffix === null)
+    return;
+  const dir = suffix[1] ?? "";
+  if (dir.length === 0)
+    return "/";
+  const mapped = dir.split("/").map(mapRouteSegment2);
+  return joinRouteSegments2(mapped);
+}
+function nextPagesPattern2(rel) {
+  const marker = "/pages/";
+  const at = rel.lastIndexOf(marker);
+  let after;
+  if (at >= 0)
+    after = rel.slice(at + marker.length);
+  else if (rel.startsWith("pages/"))
+    after = rel.slice("pages/".length);
+  else
+    return;
+  if (after === undefined)
+    return;
+  const base = after.split("/").pop() ?? "";
+  if (base.startsWith("_"))
+    return;
+  const withoutExt = after.replace(/\.[tj]sx?$/, "");
+  if (withoutExt === "index")
+    return "/";
+  if (withoutExt.endsWith("/index")) {
+    const dir = withoutExt.slice(0, -"/index".length);
+    if (dir.length === 0)
+      return "/";
+    return joinRouteSegments2(dir.split("/").map(mapRouteSegment2));
+  }
+  return joinRouteSegments2(withoutExt.split("/").map(mapRouteSegment2));
+}
+function tanstackSegment2(segment) {
+  if (segment === "$")
+    return ":wild*";
+  if (segment.startsWith("$")) {
+    const name = segment.slice(1);
+    if (name.length === 0)
+      return;
+    return `:${name}`;
+  }
+  return mapRouteSegment2(segment);
+}
+function routePathOfNode2(node, framework) {
+  if (node === undefined)
+    return { kind: "ignore" };
+  let text;
+  if (isStringLiteral2(node))
+    text = node.text;
+  else if (isNoSubstitutionTemplateLiteral2(node))
+    text = node.text;
+  else if (isTemplateExpression2(node))
+    return { kind: "computed" };
+  else
+    return { kind: "computed" };
+  if (text === undefined)
+    return { kind: "computed" };
+  const clean = stripQueryHash2(text);
+  if (clean === "" || clean === "/" || clean === "index")
+    return { kind: "literal", value: "/" };
+  if (clean === "*" || clean === "**")
+    return { kind: "literal", value: "/:wild*" };
+  if (clean.startsWith("http://") || clean.startsWith("https://") || clean.startsWith("//") || clean.startsWith("mailto:") || clean.startsWith("tel:") || clean.startsWith("#") || /\s/.test(clean)) {
+    return { kind: "ignore" };
+  }
+  const rooted = clean.startsWith("/") ? clean : `/${clean}`;
+  const segments = splitSegments2(rooted).map((segment) => framework === "tanstack-router" ? tanstackSegment2(segment) : mapRouteSegment2(segment));
+  return { kind: "literal", value: joinRouteSegments2(segments) };
+}
+function nuxtRoutePattern2(rel) {
+  const pagesMarker = "/pages/";
+  const pagesAt = rel.lastIndexOf(pagesMarker);
+  let pagesAfter;
+  if (pagesAt >= 0)
+    pagesAfter = rel.slice(pagesAt + pagesMarker.length);
+  else if (rel.startsWith("pages/"))
+    pagesAfter = rel.slice("pages/".length);
+  if (pagesAfter !== undefined) {
+    if (pagesAfter.split("/").pop()?.startsWith("_") === true)
+      return;
+    const withoutExt = pagesAfter.replace(/\.(vue|[tj]sx?)$/, "");
+    if (withoutExt === "index")
+      return "/";
+    if (withoutExt.endsWith("/index")) {
+      const dir = withoutExt.slice(0, -"/index".length);
+      if (dir.length === 0)
+        return "/";
+      return joinRouteSegments2(dir.split("/").map(mapRouteSegment2));
+    }
+    return joinRouteSegments2(withoutExt.split("/").map(mapRouteSegment2));
+  }
+  const serverMarker = "/server/";
+  const serverAt = rel.lastIndexOf(serverMarker);
+  let serverAfter;
+  if (serverAt >= 0)
+    serverAfter = rel.slice(serverAt + serverMarker.length);
+  else if (rel.startsWith("server/"))
+    serverAfter = rel.slice("server/".length);
+  if (serverAfter !== undefined) {
+    const kind = serverAfter.split("/")[0];
+    if (kind !== "api" && kind !== "routes")
+      return;
+    const rest = serverAfter.split("/").slice(1).join("/");
+    const withoutMethod = rest.replace(/\.(get|post|put|delete|patch|head|options)\.[tj]s$/, "").replace(/\.[tj]s$/, "");
+    const prefix = kind === "api" ? "api" : "";
+    if (withoutMethod === "index" || withoutMethod === "")
+      return prefix === "" ? "/" : `/${prefix}`;
+    if (withoutMethod.endsWith("/index")) {
+      const dir = withoutMethod.slice(0, -"/index".length);
+      const mapped = dir.split("/").map(mapRouteSegment2);
+      return prefix === "" ? joinRouteSegments2(mapped) : joinRouteSegments2([prefix, ...mapped]);
+    }
+    const mapped = withoutMethod.split("/").map(mapRouteSegment2);
+    return prefix === "" ? joinRouteSegments2(mapped) : joinRouteSegments2([prefix, ...mapped]);
+  }
+  return;
+}
+function svelteKitRoutePattern2(rel) {
+  const marker = "/routes/";
+  const at = rel.lastIndexOf(marker);
+  let after;
+  if (at >= 0)
+    after = rel.slice(at + marker.length);
+  else if (rel.startsWith("routes/"))
+    after = rel.slice("routes/".length);
+  else
+    return;
+  if (after === undefined)
+    return;
+  const leaf = after.split("/").pop() ?? "";
+  if (!/^\+(?:page(?:\.server)?|server|layout(?:\.server)?|error)\.[tj]s$/.test(leaf))
+    return;
+  const dir = after.split("/").slice(0, -1).join("/");
+  if (dir.length === 0)
+    return "/";
+  return joinRouteSegments2(dir.split("/").map(mapRouteSegment2));
+}
+function routeIdFor2(framework, pattern, rel, method) {
+  const normalized = normalizePattern2(pattern);
+  const head = method !== undefined && method.length > 0 ? `${method} ` : "";
+  return `route:${framework}:${head}${normalized}@${rel}`;
+}
+function resolverForRoute2(framework) {
+  if (framework === "express")
+    return "express-route-detector";
+  if (framework === "next-app")
+    return "next-app-detector";
+  if (framework === "next-pages")
+    return "next-pages-detector";
+  if (framework === "tanstack-router")
+    return "tanstack-router-detector";
+  if (framework === "vue-router")
+    return "vue-router-detector";
+  if (framework === "nuxt")
+    return "nuxt-detector";
+  if (framework === "sveltekit")
+    return "sveltekit-detector";
+  if (framework === "angular")
+    return "angular-detector";
+  return "react-router-detector";
+}
+function destinationOfStringText2(text) {
+  if (text.startsWith("/") && !text.startsWith("//"))
+    return { kind: "literal", value: normalizePattern2(stripQueryHash2(text)) };
+  if (text.startsWith("http://") || text.startsWith("https://") || text.startsWith("//") || text.startsWith("mailto:") || text.startsWith("tel:") || text.startsWith("#")) {
+    return { kind: "ignore" };
+  }
+  return { kind: "ignore" };
+}
+function destinationOfNode2(node) {
+  if (node === undefined)
+    return { kind: "ignore" };
+  if (isStringLiteral2(node))
+    return destinationOfStringText2(node.text);
+  if (isNoSubstitutionTemplateLiteral2(node))
+    return destinationOfStringText2(node.text);
+  if (isTemplateExpression2(node))
+    return { kind: "computed" };
+  if (isObjectLiteralExpression2(node)) {
+    for (const property of node.properties) {
+      if (!isPropertyAssignment2(property))
+        continue;
+      const key = property.name;
+      const keyText = isIdentifier2(key) ? key.text : isStringLiteral2(key) ? key.text : undefined;
+      if (keyText !== "pathname" && keyText !== "to")
+        continue;
+      return destinationOfNode2(property.initializer);
+    }
+    return { kind: "ignore" };
+  }
+  if (isArrayLiteralExpression2(node)) {
+    const first = node.elements.length > 0 ? node.elements[0] : undefined;
+    if (first === undefined)
+      return { kind: "ignore" };
+    const dest = destinationOfNode2(first);
+    return dest.kind === "literal" ? dest : { kind: "computed" };
+  }
+  return { kind: "computed" };
+}
+function fileImportsNeedle2(ctx, needle) {
+  let found = false;
+  const visit = (node) => {
+    if (found)
+      return;
+    if (isImportDeclaration2(node)) {
+      const specifier = node.moduleSpecifier;
+      if (specifier && isStringLiteral2(specifier) && specifier.text.includes(needle)) {
+        found = true;
+        return;
+      }
+      return;
+    }
+    if (isCallExpression2(node)) {
+      const callee = node.expression;
+      if (isIdentifier2(callee) && callee.text === "require" && node.arguments.length > 0) {
+        const first = node.arguments[0];
+        if (first && isStringLiteral2(first) && first.text.includes(needle)) {
+          found = true;
+          return;
+        }
+      }
+    }
+    node.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  };
+  ctx.sourceFile.forEachChild((child) => {
+    visit(child);
+    return;
+  });
+  return found;
+}
+function handlerIdForIdentifier2(ctx, files, ident) {
+  if (!isIdentifier2(ident))
+    return;
+  const symbol = ctx.checker.getSymbolAtLocation(ident);
+  if (!symbol)
+    return;
+  const final = followAlias2(ctx.checker, symbol);
+  const inGraph = [];
+  for (const handle of final.declarations) {
+    const declaration = handle.resolve(ctx.project);
+    if (!declaration)
+      continue;
+    const declFile = toPosixPath3(declaration.getSourceFile().fileName);
+    if (files.has(declFile))
+      inGraph.push(declaration);
+  }
+  if (inGraph.length === 0)
+    return;
+  const callable = inGraph.filter((declaration) => isCallableDeclKind2(declaration.kind) || callableInitializer2(declaration));
+  if (callable.length !== inGraph.length)
+    return;
+  const targets = new Set;
+  for (const declaration of callable) {
+    const nameText = declNameOf2(declaration);
+    if (!nameText)
+      return;
+    const declFile = toPosixPath3(declaration.getSourceFile().fileName);
+    const targetCtx = files.get(declFile);
+    if (!targetCtx)
+      return;
+    targets.add(symbolIdForDecl2(declaration, nameText, targetCtx.rel));
+  }
+  if (targets.size !== 1)
+    return;
+  const only = [];
+  for (const target of targets)
+    only.push(target);
+  return only[0];
+}
+function declNameOf2(declaration) {
+  if (declaration.kind === SyntaxKind3.Constructor)
+    return "constructor";
+  if (isFunctionDeclaration2(declaration))
+    return declaration.name && isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  if (isFunctionExpression2(declaration))
+    return declaration.name && isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  if (isClassDeclaration2(declaration))
+    return declaration.name && isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  if (isClassExpression2(declaration))
+    return declaration.name && isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  if (isInterfaceDeclaration2(declaration))
+    return declaration.name && isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  if (isEnumDeclaration2(declaration))
+    return declaration.name && isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  if (isTypeAliasDeclaration2(declaration))
+    return declaration.name && isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  if (isMethodDeclaration2(declaration))
+    return declaration.name && isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  if (isVariableDeclaration2(declaration))
+    return isIdentifier2(declaration.name) ? declaration.name.text : undefined;
+  return;
+}
+function defaultHandlerForFile2(ctx, files) {
+  const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
+  if (moduleSymbol) {
+    const exported = ctx.checker.getExportsOfModule(moduleSymbol);
+    for (const exportedSymbol of exported) {
+      if (exportedSymbol.name !== "default")
+        continue;
+      const final = followAlias2(ctx.checker, exportedSymbol);
+      for (const handle of final.declarations) {
+        const declaration = handle.resolve(ctx.project);
+        if (!declaration)
+          continue;
+        const declFile = toPosixPath3(declaration.getSourceFile().fileName);
+        if (declFile !== ctx.key)
+          continue;
+        const nameText = declNameOf2(declaration);
+        if (!nameText)
+          continue;
+        const id = symbolIdForDecl2(declaration, nameText, ctx.rel);
+        const line = ctx.sourceFile.getLineAndCharacterOfPosition(declaration.getStart(ctx.sourceFile)).line + 1;
+        return { id, line };
+      }
+    }
+  }
+  return;
+}
 
 class GraphBuilder2 {
   root;
@@ -6236,7 +6764,10 @@ class GraphBuilder2 {
   files = new Map;
   nodes = new Map;
   edges = new Map;
+  routes = [];
+  routeIds = new Set;
   callOrdinals = new Map;
+  emittedFiles = new Set;
   contentFiles = new Map;
   contentSkipped = [];
   droppedKeys = new Set;
@@ -6296,7 +6827,14 @@ class GraphBuilder2 {
       }
     }
     const ordered = [...this.files.values()].sort((left, right) => left.rel < right.rel ? -1 : 1);
+    const fresh = [];
     for (const ctx of ordered) {
+      if (!this.emittedFiles.has(ctx.key)) {
+        this.emittedFiles.add(ctx.key);
+        fresh.push(ctx);
+      }
+    }
+    for (const ctx of fresh) {
       const isTest = isTestPath2(ctx.rel);
       if (isTest) {
         const fileNode = this.nodes.get(`file:${ctx.rel}`);
@@ -6308,6 +6846,8 @@ class GraphBuilder2 {
       this.emitDefinitions(ctx);
       this.emitCalls(ctx);
     }
+    this.emitRouteNodes(ordered);
+    this.emitNavigations(ordered);
   }
   addKnowledgeLinks(links) {
     for (const link of links) {
@@ -6789,6 +7329,981 @@ class GraphBuilder2 {
       });
     }
   }
+  emitRouteRecord(record, handlerId, handlerRef) {
+    if (this.routeIds.has(record.id))
+      return;
+    this.routeIds.add(record.id);
+    this.routes.push(record);
+    this.nodes.set(record.id, { id: record.id, kind: "route", file: record.file, line: record.line, name: record.pattern });
+    const routeEdgeId = `route:file:${record.file}:${record.id}`;
+    this.edges.set(routeEdgeId, {
+      id: routeEdgeId,
+      kind: "ROUTE",
+      from: `file:${record.file}`,
+      to: record.id,
+      confidence: STATIC_CONFIDENCE2,
+      ref: `${record.file}:${record.line}`,
+      resolvedBy: "framework",
+      framework: record.framework,
+      resolver: record.resolver
+    });
+    if (handlerId !== undefined) {
+      const refEdgeId = `references:${record.id}:${handlerId}`;
+      this.edges.set(refEdgeId, {
+        id: refEdgeId,
+        kind: "REFERENCES",
+        from: record.id,
+        to: handlerId,
+        confidence: STATIC_CONFIDENCE2,
+        ref: handlerRef,
+        resolvedBy: "framework",
+        framework: record.framework,
+        resolver: record.resolver
+      });
+    }
+  }
+  emitRouteUnresolved(ctx, senderId, line, siteText) {
+    const ordinal = this.callOrdinals.get(ctx.key) ?? 0;
+    this.callOrdinals.set(ctx.key, ordinal + 1);
+    const callSiteId = `call:${ctx.rel}:${line}:${ordinal}`;
+    this.nodes.set(callSiteId, { id: callSiteId, kind: "call-site", file: ctx.rel, line, name: siteText.slice(0, 80) });
+    const edgeId = `calls-unresolved:${senderId}:${callSiteId}`;
+    if (this.edges.has(edgeId))
+      return;
+    this.edges.set(edgeId, {
+      id: edgeId,
+      kind: "CALLS_UNRESOLVED",
+      from: senderId,
+      to: UNKNOWN2,
+      confidence: UNRESOLVED_CONFIDENCE2,
+      ref: `${ctx.rel}:${line}`,
+      uncertain: true,
+      callSite: callSiteId
+    });
+  }
+  findMatchingRoutes(pattern, appScope) {
+    const out = [];
+    for (const record of this.routes) {
+      if (record.appScope !== appScope)
+        continue;
+      if (routeMatches2(record.pattern, pattern))
+        out.push(record);
+    }
+    out.sort((left, right) => left.id < right.id ? -1 : 1);
+    return out;
+  }
+  emitNavigation(ctx, senderId, dest, line, inferred, siteText, resolver) {
+    if (dest.kind === "ignore")
+      return;
+    if (dest.kind === "computed") {
+      this.emitRouteUnresolved(ctx, senderId, line, siteText);
+      return;
+    }
+    const appScope = appScopeOf2(ctx.rel);
+    const matches = this.findMatchingRoutes(dest.value, appScope);
+    if (matches.length === 0) {
+      this.emitRouteUnresolved(ctx, senderId, line, siteText);
+      return;
+    }
+    for (const match of matches) {
+      const edgeId = `navigates:${senderId}:${match.id}:${ctx.rel}:${line}`;
+      if (this.edges.has(edgeId))
+        continue;
+      const edge = {
+        id: edgeId,
+        kind: "NAVIGATES",
+        from: senderId,
+        to: match.id,
+        confidence: STATIC_CONFIDENCE2,
+        ref: `${ctx.rel}:${line}`,
+        resolvedBy: "framework",
+        framework: match.framework,
+        resolver
+      };
+      this.edges.set(edgeId, inferred ? { ...edge, inferred: true } : edge);
+    }
+  }
+  emitRouteNodes(ordered) {
+    for (const ctx of ordered) {
+      this.emitExpressRoutes(ctx);
+      this.emitNextAppRoutes(ctx);
+      this.emitNextPagesRoutes(ctx);
+      this.emitReactRouterRoutes(ctx);
+      this.emitReactRouterFullRoutes(ctx);
+      this.emitTanStackRouterRoutes(ctx);
+      this.emitVueRouterRoutes(ctx);
+      this.emitNuxtRoutes(ctx);
+      this.emitSvelteKitRoutes(ctx);
+      this.emitAngularRoutes(ctx);
+    }
+  }
+  collectExpressRouterVars(ctx) {
+    const vars = new Set;
+    const visit = (node) => {
+      if (isVariableDeclaration2(node)) {
+        if (!isIdentifier2(node.name))
+          return;
+        const initializer = node.initializer;
+        if (!initializer || !isCallExpression2(initializer))
+          return;
+        const callee = initializer.expression;
+        if (isIdentifier2(callee) && callee.text === "express") {
+          vars.add(node.name.text);
+          return;
+        }
+        if (isIdentifier2(callee) && callee.text === "Router") {
+          vars.add(node.name.text);
+          return;
+        }
+        if (isPropertyAccessExpression2(callee)) {
+          const object = callee.expression;
+          const name = callee.name;
+          if (isIdentifier2(object) && object.text === "express" && isIdentifier2(name) && name.text === "Router") {
+            vars.add(node.name.text);
+            return;
+          }
+        }
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+    return vars;
+  }
+  emitExpressRoutes(ctx) {
+    if (!fileImportsNeedle2(ctx, "express"))
+      return;
+    const routerVars = this.collectExpressRouterVars(ctx);
+    const visit = (node) => {
+      if (isCallExpression2(node)) {
+        const callee = node.expression;
+        if (isPropertyAccessExpression2(callee)) {
+          const object = callee.expression;
+          const methodNode = callee.name;
+          if (isIdentifier2(object) && isIdentifier2(methodNode) && isExpressMethod2(methodNode.text)) {
+            const receiver = object.text;
+            const known = routerVars.has(receiver) || receiver === "app" || receiver === "router";
+            if (known) {
+              const args = node.arguments;
+              const first = args.length > 0 ? args[0] : undefined;
+              const line = this.lineOf(ctx, node);
+              const dest = destinationOfNode2(first);
+              if (dest.kind === "literal") {
+                const method = expressMethodOf2(methodNode.text);
+                const pattern = dest.value;
+                const record = {
+                  id: routeIdFor2("express", pattern, ctx.rel, method),
+                  pattern,
+                  method,
+                  framework: "express",
+                  resolver: "express-route-detector",
+                  file: ctx.rel,
+                  line,
+                  appScope: appScopeOf2(ctx.rel)
+                };
+                const handlerRef = `${ctx.rel}:${line}`;
+                let emitted = false;
+                for (let index = 1;index < args.length; index += 1) {
+                  const handler = args[index];
+                  if (handler === undefined)
+                    continue;
+                  if (isArrayLiteralExpression2(handler)) {
+                    for (const element of handler.elements) {
+                      const handlerId = handlerIdForIdentifier2(ctx, this.files, element);
+                      if (handlerId !== undefined) {
+                        this.emitRouteRecord(record, handlerId, handlerRef);
+                        emitted = true;
+                      }
+                    }
+                    continue;
+                  }
+                  if (isIdentifier2(handler)) {
+                    const handlerId = handlerIdForIdentifier2(ctx, this.files, handler);
+                    if (handlerId !== undefined) {
+                      this.emitRouteRecord(record, handlerId, handlerRef);
+                      emitted = true;
+                    }
+                    continue;
+                  }
+                }
+                if (!emitted)
+                  this.emitRouteRecord(record, undefined, handlerRef);
+              } else if (dest.kind === "computed") {
+                this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, node.getText().slice(0, 80));
+              }
+            }
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitNextAppRoutes(ctx) {
+    const pagePattern = nextAppPattern2(ctx.rel);
+    if (pagePattern !== undefined) {
+      const handler = defaultHandlerForFile2(ctx, this.files);
+      const line = handler !== undefined ? handler.line : 1;
+      const handlerId = handler !== undefined ? handler.id : `file:${ctx.rel}`;
+      const record = {
+        id: routeIdFor2("next-app", pagePattern, ctx.rel),
+        pattern: pagePattern,
+        framework: "next-app",
+        resolver: "next-app-detector",
+        file: ctx.rel,
+        line,
+        appScope: appScopeOf2(ctx.rel)
+      };
+      this.emitRouteRecord(record, handlerId, `${ctx.rel}:${line}`);
+      return;
+    }
+    const endpointPattern = nextAppRoutePattern2(ctx.rel);
+    if (endpointPattern !== undefined) {
+      const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
+      if (!moduleSymbol)
+        return;
+      const exported = ctx.checker.getExportsOfModule(moduleSymbol);
+      const methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+      for (const exportedSymbol of exported) {
+        if (!methods.includes(exportedSymbol.name))
+          continue;
+        const final = followAlias2(ctx.checker, exportedSymbol);
+        for (const handle of final.declarations) {
+          const declaration = handle.resolve(ctx.project);
+          if (!declaration)
+            continue;
+          const declFile = toPosixPath3(declaration.getSourceFile().fileName);
+          if (declFile !== ctx.key)
+            continue;
+          const nameText = declNameOf2(declaration);
+          if (!nameText)
+            continue;
+          const handlerId = symbolIdForDecl2(declaration, nameText, ctx.rel);
+          const line = ctx.sourceFile.getLineAndCharacterOfPosition(declaration.getStart(ctx.sourceFile)).line + 1;
+          const record = {
+            id: routeIdFor2("next-app", endpointPattern, ctx.rel, exportedSymbol.name),
+            pattern: endpointPattern,
+            method: exportedSymbol.name,
+            framework: "next-app",
+            resolver: "next-app-detector",
+            file: ctx.rel,
+            line,
+            appScope: appScopeOf2(ctx.rel)
+          };
+          this.emitRouteRecord(record, handlerId, `${ctx.rel}:${line}`);
+        }
+      }
+    }
+  }
+  emitNextPagesRoutes(ctx) {
+    const pattern = nextPagesPattern2(ctx.rel);
+    if (pattern === undefined)
+      return;
+    const handler = defaultHandlerForFile2(ctx, this.files);
+    const line = handler !== undefined ? handler.line : 1;
+    const handlerId = handler !== undefined ? handler.id : `file:${ctx.rel}`;
+    const record = {
+      id: routeIdFor2("next-pages", pattern, ctx.rel),
+      pattern,
+      framework: "next-pages",
+      resolver: "next-pages-detector",
+      file: ctx.rel,
+      line,
+      appScope: appScopeOf2(ctx.rel)
+    };
+    this.emitRouteRecord(record, handlerId, `${ctx.rel}:${line}`);
+  }
+  jsxAttrDestination(attr) {
+    if (!isJsxAttribute2(attr))
+      return { kind: "ignore" };
+    const initializer = attr.initializer;
+    if (initializer === undefined)
+      return { kind: "ignore" };
+    if (isStringLiteral2(initializer))
+      return destinationOfStringText2(initializer.text);
+    if (isJsxExpression2(initializer)) {
+      const inner = initializer.expression;
+      if (inner === undefined)
+        return { kind: "ignore" };
+      return destinationOfNode2(inner);
+    }
+    return { kind: "ignore" };
+  }
+  jsxAttrNamed(node, names) {
+    let found;
+    const attributes = isJsxOpeningElement2(node) ? node.attributes.properties : isJsxSelfClosingElement2(node) ? node.attributes.properties : undefined;
+    if (attributes === undefined)
+      return;
+    for (const attr of attributes) {
+      if (!isJsxAttribute2(attr))
+        continue;
+      const attrName = attr.name;
+      const text = isIdentifier2(attrName) ? attrName.text : undefined;
+      if (text !== undefined && names.includes(text)) {
+        found = attr;
+        break;
+      }
+    }
+    return found;
+  }
+  resolveJsxElementHandler(ctx, value) {
+    if (value === undefined)
+      return;
+    if (isJsxSelfClosingElement2(value)) {
+      const tag = value.tagName;
+      if (isIdentifier2(tag))
+        return handlerIdForIdentifier2(ctx, this.files, tag);
+      return;
+    }
+    if (isJsxExpression2(value)) {
+      const inner = value.expression;
+      if (inner === undefined)
+        return;
+      if (isIdentifier2(inner))
+        return handlerIdForIdentifier2(ctx, this.files, inner);
+      if (isJsxElement2(inner)) {
+        const tag = inner.openingElement.tagName;
+        if (isIdentifier2(tag))
+          return handlerIdForIdentifier2(ctx, this.files, tag);
+        return;
+      }
+      if (isJsxSelfClosingElement2(inner)) {
+        const tag = inner.tagName;
+        if (isIdentifier2(tag))
+          return handlerIdForIdentifier2(ctx, this.files, tag);
+        return;
+      }
+      return;
+    }
+    if (isJsxElement2(value)) {
+      const tag = value.openingElement.tagName;
+      if (isIdentifier2(tag))
+        return handlerIdForIdentifier2(ctx, this.files, tag);
+      return;
+    }
+    if (isIdentifier2(value))
+      return handlerIdForIdentifier2(ctx, this.files, value);
+    return;
+  }
+  emitReactRouterRoutes(ctx) {
+    if (!fileImportsNeedle2(ctx, "react-router"))
+      return;
+    const visit = (node) => {
+      if (isJsxOpeningElement2(node) || isJsxSelfClosingElement2(node)) {
+        const tag = node.tagName;
+        if (isIdentifier2(tag) && tag.text === "Route") {
+          const pathAttr = this.jsxAttrNamed(node, ["path"]);
+          if (pathAttr !== undefined) {
+            const dest = this.jsxAttrDestination(pathAttr);
+            const line = this.lineOf(ctx, node);
+            if (dest.kind === "literal") {
+              const elementAttr = this.jsxAttrNamed(node, ["element", "Component", "component"]);
+              const handlerId = elementAttr !== undefined && isJsxAttribute2(elementAttr) ? this.resolveJsxElementHandler(ctx, elementAttr.initializer) : undefined;
+              const record = {
+                id: routeIdFor2("react-router", dest.value, ctx.rel),
+                pattern: dest.value,
+                framework: "react-router",
+                resolver: "react-router-detector",
+                file: ctx.rel,
+                line,
+                appScope: appScopeOf2(ctx.rel)
+              };
+              this.emitRouteRecord(record, handlerId ?? `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+            } else if (dest.kind === "computed") {
+              this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, node.getText().slice(0, 80));
+            }
+          }
+        }
+      }
+      if (isCallExpression2(node)) {
+        const callee = node.expression;
+        if (isIdentifier2(callee) && (callee.text === "createBrowserRouter" || callee.text === "createMemoryRouter" || callee.text === "createHashRouter")) {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          if (first !== undefined && isArrayLiteralExpression2(first)) {
+            for (const entry of first.elements) {
+              if (!isObjectLiteralExpression2(entry))
+                continue;
+              let pathValue;
+              let elementValue;
+              for (const property of entry.properties) {
+                if (!isPropertyAssignment2(property))
+                  continue;
+                const key = property.name;
+                const keyText = isIdentifier2(key) ? key.text : isStringLiteral2(key) ? key.text : undefined;
+                if (keyText === "path")
+                  pathValue = property.initializer;
+                if (keyText === "element" || keyText === "Component" || keyText === "component") {
+                  elementValue = property.initializer;
+                }
+              }
+              if (pathValue === undefined)
+                continue;
+              const dest = destinationOfNode2(pathValue);
+              const line = this.lineOf(ctx, entry);
+              if (dest.kind === "literal") {
+                const handlerId = this.resolveJsxElementHandler(ctx, elementValue);
+                const record = {
+                  id: routeIdFor2("react-router", dest.value, ctx.rel),
+                  pattern: dest.value,
+                  framework: "react-router",
+                  resolver: "react-router-detector",
+                  file: ctx.rel,
+                  line,
+                  appScope: appScopeOf2(ctx.rel)
+                };
+                this.emitRouteRecord(record, handlerId ?? `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+              } else if (dest.kind === "computed") {
+                this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, entry.getText().slice(0, 80));
+              }
+            }
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitRouteObjectRecord(ctx, entry, framework, handlerKeys) {
+    if (!isObjectLiteralExpression2(entry))
+      return;
+    let pathValue;
+    let handlerValue;
+    let childrenValue;
+    for (const property of entry.properties) {
+      if (isShorthandPropertyAssignment2(property) && property.name.text === "path") {
+        pathValue = property.name;
+        continue;
+      }
+      if (!isPropertyAssignment2(property))
+        continue;
+      const key = property.name;
+      const keyText = isIdentifier2(key) ? key.text : isStringLiteral2(key) ? key.text : undefined;
+      if (keyText === "path")
+        pathValue = property.initializer;
+      else if (keyText !== undefined && handlerKeys.includes(keyText))
+        handlerValue = property.initializer;
+      else if (keyText === "children")
+        childrenValue = property.initializer;
+    }
+    if (pathValue !== undefined) {
+      const dest = routePathOfNode2(pathValue, framework);
+      const line = this.lineOf(ctx, entry);
+      if (dest.kind === "literal") {
+        const handlerId = this.resolveJsxElementHandler(ctx, handlerValue);
+        const record = {
+          id: routeIdFor2(framework, dest.value, ctx.rel),
+          pattern: dest.value,
+          framework,
+          resolver: resolverForRoute2(framework),
+          file: ctx.rel,
+          line,
+          appScope: appScopeOf2(ctx.rel)
+        };
+        this.emitRouteRecord(record, handlerId ?? `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+      } else if (dest.kind === "computed") {
+        this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, entry.getText().slice(0, 80));
+      }
+    }
+    if (childrenValue !== undefined && isArrayLiteralExpression2(childrenValue)) {
+      for (const child of childrenValue.elements) {
+        this.emitRouteObjectRecord(ctx, child, framework, handlerKeys);
+      }
+    }
+  }
+  sameFileRouteArray(ctx, name) {
+    let found;
+    const visit = (node) => {
+      if (found !== undefined)
+        return;
+      if (isVariableDeclaration2(node) && isIdentifier2(node.name) && node.name.text === name && node.initializer !== undefined && isArrayLiteralExpression2(node.initializer)) {
+        found = [...node.initializer.elements];
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+    return found;
+  }
+  routeArrayElements(ctx, value) {
+    if (value === undefined)
+      return;
+    if (isArrayLiteralExpression2(value))
+      return [...value.elements];
+    if (!isIdentifier2(value))
+      return;
+    const symbol = ctx.checker.getSymbolAtLocation(value);
+    if (!symbol)
+      return;
+    const final = followAlias2(ctx.checker, symbol);
+    for (const handle of final.declarations) {
+      const declaration = handle.resolve(ctx.project);
+      if (!declaration)
+        continue;
+      if (toPosixPath3(declaration.getSourceFile().fileName) !== ctx.key)
+        continue;
+      if (isVariableDeclaration2(declaration) && declaration.initializer !== undefined && isArrayLiteralExpression2(declaration.initializer)) {
+        return [...declaration.initializer.elements];
+      }
+    }
+    return;
+  }
+  emitReactRouterFullRoutes(ctx) {
+    if (!fileImportsNeedle2(ctx, "react-router"))
+      return;
+    const keys = ["element", "Component", "component"];
+    const visit = (node) => {
+      if (isCallExpression2(node)) {
+        const callee = node.expression;
+        if (isIdentifier2(callee) && callee.text === "useRoutes") {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          const elements = this.routeArrayElements(ctx, first);
+          if (elements !== undefined) {
+            for (const entry of elements)
+              this.emitRouteObjectRecord(ctx, entry, "react-router", keys);
+          } else if (first !== undefined && !isArrayLiteralExpression2(first)) {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+          }
+        }
+        if (isIdentifier2(callee) && (callee.text === "createRoute" || callee.text === "route")) {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          if (first !== undefined && isObjectLiteralExpression2(first)) {
+            this.emitRouteObjectRecord(ctx, first, "react-router", keys);
+          } else if (first !== undefined) {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+          }
+        }
+        if (isIdentifier2(callee) && (callee.text === "createBrowserRouter" || callee.text === "createMemoryRouter" || callee.text === "createHashRouter")) {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          if (first !== undefined && isArrayLiteralExpression2(first)) {
+            for (const entry of first.elements) {
+              if (!isObjectLiteralExpression2(entry))
+                continue;
+              let hasChildren = false;
+              for (const property of entry.properties) {
+                if (!isPropertyAssignment2(property))
+                  continue;
+                const key = property.name;
+                const keyText = isIdentifier2(key) ? key.text : isStringLiteral2(key) ? key.text : undefined;
+                if (keyText === "children" && isArrayLiteralExpression2(property.initializer))
+                  hasChildren = true;
+              }
+              if (hasChildren)
+                this.emitRouteObjectRecord(ctx, entry, "react-router", keys);
+            }
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitTanStackRouterRoutes(ctx) {
+    if (!fileImportsNeedle2(ctx, "tanstack"))
+      return;
+    const keys = ["component", "Component"];
+    const visit = (node) => {
+      if (isCallExpression2(node)) {
+        const callee = node.expression;
+        if (isIdentifier2(callee) && callee.text === "createFileRoute") {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          const dest = routePathOfNode2(first, "tanstack-router");
+          const line = this.lineOf(ctx, node);
+          if (dest.kind === "literal") {
+            const handler = defaultHandlerForFile2(ctx, this.files);
+            const record = {
+              id: routeIdFor2("tanstack-router", dest.value, ctx.rel),
+              pattern: dest.value,
+              framework: "tanstack-router",
+              resolver: "tanstack-router-detector",
+              file: ctx.rel,
+              line,
+              appScope: appScopeOf2(ctx.rel)
+            };
+            this.emitRouteRecord(record, handler !== undefined ? handler.id : `file:${ctx.rel}`, `${ctx.rel}:${handler !== undefined ? handler.line : line}`);
+          } else if (dest.kind === "computed") {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, node.getText().slice(0, 80));
+          }
+          return;
+        }
+        if (isIdentifier2(callee) && callee.text === "createRoute") {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          if (first !== undefined && isObjectLiteralExpression2(first)) {
+            this.emitRouteObjectRecord(ctx, first, "tanstack-router", keys);
+          } else if (first !== undefined) {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitVueRouterRoutes(ctx) {
+    if (!fileImportsNeedle2(ctx, "vue-router"))
+      return;
+    const keys = ["component", "Component", "components"];
+    const visit = (node) => {
+      if (isCallExpression2(node)) {
+        const callee = node.expression;
+        if (isIdentifier2(callee) && (callee.text === "createRouter" || callee.text === "createWebHistory")) {
+          const options = callee.text === "createRouter" ? node.arguments.length > 0 ? node.arguments[0] : undefined : undefined;
+          if (options !== undefined && isObjectLiteralExpression2(options)) {
+            for (const property of options.properties) {
+              let elements;
+              let isRoutesKey = false;
+              if (isPropertyAssignment2(property)) {
+                const key = property.name;
+                const keyText = isIdentifier2(key) ? key.text : isStringLiteral2(key) ? key.text : undefined;
+                if (keyText === "routes") {
+                  isRoutesKey = true;
+                  elements = this.routeArrayElements(ctx, property.initializer);
+                }
+              } else if (isShorthandPropertyAssignment2(property) && property.name.text === "routes") {
+                isRoutesKey = true;
+                elements = this.sameFileRouteArray(ctx, "routes");
+              }
+              if (!isRoutesKey)
+                continue;
+              if (elements !== undefined) {
+                for (const entry of elements)
+                  this.emitRouteObjectRecord(ctx, entry, "vue-router", keys);
+              } else {
+                this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+              }
+            }
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitNuxtRoutes(ctx) {
+    const pattern = nuxtRoutePattern2(ctx.rel);
+    if (pattern === undefined)
+      return;
+    if (!fileImportsNeedle2(ctx, "nuxt") && !fileImportsNeedle2(ctx, "vue") && !fileImportsNeedle2(ctx, "#app")) {}
+    const handler = defaultHandlerForFile2(ctx, this.files);
+    const line = handler !== undefined ? handler.line : 1;
+    const record = {
+      id: routeIdFor2("nuxt", pattern, ctx.rel),
+      pattern,
+      framework: "nuxt",
+      resolver: "nuxt-detector",
+      file: ctx.rel,
+      line,
+      appScope: appScopeOf2(ctx.rel)
+    };
+    this.emitRouteRecord(record, handler !== undefined ? handler.id : `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+  }
+  emitSvelteKitRoutes(ctx) {
+    const pattern = svelteKitRoutePattern2(ctx.rel);
+    if (pattern === undefined)
+      return;
+    const handler = defaultHandlerForFile2(ctx, this.files);
+    const line = handler !== undefined ? handler.line : 1;
+    const record = {
+      id: routeIdFor2("sveltekit", pattern, ctx.rel),
+      pattern,
+      framework: "sveltekit",
+      resolver: "sveltekit-detector",
+      file: ctx.rel,
+      line,
+      appScope: appScopeOf2(ctx.rel)
+    };
+    this.emitRouteRecord(record, handler !== undefined ? handler.id : `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+  }
+  emitAngularRoutes(ctx) {
+    if (!fileImportsNeedle2(ctx, "@angular/router"))
+      return;
+    const keys = ["component", "loadComponent", "loadChildren"];
+    const visit = (node) => {
+      if (isCallExpression2(node)) {
+        const callee = node.expression;
+        let routesArg;
+        if (isPropertyAccessExpression2(callee) && isIdentifier2(callee.expression) && isIdentifier2(callee.name) && (callee.name.text === "forRoot" || callee.name.text === "forChild")) {
+          routesArg = node.arguments.length > 0 ? node.arguments[0] : undefined;
+        } else if (isIdentifier2(callee) && callee.text === "provideRouter") {
+          routesArg = node.arguments.length > 0 ? node.arguments[0] : undefined;
+        }
+        if (routesArg !== undefined) {
+          const elements = this.routeArrayElements(ctx, routesArg);
+          if (elements !== undefined) {
+            for (const entry of elements)
+              this.emitRouteObjectRecord(ctx, entry, "angular", keys);
+          } else {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitNavigations(ordered) {
+    for (const ctx of ordered) {
+      const isNextFile = fileImportsNeedle2(ctx, "next");
+      const isRouterFile = fileImportsNeedle2(ctx, "react-router");
+      const isTanStackFile = fileImportsNeedle2(ctx, "tanstack");
+      const isVueFile = fileImportsNeedle2(ctx, "vue-router");
+      const isNuxtFile = fileImportsNeedle2(ctx, "nuxt") || fileImportsNeedle2(ctx, "#app");
+      const isSvelteFile = fileImportsNeedle2(ctx, "@sveltejs") || fileImportsNeedle2(ctx, "$app");
+      const isAngularFile = fileImportsNeedle2(ctx, "@angular/router");
+      const callers = [`file:${ctx.rel}`];
+      const visit = (node) => {
+        const boundary = this.boundaryId(ctx, node);
+        if (boundary)
+          callers.push(boundary);
+        const sender = callers[callers.length - 1] ?? `file:${ctx.rel}`;
+        if (isCallExpression2(node)) {
+          this.emitCodeNavigation(ctx, node, sender, {
+            isNextFile,
+            isRouterFile,
+            isTanStackFile,
+            isVueFile,
+            isNuxtFile,
+            isSvelteFile,
+            isAngularFile
+          });
+        } else if (isJsxOpeningElement2(node) || isJsxSelfClosingElement2(node)) {
+          this.emitMarkupNavigation(ctx, node, sender, {
+            isNextFile,
+            isRouterFile,
+            isTanStackFile,
+            isVueFile,
+            isNuxtFile,
+            isAngularFile
+          });
+        }
+        node.forEachChild((child) => {
+          visit(child);
+          return;
+        });
+        if (boundary)
+          callers.pop();
+      };
+      ctx.sourceFile.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    }
+  }
+  emitCodeNavigation(ctx, node, sender, flags) {
+    if (!isCallExpression2(node))
+      return;
+    const { isNextFile, isRouterFile, isTanStackFile, isVueFile, isNuxtFile, isSvelteFile, isAngularFile } = flags;
+    const callee = node.expression;
+    const line = this.lineOf(ctx, node);
+    const siteText = node.getText().slice(0, 80);
+    const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+    const second = node.arguments.length > 1 ? node.arguments[1] : undefined;
+    if (isPropertyAccessExpression2(callee)) {
+      const object = callee.expression;
+      const name = callee.name;
+      if (!isIdentifier2(object) || !isIdentifier2(name))
+        return;
+      const receiver = object.text;
+      const method = name.text;
+      if (receiver === "router" && (method === "push" || method === "replace" || method === "prefetch")) {
+        const dest = destinationOfNode2(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (receiver === "history" && (method === "push" || method === "replace") && (isRouterFile || isVueFile)) {
+        const dest = destinationOfNode2(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (receiver === "router" && (method === "navigate" || method === "navigateByUrl") && isAngularFile) {
+        const dest = this.angularDestination(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (receiver === "NextResponse" && method === "redirect" && isNextFile) {
+        const dest = destinationOfNode2(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      return;
+    }
+    if (isIdentifier2(callee)) {
+      const name = callee.text;
+      if (name === "navigate" && (isRouterFile || isTanStackFile)) {
+        const dest = destinationOfNode2(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "redirect" && (isNextFile || isTanStackFile)) {
+        const dest = destinationOfNode2(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "permanentRedirect" && isNextFile) {
+        const dest = destinationOfNode2(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "redirect" && isSvelteFile && !isNextFile && !isTanStackFile) {
+        const dest = destinationOfNode2(second);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "navigateTo" && isNuxtFile) {
+        const dest = destinationOfNode2(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "goto" && isSvelteFile) {
+        const dest = destinationOfNode2(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "fetch") {
+        const dest = destinationOfNode2(first);
+        if (dest.kind === "ignore")
+          return;
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+    }
+  }
+  angularDestination(node) {
+    const first = node !== undefined && isArrayLiteralExpression2(node) && node.elements.length > 0 ? node.elements[0] : node;
+    return routePathOfNode2(first, "angular");
+  }
+  angularAttrDestination(attr) {
+    if (!isJsxAttribute2(attr))
+      return { kind: "ignore" };
+    const initializer = attr.initializer;
+    if (initializer === undefined)
+      return { kind: "ignore" };
+    if (isStringLiteral2(initializer) || isNoSubstitutionTemplateLiteral2(initializer)) {
+      return routePathOfNode2(initializer, "angular");
+    }
+    if (isJsxExpression2(initializer)) {
+      const inner = initializer.expression;
+      if (inner === undefined)
+        return { kind: "ignore" };
+      if (isArrayLiteralExpression2(inner)) {
+        const first = inner.elements.length > 0 ? inner.elements[0] : undefined;
+        return routePathOfNode2(first, "angular");
+      }
+      return destinationOfNode2(inner);
+    }
+    return { kind: "ignore" };
+  }
+  emitMarkupNavigation(ctx, node, sender, flags) {
+    const { isNextFile, isRouterFile, isTanStackFile, isVueFile, isNuxtFile, isAngularFile } = flags;
+    const tagNode = isJsxOpeningElement2(node) ? node.tagName : isJsxSelfClosingElement2(node) ? node.tagName : undefined;
+    if (tagNode === undefined || !isIdentifier2(tagNode))
+      return;
+    const tag = tagNode.text;
+    const line = this.lineOf(ctx, node);
+    const siteText = node.getText().slice(0, 80);
+    if (isAngularFile) {
+      const routerLinkAttr = this.jsxAttrNamed(node, ["routerLink"]);
+      if (routerLinkAttr !== undefined) {
+        const dest = this.angularAttrDestination(routerLinkAttr);
+        this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+        return;
+      }
+    }
+    if (tag === "a") {
+      const hrefAttr = this.jsxAttrNamed(node, ["href"]);
+      if (hrefAttr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(hrefAttr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+      return;
+    }
+    if (tag === "Link") {
+      if (!isNextFile && !isRouterFile && !isTanStackFile && !isVueFile && !isNuxtFile)
+        return;
+      const attr = this.jsxAttrNamed(node, ["href", "to"]);
+      if (attr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(attr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+      return;
+    }
+    if (tag === "RouterLink") {
+      if (!isVueFile && !isTanStackFile)
+        return;
+      const attr = this.jsxAttrNamed(node, ["to", "href"]);
+      if (attr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(attr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+      return;
+    }
+    if (tag === "NuxtLink") {
+      if (!isNuxtFile)
+        return;
+      const attr = this.jsxAttrNamed(node, ["to", "href"]);
+      if (attr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(attr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+      return;
+    }
+    if (tag === "Navigate" || tag === "NavLink" || tag === "Redirect") {
+      if (!isRouterFile)
+        return;
+      const attr = this.jsxAttrNamed(node, ["to", "href"]);
+      if (attr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(attr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+    }
+  }
 }
 function indexFiles2(entryFiles, options = {}) {
   if (entryFiles.length === 0)
@@ -6830,6 +8345,47 @@ function indexFiles2(entryFiles, options = {}) {
   }
   const merged = [...mergedByFile.values()].sort((left, right) => left.file < right.file ? -1 : 1);
   return { ...snapshot, root, dropped: merged };
+}
+function groupEntriesByProject(entryFiles, options) {
+  if (entryFiles.length === 0)
+    return [];
+  if (options.rootDir === undefined || options.rootDir === "") {
+    throw new Error("code-graph: groupEntriesByProject needs an explicit rootDir");
+  }
+  const root = toPosixPath3(resolve6(options.rootDir));
+  const absoluteEntries = entryFiles.map((entry) => resolve6(entry));
+  const tsserverPath = options.tsserverPath ?? defaultTsServerPath2();
+  const api = new API2({ tsserverPath, cwd: root });
+  try {
+    const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
+    try {
+      const groups = new Map;
+      const order = [];
+      for (const entry of absoluteEntries) {
+        const project = snapshot.getDefaultProjectForFile(entry);
+        if (!project)
+          throw new Error(`code-graph: no TypeScript project covers entry: ${entry}`);
+        const key = project.id.length > 0 ? project.id : project.configFileName;
+        let group = groups.get(key);
+        if (group === undefined) {
+          group = { configFileName: project.configFileName, entries: [] };
+          groups.set(key, group);
+          order.push(key);
+        }
+        group.entries.push(entry);
+      }
+      return order.map((key) => {
+        const group = groups.get(key);
+        if (group === undefined)
+          throw new Error("code-graph: project group missing");
+        return { projectId: key, configFileName: group.configFileName, entries: group.entries };
+      });
+    } finally {
+      snapshot.dispose();
+    }
+  } finally {
+    api.close();
+  }
 }
 function buildGraph2(absoluteEntries, root, strictRoot, options) {
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath2();
@@ -7123,6 +8679,8 @@ function unionKnowledge2(linked) {
   return out;
 }
 function toItem3(node, evidence, knowledge) {
+  const primary = evidence[0];
+  const verdict = primary?.inferred === true ? "inferred" : verdictForEvidenceKind2(primary?.edge ?? "indexed");
   const item = {
     id: node.id,
     file: node.file,
@@ -7130,7 +8688,7 @@ function toItem3(node, evidence, knowledge) {
     evidence,
     confidence: 1,
     knowledgeIds: knowledge,
-    verdict: verdictForEvidenceKind2(evidence[0]?.edge ?? "indexed"),
+    verdict,
     isTest: isTestPath2(node.file)
   };
   return node.name === undefined ? item : { ...item, name: node.name };
@@ -7401,15 +8959,20 @@ function indexFor2(snapshot) {
 function findNode2(snapshot, id) {
   return indexFor2(snapshot).nodeById.get(id);
 }
+function isRouteHopKind2(kind) {
+  return kind === "CALLS_STATIC" || kind === "ROUTE" || kind === "REFERENCES" || kind === "NAVIGATES";
+}
 function callersOf2(snapshot, symbolId) {
   const out = [];
   const index = indexFor2(snapshot);
   for (const edge of index.edgesByTo.get(symbolId) ?? []) {
-    if (edge.kind !== "CALLS_STATIC")
+    if (!isRouteHopKind2(edge.kind))
       continue;
     const caller = index.nodeById.get(edge.from);
-    if (caller !== undefined)
-      out.push({ caller, ref: edge.ref });
+    if (caller !== undefined) {
+      const entry = edge.inferred === true ? { caller, ref: edge.ref, kind: edge.kind, inferred: true } : { caller, ref: edge.ref, kind: edge.kind };
+      out.push(entry);
+    }
   }
   out.sort((left, right) => left.caller.id < right.caller.id ? -1 : 1);
   return out;
@@ -7418,11 +8981,13 @@ function calleesOf2(snapshot, symbolId) {
   const out = [];
   const index = indexFor2(snapshot);
   for (const edge of index.edgesByFrom.get(symbolId) ?? []) {
-    if (edge.kind !== "CALLS_STATIC")
+    if (!isRouteHopKind2(edge.kind))
       continue;
     const callee = index.nodeById.get(edge.to);
-    if (callee !== undefined)
-      out.push({ callee, ref: edge.ref });
+    if (callee !== undefined) {
+      const entry = edge.inferred === true ? { callee, ref: edge.ref, kind: edge.kind, inferred: true } : { callee, ref: edge.ref, kind: edge.kind };
+      out.push(entry);
+    }
   }
   out.sort((left, right) => left.callee.id < right.callee.id ? -1 : 1);
   return out;
@@ -7499,8 +9064,12 @@ function symbolContext2(snapshot, symbolId, options) {
     return unindexedSymbol2(scope, freshness, symbolId);
   }
   const definition = nodeItem2(snapshot, node, definesEvidence2(snapshot, node));
-  const callerItems = callersOf2(snapshot, symbolId).map(({ caller, ref }) => nodeItem2(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
-  const calleeItems = calleesOf2(snapshot, symbolId).map(({ callee, ref }) => nodeItem2(snapshot, callee, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+  const callerItems = callersOf2(snapshot, symbolId).map(({ caller, ref, kind, inferred }) => nodeItem2(snapshot, caller, [
+    inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 }
+  ]));
+  const calleeItems = calleesOf2(snapshot, symbolId).map(({ callee, ref, kind, inferred }) => nodeItem2(snapshot, callee, [
+    inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 }
+  ]));
   const ranked = [
     { item: definition, depth: 0 },
     ...callerItems.map((item) => ({ item, depth: 1 })),
@@ -7633,7 +9202,7 @@ function impact2(snapshot, symbolId, options) {
     }
     const next = [];
     for (const current of frontier) {
-      for (const { caller, ref } of callersOf2(snapshot, current)) {
+      for (const { caller, ref, kind, inferred } of callersOf2(snapshot, current)) {
         explored += 1;
         if (explored > exploredCap) {
           edgeBudgetHit = true;
@@ -7647,10 +9216,12 @@ function impact2(snapshot, symbolId, options) {
           continue;
         seen.add(caller.id);
         walked.push({
-          item: nodeItem2(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]),
+          item: nodeItem2(snapshot, caller, [
+            inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 }
+          ]),
           depth
         });
-        if (caller.kind === "symbol")
+        if (caller.kind === "symbol" || caller.kind === "route")
           next.push(caller.id);
       }
       if (edgeBudgetHit || timeBudgetHit)
@@ -7957,6 +9528,371 @@ function trace2(snapshot, fromId, toId, options) {
     summary: { found: true, hops: path.length, alternativePaths: null }
   };
 }
+function exploreUnindexed(scope, freshness, subject, note, unsupported) {
+  const excluded = unsupported.length === 0;
+  const decided = decideCompleteness2({
+    unsupported: !excluded,
+    excluded,
+    indexPartial: false,
+    depthBudget: false,
+    unresolvedEdges: false,
+    cut: false
+  });
+  return {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "explore",
+    coverage: "unindexed",
+    truncated: false,
+    knowledgeIds: [],
+    unresolved: note === "" ? [] : [note],
+    unsupported: [...unsupported],
+    items: [],
+    totals: { displayed: 0, known: null, hidden: null },
+    ...decided,
+    subject,
+    definitions: [],
+    bodies: [],
+    paths: [],
+    impacted: [],
+    blastRadius: emptyImpactSummary2([], "partial")
+  };
+}
+function resolveExploreDefinitions(snapshot, subject) {
+  const index = indexFor2(snapshot);
+  const exact = index.nodeById.get(subject);
+  if (exact !== undefined) {
+    if (exact.kind === "symbol")
+      return [exact];
+    if (exact.kind === "file") {
+      const inFile = snapshot.nodes.filter((node) => node.kind === "symbol" && node.file === exact.file).sort((left, right) => left.line - right.line || (left.id < right.id ? -1 : 1));
+      return inFile.length > 0 ? inFile : undefined;
+    }
+    return;
+  }
+  if (isSupportedPath2(subject)) {
+    const inFile = snapshot.nodes.filter((node) => node.kind === "symbol" && node.file === subject).sort((left, right) => left.line - right.line || (left.id < right.id ? -1 : 1));
+    return inFile.length > 0 ? inFile : undefined;
+  }
+  if (subject.includes("@") || subject.includes("/") || subject.includes("\\"))
+    return;
+  const named = snapshot.nodes.filter((node) => node.kind === "symbol" && node.name === subject).sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+  return named.length > 0 ? named : undefined;
+}
+function exploreBodyFor(snapshot, node) {
+  const stored = snapshot.content?.files[node.file]?.lines;
+  if (stored === undefined) {
+    return {
+      body: {
+        id: node.id,
+        file: node.file,
+        startLine: node.line,
+        endLine: node.line,
+        truncated: false,
+        lines: []
+      },
+      missingNote: `no source lines for ${node.file} (content index absent); body omitted, never synthesized`
+    };
+  }
+  const startLine = Math.min(Math.max(1, node.line), stored.length + 1);
+  let effectiveLength = stored.length;
+  while (effectiveLength > startLine && (stored[effectiveLength - 1] ?? "") === "")
+    effectiveLength -= 1;
+  const endLine = Math.min(startLine + EXPLORE_BODY_MAX_LINES - 1, effectiveLength);
+  const lines = [];
+  for (let line = startLine;line <= endLine; line += 1) {
+    lines.push({ line, text: stored[line - 1] ?? "" });
+  }
+  const body = {
+    id: node.id,
+    file: node.file,
+    startLine,
+    endLine,
+    truncated: effectiveLength > endLine,
+    lines
+  };
+  return node.name === undefined ? { body } : { body: { ...body, name: node.name } };
+}
+function explorePairPath(snapshot, fromId, toId, maxDepth, visitCap) {
+  if (fromId === toId) {
+    return { path: { from: fromId, to: toId, found: true, hops: [], blockedByDynamic: false }, dynamicRefs: [] };
+  }
+  const parents = new Map;
+  const seen = new Set([fromId]);
+  const dynamicRefs = [];
+  let frontier = [fromId];
+  let found = false;
+  for (let depth = 0;depth < maxDepth && frontier.length > 0 && !found; depth += 1) {
+    const next = [];
+    for (const current of frontier) {
+      for (const unresolved of unresolvedEdgesFrom2(snapshot, current)) {
+        dynamicRefs.push(unresolved.ref);
+      }
+      for (const { callee, ref } of calleesOf2(snapshot, current)) {
+        if (seen.has(callee.id))
+          continue;
+        seen.add(callee.id);
+        parents.set(callee.id, { via: current, ref });
+        if (callee.id === toId) {
+          found = true;
+          break;
+        }
+        next.push(callee.id);
+        if (seen.size > visitCap) {
+          frontier = [];
+          break;
+        }
+      }
+      if (found)
+        break;
+    }
+    if (!found)
+      frontier = next;
+  }
+  if (!found) {
+    const blocked = dynamicRefs.length > 0;
+    return {
+      path: { from: fromId, to: toId, found: false, hops: [], blockedByDynamic: blocked },
+      dynamicRefs
+    };
+  }
+  const chain = [toId];
+  while (chain[0] !== fromId) {
+    const parent = parents.get(chain[0]);
+    if (parent === undefined)
+      break;
+    chain.unshift(parent.via);
+  }
+  const hops = [];
+  for (let index = 0;index < chain.length - 1; index += 1) {
+    const parent = parents.get(chain[index + 1]);
+    hops.push({ from: chain[index], to: chain[index + 1], ref: parent?.ref ?? "", confidence: 1 });
+  }
+  return { path: { from: fromId, to: toId, found: true, hops, blockedByDynamic: false }, dynamicRefs: [] };
+}
+function explore(snapshot, subject, options) {
+  const scope = resolveScope2(options);
+  const freshness = options.freshness ?? "fresh";
+  const limit = clampLimit2(options.limit);
+  const maxDepth = clampDepth2(options.maxDepth);
+  const filePart = symbolFilePart2(subject);
+  if (filePart !== undefined && !isSupportedPath2(filePart)) {
+    return exploreUnindexed(scope, freshness, subject, "", [unsupportedNote2(filePart)]);
+  }
+  if (!subject.includes("@") && !subject.includes(":") && !isSupportedPath2(subject) && subject.includes(".") && !snapshot.nodes.some((node) => node.name === subject)) {
+    const maybeFile = subject;
+    if (!isSupportedPath2(maybeFile)) {
+      return exploreUnindexed(scope, freshness, subject, "", [unsupportedNote2(maybeFile)]);
+    }
+  }
+  const resolved = resolveExploreDefinitions(snapshot, subject);
+  if (resolved === undefined) {
+    const fileLike = subject.includes("/") || subject.includes("\\") || isSupportedPath2(subject);
+    return exploreUnindexed(scope, freshness, subject, fileLike ? `${subject} is not in this snapshot` : `no definition for ${subject} in this snapshot`, []);
+  }
+  const definitions = resolved.map((node) => nodeItem2(snapshot, node, definesEvidence2(snapshot, node)));
+  const shownDefinitions = definitions.slice(0, limit);
+  const definitionCut = definitions.length > limit;
+  const bodyNotes = [];
+  const groups = new Map;
+  for (const node of resolved.slice(0, limit)) {
+    const { body, missingNote } = exploreBodyFor(snapshot, node);
+    if (missingNote !== undefined)
+      bodyNotes.push(missingNote);
+    const group = groups.get(node.file);
+    if (group === undefined)
+      groups.set(node.file, [body]);
+    else
+      group.push(body);
+  }
+  const bodies = [...groups.entries()].map(([file, items]) => ({ file, bodies: items }));
+  const pairJobs = [];
+  const seenPair = new Set;
+  const takePair = (from, to, direct) => {
+    if (from === to)
+      return;
+    const key = `${from} -> ${to}`;
+    if (seenPair.has(key))
+      return;
+    seenPair.add(key);
+    pairJobs.push(direct === undefined ? { from, to } : { from, to, direct });
+  };
+  for (const from of shownDefinitions) {
+    for (const to of shownDefinitions)
+      takePair(from.id, to.id);
+  }
+  for (const definition of shownDefinitions) {
+    for (const { caller, ref } of callersOf2(snapshot, definition.id)) {
+      takePair(caller.id, definition.id, { from: caller.id, to: definition.id, ref, confidence: 1 });
+    }
+    for (const { callee, ref } of calleesOf2(snapshot, definition.id)) {
+      takePair(definition.id, callee.id, { from: definition.id, to: callee.id, ref, confidence: 1 });
+    }
+  }
+  const pairCut = pairJobs.length > EXPLORE_MAX_PATH_PAIRS;
+  const visitCap = Math.max(limit * 20, 20);
+  const paths = [];
+  const pairNotes = [];
+  let blockedByDynamic = false;
+  for (const job of pairJobs.slice(0, EXPLORE_MAX_PATH_PAIRS)) {
+    if (job.direct !== undefined) {
+      paths.push({ from: job.from, to: job.to, found: true, hops: [job.direct], blockedByDynamic: false });
+      continue;
+    }
+    const { path, dynamicRefs } = explorePairPath(snapshot, job.from, job.to, maxDepth, visitCap);
+    paths.push(path);
+    if (!path.found && path.blockedByDynamic) {
+      blockedByDynamic = true;
+      const [firstRef] = dynamicRefs;
+      pairNotes.push(firstRef === undefined ? `no static call path from ${job.from} to ${job.to} within budget (never guessed)` : `${firstRef} may dispatch dynamically (manual review, never proven)`);
+    }
+  }
+  if (pairCut) {
+    pairNotes.push(`call paths cut to ${EXPLORE_MAX_PATH_PAIRS} of ${pairJobs.length} definition pairs and hops`);
+  }
+  const seedIds = resolved.map((node) => node.id);
+  const walked = [];
+  const seen = new Set(seedIds);
+  const exploredCap = clampExploredEdges2(options.maxExploredEdges);
+  const deadlineMs = Date.now() + clampQueryBudgetMs2(options.maxQueryMs);
+  let explored = 0;
+  let edgeBudgetHit = false;
+  let timeBudgetHit = false;
+  let frontier = [...seedIds];
+  for (let depth = 1;depth <= maxDepth && frontier.length > 0; depth += 1) {
+    if (Date.now() >= deadlineMs) {
+      timeBudgetHit = true;
+      break;
+    }
+    const next = [];
+    for (const current of frontier) {
+      for (const { caller, ref, kind, inferred } of callersOf2(snapshot, current)) {
+        explored += 1;
+        if (explored > exploredCap) {
+          edgeBudgetHit = true;
+          break;
+        }
+        if (Date.now() >= deadlineMs) {
+          timeBudgetHit = true;
+          break;
+        }
+        if (seen.has(caller.id))
+          continue;
+        seen.add(caller.id);
+        walked.push({
+          item: nodeItem2(snapshot, caller, [
+            inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 }
+          ]),
+          depth
+        });
+        if (caller.kind === "symbol" || caller.kind === "route")
+          next.push(caller.id);
+      }
+      if (edgeBudgetHit || timeBudgetHit)
+        break;
+    }
+    if (edgeBudgetHit || timeBudgetHit)
+      break;
+    frontier = next;
+  }
+  const depthBudgetHit = frontier.some((id) => callersOf2(snapshot, id).some(({ caller }) => !seen.has(caller.id)));
+  walked.sort((left, right) => compareRows2(left.depth, left.item, right.depth, right.item));
+  const allDependents = walked.map((entry) => entry.item);
+  const dependentFiles = new Set(allDependents.map((item) => item.file));
+  let callersWithoutTestPath = 0;
+  const testFiles = new Set;
+  for (const item of allDependents) {
+    if (isTestPath2(item.file))
+      testFiles.add(item.file);
+    if (!hasTestPath2(snapshot, item))
+      callersWithoutTestPath += 1;
+  }
+  const visitedIds = [...seedIds, ...allDependents.map((item) => item.id)];
+  const walkNotes = [];
+  let unresolvedEdges = 0;
+  for (const id of visitedIds) {
+    const edges = unresolvedEdgesFrom2(snapshot, id);
+    unresolvedEdges += edges.length;
+    for (const edge of edges) {
+      walkNotes.push(`${edge.ref} calls an unknown callee (manual review, never proven)`);
+    }
+  }
+  walkNotes.sort();
+  const blastRadius = {
+    subjectIds: seedIds,
+    dependentFiles: dependentFiles.size,
+    dependentSymbols: allDependents.filter((item) => !item.id.startsWith("file:")).length,
+    modules: moduleCounts2(allDependents),
+    testsFound: testFiles.size,
+    callersWithoutTestPath,
+    unresolvedEdges,
+    completeness: "complete"
+  };
+  const ranked = [
+    ...shownDefinitions.map((item) => ({ item, depth: 0 })),
+    ...walked
+  ].sort((left, right) => compareRows2(left.depth, left.item, right.depth, right.item));
+  const seenIds = new Set;
+  const uniqueRanked = ranked.filter((entry) => {
+    if (seenIds.has(entry.item.id))
+      return false;
+    seenIds.add(entry.item.id);
+    return true;
+  });
+  const dropped = ranked.length - uniqueRanked.length;
+  const cut = uniqueRanked.length > limit;
+  const items = uniqueRanked.slice(0, limit).map((entry) => entry.item);
+  const impacted = walked.map((entry) => entry.item);
+  const dedupedImpacted = dedupeById2(impacted);
+  const uniqueImpacted = [...dedupedImpacted.items];
+  const indexNote = indexTruncationNote2(snapshot);
+  const unresolved = [
+    ...bodyNotes,
+    ...pairNotes,
+    ...walkNotes,
+    ...indexNote === undefined ? [] : [indexNote],
+    ...edgeBudgetHit ? [`edge budget ${exploredCap} stopped the walk after ${explored - 1} caller edges; more dependents may exist`] : [],
+    ...timeBudgetHit ? [`time budget ${clampQueryBudgetMs2(options.maxQueryMs)} ms stopped the walk; more dependents may exist`] : [],
+    ...depthBudgetHit ? [`depth budget ${maxDepth} stopped the walk with callers still unexplored`] : [],
+    ...definitionCut ? [`truncated to ${limit} of ${definitions.length} definitions`] : [],
+    ...cut && !definitionCut ? [`truncated to ${limit} of ${uniqueRanked.length} rows`] : []
+  ];
+  const decided = decideCompleteness2({
+    unsupported: false,
+    excluded: false,
+    indexPartial: indexNote !== undefined,
+    edgeBudget: edgeBudgetHit,
+    timeBudget: timeBudgetHit,
+    depthBudget: depthBudgetHit,
+    unresolvedEdges: blockedByDynamic,
+    cut: cut || definitionCut
+  });
+  const depthCounts = new Map;
+  for (const entry of uniqueRanked)
+    depthCounts.set(entry.depth, (depthCounts.get(entry.depth) ?? 0) + 1);
+  const byDepth = [...depthCounts.entries()].sort((left, right) => left[0] - right[0]).map(([depth, count]) => ({ depth, count }));
+  const completeBlastRadius = { ...blastRadius, completeness: decided.completeness };
+  return {
+    ...baseEnvelope3(scope, freshness),
+    suggestedMode: "explore",
+    ...duplicatesExtra2(dropped + dedupedImpacted.dropped),
+    ...ambiguousExtra2(items),
+    shownOf: { impacted: { shown: Math.min(uniqueImpacted.length, limit), total: walked.length } },
+    coverage: indexCoverage2(snapshot),
+    truncated: cut || definitionCut,
+    knowledgeIds: unionKnowledge2(knowledgeIdsFor2(snapshot, new Set(items.map((item) => item.id)))),
+    unresolved,
+    unsupported: [],
+    items,
+    totals: indexNote !== undefined ? { displayed: items.length, known: null, hidden: null, byDepth, byKind: byKindFor2(items) } : { displayed: items.length, known: uniqueRanked.length, hidden: uniqueRanked.length - items.length, byDepth, byKind: byKindFor2(items) },
+    ...decided,
+    subject,
+    definitions: shownDefinitions,
+    bodies,
+    paths,
+    impacted: uniqueImpacted.slice(0, limit),
+    blastRadius: completeBlastRadius
+  };
+}
 function subjectFileFor2(snapshot, target) {
   if (!target.includes("@") && !target.startsWith("fn:") && !target.startsWith("class:") && !target.startsWith("const:")) {
     return target;
@@ -8232,7 +10168,7 @@ function fileOfNodeId(id) {
   const file = colon < 0 ? withLine : withLine.slice(0, colon);
   return file.length > 0 ? file : null;
 }
-function isRecord10(value) {
+function isRecord11(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function splitSnapshotIntoShards(snapshot) {
@@ -8277,7 +10213,7 @@ function splitSnapshotIntoShards(snapshot) {
   });
 }
 function createSnapshotManifest(snapshot, meta) {
-  return {
+  const manifest = {
     version: SNAPSHOT_STORE_VERSION,
     scope: meta.scope,
     observedAtMs: meta.observedAtMs,
@@ -8290,13 +10226,16 @@ function createSnapshotManifest(snapshot, meta) {
     contentSkipped: snapshot.content?.skipped ?? [],
     dropped: snapshot.dropped ?? [],
     shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file),
-    ...meta.fileRecords !== undefined && meta.fileRecords !== null ? { fileRecords: meta.fileRecords } : {},
     truncated: meta.truncated === true,
-    truncationReason: typeof meta.truncationReason === "string" ? meta.truncationReason : null,
-    buildSeq: typeof meta.buildSeq === "number" && Number.isFinite(meta.buildSeq) ? meta.buildSeq : null,
+    truncationReason: meta.truncationReason ?? null,
+    buildSeq: meta.buildSeq === null || meta.buildSeq === undefined || !Number.isFinite(meta.buildSeq) ? null : meta.buildSeq,
     unreadableFiles: Array.isArray(meta.unreadableFiles) ? [...meta.unreadableFiles] : [],
-    unreadableFileCount: typeof meta.unreadableFileCount === "number" && Number.isFinite(meta.unreadableFileCount) ? meta.unreadableFileCount : 0
+    unreadableFileCount: meta.unreadableFileCount === null || meta.unreadableFileCount === undefined || !Number.isFinite(meta.unreadableFileCount) ? 0 : meta.unreadableFileCount
   };
+  if (meta.fileRecords !== undefined && meta.fileRecords !== null) {
+    return { ...manifest, fileRecords: meta.fileRecords };
+  }
+  return manifest;
 }
 function serializeSnapshotShard(shard) {
   return JSON.stringify(shard);
@@ -8311,13 +10250,13 @@ function parseSnapshotManifest(text) {
   } catch {
     return { kind: "corrupt", reason: "manifest is not JSON" };
   }
-  if (!isRecord10(parsed))
+  if (!isRecord11(parsed))
     return { kind: "corrupt", reason: "manifest is not an object" };
   if (parsed.version !== SNAPSHOT_STORE_VERSION) {
     return { kind: "corrupt", reason: `unsupported manifest version: ${String(parsed.version)}` };
   }
   const scope = parsed.scope;
-  if (!isRecord10(scope))
+  if (!isRecord11(scope))
     return { kind: "corrupt", reason: "manifest has no scope" };
   const scopeKeys = ["projectId", "worktreeId", "revision", "fingerprint"];
   for (const key of scopeKeys) {
@@ -8331,34 +10270,36 @@ function parseSnapshotManifest(text) {
   if (!Number.isFinite(parsed.nodeCount) || !Number.isFinite(parsed.edgeCount)) {
     return { kind: "corrupt", reason: "manifest counts are not numbers" };
   }
-  return {
-    kind: "manifest",
-    manifest: {
-      version: SNAPSHOT_STORE_VERSION,
-      scope: {
-        projectId: String(scope.projectId),
-        worktreeId: String(scope.worktreeId),
-        revision: String(scope.revision),
-        fingerprint: String(scope.fingerprint)
-      },
-      observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
-      entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
-      entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
-      root: typeof parsed.root === "string" ? parsed.root : null,
-      nodeCount: Number(parsed.nodeCount),
-      edgeCount: Number(parsed.edgeCount),
-      contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
-      contentSkipped: Array.isArray(parsed.contentSkipped) ? parsed.contentSkipped : [],
-      dropped: Array.isArray(parsed.dropped) ? parsed.dropped : [],
-      shards: parsed.shards,
-      ...typeof parsed.fileRecords === "string" && parsed.fileRecords.length > 0 ? { fileRecords: parsed.fileRecords } : {},
-      truncated: parsed.truncated === true,
-      truncationReason: typeof parsed.truncationReason === "string" ? parsed.truncationReason : null,
-      buildSeq: typeof parsed.buildSeq === "number" && Number.isFinite(parsed.buildSeq) ? parsed.buildSeq : null,
-      unreadableFiles: Array.isArray(parsed.unreadableFiles) ? parsed.unreadableFiles.filter((entry) => typeof entry === "string") : [],
-      unreadableFileCount: typeof parsed.unreadableFileCount === "number" && Number.isFinite(parsed.unreadableFileCount) ? parsed.unreadableFileCount : 0
-    }
+  const fileRecordsText = String(parsed.fileRecords);
+  const truncationReasonText = String(parsed.truncationReason);
+  const manifest = {
+    version: SNAPSHOT_STORE_VERSION,
+    scope: {
+      projectId: String(scope.projectId),
+      worktreeId: String(scope.worktreeId),
+      revision: String(scope.revision),
+      fingerprint: String(scope.fingerprint)
+    },
+    observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
+    entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
+    entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
+    root: typeof parsed.root === "string" ? parsed.root : null,
+    nodeCount: Number(parsed.nodeCount),
+    edgeCount: Number(parsed.edgeCount),
+    contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
+    contentSkipped: Array.isArray(parsed.contentSkipped) ? parsed.contentSkipped : [],
+    dropped: Array.isArray(parsed.dropped) ? parsed.dropped : [],
+    shards: parsed.shards,
+    truncated: parsed.truncated === true,
+    truncationReason: truncationReasonText === parsed.truncationReason ? truncationReasonText : null,
+    buildSeq: Number.isFinite(parsed.buildSeq) ? parsed.buildSeq : null,
+    unreadableFiles: Array.isArray(parsed.unreadableFiles) ? parsed.unreadableFiles.filter((entry) => String(entry) === entry) : [],
+    unreadableFileCount: Number.isFinite(parsed.unreadableFileCount) ? parsed.unreadableFileCount : 0
   };
+  if (fileRecordsText === parsed.fileRecords && fileRecordsText.length > 0) {
+    return { kind: "manifest", manifest: { ...manifest, fileRecords: fileRecordsText } };
+  }
+  return { kind: "manifest", manifest };
 }
 function parseSnapshotShard(text) {
   let parsed;
@@ -8367,7 +10308,7 @@ function parseSnapshotShard(text) {
   } catch {
     return { kind: "corrupt", reason: "shard is not JSON" };
   }
-  if (!isRecord10(parsed))
+  if (!isRecord11(parsed))
     return { kind: "corrupt", reason: "shard is not an object" };
   if (typeof parsed.file !== "string")
     return { kind: "corrupt", reason: "shard has no file" };
@@ -8378,7 +10319,7 @@ function parseSnapshotShard(text) {
     file: parsed.file,
     nodes: parsed.nodes,
     edges: parsed.edges,
-    ...isRecord10(parsed.content) ? { content: parsed.content } : {}
+    ...isRecord11(parsed.content) ? { content: parsed.content } : {}
   };
   return { kind: "shard", shard };
 }
@@ -8444,7 +10385,7 @@ function parseFileRecordsDoc(value) {
     return null;
   const files = {};
   for (const [key, entry] of Object.entries(value.files)) {
-    if (typeof key !== "string" || key.length === 0)
+    if (key.length === 0)
       return null;
     if (!isRecord22(entry))
       return null;
@@ -8452,7 +10393,7 @@ function parseFileRecordsDoc(value) {
       return null;
     const size = entry.size;
     const mtimeMs = entry.mtimeMs;
-    const stat = typeof size === "number" && Number.isFinite(size) && size >= 0 && typeof mtimeMs === "number" && Number.isFinite(mtimeMs) && mtimeMs >= 0 ? { size, mtimeMs } : undefined;
+    const stat = Number.isFinite(size) && Number.isFinite(mtimeMs) && size >= 0 && mtimeMs >= 0 ? { size, mtimeMs } : undefined;
     files[key] = stat === undefined ? { file: key, blob: entry.blob } : { file: key, blob: entry.blob, ...stat };
   }
   return { version: FILE_RECORDS_VERSION, parser: PARSER_RECORD_VERSION, schema: SNAPSHOT_STORE_VERSION, files };
@@ -8518,7 +10459,7 @@ function rebuildIncremental(previous, changedFiles, freshChanged) {
     if (id === "unknown")
       return null;
     const known = nodeById.get(id);
-    if (known !== undefined && typeof known.file === "string" && known.file.length > 0)
+    if (known !== undefined && known.file.length > 0)
       return known.file;
     return fileOfNodeId(id);
   };
@@ -8560,9 +10501,8 @@ function rebuildIncremental(previous, changedFiles, freshChanged) {
   const byFile = {};
   const skippedMap = new Map;
   for (const entry of previous.content?.skipped ?? []) {
-    const fileOf = entry.file;
-    if (!changedFiles.has(fileOf))
-      skippedMap.set(fileOf, entry);
+    if (!changedFiles.has(entry.file))
+      skippedMap.set(entry.file, entry);
   }
   for (const entry of freshChanged.content?.skipped ?? []) {
     skippedMap.set(entry.file, entry);
@@ -8594,20 +10534,54 @@ function rebuildIncremental(previous, changedFiles, freshChanged) {
   }
   const mergedDropped = [...mergedDroppedMap.values()].sort((a, b) => a.file < b.file ? -1 : 1);
   const tokenCap = previous.content?.tokenCap ?? freshChanged.content?.tokenCap ?? 5000;
-  const snapshot = {
+  let snapshot = {
     nodes,
     edges,
     content: {
       tokenCap,
       files: byFile,
       skipped: [...skippedMap.values()].sort((a, b) => a.file < b.file ? -1 : 1)
-    },
-    ...previous.root !== undefined || freshChanged.root !== undefined ? { root: freshChanged.root ?? previous.root } : {},
-    ...mergedDropped.length > 0 ? { dropped: mergedDropped } : {}
+    }
   };
+  if (previous.root !== undefined || freshChanged.root !== undefined) {
+    snapshot = { ...snapshot, root: freshChanged.root ?? previous.root };
+  }
+  if (mergedDropped.length > 0) {
+    snapshot = { ...snapshot, dropped: mergedDropped };
+  }
   return { snapshot, reusedFiles: keptShards.length, invalidatedEdges };
 }
-var CompletionItemKind2, DiagnosticCategory2, ElementFlags2, ModuleKind2, NodeBuilderFlags2, ObjectFlags2, SignatureFlags2, SignatureKind2, SymbolFlags2, TypeFlags2, TypePredicateKind2, CharacterCodes4, CommentDirectiveType2, InternalSymbolName2, LanguageVariant2, ModifierFlags2, NodeFlags2, RegularExpressionFlags2, ScriptKind2, ScriptTarget2, SyntaxKind3, TokenFlags2, OuterExpressionKinds2, visitEachChildTable2, forEachChildTable2, EscapeSequenceScanningFlags2, textToKeywordObj2, textToKeyword2, textToToken2, charCodeToRegExpFlag2, jsDocTagTerminators2, tokenStrings2, childProperties2, singleChildNodePropertyNames2, PROTOCOL_VERSION2 = 5, HEADER_OFFSET_METADATA2 = 0, HEADER_OFFSET_HASH_LO02 = 4, HEADER_OFFSET_HASH_LO12 = 8, HEADER_OFFSET_HASH_HI02 = 12, HEADER_OFFSET_HASH_HI12 = 16, HEADER_OFFSET_PARSE_OPTIONS2 = 20, HEADER_OFFSET_STRING_TABLE_OFFSETS2 = 24, HEADER_OFFSET_STRING_TABLE2 = 28, HEADER_OFFSET_EXTENDED_DATA2 = 32, HEADER_OFFSET_STRUCTURED_DATA2 = 36, HEADER_OFFSET_NODES2 = 40, HEADER_SIZE2 = 44, NODE_LEN2 = 28, NODE_OFFSET_KIND2 = 0, NODE_OFFSET_POS2 = 4, NODE_OFFSET_END2 = 8, NODE_OFFSET_NEXT2 = 12, NODE_OFFSET_PARENT2 = 16, NODE_OFFSET_DATA2 = 20, NODE_OFFSET_FLAGS2 = 24, KIND_NODE_LIST2 = 4294967295, NODE_DATA_TYPE_CHILDREN2 = 0, NODE_DATA_TYPE_STRING2 = 1073741824, NODE_DATA_TYPE_EXTENDED2 = 2147483648, surrogateLeadByte2 = 237, surrogateSecondByteMin2 = 160, surrogateSecondByteMax2 = 191, continuationByteMin2 = 128, continuationByteMax2 = 191, Wtf8Decoder2, MSGPACK_FIXARRAY32 = 147, MSGPACK_BIN82 = 196, MSGPACK_BIN162 = 197, MSGPACK_BIN322 = 198, MSGPACK_UINT82 = 204, encoder4, decoder2, NODE_FIELDS2, NODE_FIELD_NEXT2 = 3, NO_STRUCTURED_DATA3 = 4294967295, _encoder2, popcount82, NODE_DATA_TYPE_MASK2 = 3221225472, NODE_CHILD_MASK2 = 255, NODE_STRING_INDEX_MASK2 = 16777215, NODE_EXTENDED_DATA_MASK2 = 16777215, RemoteNodeList2, RemoteNode2, NO_STRUCTURED_DATA22 = 4294967295, RemoteSourceFile2, CharacterCodesSlash2 = 47, CharacterCodesBackslash2 = 92, CharacterCodesColon2 = 58, CharacterCodesPercent2 = 37, CharacterCodes32 = 51, CharacterCodesa2 = 97, CharacterCodesz2 = 122, CharacterCodesA2 = 65, CharacterCodesZ2 = 90, CharacterCodesDot2 = 46, directorySeparator2 = "/", altDirectorySeparator2 = "\\", urlSchemeSeparator2 = "://", backslashRegExp2, relativePathSegmentRegExp2, bundledScheme2 = "bundled:///", fsCallbackNames2, MSG_REQUEST2 = 1, MSG_CALL_RESPONSE2 = 2, MSG_CALL_ERROR2 = 3, MSG_RESPONSE2 = 4, MSG_ERROR2 = 5, MSG_CALL2 = 6, sleepBuf2, EMPTY_BUF2, liveChildren2, RECENT_REQUEST_CAPACITY2 = 5, Snapshot2, STALE_AFTER_MS3, MAX_CONTENT_TOKENS_PER_FILE2 = 5000, MAX_CONTENT_FILE_BYTES2, CONTENT_SEARCH_TIME_BUDGET_MS = 1000, CONTENT_DEFAULT_LIMIT = 20, CONTENT_MAX_LIMIT = 50, LANGUAGE_ALIASES, STATIC_CONFIDENCE2 = 1, UNRESOLVED_CONFIDENCE2 = 0.5, UNKNOWN2 = "unknown", RECORD_ID3, MAX_ALIAS_DEPTH2 = 10, SEARCH_RANK2, DEFAULT_RESULT_LIMIT2 = 20, MAX_RESULT_LIMIT2 = 50, MAX_EXPLORED_EDGES2 = 20000, DEFAULT_QUERY_BUDGET_MS2 = 2000, MAX_QUERY_BUDGET_MS2 = 60000, DEFAULT_MAX_DEPTH2 = 5, MAX_DEPTH_LIMIT2 = 10, SUPPORTED_FILE2, KIND_PRIORITY2, CONFIRMED_EVIDENCE_KINDS2, snapshotIndexes2, UNANALYZED_NOTE2, SNAPSHOT_STORE_VERSION = 1, UNATTRIBUTED_SHARD = "__unattributed__", PARSER_RECORD_VERSION = 1, FILE_RECORDS_VERSION = 1, isRecord22 = (value) => typeof value === "object" && value !== null && !Array.isArray(value), isHex64 = (value) => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+var CompletionItemKind2, DiagnosticCategory2, ElementFlags2, ModuleKind2, NodeBuilderFlags2, ObjectFlags2, SignatureFlags2, SignatureKind2, SymbolFlags2, TypeFlags2, TypePredicateKind2, CharacterCodes4, CommentDirectiveType2, InternalSymbolName2, LanguageVariant2, ModifierFlags2, NodeFlags2, RegularExpressionFlags2, ScriptKind2, ScriptTarget2, SyntaxKind3, TokenFlags2, OuterExpressionKinds2, visitEachChildTable2, forEachChildTable2, EscapeSequenceScanningFlags2, textToKeywordObj2, textToKeyword2, textToToken2, charCodeToRegExpFlag2, jsDocTagTerminators2, tokenStrings2, childProperties2, singleChildNodePropertyNames2, PROTOCOL_VERSION2 = 5, HEADER_OFFSET_METADATA2 = 0, HEADER_OFFSET_HASH_LO02 = 4, HEADER_OFFSET_HASH_LO12 = 8, HEADER_OFFSET_HASH_HI02 = 12, HEADER_OFFSET_HASH_HI12 = 16, HEADER_OFFSET_PARSE_OPTIONS2 = 20, HEADER_OFFSET_STRING_TABLE_OFFSETS2 = 24, HEADER_OFFSET_STRING_TABLE2 = 28, HEADER_OFFSET_EXTENDED_DATA2 = 32, HEADER_OFFSET_STRUCTURED_DATA2 = 36, HEADER_OFFSET_NODES2 = 40, HEADER_SIZE2 = 44, NODE_LEN2 = 28, NODE_OFFSET_KIND2 = 0, NODE_OFFSET_POS2 = 4, NODE_OFFSET_END2 = 8, NODE_OFFSET_NEXT2 = 12, NODE_OFFSET_PARENT2 = 16, NODE_OFFSET_DATA2 = 20, NODE_OFFSET_FLAGS2 = 24, KIND_NODE_LIST2 = 4294967295, NODE_DATA_TYPE_CHILDREN2 = 0, NODE_DATA_TYPE_STRING2 = 1073741824, NODE_DATA_TYPE_EXTENDED2 = 2147483648, surrogateLeadByte2 = 237, surrogateSecondByteMin2 = 160, surrogateSecondByteMax2 = 191, continuationByteMin2 = 128, continuationByteMax2 = 191, Wtf8Decoder2, MSGPACK_FIXARRAY32 = 147, MSGPACK_BIN82 = 196, MSGPACK_BIN162 = 197, MSGPACK_BIN322 = 198, MSGPACK_UINT82 = 204, encoder4, decoder2, NODE_FIELDS2, NODE_FIELD_NEXT2 = 3, NO_STRUCTURED_DATA3 = 4294967295, _encoder2, popcount82, NODE_DATA_TYPE_MASK2 = 3221225472, NODE_CHILD_MASK2 = 255, NODE_STRING_INDEX_MASK2 = 16777215, NODE_EXTENDED_DATA_MASK2 = 16777215, RemoteNodeList2, RemoteNode2, NO_STRUCTURED_DATA22 = 4294967295, RemoteSourceFile2, CharacterCodesSlash2 = 47, CharacterCodesBackslash2 = 92, CharacterCodesColon2 = 58, CharacterCodesPercent2 = 37, CharacterCodes32 = 51, CharacterCodesa2 = 97, CharacterCodesz2 = 122, CharacterCodesA2 = 65, CharacterCodesZ2 = 90, CharacterCodesDot2 = 46, directorySeparator2 = "/", altDirectorySeparator2 = "\\", urlSchemeSeparator2 = "://", backslashRegExp2, relativePathSegmentRegExp2, bundledScheme2 = "bundled:///", fsCallbackNames2, MSG_REQUEST2 = 1, MSG_CALL_RESPONSE2 = 2, MSG_CALL_ERROR2 = 3, MSG_RESPONSE2 = 4, MSG_ERROR2 = 5, MSG_CALL2 = 6, sleepBuf2, EMPTY_BUF2, liveChildren2, RECENT_REQUEST_CAPACITY2 = 5, Snapshot2, STALE_AFTER_MS3, MAX_CONTENT_TOKENS_PER_FILE2 = 5000, MAX_CONTENT_FILE_BYTES2, CONTENT_SEARCH_TIME_BUDGET_MS = 1000, CONTENT_DEFAULT_LIMIT = 20, CONTENT_MAX_LIMIT = 50, LANGUAGE_ALIASES, PROJECT_CONFIG_MAX_FILE_SIZE_BYTES2, PROJECT_CONFIG_DEFAULT_FILE_SIZE_BYTES2, STATIC_CONFIDENCE2 = 1, UNRESOLVED_CONFIDENCE2 = 0.5, UNKNOWN2 = "unknown", RECORD_ID3, MAX_ALIAS_DEPTH2 = 10, EXPRESS_METHODS2, SEARCH_RANK2, DEFAULT_RESULT_LIMIT2 = 20, MAX_RESULT_LIMIT2 = 50, MAX_EXPLORED_EDGES2 = 20000, DEFAULT_QUERY_BUDGET_MS2 = 2000, MAX_QUERY_BUDGET_MS2 = 60000, DEFAULT_MAX_DEPTH2 = 5, MAX_DEPTH_LIMIT2 = 10, SUPPORTED_FILE2, KIND_PRIORITY2, CONFIRMED_EVIDENCE_KINDS2, snapshotIndexes2, EXPLORE_BODY_MAX_LINES = 60, EXPLORE_MAX_PATH_PAIRS = 20, UNANALYZED_NOTE2, SNAPSHOT_STORE_VERSION = 1, UNATTRIBUTED_SHARD = "__unattributed__", PARSER_RECORD_VERSION = 1, FILE_RECORDS_VERSION = 1, isRecord22 = (value) => !Array.isArray(value) && value === Object(value) && !(Object(value) instanceof Function), HEX642, isHex64 = (value) => {
+  const text = String(value);
+  return text === value && HEX642.test(text);
+}, staleFileNotes = (envelope = {}, pendingSync = [], ageMsOf = null) => {
+  const pending = Array.isArray(pendingSync) ? pendingSync.filter((file) => Object.prototype.toString.call(file) === "[object String]" && file.length > 0) : [];
+  const pendingSet = new Set(pending);
+  const seen = new Set;
+  const referenced = [];
+  const collect = (item) => {
+    if (item === null || item === undefined)
+      return;
+    const file = item.file;
+    if (Object.prototype.toString.call(file) !== "[object String]" || file.length === 0)
+      return;
+    const rel = file.replace(/\\/g, "/").replace(/^\.\//, "");
+    if (seen.has(rel) || !pendingSet.has(rel))
+      return;
+    seen.add(rel);
+    const age = ageMsOf !== null && ageMsOf !== undefined ? ageMsOf(rel) : null;
+    referenced.push({ file: rel, ageMs: Number.isFinite(age) ? age : null });
+  };
+  for (const item of Array.isArray(envelope?.items) ? envelope.items : [])
+    collect(item);
+  for (const key of ["callers", "callees", "impacted", "candidates", "contentItems"]) {
+    for (const item of Array.isArray(envelope?.[key]) ? envelope[key] : [])
+      collect(item);
+  }
+  const unreferenced = pending.filter((file) => !seen.has(file));
+  const notes = referenced.map((entry) => `stale: ${entry.file} edited since index — Read directly for current source`);
+  return { staleFiles: referenced, pendingSync: pending, unreferenced, notes };
+};
 var init_code_graph_bundle = __esm(() => {
   (function(CompletionItemKind) {
     CompletionItemKind[CompletionItemKind["Text"] = 1] = "Text";
@@ -12240,7 +14214,20 @@ var init_code_graph_bundle = __esm(() => {
     typescript: "ts",
     javascript: "js"
   };
+  PROJECT_CONFIG_MAX_FILE_SIZE_BYTES2 = 32 * 1024 * 1024;
+  PROJECT_CONFIG_DEFAULT_FILE_SIZE_BYTES2 = 1024 * 1024;
   RECORD_ID3 = /^pk-[0-9a-f]{12}$/;
+  EXPRESS_METHODS2 = [
+    "get",
+    "post",
+    "put",
+    "delete",
+    "patch",
+    "options",
+    "head",
+    "all",
+    "use"
+  ];
   SEARCH_RANK2 = {
     "exact-name": 0,
     "exact-qualified": 1,
@@ -12254,17 +14241,24 @@ var init_code_graph_bundle = __esm(() => {
     TESTS: 0,
     IMPORTS: 1,
     CALLS_STATIC: 2,
-    CALLS_UNRESOLVED: 3
+    CALLS_UNRESOLVED: 3,
+    ROUTE: 2,
+    REFERENCES: 2,
+    NAVIGATES: 2
   };
   CONFIRMED_EVIDENCE_KINDS2 = new Set([
     "DEFINES",
     "EXPORTS",
     "IMPORTS",
     "CALLS_STATIC",
-    "TESTS"
+    "TESTS",
+    "ROUTE",
+    "REFERENCES",
+    "NAVIGATES"
   ]);
   snapshotIndexes2 = new WeakMap;
   UNANALYZED_NOTE2 = "non-TypeScript files are not analysed; entry points, framework conventions, " + "CLI registries, schedulers and build config can reach a file outside the analysed " + "edge set, so every candidate is only potentially unreferenced, never proven unused.";
+  HEX642 = /^[0-9a-f]{64}$/;
 });
 
 // ../../../../omo-engine/omo-opencode/src/config/validate.ts
@@ -16115,6 +18109,17 @@ function _array(Class, element, params) {
     ...normalizeParams(params)
   });
 }
+function _custom(Class, fn, _params) {
+  const norm = normalizeParams(_params);
+  norm.abort ?? (norm.abort = true);
+  const schema = new Class({
+    type: "custom",
+    check: "custom",
+    fn,
+    ...norm
+  });
+  return schema;
+}
 function _refine(Class, fn, _params) {
   const schema = new Class({
     type: "custom",
@@ -18158,6 +20163,9 @@ var ZodCustom = /* @__PURE__ */ $constructor("ZodCustom", (inst, def) => {
   ZodType.init(inst, def);
   inst._zod.processJSONSchema = (ctx, json, params) => customProcessor(inst, ctx, json, params);
 });
+function custom(fn, _params) {
+  return _custom(ZodCustom, fn ?? (() => true), _params);
+}
 function refine(fn, _params = {}) {
   return _refine(ZodCustom, fn, _params);
 }
@@ -28813,11 +30821,17 @@ function isMethodDeclaration(node) {
 function isStringLiteral(node) {
   return node.kind === SyntaxKind2.StringLiteral;
 }
+function isNoSubstitutionTemplateLiteral(node) {
+  return node.kind === SyntaxKind2.NoSubstitutionTemplateLiteral;
+}
 function isArrowFunction(node) {
   return node.kind === SyntaxKind2.ArrowFunction;
 }
 function isFunctionExpression(node) {
   return node.kind === SyntaxKind2.FunctionExpression;
+}
+function isPropertyAccessExpression(node) {
+  return node.kind === SyntaxKind2.PropertyAccessExpression;
 }
 function isElementAccessExpression(node) {
   return node.kind === SyntaxKind2.ElementAccessExpression;
@@ -28828,6 +30842,21 @@ function isCallExpression(node) {
 function isNewExpression(node) {
   return node.kind === SyntaxKind2.NewExpression;
 }
+function isTemplateExpression(node) {
+  return node.kind === SyntaxKind2.TemplateExpression;
+}
+function isArrayLiteralExpression(node) {
+  return node.kind === SyntaxKind2.ArrayLiteralExpression;
+}
+function isObjectLiteralExpression(node) {
+  return node.kind === SyntaxKind2.ObjectLiteralExpression;
+}
+function isPropertyAssignment(node) {
+  return node.kind === SyntaxKind2.PropertyAssignment;
+}
+function isShorthandPropertyAssignment(node) {
+  return node.kind === SyntaxKind2.ShorthandPropertyAssignment;
+}
 function isExpressionWithTypeArguments(node) {
   return node.kind === SyntaxKind2.ExpressionWithTypeArguments;
 }
@@ -28836,6 +30865,9 @@ function isImportAttributes(node) {
 }
 function isTemplateHead(node) {
   return node.kind === SyntaxKind2.TemplateHead;
+}
+function isJsxElement(node) {
+  return node.kind === SyntaxKind2.JsxElement;
 }
 function isJsxAttributes(node) {
   return node.kind === SyntaxKind2.JsxAttributes;
@@ -28852,8 +30884,14 @@ function isJsxOpeningFragment(node) {
 function isJsxClosingFragment(node) {
   return node.kind === SyntaxKind2.JsxClosingFragment;
 }
+function isJsxAttribute(node) {
+  return node.kind === SyntaxKind2.JsxAttribute;
+}
 function isJsxClosingElement(node) {
   return node.kind === SyntaxKind2.JsxClosingElement;
+}
+function isJsxExpression(node) {
+  return node.kind === SyntaxKind2.JsxExpression;
 }
 function isSourceFile(node) {
   return node.kind === SyntaxKind2.SourceFile;
@@ -37292,6 +39330,8 @@ function contentFileLanguage(file) {
   const dot = base.lastIndexOf(".");
   return dot < 0 ? "unknown" : base.slice(dot + 1).toLowerCase();
 }
+var PROJECT_CONFIG_MAX_FILE_SIZE_BYTES = 32 * 1024 * 1024;
+var PROJECT_CONFIG_DEFAULT_FILE_SIZE_BYTES = 1024 * 1024;
 
 // ../../../../omo-engine/code-graph/src/extract.ts
 var STATIC_CONFIDENCE = 1;
@@ -37418,6 +39458,512 @@ function symbolIdForDecl(declaration, nameText, fileRel) {
 function isCallableDeclKind(kind) {
   return kind === SyntaxKind2.FunctionDeclaration || kind === SyntaxKind2.FunctionExpression || kind === SyntaxKind2.ArrowFunction || kind === SyntaxKind2.MethodDeclaration || kind === SyntaxKind2.Constructor || kind === SyntaxKind2.ClassDeclaration || kind === SyntaxKind2.ClassExpression;
 }
+var EXPRESS_METHODS = [
+  "get",
+  "post",
+  "put",
+  "delete",
+  "patch",
+  "options",
+  "head",
+  "all",
+  "use"
+];
+function isExpressMethod(name) {
+  const lower = name.toLowerCase();
+  return EXPRESS_METHODS.includes(lower);
+}
+function expressMethodOf(name) {
+  return name.toUpperCase();
+}
+function appScopeOf(rel) {
+  const segments = rel.split("/");
+  if (segments.length <= 1)
+    return "(root)";
+  const head = segments[0] ?? "";
+  if (head === "apps")
+    return `apps/${segments[1] ?? ""}`;
+  return head;
+}
+function stripQueryHash(value) {
+  const query = value.indexOf("?");
+  const hash = value.indexOf("#");
+  let end = value.length;
+  if (query >= 0 && query < end)
+    end = query;
+  if (hash >= 0 && hash < end)
+    end = hash;
+  return value.slice(0, end);
+}
+function normalizePattern(value) {
+  const clean = stripQueryHash(value);
+  const leading = clean.startsWith("/") ? clean : `/${clean}`;
+  if (leading.length > 1 && leading.endsWith("/"))
+    return leading.slice(0, -1);
+  return leading;
+}
+function splitSegments(path) {
+  const clean = stripQueryHash(path);
+  const trimmed = clean.length > 1 && clean.endsWith("/") ? clean.slice(0, -1) : clean;
+  return trimmed.split("/").filter((segment) => segment.length > 0);
+}
+function routeMatches(pattern, dest) {
+  const normalizedDest = normalizePattern(dest);
+  const normalizedPattern = normalizePattern(pattern);
+  if (normalizedPattern === normalizedDest)
+    return true;
+  const patternSegments = splitSegments(normalizedPattern);
+  const destSegments = splitSegments(normalizedDest);
+  let patternIndex = 0;
+  let destIndex = 0;
+  while (patternIndex < patternSegments.length) {
+    const patternSegment = patternSegments[patternIndex] ?? "";
+    const isParam = patternSegment.startsWith(":");
+    const isMulti = patternSegment.endsWith("*");
+    const isOptional = patternSegment.endsWith("?");
+    if (!isParam) {
+      const destSegment = destSegments[destIndex];
+      if (destSegment === undefined || destSegment !== patternSegment)
+        return false;
+      patternIndex += 1;
+      destIndex += 1;
+      continue;
+    }
+    if (isMulti) {
+      const restPattern = patternSegments.length - patternIndex - 1;
+      const restDest = destSegments.length - destIndex;
+      if (restDest < restPattern)
+        return false;
+      if (restPattern === 0) {
+        if (isOptional)
+          return true;
+        return restDest >= 1;
+      }
+      const consume = restDest - restPattern;
+      if (!isOptional && consume < 1)
+        return false;
+      destIndex += consume;
+      patternIndex += 1;
+      continue;
+    }
+    const destSegment = destSegments[destIndex];
+    if (destSegment === undefined) {
+      if (isOptional) {
+        patternIndex += 1;
+        continue;
+      }
+      return false;
+    }
+    if (destSegment.length === 0)
+      return false;
+    patternIndex += 1;
+    destIndex += 1;
+  }
+  return destIndex === destSegments.length;
+}
+function mapRouteSegment(segment) {
+  if (segment.startsWith("(") && segment.endsWith(")"))
+    return;
+  if (segment.startsWith("@"))
+    return;
+  if (segment.startsWith("_") && segment.length > 1)
+    return;
+  const optionalCatchAll = segment.match(/^\[\[\.\.\.(.+)\]\]$/);
+  if (optionalCatchAll !== null) {
+    const name = (optionalCatchAll[1] ?? "").split("=")[0]?.split(":")[0] ?? "";
+    if (name.length === 0)
+      return;
+    return `:${name}*?`;
+  }
+  const catchAll = segment.match(/^\[\.\.\.(.+)\]$/);
+  if (catchAll !== null) {
+    const name = (catchAll[1] ?? "").split("=")[0]?.split(":")[0] ?? "";
+    if (name.length === 0)
+      return;
+    return `:${name}*`;
+  }
+  const dynamic = segment.match(/^\[(.+)\]$/);
+  if (dynamic !== null) {
+    const name = (dynamic[1] ?? "").split("=")[0]?.split(":")[0] ?? "";
+    if (name.length === 0)
+      return;
+    return `:${name}`;
+  }
+  if (segment === "*")
+    return ":wild*";
+  return segment;
+}
+function joinRouteSegments(segments) {
+  const kept = [];
+  for (const segment of segments) {
+    if (segment !== undefined && segment.length > 0)
+      kept.push(segment);
+  }
+  if (kept.length === 0)
+    return "/";
+  return `/${kept.join("/")}`;
+}
+function nextAppPattern(rel) {
+  const marker = "/app/";
+  const at = rel.lastIndexOf(marker);
+  let after;
+  if (at >= 0)
+    after = rel.slice(at + marker.length);
+  else if (rel.startsWith("app/"))
+    after = rel.slice("app/".length);
+  else
+    return;
+  if (after === undefined)
+    return;
+  if (/^page\.[tj]sx?$/.test(after))
+    return "/";
+  const suffix = after.match(/^(.*)\/page\.[tj]sx?$/);
+  if (suffix === null)
+    return;
+  const dir = suffix[1] ?? "";
+  if (dir.length === 0)
+    return "/";
+  const mapped = dir.split("/").map(mapRouteSegment);
+  return joinRouteSegments(mapped);
+}
+function nextAppRoutePattern(rel) {
+  const marker = "/app/";
+  const at = rel.lastIndexOf(marker);
+  let after;
+  if (at >= 0)
+    after = rel.slice(at + marker.length);
+  else if (rel.startsWith("app/"))
+    after = rel.slice("app/".length);
+  else
+    return;
+  if (after === undefined)
+    return;
+  if (/^route\.[tj]s$/.test(after))
+    return "/";
+  const suffix = after.match(/^(.*)\/route\.[tj]s$/);
+  if (suffix === null)
+    return;
+  const dir = suffix[1] ?? "";
+  if (dir.length === 0)
+    return "/";
+  const mapped = dir.split("/").map(mapRouteSegment);
+  return joinRouteSegments(mapped);
+}
+function nextPagesPattern(rel) {
+  const marker = "/pages/";
+  const at = rel.lastIndexOf(marker);
+  let after;
+  if (at >= 0)
+    after = rel.slice(at + marker.length);
+  else if (rel.startsWith("pages/"))
+    after = rel.slice("pages/".length);
+  else
+    return;
+  if (after === undefined)
+    return;
+  const base = after.split("/").pop() ?? "";
+  if (base.startsWith("_"))
+    return;
+  const withoutExt = after.replace(/\.[tj]sx?$/, "");
+  if (withoutExt === "index")
+    return "/";
+  if (withoutExt.endsWith("/index")) {
+    const dir = withoutExt.slice(0, -"/index".length);
+    if (dir.length === 0)
+      return "/";
+    return joinRouteSegments(dir.split("/").map(mapRouteSegment));
+  }
+  return joinRouteSegments(withoutExt.split("/").map(mapRouteSegment));
+}
+function tanstackSegment(segment) {
+  if (segment === "$")
+    return ":wild*";
+  if (segment.startsWith("$")) {
+    const name = segment.slice(1);
+    if (name.length === 0)
+      return;
+    return `:${name}`;
+  }
+  return mapRouteSegment(segment);
+}
+function routePathOfNode(node, framework) {
+  if (node === undefined)
+    return { kind: "ignore" };
+  let text;
+  if (isStringLiteral(node))
+    text = node.text;
+  else if (isNoSubstitutionTemplateLiteral(node))
+    text = node.text;
+  else if (isTemplateExpression(node))
+    return { kind: "computed" };
+  else
+    return { kind: "computed" };
+  if (text === undefined)
+    return { kind: "computed" };
+  const clean = stripQueryHash(text);
+  if (clean === "" || clean === "/" || clean === "index")
+    return { kind: "literal", value: "/" };
+  if (clean === "*" || clean === "**")
+    return { kind: "literal", value: "/:wild*" };
+  if (clean.startsWith("http://") || clean.startsWith("https://") || clean.startsWith("//") || clean.startsWith("mailto:") || clean.startsWith("tel:") || clean.startsWith("#") || /\s/.test(clean)) {
+    return { kind: "ignore" };
+  }
+  const rooted = clean.startsWith("/") ? clean : `/${clean}`;
+  const segments = splitSegments(rooted).map((segment) => framework === "tanstack-router" ? tanstackSegment(segment) : mapRouteSegment(segment));
+  return { kind: "literal", value: joinRouteSegments(segments) };
+}
+function nuxtRoutePattern(rel) {
+  const pagesMarker = "/pages/";
+  const pagesAt = rel.lastIndexOf(pagesMarker);
+  let pagesAfter;
+  if (pagesAt >= 0)
+    pagesAfter = rel.slice(pagesAt + pagesMarker.length);
+  else if (rel.startsWith("pages/"))
+    pagesAfter = rel.slice("pages/".length);
+  if (pagesAfter !== undefined) {
+    if (pagesAfter.split("/").pop()?.startsWith("_") === true)
+      return;
+    const withoutExt = pagesAfter.replace(/\.(vue|[tj]sx?)$/, "");
+    if (withoutExt === "index")
+      return "/";
+    if (withoutExt.endsWith("/index")) {
+      const dir = withoutExt.slice(0, -"/index".length);
+      if (dir.length === 0)
+        return "/";
+      return joinRouteSegments(dir.split("/").map(mapRouteSegment));
+    }
+    return joinRouteSegments(withoutExt.split("/").map(mapRouteSegment));
+  }
+  const serverMarker = "/server/";
+  const serverAt = rel.lastIndexOf(serverMarker);
+  let serverAfter;
+  if (serverAt >= 0)
+    serverAfter = rel.slice(serverAt + serverMarker.length);
+  else if (rel.startsWith("server/"))
+    serverAfter = rel.slice("server/".length);
+  if (serverAfter !== undefined) {
+    const kind = serverAfter.split("/")[0];
+    if (kind !== "api" && kind !== "routes")
+      return;
+    const rest = serverAfter.split("/").slice(1).join("/");
+    const withoutMethod = rest.replace(/\.(get|post|put|delete|patch|head|options)\.[tj]s$/, "").replace(/\.[tj]s$/, "");
+    const prefix = kind === "api" ? "api" : "";
+    if (withoutMethod === "index" || withoutMethod === "")
+      return prefix === "" ? "/" : `/${prefix}`;
+    if (withoutMethod.endsWith("/index")) {
+      const dir = withoutMethod.slice(0, -"/index".length);
+      const mapped = dir.split("/").map(mapRouteSegment);
+      return prefix === "" ? joinRouteSegments(mapped) : joinRouteSegments([prefix, ...mapped]);
+    }
+    const mapped = withoutMethod.split("/").map(mapRouteSegment);
+    return prefix === "" ? joinRouteSegments(mapped) : joinRouteSegments([prefix, ...mapped]);
+  }
+  return;
+}
+function svelteKitRoutePattern(rel) {
+  const marker = "/routes/";
+  const at = rel.lastIndexOf(marker);
+  let after;
+  if (at >= 0)
+    after = rel.slice(at + marker.length);
+  else if (rel.startsWith("routes/"))
+    after = rel.slice("routes/".length);
+  else
+    return;
+  if (after === undefined)
+    return;
+  const leaf = after.split("/").pop() ?? "";
+  if (!/^\+(?:page(?:\.server)?|server|layout(?:\.server)?|error)\.[tj]s$/.test(leaf))
+    return;
+  const dir = after.split("/").slice(0, -1).join("/");
+  if (dir.length === 0)
+    return "/";
+  return joinRouteSegments(dir.split("/").map(mapRouteSegment));
+}
+function routeIdFor(framework, pattern, rel, method) {
+  const normalized = normalizePattern(pattern);
+  const head = method !== undefined && method.length > 0 ? `${method} ` : "";
+  return `route:${framework}:${head}${normalized}@${rel}`;
+}
+function resolverForRoute(framework) {
+  if (framework === "express")
+    return "express-route-detector";
+  if (framework === "next-app")
+    return "next-app-detector";
+  if (framework === "next-pages")
+    return "next-pages-detector";
+  if (framework === "tanstack-router")
+    return "tanstack-router-detector";
+  if (framework === "vue-router")
+    return "vue-router-detector";
+  if (framework === "nuxt")
+    return "nuxt-detector";
+  if (framework === "sveltekit")
+    return "sveltekit-detector";
+  if (framework === "angular")
+    return "angular-detector";
+  return "react-router-detector";
+}
+function destinationOfStringText(text) {
+  if (text.startsWith("/") && !text.startsWith("//"))
+    return { kind: "literal", value: normalizePattern(stripQueryHash(text)) };
+  if (text.startsWith("http://") || text.startsWith("https://") || text.startsWith("//") || text.startsWith("mailto:") || text.startsWith("tel:") || text.startsWith("#")) {
+    return { kind: "ignore" };
+  }
+  return { kind: "ignore" };
+}
+function destinationOfNode(node) {
+  if (node === undefined)
+    return { kind: "ignore" };
+  if (isStringLiteral(node))
+    return destinationOfStringText(node.text);
+  if (isNoSubstitutionTemplateLiteral(node))
+    return destinationOfStringText(node.text);
+  if (isTemplateExpression(node))
+    return { kind: "computed" };
+  if (isObjectLiteralExpression(node)) {
+    for (const property of node.properties) {
+      if (!isPropertyAssignment(property))
+        continue;
+      const key = property.name;
+      const keyText = isIdentifier(key) ? key.text : isStringLiteral(key) ? key.text : undefined;
+      if (keyText !== "pathname" && keyText !== "to")
+        continue;
+      return destinationOfNode(property.initializer);
+    }
+    return { kind: "ignore" };
+  }
+  if (isArrayLiteralExpression(node)) {
+    const first = node.elements.length > 0 ? node.elements[0] : undefined;
+    if (first === undefined)
+      return { kind: "ignore" };
+    const dest = destinationOfNode(first);
+    return dest.kind === "literal" ? dest : { kind: "computed" };
+  }
+  return { kind: "computed" };
+}
+function fileImportsNeedle(ctx, needle) {
+  let found = false;
+  const visit = (node) => {
+    if (found)
+      return;
+    if (isImportDeclaration(node)) {
+      const specifier = node.moduleSpecifier;
+      if (specifier && isStringLiteral(specifier) && specifier.text.includes(needle)) {
+        found = true;
+        return;
+      }
+      return;
+    }
+    if (isCallExpression(node)) {
+      const callee = node.expression;
+      if (isIdentifier(callee) && callee.text === "require" && node.arguments.length > 0) {
+        const first = node.arguments[0];
+        if (first && isStringLiteral(first) && first.text.includes(needle)) {
+          found = true;
+          return;
+        }
+      }
+    }
+    node.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  };
+  ctx.sourceFile.forEachChild((child) => {
+    visit(child);
+    return;
+  });
+  return found;
+}
+function handlerIdForIdentifier(ctx, files, ident) {
+  if (!isIdentifier(ident))
+    return;
+  const symbol = ctx.checker.getSymbolAtLocation(ident);
+  if (!symbol)
+    return;
+  const final = followAlias(ctx.checker, symbol);
+  const inGraph = [];
+  for (const handle of final.declarations) {
+    const declaration = handle.resolve(ctx.project);
+    if (!declaration)
+      continue;
+    const declFile = toPosixPath2(declaration.getSourceFile().fileName);
+    if (files.has(declFile))
+      inGraph.push(declaration);
+  }
+  if (inGraph.length === 0)
+    return;
+  const callable = inGraph.filter((declaration) => isCallableDeclKind(declaration.kind) || callableInitializer(declaration));
+  if (callable.length !== inGraph.length)
+    return;
+  const targets = new Set;
+  for (const declaration of callable) {
+    const nameText = declNameOf(declaration);
+    if (!nameText)
+      return;
+    const declFile = toPosixPath2(declaration.getSourceFile().fileName);
+    const targetCtx = files.get(declFile);
+    if (!targetCtx)
+      return;
+    targets.add(symbolIdForDecl(declaration, nameText, targetCtx.rel));
+  }
+  if (targets.size !== 1)
+    return;
+  const only = [];
+  for (const target of targets)
+    only.push(target);
+  return only[0];
+}
+function declNameOf(declaration) {
+  if (declaration.kind === SyntaxKind2.Constructor)
+    return "constructor";
+  if (isFunctionDeclaration(declaration))
+    return declaration.name && isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  if (isFunctionExpression(declaration))
+    return declaration.name && isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  if (isClassDeclaration(declaration))
+    return declaration.name && isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  if (isClassExpression(declaration))
+    return declaration.name && isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  if (isInterfaceDeclaration(declaration))
+    return declaration.name && isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  if (isEnumDeclaration(declaration))
+    return declaration.name && isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  if (isTypeAliasDeclaration(declaration))
+    return declaration.name && isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  if (isMethodDeclaration(declaration))
+    return declaration.name && isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  if (isVariableDeclaration(declaration))
+    return isIdentifier(declaration.name) ? declaration.name.text : undefined;
+  return;
+}
+function defaultHandlerForFile(ctx, files) {
+  const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
+  if (moduleSymbol) {
+    const exported = ctx.checker.getExportsOfModule(moduleSymbol);
+    for (const exportedSymbol of exported) {
+      if (exportedSymbol.name !== "default")
+        continue;
+      const final = followAlias(ctx.checker, exportedSymbol);
+      for (const handle of final.declarations) {
+        const declaration = handle.resolve(ctx.project);
+        if (!declaration)
+          continue;
+        const declFile = toPosixPath2(declaration.getSourceFile().fileName);
+        if (declFile !== ctx.key)
+          continue;
+        const nameText = declNameOf(declaration);
+        if (!nameText)
+          continue;
+        const id = symbolIdForDecl(declaration, nameText, ctx.rel);
+        const line = ctx.sourceFile.getLineAndCharacterOfPosition(declaration.getStart(ctx.sourceFile)).line + 1;
+        return { id, line };
+      }
+    }
+  }
+  return;
+}
 
 class GraphBuilder {
   root;
@@ -37425,7 +39971,10 @@ class GraphBuilder {
   files = new Map;
   nodes = new Map;
   edges = new Map;
+  routes = [];
+  routeIds = new Set;
   callOrdinals = new Map;
+  emittedFiles = new Set;
   contentFiles = new Map;
   contentSkipped = [];
   droppedKeys = new Set;
@@ -37485,7 +40034,14 @@ class GraphBuilder {
       }
     }
     const ordered = [...this.files.values()].sort((left, right) => left.rel < right.rel ? -1 : 1);
+    const fresh = [];
     for (const ctx of ordered) {
+      if (!this.emittedFiles.has(ctx.key)) {
+        this.emittedFiles.add(ctx.key);
+        fresh.push(ctx);
+      }
+    }
+    for (const ctx of fresh) {
       const isTest = isTestPath(ctx.rel);
       if (isTest) {
         const fileNode = this.nodes.get(`file:${ctx.rel}`);
@@ -37497,6 +40053,8 @@ class GraphBuilder {
       this.emitDefinitions(ctx);
       this.emitCalls(ctx);
     }
+    this.emitRouteNodes(ordered);
+    this.emitNavigations(ordered);
   }
   addKnowledgeLinks(links) {
     for (const link of links) {
@@ -37978,6 +40536,981 @@ class GraphBuilder {
       });
     }
   }
+  emitRouteRecord(record, handlerId, handlerRef) {
+    if (this.routeIds.has(record.id))
+      return;
+    this.routeIds.add(record.id);
+    this.routes.push(record);
+    this.nodes.set(record.id, { id: record.id, kind: "route", file: record.file, line: record.line, name: record.pattern });
+    const routeEdgeId = `route:file:${record.file}:${record.id}`;
+    this.edges.set(routeEdgeId, {
+      id: routeEdgeId,
+      kind: "ROUTE",
+      from: `file:${record.file}`,
+      to: record.id,
+      confidence: STATIC_CONFIDENCE,
+      ref: `${record.file}:${record.line}`,
+      resolvedBy: "framework",
+      framework: record.framework,
+      resolver: record.resolver
+    });
+    if (handlerId !== undefined) {
+      const refEdgeId = `references:${record.id}:${handlerId}`;
+      this.edges.set(refEdgeId, {
+        id: refEdgeId,
+        kind: "REFERENCES",
+        from: record.id,
+        to: handlerId,
+        confidence: STATIC_CONFIDENCE,
+        ref: handlerRef,
+        resolvedBy: "framework",
+        framework: record.framework,
+        resolver: record.resolver
+      });
+    }
+  }
+  emitRouteUnresolved(ctx, senderId, line, siteText) {
+    const ordinal = this.callOrdinals.get(ctx.key) ?? 0;
+    this.callOrdinals.set(ctx.key, ordinal + 1);
+    const callSiteId = `call:${ctx.rel}:${line}:${ordinal}`;
+    this.nodes.set(callSiteId, { id: callSiteId, kind: "call-site", file: ctx.rel, line, name: siteText.slice(0, 80) });
+    const edgeId = `calls-unresolved:${senderId}:${callSiteId}`;
+    if (this.edges.has(edgeId))
+      return;
+    this.edges.set(edgeId, {
+      id: edgeId,
+      kind: "CALLS_UNRESOLVED",
+      from: senderId,
+      to: UNKNOWN,
+      confidence: UNRESOLVED_CONFIDENCE,
+      ref: `${ctx.rel}:${line}`,
+      uncertain: true,
+      callSite: callSiteId
+    });
+  }
+  findMatchingRoutes(pattern, appScope) {
+    const out = [];
+    for (const record of this.routes) {
+      if (record.appScope !== appScope)
+        continue;
+      if (routeMatches(record.pattern, pattern))
+        out.push(record);
+    }
+    out.sort((left, right) => left.id < right.id ? -1 : 1);
+    return out;
+  }
+  emitNavigation(ctx, senderId, dest, line, inferred, siteText, resolver) {
+    if (dest.kind === "ignore")
+      return;
+    if (dest.kind === "computed") {
+      this.emitRouteUnresolved(ctx, senderId, line, siteText);
+      return;
+    }
+    const appScope = appScopeOf(ctx.rel);
+    const matches = this.findMatchingRoutes(dest.value, appScope);
+    if (matches.length === 0) {
+      this.emitRouteUnresolved(ctx, senderId, line, siteText);
+      return;
+    }
+    for (const match of matches) {
+      const edgeId = `navigates:${senderId}:${match.id}:${ctx.rel}:${line}`;
+      if (this.edges.has(edgeId))
+        continue;
+      const edge = {
+        id: edgeId,
+        kind: "NAVIGATES",
+        from: senderId,
+        to: match.id,
+        confidence: STATIC_CONFIDENCE,
+        ref: `${ctx.rel}:${line}`,
+        resolvedBy: "framework",
+        framework: match.framework,
+        resolver
+      };
+      this.edges.set(edgeId, inferred ? { ...edge, inferred: true } : edge);
+    }
+  }
+  emitRouteNodes(ordered) {
+    for (const ctx of ordered) {
+      this.emitExpressRoutes(ctx);
+      this.emitNextAppRoutes(ctx);
+      this.emitNextPagesRoutes(ctx);
+      this.emitReactRouterRoutes(ctx);
+      this.emitReactRouterFullRoutes(ctx);
+      this.emitTanStackRouterRoutes(ctx);
+      this.emitVueRouterRoutes(ctx);
+      this.emitNuxtRoutes(ctx);
+      this.emitSvelteKitRoutes(ctx);
+      this.emitAngularRoutes(ctx);
+    }
+  }
+  collectExpressRouterVars(ctx) {
+    const vars = new Set;
+    const visit = (node) => {
+      if (isVariableDeclaration(node)) {
+        if (!isIdentifier(node.name))
+          return;
+        const initializer = node.initializer;
+        if (!initializer || !isCallExpression(initializer))
+          return;
+        const callee = initializer.expression;
+        if (isIdentifier(callee) && callee.text === "express") {
+          vars.add(node.name.text);
+          return;
+        }
+        if (isIdentifier(callee) && callee.text === "Router") {
+          vars.add(node.name.text);
+          return;
+        }
+        if (isPropertyAccessExpression(callee)) {
+          const object = callee.expression;
+          const name = callee.name;
+          if (isIdentifier(object) && object.text === "express" && isIdentifier(name) && name.text === "Router") {
+            vars.add(node.name.text);
+            return;
+          }
+        }
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+    return vars;
+  }
+  emitExpressRoutes(ctx) {
+    if (!fileImportsNeedle(ctx, "express"))
+      return;
+    const routerVars = this.collectExpressRouterVars(ctx);
+    const visit = (node) => {
+      if (isCallExpression(node)) {
+        const callee = node.expression;
+        if (isPropertyAccessExpression(callee)) {
+          const object = callee.expression;
+          const methodNode = callee.name;
+          if (isIdentifier(object) && isIdentifier(methodNode) && isExpressMethod(methodNode.text)) {
+            const receiver = object.text;
+            const known = routerVars.has(receiver) || receiver === "app" || receiver === "router";
+            if (known) {
+              const args = node.arguments;
+              const first = args.length > 0 ? args[0] : undefined;
+              const line = this.lineOf(ctx, node);
+              const dest = destinationOfNode(first);
+              if (dest.kind === "literal") {
+                const method = expressMethodOf(methodNode.text);
+                const pattern = dest.value;
+                const record = {
+                  id: routeIdFor("express", pattern, ctx.rel, method),
+                  pattern,
+                  method,
+                  framework: "express",
+                  resolver: "express-route-detector",
+                  file: ctx.rel,
+                  line,
+                  appScope: appScopeOf(ctx.rel)
+                };
+                const handlerRef = `${ctx.rel}:${line}`;
+                let emitted = false;
+                for (let index = 1;index < args.length; index += 1) {
+                  const handler = args[index];
+                  if (handler === undefined)
+                    continue;
+                  if (isArrayLiteralExpression(handler)) {
+                    for (const element of handler.elements) {
+                      const handlerId = handlerIdForIdentifier(ctx, this.files, element);
+                      if (handlerId !== undefined) {
+                        this.emitRouteRecord(record, handlerId, handlerRef);
+                        emitted = true;
+                      }
+                    }
+                    continue;
+                  }
+                  if (isIdentifier(handler)) {
+                    const handlerId = handlerIdForIdentifier(ctx, this.files, handler);
+                    if (handlerId !== undefined) {
+                      this.emitRouteRecord(record, handlerId, handlerRef);
+                      emitted = true;
+                    }
+                    continue;
+                  }
+                }
+                if (!emitted)
+                  this.emitRouteRecord(record, undefined, handlerRef);
+              } else if (dest.kind === "computed") {
+                this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, node.getText().slice(0, 80));
+              }
+            }
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitNextAppRoutes(ctx) {
+    const pagePattern = nextAppPattern(ctx.rel);
+    if (pagePattern !== undefined) {
+      const handler = defaultHandlerForFile(ctx, this.files);
+      const line = handler !== undefined ? handler.line : 1;
+      const handlerId = handler !== undefined ? handler.id : `file:${ctx.rel}`;
+      const record = {
+        id: routeIdFor("next-app", pagePattern, ctx.rel),
+        pattern: pagePattern,
+        framework: "next-app",
+        resolver: "next-app-detector",
+        file: ctx.rel,
+        line,
+        appScope: appScopeOf(ctx.rel)
+      };
+      this.emitRouteRecord(record, handlerId, `${ctx.rel}:${line}`);
+      return;
+    }
+    const endpointPattern = nextAppRoutePattern(ctx.rel);
+    if (endpointPattern !== undefined) {
+      const moduleSymbol = ctx.checker.getSymbolAtLocation(ctx.sourceFile);
+      if (!moduleSymbol)
+        return;
+      const exported = ctx.checker.getExportsOfModule(moduleSymbol);
+      const methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+      for (const exportedSymbol of exported) {
+        if (!methods.includes(exportedSymbol.name))
+          continue;
+        const final = followAlias(ctx.checker, exportedSymbol);
+        for (const handle of final.declarations) {
+          const declaration = handle.resolve(ctx.project);
+          if (!declaration)
+            continue;
+          const declFile = toPosixPath2(declaration.getSourceFile().fileName);
+          if (declFile !== ctx.key)
+            continue;
+          const nameText = declNameOf(declaration);
+          if (!nameText)
+            continue;
+          const handlerId = symbolIdForDecl(declaration, nameText, ctx.rel);
+          const line = ctx.sourceFile.getLineAndCharacterOfPosition(declaration.getStart(ctx.sourceFile)).line + 1;
+          const record = {
+            id: routeIdFor("next-app", endpointPattern, ctx.rel, exportedSymbol.name),
+            pattern: endpointPattern,
+            method: exportedSymbol.name,
+            framework: "next-app",
+            resolver: "next-app-detector",
+            file: ctx.rel,
+            line,
+            appScope: appScopeOf(ctx.rel)
+          };
+          this.emitRouteRecord(record, handlerId, `${ctx.rel}:${line}`);
+        }
+      }
+    }
+  }
+  emitNextPagesRoutes(ctx) {
+    const pattern = nextPagesPattern(ctx.rel);
+    if (pattern === undefined)
+      return;
+    const handler = defaultHandlerForFile(ctx, this.files);
+    const line = handler !== undefined ? handler.line : 1;
+    const handlerId = handler !== undefined ? handler.id : `file:${ctx.rel}`;
+    const record = {
+      id: routeIdFor("next-pages", pattern, ctx.rel),
+      pattern,
+      framework: "next-pages",
+      resolver: "next-pages-detector",
+      file: ctx.rel,
+      line,
+      appScope: appScopeOf(ctx.rel)
+    };
+    this.emitRouteRecord(record, handlerId, `${ctx.rel}:${line}`);
+  }
+  jsxAttrDestination(attr) {
+    if (!isJsxAttribute(attr))
+      return { kind: "ignore" };
+    const initializer = attr.initializer;
+    if (initializer === undefined)
+      return { kind: "ignore" };
+    if (isStringLiteral(initializer))
+      return destinationOfStringText(initializer.text);
+    if (isJsxExpression(initializer)) {
+      const inner = initializer.expression;
+      if (inner === undefined)
+        return { kind: "ignore" };
+      return destinationOfNode(inner);
+    }
+    return { kind: "ignore" };
+  }
+  jsxAttrNamed(node, names) {
+    let found;
+    const attributes = isJsxOpeningElement(node) ? node.attributes.properties : isJsxSelfClosingElement(node) ? node.attributes.properties : undefined;
+    if (attributes === undefined)
+      return;
+    for (const attr of attributes) {
+      if (!isJsxAttribute(attr))
+        continue;
+      const attrName = attr.name;
+      const text = isIdentifier(attrName) ? attrName.text : undefined;
+      if (text !== undefined && names.includes(text)) {
+        found = attr;
+        break;
+      }
+    }
+    return found;
+  }
+  resolveJsxElementHandler(ctx, value) {
+    if (value === undefined)
+      return;
+    if (isJsxSelfClosingElement(value)) {
+      const tag = value.tagName;
+      if (isIdentifier(tag))
+        return handlerIdForIdentifier(ctx, this.files, tag);
+      return;
+    }
+    if (isJsxExpression(value)) {
+      const inner = value.expression;
+      if (inner === undefined)
+        return;
+      if (isIdentifier(inner))
+        return handlerIdForIdentifier(ctx, this.files, inner);
+      if (isJsxElement(inner)) {
+        const tag = inner.openingElement.tagName;
+        if (isIdentifier(tag))
+          return handlerIdForIdentifier(ctx, this.files, tag);
+        return;
+      }
+      if (isJsxSelfClosingElement(inner)) {
+        const tag = inner.tagName;
+        if (isIdentifier(tag))
+          return handlerIdForIdentifier(ctx, this.files, tag);
+        return;
+      }
+      return;
+    }
+    if (isJsxElement(value)) {
+      const tag = value.openingElement.tagName;
+      if (isIdentifier(tag))
+        return handlerIdForIdentifier(ctx, this.files, tag);
+      return;
+    }
+    if (isIdentifier(value))
+      return handlerIdForIdentifier(ctx, this.files, value);
+    return;
+  }
+  emitReactRouterRoutes(ctx) {
+    if (!fileImportsNeedle(ctx, "react-router"))
+      return;
+    const visit = (node) => {
+      if (isJsxOpeningElement(node) || isJsxSelfClosingElement(node)) {
+        const tag = node.tagName;
+        if (isIdentifier(tag) && tag.text === "Route") {
+          const pathAttr = this.jsxAttrNamed(node, ["path"]);
+          if (pathAttr !== undefined) {
+            const dest = this.jsxAttrDestination(pathAttr);
+            const line = this.lineOf(ctx, node);
+            if (dest.kind === "literal") {
+              const elementAttr = this.jsxAttrNamed(node, ["element", "Component", "component"]);
+              const handlerId = elementAttr !== undefined && isJsxAttribute(elementAttr) ? this.resolveJsxElementHandler(ctx, elementAttr.initializer) : undefined;
+              const record = {
+                id: routeIdFor("react-router", dest.value, ctx.rel),
+                pattern: dest.value,
+                framework: "react-router",
+                resolver: "react-router-detector",
+                file: ctx.rel,
+                line,
+                appScope: appScopeOf(ctx.rel)
+              };
+              this.emitRouteRecord(record, handlerId ?? `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+            } else if (dest.kind === "computed") {
+              this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, node.getText().slice(0, 80));
+            }
+          }
+        }
+      }
+      if (isCallExpression(node)) {
+        const callee = node.expression;
+        if (isIdentifier(callee) && (callee.text === "createBrowserRouter" || callee.text === "createMemoryRouter" || callee.text === "createHashRouter")) {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          if (first !== undefined && isArrayLiteralExpression(first)) {
+            for (const entry of first.elements) {
+              if (!isObjectLiteralExpression(entry))
+                continue;
+              let pathValue;
+              let elementValue;
+              for (const property of entry.properties) {
+                if (!isPropertyAssignment(property))
+                  continue;
+                const key = property.name;
+                const keyText = isIdentifier(key) ? key.text : isStringLiteral(key) ? key.text : undefined;
+                if (keyText === "path")
+                  pathValue = property.initializer;
+                if (keyText === "element" || keyText === "Component" || keyText === "component") {
+                  elementValue = property.initializer;
+                }
+              }
+              if (pathValue === undefined)
+                continue;
+              const dest = destinationOfNode(pathValue);
+              const line = this.lineOf(ctx, entry);
+              if (dest.kind === "literal") {
+                const handlerId = this.resolveJsxElementHandler(ctx, elementValue);
+                const record = {
+                  id: routeIdFor("react-router", dest.value, ctx.rel),
+                  pattern: dest.value,
+                  framework: "react-router",
+                  resolver: "react-router-detector",
+                  file: ctx.rel,
+                  line,
+                  appScope: appScopeOf(ctx.rel)
+                };
+                this.emitRouteRecord(record, handlerId ?? `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+              } else if (dest.kind === "computed") {
+                this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, entry.getText().slice(0, 80));
+              }
+            }
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitRouteObjectRecord(ctx, entry, framework, handlerKeys) {
+    if (!isObjectLiteralExpression(entry))
+      return;
+    let pathValue;
+    let handlerValue;
+    let childrenValue;
+    for (const property of entry.properties) {
+      if (isShorthandPropertyAssignment(property) && property.name.text === "path") {
+        pathValue = property.name;
+        continue;
+      }
+      if (!isPropertyAssignment(property))
+        continue;
+      const key = property.name;
+      const keyText = isIdentifier(key) ? key.text : isStringLiteral(key) ? key.text : undefined;
+      if (keyText === "path")
+        pathValue = property.initializer;
+      else if (keyText !== undefined && handlerKeys.includes(keyText))
+        handlerValue = property.initializer;
+      else if (keyText === "children")
+        childrenValue = property.initializer;
+    }
+    if (pathValue !== undefined) {
+      const dest = routePathOfNode(pathValue, framework);
+      const line = this.lineOf(ctx, entry);
+      if (dest.kind === "literal") {
+        const handlerId = this.resolveJsxElementHandler(ctx, handlerValue);
+        const record = {
+          id: routeIdFor(framework, dest.value, ctx.rel),
+          pattern: dest.value,
+          framework,
+          resolver: resolverForRoute(framework),
+          file: ctx.rel,
+          line,
+          appScope: appScopeOf(ctx.rel)
+        };
+        this.emitRouteRecord(record, handlerId ?? `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+      } else if (dest.kind === "computed") {
+        this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, entry.getText().slice(0, 80));
+      }
+    }
+    if (childrenValue !== undefined && isArrayLiteralExpression(childrenValue)) {
+      for (const child of childrenValue.elements) {
+        this.emitRouteObjectRecord(ctx, child, framework, handlerKeys);
+      }
+    }
+  }
+  sameFileRouteArray(ctx, name) {
+    let found;
+    const visit = (node) => {
+      if (found !== undefined)
+        return;
+      if (isVariableDeclaration(node) && isIdentifier(node.name) && node.name.text === name && node.initializer !== undefined && isArrayLiteralExpression(node.initializer)) {
+        found = [...node.initializer.elements];
+        return;
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+    return found;
+  }
+  routeArrayElements(ctx, value) {
+    if (value === undefined)
+      return;
+    if (isArrayLiteralExpression(value))
+      return [...value.elements];
+    if (!isIdentifier(value))
+      return;
+    const symbol = ctx.checker.getSymbolAtLocation(value);
+    if (!symbol)
+      return;
+    const final = followAlias(ctx.checker, symbol);
+    for (const handle of final.declarations) {
+      const declaration = handle.resolve(ctx.project);
+      if (!declaration)
+        continue;
+      if (toPosixPath2(declaration.getSourceFile().fileName) !== ctx.key)
+        continue;
+      if (isVariableDeclaration(declaration) && declaration.initializer !== undefined && isArrayLiteralExpression(declaration.initializer)) {
+        return [...declaration.initializer.elements];
+      }
+    }
+    return;
+  }
+  emitReactRouterFullRoutes(ctx) {
+    if (!fileImportsNeedle(ctx, "react-router"))
+      return;
+    const keys = ["element", "Component", "component"];
+    const visit = (node) => {
+      if (isCallExpression(node)) {
+        const callee = node.expression;
+        if (isIdentifier(callee) && callee.text === "useRoutes") {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          const elements = this.routeArrayElements(ctx, first);
+          if (elements !== undefined) {
+            for (const entry of elements)
+              this.emitRouteObjectRecord(ctx, entry, "react-router", keys);
+          } else if (first !== undefined && !isArrayLiteralExpression(first)) {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+          }
+        }
+        if (isIdentifier(callee) && (callee.text === "createRoute" || callee.text === "route")) {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          if (first !== undefined && isObjectLiteralExpression(first)) {
+            this.emitRouteObjectRecord(ctx, first, "react-router", keys);
+          } else if (first !== undefined) {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+          }
+        }
+        if (isIdentifier(callee) && (callee.text === "createBrowserRouter" || callee.text === "createMemoryRouter" || callee.text === "createHashRouter")) {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          if (first !== undefined && isArrayLiteralExpression(first)) {
+            for (const entry of first.elements) {
+              if (!isObjectLiteralExpression(entry))
+                continue;
+              let hasChildren = false;
+              for (const property of entry.properties) {
+                if (!isPropertyAssignment(property))
+                  continue;
+                const key = property.name;
+                const keyText = isIdentifier(key) ? key.text : isStringLiteral(key) ? key.text : undefined;
+                if (keyText === "children" && isArrayLiteralExpression(property.initializer))
+                  hasChildren = true;
+              }
+              if (hasChildren)
+                this.emitRouteObjectRecord(ctx, entry, "react-router", keys);
+            }
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitTanStackRouterRoutes(ctx) {
+    if (!fileImportsNeedle(ctx, "tanstack"))
+      return;
+    const keys = ["component", "Component"];
+    const visit = (node) => {
+      if (isCallExpression(node)) {
+        const callee = node.expression;
+        if (isIdentifier(callee) && callee.text === "createFileRoute") {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          const dest = routePathOfNode(first, "tanstack-router");
+          const line = this.lineOf(ctx, node);
+          if (dest.kind === "literal") {
+            const handler = defaultHandlerForFile(ctx, this.files);
+            const record = {
+              id: routeIdFor("tanstack-router", dest.value, ctx.rel),
+              pattern: dest.value,
+              framework: "tanstack-router",
+              resolver: "tanstack-router-detector",
+              file: ctx.rel,
+              line,
+              appScope: appScopeOf(ctx.rel)
+            };
+            this.emitRouteRecord(record, handler !== undefined ? handler.id : `file:${ctx.rel}`, `${ctx.rel}:${handler !== undefined ? handler.line : line}`);
+          } else if (dest.kind === "computed") {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, line, node.getText().slice(0, 80));
+          }
+          return;
+        }
+        if (isIdentifier(callee) && callee.text === "createRoute") {
+          const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+          if (first !== undefined && isObjectLiteralExpression(first)) {
+            this.emitRouteObjectRecord(ctx, first, "tanstack-router", keys);
+          } else if (first !== undefined) {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitVueRouterRoutes(ctx) {
+    if (!fileImportsNeedle(ctx, "vue-router"))
+      return;
+    const keys = ["component", "Component", "components"];
+    const visit = (node) => {
+      if (isCallExpression(node)) {
+        const callee = node.expression;
+        if (isIdentifier(callee) && (callee.text === "createRouter" || callee.text === "createWebHistory")) {
+          const options = callee.text === "createRouter" ? node.arguments.length > 0 ? node.arguments[0] : undefined : undefined;
+          if (options !== undefined && isObjectLiteralExpression(options)) {
+            for (const property of options.properties) {
+              let elements;
+              let isRoutesKey = false;
+              if (isPropertyAssignment(property)) {
+                const key = property.name;
+                const keyText = isIdentifier(key) ? key.text : isStringLiteral(key) ? key.text : undefined;
+                if (keyText === "routes") {
+                  isRoutesKey = true;
+                  elements = this.routeArrayElements(ctx, property.initializer);
+                }
+              } else if (isShorthandPropertyAssignment(property) && property.name.text === "routes") {
+                isRoutesKey = true;
+                elements = this.sameFileRouteArray(ctx, "routes");
+              }
+              if (!isRoutesKey)
+                continue;
+              if (elements !== undefined) {
+                for (const entry of elements)
+                  this.emitRouteObjectRecord(ctx, entry, "vue-router", keys);
+              } else {
+                this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+              }
+            }
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitNuxtRoutes(ctx) {
+    const pattern = nuxtRoutePattern(ctx.rel);
+    if (pattern === undefined)
+      return;
+    if (!fileImportsNeedle(ctx, "nuxt") && !fileImportsNeedle(ctx, "vue") && !fileImportsNeedle(ctx, "#app")) {}
+    const handler = defaultHandlerForFile(ctx, this.files);
+    const line = handler !== undefined ? handler.line : 1;
+    const record = {
+      id: routeIdFor("nuxt", pattern, ctx.rel),
+      pattern,
+      framework: "nuxt",
+      resolver: "nuxt-detector",
+      file: ctx.rel,
+      line,
+      appScope: appScopeOf(ctx.rel)
+    };
+    this.emitRouteRecord(record, handler !== undefined ? handler.id : `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+  }
+  emitSvelteKitRoutes(ctx) {
+    const pattern = svelteKitRoutePattern(ctx.rel);
+    if (pattern === undefined)
+      return;
+    const handler = defaultHandlerForFile(ctx, this.files);
+    const line = handler !== undefined ? handler.line : 1;
+    const record = {
+      id: routeIdFor("sveltekit", pattern, ctx.rel),
+      pattern,
+      framework: "sveltekit",
+      resolver: "sveltekit-detector",
+      file: ctx.rel,
+      line,
+      appScope: appScopeOf(ctx.rel)
+    };
+    this.emitRouteRecord(record, handler !== undefined ? handler.id : `file:${ctx.rel}`, `${ctx.rel}:${line}`);
+  }
+  emitAngularRoutes(ctx) {
+    if (!fileImportsNeedle(ctx, "@angular/router"))
+      return;
+    const keys = ["component", "loadComponent", "loadChildren"];
+    const visit = (node) => {
+      if (isCallExpression(node)) {
+        const callee = node.expression;
+        let routesArg;
+        if (isPropertyAccessExpression(callee) && isIdentifier(callee.expression) && isIdentifier(callee.name) && (callee.name.text === "forRoot" || callee.name.text === "forChild")) {
+          routesArg = node.arguments.length > 0 ? node.arguments[0] : undefined;
+        } else if (isIdentifier(callee) && callee.text === "provideRouter") {
+          routesArg = node.arguments.length > 0 ? node.arguments[0] : undefined;
+        }
+        if (routesArg !== undefined) {
+          const elements = this.routeArrayElements(ctx, routesArg);
+          if (elements !== undefined) {
+            for (const entry of elements)
+              this.emitRouteObjectRecord(ctx, entry, "angular", keys);
+          } else {
+            this.emitRouteUnresolved(ctx, `file:${ctx.rel}`, this.lineOf(ctx, node), node.getText().slice(0, 80));
+          }
+        }
+      }
+      node.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    };
+    ctx.sourceFile.forEachChild((child) => {
+      visit(child);
+      return;
+    });
+  }
+  emitNavigations(ordered) {
+    for (const ctx of ordered) {
+      const isNextFile = fileImportsNeedle(ctx, "next");
+      const isRouterFile = fileImportsNeedle(ctx, "react-router");
+      const isTanStackFile = fileImportsNeedle(ctx, "tanstack");
+      const isVueFile = fileImportsNeedle(ctx, "vue-router");
+      const isNuxtFile = fileImportsNeedle(ctx, "nuxt") || fileImportsNeedle(ctx, "#app");
+      const isSvelteFile = fileImportsNeedle(ctx, "@sveltejs") || fileImportsNeedle(ctx, "$app");
+      const isAngularFile = fileImportsNeedle(ctx, "@angular/router");
+      const callers = [`file:${ctx.rel}`];
+      const visit = (node) => {
+        const boundary = this.boundaryId(ctx, node);
+        if (boundary)
+          callers.push(boundary);
+        const sender = callers[callers.length - 1] ?? `file:${ctx.rel}`;
+        if (isCallExpression(node)) {
+          this.emitCodeNavigation(ctx, node, sender, {
+            isNextFile,
+            isRouterFile,
+            isTanStackFile,
+            isVueFile,
+            isNuxtFile,
+            isSvelteFile,
+            isAngularFile
+          });
+        } else if (isJsxOpeningElement(node) || isJsxSelfClosingElement(node)) {
+          this.emitMarkupNavigation(ctx, node, sender, {
+            isNextFile,
+            isRouterFile,
+            isTanStackFile,
+            isVueFile,
+            isNuxtFile,
+            isAngularFile
+          });
+        }
+        node.forEachChild((child) => {
+          visit(child);
+          return;
+        });
+        if (boundary)
+          callers.pop();
+      };
+      ctx.sourceFile.forEachChild((child) => {
+        visit(child);
+        return;
+      });
+    }
+  }
+  emitCodeNavigation(ctx, node, sender, flags) {
+    if (!isCallExpression(node))
+      return;
+    const { isNextFile, isRouterFile, isTanStackFile, isVueFile, isNuxtFile, isSvelteFile, isAngularFile } = flags;
+    const callee = node.expression;
+    const line = this.lineOf(ctx, node);
+    const siteText = node.getText().slice(0, 80);
+    const first = node.arguments.length > 0 ? node.arguments[0] : undefined;
+    const second = node.arguments.length > 1 ? node.arguments[1] : undefined;
+    if (isPropertyAccessExpression(callee)) {
+      const object = callee.expression;
+      const name = callee.name;
+      if (!isIdentifier(object) || !isIdentifier(name))
+        return;
+      const receiver = object.text;
+      const method = name.text;
+      if (receiver === "router" && (method === "push" || method === "replace" || method === "prefetch")) {
+        const dest = destinationOfNode(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (receiver === "history" && (method === "push" || method === "replace") && (isRouterFile || isVueFile)) {
+        const dest = destinationOfNode(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (receiver === "router" && (method === "navigate" || method === "navigateByUrl") && isAngularFile) {
+        const dest = this.angularDestination(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (receiver === "NextResponse" && method === "redirect" && isNextFile) {
+        const dest = destinationOfNode(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      return;
+    }
+    if (isIdentifier(callee)) {
+      const name = callee.text;
+      if (name === "navigate" && (isRouterFile || isTanStackFile)) {
+        const dest = destinationOfNode(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "redirect" && (isNextFile || isTanStackFile)) {
+        const dest = destinationOfNode(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "permanentRedirect" && isNextFile) {
+        const dest = destinationOfNode(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "redirect" && isSvelteFile && !isNextFile && !isTanStackFile) {
+        const dest = destinationOfNode(second);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "navigateTo" && isNuxtFile) {
+        const dest = destinationOfNode(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "goto" && isSvelteFile) {
+        const dest = destinationOfNode(first);
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+      if (name === "fetch") {
+        const dest = destinationOfNode(first);
+        if (dest.kind === "ignore")
+          return;
+        this.emitNavigation(ctx, sender, dest, line, false, siteText, "navigation-detector");
+        return;
+      }
+    }
+  }
+  angularDestination(node) {
+    const first = node !== undefined && isArrayLiteralExpression(node) && node.elements.length > 0 ? node.elements[0] : node;
+    return routePathOfNode(first, "angular");
+  }
+  angularAttrDestination(attr) {
+    if (!isJsxAttribute(attr))
+      return { kind: "ignore" };
+    const initializer = attr.initializer;
+    if (initializer === undefined)
+      return { kind: "ignore" };
+    if (isStringLiteral(initializer) || isNoSubstitutionTemplateLiteral(initializer)) {
+      return routePathOfNode(initializer, "angular");
+    }
+    if (isJsxExpression(initializer)) {
+      const inner = initializer.expression;
+      if (inner === undefined)
+        return { kind: "ignore" };
+      if (isArrayLiteralExpression(inner)) {
+        const first = inner.elements.length > 0 ? inner.elements[0] : undefined;
+        return routePathOfNode(first, "angular");
+      }
+      return destinationOfNode(inner);
+    }
+    return { kind: "ignore" };
+  }
+  emitMarkupNavigation(ctx, node, sender, flags) {
+    const { isNextFile, isRouterFile, isTanStackFile, isVueFile, isNuxtFile, isAngularFile } = flags;
+    const tagNode = isJsxOpeningElement(node) ? node.tagName : isJsxSelfClosingElement(node) ? node.tagName : undefined;
+    if (tagNode === undefined || !isIdentifier(tagNode))
+      return;
+    const tag = tagNode.text;
+    const line = this.lineOf(ctx, node);
+    const siteText = node.getText().slice(0, 80);
+    if (isAngularFile) {
+      const routerLinkAttr = this.jsxAttrNamed(node, ["routerLink"]);
+      if (routerLinkAttr !== undefined) {
+        const dest = this.angularAttrDestination(routerLinkAttr);
+        this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+        return;
+      }
+    }
+    if (tag === "a") {
+      const hrefAttr = this.jsxAttrNamed(node, ["href"]);
+      if (hrefAttr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(hrefAttr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+      return;
+    }
+    if (tag === "Link") {
+      if (!isNextFile && !isRouterFile && !isTanStackFile && !isVueFile && !isNuxtFile)
+        return;
+      const attr = this.jsxAttrNamed(node, ["href", "to"]);
+      if (attr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(attr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+      return;
+    }
+    if (tag === "RouterLink") {
+      if (!isVueFile && !isTanStackFile)
+        return;
+      const attr = this.jsxAttrNamed(node, ["to", "href"]);
+      if (attr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(attr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+      return;
+    }
+    if (tag === "NuxtLink") {
+      if (!isNuxtFile)
+        return;
+      const attr = this.jsxAttrNamed(node, ["to", "href"]);
+      if (attr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(attr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+      return;
+    }
+    if (tag === "Navigate" || tag === "NavLink" || tag === "Redirect") {
+      if (!isRouterFile)
+        return;
+      const attr = this.jsxAttrNamed(node, ["to", "href"]);
+      if (attr === undefined)
+        return;
+      const dest = this.jsxAttrDestination(attr);
+      this.emitNavigation(ctx, sender, dest, line, true, siteText, "markup-navigation-detector");
+    }
+  }
 }
 function indexFiles(entryFiles, options = {}) {
   if (entryFiles.length === 0)
@@ -38139,7 +41672,10 @@ var KIND_PRIORITY = {
   TESTS: 0,
   IMPORTS: 1,
   CALLS_STATIC: 2,
-  CALLS_UNRESOLVED: 3
+  CALLS_UNRESOLVED: 3,
+  ROUTE: 2,
+  REFERENCES: 2,
+  NAVIGATES: 2
 };
 function kindRank(edge) {
   return KIND_PRIORITY[edge] ?? 4;
@@ -38149,7 +41685,10 @@ var CONFIRMED_EVIDENCE_KINDS = new Set([
   "EXPORTS",
   "IMPORTS",
   "CALLS_STATIC",
-  "TESTS"
+  "TESTS",
+  "ROUTE",
+  "REFERENCES",
+  "NAVIGATES"
 ]);
 function verdictForEvidenceKind(edge) {
   return CONFIRMED_EVIDENCE_KINDS.has(edge) ? "confirmed" : "inferred";
@@ -38342,6 +41881,8 @@ function unionKnowledge(linked) {
   return out;
 }
 function toItem(node, evidence, knowledge) {
+  const primary = evidence[0];
+  const verdict = primary?.inferred === true ? "inferred" : verdictForEvidenceKind(primary?.edge ?? "indexed");
   const item = {
     id: node.id,
     file: node.file,
@@ -38349,7 +41890,7 @@ function toItem(node, evidence, knowledge) {
     evidence,
     confidence: 1,
     knowledgeIds: knowledge,
-    verdict: verdictForEvidenceKind(evidence[0]?.edge ?? "indexed"),
+    verdict,
     isTest: isTestPath(node.file)
   };
   return node.name === undefined ? item : { ...item, name: node.name };
@@ -38621,15 +42162,20 @@ function indexFor(snapshot) {
 function findNode(snapshot, id) {
   return indexFor(snapshot).nodeById.get(id);
 }
+function isRouteHopKind(kind) {
+  return kind === "CALLS_STATIC" || kind === "ROUTE" || kind === "REFERENCES" || kind === "NAVIGATES";
+}
 function callersOf(snapshot, symbolId) {
   const out = [];
   const index = indexFor(snapshot);
   for (const edge of index.edgesByTo.get(symbolId) ?? []) {
-    if (edge.kind !== "CALLS_STATIC")
+    if (!isRouteHopKind(edge.kind))
       continue;
     const caller = index.nodeById.get(edge.from);
-    if (caller !== undefined)
-      out.push({ caller, ref: edge.ref });
+    if (caller !== undefined) {
+      const entry = edge.inferred === true ? { caller, ref: edge.ref, kind: edge.kind, inferred: true } : { caller, ref: edge.ref, kind: edge.kind };
+      out.push(entry);
+    }
   }
   out.sort((left, right) => left.caller.id < right.caller.id ? -1 : 1);
   return out;
@@ -38638,11 +42184,13 @@ function calleesOf(snapshot, symbolId) {
   const out = [];
   const index = indexFor(snapshot);
   for (const edge of index.edgesByFrom.get(symbolId) ?? []) {
-    if (edge.kind !== "CALLS_STATIC")
+    if (!isRouteHopKind(edge.kind))
       continue;
     const callee = index.nodeById.get(edge.to);
-    if (callee !== undefined)
-      out.push({ callee, ref: edge.ref });
+    if (callee !== undefined) {
+      const entry = edge.inferred === true ? { callee, ref: edge.ref, kind: edge.kind, inferred: true } : { callee, ref: edge.ref, kind: edge.kind };
+      out.push(entry);
+    }
   }
   out.sort((left, right) => left.callee.id < right.callee.id ? -1 : 1);
   return out;
@@ -38719,8 +42267,12 @@ function symbolContext(snapshot, symbolId, options) {
     return unindexedSymbol(scope, freshness, symbolId);
   }
   const definition = nodeItem(snapshot, node, definesEvidence(snapshot, node));
-  const callerItems = callersOf(snapshot, symbolId).map(({ caller, ref }) => nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
-  const calleeItems = calleesOf(snapshot, symbolId).map(({ callee, ref }) => nodeItem(snapshot, callee, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]));
+  const callerItems = callersOf(snapshot, symbolId).map(({ caller, ref, kind, inferred }) => nodeItem(snapshot, caller, [
+    inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 }
+  ]));
+  const calleeItems = calleesOf(snapshot, symbolId).map(({ callee, ref, kind, inferred }) => nodeItem(snapshot, callee, [
+    inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 }
+  ]));
   const ranked = [
     { item: definition, depth: 0 },
     ...callerItems.map((item) => ({ item, depth: 1 })),
@@ -38853,7 +42405,7 @@ function impact(snapshot, symbolId, options) {
     }
     const next = [];
     for (const current of frontier) {
-      for (const { caller, ref } of callersOf(snapshot, current)) {
+      for (const { caller, ref, kind, inferred } of callersOf(snapshot, current)) {
         explored += 1;
         if (explored > exploredCap) {
           edgeBudgetHit = true;
@@ -38867,10 +42419,12 @@ function impact(snapshot, symbolId, options) {
           continue;
         seen.add(caller.id);
         walked.push({
-          item: nodeItem(snapshot, caller, [{ edge: "CALLS_STATIC", ref, confidence: 1 }]),
+          item: nodeItem(snapshot, caller, [
+            inferred === true ? { edge: kind, ref, confidence: 1, inferred: true } : { edge: kind, ref, confidence: 1 }
+          ]),
           depth
         });
-        if (caller.kind === "symbol")
+        if (caller.kind === "symbol" || caller.kind === "route")
           next.push(caller.id);
       }
       if (edgeBudgetHit || timeBudgetHit)
@@ -43428,6 +46982,7 @@ function buildToolRegistry(args) {
 
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/code-graph.ts
 import { execFile as execFile3 } from "node:child_process";
+import { readFile as readFile2 } from "node:fs/promises";
 import { promisify } from "node:util";
 import path7 from "node:path";
 
@@ -43482,7 +47037,7 @@ function refuseArgs(runId, hint) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/args.ts
-var CodeGraphOpSchema = _enum(["status", "context", "search", "trace", "impact", "tests"]);
+var CodeGraphOpSchema = _enum(["status", "context", "search", "trace", "impact", "tests", "explore"]);
 var CodeGraphSubjectKindSchema = _enum(["file", "symbol", "changes", "query"]);
 var CodeGraphArgsSchema = object({
   op: CodeGraphOpSchema,
@@ -43502,21 +47057,137 @@ import path6 from "node:path";
 
 // ../code-graph/runtime.js
 import { createHash as createHash6 } from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile, fork } from "node:child_process";
+import { availableParallelism as availableParallelism2, freemem } from "node:os";
+import { fileURLToPath as fileURLToPath4 } from "node:url";
 
 // ../code-graph/snapshot-storage.js
 import crypto from "node:crypto";
 var STORE_VERSION = 1;
+var isString = (value) => Object.prototype.toString.call(value) === "[object String]";
+var isFunction2 = (value) => {
+  const tag = Object.prototype.toString.call(value);
+  return tag === "[object Function]" || tag === "[object AsyncFunction]";
+};
+var isRecord10 = (value) => Object.prototype.toString.call(value) === "[object Object]";
 var safeSegment = (value) => String(value ?? "").replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 80);
 var shardName = (text) => `${crypto.createHash("sha256").update(text).digest("hex").slice(0, 32)}.json`;
 var recordsName = (text) => `files-${crypto.createHash("sha256").update(text).digest("hex").slice(0, 32)}.json`;
-var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
-  const enabled = typeof storeDir === "string" && storeDir.length > 0;
+var LEASE_FILENAME = ".lease";
+var DEFAULT_LEASE_STALE_MS = 120000;
+var DEFAULT_LEASE_TIMEOUT_MS = 60000;
+var DEFAULT_LEASE_RETRY_MS = 50;
+var createSnapshotStorage = ({
+  fsPromises,
+  path,
+  engine,
+  storeDir,
+  leaseStaleMs: leaseStaleMsOption,
+  leaseTimeoutMs: leaseTimeoutMsOption,
+  leaseRetryMs: leaseRetryMsOption
+}) => {
+  const enabled = isString(storeDir) && storeDir.length > 0;
   const scopeDir = (projectId, worktreeId) => path.join(storeDir, `${safeSegment(projectId)}--${safeSegment(worktreeId)}`);
+  const leaseStaleMs = Number.isFinite(Number(leaseStaleMsOption)) && Number(leaseStaleMsOption) > 0 ? Math.floor(Number(leaseStaleMsOption)) : DEFAULT_LEASE_STALE_MS;
+  const leaseTimeoutMs = Number.isFinite(Number(leaseTimeoutMsOption)) && Number(leaseTimeoutMsOption) > 0 ? Math.floor(Number(leaseTimeoutMsOption)) : DEFAULT_LEASE_TIMEOUT_MS;
+  const leaseRetryMs = Number.isFinite(Number(leaseRetryMsOption)) && Number(leaseRetryMsOption) > 0 ? Math.floor(Number(leaseRetryMsOption)) : DEFAULT_LEASE_RETRY_MS;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const writeAtomic = async (target, text) => {
     const temporary = `${target}.tmp-${process.pid}`;
     await fsPromises.writeFile(temporary, text, "utf8");
     await fsPromises.rename(temporary, target);
+  };
+  const readLeaseDoc = async (leasePath) => {
+    try {
+      const text = await fsPromises.readFile(leasePath, "utf8");
+      const parsed = JSON.parse(text);
+      if (!isRecord10(parsed))
+        return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+  const holderAlive = (pid) => {
+    const num = Number(pid);
+    if (!Number.isFinite(num))
+      return false;
+    try {
+      const killer = globalThis.process?.kill;
+      if (!isFunction2(killer))
+        return true;
+      killer.call(globalThis.process, num, 0);
+      return true;
+    } catch (error) {
+      const code = error?.code;
+      if (code === "EPERM" || code === "EBUSY")
+        return true;
+      return false;
+    }
+  };
+  const leaseIsStale = (doc, nowMs) => {
+    if (!doc)
+      return true;
+    const acquiredAtMs = Number(doc.acquiredAtMs);
+    if (!Number.isFinite(acquiredAtMs))
+      return true;
+    if (nowMs - acquiredAtMs > leaseStaleMs)
+      return true;
+    return !holderAlive(doc.pid);
+  };
+  const acquireLease = async (dir) => {
+    const leasePath = path.join(dir, LEASE_FILENAME);
+    const pid = Number(globalThis.process?.pid ?? 0);
+    const token = `${pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const payload = () => JSON.stringify({ version: 1, pid, token, acquiredAtMs: Date.now() });
+    const deadline = Date.now() + leaseTimeoutMs;
+    for (;; ) {
+      try {
+        await fsPromises.writeFile(leasePath, payload(), { encoding: "utf8", flag: "wx" });
+        return { acquired: true, token };
+      } catch (error) {
+        if (error?.code !== "EEXIST")
+          throw error;
+      }
+      const current = await readLeaseDoc(leasePath);
+      if (leaseIsStale(current, Date.now())) {
+        const temporary = `${leasePath}.tmp-${pid}-${Math.random().toString(36).slice(2)}`;
+        try {
+          await fsPromises.writeFile(temporary, payload(), "utf8");
+          await fsPromises.rename(temporary, leasePath);
+        } catch {
+          try {
+            await fsPromises.rm(temporary, { force: true });
+          } catch {}
+        }
+        const winner = await readLeaseDoc(leasePath);
+        if (winner?.token === token)
+          return { acquired: true, token };
+      }
+      if (Date.now() >= deadline)
+        return { acquired: false, reason: "store-locked", token };
+      await sleep(Math.min(leaseRetryMs, Math.max(0, deadline - Date.now())));
+    }
+  };
+  const releaseLease = async (dir, token) => {
+    const leasePath = path.join(dir, LEASE_FILENAME);
+    try {
+      const current = await readLeaseDoc(leasePath);
+      if (current?.token !== token)
+        return;
+      await fsPromises.rm(leasePath, { force: true });
+    } catch {}
+  };
+  const readPublishedRefs = async (dir) => {
+    try {
+      const text = await fsPromises.readFile(path.join(dir, "manifest.json"), "utf8");
+      const parsed = JSON.parse(text);
+      const shards = Array.isArray(parsed?.shards) ? parsed.shards.filter((name) => isString(name)) : [];
+      const records = isString(parsed?.fileRecords) && parsed.fileRecords.length > 0 ? [parsed.fileRecords] : [];
+      return { shards, records };
+    } catch {
+      return { shards: [], records: [] };
+    }
   };
   return {
     enabled,
@@ -43527,48 +47198,59 @@ var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
       const shardsDir = path.join(dir, "shards");
       try {
         await fsPromises.mkdir(shardsDir, { recursive: true });
-        const shards = engine.splitSnapshotIntoShards(entry.snapshot);
-        const names = [];
-        let written = 0;
-        let reused = 0;
-        for (const shard of shards) {
-          const text = engine.serializeSnapshotShard(shard);
-          const name = shardName(text);
-          names.push(name);
-          const target = path.join(shardsDir, name);
-          const alreadyThere = await fsPromises.stat(target).then(() => true, () => false);
-          if (alreadyThere) {
-            reused += 1;
-            continue;
+        const lease = await acquireLease(dir);
+        if (!lease.acquired)
+          return { written: false, reason: lease.reason ?? "store-locked" };
+        try {
+          const shards = engine.splitSnapshotIntoShards(entry.snapshot);
+          const names = [];
+          let written = 0;
+          let reused = 0;
+          for (const shard of shards) {
+            const text = engine.serializeSnapshotShard(shard);
+            const name = shardName(text);
+            names.push(name);
+            const target = path.join(shardsDir, name);
+            const alreadyThere = await fsPromises.stat(target).then(() => true, () => false);
+            if (alreadyThere) {
+              reused += 1;
+              continue;
+            }
+            await fsPromises.writeFile(target, text, "utf8");
+            written += 1;
           }
-          await fsPromises.writeFile(target, text, "utf8");
-          written += 1;
+          let recordsNameWritten = null;
+          if (entry.fileRecords !== undefined && entry.fileRecords !== null) {
+            const recordsText = engine.serializeFileRecordsDoc(entry.fileRecords);
+            recordsNameWritten = recordsName(recordsText);
+            const recordsTarget = path.join(dir, recordsNameWritten);
+            const recordsThere = await fsPromises.stat(recordsTarget).then(() => true, () => false);
+            if (!recordsThere)
+              await fsPromises.writeFile(recordsTarget, recordsText, "utf8");
+          }
+          const prior = await readPublishedRefs(dir);
+          const manifestArgs = {
+            scope: entry.scope,
+            observedAtMs: entry.observedAtMs,
+            entryCap: entry.entryCap ?? 0,
+            entryCount: entry.entryCount ?? 0
+          };
+          if (recordsNameWritten !== null) {
+            manifestArgs.fileRecords = recordsNameWritten;
+          }
+          manifestArgs.buildSeq = entry.buildSeq ?? null;
+          const manifest = engine.createSnapshotManifest(entry.snapshot, manifestArgs);
+          await writeAtomic(path.join(dir, "manifest.json"), engine.serializeSnapshotManifest({ ...manifest, shards: names, storeVersion: STORE_VERSION }));
+          const pruned = await this.prune(dir, new Set([...names, ...prior.shards]), new Set([...recordsNameWritten !== null ? [recordsNameWritten] : [], ...prior.records]));
+          return { written: true, shards: names.length, writtenShards: written, reusedShards: reused, pruned };
+        } finally {
+          await releaseLease(dir, lease.token);
         }
-        let recordsNameWritten = null;
-        if (entry.fileRecords !== undefined && entry.fileRecords !== null) {
-          const recordsText = engine.serializeFileRecordsDoc(entry.fileRecords);
-          recordsNameWritten = recordsName(recordsText);
-          const recordsTarget = path.join(dir, recordsNameWritten);
-          const recordsThere = await fsPromises.stat(recordsTarget).then(() => true, () => false);
-          if (!recordsThere)
-            await fsPromises.writeFile(recordsTarget, recordsText, "utf8");
-        }
-        const manifest = engine.createSnapshotManifest(entry.snapshot, {
-          scope: entry.scope,
-          observedAtMs: entry.observedAtMs,
-          entryCap: entry.entryCap ?? 0,
-          entryCount: entry.entryCount ?? 0,
-          ...recordsNameWritten !== null ? { fileRecords: recordsNameWritten } : {},
-          buildSeq: entry.buildSeq ?? null
-        });
-        await writeAtomic(path.join(dir, "manifest.json"), engine.serializeSnapshotManifest({ ...manifest, shards: names, storeVersion: STORE_VERSION }));
-        await this.prune(dir, new Set(recordsNameWritten !== null ? [...names, recordsNameWritten] : names));
-        return { written: true, shards: names.length, writtenShards: written, reusedShards: reused };
       } catch (error) {
         return { written: false, reason: error instanceof Error ? error.message : String(error) };
       }
     },
-    async prune(dir, keep) {
+    async prune(dir, keep, keepRecords = new Set) {
       if (!enabled)
         return 0;
       const shardsDir = path.join(dir, "shards");
@@ -43578,6 +47260,17 @@ var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
         if (keep.has(name))
           continue;
         await fsPromises.rm(path.join(shardsDir, name), { force: true }).catch(() => {
+          return;
+        });
+        removed += 1;
+      }
+      const top = await fsPromises.readdir(dir).catch(() => []);
+      for (const name of top) {
+        if (!/^files-[0-9a-f]{32}\.json$/.test(name))
+          continue;
+        if (keepRecords.has(name))
+          continue;
+        await fsPromises.rm(path.join(dir, name), { force: true }).catch(() => {
           return;
         });
         removed += 1;
@@ -43617,7 +47310,7 @@ var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
       if (joined.kind !== "snapshot")
         return { status: "miss", reason: joined.reason };
       let fileRecords = null;
-      if (typeof manifest.fileRecords === "string" && manifest.fileRecords.length > 0) {
+      if (isString(manifest.fileRecords) && manifest.fileRecords.length > 0) {
         try {
           const recordsText = await fsPromises.readFile(path.join(dir, manifest.fileRecords), "utf8");
           fileRecords = engine.parseFileRecordsDoc(JSON.parse(recordsText));
@@ -43646,38 +47339,31 @@ var loadEngine = () => {
 };
 var GIT_STATUS_TTL_MS = 1500;
 var FAILURE_RETRY_COOLDOWN_MS = 60000;
+var DEFAULT_WATCHER_DEBOUNCE_MS = 2000;
+var MIN_WATCHER_DEBOUNCE_MS = 100;
+var MAX_WATCHER_DEBOUNCE_MS = 60000;
+var resolveWatcherDebounceMs = (value, fallback = DEFAULT_WATCHER_DEBOUNCE_MS) => {
+  const num = Number(value);
+  if (!Number.isFinite(num))
+    return fallback;
+  return Math.min(MAX_WATCHER_DEBOUNCE_MS, Math.max(MIN_WATCHER_DEBOUNCE_MS, Math.floor(num)));
+};
 var MAX_UNREADABLE_FILES = 100;
-var DEFAULT_MAX_ENTRY_FILES = 5000;
-var HARD_MAX_ENTRY_FILES = 20000;
 var MAX_EXCLUDED_SAMPLE = 10;
 var MAX_CONFIG_FILES_SEEN = 64;
-var DEFAULT_MAX_DIRS_VISITED = 25000;
-var HARD_MAX_DIRS_VISITED = 1e5;
-var DEFAULT_MAX_FILES_DISCOVERED = 120000;
-var HARD_MAX_FILES_DISCOVERED = 500000;
-var DEFAULT_MAX_CANDIDATE_FILES = 20000;
-var DEFAULT_MAX_TRAVERSAL_DEPTH = 25;
-var HARD_MAX_TRAVERSAL_DEPTH = 64;
-var DEFAULT_MAX_FILE_SIZE_BYTES = 1048576;
-var DEFAULT_TRAVERSAL_TIME_BUDGET_MS = 30000;
+var DEFAULT_TRAVERSAL_TIME_BUDGET_MS = 300000;
 var clampInt = (value, fallback, min, max) => {
   const num = Number(value);
   if (!Number.isFinite(num))
     return fallback;
   return Math.min(max, Math.max(min, Math.floor(num)));
 };
-var resolveMaxEntryFiles = (value) => {
-  if (value === undefined || value === null || !Number.isFinite(Number(value))) {
-    return DEFAULT_MAX_ENTRY_FILES;
-  }
-  return Math.min(HARD_MAX_ENTRY_FILES, Math.max(1, Math.floor(Number(value))));
-};
 var resolveTraversalBudgets = (options = {}) => ({
-  maxDirsVisited: clampInt(options.maxDirsVisited, DEFAULT_MAX_DIRS_VISITED, 1, HARD_MAX_DIRS_VISITED),
-  maxFilesDiscovered: clampInt(options.maxFilesDiscovered, DEFAULT_MAX_FILES_DISCOVERED, 1, HARD_MAX_FILES_DISCOVERED),
-  maxCandidateFiles: clampInt(options.maxCandidateFiles, DEFAULT_MAX_CANDIDATE_FILES, 1, HARD_MAX_ENTRY_FILES),
-  maxDepth: clampInt(options.maxDepth, DEFAULT_MAX_TRAVERSAL_DEPTH, 1, HARD_MAX_TRAVERSAL_DEPTH),
-  maxFileSizeBytes: clampInt(options.maxFileSizeBytes, DEFAULT_MAX_FILE_SIZE_BYTES, 1, 33554432),
+  maxDirsVisited: null,
+  maxFilesDiscovered: null,
+  maxCandidateFiles: null,
+  maxDepth: null,
+  maxFileSizeBytes: null,
   timeBudgetMs: clampInt(options.timeBudgetMs, DEFAULT_TRAVERSAL_TIME_BUDGET_MS, 1000, 300000)
 });
 var SKIPPED_DIRS = new Set([
@@ -43698,6 +47384,7 @@ var SKIPPED_DIRS = new Set([
   "Pods",
   ".turbo",
   ".parcel-cache",
+  ".algraph",
   ".tsbuild"
 ]);
 var ENTRY_FILE = /\.[cm]?[tj]sx?$/;
@@ -43710,10 +47397,146 @@ var sanitizeSlug = (value, fallback) => {
 };
 var sha256Hex4 = (value) => createHash6("sha256").update(value, "utf8").digest("hex");
 var sha1Hex = (value) => createHash6("sha1").update(value, "utf8").digest("hex");
-var isString = (value) => Object.prototype.toString.call(value) === "[object String]";
-var isFunction2 = (value) => {
+var isString2 = (value) => Object.prototype.toString.call(value) === "[object String]";
+var isFunction3 = (value) => {
   const tag = Object.prototype.toString.call(value);
   return tag === "[object Function]" || tag === "[object AsyncFunction]";
+};
+var CODE_GRAPH_CONFIG_BASENAME = "codegraph.json";
+var MAX_PROJECT_CONFIG_BYTES = 65536;
+var MAX_PROJECT_CONFIG_PATTERNS = 256;
+var MAX_PROJECT_CONFIG_EXTENSIONS = 64;
+var isRecord12 = (value) => Object.prototype.toString.call(value) === "[object Object]";
+var sha1Bytes = (bytes) => createHash6("sha1").update(bytes).digest("hex");
+var compileIgnorePattern = (raw) => {
+  if (!isString2(raw))
+    return null;
+  let text = raw.trim();
+  if (text.length === 0 || text.startsWith("#"))
+    return null;
+  let negated = false;
+  if (text.startsWith("!")) {
+    negated = true;
+    text = text.slice(1).trim();
+  } else if (text.startsWith("\\") && (text[1] === "#" || text[1] === "!")) {
+    text = text.slice(1);
+  }
+  let dirOnly = false;
+  if (text.endsWith("/")) {
+    dirOnly = true;
+    text = text.slice(0, -1);
+  }
+  if (text.startsWith("/"))
+    text = text.slice(1);
+  if (text.length === 0 || text.length > 512)
+    return null;
+  const globSource = (glob) => {
+    let out = "";
+    for (let index = 0;index < glob.length; index += 1) {
+      const char = glob[index];
+      if (char === "*") {
+        let run = 1;
+        while (glob[index + run] === "*")
+          run += 1;
+        if (run >= 2) {
+          out += ".*";
+          index += run - 1;
+        } else {
+          out += "[^/]*";
+        }
+      } else if (char === "?") {
+        out += "[^/]";
+      } else if ("\\^$+.()|{}[]".includes(char)) {
+        out += `\\${char}`;
+      } else {
+        out += char;
+      }
+    }
+    return out;
+  };
+  let source = null;
+  if (!text.includes("/")) {
+    source = `^(?:.*/)?${globSource(text)}$`;
+  } else {
+    source = `^${globSource(text)}$`;
+  }
+  let regex = null;
+  try {
+    regex = new RegExp(source);
+  } catch {
+    return null;
+  }
+  return { negated, dirOnly, regex };
+};
+var patternMatchesRel = (compiled, rel, isDir) => {
+  if (compiled.dirOnly && !isDir) {
+    const segments = rel.split("/");
+    for (let depth = 1;depth < segments.length; depth += 1) {
+      if (compiled.regex.test(segments.slice(0, depth).join("/")))
+        return true;
+    }
+    return false;
+  }
+  return compiled.regex.test(rel);
+};
+var patternMatchesTree = (compiled, rel, isDir) => {
+  if (patternMatchesRel(compiled, rel, isDir))
+    return true;
+  const segments = rel.split("/");
+  for (let depth = 1;depth < segments.length; depth += 1) {
+    if (patternMatchesRel(compiled, segments.slice(0, depth).join("/"), true))
+      return true;
+  }
+  return false;
+};
+var lastPatternMatch = (compiledList, rel, isDir) => {
+  let found = null;
+  for (const compiled of compiledList) {
+    if (patternMatchesTree(compiled, rel, isDir))
+      found = compiled;
+  }
+  return found;
+};
+var verdictOfMatch = (match) => match === null ? null : !match.negated;
+var normalizeProjectConfig = (parsed) => {
+  const source = isRecord12(parsed) ? parsed : {};
+  const cleanList = (value) => {
+    if (!Array.isArray(value))
+      return [];
+    const out = [];
+    for (const item of value) {
+      if (out.length >= MAX_PROJECT_CONFIG_PATTERNS)
+        break;
+      if (isString2(item) && item.trim().length > 0 && item.length <= 512)
+        out.push(item.trim());
+    }
+    return out;
+  };
+  const extensions = {};
+  if (isRecord12(source.extensions)) {
+    for (const [key, mapped] of Object.entries(source.extensions)) {
+      if (Object.keys(extensions).length >= MAX_PROJECT_CONFIG_EXTENSIONS)
+        break;
+      if (!isString2(key))
+        continue;
+      const ext = key.trim().toLowerCase();
+      if (!ext.startsWith(".") || ext.length < 2 || ext.length > 16)
+        continue;
+      if (mapped === false || mapped === null) {
+        extensions[ext] = false;
+      } else if (isString2(mapped) && mapped.trim().length > 0) {
+        extensions[ext] = true;
+      }
+    }
+  }
+  const maxFileSizeBytes = null;
+  return {
+    exclude: cleanList(source.exclude),
+    include: cleanList(source.include),
+    deprioritize: cleanList(source.deprioritize),
+    extensions,
+    maxFileSizeBytes
+  };
 };
 var runGitHead = (spawnGit, directory) => new Promise((resolve) => {
   spawnGit("git", ["-C", directory, "rev-parse", "HEAD"], { timeout: 1e4 }, (error, stdout) => {
@@ -43851,7 +47674,7 @@ var scopeKeyOf = (value, pathLike) => {
   return process.platform === "win32" ? canonical.toLowerCase() : canonical;
 };
 var createDirectoryNormalizer = ({ fsPromises, path }) => async (directory) => {
-  const trimmed = isString(directory) ? directory.trim() : "";
+  const trimmed = isString2(directory) ? directory.trim() : "";
   if (!trimmed) {
     return { error: "directory is required" };
   }
@@ -43873,10 +47696,11 @@ var createDirectoryNormalizer = ({ fsPromises, path }) => async (directory) => {
   }
   return { directory: canonical };
 };
+var MAX_GIT_ROOT_UPWARD_WALK = 64;
 var findGitRoot = async ({ fsPromises, path }, startDir) => {
   let current = startDir;
   const seen = new Set;
-  for (let depth = 0;depth < HARD_MAX_TRAVERSAL_DEPTH; depth += 1) {
+  for (let depth = 0;depth < MAX_GIT_ROOT_UPWARD_WALK; depth += 1) {
     const key = String(current).toLowerCase();
     if (seen.has(key))
       return null;
@@ -43901,13 +47725,247 @@ var resolveIndexScope = async ({ fsPromises, path }, directory, mode = "auto") =
     return { scopeRoot: gitRoot, gitRoot, mode: "repo" };
   return { scopeRoot: requested, gitRoot: null, mode: "directory" };
 };
+var DEFAULT_SHARD_MEM_FLOOR_MB = 2048;
+var MIN_SHARD_MEM_FLOOR_MB = 512;
+var MAX_SHARD_MEM_FLOOR_MB = 65536;
+var resolveShardMemFloorMb = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num))
+    return DEFAULT_SHARD_MEM_FLOOR_MB;
+  return Math.min(MAX_SHARD_MEM_FLOOR_MB, Math.max(MIN_SHARD_MEM_FLOOR_MB, Math.floor(num)));
+};
+var machineShardCap = ({ memFloorMb } = {}) => {
+  const floorMb = resolveShardMemFloorMb(memFloorMb ?? process.env?.ALCODE_CODE_GRAPH_SHARD_MEM_FLOOR_MB);
+  const byCpu = Math.max(1, availableParallelism2());
+  const byMem = Math.max(1, Math.floor(freemem() / (floorMb * 1048576)));
+  return { cap: Math.min(byCpu, byMem), byCpu, byMem, memFloorMb: floorMb };
+};
+var resolveShardedShards = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num))
+    return 0;
+  return Math.max(0, Math.floor(num));
+};
+var runShardedBuild = async ({ entries, rootDir, shards: shardsOption, budgets, signal, shouldCancel, onProgress }) => {
+  const envShards = resolveShardedShards(globalThis.process !== undefined ? globalThis.process.env?.ALCODE_CODE_GRAPH_SHARDED_BUILD : undefined);
+  const shards = shardsOption ?? (envShards > 0 ? envShards : 0);
+  if (!Number.isInteger(shards) || shards < 1) {
+    throw new Error("code-graph sharded build needs shards >= 1 (pass { shards } or set ALCODE_CODE_GRAPH_SHARDED_BUILD)");
+  }
+  if (!isString2(rootDir) || rootDir.length === 0) {
+    throw new Error("code-graph sharded build needs an explicit rootDir");
+  }
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error("code-graph sharded build needs a non-empty entries list");
+  }
+  if (signal?.aborted === true) {
+    const error = new Error("code-graph sharded build cancelled");
+    error.code = "CANCELLED";
+    throw error;
+  }
+  if (isFunction3(shouldCancel) && shouldCancel()) {
+    const error = new Error("code-graph sharded build cancelled");
+    error.code = "CANCELLED";
+    throw error;
+  }
+  const engine = await loadEngine();
+  const startedMs = Date.now();
+  const groups = engine.groupEntriesByProject(entries, { rootDir });
+  if (groups.length === 0) {
+    throw new Error("code-graph sharded build found no project groups");
+  }
+  if (signal?.aborted === true) {
+    const error = new Error("code-graph sharded build cancelled");
+    error.code = "CANCELLED";
+    throw error;
+  }
+  if (isFunction3(shouldCancel) && shouldCancel()) {
+    const error = new Error("code-graph sharded build cancelled");
+    error.code = "CANCELLED";
+    throw error;
+  }
+  const machine = machineShardCap();
+  const unclamped = Math.min(shards, groups.length);
+  const effective = Math.min(unclamped, machine.cap);
+  const limitedBy = effective < shards ? machine.cap < shards ? "machine" : "groups" : "none";
+  const buckets = Array.from({ length: effective }, () => ({ entries: [], count: 0 }));
+  for (const group of [...groups].sort((left, right) => right.entries.length - left.entries.length)) {
+    let lightest = buckets[0];
+    for (const bucket of buckets) {
+      if (bucket.count < lightest.count)
+        lightest = bucket;
+    }
+    lightest.entries.push(...group.entries);
+    lightest.count += group.entries.length;
+  }
+  const bundleHref = new URL("./code-graph.bundle.js", import.meta.url).href;
+  const childPath = fileURLToPath4(new URL("./shard-build-child.js", import.meta.url));
+  const live = new Set;
+  const killAll = () => {
+    for (const child of live) {
+      try {
+        child.kill();
+      } catch {}
+    }
+    live.clear();
+  };
+  let onAbort = null;
+  const abortPromise = signal?.aborted === true || signal?.aborted === false ? new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+  }) : null;
+  const runShard = (shardEntries, shard) => new Promise((resolve, reject) => {
+    let settled = false;
+    let child = null;
+    const stop = () => {
+      if (child !== null)
+        live.delete(child);
+      child = null;
+    };
+    if (signal?.aborted === true) {
+      const error = new Error("code-graph sharded build cancelled");
+      error.code = "CANCELLED";
+      reject(error);
+      return;
+    }
+    if (isFunction3(shouldCancel) && shouldCancel()) {
+      const error = new Error("code-graph sharded build cancelled");
+      error.code = "CANCELLED";
+      reject(error);
+      return;
+    }
+    const payload = JSON.stringify({ bundlePath: bundleHref, entries: shardEntries, rootDir, budgets: budgets ?? null });
+    try {
+      child = fork(childPath, [payload], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+      live.add(child);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    if (isFunction3(onProgress)) {
+      onProgress({ phase: "shard-started", shard, shards: effective, entries: shardEntries.length });
+    }
+    child.once("message", (message) => {
+      if (settled)
+        return;
+      settled = true;
+      stop();
+      if (isRecord12(message) && message.ok === true) {
+        if (isFunction3(onProgress)) {
+          onProgress({
+            phase: "shard-done",
+            shard,
+            shards: effective,
+            entries: shardEntries.length,
+            wallMs: message.wallMs ?? null,
+            rssMB: message.rssMB ?? null,
+            nodes: message.snapshot?.nodes?.length ?? null,
+            edges: message.snapshot?.edges?.length ?? null
+          });
+        }
+        resolve(message);
+      } else {
+        killAll();
+        reject(new Error(`code-graph shard ${shard} failed: ${message?.error ?? "unknown child error"}`));
+      }
+    });
+    child.once("error", (error) => {
+      if (settled)
+        return;
+      settled = true;
+      stop();
+      reject(error);
+    });
+    child.once("exit", (code, signalName) => {
+      if (settled)
+        return;
+      settled = true;
+      stop();
+      const error = new Error(code === 0 ? `code-graph shard ${shard} exited without a result` : `code-graph shard ${shard} exited (code ${code ?? signalName})`);
+      if (code !== 0)
+        killAll();
+      reject(error);
+    });
+  });
+  let results;
+  try {
+    results = abortPromise === null ? await Promise.all(buckets.map((bucket, shard) => runShard(bucket.entries, shard))) : await Promise.race([
+      Promise.all(buckets.map((bucket, shard) => runShard(bucket.entries, shard))),
+      abortPromise.then(() => {
+        throw Object.assign(new Error("code-graph sharded build cancelled"), { code: "CANCELLED" });
+      })
+    ]);
+  } catch (error) {
+    killAll();
+    throw error;
+  } finally {
+    if (isFunction3(signal?.removeEventListener) && onAbort !== null) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+  const nodes = new Map;
+  const edges = new Map;
+  const contentFiles = {};
+  const contentSkipped = [];
+  let contentTokenCap = null;
+  const dropped = new Map;
+  let root = null;
+  const shardStats = [];
+  for (const [shard, result] of results.entries()) {
+    const snapshot = result.snapshot;
+    for (const node of snapshot.nodes ?? [])
+      nodes.set(node.id, node);
+    for (const edge of snapshot.edges ?? [])
+      edges.set(edge.id, edge);
+    if (snapshot.content !== null && snapshot.content !== undefined) {
+      if (contentTokenCap === null && snapshot.content.tokenCap !== undefined)
+        contentTokenCap = snapshot.content.tokenCap;
+      Object.assign(contentFiles, snapshot.content.files ?? {});
+      contentSkipped.push(...snapshot.content.skipped ?? []);
+    }
+    for (const drop of snapshot.dropped ?? []) {
+      if (!dropped.has(drop.file))
+        dropped.set(drop.file, drop);
+    }
+    if (root === null && snapshot.root !== undefined)
+      root = snapshot.root;
+    shardStats.push({
+      shard,
+      entries: buckets[shard].entries.length,
+      wallMs: result.wallMs ?? null,
+      rssMB: result.rssMB ?? null,
+      nodes: snapshot.nodes?.length ?? 0,
+      edges: snapshot.edges?.length ?? 0
+    });
+  }
+  return {
+    snapshot: {
+      nodes: [...nodes.values()],
+      edges: [...edges.values()],
+      content: { tokenCap: contentTokenCap, files: contentFiles, skipped: contentSkipped },
+      dropped: [...dropped.values()].sort((left, right) => left.file < right.file ? -1 : 1),
+      root
+    },
+    groups: groups.map((group) => ({ projectId: group.projectId, configFileName: group.configFileName, entries: group.entries.length })),
+    shards: shardStats,
+    wallMs: Date.now() - startedMs,
+    requestedShards: shards,
+    effectiveShards: effective,
+    limitedBy,
+    machine: { ...machine, freememMB: Math.round(freemem() / 1048576) },
+    maxShardRssMB: Math.max(0, ...shardStats.map((shard) => shard.rssMB ?? 0))
+  };
+};
 var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, runtimeOptions = {}) => {
   if (!fsPromises || !path) {
     throw new Error("code-graph runtime requires fsPromises and path");
   }
   const spawnGit = injectedExecFile ?? execFile;
   const blockOnRead = runtimeOptions.blockOnRead === true;
-  const defaultMaxEntryFiles = resolveMaxEntryFiles(runtimeOptions.maxEntryFiles);
   const readGitHead = createGitHeadReader({ fsPromises, path });
   const gitStatusTTLMs = (() => {
     const override = Number(runtimeOptions.gitStatusTTLMs);
@@ -43969,15 +48027,22 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
       result = { ok: false };
     } else {
       const lines = [];
+      const seen = new Set;
+      const files = [];
       for (const entry of parseGitStatusZ(ran.stdout)) {
         if (!entry.paths.some((rel) => isEntryCandidateRel(rel) || isConfigBasename(path.basename(rel))))
           continue;
         for (const rel of entry.paths) {
           lines.push(`${entry.code} ${await stampDirtyPath(directory, rel)}`);
+          if (isEntryCandidateRel(rel) && !seen.has(rel)) {
+            seen.add(rel);
+            files.push(rel);
+          }
         }
       }
       lines.sort();
-      result = { ok: true, lines };
+      files.sort();
+      result = { ok: true, lines, files };
     }
     gitStatusCache.set(key, { atMs: Date.now(), result });
     return result;
@@ -44013,6 +48078,143 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     pendingCancels.delete(key);
     return true;
   };
+  const readWatcherEnv = () => {
+    try {
+      return globalThis.process?.env ?? {};
+    } catch {
+      return {};
+    }
+  };
+  const isWatcherEnabled = () => {
+    if (runtimeOptions.watcherEnabled === false)
+      return false;
+    if (runtimeOptions.syncDisabled === true)
+      return false;
+    const env = readWatcherEnv();
+    if (env.CODEGRAPH_NO_WATCHER === "1" || env.CODEGRAPH_NO_WATCHER === "true")
+      return false;
+    if (env.CODEGRAPH_NO_DAEMON === "1" || env.CODEGRAPH_SYNC_DISABLED === "1")
+      return false;
+    if (runtimeOptions.watcherEnabled === true)
+      return true;
+    const flag = env.ALCODE_CODE_GRAPH_WATCHER ?? env.CODEGRAPH_WATCHER_ENABLED ?? null;
+    return flag === "1" || flag === "true";
+  };
+  const watcherDebounceMs = (() => {
+    const env = readWatcherEnv();
+    const raw = runtimeOptions.watcherDebounceMs ?? env.ALCODE_CODE_GRAPH_WATCH_DEBOUNCE_MS ?? env.CODEGRAPH_WATCH_DEBOUNCE_MS ?? DEFAULT_WATCHER_DEBOUNCE_MS;
+    return resolveWatcherDebounceMs(raw);
+  })();
+  const watchers = new Map;
+  const watcherTimers = new Map;
+  const clearWatcherTimer = (key) => {
+    const timer = watcherTimers.get(key);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      watcherTimers.delete(key);
+    }
+  };
+  const invalidateWatcherScope = (key, scopeRoot) => {
+    try {
+      gitStatusCache.delete(path.normalize(scopeRoot));
+    } catch {}
+    catchUpByScope.delete(key);
+  };
+  const triggerWatcherSync = (key, scopeRoot) => {
+    if (!isWatcherEnabled())
+      return;
+    if (pendingCancels.has(key)) {
+      invalidateWatcherScope(key, scopeRoot);
+      return;
+    }
+    invalidateWatcherScope(key, scopeRoot);
+    ensureIndex(scopeRoot, {}).catch(() => {});
+  };
+  const scheduleWatcherSync = (key, scopeRoot) => {
+    if (!isWatcherEnabled())
+      return;
+    clearWatcherTimer(key);
+    const timer = setTimeout(() => {
+      watcherTimers.delete(key);
+      triggerWatcherSync(key, scopeRoot);
+    }, watcherDebounceMs);
+    if (timer !== null && timer !== undefined && isFunction3(timer.unref)) {
+      try {
+        timer.unref();
+      } catch {}
+    }
+    watcherTimers.set(key, timer);
+  };
+  const defaultWatchFactory = (scopeRoot, onEvent) => {
+    const watch = fsPromises.watch;
+    if (!isFunction3(watch))
+      return null;
+    const controller = new AbortController;
+    (async () => {
+      try {
+        const iterable = watch.call(fsPromises, scopeRoot, { recursive: true, signal: controller.signal });
+        for await (const ignored of iterable) {
+          if (controller.signal.aborted)
+            break;
+          onEvent();
+        }
+      } catch {}
+    })();
+    return {
+      close: () => {
+        try {
+          controller.abort();
+        } catch {}
+      }
+    };
+  };
+  const ensureWatcher = (key, scopeRoot) => {
+    if (!isWatcherEnabled())
+      return null;
+    if (!scopeRoot)
+      return null;
+    if (watchers.has(key))
+      return watchers.get(key);
+    if (isSyncDisabled())
+      return null;
+    const factory = isFunction3(runtimeOptions.watchFactory) ? runtimeOptions.watchFactory : defaultWatchFactory;
+    let handle = null;
+    try {
+      handle = factory(scopeRoot, () => scheduleWatcherSync(key, scopeRoot));
+    } catch {
+      handle = null;
+    }
+    if (!handle || !isFunction3(handle.close)) {
+      return null;
+    }
+    watchers.set(key, { scopeRoot, close: handle.close });
+    while (watchers.size > MAX_RETAINED_SNAPSHOTS) {
+      const oldest = watchers.keys().next().value;
+      if (oldest === key)
+        break;
+      try {
+        watchers.get(oldest)?.close?.();
+      } catch {}
+      watchers.delete(oldest);
+      clearWatcherTimer(oldest);
+    }
+    return watchers.get(key);
+  };
+  const closeWatchers = () => {
+    for (const key of [...watcherTimers.keys()])
+      clearWatcherTimer(key);
+    for (const entry of watchers.values()) {
+      try {
+        entry.close?.();
+      } catch {}
+    }
+    watchers.clear();
+  };
+  const watcherState = () => ({
+    enabled: isWatcherEnabled(),
+    debounceMs: watcherDebounceMs,
+    watchedScopes: [...watchers.keys()]
+  });
   const MAX_RETAINED_SNAPSHOTS = 3;
   const normalizeDirectory = createDirectoryNormalizer({ fsPromises, path });
   const deriveScopeIds = (directory) => {
@@ -44041,12 +48243,220 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     const ext = path.extname(String(name ?? "")).toLowerCase();
     return ext.length > 0 ? ext : "(no-extension)";
   };
+  const loadProjectConfigFile = async (canonicalRoot) => {
+    const file = path.join(canonicalRoot, CODE_GRAPH_CONFIG_BASENAME);
+    let stat = null;
+    try {
+      stat = await fsPromises.stat(file);
+    } catch {
+      return { config: null, present: false, error: null };
+    }
+    if (!stat.isFile())
+      return { config: null, present: false, error: null };
+    if (stat.size > MAX_PROJECT_CONFIG_BYTES) {
+      return { config: normalizeProjectConfig({}), present: true, error: `project config larger than ${MAX_PROJECT_CONFIG_BYTES} bytes; ignoring` };
+    }
+    let text = null;
+    try {
+      text = await fsPromises.readFile(file, "utf8");
+    } catch {
+      return { config: null, present: true, error: "project config unreadable; ignoring" };
+    }
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch (error) {
+      return { config: normalizeProjectConfig({}), present: true, error: `project config is not valid JSON; ignoring (${error instanceof Error ? error.message : String(error)})` };
+    }
+    return { config: normalizeProjectConfig(parsed), present: true, error: null };
+  };
+  const loadWalkPolicy = async (canonicalRoot) => {
+    const loaded = await loadProjectConfigFile(canonicalRoot);
+    const applied = loaded.config ?? normalizeProjectConfig({});
+    const compileList = (list) => {
+      const out = [];
+      for (const item of list) {
+        const compiled = compileIgnorePattern(item);
+        if (compiled !== null)
+          out.push(compiled);
+      }
+      return out;
+    };
+    return {
+      present: loaded.present,
+      error: loaded.error,
+      rawExclude: applied.exclude,
+      rawInclude: applied.include,
+      rawDeprioritize: applied.deprioritize,
+      rawExtensions: applied.extensions,
+      rawMaxFileSizeBytes: applied.maxFileSizeBytes,
+      exclude: compileList(applied.exclude),
+      include: compileList(applied.include),
+      deprioritize: compileList(applied.deprioritize),
+      includeActive: applied.include.length > 0,
+      deprioritizeActive: applied.deprioritize.length > 0,
+      extensions: applied.extensions,
+      configSizeOverride: applied.maxFileSizeBytes,
+      ignoreByDir: new Map,
+      gitignoreRels: [],
+      ignoreStamps: [],
+      sawIgnorePatterns: false,
+      trackedPromise: null
+    };
+  };
+  const readIgnoreInto = async (policy, dirFull, dirRel) => {
+    if (policy.ignoreByDir.has(dirRel))
+      return policy.ignoreByDir.get(dirRel);
+    const file = path.join(dirFull, ".gitignore");
+    let stat = null;
+    try {
+      stat = await fsPromises.stat(file);
+    } catch {
+      policy.ignoreByDir.set(dirRel, []);
+      return [];
+    }
+    if (!stat.isFile()) {
+      policy.ignoreByDir.set(dirRel, []);
+      return [];
+    }
+    const rel = dirRel === "" ? ".gitignore" : `${dirRel}/.gitignore`;
+    if (stat.size > MAX_PROJECT_CONFIG_BYTES) {
+      policy.ignoreByDir.set(dirRel, []);
+      policy.gitignoreRels.push(rel);
+      policy.ignoreStamps.push(`${rel}:large:${stat.size}:${Math.trunc(stat.mtimeMs)}`);
+      return [];
+    }
+    let text = null;
+    try {
+      text = await fsPromises.readFile(file, "utf8");
+    } catch {
+      policy.ignoreByDir.set(dirRel, []);
+      return [];
+    }
+    const compiled = [];
+    for (const line of text.split(`
+`)) {
+      const pattern = compileIgnorePattern(line);
+      if (pattern !== null)
+        compiled.push(pattern);
+    }
+    policy.ignoreByDir.set(dirRel, compiled);
+    policy.gitignoreRels.push(rel);
+    policy.ignoreStamps.push(`${rel}:${sha1Hex(text)}`);
+    if (compiled.length > 0)
+      policy.sawIgnorePatterns = true;
+    return compiled;
+  };
+  const ensureTrackedSet = (policy, canonicalRoot) => {
+    if (policy.trackedPromise !== null)
+      return policy.trackedPromise;
+    policy.trackedPromise = (async () => {
+      try {
+        await fsPromises.lstat(path.join(canonicalRoot, ".git"));
+      } catch {
+        return new Set;
+      }
+      const found = await new Promise((resolve) => {
+        spawnGit("git", ["-C", canonicalRoot, "ls-files", "-z"], { timeout: 1e4, maxBuffer: 16777216 }, (error, stdout) => {
+          if (error) {
+            resolve(null);
+            return;
+          }
+          const set = new Set;
+          for (const token of String(stdout ?? "").split(String.fromCharCode(0))) {
+            const item = token.replace(/\\/g, "/");
+            if (item.length > 0)
+              set.add(item);
+          }
+          resolve(set);
+        });
+      });
+      return found === null ? new Set : found;
+    })();
+    return policy.trackedPromise;
+  };
+  const decideIgnored = (policy, rel) => {
+    const segments = rel.split("/");
+    let found = null;
+    for (let depth = 0;depth < segments.length; depth += 1) {
+      const list = policy.ignoreByDir.get(segments.slice(0, depth).join("/"));
+      if (!list || list.length === 0)
+        continue;
+      const match = lastPatternMatch(list, segments.slice(depth).join("/"), false);
+      if (match !== null)
+        found = match;
+    }
+    return found;
+  };
+  const decidePolicyExclusion = async (policy, canonicalRoot, rel, defaultExcluded = false) => {
+    if (rel === ".git" || rel.startsWith(".git/"))
+      return true;
+    let excluded = defaultExcluded;
+    if (policy.sawIgnorePatterns) {
+      const tracked = await ensureTrackedSet(policy, canonicalRoot);
+      if (!tracked.has(rel)) {
+        const ignoreVerdict = verdictOfMatch(decideIgnored(policy, rel));
+        if (ignoreVerdict !== null)
+          excluded = ignoreVerdict;
+      }
+    }
+    const excludeVerdict = verdictOfMatch(lastPatternMatch(policy.exclude, rel, false));
+    if (excludeVerdict !== null)
+      excluded = excludeVerdict;
+    const includeVerdict = verdictOfMatch(lastPatternMatch(policy.include, rel, false));
+    if (includeVerdict !== null)
+      excluded = !includeVerdict;
+    return excluded;
+  };
+  const isEntryFileName = (policy, name) => {
+    const ext = extOf(name);
+    if (Object.prototype.hasOwnProperty.call(policy.extensions, ext)) {
+      return policy.extensions[ext] === true;
+    }
+    return ENTRY_FILE.test(name);
+  };
+  const ignoreStampsMatch = async (scopeRoot, entry) => {
+    const stored = Array.isArray(entry?.ignoreStamps) ? entry.ignoreStamps : null;
+    if (stored === null)
+      return true;
+    for (const line of stored) {
+      const text = String(line);
+      const sep = text.lastIndexOf(":");
+      if (sep < 0)
+        return false;
+      const rel = text.slice(0, sep);
+      const want = text.slice(sep + 1);
+      if (rel.length === 0 || rel.includes(".."))
+        return false;
+      const full = path.join(scopeRoot, ...rel.split("/"));
+      let stat = null;
+      try {
+        stat = await fsPromises.stat(full);
+      } catch {
+        stat = null;
+      }
+      let got = "deleted";
+      if (stat !== null && stat.isFile()) {
+        if (stat.size > MAX_PROJECT_CONFIG_BYTES) {
+          got = `large:${stat.size}:${Math.trunc(stat.mtimeMs)}`;
+        } else {
+          try {
+            got = sha1Hex(await fsPromises.readFile(full, "utf8"));
+          } catch {
+            got = "deleted";
+          }
+        }
+      }
+      if (got !== want)
+        return false;
+    }
+    return true;
+  };
   const listEntryFiles = async (directory, maxEntryFiles, walkOptions = {}) => {
-    const cap = resolveMaxEntryFiles(maxEntryFiles ?? defaultMaxEntryFiles);
-    const budgets = resolveTraversalBudgets({ ...runtimeOptions, ...walkOptions });
+    const cap = null;
     const shouldCancel = walkOptions.shouldCancel;
     const checkCancelled = () => {
-      if (isFunction2(shouldCancel) && shouldCancel()) {
+      if (isFunction3(shouldCancel) && shouldCancel()) {
         const err = new Error("code-graph index cancelled");
         err.code = "CANCELLED";
         throw err;
@@ -44058,6 +48468,8 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     } catch {
       canonicalRoot = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
     }
+    const policy = await loadWalkPolicy(canonicalRoot);
+    const budgets = resolveTraversalBudgets(walkOptions);
     const canonicalRootLower = canonicalRoot.toLowerCase();
     const visitedInodes = new Set;
     const visitedReals = new Set([canonicalRootLower]);
@@ -44150,11 +48562,6 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
           const lower = String(real).toLowerCase();
           if (visitedReals.has(lower))
             continue;
-          if (visitedReals.size > budgets.maxDirsVisited) {
-            scanState.truncated = true;
-            truncationReason = truncationReason ?? "dirs-visited";
-            return;
-          }
           visitedReals.add(lower);
           await countSkipped(full, bucket);
         } else if (linkStat.isFile()) {
@@ -44162,20 +48569,8 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
         }
       }
     };
-    const visit = async (dir, depth) => {
+    const visit = async (dir, depth, dirRel, underSkipped) => {
       checkCancelled();
-      if (depth > budgets.maxDepth) {
-        truncationReason = truncationReason ?? "max-depth";
-        return;
-      }
-      if (dirsVisited >= budgets.maxDirsVisited) {
-        truncationReason = truncationReason ?? "dirs-visited";
-        return;
-      }
-      if (filesDiscovered >= budgets.maxFilesDiscovered) {
-        truncationReason = truncationReason ?? "files-discovered";
-        return;
-      }
       if (Date.now() > deadlineMs) {
         truncationReason = truncationReason ?? "time-budget";
         return;
@@ -44219,6 +48614,7 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
         return;
       }
       names.sort();
+      await readIgnoreInto(policy, dir, dirRel);
       for (const name of names) {
         if (name === "." || name === "..")
           continue;
@@ -44240,13 +48636,26 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
         }
         await maybeYield();
         filesDiscovered += 1;
-        if (filesDiscovered > budgets.maxFilesDiscovered) {
-          truncationReason = truncationReason ?? "files-discovered";
-          return;
-        }
         if (linkStat.isDirectory()) {
           if (SKIPPED_DIRS.has(name)) {
             const rel = relOf(full);
+            if (name !== ".git" && name !== ".algraph" && policy.includeActive) {
+              let realChild = null;
+              try {
+                realChild = await fsPromises.realpath(full);
+              } catch {
+                unreadableDirs.push(rel.length > 0 ? rel : ".");
+                continue;
+              }
+              if (!isWithinRoot(realChild))
+                continue;
+              const childLower = String(realChild).toLowerCase();
+              if (visitedReals.has(childLower))
+                continue;
+              visitedReals.add(childLower);
+              await visit(full, depth + 1, rel, true);
+              continue;
+            }
             skippedDirs.push(rel);
             await countSkipped(full, bucketOfRel(rel));
             continue;
@@ -44265,12 +48674,12 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
           if (visitedReals.has(childLower))
             continue;
           visitedReals.add(childLower);
-          await visit(full, depth + 1);
+          await visit(full, depth + 1, relOf(full), underSkipped);
         } else if (linkStat.isFile()) {
           scanned += 1;
           const rel = relOf(full);
           const bucket = bucketOfRel(rel);
-          if (!ENTRY_FILE.test(name)) {
+          if (!isEntryFileName(policy, name)) {
             if (isConfigBasename(name)) {
               if (configFiles.length < MAX_CONFIG_FILES_SEEN)
                 configFiles.push(full);
@@ -44283,27 +48692,9 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
             stats.unanalyzedByExtension[ext] = (stats.unanalyzedByExtension[ext] ?? 0) + 1;
             continue;
           }
-          if (entries.length >= cap) {
+          if (await decidePolicyExclusion(policy, canonicalRoot, rel, underSkipped)) {
             excludedCount += 1;
-            truncationReason = truncationReason ?? "entry-cap";
-            bucketStats(bucket).excludedFiles += 1;
-            if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
-              excludedSample.push(rel);
-            }
-            continue;
-          }
-          if (entries.length >= budgets.maxCandidateFiles) {
-            excludedCount += 1;
-            truncationReason = truncationReason ?? "candidate-cap";
-            bucketStats(bucket).excludedFiles += 1;
-            if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
-              excludedSample.push(rel);
-            }
-            continue;
-          }
-          if (Number(linkStat.size ?? 0) > budgets.maxFileSizeBytes) {
-            excludedCount += 1;
-            truncationReason = truncationReason ?? "file-size";
+            truncationReason = truncationReason ?? "project-config";
             bucketStats(bucket).excludedFiles += 1;
             if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
               excludedSample.push(rel);
@@ -44317,7 +48708,7 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     };
     let walkError = null;
     try {
-      await visit(canonicalRoot, 0);
+      await visit(canonicalRoot, 0, "", false);
     } catch (error) {
       if (error?.code === "CANCELLED")
         throw error;
@@ -44351,9 +48742,7 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
       }
     }
     totals.unanalyzedByExtension = Object.fromEntries(Object.entries(totals.unanalyzedByExtension).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
-    const truncated = excludedCount > 0 || truncationReason !== null || scanState.truncated;
-    if (truncationReason === null && scanState.truncated)
-      truncationReason = "skipped-scan";
+    const truncated = excludedCount > 0 || truncationReason !== null;
     if (truncationReason === null && excludedCount > 0)
       truncationReason = "entry-cap";
     skippedSymlinks.sort();
@@ -44376,11 +48765,60 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
       maxDepthSeen,
       scopeRoot: canonicalRoot,
       walkError,
-      budgets: { maxDirsVisited: budgets.maxDirsVisited, maxFilesDiscovered: budgets.maxFilesDiscovered, maxDepth: budgets.maxDepth },
-      coverage: { byModule: modules, totals, skippedDirs, unreadableDirs, excludedTruncated: scanState.truncated, skippedSymlinks, nestedRepoRoots, dirsVisited, filesDiscovered, symlinksSkipped, truncationReason }
+      budgets: { maxDirsVisited: budgets.maxDirsVisited, maxFilesDiscovered: budgets.maxFilesDiscovered, maxDepth: budgets.maxDepth, maxFileSizeBytes: budgets.maxFileSizeBytes },
+      projectConfig: policy.present ? {
+        basename: CODE_GRAPH_CONFIG_BASENAME,
+        exclude: policy.rawExclude,
+        include: policy.rawInclude,
+        deprioritize: policy.rawDeprioritize,
+        extensions: policy.rawExtensions,
+        maxFileSizeBytes: policy.rawMaxFileSizeBytes
+      } : null,
+      configError: policy.error,
+      gitignoreFiles: [...policy.gitignoreRels].sort(),
+      ignoreStamps: [...policy.ignoreStamps].sort(),
+      maxFileSizeBytes: budgets.maxFileSizeBytes,
+      coverage: { byModule: modules, totals, skippedDirs, unreadableDirs, excludedTruncated: scanState.truncated, skippedSymlinks, nestedRepoRoots, dirsVisited, filesDiscovered, symlinksSkipped, truncationReason, appliedConfig: policy.present ? CODE_GRAPH_CONFIG_BASENAME : null }
     };
   };
-  const readRevision = async (directory, entryFiles, { forceStatus = false } = {}) => {
+  const readPolicyStamp = async (directory) => {
+    const digestFile = async (file, { stripAlgraphIgnore = false } = {}) => {
+      let stat = null;
+      try {
+        stat = await fsPromises.stat(file);
+      } catch {
+        return "absent";
+      }
+      if (!stat.isFile())
+        return "absent";
+      if (stat.size > MAX_PROJECT_CONFIG_BYTES)
+        return `too-large:${stat.size}`;
+      let bytes = null;
+      try {
+        bytes = await fsPromises.readFile(file);
+      } catch {
+        return "unreadable";
+      }
+      if (stripAlgraphIgnore) {
+        const lines = bytes.toString("utf8").split(`
+`);
+        if (lines.some((line) => ALGRAPH_IGNORE_LINES.has(line.trim()))) {
+          const kept = lines.filter((line) => !ALGRAPH_IGNORE_LINES.has(line.trim()));
+          if (kept.join(`
+`).trim().length === 0)
+            return "absent";
+          bytes = Buffer.from(kept.join(`
+`), "utf8");
+        }
+      }
+      return sha1Bytes(bytes);
+    };
+    const configDigest = await digestFile(path.join(directory, CODE_GRAPH_CONFIG_BASENAME));
+    const ignoreDigest = await digestFile(path.join(directory, ".gitignore"), { stripAlgraphIgnore: true });
+    return `policy cfg:${configDigest} ign:${ignoreDigest}`;
+  };
+  const ALGRAPH_IGNORE_LINES = new Set(["/.algraph/", ".algraph/", ".algraph"]);
+  const readRevision = async (directory, entryFiles, { forceStatus = false, maxFileSizeBytes = null } = {}) => {
     const local = await readGitHead(directory);
     let head = null;
     if (local.status === "ok") {
@@ -44388,19 +48826,28 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     } else if (local.status === "unreadable") {
       head = await runGitHead(spawnGit, directory);
     }
+    const sizeLine = "size-cap:unbounded";
     if (head !== null) {
       const dirty = await readDirtyFingerprint(directory, { force: forceStatus });
+      const policyStamp = await readPolicyStamp(directory);
       if (!dirty.ok) {
-        return { revision: head, binding: "git-head", dirty: "unknown", dirtyReason: "git-status-unavailable" };
+        return { revision: sha1Hex(`${head}
+${policyStamp}
+${sizeLine}`), binding: "git-head", dirty: "unknown", dirtyReason: "git-status-unavailable", dirtyLines: null };
       }
       if (dirty.lines.length === 0)
-        return { revision: head, binding: "git-head", dirty: "clean" };
+        return { revision: sha1Hex(`${head}
+${policyStamp}
+${sizeLine}`), binding: "git-head", dirty: "clean", dirtyLines: [] };
       return {
         revision: sha1Hex(`${head}
 ${dirty.lines.join(`
-`)}`),
+`)}
+${policyStamp}
+${sizeLine}`),
         binding: "git-head",
-        dirty: "dirty"
+        dirty: "dirty",
+        dirtyLines: [...dirty.lines]
       };
     }
     const stamped = await Promise.all(entryFiles.map(async (entry) => {
@@ -44408,9 +48855,12 @@ ${dirty.lines.join(`
       const stat = await fsPromises.stat(entry).catch(() => null);
       return stat === null ? `${rel}:unreadable` : `${rel}:${stat.size}:${Math.trunc(stat.mtimeMs)}`;
     }));
+    const policyStamp = await readPolicyStamp(directory);
     return { revision: sha1Hex(`${directory}
 ${stamped.join(`
-`)}`), binding: "content" };
+`)}
+${policyStamp}
+${sizeLine}`), binding: "content", dirtyLines: [] };
   };
   const PARTIAL_MODULE_LIMIT = 12;
   const summarizePartialSnapshot = (snapshot) => {
@@ -44435,9 +48885,9 @@ ${stamped.join(`
     const engine = await loadEngine();
     const indexRoot = scopeRoot;
     const walk = prewalked ?? await listEntryFiles(indexRoot, maxEntryFiles, { ...walkBudgets, shouldCancel });
-    const { entries, truncated, truncationReason, excludedCount, excludedSample, maxEntryFiles: cap, coverage } = walk;
-    const { revision, binding, dirty, dirtyReason } = await readRevision(indexRoot, entries, { forceStatus });
-    if (isFunction2(shouldCancel) && shouldCancel()) {
+    const { entries, truncated, truncationReason, excludedCount, excludedSample, maxEntryFiles: cap, coverage, ignoreStamps, maxFileSizeBytes } = walk;
+    const { revision, binding, dirty, dirtyReason, dirtyLines } = await readRevision(indexRoot, entries, { forceStatus, maxFileSizeBytes: maxFileSizeBytes ?? null });
+    if (isFunction3(shouldCancel) && shouldCancel()) {
       const err = new Error("code-graph index cancelled");
       err.code = "CANCELLED";
       throw err;
@@ -44446,7 +48896,7 @@ ${stamped.join(`
     const projectId = ids.projectId;
     const worktreeId = ids.worktreeId;
     const fingerprint = engine.computeScopeFingerprint(projectId, worktreeId, revision);
-    if (isFunction2(shouldCancel) && shouldCancel()) {
+    if (isFunction3(shouldCancel) && shouldCancel()) {
       const err = new Error("code-graph index cancelled");
       err.code = "CANCELLED";
       throw err;
@@ -44473,7 +48923,7 @@ ${stamped.join(`
       const previousRecords = previousForReuse?.fileRecords?.files ?? {};
       let fingerprinted = 0;
       for (const abs of entries) {
-        if (isFunction2(shouldCancel) && shouldCancel()) {
+        if (isFunction3(shouldCancel) && shouldCancel()) {
           const err = new Error("code-graph index cancelled");
           err.code = "CANCELLED";
           throw err;
@@ -44511,7 +48961,7 @@ ${stamped.join(`
       }
     }
     for (const abs of walk.configFiles ?? []) {
-      if (isFunction2(shouldCancel) && shouldCancel()) {
+      if (isFunction3(shouldCancel) && shouldCancel()) {
         const err = new Error("code-graph index cancelled");
         err.code = "CANCELLED";
         throw err;
@@ -44554,7 +49004,7 @@ ${stamped.join(`
         return out;
       const fileByNodeId = new Map;
       for (const node of previousForReuse.snapshot.nodes ?? []) {
-        if (typeof node?.id === "string" && typeof node?.file === "string" && node.file.length > 0) {
+        if (isString2(node?.id) && isString2(node?.file) && node.file.length > 0) {
           fileByNodeId.set(node.id, node.file);
         }
       }
@@ -44589,7 +49039,7 @@ ${stamped.join(`
       rootDir: indexRoot,
       onProgress: onProgress ?? undefined,
       onPartialSnapshot: (partialSnapshot, progress) => {
-        if (isFunction2(shouldCancel) && shouldCancel()) {
+        if (isFunction3(shouldCancel) && shouldCancel()) {
           const err = new Error("code-graph index cancelled");
           err.code = "CANCELLED";
           throw err;
@@ -44618,19 +49068,22 @@ ${stamped.join(`
         });
       }
     });
-    const concatSnapshots = (left, right) => ({
-      nodes: [...left.nodes ?? [], ...right.nodes ?? []],
-      edges: [...left.edges ?? [], ...right.edges ?? []],
-      root: left.root ?? right.root,
-      dropped: [...left.dropped ?? [], ...right.dropped ?? []],
-      ...(left.content ?? null) !== null || (right.content ?? null) !== null ? {
-        content: {
+    const concatSnapshots = (left, right) => {
+      const merged = {
+        nodes: [...left.nodes ?? [], ...right.nodes ?? []],
+        edges: [...left.edges ?? [], ...right.edges ?? []],
+        root: left.root ?? right.root,
+        dropped: [...left.dropped ?? [], ...right.dropped ?? []]
+      };
+      if ((left.content ?? null) !== null || (right.content ?? null) !== null) {
+        merged.content = {
           tokenCap: left.content?.tokenCap ?? right.content?.tokenCap,
           files: { ...left.content?.files ?? {}, ...right.content?.files ?? {} },
           skipped: [...left.content?.skipped ?? [], ...right.content?.skipped ?? []]
-        }
-      } : {}
-    });
+        };
+      }
+      return merged;
+    };
     const shardSurface = (shards, file) => {
       const shard = shards.get(file);
       if (shard === undefined)
@@ -44696,7 +49149,7 @@ ${stamped.join(`
           unreadableFileCount: unreadableFileSet.size
         };
       } else {
-        if (isFunction2(shouldCancel) && shouldCancel()) {
+        if (isFunction3(shouldCancel) && shouldCancel()) {
           const err = new Error("code-graph index cancelled");
           err.code = "CANCELLED";
           throw err;
@@ -44722,13 +49175,13 @@ ${stamped.join(`
         };
       }
     }
-    const built = assembleEntry({ snapshot: finalSnapshot, scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey }, binding, dirty, dirtyReason, truncated: buildTruncated, truncationReason: buildTruncationReason, excludedCount, excludedSample, cap, entries, coverage: buildCoverage, metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen }, fileRecords: recordsDoc, incremental });
+    const built = assembleEntry({ snapshot: finalSnapshot, scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey }, binding, dirty, dirtyReason, truncated: buildTruncated, truncationReason: buildTruncationReason, excludedCount, excludedSample, cap, entries, coverage: buildCoverage, metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen }, fileRecords: recordsDoc, incremental, dirtyLines, ignoreStamps: ignoreStamps ?? null });
     partialByDirectory.delete(key);
     await persistEntry(key, built);
     lastTerminalFailure.delete(key);
     return built;
   };
-  const assembleEntry = ({ snapshot, scope, binding, dirty, dirtyReason, truncated, truncationReason = null, excludedCount, excludedSample, cap, entries, coverage, metrics = null, observedAtMs, fileRecords = null, incremental = null, buildSeq: buildSeqOverride = null }) => {
+  const assembleEntry = ({ snapshot, scope, binding, dirty, dirtyReason, truncated, truncationReason = null, excludedCount, excludedSample, cap, entries, coverage, metrics = null, observedAtMs, fileRecords = null, incremental = null, dirtyLines = null, ignoreStamps = null, buildSeq: buildSeqOverride = null }) => {
     if (buildSeqOverride === null || !Number.isFinite(buildSeqOverride)) {
       buildSeq += 1;
     } else {
@@ -44750,6 +49203,8 @@ ${stamped.join(`
       entryFiles: entries,
       fileRecords: fileRecords ?? null,
       incremental: incremental ?? null,
+      dirtyLines: dirtyLines ?? null,
+      ignoreStamps: ignoreStamps ?? null,
       coverage,
       metrics,
       buildSeq: buildSeqOverride === null || !Number.isFinite(buildSeqOverride) ? buildSeq : buildSeqOverride,
@@ -44760,20 +49215,151 @@ ${stamped.join(`
     }
     return built;
   };
-  let snapshotStorage = null;
-  const getStorage = async () => {
-    if (typeof runtimeOptions.storeDir !== "string" || runtimeOptions.storeDir.length === 0)
-      return null;
-    if (snapshotStorage === null) {
-      const engine = await loadEngine();
-      snapshotStorage = createSnapshotStorage({ fsPromises, path, engine, storeDir: runtimeOptions.storeDir });
+  const snapshotStorages = new Map;
+  const ALGRAPH_DIR = ".algraph";
+  const scopeStoreRoots = new Map;
+  const normalizeScopeRoot = (scopeRoot) => stripTrailingSep(path.normalize(String(scopeRoot ?? "")), path.sep);
+  const sameScopeRoot = (left, right) => {
+    const a = normalizeScopeRoot(left);
+    const b = normalizeScopeRoot(right);
+    if (a.length === 0 || b.length === 0)
+      return false;
+    if (a === b)
+      return true;
+    if (globalThis.process !== undefined && globalThis.process.platform === "win32")
+      return a.toLowerCase() === b.toLowerCase();
+    return false;
+  };
+  const resolveScopeStoreRoot = async (scopeRoot, configuredRoot) => {
+    const canonical = normalizeScopeRoot(scopeRoot);
+    if (canonical.length === 0)
+      return configuredRoot;
+    const cached = scopeStoreRoots.get(canonical);
+    if (cached !== undefined)
+      return cached;
+    const fallback = () => {
+      scopeStoreRoots.set(canonical, configuredRoot);
+      return configuredRoot;
+    };
+    if (readWatcherEnv().ALCODE_CODE_GRAPH_NO_ALGRAPH === "1")
+      return fallback();
+    let repoRoot = null;
+    try {
+      repoRoot = await findGitRoot({ fsPromises, path }, canonical);
+    } catch {
+      return fallback();
     }
-    return snapshotStorage;
+    if (repoRoot === null)
+      return fallback();
+    const candidate = path.join(repoRoot, ALGRAPH_DIR);
+    if (normalizeScopeRoot(candidate) === normalizeScopeRoot(configuredRoot)) {
+      scopeStoreRoots.set(canonical, configuredRoot);
+      return configuredRoot;
+    }
+    try {
+      await fsPromises.mkdir(candidate, { recursive: true });
+    } catch {
+      return fallback();
+    }
+    try {
+      await fsPromises.stat(path.join(candidate, ".gitignore"));
+    } catch {
+      try {
+        await fsPromises.writeFile(path.join(candidate, ".gitignore"), `*
+!.gitignore
+`, "utf8");
+      } catch {}
+    }
+    try {
+      const ignorePath = path.join(repoRoot, ".gitignore");
+      let current = null;
+      try {
+        current = await fsPromises.readFile(ignorePath, "utf8");
+      } catch {
+        current = null;
+      }
+      const line = "/.algraph/";
+      if (current === null) {
+        await fsPromises.writeFile(ignorePath, `${line}
+`, "utf8");
+      } else if (!current.split(`
+`).some((entry) => entry.trim() === line || entry.trim() === ".algraph/" || entry.trim() === ".algraph")) {
+        const ending = current.endsWith(`
+`) ? "" : `
+`;
+        await fsPromises.writeFile(ignorePath, `${current}${ending}${line}
+`, "utf8");
+      }
+    } catch {}
+    try {
+      const names = await fsPromises.readdir(configuredRoot);
+      for (const name of names) {
+        if (name === "." || name === "..")
+          continue;
+        const fromDir = path.join(configuredRoot, name);
+        let stat = null;
+        try {
+          stat = await fsPromises.stat(fromDir);
+        } catch {
+          continue;
+        }
+        if (!stat.isDirectory())
+          continue;
+        let manifest = null;
+        try {
+          manifest = JSON.parse(await fsPromises.readFile(path.join(fromDir, "manifest.json"), "utf8"));
+        } catch {
+          continue;
+        }
+        if (!isRecord12(manifest))
+          continue;
+        const scope = isRecord12(manifest.scope) ? manifest.scope : undefined;
+        const manifestRoot = scope === undefined ? undefined : scope.scopeRoot ?? scope.root;
+        if (manifestRoot === undefined || manifestRoot === null || !sameScopeRoot(manifestRoot, canonical))
+          continue;
+        const toDir = path.join(candidate, name);
+        let exists = false;
+        try {
+          await fsPromises.stat(toDir);
+          exists = true;
+        } catch {
+          exists = false;
+        }
+        if (exists)
+          continue;
+        try {
+          await fsPromises.rename(fromDir, toDir);
+        } catch {
+          continue;
+        }
+      }
+    } catch {}
+    scopeStoreRoots.set(canonical, candidate);
+    return candidate;
+  };
+  const getStorage = async (scopeRoot = null) => {
+    if (!isString2(runtimeOptions.storeDir) || runtimeOptions.storeDir.length === 0)
+      return null;
+    const root = scopeRoot === null || scopeRoot === undefined ? runtimeOptions.storeDir : await resolveScopeStoreRoot(scopeRoot, runtimeOptions.storeDir);
+    let storage = snapshotStorages.get(root);
+    if (storage == null) {
+      const engine = await loadEngine();
+      const leaseTuning = {};
+      if (Number.isFinite(Number(runtimeOptions.storeLeaseStaleMs)))
+        leaseTuning.leaseStaleMs = Number(runtimeOptions.storeLeaseStaleMs);
+      if (Number.isFinite(Number(runtimeOptions.storeLeaseTimeoutMs)))
+        leaseTuning.leaseTimeoutMs = Number(runtimeOptions.storeLeaseTimeoutMs);
+      if (Number.isFinite(Number(runtimeOptions.storeLeaseRetryMs)))
+        leaseTuning.leaseRetryMs = Number(runtimeOptions.storeLeaseRetryMs);
+      storage = createSnapshotStorage({ fsPromises, path, engine, storeDir: root, ...leaseTuning });
+      snapshotStorages.set(root, storage);
+    }
+    return storage;
   };
   const persistEntry = async (scopeKey, entry) => {
     if (entry.truncated)
       return;
-    const storage = await getStorage();
+    const storage = await getStorage(isRecord12(entry) && isRecord12(entry.scope) ? entry.scope.scopeRoot ?? null : null);
     if (!storage)
       return;
     const result = await storage.write(scopeKey, entry);
@@ -44782,7 +49368,7 @@ ${stamped.join(`
     }
   };
   const restoreFromStore = async ({ requestedKey, scopeRoot, mode }, cap, shareWalk = false) => {
-    const storage = await getStorage();
+    const storage = await getStorage(scopeRoot ?? null);
     if (!storage)
       return null;
     const engine = await loadEngine();
@@ -44790,7 +49376,7 @@ ${stamped.join(`
     if (walk.truncated)
       return null;
     const { entries, excludedCount, excludedSample, coverage } = walk;
-    const { revision, binding, dirty, dirtyReason } = await readRevision(scopeRoot, entries, { forceStatus: false });
+    const { revision, binding, dirty, dirtyReason, dirtyLines } = await readRevision(scopeRoot, entries, { forceStatus: false, maxFileSizeBytes: walk.maxFileSizeBytes ?? null });
     const ids = deriveScopeIdsForRoot(scopeRoot);
     const projectId = ids.projectId;
     const worktreeId = ids.worktreeId;
@@ -44820,6 +49406,8 @@ ${stamped.join(`
       metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen },
       observedAtMs: read.manifest.observedAtMs,
       fileRecords: read.fileRecords ?? null,
+      dirtyLines,
+      ignoreStamps: walk.ignoreStamps ?? null,
       buildSeq: read.manifest?.buildSeq ?? null
     });
     emitProgress(requestedKey, {
@@ -44833,10 +49421,10 @@ ${stamped.join(`
     });
     return built;
   };
-  const serveBuilt = (entry) => entry.truncated ? { ...entry, freshness: "stale", staleReason: "index-truncated" } : { ...entry, freshness: "fresh" };
+  const serveBuilt = (entry, extra = {}) => entry.truncated ? { ...entry, freshness: "stale", staleReason: "index-truncated", ...extra } : { ...entry, freshness: "fresh", ...extra };
   const ensureIndex = async (directory, { refresh = false, maxEntryFiles, block = false, scopeMode = "auto", walkBudgets = {} } = {}) => {
     const engine = await loadEngine();
-    const cap = resolveMaxEntryFiles(maxEntryFiles ?? defaultMaxEntryFiles);
+    const cap = null;
     const rawCanonical = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
     const rawKey = scopeKeyOf(rawCanonical, path);
     let scopeRoot = rawCanonical;
@@ -44854,12 +49442,19 @@ ${stamped.join(`
     const mode = resolved.mode;
     rememberScopeAlias(rawKey, key);
     rememberScopeAlias(requestedKey, key);
+    try {
+      ensureWatcher(key, scopeRoot);
+    } catch {}
     const cached = snapshots.get(key);
     const revisionMatches = async (entry) => {
       if (!entry || entry.entryCap !== cap)
         return false;
-      const { revision } = await readRevision(scopeRoot, entry.entryFiles ?? []);
-      return revision === entry.scope.revision && Date.now() - entry.observedAtMs <= engine.STALE_AFTER_MS;
+      const { revision } = await readRevision(scopeRoot, entry.entryFiles ?? [], { maxFileSizeBytes: null });
+      if (revision !== entry.scope.revision)
+        return false;
+      if (!await ignoreStampsMatch(scopeRoot, entry))
+        return false;
+      return Date.now() - entry.observedAtMs <= engine.STALE_AFTER_MS;
     };
     const fallbackEntry = () => completeSnapshots.get(key) ?? snapshots.get(key) ?? null;
     const serveFallback = (staleReason, extra = {}) => {
@@ -44879,10 +49474,16 @@ ${stamped.join(`
     if (!refresh) {
       const complete = !cached || cached.truncated ? completeSnapshots.get(key) : cached;
       if (complete && await revisionMatches(complete)) {
-        return { entry: { ...complete, freshness: "fresh" }, scopeKey: key, scopeRoot, scopeMode: mode };
+        const caught = await readCatchUp(scopeRoot, complete);
+        if (caught.files.length === 0) {
+          return { entry: { ...complete, freshness: "fresh" }, scopeKey: key, scopeRoot, scopeMode: mode };
+        }
       }
       if (cached && cached.truncated && await revisionMatches(cached)) {
-        return { entry: serveFallback("index-truncated"), scopeKey: key, scopeRoot, scopeMode: mode };
+        const caughtTruncated = await readCatchUp(scopeRoot, cached);
+        if (caughtTruncated.files.length === 0) {
+          return { entry: serveFallback("index-truncated"), scopeKey: key, scopeRoot, scopeMode: mode };
+        }
       }
       const shareWalk = Object.keys(walkBudgets).length === 0;
       const restored = await restoreFromStore({ requestedKey, scopeRoot, mode }, cap, shareWalk).catch(() => null);
@@ -44956,7 +49557,7 @@ ${stamped.join(`
     truncationReason: job.truncationReason ?? null
   });
   const emitProgress = (directory, event) => {
-    if (typeof runtimeOptions.onProgress !== "function")
+    if (!isFunction3(runtimeOptions.onProgress))
       return;
     try {
       runtimeOptions.onProgress({ directory, atMs: Date.now(), ...event });
@@ -45096,10 +49697,12 @@ ${stamped.join(`
     const key = requestToScope.get(wanted) ?? wanted;
     const job = jobs.get(key);
     if (!job) {
+      clearWatcherTimer(key);
       rememberPendingCancel(key);
       return { cancelled: false, state: "idle" };
     }
     job.cancelRequested = true;
+    clearWatcherTimer(key);
     emitProgress(job.directory, { state: "cancelled" });
     return { cancelled: true, state: job.state };
   };
@@ -45147,6 +49750,230 @@ ${stamped.join(`
     });
     return { generation: entry.buildSeq, nodes: entry.snapshot.nodes.length };
   };
+  const MAX_STALE_NOTE_FILES = 10;
+  const isSyncDisabled = () => {
+    if (runtimeOptions.syncDisabled === true || runtimeOptions.watcherEnabled === false)
+      return true;
+    try {
+      const env = globalThis.process?.env;
+      if (env !== undefined && env !== null && (env.CODEGRAPH_NO_DAEMON === "1" || env.CODEGRAPH_SYNC_DISABLED === "1"))
+        return true;
+    } catch {}
+    return false;
+  };
+  const normalizeStaleRel = (value) => String(value ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
+  const staleNoteFor = (file) => `stale: ${file} edited since index — Read directly for current source`;
+  const staleListOf = (holder, key) => Array.isArray(holder?.[key]) ? holder[key] : [];
+  const collectAnswerFiles = (answer) => {
+    const out = [];
+    const push = (item) => {
+      if (item !== null && item !== undefined && isString2(item.file) && item.file.length > 0)
+        out.push(item.file);
+    };
+    for (const item of staleListOf(answer, "items"))
+      push(item);
+    for (const key of ["callers", "callees", "impacted", "candidates"]) {
+      for (const item of staleListOf(answer, key))
+        push(item);
+    }
+    for (const key of ["subject", "definition"]) {
+      if (answer?.[key] !== undefined && answer?.[key] !== null)
+        push(answer[key]);
+    }
+    for (const item of staleListOf(answer, "contentItems"))
+      push(item);
+    for (const node of staleListOf(answer?.graph, "nodes"))
+      push(node);
+    for (const module of staleListOf(answer, "modules")) {
+      for (const sample of staleListOf(module, "sampleSymbols"))
+        push(sample);
+    }
+    return out;
+  };
+  const MAX_CATCHUP_SCOPES = 200;
+  const catchUpByScope = new Map;
+  const diffCatchUp = async (scopeRoot, entry) => {
+    const files = [];
+    const ageByRel = new Map;
+    try {
+      const records = entry !== null && entry !== undefined ? entry.fileRecords?.files : null;
+      if (!scopeRoot || records === null || records === undefined)
+        return { files, ageByRel };
+      const engine = await loadEngine();
+      let checked = 0;
+      for (const [rel, record] of Object.entries(records)) {
+        const abs = path.join(scopeRoot, ...String(rel).split("/"));
+        let stat = null;
+        try {
+          stat = await fsPromises.stat(abs);
+        } catch {
+          stat = null;
+        }
+        const size = record !== null && record !== undefined ? record.size : null;
+        const mtime = record !== null && record !== undefined ? record.mtimeMs : null;
+        if (stat !== null && stat.isFile() && Number.isFinite(size) && Number.isFinite(mtime) && size === stat.size && mtime === stat.mtimeMs) {} else if (stat === null || !stat.isFile()) {
+          files.push(rel);
+          ageByRel.set(rel, null);
+        } else {
+          let bytes = null;
+          try {
+            bytes = await fsPromises.readFile(abs);
+          } catch {
+            bytes = null;
+          }
+          const blob = record !== null && record !== undefined ? record.blob : null;
+          if (bytes === null || engine.fingerprintBytes(bytes) !== blob) {
+            files.push(rel);
+            ageByRel.set(rel, Math.max(0, Date.now() - stat.mtimeMs));
+          }
+        }
+        checked += 1;
+        if (checked % 200 === 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+      }
+    } catch {
+      return { files: [], ageByRel: new Map };
+    }
+    files.sort();
+    return { files, ageByRel };
+  };
+  const readCatchUp = async (scopeRoot, entry) => {
+    const buildSeq = entry !== null && entry !== undefined ? entry.buildSeq : null;
+    const cacheKey = scopeKeyOf(scopeRoot, path);
+    const probed = gitStatusCache.get(path.normalize(scopeRoot));
+    const token = probed ? probed.result : null;
+    const hit = catchUpByScope.get(cacheKey);
+    if (hit && hit.buildSeq === buildSeq && hit.token === token && token !== null)
+      return hit;
+    const diffed = await diffCatchUp(scopeRoot, entry);
+    const assembled = { buildSeq, token, files: diffed.files, ageByRel: diffed.ageByRel };
+    if (token === null)
+      return assembled;
+    catchUpByScope.delete(cacheKey);
+    catchUpByScope.set(cacheKey, assembled);
+    while (catchUpByScope.size > MAX_CATCHUP_SCOPES) {
+      catchUpByScope.delete(catchUpByScope.keys().next().value);
+    }
+    return assembled;
+  };
+  const withCatchUp = async (triple, scopeRoot, entry) => {
+    if (!scopeRoot || !entry || triple.syncStatus === "disabled")
+      return triple;
+    const caught = await readCatchUp(scopeRoot, entry);
+    if (caught.files.length === 0)
+      return triple;
+    const seen = new Set(triple.pendingSync);
+    const pendingSync = [...triple.pendingSync];
+    for (const rel of caught.files) {
+      if (!seen.has(rel)) {
+        seen.add(rel);
+        pendingSync.push(rel);
+      }
+    }
+    const ageByRel = new Map(triple.ageByRel);
+    for (const [rel, ageMs] of caught.ageByRel) {
+      if (!ageByRel.has(rel))
+        ageByRel.set(rel, ageMs);
+    }
+    return {
+      ...triple,
+      staleFiles: pendingSync.map((file) => ({ file, ageMs: ageByRel.has(file) ? ageByRel.get(file) : null })),
+      pendingSync,
+      pendingSet: new Set(pendingSync),
+      ageByRel
+    };
+  };
+  const readStaleTriple = async (scopeRoot, entryForBaseline = null) => {
+    const disabled = isSyncDisabled();
+    if (!scopeRoot) {
+      return { staleFiles: [], pendingSync: [], syncStatus: disabled ? "disabled" : "ok", pendingSet: new Set, ageByRel: new Map };
+    }
+    let dirty = null;
+    try {
+      dirty = await readDirtyFingerprint(scopeRoot, { force: false });
+    } catch {
+      dirty = { ok: false };
+    }
+    if (dirty === null || dirty === undefined || dirty.ok !== true) {
+      return withCatchUp({ staleFiles: [], pendingSync: [], syncStatus: disabled ? "disabled" : "recovering", pendingSet: new Set, ageByRel: new Map }, scopeRoot, entryForBaseline);
+    }
+    const currentFiles = Array.isArray(dirty.files) ? dirty.files : [];
+    const lineByRel = new Map;
+    const mtimeByRel = new Map;
+    const ageByRel = new Map;
+    for (const line of dirty.lines ?? []) {
+      const rest = String(line).slice(3);
+      let rel = null;
+      let ageMs = null;
+      let mtimeMs = null;
+      if (rest.endsWith(":deleted")) {
+        rel = rest.slice(0, -":deleted".length);
+      } else {
+        const parts = rest.split(":");
+        if (parts.length >= 3) {
+          const mtime = Number(parts.pop());
+          parts.pop();
+          rel = parts.join(":");
+          if (Number.isFinite(mtime)) {
+            mtimeMs = mtime;
+            ageMs = Math.max(0, Date.now() - mtime);
+          }
+        }
+      }
+      if (rel !== null && rel.length > 0 && !lineByRel.has(rel)) {
+        lineByRel.set(rel, line);
+        mtimeByRel.set(rel, mtimeMs);
+        ageByRel.set(rel, ageMs);
+      }
+    }
+    const baseline = entryForBaseline !== null && entryForBaseline !== undefined ? entryForBaseline.dirtyLines : null;
+    const observedAtMs = entryForBaseline !== null && entryForBaseline !== undefined ? entryForBaseline.observedAtMs : null;
+    let pendingSync;
+    if (Array.isArray(baseline)) {
+      const baseSet = new Set(baseline);
+      pendingSync = currentFiles.filter((rel) => !baseSet.has(lineByRel.get(rel)));
+    } else {
+      pendingSync = currentFiles.filter((rel) => {
+        const mtime = mtimeByRel.has(rel) ? mtimeByRel.get(rel) : null;
+        if (mtime === null || mtime === undefined)
+          return true;
+        if (observedAtMs === null || observedAtMs === undefined || !Number.isFinite(observedAtMs))
+          return true;
+        return mtime > observedAtMs;
+      });
+    }
+    const pendingSet = new Set(pendingSync);
+    const staleFiles = pendingSync.map((file) => ({ file, ageMs: ageByRel.has(file) ? ageByRel.get(file) : null }));
+    return withCatchUp({ staleFiles, pendingSync, syncStatus: disabled ? "disabled" : "ok", pendingSet, ageByRel }, scopeRoot, entryForBaseline);
+  };
+  const narrowStaleToAnswer = (answer, triple) => {
+    const seen = new Set;
+    const staleFiles = [];
+    for (const file of collectAnswerFiles(answer)) {
+      const rel = normalizeStaleRel(file);
+      if (rel.length === 0 || seen.has(rel) || !triple.pendingSet.has(rel))
+        continue;
+      seen.add(rel);
+      staleFiles.push({ file: rel, ageMs: triple.ageByRel.has(rel) ? triple.ageByRel.get(rel) : null });
+    }
+    return { staleFiles, pendingSync: triple.pendingSync, syncStatus: triple.syncStatus };
+  };
+  const sameStaleStrings = (left, right) => Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => value === right[index]);
+  const sameStaleFiles = (left, right) => Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((entry, index) => right[index] !== undefined && entry.file === right[index].file && entry.ageMs === right[index].ageMs);
+  const attachStaleToAnswer = (answer, narrowed) => {
+    const unresolved = Array.isArray(answer.unresolved) ? answer.unresolved : [];
+    const merged = [...unresolved];
+    for (const entry of narrowed.staleFiles.slice(0, MAX_STALE_NOTE_FILES)) {
+      const note = staleNoteFor(entry.file);
+      if (!merged.includes(note))
+        merged.push(note);
+    }
+    if (merged.length === unresolved.length && narrowed.syncStatus === answer.syncStatus && sameStaleFiles(answer.staleFiles, narrowed.staleFiles) && sameStaleStrings(answer.pendingSync, narrowed.pendingSync)) {
+      return answer;
+    }
+    return { ...answer, staleFiles: narrowed.staleFiles, pendingSync: narrowed.pendingSync, syncStatus: narrowed.syncStatus, unresolved: merged };
+  };
   const freshnessFields = (entry) => {
     const fields = {
       projectId: entry.scope.projectId,
@@ -45161,10 +49988,20 @@ ${stamped.join(`
       truncationReason: entry.truncationReason ?? null,
       excludedCount: entry.excludedCount ?? 0,
       excludedSample: entry.excludedSample ?? [],
+      entryCap: entry.entryCap ?? null,
       scopeRoot: entry.scope?.scopeRoot ?? null,
       scopeMode: entry.scope?.scopeMode ?? null,
       metrics: entry.metrics ?? null
     };
+    if (Array.isArray(entry.staleFiles)) {
+      fields.staleFiles = entry.staleFiles;
+    }
+    if (Array.isArray(entry.pendingSync)) {
+      fields.pendingSync = entry.pendingSync;
+    }
+    if (entry.syncStatus === "ok" || entry.syncStatus === "disabled" || entry.syncStatus === "recovering") {
+      fields.syncStatus = entry.syncStatus;
+    }
     if (entry.dirty) {
       fields.dirty = entry.dirty;
     }
@@ -45181,7 +50018,8 @@ ${stamped.join(`
   };
   const indexExclusionNote = (entry) => {
     const reason = entry.truncationReason ? ` (${entry.truncationReason})` : "";
-    return `index incomplete: ${entry.excludedCount ?? 0} files excluded by the entry cap (${entry.entryCap ?? defaultMaxEntryFiles} max)${reason}`;
+    const budget = entry.entryCap === null || entry.entryCap === undefined ? "" : ` by the entry cap (${entry.entryCap} max)`;
+    return `index incomplete: ${entry.excludedCount ?? 0} files excluded${budget}${reason}`;
   };
   const applyUnreadableCoverage = (envelope, entry) => {
     const unreadable = entry.coverage?.unreadableDirs;
@@ -45205,7 +50043,7 @@ ${stamped.join(`
     };
     const kinds = notes.map((note) => note.startsWith("walk could not read") ? "walk could not read" : "file(s) unreadable");
     notes.forEach((note, index) => {
-      if (!next.unresolved.some((line) => typeof line === "string" && line.includes(kinds[index])))
+      if (!next.unresolved.some((line) => isString2(line) && line.includes(kinds[index])))
         next.unresolved.push(note);
     });
     if (next.coverage === "indexed")
@@ -45240,7 +50078,8 @@ ${stamped.join(`
     const outcome = await ensureIndex(directory, options.block === true || blockOnRead ? { ...options, block: true } : options);
     if (!outcome.entry) {
       const cached = outcome.cached ?? null;
-      const base = cached ? freshnessFields({ ...cached, freshness: "stale", staleAfterMs: engine.STALE_AFTER_MS }) : null;
+      const stale = await readStaleTriple(outcome.scopeRoot ?? null, cached ?? null);
+      const base = cached ? freshnessFields({ ...cached, freshness: "stale", staleAfterMs: engine.STALE_AFTER_MS, staleFiles: stale.staleFiles, pendingSync: stale.pendingSync, syncStatus: stale.syncStatus }) : null;
       return {
         ready: false,
         indexState: outcome.pending,
@@ -45256,7 +50095,10 @@ ${stamped.join(`
           generation: null,
           indexTruncated: false,
           excludedCount: 0,
-          excludedSample: []
+          excludedSample: [],
+          staleFiles: stale.staleFiles,
+          pendingSync: stale.pendingSync,
+          syncStatus: stale.syncStatus
         },
         truncated: cached ? cached.indexTruncated === true : false,
         binding: cached?.binding ?? null,
@@ -45264,15 +50106,22 @@ ${stamped.join(`
         nodeCount: cached?.snapshot.nodes.length ?? 0,
         edgeCount: cached?.snapshot.edges.length ?? 0,
         entryCount: cached?.entryCount ?? 0,
-        entryCap: cached?.entryCap ?? defaultMaxEntryFiles
+        entryCap: cached?.entryCap ?? null
       };
     }
     const entry = outcome.entry;
-    const fields = freshnessFields({
+    const stale = await readStaleTriple(outcome.scopeRoot ?? entry.scope?.scopeRoot ?? null, entry);
+    const freshnessInput = {
       ...entry,
       staleAfterMs: engine.STALE_AFTER_MS,
-      ...outcome.refreshFailed ? { refreshError: outcome.refreshFailed instanceof Error ? outcome.refreshFailed.message : String(outcome.refreshFailed) } : {}
-    });
+      staleFiles: stale.staleFiles,
+      pendingSync: stale.pendingSync,
+      syncStatus: stale.syncStatus
+    };
+    if (outcome.refreshFailed) {
+      freshnessInput.refreshError = outcome.refreshFailed instanceof Error ? outcome.refreshFailed.message : String(outcome.refreshFailed);
+    }
+    const fields = freshnessFields(freshnessInput);
     return {
       ready: true,
       indexState: { state: "ready", error: null, progress: null, startedAtMs: entry.observedAtMs, cancelRequested: false },
@@ -45283,7 +50132,7 @@ ${stamped.join(`
       nodeCount: entry.snapshot.nodes.length,
       edgeCount: entry.snapshot.edges.length,
       entryCount: entry.entryCount,
-      entryCap: entry.entryCap ?? defaultMaxEntryFiles,
+      entryCap: entry.entryCap ?? null,
       incremental: entry.incremental ?? null
     };
   };
@@ -45506,7 +50355,7 @@ ${stamped.join(`
       ...skippedDirs.length > 0 ? [`walk skipped generated/vendored directorie(s): ${skippedDirs.join(", ")}`] : []
     ];
     const unreadable = unreadableDirs.length > 0;
-    return {
+    const modulesAnswer = {
       ...base,
       coverage: unreadable ? "partial" : "indexed",
       truncated: modules.length > limit,
@@ -45517,11 +50366,14 @@ ${stamped.join(`
       modules: limited,
       totals: { displayed: limited.length, known: modules.length, hidden: modules.length - limited.length },
       completeness: unreadable ? "partial" : "complete",
-      ...unreadable ? { completenessReason: "unreadable-dirs" } : {},
       repositoryTotals: walkCoverage?.totals ?? emptyTotals,
       skippedDirs,
       unreadableDirs
     };
+    if (unreadable) {
+      modulesAnswer.completenessReason = "unreadable-dirs";
+    }
+    return modulesAnswer;
   };
   const GRAPH_EDGE_KINDS = new Set(["DEFINES", "IMPORTS", "EXPORTS", "TESTS", "CALLS_STATIC", "CALLS_UNRESOLVED"]);
   const MAX_GRAPH_NODES = 40;
@@ -45581,10 +50433,15 @@ ${stamped.join(`
     const limit = input.limit === undefined ? 20 : Math.min(50, Math.max(1, Math.floor(input.limit)));
     const rawDepth = Number(input.depth);
     const depth = Number.isFinite(rawDepth) ? Math.min(3, Math.max(1, Math.floor(rawDepth))) : 1;
-    const outcome = await ensureIndex(directory, { refresh: input.refresh === true, block: blockOnRead, scopeMode: input.scopeMode ?? "auto" });
+    const indexOptions = { refresh: input.refresh === true, block: blockOnRead, scopeMode: input.scopeMode ?? "auto" };
+    if (input.maxEntryFiles !== undefined && input.maxEntryFiles !== null) {
+      indexOptions.maxEntryFiles = input.maxEntryFiles;
+    }
+    const outcome = await ensureIndex(directory, indexOptions);
     const entry = outcome.entry ?? outcome.cached ?? null;
     if (!entry) {
       const pending = outcome.pending ?? { state: "not-indexed" };
+      const stale = await readStaleTriple(outcome.scopeRoot ?? null);
       return {
         projectId: null,
         worktreeId: null,
@@ -45601,7 +50458,10 @@ ${stamped.join(`
         items: [],
         totals: { displayed: 0, known: 0, hidden: 0 },
         completeness: "partial",
-        completenessReason: "index-building"
+        completenessReason: "index-building",
+        staleFiles: stale.staleFiles,
+        pendingSync: stale.pendingSync,
+        syncStatus: stale.syncStatus
       };
     }
     const indexBuilding = outcome.entry ? null : outcome.pending ?? null;
@@ -45623,8 +50483,10 @@ ${stamped.join(`
     const stored = snapshots.get(outcome.scopeKey ?? scopeKeyOf(directory, path));
     const queryCache = stored && stored.buildSeq === entry.buildSeq && stored.queryCache instanceof Map ? stored.queryCache : null;
     const cachedAnswer = queryCache?.get(cacheKey);
-    if (cachedAnswer !== undefined)
-      return cachedAnswer;
+    if (cachedAnswer !== undefined) {
+      const stale = await readStaleTriple(outcome.scopeRoot ?? entry.scope?.scopeRoot ?? null, entry);
+      return attachStaleToAnswer(cachedAnswer, narrowStaleToAnswer(cachedAnswer, stale));
+    }
     const options = { scope: entry.scope, freshness: entry.freshness, limit };
     const reachOptions = { ...options, maxDepth: depth };
     let envelope = null;
@@ -45678,22 +50540,24 @@ ${stamped.join(`
     }
     const subjectId = kind === "file" ? resolveFileId(entry, String(input.file ?? "").replace(/\\/g, "/").replace(/^\.\//, "")) ?? "" : kind === "context" || kind === "impact" ? String(input.symbol ?? "") : "";
     const graph = subjectId.length > 0 ? graphView(entry, subjectId, limit) : null;
-    const answer = {
+    const base = {
       ...applyIndexCoverage(envelope, entry),
       snapshotRoot: entry.snapshot.root ?? null,
       ...freshnessFields({ ...entry, staleAfterMs: engine.STALE_AFTER_MS }),
       ...indexBuilding ? { ready: outcome.entry !== undefined, freshness: "stale", indexState: indexBuilding } : { ready: true }
     };
     if (graph !== null) {
-      answer.graph = graph;
+      base.graph = graph;
     }
+    const stale = await readStaleTriple(outcome.scopeRoot ?? entry.scope?.scopeRoot ?? null, entry);
+    const attached = attachStaleToAnswer(base, narrowStaleToAnswer(base, stale));
     if (queryCache) {
       if (queryCache.size >= MAX_CACHED_QUERIES) {
         queryCache.delete(queryCache.keys().next().value);
       }
-      queryCache.set(cacheKey, answer);
+      queryCache.set(cacheKey, attached);
     }
-    return answer;
+    return attached;
   };
   const compareKey = (value) => {
     const stripped = value.startsWith("\\\\?\\") ? value.slice(4) : value;
@@ -45706,7 +50570,7 @@ ${stamped.join(`
     return childKey === parentKey || childKey.startsWith(`${parentKey}/`);
   };
   const resolveFile = async (directory, file, { scopeMode = "auto" } = {}) => {
-    const raw = isString(file) ? file.trim() : "";
+    const raw = isString2(file) ? file.trim() : "";
     if (raw.length === 0) {
       return { ok: false, reason: "missing-file-id" };
     }
@@ -45747,74 +50611,118 @@ ${stamped.join(`
       snapshotRoot
     };
   };
+  const setScopeMaxEntryFiles = () => null;
+  const getScopeMaxEntryFiles = () => null;
+  const resetScopeMaxEntryFiles = () => null;
   return {
     normalizeDirectory,
     deriveScopeIds,
     listEntryFiles: (directory, maxEntryFiles, walkOptions) => listEntryFiles(directory, maxEntryFiles, walkOptions),
     resolveIndexScope: (directory, mode) => resolveIndexScope({ fsPromises, path }, directory, mode),
+    setScopeMaxEntryFiles,
+    getScopeMaxEntryFiles,
+    resetScopeMaxEntryFiles,
     readIndex,
     query,
     resolveFile,
+    buildShardedSnapshot: (entries, options) => {
+      const opts = options ?? {};
+      return runShardedBuild({
+        entries,
+        rootDir: opts.rootDir,
+        shards: opts.shards,
+        budgets: opts.budgets,
+        signal: opts.signal,
+        shouldCancel: opts.shouldCancel,
+        onProgress: opts.onProgress
+      });
+    },
     indexState,
     cancelIndex,
     awaitIndex,
-    seedSnapshot
+    seedSnapshot,
+    closeWatchers,
+    watcherState
   };
 };
 
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/canonical-runtime.ts
-var isRecord11 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-var asNumberOrNull = (value) => typeof value === "number" && Number.isFinite(value) ? value : null;
-var asStringOrNull = (value) => typeof value === "string" ? value : null;
+var WireObjectSchema = custom((candidate) => candidate !== null && !Array.isArray(candidate) && candidate instanceof Object);
+var wireObjectOf = (value) => {
+  const parsed = WireObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+var FiniteNumberSchema = number2().refine((candidate) => Number.isFinite(candidate));
+var NumberSchema = number2();
+var StringSchema = string2();
+var BooleanSchema = boolean2();
+var stringOrNull = (value) => {
+  const parsed = StringSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+var finiteOrNull = (value) => {
+  const parsed = FiniteNumberSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+var countOrZero = (value) => {
+  const parsed = NumberSchema.safeParse(value);
+  return parsed.success ? parsed.data : 0;
+};
 function resolveCanonicalStoreDir() {
   const root = process.env.ALCODE_DATA_DIR !== undefined && process.env.ALCODE_DATA_DIR.length > 0 ? path6.resolve(process.env.ALCODE_DATA_DIR) : path6.join(homedir5(), ".config", "alcode");
   return path6.join(root, "code-graph-store");
 }
 var asFactory = (value) => {
-  if (typeof value !== "function")
+  if (!(value instanceof Function))
     throw new Error("canonical code-graph runtime factory is not a function");
   return value;
 };
 var toCanonicalSummary = (raw) => {
-  if (!isRecord11(raw))
+  const wire = wireObjectOf(raw);
+  if (wire === null)
     return null;
-  if (typeof raw["ready"] !== "boolean")
+  const ready = BooleanSchema.safeParse(wire["ready"]);
+  if (!ready.success)
     return null;
-  const state = isRecord11(raw["indexState"]) ? asStringOrNull(raw["indexState"]["state"]) : null;
+  const indexState = wireObjectOf(wire["indexState"]);
   return {
-    ready: raw["ready"],
-    generation: asNumberOrNull(raw["generation"]),
-    projectId: asStringOrNull(raw["projectId"]),
-    worktreeId: asStringOrNull(raw["worktreeId"]),
-    revision: asStringOrNull(raw["revision"]),
-    fingerprint: asStringOrNull(raw["fingerprint"]),
-    freshness: typeof raw["freshness"] === "string" ? raw["freshness"] : "unindexed",
-    indexTruncated: raw["indexTruncated"] === true,
-    nodeCount: typeof raw["nodeCount"] === "number" ? raw["nodeCount"] : 0,
-    edgeCount: typeof raw["edgeCount"] === "number" ? raw["edgeCount"] : 0,
-    entryCount: typeof raw["entryCount"] === "number" ? raw["entryCount"] : 0,
-    entryCap: typeof raw["entryCap"] === "number" ? raw["entryCap"] : 0,
-    indexState: state
+    ready: ready.data,
+    generation: finiteOrNull(wire["generation"]),
+    projectId: stringOrNull(wire["projectId"]),
+    worktreeId: stringOrNull(wire["worktreeId"]),
+    revision: stringOrNull(wire["revision"]),
+    fingerprint: stringOrNull(wire["fingerprint"]),
+    freshness: stringOrNull(wire["freshness"]) ?? "unindexed",
+    indexTruncated: wire["indexTruncated"] === true,
+    nodeCount: countOrZero(wire["nodeCount"]),
+    edgeCount: countOrZero(wire["edgeCount"]),
+    entryCount: countOrZero(wire["entryCount"]),
+    entryCap: countOrZero(wire["entryCap"]),
+    indexState: indexState === null ? null : stringOrNull(indexState["state"])
   };
 };
 var toCanonicalAnswer = (raw) => {
-  if (!isRecord11(raw))
+  const wire = wireObjectOf(raw);
+  if (wire === null)
+    return null;
+  if (!Array.isArray(wire["items"]))
+    return null;
+  if (wireObjectOf(wire["totals"]) === null)
+    return null;
+  if (!Array.isArray(wire["unresolved"]))
+    return null;
+  if (!Array.isArray(wire["unsupported"]))
+    return null;
+  const coverage = StringSchema.safeParse(wire["coverage"]);
+  if (!coverage.success)
     return null;
   const envelope = raw;
-  if (!Array.isArray(envelope.items))
-    return null;
-  if (!isRecord11(envelope.totals))
-    return null;
-  if (!Array.isArray(envelope.unresolved) || !Array.isArray(envelope.unsupported))
-    return null;
-  if (typeof envelope["coverage"] !== "string")
-    return null;
   return {
-    envelope: raw,
-    generation: asNumberOrNull(raw["generation"]),
-    freshness: typeof raw["freshness"] === "string" ? raw["freshness"] : "unindexed",
-    coverage: envelope["coverage"],
-    ready: raw["ready"] !== false
+    envelope,
+    generation: finiteOrNull(wire["generation"]),
+    freshness: stringOrNull(wire["freshness"]) ?? "unindexed",
+    coverage: coverage.data,
+    ready: wire["ready"] !== false
   };
 };
 var wrapRawRuntime = (raw) => ({
@@ -45846,7 +50754,8 @@ function getCanonicalRuntime(deps = {}) {
 
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/code-graph.ts
 var CODE_GRAPH_NAME = "code_graph";
-var CODE_GRAPH_DESCRIPTION = "Query the repository code graph: status, symbol context, search, call trace, blast-radius impact, or owning tests.";
+var EXPLORE_PLAYBOOK = "Explore returns bodies, paths, and blast radius in one call. " + "Use it when you want to understand a symbol before editing. " + "Subject may be a bare name (every definition answers), a symbol id, or a file path. " + "Bodies are verbatim line-numbered source grouped by file. " + "Paths are static calls only; dynamics stay in unresolved and never become edges. " + "BlastRadius counts every reverse-reachable dependent for edit risk.";
+var CODE_GRAPH_DESCRIPTION = "Query the repository code graph: status, symbol context, search, call trace, blast-radius impact, owning tests, or a composed explore answer. " + EXPLORE_PLAYBOOK;
 var SOURCE_EXTENSIONS2 = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 var FALLBACK_REVISION = "0".repeat(40);
 function resolveDirectory(deps, context) {
@@ -45897,6 +50806,7 @@ async function resolveSubjectId(runtime, track, directory, subject, limit) {
   }
   return subject;
 }
+var completenessExtraOf = (complete) => complete ? {} : { completenessReason: "result-limit" };
 function mergedImpactEnvelope(summary, directory, paths, parts) {
   const seen = new Set;
   const items = [];
@@ -45909,8 +50819,9 @@ function mergedImpactEnvelope(summary, directory, paths, parts) {
     partsRun += 1;
     if (part.envelope.completeness !== undefined && part.envelope.completeness !== "complete")
       everyPartComplete = false;
-    if (typeof part.envelope.totals?.known === "number")
-      knownParts.push(part.envelope.totals.known);
+    const known = part.envelope.totals?.known;
+    if (known !== undefined && known !== null)
+      knownParts.push(known);
     for (const item of part.envelope.items) {
       if (seen.has(item.id)) {
         deduped += 1;
@@ -45922,6 +50833,13 @@ function mergedImpactEnvelope(summary, directory, paths, parts) {
     unresolved.push(...part.envelope.unresolved);
   }
   const uniqueUnresolved = [...new Set(unresolved)];
+  const staleNoteTexts = [];
+  for (const part of parts) {
+    for (const entry of staleUnresolvedEntries(staleCarrierOf(part.envelope))) {
+      if (!uniqueUnresolved.includes(entry.reason) && !staleNoteTexts.includes(entry.reason))
+        staleNoteTexts.push(entry.reason);
+    }
+  }
   const coverRank = (coverage) => coverage === "indexed" ? 0 : coverage === "partial" ? 1 : 2;
   const coverage = paths.length === 0 ? "indexed" : parts.map((part) => part.envelope.coverage).sort((a, b) => coverRank(b) - coverRank(a))[0] ?? "partial";
   const complete = paths.length === 0 || everyPartComplete && deduped === 0 && knownParts.length > 0;
@@ -45935,12 +50853,12 @@ function mergedImpactEnvelope(summary, directory, paths, parts) {
     coverage,
     truncated: false,
     knowledgeIds: [],
-    unresolved: paths.length === 0 ? ["no-changes"] : uniqueUnresolved,
+    unresolved: [...paths.length === 0 ? ["no-changes"] : uniqueUnresolved, ...staleNoteTexts],
     unsupported: [],
     items,
     totals: { displayed: items.length, known, hidden: known === null ? null : Math.max(known - items.length, 0) },
     completeness: complete ? "complete" : "partial",
-    ...complete ? {} : { completenessReason: "result-limit" }
+    ...completenessExtraOf(complete)
   };
 }
 function inferSubjectKind(subject) {
@@ -45964,12 +50882,374 @@ function toSubjects(op, args) {
   }
   return subjects;
 }
+var staleCarrierOf = (value) => value;
+var NonEmptyStringSchema = string2().min(1);
+var isNonEmptyString = (value) => NonEmptyStringSchema.safeParse(value).success;
+var StaleFileSchema = object({ file: string2().min(1), ageMs: FiniteNumberSchema.optional() });
+var staleFilesOf = (carrier) => {
+  if (!Array.isArray(carrier.staleFiles))
+    return [];
+  const out = [];
+  for (const entry of carrier.staleFiles) {
+    const parsed = StaleFileSchema.safeParse(entry);
+    if (!parsed.success)
+      continue;
+    const ageMs = FiniteNumberSchema.safeParse(parsed.data["ageMs"]);
+    out.push({ file: parsed.data.file, ageMs: ageMs.success ? ageMs.data : null });
+  }
+  return out;
+};
+var pendingSyncOf = (carrier) => {
+  if (!Array.isArray(carrier.pendingSync))
+    return [];
+  return carrier.pendingSync.filter(isNonEmptyString);
+};
+var syncStatusOf = (carrier) => {
+  const status = carrier.syncStatus;
+  return status === "disabled" || status === "recovering" || status === "ok" ? status : null;
+};
+var staleNoteFor = (file) => `stale: ${file} edited since index — Read directly for current source`;
+var staleUnresolvedEntries = (carrier) => {
+  const entries = [];
+  for (const entry of staleFilesOf(carrier)) {
+    entries.push({ kind: "unresolved", id: entry.file, reason: staleNoteFor(entry.file) });
+  }
+  const status = syncStatusOf(carrier);
+  if (status === "disabled" || status === "recovering") {
+    entries.push({ kind: "unresolved", id: "sync-status", reason: `sync ${status} — whole index may be stale` });
+  }
+  return entries;
+};
+var staleStatusReasons = (carrier) => {
+  const stale = staleFilesOf(carrier);
+  const reasons = stale.map((entry) => `stale:${entry.file}`);
+  const referenced = new Set(stale.map((entry) => entry.file));
+  const unreferenced = pendingSyncOf(carrier).filter((file) => !referenced.has(file));
+  if (unreferenced.length > 0)
+    reasons.push(`pending:${unreferenced.length}`);
+  const status = syncStatusOf(carrier);
+  if (status === "disabled" || status === "recovering")
+    reasons.push(`sync-${status}`);
+  return reasons;
+};
+var summaryStatusExtrasOf = (generation, revision) => {
+  const extras = {};
+  if (generation !== null)
+    extras.generation = generation;
+  if (revision !== null)
+    extras.revision = revision;
+  return extras;
+};
+var DepthLevelSchema = union([literal(1), literal(2), literal(3)]);
+var levelOf = (depth) => {
+  const parsed = DepthLevelSchema.safeParse(depth ?? 2);
+  return parsed.success ? parsed.data : 2;
+};
 function correlationOf(summary, directory) {
-  return {
+  const correlation = {
     projectId: summary.projectId ?? "project-00000000",
     worktreeId: summary.worktreeId ?? directory,
-    revision: summary.revision ?? FALLBACK_REVISION,
-    ...summary.generation === null ? {} : { generation: summary.generation }
+    revision: summary.revision ?? FALLBACK_REVISION
+  };
+  if (summary.generation !== null)
+    correlation.generation = summary.generation;
+  return correlation;
+}
+var EXPLORE_TOOL_BODY_MAX_LINES = 60;
+var EXPLORE_TOOL_MAX_PATHS = 20;
+var EXPLORE_TOOL_MAX_IMPACT_DEFS = 5;
+var EXPLORE_TOOL_TEXT_BODY_LINES = 200;
+var ExploreItemSchema = object({ id: string2(), file: string2(), line: FiniteNumberSchema });
+var asExploreItem = (value) => {
+  const parsed = ExploreItemSchema.safeParse(value);
+  return parsed.success ? value : null;
+};
+var exploreNeighborsOf = (envelope, key) => {
+  const extras = wireObjectOf(envelope);
+  if (extras === null)
+    return [];
+  const list = extras[key];
+  if (!Array.isArray(list))
+    return [];
+  const out = [];
+  for (const entry of list) {
+    const item = wireObjectOf(entry);
+    if (item === null)
+      continue;
+    const id = item["id"];
+    if (!isNonEmptyString(id))
+      continue;
+    const evidence = Array.isArray(item["evidence"]) ? item["evidence"] : [];
+    const ref = evidence.length === 0 ? null : wireObjectOf(evidence[0])?.["ref"] ?? null;
+    if (!isNonEmptyString(ref))
+      continue;
+    out.push({ id, ref });
+  }
+  return out;
+};
+var exploreTraceOf = (envelope) => {
+  const record = wireObjectOf(envelope);
+  if (record === null)
+    return null;
+  const raw = record["path"];
+  if (!Array.isArray(raw))
+    return null;
+  const hops = [];
+  for (const entry of raw) {
+    const hop = wireObjectOf(entry);
+    if (hop === null)
+      continue;
+    const from = hop["from"];
+    const to = hop["to"];
+    const ref = hop["ref"];
+    if (!isNonEmptyString(from) || !isNonEmptyString(to) || !isNonEmptyString(ref))
+      continue;
+    if (to === "unknown")
+      continue;
+    hops.push({ from, to, ref });
+  }
+  const summary = wireObjectOf(record["summary"]);
+  const reason = summary?.["reason"] ?? null;
+  const blocked = reason === "blocked-by-unresolved" || envelope.unresolved.some((note) => note.includes("unknown callee"));
+  return { hops, blocked };
+};
+var exploreModuleOf = (file) => {
+  const slash = file.indexOf("/");
+  return slash < 0 ? "(root)" : file.slice(0, slash);
+};
+async function readExploreBody(directory, definition) {
+  let text;
+  try {
+    text = await readFile2(path7.join(directory, definition.file), "utf8");
+  } catch {
+    return { note: `explore: body unreadable for ${definition.file} (${definition.id}); omitted, never synthesized` };
+  }
+  const stored = text.split(`
+`).map((line) => line.endsWith("\r") ? line.slice(0, -1) : line);
+  const startLine = Math.min(Math.max(1, Math.floor(definition.line)), stored.length + 1);
+  let effectiveLength = stored.length;
+  while (effectiveLength > startLine && (stored[effectiveLength - 1] ?? "") === "")
+    effectiveLength -= 1;
+  const endLine = Math.min(startLine + EXPLORE_TOOL_BODY_MAX_LINES - 1, effectiveLength);
+  const lines = [];
+  for (let line = startLine;line <= endLine; line += 1) {
+    lines.push({ line, text: stored[line - 1] ?? "" });
+  }
+  const body = {
+    id: definition.id,
+    file: definition.file,
+    startLine,
+    endLine,
+    truncated: effectiveLength > endLine,
+    lines
+  };
+  return { body: definition.name === undefined ? body : { ...body, name: definition.name } };
+}
+function renderExploreText(payload) {
+  const lines = [];
+  lines.push(`EXPLORE subject=${payload.subject}`);
+  lines.push(`definitions: ${payload.definitions.length}${payload.definitions.length > 0 ? ` ${payload.definitions.map((definition) => definition.id).join(",")}` : ""}`);
+  lines.push(`bodies: ${payload.bodies.length} file(s)`);
+  let renderedBodyLines = 0;
+  let omittedBodyLines = 0;
+  for (const group of payload.bodies) {
+    lines.push(`## ${group.file}`);
+    for (const body of group.bodies) {
+      lines.push(`### ${body.id} lines ${body.startLine}-${body.endLine}${body.truncated ? " (truncated)" : ""}`);
+      for (const entry of body.lines) {
+        if (renderedBodyLines >= EXPLORE_TOOL_TEXT_BODY_LINES) {
+          omittedBodyLines += 1;
+          continue;
+        }
+        renderedBodyLines += 1;
+        lines.push(`${entry.line}: ${entry.text}`);
+      }
+    }
+  }
+  if (omittedBodyLines > 0) {
+    lines.push(`…(${omittedBodyLines} more body lines omitted by text budget; structured bodies carry them all)`);
+  }
+  const found = payload.paths.filter((entry) => entry.found).length;
+  lines.push(`paths: ${found}/${payload.paths.length} found`);
+  for (const entry of payload.paths) {
+    const tail = entry.found ? entry.hops.map((hop) => `${hop.from} -> ${hop.to} via ${hop.ref}`).join(" | ") : "no static path (never guessed)";
+    lines.push(`${entry.from} -> ${entry.to}: ${entry.found ? "found" : "missing"}${entry.blockedByDynamic ? " [blocked-by-dynamic]" : ""} ${tail}`);
+  }
+  const blast = payload.blastRadius;
+  lines.push(`blastRadius: dependents=${payload.impacted.length} files=${blast.dependentFiles} symbols=${blast.dependentSymbols} tests=${blast.testsFound} modules=${blast.modules.map((entry) => `${entry.module}:${entry.count}`).join(",") || "none"}`);
+  return lines.join(`
+`);
+}
+async function composeExplore(runtime, track, directory, subject, subjectKind, limit, depth) {
+  const cap = limit ?? 20;
+  const kind = subjectKind ?? inferSubjectKind(subject);
+  let searchEnvelope;
+  let candidates;
+  if (kind === "file") {
+    const view = track(await runtime.query(directory, { kind: "file", file: normalizeRel(subject), limit }));
+    searchEnvelope = view.envelope;
+    candidates = view.envelope.items.filter((item) => !item.id.startsWith("file:"));
+  } else {
+    const found = track(await runtime.query(directory, { kind: "search", query: subject, limit }));
+    searchEnvelope = found.envelope;
+    const symbols = found.envelope.items.filter((item) => !item.id.startsWith("file:"));
+    const exact = symbols.find((item) => item.id === subject);
+    const named = symbols.filter((item) => item.name === subject);
+    candidates = exact !== undefined ? [exact] : named.length > 0 ? named : symbols;
+  }
+  const definitions = candidates.slice(0, cap).map((item) => {
+    if (item.name === undefined) {
+      return { id: item.id, file: item.file, line: item.line };
+    }
+    return { id: item.id, file: item.file, line: item.line, name: item.name };
+  });
+  const notes = [];
+  if (definitions.length === 0) {
+    const envelope = {
+      ...searchEnvelope,
+      unresolved: [...searchEnvelope.unresolved, `explore: no definition for ${subject} in this snapshot`]
+    };
+    return {
+      envelope,
+      extraUnresolved: [],
+      explore: {
+        subject,
+        definitions: [],
+        bodies: [],
+        paths: [],
+        impacted: [],
+        blastRadius: { subjectIds: [], dependentFiles: 0, dependentSymbols: 0, modules: [], testsFound: 0 }
+      }
+    };
+  }
+  const staleFiles = new Set(staleFilesOf(staleCarrierOf(searchEnvelope)).map((entry) => entry.file));
+  const groups = new Map;
+  for (const definition of definitions) {
+    const { body, note } = await readExploreBody(directory, definition);
+    if (note !== undefined)
+      notes.push(note);
+    if (body !== undefined) {
+      const group = groups.get(definition.file);
+      if (group === undefined)
+        groups.set(definition.file, [body]);
+      else
+        group.push(body);
+    }
+    if (staleFiles.has(definition.file))
+      notes.push(staleNoteFor(definition.file));
+  }
+  const bodies = [...groups.entries()].map(([file, items]) => ({ file, bodies: items }));
+  const paths = [];
+  const seenPair = new Set;
+  const takePath = (entry) => {
+    if (entry.from === entry.to)
+      return true;
+    const key = `${entry.from} -> ${entry.to}`;
+    if (seenPair.has(key))
+      return true;
+    if (paths.length >= EXPLORE_TOOL_MAX_PATHS)
+      return false;
+    seenPair.add(key);
+    paths.push(entry);
+    return true;
+  };
+  let pathsCut = false;
+  const contextUnresolved = [];
+  for (const definition of definitions) {
+    const ctx = track(await runtime.query(directory, { kind: "context", symbol: definition.id, limit, depth }));
+    contextUnresolved.push(...ctx.envelope.unresolved);
+    for (const caller of exploreNeighborsOf(ctx.envelope, "callers")) {
+      if (!takePath({ from: caller.id, to: definition.id, found: true, hops: [{ from: caller.id, to: definition.id, ref: caller.ref }], blockedByDynamic: false })) {
+        pathsCut = true;
+      }
+    }
+    for (const callee of exploreNeighborsOf(ctx.envelope, "callees")) {
+      if (!takePath({ from: definition.id, to: callee.id, found: true, hops: [{ from: definition.id, to: callee.id, ref: callee.ref }], blockedByDynamic: false })) {
+        pathsCut = true;
+      }
+    }
+  }
+  for (const from of definitions) {
+    for (const to of definitions) {
+      if (from.id === to.id || paths.length >= EXPLORE_TOOL_MAX_PATHS) {
+        if (from.id !== to.id)
+          pathsCut = true;
+        continue;
+      }
+      const key = `${from.id} -> ${to.id}`;
+      if (seenPair.has(key))
+        continue;
+      const traced = track(await runtime.query(directory, { kind: "trace", from: from.id, to: to.id, limit, depth }));
+      contextUnresolved.push(...traced.envelope.unresolved);
+      const parsed = exploreTraceOf(traced.envelope);
+      if (parsed === null)
+        continue;
+      seenPair.add(key);
+      paths.push({
+        from: from.id,
+        to: to.id,
+        found: parsed.hops.length > 0,
+        hops: parsed.hops,
+        blockedByDynamic: parsed.hops.length === 0 && parsed.blocked
+      });
+    }
+  }
+  if (pathsCut)
+    notes.push(`explore: call paths cut to ${EXPLORE_TOOL_MAX_PATHS}; more hops exist`);
+  const impactedById = new Map;
+  const blastNotes = [];
+  for (const definition of definitions.slice(0, EXPLORE_TOOL_MAX_IMPACT_DEFS)) {
+    const answered = track(await runtime.query(directory, { kind: "impact", symbol: definition.id, limit, depth }));
+    blastNotes.push(...answered.envelope.unresolved);
+    for (const item of answered.envelope.items) {
+      const valid = asExploreItem(item);
+      if (valid !== null && !impactedById.has(valid.id))
+        impactedById.set(valid.id, valid);
+    }
+  }
+  if (definitions.length > EXPLORE_TOOL_MAX_IMPACT_DEFS) {
+    blastNotes.push(`explore: blast radius covers the first ${EXPLORE_TOOL_MAX_IMPACT_DEFS} of ${definitions.length} definitions`);
+  }
+  const impacted = [...impactedById.values()].filter((item) => !definitions.some((definition) => definition.id === item.id));
+  const dependentFiles = new Set(impacted.map((item) => item.file));
+  const moduleCounts = new Map;
+  for (const item of impacted) {
+    const module = exploreModuleOf(item.file);
+    moduleCounts.set(module, (moduleCounts.get(module) ?? 0) + 1);
+  }
+  const modules = [...moduleCounts.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : 1)).map(([module, count]) => ({ module, count }));
+  const blastRadius = {
+    subjectIds: definitions.map((definition) => definition.id),
+    dependentFiles: dependentFiles.size,
+    dependentSymbols: impacted.filter((item) => !item.id.startsWith("file:")).length,
+    modules,
+    testsFound: impacted.filter((item) => isTestPath(item.file)).length
+  };
+  const foundPaths = paths.filter((entry) => entry.found).length;
+  const mergedItems = [...candidates.slice(0, cap), ...impacted].slice(0, cap);
+  const known = candidates.length + impacted.length;
+  const envelope = {
+    ...searchEnvelope,
+    items: mergedItems,
+    totals: { displayed: mergedItems.length, known, hidden: known - mergedItems.length },
+    unresolved: [
+      ...searchEnvelope.unresolved,
+      ...notes,
+      ...new Set([...contextUnresolved, ...blastNotes]),
+      `explore: ${definitions.length} definition(s), ${foundPaths}/${paths.length} call path(s) found, ${impacted.length} dependent(s)`
+    ]
+  };
+  return {
+    envelope,
+    extraUnresolved: [],
+    explore: {
+      subject,
+      definitions,
+      bodies,
+      paths,
+      impacted: impacted.slice(0, cap),
+      blastRadius
+    }
   };
 }
 function createCodeGraphTool(deps = {}) {
@@ -45979,8 +51259,8 @@ function createCodeGraphTool(deps = {}) {
       properties: {
         op: {
           type: "string",
-          description: "Graph operation: status, context, search, trace, impact, or tests.",
-          allowedValues: ["status", "context", "search", "trace", "impact", "tests"]
+          description: "Graph operation: status, context, search, trace, impact, tests, or explore.",
+          allowedValues: ["status", "context", "search", "trace", "impact", "tests", "explore"]
         },
         subject: { type: "string", description: "Symbol id, file path, or search text; required except for status." },
         subjectKind: {
@@ -45999,7 +51279,7 @@ function createCodeGraphTool(deps = {}) {
       const directory = resolveDirectory(deps, context);
       const parsed = CodeGraphArgsSchema.safeParse(toolArgs);
       if (!parsed.success) {
-        refuseArgs("", "code_graph needs op status|context|search|trace|impact|tests, optional subject/subjectKind/to, depth 1-3, limit 1-50, maxBytes 512-16384.");
+        refuseArgs("", "code_graph needs op status|context|search|trace|impact|tests|explore, optional subject/subjectKind/to, depth 1-3, limit 1-50, maxBytes 512-16384.");
       }
       const args = parsed.data;
       const op = args.op;
@@ -46050,10 +51330,9 @@ function createCodeGraphTool(deps = {}) {
           status: {
             freshness: summary.freshness,
             coverage,
-            ...summary.generation === null ? {} : { generation: summary.generation },
-            ...summary.revision === null ? {} : { revision: summary.revision },
+            ...summaryStatusExtrasOf(summary.generation, summary.revision),
             queryServable: servable,
-            reasons
+            reasons: [...reasons, ...staleStatusReasons(staleCarrierOf(summary))]
           },
           maxBytes
         });
@@ -46064,13 +51343,20 @@ function createCodeGraphTool(deps = {}) {
       if (subject === undefined && !changesMode) {
         refuseArgs("", `code_graph op '${op}' needs a subject string.`);
       }
+      if (op === "explore" && args.subjectKind === "changes") {
+        refuseArgs("", "code_graph op 'explore' needs a subject symbol, name, or file path.");
+      }
       if (op === "trace" && args.to === undefined) {
         refuseArgs("", "code_graph op 'trace' needs both subject and to symbol ids.");
       }
+      const subjectText = subject ?? "";
+      const toText = args.to ?? "";
+      const displayOp = op === "explore" ? "context" : op;
+      const displaySubjects = () => op === "explore" ? [{ kind: args.subjectKind ?? inferSubjectKind(subjectText), id: subjectText }] : toSubjects(op, args);
       const unavailable = (reasons) => stringifyEnvelope(buildAgentContext({
-        op,
-        level: args.depth ?? 2,
-        subjects: toSubjects(op, args),
+        op: displayOp,
+        level: levelOf(args.depth),
+        subjects: displaySubjects(),
         correlation: correlationOf({
           ready: false,
           generation: null,
@@ -46097,15 +51383,14 @@ function createCodeGraphTool(deps = {}) {
       }
       if (!summary.ready) {
         return stringifyEnvelope(buildAgentContext({
-          op,
-          level: args.depth ?? 2,
-          subjects: toSubjects(op, args),
+          op: displayOp,
+          level: levelOf(args.depth),
+          subjects: displaySubjects(),
           correlation: correlationOf(summary, directory),
           status: {
             freshness: summary.freshness,
             coverage: summary.generation !== null ? "partial" : "unindexed",
-            ...summary.generation === null ? {} : { generation: summary.generation },
-            ...summary.revision === null ? {} : { revision: summary.revision },
+            ...summaryStatusExtrasOf(summary.generation, summary.revision),
             queryServable: false,
             reasons: [
               `generation:${summary.generation ?? "none"}`,
@@ -46117,15 +51402,14 @@ function createCodeGraphTool(deps = {}) {
       }
       if (summary.entryCount === 0) {
         return stringifyEnvelope(buildAgentContext({
-          op,
-          level: args.depth ?? 2,
-          subjects: toSubjects(op, args),
+          op: displayOp,
+          level: levelOf(args.depth),
+          subjects: displaySubjects(),
           correlation: correlationOf(summary, directory),
           status: {
             freshness: summary.freshness,
             coverage: "unindexed",
-            ...summary.generation === null ? {} : { generation: summary.generation },
-            ...summary.revision === null ? {} : { revision: summary.revision },
+            ...summaryStatusExtrasOf(summary.generation, summary.revision),
             queryServable: false,
             reasons: ["no-source-files"]
           },
@@ -46141,16 +51425,16 @@ function createCodeGraphTool(deps = {}) {
       const depth = args.depth;
       const runOp = async () => {
         if (op === "search") {
-          const answer = track(await runtime.query(directory, { kind: "search", query: subject, limit }));
+          const answer = track(await runtime.query(directory, { kind: "search", query: subjectText, limit }));
           return { envelope: answer.envelope, extraUnresolved: [] };
         }
         if (op === "context") {
-          const kind = args.subjectKind ?? inferSubjectKind(subject);
+          const kind = args.subjectKind ?? inferSubjectKind(subjectText);
           if (kind === "file" || kind === "changes" || kind === "query") {
-            const answer = track(await runtime.query(directory, { kind: "search", query: subject, limit }));
+            const answer = track(await runtime.query(directory, { kind: "search", query: subjectText, limit }));
             return { envelope: answer.envelope, extraUnresolved: [] };
           }
-          const resolved = await resolveSubjectId(runtime, track, directory, subject, limit ?? 20);
+          const resolved = await resolveSubjectId(runtime, track, directory, subjectText, limit ?? 20);
           const answer = track(await runtime.query(directory, { kind: "context", symbol: resolved, limit, depth }));
           return {
             envelope: answer.envelope,
@@ -46158,8 +51442,8 @@ function createCodeGraphTool(deps = {}) {
           };
         }
         if (op === "trace") {
-          const from = await resolveSubjectId(runtime, track, directory, subject, limit ?? 20);
-          const to = await resolveSubjectId(runtime, track, directory, args.to, limit ?? 20);
+          const from = await resolveSubjectId(runtime, track, directory, subjectText, limit ?? 20);
+          const to = await resolveSubjectId(runtime, track, directory, toText, limit ?? 20);
           const answer = track(await runtime.query(directory, { kind: "trace", from, to, limit, depth }));
           return { envelope: answer.envelope, extraUnresolved: [] };
         }
@@ -46182,17 +51466,20 @@ function createCodeGraphTool(deps = {}) {
             }
             return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] };
           }
-          const kind = args.subjectKind ?? inferSubjectKind(subject);
+          const kind = args.subjectKind ?? inferSubjectKind(subjectText);
           if (kind === "file" || kind === "changes") {
-            const rel = normalizeRel(subject);
+            const rel = normalizeRel(subjectText);
             const parts = await impactSubjectsForFile(rel);
-            return { envelope: mergedImpactEnvelope(summary, directory, [subject], parts), extraUnresolved: [] };
+            return { envelope: mergedImpactEnvelope(summary, directory, [subjectText], parts), extraUnresolved: [] };
           }
-          const resolved = await resolveSubjectId(runtime, track, directory, subject, limit ?? 20);
+          const resolved = await resolveSubjectId(runtime, track, directory, subjectText, limit ?? 20);
           const answer = track(await runtime.query(directory, { kind: "impact", symbol: resolved, limit, depth }));
           return { envelope: answer.envelope, extraUnresolved: [] };
         }
-        const resolved = await resolveSubjectId(runtime, track, directory, subject, limit ?? 20);
+        if (op === "explore") {
+          return composeExplore(runtime, track, directory, subjectText, args.subjectKind, limit, depth);
+        }
+        const resolved = await resolveSubjectId(runtime, track, directory, subjectText, limit ?? 20);
         const answer = track(await runtime.query(directory, { kind: "tests", target: resolved, limit }));
         return { envelope: answer.envelope, extraUnresolved: [] };
       };
@@ -46214,23 +51501,32 @@ function createCodeGraphTool(deps = {}) {
         if (built === null)
           return unavailable(["index-failed"]);
       }
+      const staleCarrier = staleCarrierOf(built.envelope);
       const envelope = buildAgentContext({
-        op,
-        level: args.depth ?? 2,
+        op: displayOp,
+        level: levelOf(args.depth),
         envelope: built.envelope,
-        subjects: toSubjects(op, args),
+        subjects: displaySubjects(),
         correlation: correlationOf(summary, directory),
         status: {
-          ...pin === null ? {} : { generation: pin },
+          ...summaryStatusExtrasOf(pin, null),
           reasons: [
             `generation:${pin ?? "none"}`,
             ...restarted ? ["generation-changed-restarted"] : [],
-            ...summary.indexTruncated ? ["index-truncated"] : []
+            ...op === "explore" ? ["composed-explore"] : [],
+            ...summary.indexTruncated ? ["index-truncated"] : [],
+            ...staleStatusReasons(staleCarrier)
           ]
         },
-        unresolved: built.extraUnresolved.map((reason) => ({ kind: "unresolved", id: reason, reason })),
+        unresolved: [
+          ...built.extraUnresolved.map((reason) => ({ kind: "unresolved", id: reason, reason })),
+          ...staleUnresolvedEntries(staleCarrier)
+        ],
         maxBytes
       });
+      if (op === "explore" && built.explore !== undefined) {
+        return stringifyExploreEnvelope(envelope, built.explore);
+      }
       return stringifyEnvelope(envelope);
     }
   };
@@ -46238,6 +51534,12 @@ function createCodeGraphTool(deps = {}) {
 function stringifyEnvelope(envelope) {
   const rendered = renderAgentContext(envelope);
   return JSON.stringify({ text: rendered.text, omittedItems: rendered.omittedItems, ...envelope });
+}
+function stringifyExploreEnvelope(envelope, explore) {
+  const rendered = renderAgentContext(envelope);
+  const text = `${rendered.text}
+${renderExploreText(explore)}`;
+  return JSON.stringify({ text, omittedItems: rendered.omittedItems, ...envelope, explore });
 }
 
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/index.ts
@@ -47397,7 +52699,7 @@ class TeamSpecError extends Error {
   }
 }
 var TEAM_LEAD_SENTINEL = "lead";
-function isRecord12(value) {
+function isRecord13(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function coerceStringSpec(rawSpec, teamName) {
@@ -47411,7 +52713,7 @@ function coerceStringSpec(rawSpec, teamName) {
   }
 }
 function wrapSingleMember(rawSpec) {
-  if (isRecord12(rawSpec) && isRecord12(rawSpec.members)) {
+  if (isRecord13(rawSpec) && isRecord13(rawSpec.members)) {
     return { ...rawSpec, members: [rawSpec.members] };
   }
   return rawSpec;
@@ -47426,17 +52728,17 @@ function describeReceived(rawSpec) {
   return `a ${typeof rawSpec}`;
 }
 function assertNoRawLeadField(rawSpec, teamName) {
-  if (isRecord12(rawSpec) && rawSpec.lead !== undefined && rawSpec.lead !== null) {
+  if (isRecord13(rawSpec) && rawSpec.lead !== undefined && rawSpec.lead !== null) {
     throw new TeamSpecError(`Team '${teamName}' declares a 'lead' field. '${TEAM_LEAD_SENTINEL}' is reserved for the calling-session sentinel; declare workers under 'members' only.`, "RESERVED_LEAD_FIELD", teamName);
   }
 }
 function remapAgentAliasRaw(rawSpec) {
-  if (!isRecord12(rawSpec) || !Array.isArray(rawSpec.members))
+  if (!isRecord13(rawSpec) || !Array.isArray(rawSpec.members))
     return rawSpec;
   return {
     ...rawSpec,
     members: rawSpec.members.map((member) => {
-      if (!isRecord12(member))
+      if (!isRecord13(member))
         return member;
       const remapped = { ...member };
       if (typeof remapped.agent === "string" && remapped.subagent_type === undefined) {
@@ -47452,7 +52754,7 @@ function remapAgentAliasRaw(rawSpec) {
 }
 function remapAgentAliasKind(members) {
   return members.map((member) => {
-    if (isRecord12(member) && member.kind === "agent") {
+    if (isRecord13(member) && member.kind === "agent") {
       return { ...member, kind: "subagent_type" };
     }
     return member;
@@ -47460,7 +52762,7 @@ function remapAgentAliasKind(members) {
 }
 function assertNoReservedMemberName(members, teamName) {
   for (const member of members) {
-    if (isRecord12(member) && member.name === TEAM_LEAD_SENTINEL) {
+    if (isRecord13(member) && member.name === TEAM_LEAD_SENTINEL) {
       throw new TeamSpecError(`Team '${teamName}' has a member named '${TEAM_LEAD_SENTINEL}', which is reserved for the calling-session sentinel. Rename the member.`, "RESERVED_LEAD_MEMBER", teamName);
     }
   }
@@ -47469,7 +52771,7 @@ function normalizeTeamSpec(rawSpec, teamName) {
   const coerced = wrapSingleMember(coerceStringSpec(rawSpec, teamName));
   assertNoRawLeadField(coerced, teamName);
   const normalized = normalizeTeamSpecInput(remapAgentAliasRaw(coerced));
-  if (!isRecord12(normalized)) {
+  if (!isRecord13(normalized)) {
     throw new TeamSpecError(`Team '${teamName}' spec must be an object like { name?, members: [...] }; received ${describeReceived(rawSpec)}. Pass the spec as a nested object, or as a valid JSON string of that object.`, "INVALID_SPEC", teamName);
   }
   const preNormalized = { ...normalized };
@@ -50617,7 +55919,7 @@ async function resolveLoader() {
   }
   return null;
 }
-function isRecord13(value) {
+function isRecord14(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function tryDiscover(discover, directory) {
@@ -50636,7 +55938,7 @@ async function tryDiscover(discover, directory) {
       const out = await call(...callArgs);
       if (Array.isArray(out))
         return out;
-      if (isRecord13(out) && Array.isArray(out["skills"])) {
+      if (isRecord14(out) && Array.isArray(out["skills"])) {
         return out["skills"];
       }
     } catch {}
@@ -50646,10 +55948,10 @@ async function tryDiscover(discover, directory) {
 function normalizeSkills(raw) {
   const merged = [];
   for (const entry of raw) {
-    if (!isRecord13(entry))
+    if (!isRecord14(entry))
       continue;
     const name = typeof entry["name"] === "string" && entry["name"].length > 0 ? entry["name"] : "skill";
-    const def = isRecord13(entry["definition"]) ? entry["definition"] : {};
+    const def = isRecord14(entry["definition"]) ? entry["definition"] : {};
     const description = typeof def["description"] === "string" ? def["description"] : typeof entry["description"] === "string" ? entry["description"] : "";
     const template = typeof def["template"] === "string" ? def["template"] : "";
     merged.push({
@@ -51380,11 +56682,11 @@ function migrateLegacyPluginEntry(configPath) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
-function isRecord14(value) {
+function isRecord15(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function stringFieldOf(value, field) {
-  if (isRecord14(value)) {
+  if (isRecord15(value)) {
     const candidate = value[field];
     if (typeof candidate === "string")
       return candidate;
@@ -51396,7 +56698,7 @@ function sessionIDOf(event) {
   if (typeof direct === "string")
     return direct;
   const session = event["session"];
-  if (isRecord14(session) && typeof session["id"] === "string")
+  if (isRecord15(session) && typeof session["id"] === "string")
     return session["id"];
   return "";
 }
@@ -51437,14 +56739,14 @@ function denyWithoutPlanEvidence(sessionID, requested, pluginDirectory) {
   }
 }
 function toOmoEvent(event) {
-  if (!isRecord14(event) || typeof event["type"] !== "string")
+  if (!isRecord15(event) || typeof event["type"] !== "string")
     return;
   const type = event["type"];
-  const properties = isRecord14(event["properties"]) ? event["properties"] : event;
+  const properties = isRecord15(event["properties"]) ? event["properties"] : event;
   const sessionString = (value) => typeof value === "string" ? value : undefined;
   switch (type) {
     case "session.created": {
-      const info = isRecord14(properties["info"]) ? properties["info"] : properties;
+      const info = isRecord15(properties["info"]) ? properties["info"] : properties;
       const sessionID = sessionString(info["id"]) ?? sessionString(properties["sessionID"]);
       if (!sessionID)
         return;
@@ -51458,7 +56760,7 @@ function toOmoEvent(event) {
       };
     }
     case "session.deleted": {
-      const sessionID = sessionString(properties["sessionID"]) ?? (isRecord14(properties["info"]) ? sessionString(properties["info"]["id"]) : undefined);
+      const sessionID = sessionString(properties["sessionID"]) ?? (isRecord15(properties["info"]) ? sessionString(properties["info"]["id"]) : undefined);
       if (!sessionID)
         return;
       return { name: "session.deleted", sessionID };
@@ -51468,7 +56770,7 @@ function toOmoEvent(event) {
       if (!sessionID)
         return;
       const status = properties["status"];
-      const label = isRecord14(status) && typeof status["type"] === "string" ? status["type"] : typeof status === "string" ? status : "unknown";
+      const label = isRecord15(status) && typeof status["type"] === "string" ? status["type"] : typeof status === "string" ? status : "unknown";
       return { name: "session.status", sessionID, status: label };
     }
     case "session.idle": {
@@ -51482,7 +56784,7 @@ function toOmoEvent(event) {
       if (!sessionID)
         return;
       const data = properties["error"];
-      const message = isRecord14(data) ? stringFieldOf(data["data"] ?? data, "message") : "";
+      const message = isRecord15(data) ? stringFieldOf(data["data"] ?? data, "message") : "";
       return {
         name: "session.error",
         sessionID,
@@ -51522,7 +56824,7 @@ async function fanOutTiers(hooks, input, sink) {
   }
 }
 function toJsonObject(value) {
-  return isRecord14(value) ? value : {};
+  return isRecord15(value) ? value : {};
 }
 function textOf(value) {
   return typeof value === "string" ? value : "";
@@ -51666,7 +56968,7 @@ function createPluginSetup() {
       });
     }
     await ctx.session.hook("prompt", async (event) => {
-      const prompt = isRecord14(event["prompt"]) ? event["prompt"] : {};
+      const prompt = isRecord15(event["prompt"]) ? event["prompt"] : {};
       const text = textOf(prompt["text"]);
       const sessionID = sessionIDOf(event);
       if (sessionID && isExplicitPlanRequest(text)) {
@@ -51686,13 +56988,13 @@ ${parts.map((part) => part.text).join(`
     });
     await ctx.session.hook("context", async (event) => {
       const sessionID = sessionIDOf(event);
-      const model = isRecord14(event["model"]) ? {
+      const model = isRecord15(event["model"]) ? {
         providerID: textOf(event["model"]["providerID"]) || "unknown",
         modelID: textOf(event["model"]["id"] ?? event["model"]["modelID"]) || "unknown"
       } : { providerID: "unknown", modelID: "unknown" };
       const paramsOutput = {};
       await iface["chat.params"]?.({ sessionID, agent: textOf(event["agent"]) || "unknown", model }, paramsOutput);
-      const options = isRecord14(event["options"]) ? event["options"] : {};
+      const options = isRecord15(event["options"]) ? event["options"] : {};
       if (paramsOutput.temperature !== undefined)
         options["temperature"] = paramsOutput.temperature;
       if (paramsOutput.topP !== undefined)
@@ -51718,11 +57020,11 @@ ${parts.map((part) => part.text).join(`
     });
     await ctx.session.hook("model.request", async (event) => {
       const sessionID = sessionIDOf(event);
-      const model = isRecord14(event["model"]) ? {
+      const model = isRecord15(event["model"]) ? {
         providerID: textOf(event["model"]["providerID"]) || "unknown",
         modelID: textOf(event["model"]["id"] ?? event["model"]["modelID"]) || "unknown"
       } : { providerID: "unknown", modelID: "unknown" };
-      const headers = isRecord14(event["headers"]) ? { ...event["headers"] } : {};
+      const headers = isRecord15(event["headers"]) ? { ...event["headers"] } : {};
       await iface["chat.headers"]?.({
         sessionID,
         agent: textOf(event["agent"]) || "unknown",
@@ -51759,9 +57061,9 @@ ${parts.map((part) => part.text).join(`
       const args = toJsonObject(event["input"] ?? event["args"]);
       const output = { args };
       await iface["tool.execute.before"]?.({ tool: toolName, sessionID, callID: textOf(event["callID"] ?? event["id"]) }, output);
-      if (isRecord14(event["input"]))
+      if (isRecord15(event["input"]))
         event["input"] = output.args;
-      if (isRecord14(event["args"]))
+      if (isRecord15(event["args"]))
         event["args"] = output.args;
       await fanOutTiers(hooks, { sessionID, toolName });
     });
@@ -51769,13 +57071,13 @@ ${parts.map((part) => part.text).join(`
       const toolName = textOf(event["tool"] ?? event["toolName"]);
       const sessionID = sessionIDOf(event) || textOf(event["sessionID"]);
       const rawOutput = event["output"];
-      const outputText = typeof rawOutput === "string" ? rawOutput : isRecord14(rawOutput) ? textOf(rawOutput["output"] ?? rawOutput["content"]) : "";
+      const outputText = typeof rawOutput === "string" ? rawOutput : isRecord15(rawOutput) ? textOf(rawOutput["output"] ?? rawOutput["content"]) : "";
       if (/(?:\.omo\/plans|plans\/[^"'`\s]*\.md)/i.test(outputText)) {
         notePlanArtifact(sessionID);
       }
       const notes = [];
       const afterOutput = {
-        title: isRecord14(rawOutput) ? textOf(rawOutput["title"]) : "",
+        title: isRecord15(rawOutput) ? textOf(rawOutput["title"]) : "",
         output: outputText,
         truncated: false
       };
@@ -51785,13 +57087,13 @@ ${parts.map((part) => part.text).join(`
         callID: textOf(event["callID"] ?? event["id"]),
         args: toJsonObject(event["input"] ?? event["args"])
       }, afterOutput);
-      if (isRecord14(rawOutput)) {
+      if (isRecord15(rawOutput)) {
         rawOutput["output"] = afterOutput.output;
         if (afterOutput.title)
           rawOutput["title"] = afterOutput.title;
       }
       await fanOutTiers(hooks, { sessionID, toolName, text: outputText }, notes);
-      if (notes.length > 0 && isRecord14(rawOutput)) {
+      if (notes.length > 0 && isRecord15(rawOutput)) {
         const existing = textOf(rawOutput["note"]);
         rawOutput["note"] = existing ? `${existing}
 ${notes.join(`

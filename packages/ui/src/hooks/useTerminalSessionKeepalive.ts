@@ -17,7 +17,7 @@ export const useTerminalSessionKeepalive = (): void => {
       if (globalThis.navigator?.onLine === false) return;
       // A hidden tab keeps no PTY visible: skip the sweep and let the next
       // interval retry, instead of churning the server while nobody watches.
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (globalThis.document?.visibilityState === 'hidden') return;
       // Guard overlap: a slow sweep never piles a second sweep behind it.
       if (inFlight) return;
       // One batch per directory: a terminal inside an isolated space is touched in that space.

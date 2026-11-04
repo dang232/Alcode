@@ -40,7 +40,7 @@ const mintCorrelationId = (): string => {
   codeGraphRequestSeq += 1;
   try {
     const uuid = globalThis.crypto?.randomUUID?.();
-    if (typeof uuid === 'string' && uuid.length > 0) return `${uuid.slice(0, 8)}-${codeGraphRequestSeq}`;
+    if (isJsonText(uuid) && uuid.length > 0) return `${uuid.slice(0, 8)}-${codeGraphRequestSeq}`;
   } catch {
     // Fall through to the counter-only id below.
   }
@@ -207,6 +207,16 @@ export interface CodeGraphFreshnessBinding {
   truncated?: boolean;
 }
 
+/** One edited-but-unsynced file an answer references: repo-relative path plus edit age. */
+export interface CodeGraphStaleFile {
+  file: string;
+  /** Milliseconds since the edit, when the server measured it; null for deletions. */
+  ageMs: number | null;
+}
+
+/** Whole-index sync health: `disabled`/`recovering` render the whole-index banner. */
+export type CodeGraphSyncStatus = 'ok' | 'disabled' | 'recovering';
+
 export interface CodeGraphIndexMetrics {
   dirsVisited?: number;
   filesDiscovered?: number;
@@ -247,6 +257,22 @@ export interface CodeGraphIndexSummary extends Partial<CodeGraphFreshnessBinding
    */
   ready?: boolean;
   indexState?: CodeGraphIndexState;
+  /**
+   * Edited-but-unsynced files this scope references, repo-relative with edit
+   * age. Empty when fully synced; the panel banners exactly these with the
+   * Read-directly instruction.
+   */
+  staleFiles?: CodeGraphStaleFile[];
+  /**
+   * Every path pending re-index, referenced or not. The banner names
+   * `staleFiles`; the rest renders as a small footer.
+   */
+  pendingSync?: string[];
+  /**
+   * Whole-index sync health. `disabled` (explicit opt-out) and `recovering`
+   * (blind status probe) render the whole-index banner instead.
+   */
+  syncStatus?: CodeGraphSyncStatus;
 }
 
 /**
@@ -392,6 +418,8 @@ export interface CodeGraphQueryResult extends Partial<CodeGraphFreshnessBinding>
   truncationReason?: string | null;
   excludedCount?: number;
   excludedSample?: string[];
+  /** S6 visible budget: the entry cap behind this answer's generation. */
+  entryCap?: number;
   scopeRoot?: string | null;
   scopeMode?: string | null;
   metrics?: CodeGraphIndexMetrics | null;
@@ -437,6 +465,21 @@ export interface CodeGraphQueryResult extends Partial<CodeGraphFreshnessBinding>
   completenessReason?: CodeGraphCompletenessReason;
   /** Monotonic build identity, so a client never mixes rows across rebuilds. */
   generation?: number;
+  /**
+   * Edited-but-unsynced files this answer references, repo-relative with edit
+   * age. The panel prepends the warning banner naming exactly these.
+   */
+  staleFiles?: CodeGraphStaleFile[];
+  /**
+   * Every path pending re-index, referenced or not. Unreferenced entries
+   * render as a small footer, never in the banner.
+   */
+  pendingSync?: string[];
+  /**
+   * Whole-index sync health. `disabled`/`recovering` render the whole-index
+   * banner instead of the per-file one.
+   */
+  syncStatus?: CodeGraphSyncStatus;
 }
 
 export interface CodeGraphQueryInput {
@@ -463,13 +506,27 @@ export interface CodeGraphQueryInput {
   contentDirectory?: string;
 }
 
-/** One repo-relative path bucket of indexed files, as the server grouped it. */
+/** One repo-relative path bucket of indexed files, as the server grouped it.
+ *
+ * Walk-measured coverage rides each bucket when the walk counted it:
+ * analyzed entry files, unanalyzed files by extension, and eligible files
+ * excluded (entry cap or skipped generated/vendored directories). Absent on
+ * older payloads; the toolbar reads them to name what the index does not
+ * see instead of presenting a partial module as fully understood. */
 export interface CodeGraphModule {
   name: string;
   fileCount: number;
   testFileCount: number;
   symbolCount: number;
   edgeCount: number;
+  /** Files the engine analyzed in this module. */
+  analyzedFiles?: number;
+  /** Files the engine never analyzes in this module. */
+  unanalyzedFiles?: number;
+  /** Unanalyzed files grouped by extension. */
+  unanalyzedByExtension?: Array<{ ext: string; count: number }>;
+  /** Files excluded as generated/vendored or cut by the entry cap. */
+  excludedFiles?: number;
   sampleSymbols: Array<{ id: string; file: string; name?: string; line?: number }>;
 }
 
@@ -635,12 +692,18 @@ const parseContentItems = (value: CodeGraphJsonField): CodeGraphContentItem[] =>
   return out;
 };
 
-/** Truncation counters shared by the index and query answers. */
+/** Truncation counters shared by the index and query answers.
+ *
+ * S6 visible budget: `entryCap` is the entry cap that produced the
+ * generation (`DEFAULT_MAX_ENTRY_FILES = 5000`, hard clamp 20000). The
+ * toolbar names it beside the exclusion count so a truncated scope reads
+ * as a budget, not a bare stale flag. */
 export interface CodeGraphIndexTruncation {
   indexTruncated?: boolean;
   truncationReason?: string | null;
   excludedCount?: number;
   excludedSample?: string[];
+  entryCap?: number;
   scopeRoot?: string | null;
   scopeMode?: string | null;
   metrics?: CodeGraphIndexMetrics | null;
@@ -686,6 +749,34 @@ const parseNestedRepoRoots = (value: CodeGraphJsonField): string[] | undefined =
   const roots = asStringArray(value).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
   return roots;
 };
+
+/**
+ * S2 per-file staleness. Every entry needs a non-empty repo-relative `file`;
+ * `ageMs` rides through when finite, else null (deletions). Malformed entries
+ * are dropped, never half-parsed. Absent stays `undefined`.
+ */
+const parseStaleFiles = (value: CodeGraphJsonField): CodeGraphStaleFile[] | undefined => {
+  if (!isJsonArray(value)) return undefined;
+  const out: CodeGraphStaleFile[] = [];
+  for (const entry of value) {
+    if (!isJsonRecord(entry)) continue;
+    const file = asNonEmptyText(entry.file);
+    if (file === undefined) continue;
+    out.push({ file, ageMs: isFiniteJsonNumber(entry.ageMs) ? entry.ageMs : null });
+  }
+  return out;
+};
+
+/** Pending-sync set: repo-relative paths pending re-index. Absent stays `undefined`. */
+const parsePendingSync = (value: CodeGraphJsonField): string[] | undefined => {
+  if (!isJsonArray(value)) return undefined;
+  return asStringArray(value).map((file) => file.trim()).filter((file) => file.length > 0);
+};
+
+/** Whole-index sync health. Unknown values stay `undefined`, never a guessed state. */
+const parseSyncStatus = (value: CodeGraphJsonField): CodeGraphSyncStatus | undefined => (
+  value === 'ok' || value === 'disabled' || value === 'recovering' ? value : undefined
+);
 
 const parseSkippedDirs = (value: CodeGraphJsonField): string[] | undefined => {
   if (!isJsonArray(value)) return undefined;
@@ -760,6 +851,7 @@ const parseIndexState = (value: CodeGraphJsonField): CodeGraphIndexState | undef
 };
 
 const parseIndexTruncation = (value: CodeGraphJsonRecord): CodeGraphIndexTruncation => {  const truncation: CodeGraphIndexTruncation = {};
+  if (isFiniteJsonNumber(value.entryCap)) truncation.entryCap = value.entryCap;
   if (value.indexTruncated === true) truncation.indexTruncated = true;
   const reason = parseTruncationReason(value.truncationReason);
   if (reason !== undefined) truncation.truncationReason = reason;
@@ -917,14 +1009,23 @@ const parseModules = (value: CodeGraphJsonField): CodeGraphModule[] | undefined 
         samples.push(symbol);
       }
     }
-    out.push({
+    const bucket: CodeGraphModule = {
       name: entry.name,
       fileCount: countOrZero(entry, 'fileCount'),
       testFileCount: countOrZero(entry, 'testFileCount'),
       symbolCount: countOrZero(entry, 'symbolCount'),
       edgeCount: countOrZero(entry, 'edgeCount'),
       sampleSymbols: samples,
-    });
+    };
+    const analyzedFiles = optionalCount(entry, 'analyzedFiles');
+    if (analyzedFiles !== undefined) bucket.analyzedFiles = analyzedFiles;
+    const unanalyzedFiles = optionalCount(entry, 'unanalyzedFiles');
+    if (unanalyzedFiles !== undefined) bucket.unanalyzedFiles = unanalyzedFiles;
+    const unanalyzedByExtension = parseUnanalyzedByExtension(entry.unanalyzedByExtension);
+    if (unanalyzedByExtension) bucket.unanalyzedByExtension = unanalyzedByExtension;
+    const excludedFiles = optionalCount(entry, 'excludedFiles');
+    if (excludedFiles !== undefined) bucket.excludedFiles = excludedFiles;
+    out.push(bucket);
   }
   return out;
 };
@@ -1250,6 +1351,12 @@ export const fetchCodeGraphIndex = async (
   };
   const binding = asText(payload.binding);
   if (binding !== undefined) summary.binding = binding;
+  const staleFiles = parseStaleFiles(payload.staleFiles);
+  if (staleFiles !== undefined) summary.staleFiles = staleFiles;
+  const pendingSync = parsePendingSync(payload.pendingSync);
+  if (pendingSync !== undefined) summary.pendingSync = pendingSync;
+  const syncStatus = parseSyncStatus(payload.syncStatus);
+  if (syncStatus !== undefined) summary.syncStatus = syncStatus;
   const snapshotRoot = asNonEmptyText(payload.snapshotRoot);
   if (snapshotRoot !== undefined) summary.snapshotRoot = snapshotRoot;
   if (isFiniteJsonNumber(payload.entryCap)) summary.entryCap = payload.entryCap;
@@ -1402,6 +1509,12 @@ export const queryCodeGraph = async (
   if (generation !== undefined) result.generation = generation;
   const repositoryTotals = parseRepositoryTotals(payload.repositoryTotals);
   if (repositoryTotals) result.repositoryTotals = repositoryTotals;
+  const staleFiles = parseStaleFiles(payload.staleFiles);
+  if (staleFiles !== undefined) result.staleFiles = staleFiles;
+  const pendingSync = parsePendingSync(payload.pendingSync);
+  if (pendingSync !== undefined) result.pendingSync = pendingSync;
+  const syncStatus = parseSyncStatus(payload.syncStatus);
+  if (syncStatus !== undefined) result.syncStatus = syncStatus;
   const skippedDirs = parseSkippedDirs(payload.skippedDirs);
   if (skippedDirs) result.skippedDirs = skippedDirs;
   const unreadableDirs = parseSkippedDirs(payload.unreadableDirs);

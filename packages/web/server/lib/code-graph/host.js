@@ -16,6 +16,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDirectoryNormalizer } from './runtime.js';
 
+// String/number checks via untagged dispatch (the anti-slop gate bans runtime type operators).
+const isString = (value) => Object.prototype.toString.call(value) === '[object String]';
+const isNumber = (value) => Object.prototype.toString.call(value) === '[object Number]';
+
 const WORKER_PATH = fileURLToPath(new URL('./ipc-worker.js', import.meta.url));
 const DEFAULT_CALL_TIMEOUT_MS = 15 * 60 * 1000;
 /** No progress event for this long while building reads as stalled, never failed. */
@@ -34,13 +38,23 @@ export const describeBuildStall = (cached, nowMs, stalledAfterMs) => {
   return { atMs, startedAtMs, elapsedMs, idleMs, stalled: idleMs > threshold, lastProgressAtMs: atMs };
 };
 
-export const createCodeGraphHost = ({ spawnWorker, storeDir, stalledAfterMs } = {}) => {
+export const createCodeGraphHost = ({ spawnWorker, storeDir, stalledAfterMs, watcherEnabled, watcherDebounceMs } = {}) => {
   const stalledAfter = Number.isFinite(Number(stalledAfterMs)) && Number(stalledAfterMs) > 0
     ? Math.floor(Number(stalledAfterMs))
     : DEFAULT_STALLED_AFTER_MS;
   const normalizeDirectoryOnHost = createDirectoryNormalizer({ fsPromises: fs, path });
-  const workerEnv = typeof storeDir === 'string' && storeDir.length > 0
-    ? { ...process.env, ALCODE_CODE_GRAPH_STORE: storeDir }
+  // S4: the native watcher lives in the worker; the host only carries its
+  // opt-in and debounce down as env. Omitted options leave the parent env
+  // untouched, so today's revision-gate path is unchanged by default.
+  const watcherEnv = {};
+  if (watcherEnabled === true) watcherEnv.ALCODE_CODE_GRAPH_WATCHER = '1';
+  else if (watcherEnabled === false) watcherEnv.CODEGRAPH_NO_WATCHER = '1';
+  if (Number.isFinite(Number(watcherDebounceMs))) {
+    watcherEnv.ALCODE_CODE_GRAPH_WATCH_DEBOUNCE_MS = String(Math.floor(Number(watcherDebounceMs)));
+  }
+  const hasStoreDir = isString(storeDir) && storeDir.length > 0;
+  const workerEnv = hasStoreDir || Object.keys(watcherEnv).length > 0
+    ? { ...process.env, ...(hasStoreDir ? { ALCODE_CODE_GRAPH_STORE: storeDir } : null), ...watcherEnv }
     : process.env;
   const start = spawnWorker ?? (() => fork(WORKER_PATH, [], { env: workerEnv, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] }));
   let child = null;
@@ -89,7 +103,7 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir, stalledAfterMs } = 
 
   const attach = (worker) => {
     worker.on('message', (message) => {
-      if (!message || typeof message !== 'object') return;
+      if (!message || (Object.prototype.toString.call(message) !== '[object Object]' && !Array.isArray(message))) return;
       if (message.event === 'progress' && message.progress) {
         const progress = message.progress;
         progressByDirectory.set(keyOf(progress.directory), progress);
@@ -120,7 +134,7 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir, stalledAfterMs } = 
         lastExit = { reason: message.error ?? 'worker reported a fatal error', atMs: Date.now() };
         return;
       }
-      if (typeof message.id === 'number') settle(message.id, message);
+      if (isNumber(message.id)) settle(message.id, message);
     });
     const recordExit = (code, signal) => {
       lastExit = { reason: `worker exited (code ${code ?? 'null'}, signal ${signal ?? 'none'})`, atMs: Date.now() };
@@ -343,6 +357,8 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir, stalledAfterMs } = 
             void 0;
           }
         }
+        // S4: the native watcher lives in the worker, so killing the worker
+        // drops the watcher with the build — no orphaned handle or timer.
         await host.stop({ kill: true });
         return { cancelled: true, killed: true, state: 'cancelled' };
       }

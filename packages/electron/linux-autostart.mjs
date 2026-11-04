@@ -3,10 +3,10 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-export const AUTOSTART_FILE_NAME = 'alcode.desktop';
+const AUTOSTART_FILE_NAME = 'alcode.desktop';
 // Pre-rename autostart entry. Installing the new entry removes this legacy
 // file so upgraded machines do not launch twice; disabling removes both.
-export const LEGACY_AUTOSTART_FILE_NAME = 'openchamber.desktop';
+const LEGACY_AUTOSTART_FILE_NAME = 'openchamber.desktop';
 
 const resolveLinuxAutostartDirectory = ({
   env = process.env,

@@ -429,10 +429,13 @@ describe('useConfigStore provider persistence', () => {
 
       if (cached) {
         await useConfigStore.getState().activateDirectory(worktree);
-        expect(useConfigStore.getState().currentModelId).toBe('A');
+        expect(useConfigStore.getState().currentModelId).toBe('');
         useConfigStore.getState().setCurrentVariantOverride('low', 'low');
       }
       await useConfigStore.getState().activateDirectory(DIRECTORY);
+      // A real picker pick always carries both halves; setModel alone leaves the
+      // provider empty, which no longer resolves to anything.
+      useConfigStore.getState().setProvider('shared');
       useConfigStore.getState().setModel('B');
       useConfigStore.getState().setCurrentVariantOverride(override, 'high');
       expect(useConfigStore.getState().selectionSource).toBe('manual');
@@ -623,15 +626,15 @@ describe('useConfigStore provider persistence', () => {
     expect(getProvidersCalls).toBe(1);
     expect(reloaded.providers.map((entry) => entry.id)).toEqual(['fresh']);
     expect(reloaded.directoryScoped[DIRECTORY]?.providers.map((entry) => entry.id)).toEqual(['fresh']);
-    expect(reloaded.currentProviderId).toBe('fresh');
-    expect(reloaded.currentModelId).toBe('fresh-model');
+    expect(reloaded.currentProviderId).toBe('');
+    expect(reloaded.currentModelId).toBe('');
 
     const rewritten = JSON.parse(storage.get(STORAGE_KEY) ?? '{}');
     expect(rewritten.version).toBe(1);
     expect(rewritten.state.providers).toBeUndefined();
     expect(rewritten.state.directoryScoped[DIRECTORY].providers).toBeUndefined();
     expect(rewritten.state.directoryScoped[OTHER_DIRECTORY].agents).toBeUndefined();
-    expect(rewritten.state.directoryScoped[DIRECTORY].currentModelId).toBe('fresh-model');
+    expect(rewritten.state.directoryScoped[DIRECTORY].currentModelId).toBe('');
   });
 
   test('an upgraded cache with keyed variants cannot break model selection', async () => {
@@ -2139,7 +2142,7 @@ describe('useConfigStore provider persistence', () => {
     useUIStore.setState({ hiddenModels: [{ providerID: 'opencode', modelID: 'big-pickle' }] });
     useConfigStore.setState({ providers: [provider('opencode', 'big-pickle'), provider('deepseek', 'v4-pro')], agents: [testAgent('build')] });
     useConfigStore.getState().applyDefaultModelAgentSelection();
-    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: 'deepseek', currentModelId: 'v4-pro' });
+    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: '', currentModelId: '' });
 
     getProvidersForConfigImpl = async () => ({
       providers: [providerResponse('opencode', 'big-pickle').providers[0], providerResponse('deepseek', 'v4-pro').providers[0]],
@@ -2148,7 +2151,7 @@ describe('useConfigStore provider persistence', () => {
     });
     useConfigStore.setState({ currentProviderId: '', currentModelId: '' });
     await useConfigStore.getState().loadProviders({ directory: DIRECTORY });
-    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: 'deepseek', currentModelId: 'v4-pro' });
+    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: '', currentModelId: '' });
   });
 
   test('a default model the user set stays selected even when hidden in the picker', () => {
@@ -2206,14 +2209,14 @@ describe('useConfigStore provider persistence', () => {
     useConfigStore.setState({ opencodeDefaultModel: undefined });
     useUIStore.setState({ hiddenModels: [{ providerID: 'deepseek', modelID: 'v4-pro' }] });
     useConfigStore.getState().applyDefaultModelAgentSelection();
-    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: 'opencode', currentModelId: 'big-pickle' });
+    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: '', currentModelId: '' });
   });
 
-  test('with every model hidden a new conversation still gets one', () => {
+  test('with every model hidden a new conversation selects none', () => {
     useUIStore.setState({ hiddenModels: [{ providerID: 'opencode', modelID: 'big-pickle' }, { providerID: 'deepseek', modelID: 'v4-pro' }] });
     useConfigStore.setState({ providers: [provider('deepseek', 'v4-pro'), provider('opencode', 'big-pickle')], agents: [testAgent('build')] });
     useConfigStore.getState().applyDefaultModelAgentSelection();
-    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: 'opencode', currentModelId: 'big-pickle' });
+    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: '', currentModelId: '' });
   });
 
   test('a project default remains selected when only the global default is discoverable', () => {
@@ -3264,7 +3267,7 @@ describe('stale Auto selection', () => {
     expect(useConfigStore.getState().currentModelId).toBe('auto');
   });
 
-  test('Auto is dropped, and the session pick overwritten, once routing reports not ready', () => {
+  test('Auto is dropped without substituting an unchosen model, once routing reports not ready', () => {
     useUIStore.setState({ routingFeatureAvailable: true });
     useRoutingStore.setState({ loaded: true, available: true, autoReady: false, tokenPresent: false });
     const sessionId = 'ses_auto';
@@ -3275,13 +3278,13 @@ describe('stale Auto selection', () => {
     useConfigStore.getState().dropStaleAutoSelection();
 
     const state = useConfigStore.getState();
-    expect(state.currentProviderId).toBe('live');
-    expect(state.currentModelId).toBe('live-model');
+    expect(state.currentProviderId).toBe('');
+    expect(state.currentModelId).toBe('');
     expect(state.selectionSource).toBe('auto');
-    expect(useSelectionStore.getState().getSessionModelSelection(sessionId)).toEqual({ providerId: 'live', modelId: 'live-model' });
+    expect(useSelectionStore.getState().getSessionModelSelection(sessionId)).toEqual({ providerId: 'alcode', modelId: 'auto' });
   });
 
-  test('an unavailable Auto default falls back once without retriggering the cleanup', () => {
+  test('an unavailable Auto default is dropped once without retriggering the cleanup', () => {
     useUIStore.setState({ routingFeatureAvailable: true });
     useRoutingStore.setState({ loaded: true, available: true, autoReady: false, tokenPresent: false });
     const sessionId = 'ses_auto_default';
@@ -3304,10 +3307,10 @@ describe('stale Auto selection', () => {
     unsubscribe();
 
     const state = useConfigStore.getState();
-    expect(state.currentProviderId).toBe('live');
-    expect(state.currentModelId).toBe('live-model');
+    expect(state.currentProviderId).toBe('');
+    expect(state.currentModelId).toBe('');
     expect(updates).toBe(1);
-    expect(useSelectionStore.getState().getSessionModelSelection(sessionId)).toEqual({ providerId: 'live', modelId: 'live-model' });
+    expect(useSelectionStore.getState().getSessionModelSelection(sessionId)).toEqual({ providerId: 'openchamber', modelId: 'auto' });
   });
 
   test('a fresh draft skips unavailable settings and project Auto defaults', () => {
@@ -3322,11 +3325,11 @@ describe('stale Auto selection', () => {
     });
 
     useConfigStore.getState().applyDefaultModelAgentSelection();
-    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: 'live', currentModelId: 'live-model' });
+    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: '', currentModelId: '' });
 
     useConfigStore.setState({ currentProviderId: '', currentModelId: '', settingsDefaultModel: undefined });
     useConfigStore.getState().applyDefaultModelAgentSelection({ projectDefaultModel: 'openchamber/auto' });
-    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: 'live', currentModelId: 'live-model' });
+    expect(useConfigStore.getState()).toMatchObject({ currentProviderId: '', currentModelId: '' });
   });
 });
 

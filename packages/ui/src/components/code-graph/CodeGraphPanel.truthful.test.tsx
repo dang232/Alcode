@@ -479,4 +479,257 @@ describe('code graph truthful panel', () => {
     await act(async () => {});
     expect(container.querySelector('[data-testid="code-graph-scope-active"]') === null).toBe(true);
   });
+
+  test('locks every runtime indexState tag to its labelled non-spinner render with truncation detail', async () => {
+    const buildingCases: Array<{ state: CodeGraphIndexState; label: string; extra?: string }> = [
+      { state: { state: 'queued' }, label: 'Queued' },
+      { state: { state: 'discovering' }, label: 'Discovering files' },
+      { state: { state: 'analyzing', phase: 'projects', files: 5000, projectsDone: 2, projectsTotal: 23 }, label: 'Analyzing projects', extra: '2/23' },
+      { state: { state: 'persisting' }, label: 'Finishing the graph' },
+      { state: { state: 'truncated', truncationReason: 'entry-cap' }, label: 'Indexing truncated', extra: 'entry-cap' },
+      { state: { state: 'superseded' }, label: 'Queued' },
+      { state: { state: 'not-indexed' }, label: 'Queued' },
+      { state: { state: 'idle' }, label: 'Queued' },
+    ];
+    for (const { state, label, extra } of buildingCases) {
+      stubFetch((url) => {
+        if (url.pathname === '/api/code-graph/index') {
+          return json({
+            ready: false,
+            scopeRoot: DIRECTORY,
+            scopeMode: 'repo',
+            freshness: 'unindexed',
+            projectId: null,
+            worktreeId: null,
+            revision: null,
+            fingerprint: null,
+            observedAtMs: null,
+            generation: null,
+            indexTruncated: false,
+            excludedCount: 0,
+            excludedSample: [],
+            truncated: false,
+            binding: null,
+            snapshotRoot: null,
+            nodeCount: 0,
+            edgeCount: 0,
+            entryCount: 0,
+            entryCap: 5000,
+            indexState: state,
+          });
+        }
+        return json({ error: 'unexpected' }, 500);
+      });
+      await resetCodeGraphState();
+      container = document.createElement('div');
+      document.body.append(container);
+      root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <I18nProvider>
+            <CodeGraphPanel directory={DIRECTORY} />
+          </I18nProvider>,
+        );
+      });
+      await act(async () => {});
+      await act(async () => {});
+      expect(container.querySelector('[data-testid="code-graph-index-building"]') !== null).toBe(true);
+      expect(container.textContent).toContain(label);
+      if (extra) expect(container.textContent).toContain(extra);
+      expect(container.querySelector('[data-spinner]') === null).toBe(true);
+      await act(async () => { root.unmount(); });
+      container.remove();
+      restoreFetch();
+    }
+
+    // Failed terminal with the backend error, no spinner.
+    stubFetch((url) => {
+      if (url.pathname === '/api/code-graph/index') {
+        return json({
+          ready: false,
+          scopeRoot: DIRECTORY,
+          scopeMode: 'repo',
+          freshness: 'unindexed',
+          projectId: null,
+          worktreeId: null,
+          revision: null,
+          fingerprint: null,
+          observedAtMs: null,
+          generation: null,
+          indexTruncated: false,
+          excludedCount: 0,
+          excludedSample: [],
+          truncated: false,
+          binding: null,
+          snapshotRoot: null,
+          nodeCount: 0,
+          edgeCount: 0,
+          entryCount: 0,
+          entryCap: 5000,
+          indexState: { state: 'failed', error: 'engine exploded' },
+        });
+      }
+      return json({ error: 'unexpected' }, 500);
+    });
+    await resetCodeGraphState();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <CodeGraphPanel directory={DIRECTORY} />
+        </I18nProvider>,
+      );
+    });
+    await act(async () => {});
+    await act(async () => {});
+    expect(container.querySelector('[data-testid="code-graph-index-failed"]') !== null).toBe(true);
+    expect(container.textContent).toContain('Indexing failed');
+    expect(container.textContent).toContain('engine exploded');
+    expect(container.querySelector('[data-spinner]') === null).toBe(true);
+    await act(async () => { root.unmount(); });
+    container.remove();
+    restoreFetch();
+
+    // Cancelled terminal, no spinner.
+    stubFetch((url) => {
+      if (url.pathname === '/api/code-graph/index') {
+        return json({
+          ready: false,
+          scopeRoot: DIRECTORY,
+          scopeMode: 'repo',
+          freshness: 'unindexed',
+          projectId: null,
+          worktreeId: null,
+          revision: null,
+          fingerprint: null,
+          observedAtMs: null,
+          generation: null,
+          indexTruncated: false,
+          excludedCount: 0,
+          excludedSample: [],
+          truncated: false,
+          binding: null,
+          snapshotRoot: null,
+          nodeCount: 0,
+          edgeCount: 0,
+          entryCount: 0,
+          entryCap: 5000,
+          indexState: { state: 'cancelled' },
+        });
+      }
+      return json({ error: 'unexpected' }, 500);
+    });
+    await resetCodeGraphState();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <CodeGraphPanel directory={DIRECTORY} />
+        </I18nProvider>,
+      );
+    });
+    await act(async () => {});
+    await act(async () => {});
+    expect(container.querySelector('[data-testid="code-graph-index-failed"]') !== null).toBe(true);
+    expect(container.textContent).toContain('Indexing cancelled');
+    expect(container.querySelector('[data-spinner]') === null).toBe(true);
+    await act(async () => { root.unmount(); });
+    container.remove();
+    restoreFetch();
+
+    // Ready serves the full workspace, never a spinner.
+    stubFetch((url) => {
+      if (url.pathname === '/api/code-graph/index') return json(baseIndex({}));
+      if (url.searchParams.get('kind') === 'explore') {
+        return json({
+          ...baseIndex({}),
+          coverage: 'indexed',
+          knowledgeIds: [],
+          unresolved: [],
+          unsupported: [],
+          items: [],
+          modules: [],
+        });
+      }
+      return json({ error: 'unexpected' }, 500);
+    });
+    await resetCodeGraphState();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <CodeGraphPanel directory={DIRECTORY} />
+        </I18nProvider>,
+      );
+    });
+    await act(async () => {});
+    await act(async () => {});
+    await act(async () => {});
+    expect(container.querySelector('[data-testid="code-graph-index-building"]') === null).toBe(true);
+    expect(container.querySelector('[data-testid="code-graph-index-failed"]') === null).toBe(true);
+    expect(container.textContent).toContain('Fresh');
+    expect(container.querySelector('[data-spinner]') === null).toBe(true);
+    await act(async () => { root.unmount(); });
+    container.remove();
+    restoreFetch();
+
+    // Truncated answer surfaces the exclusion count, reason, and module sample.
+    stubFetch((url) => {
+      if (url.pathname === '/api/code-graph/index') {
+        return json(baseIndex({
+          truncationReason: 'entry-cap',
+          excludedCount: 3,
+          excludedSample: ['a.ts', 'b.ts'],
+          indexTruncated: true,
+          freshness: 'stale',
+          staleReason: 'index-truncated',
+          truncated: true,
+        }));
+      }
+      if (url.searchParams.get('kind') === 'explore') {
+        return json({
+          ...baseIndex({ truncationReason: 'entry-cap', excludedCount: 3, excludedSample: ['a.ts', 'b.ts'] }),
+          coverage: 'indexed',
+          knowledgeIds: [],
+          unresolved: [],
+          unsupported: [],
+          items: [],
+          truncationReason: 'entry-cap',
+          excludedCount: 3,
+          excludedSample: ['a.ts', 'b.ts'],
+          truncated: true,
+          modules: [{ name: 'src', fileCount: 5, testFileCount: 0, symbolCount: 2, edgeCount: 1, sampleSymbols: [], analyzedFiles: 4, unanalyzedFiles: 1, excludedFiles: 3 }],
+        });
+      }
+      return json({ error: 'unexpected' }, 500);
+    });
+    await resetCodeGraphState();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <CodeGraphPanel directory={DIRECTORY} />
+        </I18nProvider>,
+      );
+    });
+    await act(async () => {});
+    await act(async () => {});
+    await act(async () => {});
+    expect(container.querySelector('[data-testid="code-graph-index-truncated"]')?.textContent).toContain('entry-cap');
+    expect(container.querySelector('[data-testid="code-graph-index-truncated"]')?.textContent).toContain('excluded 3');
+    expect(container.querySelector('[data-testid="code-graph-index-truncation"]') !== null).toBe(true);
+    expect(container.querySelector('[data-testid="code-graph-index-truncation"]')?.textContent).toContain('entry-cap');
+    expect(container.querySelector('[data-testid="code-graph-truncation-modules"]') !== null).toBe(true);
+    expect(container.textContent).toContain('src');
+    expect(container.textContent).toContain('Unanalyzed');
+    expect(container.querySelector('[data-spinner]') === null).toBe(true);
+  });
 });

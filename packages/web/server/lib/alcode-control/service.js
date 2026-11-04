@@ -1,7 +1,7 @@
 import { asNonEmptyString, isBoolean } from '../shared/guards.js';
 import path from 'node:path';
 import { OpenCode } from '@opencode/client';
-import { AlcodeControlError, asControlError, AlcodeControlError as OpenChamberControlError } from './error.js';
+import { AlcodeControlError, asControlError } from './error.js';
 import { ALCODE_ALL_ACTIONS, OPENCHAMBER_ALL_ACTIONS, OPENCHAMBER_KNOWLEDGE_ACTIONS } from './actions.js';
 import { writeScreenshot } from './screenshots.js';
 import { createProjectKnowledgeActions } from './project-knowledge.js';
@@ -554,7 +554,7 @@ export const createAlcodeControlService = (dependencies) => {
     assertSingleScope(input);
     // Only a new session gets a worktree; elsewhere the number would be ignored.
     if (input.pullRequest !== undefined && action !== 'session.create') {
-      throw new OpenChamberControlError('pullRequest applies only to session.create', 400);
+      throw new AlcodeControlError('pullRequest applies only to session.create', 400);
     }
     const sessionID = asNonEmptyString(input.sessionId);
     const parentSessionID = asNonEmptyString(contextSessionId);
@@ -900,7 +900,7 @@ export const createAlcodeControlService = (dependencies) => {
         // The calling session by default: the agent moves its own work.
         const explicitSessionID = asNonEmptyString(input.sessionId);
         const sessionID = explicitSessionID || asNonEmptyString(options.contextSessionId);
-        if (!sessionID) throw new OpenChamberControlError('sessionId is required', 400);
+        if (!sessionID) throw new AlcodeControlError('sessionId is required', 400);
         // Where the session lives now, which is where the changes are taken
         // from; never a directory of the caller's choosing, so the action
         // cannot carry away another checkout's changes.

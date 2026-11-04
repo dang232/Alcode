@@ -25,6 +25,11 @@ const { I18nProvider } = await import('@/lib/i18n');
 const { CodeGraphCanvas } = await import('./CodeGraphCanvas');
 const { parseGraph } = await import('@/lib/codeGraphApi');
 
+/** Narrow owner contract for the edge id the keyboard-path test observes. */
+interface SeenEdge {
+  id?: string;
+}
+
 describe('code graph canvas bounded render + edge keyboard', () => {
   let container: HTMLElement;
   let root: Root | null = null;
@@ -75,14 +80,17 @@ describe('code graph canvas bounded render + edge keyboard', () => {
       truncated: false,
     });
     if (!model) throw new Error('model missing');
-    const seen: { id?: string } = {};
+    const seen: SeenEdge = {};
     const host = await renderCanvas(model, (e) => { if (e) seen.id = e.id; });
+    // SAFETY: the canvas sets role="button" and tabIndex on the edge hit path
+    // whenever onSelectEdge is set, as in this fixture, and the assertion below
+    // proves the query hit before the test reads tabIndex on it.
     const edge = host.querySelector('path[role="button"]') as HTMLElement;
     expect(edge).not.toBeNull();
     expect(edge.getAttribute('aria-label')).toContain('CALLS_STATIC');
     expect(edge.tabIndex).toBe(0);
     await act(async () => {
-      edge.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }) as unknown as Event);
+      edge.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
     expect(seen.id).toBeTruthy();
   });

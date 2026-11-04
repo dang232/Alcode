@@ -208,7 +208,6 @@ export interface OmoConfigValidationFailure {
 export type OmoConfigValidation = OmoConfigValidationSuccess | OmoConfigValidationFailure;
 
 export function validateOmoConfig(value: unknown): OmoConfigValidation;
-export function validateOmoConfigLayer(value: unknown): OmoConfigValidation;
 
 export interface OmoConfigDiagnostic {
   kind: string;
@@ -279,11 +278,4 @@ export interface OmoConfigWriteOptions {
 export interface OmoConfigWriteResult {
   path: string;
   backupPath?: string;
-}
-
-export function writeOmoConfig(options: OmoConfigWriteOptions): OmoConfigWriteResult;
-
-export class OmoConfigWriteError extends Error {
-  path: string;
-  operation: 'backup' | 'parse' | 'read' | 'write';
 }

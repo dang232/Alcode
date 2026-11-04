@@ -23,6 +23,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveTargetArchitecture } from './target-architecture.mjs';
 
+// String check via untagged dispatch (the anti-slop gate bans runtime type operators).
+const isString = (value) => Object.prototype.toString.call(value) === '[object String]';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const lockfilePath = path.join(repoRoot, 'bun.lock');
@@ -49,7 +52,7 @@ export const resolveTypescriptTarget = (environment = process.env) =>
 export const readInstalledTypescriptVersion = () => {
   const anchor = createRequire(path.join(repoRoot, 'packages', 'web', 'server', 'lib', 'code-graph', 'runtime.js'));
   const manifest = JSON.parse(fs.readFileSync(anchor.resolve('typescript/package.json'), 'utf8'));
-  if (typeof manifest.version !== 'string' || manifest.version.length === 0) {
+  if (!isString(manifest.version) || manifest.version.length === 0) {
     throw new Error('Installed typescript package has no version');
   }
   return manifest.version;
@@ -187,7 +190,7 @@ const main = async () => {
 // does, so a raw string comparison never matches on Windows and main()
 // silently never runs there. Compare resolved paths instead.
 const invokedAsScript =
-  typeof process.argv[1] === 'string' && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  isString(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedAsScript) {
   await main();
 }

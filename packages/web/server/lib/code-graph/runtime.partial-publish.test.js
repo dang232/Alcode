@@ -156,4 +156,33 @@ describe('a partial build is never served as a generation', () => {
     expect(after.ready).toBe(true);
     expect(after.nodeCount).toBe(goodNodes);
   }, 180000);
+
+  it('uncapped walk completes with zero excluded and a fresh generation', async () => {
+    const dir = join(root, 'uncapped-walk');
+    mkdirSync(dir, { recursive: true });
+    for (let index = 0; index < 15; index += 1) {
+      const padded = String(index).padStart(2, '0');
+      writeFileSync(join(dir, `g${padded}.ts`), `export function g${padded}(): number {\n  return ${index};\n}\n`);
+    }
+    const runtime = createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true });
+    // Legacy cap arguments are accepted and ignored: the walk is unbounded.
+    const walk = await runtime.listEntryFiles(dir, 5);
+    expect(walk.truncated).toBe(false);
+    expect(walk.truncationReason).toBe(null);
+    expect(walk.excludedCount).toBe(0);
+    expect(walk.excludedSample).toEqual([]);
+    expect(walk.entries.length).toBe(15);
+    expect(walk.maxEntryFiles).toBe(null);
+    const widened = await runtime.listEntryFiles(dir, 20);
+    expect(widened.truncated).toBe(false);
+    expect(widened.excludedCount).toBe(0);
+    expect(widened.entries.length).toBe(15);
+    const indexed = await runtime.readIndex(dir);
+    expect(indexed.ready).toBe(true);
+    expect(indexed.freshness).toBe('fresh');
+    expect(indexed.indexTruncated).toBe(false);
+    expect(indexed.excludedCount).toBe(0);
+    expect(indexed.entryCount).toBe(15);
+    expect(indexed.entryCap).toBe(null);
+  });
 });

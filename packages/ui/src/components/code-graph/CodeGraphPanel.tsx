@@ -50,6 +50,7 @@ import {
   type CodeGraphSubject,
 } from '@/lib/codeGraphSubject';
 import {
+  deriveTruncationView,
   hasAmbiguousNames,
   modeForPickedId,
   type CodeGraphMode,
@@ -654,12 +655,16 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     return pending;
   }, []);
 
-  // Freshness is decided when the index is read, never by a watcher: a checkout
-  // can change under an open panel (git switch, an agent writing files). Reading
-  // again when the panel regains focus re-checks the content fingerprint, so a
-  // stale generation is reported instead of silently served. Bounded to once a
-  // minute so window switching never starts a rebuild storm, and the rebuild
-  // itself stays explicit because it costs minutes and gigabytes.
+  // Freshness is driven by the opt-in native watcher when it is on: an edit
+  // invalidates the scope and a debounced sync rebuilds in the background, so
+  // the next read serves the new generation. When the watcher is off (the
+  // default and the CODEGRAPH_NO_WATCHER escape hatch), freshness is decided
+  // when the index is read: a checkout can change under an open panel (git
+  // switch, an agent writing files), so reading again when the panel regains
+  // focus re-checks the content fingerprint and a stale generation is
+  // reported instead of silently served. Bounded to once a minute so window
+  // switching never starts a rebuild storm, and manual Refresh always
+  // rebuilds now — it is the escape hatch in both modes.
   const FOCUS_REVALIDATE_MIN_INTERVAL_MS = 60_000;
   const lastIndexReadAtRef = React.useRef(0);
   const loadIndex = React.useCallback(async (refresh: boolean, signal: AbortSignal) => {
@@ -1994,6 +1999,39 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
     return null;
   }, [activeAnswer]);
 
+  // Truncation facts ride typed query answers and the index summary under
+  // the same names; the fresher answer wins. Raw trace/impact answers carry
+  // no truncation fields (their parser reads only what those views render),
+  // so they fall back to the index. Null keeps the toolbar quiet on a fully
+  // indexed scope.
+  const toolbarTruncation = React.useMemo(() => {
+    const typed = activeAnswer !== null && 'excludedCount' in activeAnswer ? activeAnswer : null;
+    return deriveTruncationView(typed, index);
+  }, [activeAnswer, index]);
+
+  // S2 per-file staleness: the freshest answer wins (detail/file/search), the
+  // index summary is the fallback. `staleFiles` are the pending files this
+  // answer references (banner); the rest of `pendingSync` is unreferenced
+  // (footer). A degraded `syncStatus` replaces both with the whole-index
+  // banner: the per-file set cannot be trusted while sync is unavailable.
+  const staleInfo = React.useMemo(() => {
+    const candidates = [detail, fileDetail, search, explore, index];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const hasStale = (candidate.staleFiles?.length ?? 0) > 0;
+      const hasPending = (candidate.pendingSync?.length ?? 0) > 0;
+      const degraded = candidate.syncStatus === 'disabled' || candidate.syncStatus === 'recovering';
+      if (hasStale || hasPending || degraded) return candidate;
+    }
+    return null;
+  }, [detail, fileDetail, search, explore, index]);
+  const staleSyncDegraded = staleInfo !== null
+    && (staleInfo.syncStatus === 'disabled' || staleInfo.syncStatus === 'recovering');
+  const staleReferenced = staleInfo?.staleFiles?.map((entry) => entry.file).filter((file) => file.length > 0) ?? [];
+  const staleUnreferenced = (staleInfo?.pendingSync ?? [])
+    .filter((file) => file.length > 0)
+    .filter((file) => !staleReferenced.includes(file));
+
   const toolbarBusy = indexLoading || searchLoading || detailLoading || exploreLoading || trailLoading || impactRunsLoading;
 
   // Module-map files ride from the explore answer's sample symbols: the
@@ -2079,7 +2117,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
         <Icon name="flow-chart" className="size-4 shrink-0" />
         <h2 className="typography-ui-header flex-1 text-foreground">{t('codeGraph.rail.label')}</h2>
         {indexLoading ? <Spinner aria-hidden /> : null}
-        <Button variant="outline" size="sm" type="button" onClick={onRefresh} disabled={indexLoading || !directory}>
+        <Button variant="outline" size="sm" type="button" onClick={onRefresh} disabled={indexLoading || !directory} title="Rebuild now — manual refresh (escape hatch when auto-watch is off)">
           {t('codeGraph.refresh')}
         </Button>
       </div>
@@ -2094,6 +2132,7 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
           filters={filters}
           totals={toolbarTotals}
           completeness={toolbarCompleteness}
+          truncation={toolbarTruncation}
           busy={toolbarBusy}
           onModeChange={handleModeChange}
           onDepthChange={handleDepthChange}
@@ -2260,6 +2299,31 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
           >
             {t('codeGraph.scope.parent')}
           </Button>
+        </div>
+      ) : null}
+
+      {staleSyncDegraded ? (
+        <div
+          className="rounded-md border border-[var(--status-warning-border)] bg-[var(--status-warning-background)] p-3"
+          data-testid="code-graph-sync-disabled"
+        >
+          <p className="typography-ui text-[var(--status-warning)]">
+            {staleInfo?.syncStatus === 'disabled'
+              ? '⚠️ Code graph sync is disabled — the whole index may be stale. Refresh to rebuild.'
+              : '⚠️ Code graph sync is recovering — the whole index may be stale. Refresh to rebuild.'}
+          </p>
+          <Button variant="outline" size="sm" type="button" className="mt-2" onClick={onRefresh}>
+            {t('codeGraph.refresh')}
+          </Button>
+        </div>
+      ) : staleReferenced.length > 0 ? (
+        <div
+          className="rounded-md border border-[var(--status-warning-border)] bg-[var(--status-warning-background)] p-3"
+          data-testid="code-graph-stale-files"
+        >
+          <p className="typography-ui text-[var(--status-warning)]">
+            {`⚠️ ${staleReferenced.join(', ')} edited since the index was built — Read them directly for current source.`}
+          </p>
         </div>
       ) : null}
 
@@ -2769,6 +2833,11 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
           </React.Fragment>
         ) : null}
       </div>
+      {staleUnreferenced.length > 0 && !staleSyncDegraded ? (
+        <p className="typography-micro text-muted-foreground" data-testid="code-graph-pending-footer">
+          {`Pending re-index: ${staleUnreferenced.join(', ')}`}
+        </p>
+      ) : null}
     </div>
   );
 };
