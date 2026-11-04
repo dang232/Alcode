@@ -65,7 +65,6 @@ export interface CodeGraphToolbarProps {
   onSearchSubmit: (query: string) => void;
   onScopeChange: (scope: CodeGraphToolbarScope) => void;
   onFiltersChange: (filters: CodeGraphToolbarFilters) => void;
-  onRefresh: () => void;
   onFit: () => void;
   onReset: () => void;
 }
@@ -158,7 +157,6 @@ export const CodeGraphToolbar: React.FC<CodeGraphToolbarProps> = ({
   onSearchSubmit,
   onScopeChange,
   onFiltersChange,
-  onRefresh,
   onFit,
   onReset,
 }) => {
@@ -391,17 +389,6 @@ export const CodeGraphToolbar: React.FC<CodeGraphToolbarProps> = ({
       )}
 
       <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          data-testid="code-graph-refresh"
-          aria-label={text('codeGraph.toolbar.refresh')}
-          disabled={busy}
-          onClick={onRefresh}
-        >
-          <Icon name="refresh" className={cn('size-4', busy && 'animate-spin')} />
-        </Button>
         <Button
           type="button"
           variant="ghost"

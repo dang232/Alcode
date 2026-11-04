@@ -31,7 +31,6 @@
   "codeGraph.toolbar.truncationExcluded": "Index excludes {count} files",
   "codeGraph.toolbar.truncationModules": "Excluded by module: {modules}",
   "codeGraph.toolbar.truncationBudget": "Budget {cap} files",
-  "codeGraph.toolbar.refresh": "Refresh code graph",
   "codeGraph.toolbar.fit": "Fit graph to view",
   "codeGraph.toolbar.reset": "Reset graph view",
   "codeGraph.toolbar.subjectActiveFile": "Active file",

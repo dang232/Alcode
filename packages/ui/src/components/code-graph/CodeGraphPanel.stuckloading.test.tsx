@@ -161,14 +161,6 @@ const submitSearch = async (needle: string): Promise<void> => {
   await act(async () => {});
 };
 
-const clickHeaderRefresh = async (): Promise<void> => {
-  const button = header()?.querySelector('button');
-  if (!(button instanceof HTMLElement)) throw new Error('no header refresh button');
-  button.click();
-  await act(async () => {});
-  await act(async () => {});
-};
-
 const clickMode = async (mode: 'explore' | 'trace' | 'impact'): Promise<void> => {
   const button = container.querySelector(`#code-graph-mode-${mode}`);
   if (!(button instanceof HTMLElement)) throw new Error('no such mode button');
@@ -178,7 +170,7 @@ const clickMode = async (mode: 'explore' | 'trace' | 'impact'): Promise<void> =>
 };
 
 describe('code graph stuck loading', () => {
-  test('a refresh that steals a search leaves no spinner behind', async () => {
+  test('the header offers no manual refresh, and a search spinner clears when its query settles', async () => {
     const indexResolvers: Array<(value: Response) => void> = [];
     const searchResolvers: Array<(value: Response) => void> = [];
     stubFetch((url, signal) => {
@@ -202,31 +194,19 @@ describe('code graph stuck loading', () => {
     await act(async () => {});
     expect(headerSpinnerCount()).toBe(0);
 
-    // A search submit while the header is idle: no stealing yet, the search
-    // spinner shows alone. Then refresh steals it through trackPending and
-    // starts a fresh index load instead — the aborted search has no
-    // same-loader successor, so its spinner must clear while the header
-    // spins for the refresh.
+    // The manual refresh is gone: the header exposes no button, and a search
+    // spinner clears when its own query settles instead of sticking.
     await submitSearch('mergePersistedStates');
     expect(searchResolvers.length).toBe(1);
     expect(explorerSpinnerCount()).toBe(1);
+    expect(header()?.querySelector('button')).toBeNull();
 
-    await clickHeaderRefresh();
-    expect(explorerSpinnerCount()).toBe(0);
-    expect(headerSpinnerCount()).toBe(1);
-
-    // Late settlement of the stolen search must not touch the header.
     searchResolvers[0]?.(json({ coverage: 'indexed', items: [], totals: { displayed: 0, known: 0, hidden: 0 }, completeness: 'complete' }));
     await act(async () => {});
     await act(async () => {});
-    expect(headerSpinnerCount()).toBe(1);
-
-    indexResolvers[1]?.(json(readyIndex()));
-    await act(async () => {});
-    await act(async () => {});
+    expect(explorerSpinnerCount()).toBe(0);
     expect(headerSpinnerCount()).toBe(0);
   });
-
   test('a superseded explore keeps the newer spinner until it settles', async () => {
     const resolvers: Array<(value: Response) => void> = [];
     const indexResolvers: Array<(value: Response) => void> = [];

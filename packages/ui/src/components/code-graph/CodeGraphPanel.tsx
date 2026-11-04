@@ -2117,9 +2117,6 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
         <Icon name="flow-chart" className="size-4 shrink-0" />
         <h2 className="typography-ui-header flex-1 text-foreground">{t('codeGraph.rail.label')}</h2>
         {indexLoading ? <Spinner aria-hidden /> : null}
-        <Button variant="outline" size="sm" type="button" onClick={onRefresh} disabled={indexLoading || !directory} title="Rebuild now — manual refresh (escape hatch when auto-watch is off)">
-          {t('codeGraph.refresh')}
-        </Button>
       </div>
       {directory ? (
         <CodeGraphToolbar
@@ -2139,7 +2136,6 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
           onSearchSubmit={handleSearchSubmit}
           onScopeChange={handleScopeChange}
           onFiltersChange={handleFiltersChange}
-          onRefresh={onRefresh}
           onFit={handleFit}
           onReset={handleResetView}
         />
@@ -2204,9 +2200,6 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
           {index.refreshError ? (
             <p className="typography-micro mt-1 break-words text-[var(--status-warning)]">{index.refreshError}</p>
           ) : null}
-          <Button variant="outline" size="sm" type="button" className="mt-2" onClick={onRefresh}>
-            {t('codeGraph.refresh')}
-          </Button>
         </div>
       ) : null}
 
@@ -2309,12 +2302,9 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
         >
           <p className="typography-ui text-[var(--status-warning)]">
             {staleInfo?.syncStatus === 'disabled'
-              ? '⚠️ Code graph sync is disabled — the whole index may be stale. Refresh to rebuild.'
-              : '⚠️ Code graph sync is recovering — the whole index may be stale. Refresh to rebuild.'}
+              ? '⚠️ Code graph sync is disabled — the whole index may be stale. Turn sync back on in Settings.'
+              : '⚠️ Code graph sync is recovering — the whole index may be stale. It updates on its own once sync returns.'}
           </p>
-          <Button variant="outline" size="sm" type="button" className="mt-2" onClick={onRefresh}>
-            {t('codeGraph.refresh')}
-          </Button>
         </div>
       ) : staleReferenced.length > 0 ? (
         <div

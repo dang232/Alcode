@@ -50,7 +50,6 @@ const baseProps = (overrides: Partial<CodeGraphToolbarProps> = {}): CodeGraphToo
   onSearchSubmit: () => {},
   onScopeChange: () => {},
   onFiltersChange: () => {},
-  onRefresh: () => {},
   onFit: () => {},
   onReset: () => {},
   ...overrides,

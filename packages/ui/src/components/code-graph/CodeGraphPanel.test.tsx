@@ -583,8 +583,13 @@ describe('code graph panel', () => {
     expect(container.textContent).toContain('Stale');
     expect(container.textContent).toContain('HEAD-MOVE');
     expect(container.textContent).toContain('engine exploded');
-    await clickButton('Refresh');
-    expect(requests.filter((entry) => entry.includes('refresh=1')).length).toBeGreaterThan(0);
+    // No manual refresh affordance: the panel keeps itself current through its
+    // own poll and the sync watcher, so a stale graph names the reason instead
+    // of offering a rebuild button.
+    const refreshLabels = Array.from(container.querySelectorAll('button'))
+      .map((button) => button.textContent?.trim() ?? '')
+      .filter((label) => label === 'Refresh');
+    expect(refreshLabels).toEqual([]);
   });
 
   test('shows the backend failure with a retry instead of a fake empty list', async () => {
@@ -799,7 +804,10 @@ describe('code graph panel', () => {
     expect(container.textContent).toContain('src');
 
     failExplore = true;
-    await clickButton('Refresh');
+    // No refresh button any more. A fresh mount is the deterministic way to ask
+    // for the query again, and the failure must surface rather than a fake empty
+    // list.
+    await render();
     await act(async () => {});
     await act(async () => {});
     expect(container.textContent).toContain('engine exploded');
