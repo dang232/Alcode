@@ -69,8 +69,15 @@ interval — before reporting the sync complete, so the first prompt after
 login finds the provider instead of racing the config watcher (task 54:
 the first attempt lost ~26 s after the writes). The gate is published at
 `getReadiness()` (`idle` → `syncing` → `ready`; `syncing_retry` when the
-bounded poll times out; `needs_restart` on an external server, which
-never sees this process's write) and served at `GET /api/alcore/readiness`
+bounded poll times out AND no `alcore` credential exists; `needs_restart`
+on an external server, which never sees this process's write). The model
+surface is not authoritative on its own — a cold location answers a
+partial catalog, and config-declared providers can be absent from it
+entirely — so a full bounded poll that saw nothing resolves `ready` when
+the provider is provably provisioned (an `alcore` credential in
+OpenCode's integration list). Without that credential the old
+`syncing_retry` stands, so a genuinely missing key still reads as not
+ready. Served at `GET /api/alcore/readiness`
 for the composer hold in `opencodeClient.sendMessage`, which waits on it
 for alcore sends and otherwise fails fast with the named syncing/restart
 state instead of the raw upstream "Provider unavailable". A concurrent

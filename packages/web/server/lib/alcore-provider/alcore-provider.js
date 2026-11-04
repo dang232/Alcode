@@ -84,7 +84,7 @@ import { discoverProviderModels } from '../opencode/model-discovery.js';
 import { isEnterpriseMode } from '../enterprise-mode.js';
 
 export const ALCORE_PROVIDER_ID = 'alcore';
-export const ALCORE_PROVIDER_NAME = 'Alcore';
+const ALCORE_PROVIDER_NAME = 'Alcore';
 // Same spelling the Settings custom-provider form writes for OpenAI-chat
 // endpoints; the server normalizes it to the `aisdk:` provider package.
 export const ALCORE_PROVIDER_PACKAGE = 'aisdk:@ai-sdk/openai-compatible';
@@ -453,6 +453,20 @@ export const createAlcoreProviderRuntime = ({
     }
   };
 
+  // The alcore credential in OpenCode's integration list is the authoritative
+  // proof that the provider is provisioned: the model surface is not (a cold
+  // location answers a partial catalog, and config-declared providers can be
+  // absent from it entirely). Never throws, never logs ids or keys.
+  const hasProvisionedCredential = async () => {
+    if (openCodeCredentials === null || openCodeCredentials === undefined) return false;
+    try {
+      const held = (await openCodeCredentials.listCredentialIDs()) ?? [];
+      return Array.isArray(held) && held.length > 0;
+    } catch {
+      return false;
+    }
+  };
+
   // Removes every `alcore` credential OpenCode holds. Best-effort: never
   // throws, never logs ids or keys. Runs even in enterprise mode and even
   // for an unknown subject — the credential is global, and removal only
@@ -508,10 +522,17 @@ export const createAlcoreProviderRuntime = ({
       } catch {
         enterprise = false;
       }
-      if (enterprise) return { ok: false, reason: 'enterprise_mode' };
+      if (enterprise) {
+        console.warn('[alcore-provider] login sync skipped: enterprise mode is on; no provider block written');
+        return { ok: false, reason: 'enterprise_mode' };
+      }
       const id = subSchema.safeParse(sub).data;
-      if (id === undefined) return { ok: false, reason: 'invalid_request' };
+      if (id === undefined) {
+        console.warn('[alcore-provider] login sync skipped: invalid subject');
+        return { ok: false, reason: 'invalid_request' };
+      }
       if (upsertProviderConfig === null || upsertProviderConfig === undefined) {
+        console.warn('[alcore-provider] login sync skipped: provider registry not wired');
         return { ok: false, reason: 'not_wired' };
       }
       const catalog = await fetchAlcoreCatalog(id);
@@ -537,6 +558,7 @@ export const createAlcoreProviderRuntime = ({
         } catch {
           // Best-effort: the card state above is what matters.
         }
+        console.warn(`[alcore-provider] login sync skipped: no credential (${credential.reason ?? 'unavailable'})`);
         return { ok: false, reason: credential.reason };
       }
       // Slice B (task 52, Gap 2): the minted key is stored ONLY as the
@@ -603,9 +625,23 @@ export const createAlcoreProviderRuntime = ({
             return { ok: true, models: catalog.models.length, ready: true };
           }
           if (now() >= deadline) {
-            if (ownedGeneration === readinessGeneration) setReadiness('syncing_retry');
+            // A full bounded poll that saw nothing must not dead-end the
+            // login when the provider is provably provisioned. The model
+            // surface can omit config-declared providers entirely, so
+            // treating its silence as "not ready" parked every login at
+            // `syncing_retry` forever and held the composer off alcore. An
+            // alcore credential in OpenCode's integration list means the
+            // block and key are both in place, so the gate resolves ready;
+            // without one the old `syncing_retry` stands unchanged.
+            const provisioned = await hasProvisionedCredential();
+            if (ownedGeneration === readinessGeneration) {
+              setReadiness(provisioned ? 'ready' : 'syncing_retry');
+            }
             return {
-              ok: true, models: catalog.models.length, ready: false, reason: 'provider_syncing',
+              ok: true,
+              models: catalog.models.length,
+              ready: provisioned,
+              ...(provisioned ? {} : { reason: 'provider_syncing' }),
             };
           }
           await credentialWait(intervalMs);

@@ -680,6 +680,25 @@ describe('alcore login readiness gate (task 55 — first prompt waits on the mod
     expect(runtime.getReadiness()).toMatchObject({ state: 'syncing_retry', needsRestart: false });
   });
 
+  test('a provisioned credential resolves ready when the model surface stays empty', async () => {
+    // The model surface is not authoritative: it can omit config-declared
+    // providers entirely, so a full bounded poll that saw nothing must not
+    // dead-end a login whose provider is provably provisioned. An alcore
+    // credential in OpenCode's integration list is that proof.
+    const { runtime } = createHarness({
+      listAlcoreModels: async () => [],
+      readinessTimeoutMs: 0,
+      openCodeCredentials: {
+        listCredentialIDs: async () => ['cred_live'],
+        connectKey: async () => undefined,
+        removeCredential: async () => undefined,
+      },
+    });
+    const outcome = await runtime.syncOnLogin('user-1');
+    expect(outcome).toEqual({ ok: true, models: 2, ready: true });
+    expect(runtime.getReadiness()).toMatchObject({ state: 'ready', needsRestart: false });
+  });
+
   test('a probe failure reads as syncing, never a broken login', async () => {
     const { runtime } = createHarness({
       listAlcoreModels: async () => { throw new Error('openCode down'); },
