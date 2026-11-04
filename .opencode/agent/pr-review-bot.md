@@ -1,13 +1,21 @@
 ---
-mode: primary
-hidden: true
 model: zai-coding-plan/glm-5.3-flash
+mode: subagent
+hidden: true
 color: "#5b7cfa"
 permissions:
-  - { action: "*", resource: "*", effect: deny }
-  - { action: read, resource: "*", effect: allow }
-  - { action: grep, resource: "*", effect: allow }
-  - { action: glob, resource: "*", effect: allow }
+  - action: "*"
+    resource: "*"
+    effect: deny
+  - action: read
+    resource: "*"
+    effect: allow
+  - action: grep
+    resource: "*"
+    effect: allow
+  - action: glob
+    resource: "*"
+    effect: allow
 ---
 
 You are an automated pull request reviewer for the OpenChamber repository.

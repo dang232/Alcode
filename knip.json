@@ -1,14 +1,13 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
   "ignore": [
-    "packages/mobile/android/app/src/main/assets/public/**",
-    "packages/mobile/ios/App/App/public/**",
     "packages/sdk/examples/**",
+    "packages/web/server/lib/**/*.bundle.js"
   ],
   "workspaces": {
     ".": {
       "entry": [
-        "oxlint.config.ts",
+        "eslint.config.js",
         "oxlint.anti-slop.config.ts",
         "postcss.config.js",
         "scripts/**/*.{js,cjs,mjs,ts}"
@@ -20,7 +19,6 @@
     },
     "packages/ui": {
       "entry": [
-        "src/apps/renderVSCodeApp.tsx",
         "src/**/*.bench.{ts,tsx}",
         "src/**/*.{test,spec}.{js,cjs,mjs,jsx,ts,tsx}",
         "src/**/__tests__/**/*.{js,cjs,mjs,jsx,ts,tsx}"
@@ -31,13 +29,20 @@
     },
     "packages/web": {
       "entry": [
-        "src/mobile-main.tsx",
-        "src/mini-chat-main.tsx",
-        "src/main.tsx",
-        "src/sw.ts",
+        "bin/**/*.{js,cjs,mjs}",
+        "server/lib/**/*.regen.js",
+        "server/lib/code-graph/bench/**/*.{js,cjs,mjs}",
+        "server/lib/code-graph/engine.js",
+        "server/lib/agents/omo-native-catalog.js",
+        "server/lib/opencode/omo-config.js",
+        "server/lib/ulw-mcp/server.js",
         "bin/**/*.{test,spec}.{js,cjs,mjs}",
         "server/**/*.{test,spec}.{js,cjs,mjs}",
-        "src/**/*.{test,spec}.{ts,tsx}"
+        "src/**/*.{test,spec}.{ts,tsx}",
+        "src/main.tsx",
+        "src/mini-chat-main.tsx",
+        "src/mobile-main.tsx",
+        "src/sw.ts"
       ],
       "project": [
         "bin/**/*.js",
@@ -64,9 +69,10 @@
     },
     "packages/vscode": {
       "entry": [
-        "webview/main.tsx",
         "src/**/*.{test,spec}.{js,cjs,mjs,ts,tsx}",
-        "webview/**/*.{test,spec}.{js,cjs,mjs,ts,tsx}"
+        "webview/**/*.{test,spec}.{js,cjs,mjs,ts,tsx}",
+        "webview/main.tsx",
+        "webview/api/**"
       ],
       "project": [
         "src/**/*.{ts,tsx}",
@@ -93,6 +99,100 @@
       "project": [
         "*.{js,cjs,mjs,ts}",
         "scripts/**/*.{js,cjs,mjs,ts}"
+      ]
+    },
+    "packages/omo-engine": {
+      "entry": [
+        "boulder-state/src/index.ts",
+        "claude-code-compat-core/src/index.ts",
+        "claude-code-compat-core/src/features/claude-code-plugin-loader/*.ts",
+        "claude-code-compat-core/src/features/claude-code-mcp-loader/*.ts",
+        "claude-code-compat-core/src/features/claude-code-command-loader/*.ts",
+        "claude-code-compat-core/src/features/claude-code-agent-loader/*.ts",
+        "code-graph/src/index.ts",
+        "delegate-core/src/index.ts",
+        "hashline-core/src/index.ts",
+        "isolation-core/src/*.ts",
+        "memory-core/src/index.ts",
+        "memory-core/src/fs/resilient.ts",
+        "memory-core/src/personas/manifest.ts",
+        "memory-core/src/locks/process-identity.ts",
+        "memory-core/src/locks/process-start-time.ts",
+        "model-core/src/index.ts",
+        "omo-config-core/src/index.ts",
+        "omo-opencode/src/index.ts",
+        "omo-opencode/src/omo-native-entry.ts",
+        "openclaw-core/src/index.ts",
+        "rules-engine/src/index.ts",
+        "rules-engine/src/engine/index.ts",
+        "rules-engine/index.d.ts",
+        "rules-engine/engine.d.ts",
+        "senpi-task/src/index.ts",
+        "senpi-task/src/agents/builtin/index.ts",
+        "senpi-task/src/category/builtins.ts",
+        "senpi-task/src/category/resolver.ts",
+        "senpi-task/src/category/coverage.ts",
+        "senpi-task/src/dag/index.ts",
+        "senpi-task/src/renderer-text.ts",
+        "senpi-task/src/runners/rpc/spawn.ts",
+        "senpi-task/src/runners/rpc/model-admission.ts",
+        "senpi-task/src/tools/task/renderers.ts",
+        "senpi-task/src/notice-box.ts",
+        "senpi-task/test-support/warm-pi-tui.ts",
+        "skills-loader-core/src/index.ts",
+        "skills-loader-core/src/features/opencode-skill-loader/*.ts",
+        "skills-loader-core/src/features/builtin-skills/*.ts",
+        "skills-loader-core/src/features/opencode-runtime-skills/*.ts",
+        "skills-loader-core/src/tools/skill/*.ts",
+        "skills-loader-core/src/hooks/auto-slash-command/*.ts",
+        "skills-loader-core/src/shared/*.ts",
+        "skills-loader-core/src/config/*.ts",
+        "skills-loader-core/src/text-imports.d.ts",
+        "team-core/src/*.ts",
+        "team-core/src/team-registry/index.ts",
+        "team-core/src/team-mailbox/index.ts",
+        "team-core/src/team-tasklist/index.ts",
+        "team-core/src/team-state-store/index.ts",
+        "team-core/src/team-worktree/index.ts",
+        "team-core/src/team-layout-tmux/index.ts",
+        "telemetry-core/src/index.ts",
+        "telemetry-core/index.d.ts",
+        "tmux-core/src/index.ts",
+        "utils/src/index.ts",
+        "utils/src/atomic-write.ts",
+        "utils/src/runtime/index.ts",
+        "utils/src/xdg-data-dir.ts",
+        "utils/src/logger.ts",
+        "utils/src/record-type-guard.ts",
+        "utils/src/archive-entry-validator.ts",
+        "utils/src/classify-path-environment.ts",
+        "utils/src/internal-initiator-marker.ts",
+        "utils/src/skill-path-resolver.ts",
+        "utils/src/process-sweep/index.ts",
+        "utils/src/process-stream-reader.ts",
+        "utils/src/process-tree.ts",
+        "utils/src/prompt-failure-classifier.ts",
+        "utils/src/session-idle-settle.ts",
+        "utils/src/command-executor/*.ts",
+        "utils/src/git-worktree/*.ts",
+        "utils/src/migration/*.ts",
+        "utils/src/prompt-async-gate/*.ts",
+        "utils/src/zip-entry-listing/*.ts",
+        "omo-codex/**/scripts/**/*.{js,cjs,mjs,ts}",
+        "senpi-task/scripts/*.ts",
+        "omo-codex/**/src/cli.ts",
+        "omo-codex/plugin/components/ulw-execute-continuation/src/index.ts",
+        "omo-codex/plugin/components/ulw-loop/src/sdk/manifest.ts",
+        "omo-codex/plugin/components/ulw-loop/src/sdk/types.ts",
+        "omo-codex/**/vitest.config.ts",
+        "omo-codex/**/test/fixtures/**/*.{js,cjs,mjs,ts}",
+        "**/__fixtures__/**/*.{js,cjs,mjs,ts}",
+        "omo-codex/**/runtime/**/*.{js,cjs,mjs}",
+        "omo-codex/**/engine/templates/**/*.{js,cjs,mjs}",
+        "**/*.{test,spec}.{js,cjs,mjs,ts,tsx}"
+      ],
+      "project": [
+        "**/*.{ts,tsx,js,cjs,mjs}"
       ]
     }
   }

@@ -84,3 +84,4 @@ artifacts/
 packages/ui/.tsbuild/
 *.tsbuildinfo
 /.omo
+/.algraph/

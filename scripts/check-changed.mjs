@@ -81,11 +81,19 @@ export const findRatchetViolations = (baseCounts, currentCounts) => {
 
 const runOxlint = (files, cwd) => {
   if (files.length === 0) return [];
-  const result = spawnSync('bunx', ['oxlint', '-c', OXLINT_CONFIG, '-f', 'json', ...files], {
-    cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-  });
-  if (!result.stdout) throw new Error(`oxlint produced no report: ${result.stderr}`);
-  return JSON.parse(result.stdout).diagnostics;
+  // Windows caps a spawned command line near 32K characters and a
+  // branch-wide change can list hundreds of files, which makes one
+  // invocation fail to spawn with empty stdout: chunk the runs and merge
+  // the per-file diagnostics, exactly what one big run would report.
+  const diagnostics = [];
+  for (let index = 0; index < files.length; index += 60) {
+    const result = spawnSync('bunx', ['oxlint', '-c', OXLINT_CONFIG, '-f', 'json', ...files.slice(index, index + 60)], {
+      cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+    });
+    if (!result.stdout) throw new Error(`oxlint produced no report: ${result.stderr}`);
+    diagnostics.push(...JSON.parse(result.stdout).diagnostics);
+  }
+  return diagnostics;
 };
 
 const checkAntiSlopRatchet = (base, files) => {
