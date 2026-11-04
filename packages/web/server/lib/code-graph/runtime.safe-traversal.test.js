@@ -297,7 +297,12 @@ describe('project config and ignore overrides (S7)', () => {
     const after = await runtime.listEntryFiles(dir, 50);
     expect(rels(after, dir)).toEqual(['keep.ts', 'sub/keep2.ts']);
     expect(after.excludedCount).toBe(2);
-    expect(after.truncationReason).toBe('project-config');
+    // The ignore layer decided these, so the banner names .gitignore rather
+    // than a project config file that does not exist.
+    expect(after.truncationReason).toBe('gitignore');
+    // A policy exclusion is exact and counted, never a truncation: the walk
+    // reached every directory, so the build stays complete.
+    expect(after.truncated).toBe(false);
     expect(after.gitignoreFiles).toEqual(['.gitignore', 'sub/.gitignore']);
     expect(after.coverage.byModule.gen.excludedFiles).toBe(1);
     expect(after.coverage.byModule.sub.excludedFiles).toBe(1);

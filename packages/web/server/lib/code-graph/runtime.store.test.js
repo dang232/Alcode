@@ -126,7 +126,24 @@ describe('uncapped index + visible surfacing', () => {
     expect((await runtime.readIndex(dirB)).entryCount).toBe(3);
   });
 
-  it('policy-truncated build still never persists', async () => {
+  it('a gitignored entry file does not truncate the persisted build', async () => {
+    const dir = makeManyRepo('gitignore-persists', 6);
+    // Untracked and ignored: the walk excludes it by policy, not by budget,
+    // so the build must stay complete and be persisted for the next open.
+    writeFileSync(join(dir, '.gitignore'), 'f00.ts\n');
+    const storeDir = join(root, 'store-gitignore-persists');
+    const builder = createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true, storeDir });
+    const walk = await builder.listEntryFiles(dir);
+    expect(walk.excludedCount).toBe(1);
+    expect(walk.truncationReason).toBe('gitignore');
+    expect(walk.truncated).toBe(false);
+    const built = await builder.readIndex(dir, { refresh: true });
+    expect(built.indexTruncated).toBe(false);
+    expect(built.excludedCount).toBe(1);
+    await waitForManifest(storeDir);
+  });
+
+  it('policy-excluded build persists and restores', async () => {
     const dir = makeManyRepo('uncapped-nopersist', 15);
     writeFileSync(
       join(dir, 'codegraph.json'),
@@ -135,17 +152,14 @@ describe('uncapped index + visible surfacing', () => {
     const storeDir = join(root, 'store-uncapped-nopersist');
     const builder = createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true, storeDir });
     const built = await builder.readIndex(dir, { refresh: true });
-    expect(built.indexTruncated).toBe(true);
+    // A config exclusion is configuration, not truncation: the walk decided
+    // every file, so the build is complete, the gap stays named, and the
+    // snapshot persists instead of being discarded on every open.
+    expect(built.indexTruncated).toBe(false);
     expect(built.truncationReason).toBe('project-config');
     expect(built.excludedCount).toBe(5);
     expect(built.entryCount).toBe(10);
-    const scopes = await fsPromises.readdir(storeDir).catch(() => []);
-    let manifests = 0;
-    for (const scope of scopes) {
-      const found = await fsPromises.stat(join(storeDir, scope, 'manifest.json')).then(() => true, () => false);
-      if (found) manifests += 1;
-    }
-    expect(manifests).toBe(0);
+    await waitForManifest(storeDir);
     const events = [];
     const reader = createCodeGraphRuntime(
       { fsPromises, path },
@@ -156,7 +170,7 @@ describe('uncapped index + visible surfacing', () => {
       },
     );
     await reader.readIndex(dir);
-    expect(events.some((event) => event.endsWith(':restored'))).toBe(false);
+    expect(events.some((event) => event.endsWith(':restored'))).toBe(true);
   });
 
   it('census-floor build still persists as complete', async () => {

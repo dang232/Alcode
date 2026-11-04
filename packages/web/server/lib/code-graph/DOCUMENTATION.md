@@ -133,18 +133,22 @@ accepted and ignored, `entryCap` is always null, and every entry candidate
 indexes. The only remaining walk bound is the hang backstop
 (`DEFAULT_TRAVERSAL_TIME_BUDGET_MS`, clamped 1s to 300s). A truncated
 walk reports `truncated` with `truncationReason` and metrics instead of
-showing a partial graph as complete, but truncation now comes only from
-policy excludes, unreadable entries, skipped-scan walk errors, or the
-time budget, never from a numeric cut. A truncated in-memory entry is
-never persisted as a generation and never served as fresh.
+showing a partial graph as complete, and truncation now comes only from
+unreadable entries, skipped-scan walk errors, or the time budget, never
+from a numeric cut. A policy exclusion is NOT truncation: the walk reached
+every directory and decided each file on purpose, so `excludedCount`,
+`excludedSample` and `truncationReason` (`gitignore` for the ignore layer,
+`project-config` for a `codegraph.json` rule) stay reported while the
+build stays complete, persists, and serves fresh. A truncated in-memory
+entry is never persisted as a generation and never served as fresh.
 
 ### Why the skipped census floors instead of truncating
 
 A tripped skipped-census bound (tens of thousands of skipped files under
 one directory) stays visible as `coverage.excludedTruncated` but never
-truncates the walk by itself: `truncated` is decided only by
-excluded entry candidates and `truncationReason`, so a complete entry set
-still builds, persists, and restores. Capping the census display must not
+truncates the walk by itself: `truncated` is decided only by a
+non-policy `truncationReason` (a walk error or the time budget), so a
+complete entry set still builds, persists, and restores. Capping the census display must not
 destroy the generation it counts.
 
 ### Why the served build has work budgets and the experiment has memory budgets
@@ -308,6 +312,12 @@ Caps are unchanged; exclusion is by generated-directory name, never by
 file extension, so real `.d.ts` sources still index.
 
 ### Why truncated generations are not persisted
+
+A policy exclusion is not truncation, so a build that drops ignored or
+config-excluded entry files is complete and does persist. Withholding it
+was what made a scope with a single ignored file rebuild on every open and
+never serve fresh. Truncation in this section means a walk that stopped
+early: a walk error or the time budget.
 
 Only complete builds reach the store: a partial manifest overwriting the
 complete one would destroy the good generation on disk (pruning drops

@@ -343,19 +343,20 @@ describe('project config and ignore scope rules (S7)', () => {
     expect(complete.freshness).toBe('fresh');
     expect(complete.excludedCount).toBe(0);
     // Excluding one file rebuilds (the config joins the revision) and the
-    // served index names the gap the S1/S6 surfaces render.
+    // served index names the gap the S1/S6 surfaces render. A config
+    // exclusion is configuration, not truncation: the walk decided every
+    // file, so the graph stays fresh and answers completely.
     writeFileSync(join(dir, 'codegraph.json'), JSON.stringify({ exclude: ['b.ts'] }));
     events.length = 0;
     const moved = await runtime.readIndex(dir, { block: true });
     expect(moved.ready).toBe(true);
     expect(moved.generation).toBeGreaterThan(complete.generation);
-    expect(moved.freshness).toBe('stale');
-    expect(moved.staleReason).toBe('index-truncated');
+    expect(moved.freshness).toBe('fresh');
     expect(moved.excludedCount).toBe(1);
     expect(moved.truncationReason).toBe('project-config');
     expect(moved.excludedSample).toContain('b.ts');
-    // A scope first built under a config has no previous complete
-    // generation, so queries downgrade and name the exclusion.
+    // A scope first built under a config indexes the same way: complete
+    // answers, with the exclusion named instead of downgrading coverage.
     const fresh = makeRepo({
       'a.ts': 'export const alpha = 1;\n',
       'b.ts': 'export const beta = 2;\n',
@@ -363,19 +364,20 @@ describe('project config and ignore scope rules (S7)', () => {
     writeFileSync(join(fresh, 'codegraph.json'), JSON.stringify({ exclude: ['b.ts'] }));
     const first = await runtime.readIndex(fresh, { block: true });
     expect(first.ready).toBe(true);
-    expect(first.staleReason).toBe('index-truncated');
+    expect(first.freshness).toBe('fresh');
     const explore = await runtime.query(fresh, { kind: 'explore' });
-    expect(explore.coverage).toBe('partial');
-    expect(explore.unresolved.some((line) => line.includes('index incomplete'))).toBe(true);
-    // Rollback is deleting the file: the pre-config complete generation
-    // still matches, so the scope reuses it with no rebuild.
+    expect(explore.coverage).toBe('indexed');
+    // Rollback is deleting the file. The config-excluded generation was
+    // persisted in its place, so the store holds no generation matching the
+    // restored revision and the scope rebuilds once. That is still far cheaper
+    // than the old behaviour, where a policy exclusion was never persisted and
+    // every open rebuilt the whole scope.
     await fsPromises.rm(join(dir, 'codegraph.json'), { force: true });
     events.length = 0;
     const restored = await runtime.readIndex(dir, { block: true });
     expect(restored.ready).toBe(true);
     expect(restored.freshness).toBe('fresh');
     expect(restored.excludedCount).toBe(0);
-    expect(restored.generation).toBe(complete.generation);
-    expect(events.filter((event) => event.state === 'discovering' || event.state === 'analyzing')).toEqual([]);
+    expect(restored.generation).toBeGreaterThan(complete.generation);
   }, 120_000);
 });

@@ -1427,24 +1427,38 @@ export const createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExe
   // anything the earlier layers dropped; `!` re-excludes). Skipped-dir
   // context, nested-repo boundaries, symlinks, and size/entry caps are
   // decided elsewhere and never overridden here.
+  // Answers WHICH layer keeps this entry out of the index, so the coverage
+  // banner names the layer that actually fired: `false` when the entry
+  // indexes, otherwise `'gitignore'` (the ignore file, or a directory-default
+  // prune) or `'config'` (a `codegraph.json` exclude/include rule).
   const decidePolicyExclusion = async (policy, canonicalRoot, rel, defaultExcluded = false) => {
     // `.git` internals never index and no include rescues them.
-    if (rel === '.git' || rel.startsWith('.git/')) return true;
+    if (rel === '.git' || rel.startsWith('.git/')) return 'gitignore';
     // Under a default-skipped dir everything starts excluded; an include
     // (or any layer's re-include) rescues it back into the walk.
     let excluded = defaultExcluded;
+    let layer = excluded ? 'gitignore' : null;
     if (policy.sawIgnorePatterns) {
       const tracked = await ensureTrackedSet(policy, canonicalRoot);
       if (!tracked.has(rel)) {
         const ignoreVerdict = verdictOfMatch(decideIgnored(policy, rel));
-        if (ignoreVerdict !== null) excluded = ignoreVerdict;
+        if (ignoreVerdict !== null) {
+          excluded = ignoreVerdict;
+          layer = ignoreVerdict ? 'gitignore' : null;
+        }
       }
     }
     const excludeVerdict = verdictOfMatch(lastPatternMatch(policy.exclude, rel, false));
-    if (excludeVerdict !== null) excluded = excludeVerdict;
+    if (excludeVerdict !== null) {
+      excluded = excludeVerdict;
+      layer = excludeVerdict ? 'config' : null;
+    }
     const includeVerdict = verdictOfMatch(lastPatternMatch(policy.include, rel, false));
-    if (includeVerdict !== null) excluded = !includeVerdict;
-    return excluded;
+    if (includeVerdict !== null) {
+      excluded = !includeVerdict;
+      layer = includeVerdict ? null : 'config';
+    }
+    return excluded ? (layer ?? 'config') : false;
   };
 
   // Entry test with the config extension mapping: mapped extensions index
@@ -1758,9 +1772,10 @@ export const createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExe
           // with exact counts and samples — moved, never silent. The
           // nested-repo boundary, symlinks, and `.git` prunes above are
           // never overridden here.
-          if (await decidePolicyExclusion(policy, canonicalRoot, rel, underSkipped)) {
+          const policyLayer = await decidePolicyExclusion(policy, canonicalRoot, rel, underSkipped);
+          if (policyLayer) {
             excludedCount += 1;
-            truncationReason = truncationReason ?? 'project-config';
+            truncationReason = truncationReason ?? (policyLayer === 'gitignore' ? 'gitignore' : 'project-config');
             bucketStats(bucket).excludedFiles += 1;
             if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
               excludedSample.push(rel);
@@ -1817,8 +1832,13 @@ export const createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExe
     );
     // Decoupled floor: a tripped skipped-census bound stays visible as
     // coverage.excludedTruncated but never truncates the walk by itself.
-    const truncated = excludedCount > 0 || truncationReason !== null;
-    if (truncationReason === null && excludedCount > 0) truncationReason = 'entry-cap';
+    // A policy exclusion is exact, counted and sampled: the walk reached every
+    // directory and decided each file on purpose. Treating it as truncation
+    // marked the whole build partial, and the store then refused to persist or
+    // restore a truncated build — so a scope with a single ignored entry file
+    // could never become fresh. Only a budget or error reason truncates.
+    const policyExclusionReason = truncationReason === 'project-config' || truncationReason === 'gitignore';
+    const truncated = truncationReason !== null && !policyExclusionReason;
     skippedSymlinks.sort();
     nestedRepoRoots.sort();
     return {
