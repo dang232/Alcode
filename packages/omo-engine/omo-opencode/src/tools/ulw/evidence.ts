@@ -16,7 +16,7 @@ import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_EVIDENCE_NAME = "ulw_evidence"
 
-export const ULW_EVIDENCE_DESCRIPTION = "Record a dispatched ULW goal's child result as evidence."
+const ULW_EVIDENCE_DESCRIPTION = "Record a dispatched ULW goal's child result as evidence."
 
 export type UlwEvidenceDeps = {
   readonly store?: UlwStore

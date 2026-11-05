@@ -249,6 +249,7 @@ jobs:
           bun run verify:opencode-cli
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
+          bun run prepare:typescript
           bun run verify:ulw-loop-cli
           bun run bundle:main
           # npmRebuild=false in package.json, so electron-builder won't
@@ -383,6 +384,7 @@ jobs:
           bun run verify:opencode-cli
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
+          bun run prepare:typescript
           bun run verify:ulw-loop-cli
 
       - name: Bundle main process
@@ -508,6 +510,7 @@ jobs:
           bun run verify:opencode-cli
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
+          bun run prepare:typescript
           bun run verify:ulw-loop-cli
           bun run bundle:main
           bun run rebuild:native

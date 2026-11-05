@@ -50,7 +50,7 @@ export class InvalidRecipientError extends Error {
   }
 }
 
-export class TeamDeletingError extends Error {
+class TeamDeletingError extends Error {
   constructor(message = "team is deleting") {
     super(message)
     this.name = "TeamDeletingError"

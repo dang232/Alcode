@@ -23,7 +23,7 @@ export const DURABLE_JSON_FS: DurableJsonFs = { read: readTextIfPresent, write: 
 // read-modify-write; a waiter here must outlast a slow durable write and give up only on a stalled one.
 export const DURABLE_JSON_LOCK_OPTIONS = { holderWaitMs: 10_000 } as const
 
-export function readTextIfPresent(path: string): string | undefined {
+function readTextIfPresent(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8")
   } catch (error) {

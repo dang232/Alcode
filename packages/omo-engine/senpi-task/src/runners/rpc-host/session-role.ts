@@ -10,7 +10,7 @@ import { OMO_SENPI_TASK_DEPTH, OMO_SENPI_TASK_ROOT_SESSION_ID, OMO_SENPI_TASK_RP
  * fallback, and every pre-daemon child), where one process really is one child.
  */
 
-export const SESSION_ROLES = ["child", "dag_child", "member"] as const
+const SESSION_ROLES = ["child", "dag_child", "member"] as const
 
 export type SessionRole = (typeof SESSION_ROLES)[number]
 

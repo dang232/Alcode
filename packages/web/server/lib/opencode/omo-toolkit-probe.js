@@ -11,14 +11,14 @@ import { spawnSync as nodeSpawnSync } from 'node:child_process';
 import { existsSync as nodeExistsSync } from 'node:fs';
 import { join as nodeJoinPath } from 'node:path';
 
-export const OMO_TOOLKIT_PATH_ENV = 'OMO_TOOLKIT_PATH';
-export const OMO_TOOLKIT_BINARY = 'omo-agent-toolkit';
+const OMO_TOOLKIT_PATH_ENV = 'OMO_TOOLKIT_PATH';
+const OMO_TOOLKIT_BINARY = 'omo-agent-toolkit';
 // Short timeout: the missing-toolkit path must answer fast, never hang.
 export const OMO_TOOLKIT_PROBE_TIMEOUT_MS = 2000;
 // Hard bound on the candidate list: override + first PATH hit at most.
-export const OMO_TOOLKIT_MAX_CANDIDATES = 2;
+const OMO_TOOLKIT_MAX_CANDIDATES = 2;
 
-export const toolkitAbsentMessage = (entry) => (
+const toolkitAbsentMessage = (entry) => (
   `OmO toolkit not found${entry ? ` at "${entry}"` : ''}. `
   + 'The loop status stays degraded: install the OmO toolkit yourself with your '
   + 'own download (nothing is fetched automatically), then point OMO_TOOLKIT_PATH '
@@ -38,7 +38,7 @@ const firstVersionToken = (text) => {
 // `attempted` names the override even when it does not resolve (so the
 // degraded message can name it) and `candidates` holds at most
 // OMO_TOOLKIT_MAX_CANDIDATES existing paths.
-export const resolveToolkitCandidates = ({
+const resolveToolkitCandidates = ({
   env = process.env,
   existsSync = nodeExistsSync,
   pathValue,

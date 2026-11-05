@@ -23,7 +23,6 @@
 
 import type {
   OmoCreatedHooks,
-  OmoCreatedTools,
   OmoCreatePluginInterface,
   OmoHookInput,
   OmoHookOutput,

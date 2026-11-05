@@ -10,11 +10,11 @@ import { createTaskRecordStore, type TaskRecordStore } from "../store"
 import { NO_HOST_ENDPOINT } from "../lifecycle/host-session"
 
 export const HOST_CHAOS_SESSION = "parent-host-chaos"
-export const HOST_CHAOS_SOCKET = "/tmp/dh-chaos/rpc.sock"
+const HOST_CHAOS_SOCKET = "/tmp/dh-chaos/rpc.sock"
 const HOST_PID = 31_337
 
 /** The daemon the host chaos actions drive: alive/dead, which paths it holds, and who is draining. */
-export class ChaosDaemon {
+class ChaosDaemon {
   alive = true
   /** Set while an OLD generation still owns the session paths after a handoff. */
   drainingAttemptsLeft = 0
@@ -49,7 +49,7 @@ export type HostChaosHarness = {
 }
 
 /** A registry whose residents are all daemon sessions: no pid exists anywhere in this harness. */
-export class ChaosHostRegistry implements ResidencyRegistry {
+class ChaosHostRegistry implements ResidencyRegistry {
   readonly #handles = new Map<string, ResidentHandle>()
   readonly terminated: string[] = []
 

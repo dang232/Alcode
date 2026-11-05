@@ -25,6 +25,63 @@ export interface CodeGraphInspectorImpacted {
   id: string;
 }
 
+/** One verbatim source line of a composed explore body. */
+export interface CodeGraphExploreBodyLine {
+  line: number;
+  text: string;
+}
+
+/** Verbatim body of one explore definition, cut only at the documented cap. */
+export interface CodeGraphExploreBody {
+  id: string;
+  name?: string;
+  file: string;
+  startLine: number;
+  endLine: number;
+  truncated: boolean;
+  lines: CodeGraphExploreBodyLine[];
+}
+
+/** All explore bodies from one file, in definition-line order. */
+export interface CodeGraphExploreBodyGroup {
+  file: string;
+  bodies: CodeGraphExploreBody[];
+}
+
+/** One static call hop of a composed explore path; never targets unknown. */
+export interface CodeGraphExploreHop {
+  from: string;
+  to: string;
+  ref: string;
+}
+
+/** Static call path of a composed explore answer, with its dynamic disclosure. */
+export interface CodeGraphExplorePath {
+  from: string;
+  to: string;
+  found: boolean;
+  hops: CodeGraphExploreHop[];
+  blockedByDynamic: boolean;
+}
+
+/** Joint blast-radius summary of a composed explore answer. */
+export interface CodeGraphExploreBlastRadius {
+  subjectIds: string[];
+  dependentFiles: number;
+  dependentSymbols: number;
+  modules: { module: string; count: number }[];
+  testsFound: number;
+}
+
+/** Composed explore answer: every definition, verbatim bodies, static paths, blast radius. */
+export interface CodeGraphInspectorExplore {
+  subject: string;
+  definitions: { id: string; file: string; line: number; name?: string }[];
+  bodies: CodeGraphExploreBodyGroup[];
+  paths: CodeGraphExplorePath[];
+  blastRadius: CodeGraphExploreBlastRadius;
+}
+
 /**
  * Everything the inspector shows for a node. The panel assembles this from
  * its own answers (topology, context, impact, tests): the inspector renders
@@ -71,6 +128,8 @@ export interface CodeGraphInspectorProps {
   selection: { kind: 'node' | 'edge'; id: string } | null;
   node: CodeGraphInspectorNode | null;
   edge: CodeGraphInspectorEdge | null;
+  /** Composed explore answer; renders above the selection when present. */
+  explore?: CodeGraphInspectorExplore | null;
   onTraceFrom(id: string): void;
   onTraceTo(id: string): void;
   onImpact(id: string): void;
@@ -91,6 +150,7 @@ export const CodeGraphInspector: React.FC<CodeGraphInspectorProps> = ({
   selection,
   node,
   edge,
+  explore,
   onTraceFrom,
   onTraceTo,
   onImpact,
@@ -100,11 +160,19 @@ export const CodeGraphInspector: React.FC<CodeGraphInspectorProps> = ({
   sourceError,
 }) => {
   const { t } = useI18n();
-  if (!selection) return null;
+  if (!selection && !explore) return null;
 
   return (
-    <div className="mt-1 flex flex-col gap-2" data-testid="code-graph-inspector" data-selection-kind={selection.kind}>
-      {selection.kind === 'edge' ? (
+    <div className="mt-1 flex flex-col gap-2" data-testid="code-graph-inspector" data-selection-kind={selection?.kind ?? 'explore'}>
+      {explore ? (
+        <ExploreView
+          explore={explore}
+          onImpact={onImpact}
+          onOpenSource={onOpenSource}
+          onPeek={onPeek}
+        />
+      ) : null}
+      {selection?.kind === 'edge' ? (
         <EdgeView
           edge={edge}
           onTraceFrom={onTraceFrom}
@@ -112,7 +180,7 @@ export const CodeGraphInspector: React.FC<CodeGraphInspectorProps> = ({
           onOpenSource={onOpenSource}
           onClose={onClose}
         />
-      ) : node ? (
+      ) : selection && node ? (
         <NodeView
           node={node}
           onTraceFrom={onTraceFrom}
@@ -122,9 +190,9 @@ export const CodeGraphInspector: React.FC<CodeGraphInspectorProps> = ({
           onPeek={onPeek}
           onClose={onClose}
         />
-      ) : (
+      ) : selection ? (
         <p className="typography-micro text-muted-foreground">{t('codeGraph.state.unknown')}</p>
-      )}
+      ) : null}
       {sourceError ? (
         <p className="typography-micro break-words text-[var(--status-warning)]" data-testid="code-graph-source-error">{sourceError}</p>
       ) : null}
@@ -162,6 +230,91 @@ const EvidenceLines: React.FC<{ evidence: CodeGraphEvidence[] }> = ({ evidence }
         </li>
       ))}
     </ul>
+  );
+};
+
+/**
+ * Composed explore answer: every matched definition, its verbatim
+ * line-numbered body grouped by file, the static call paths between the
+ * matches, and the joint blast-radius summary. Dynamics never render as
+ * edges here: a blocked path names manual review instead of a guessed hop.
+ */
+const ExploreView: React.FC<{
+  explore: CodeGraphInspectorExplore;
+  onImpact(id: string): void;
+  onOpenSource(file: string, line: number): void;
+  onPeek(file: string, line: number): void;
+}> = ({ explore, onImpact, onOpenSource, onPeek }) => {
+  const found = explore.paths.filter((entry) => entry.found).length;
+  return (
+    <div className="flex flex-col gap-2" data-testid="code-graph-inspector-explore">
+      <p dir="ltr" className="typography-ui-header truncate text-start text-foreground">Explore · {explore.subject}</p>
+      <p dir="ltr" className="typography-micro truncate text-start text-muted-foreground">
+        {`${explore.definitions.length} definitions · ${found}/${explore.paths.length} paths · ${explore.blastRadius.dependentSymbols} dependents`}
+      </p>
+      {explore.bodies.map((group) => (
+        <section key={group.file} aria-label={group.file} className="flex flex-col gap-1">
+          <h4 dir="ltr" className="typography-ui-header truncate text-start text-foreground">{group.file}</h4>
+          {group.bodies.map((body) => (
+            <div key={body.id} className="flex flex-col gap-0.5">
+              <div className="flex items-start gap-1">
+                <button
+                  type="button"
+                  data-testid={`code-graph-explore-open-${body.id}`}
+                  onClick={() => onOpenSource(body.file, body.startLine)}
+                  className="typography-micro min-w-0 flex-1 break-words text-start text-muted-foreground hover:underline"
+                >
+                  <span dir="ltr" className="block truncate">{`${body.name ?? body.id} · ${body.file}:${body.startLine}${body.truncated ? ' · truncated' : ''}`}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid={`code-graph-explore-peek-${body.id}`}
+                  onClick={() => onPeek(body.file, body.startLine)}
+                  className="typography-micro shrink-0 text-[var(--text-tertiary)] hover:underline"
+                >
+                  Peek
+                </button>
+              </div>
+              <pre dir="ltr" className="typography-micro overflow-x-auto text-start text-muted-foreground">
+                {body.lines.map((entry) => `${entry.line}: ${entry.text}`).join('\n')}
+              </pre>
+            </div>
+          ))}
+        </section>
+      ))}
+      {explore.paths.length > 0 ? (
+        <section aria-label="call paths" className="flex flex-col gap-1">
+          <h4 className="typography-ui-header text-foreground">Call paths</h4>
+          <ul className="flex flex-col gap-0.5">
+            {explore.paths.map((entry) => (
+              <li key={`${entry.from}->${entry.to}`} className="typography-micro break-words text-muted-foreground">
+                <span dir="ltr" className="block truncate">{`${entry.from} → ${entry.to}: ${entry.found ? entry.hops.map((hop) => `${hop.from} → ${hop.to} via ${hop.ref}`).join(' | ') : 'no static path'}${entry.blockedByDynamic ? ' · dynamic review' : ''}`}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      <section aria-label="blast radius" className="flex flex-col gap-0.5">
+        <h4 className="typography-ui-header text-foreground">Blast radius</h4>
+        <p className="typography-micro break-words text-muted-foreground">
+          {`${explore.blastRadius.dependentSymbols} symbols · ${explore.blastRadius.dependentFiles} files · ${explore.blastRadius.testsFound} tests · ${explore.blastRadius.modules.map((entry) => `${entry.module}:${entry.count}`).join(', ') || 'no modules'}`}
+        </p>
+        <div className="flex flex-wrap gap-1">
+          {explore.blastRadius.subjectIds.map((id) => (
+            <Button
+              key={id}
+              variant="outline"
+              size="sm"
+              type="button"
+              data-testid={`code-graph-explore-impact-${id}`}
+              onClick={() => onImpact(id)}
+            >
+              <span dir="ltr" className="block truncate">{id}</span>
+            </Button>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 };
 

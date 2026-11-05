@@ -16,4 +16,3 @@ export const ClaudeCodeConfigSchema = z.object({
   }).optional(),
 })
 
-export type ClaudeCodeConfig = z.infer<typeof ClaudeCodeConfigSchema>

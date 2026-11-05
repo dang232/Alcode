@@ -696,6 +696,7 @@ describe('alcode session routes', () => {
     const { app } = createApp({
       readSettingsFromDiskMigrated: async () => ({
         defaultAgent: 'Plan',
+        defaultModel: 'openai/gpt-5.5',
         projects: [{ id: 'proj_1', path: '/repo/app' }],
       }),
     });
@@ -706,6 +707,7 @@ describe('alcode session routes', () => {
       .expect(200);
 
     expect(response.body.agent).toBe('plan');
+    expect(response.body.model).toEqual({ providerID: 'openai', modelID: 'gpt-5.5' });
   });
 
   it('resolves default model and agent when prompt omits them', async () => {
@@ -741,9 +743,10 @@ describe('alcode session routes', () => {
     });
     const response = await request(app)
       .post('/api/alcode/sessions')
-      .send({ directory: '/repo/app', prompt: 'Run this' })
-      .expect(200);
-    expect(response.body.model).toEqual({ providerID: 'openai', modelID: 'gpt-5.5' });
+      .send({ directory: '/repo/app', prompt: 'Run this' });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/No model is configured/);
+    expect(sessionSwitchModelMock).not.toHaveBeenCalled();
 
     // A default the user chose stays, hidden or not.
     const { app: configured } = createApp({
@@ -782,18 +785,44 @@ describe('alcode session routes', () => {
     // A configured default outranks it.
     expect(await create({ lastSelectedModel: 'anthropic/claude-sonnet-5', defaultModel: 'openai/gpt-5.5' }))
       .toEqual({ providerID: 'openai', modelID: 'gpt-5.5' });
-    // Hidden since it was picked: skipped.
-    expect(await create({
-      lastSelectedModel: 'anthropic/claude-sonnet-5',
-      hiddenModels: [{ providerID: 'anthropic', modelID: 'claude-sonnet-5' }],
-    })).toEqual({ providerID: 'opencode', modelID: 'big-pickle' });
+    // Hidden since it was picked: skipped, and with nothing left the request
+    // fails naming the missing model instead of substituting one.
+    {
+      const { app } = createApp({ readSettingsFromDiskMigrated: async () => ({
+        ...project,
+        lastSelectedModel: 'anthropic/claude-sonnet-5',
+        hiddenModels: [{ providerID: 'anthropic', modelID: 'claude-sonnet-5' }],
+      }) });
+      const response = await request(app)
+        .post('/api/alcode/sessions')
+        .send({ directory: '/repo/app', prompt: 'Run this' });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/No model is configured/);
+    }
     // Auto on a server without routing, or with routing that cannot run it
-    // now: skipped instead of refusing the request.
-    expect(await create({ lastSelectedModel: 'alcode/auto' }))
-      .toEqual({ providerID: 'opencode', modelID: 'big-pickle' });
+    // now: skipped instead of refusing the request. With nothing left to
+    // resolve, creation fails naming the missing model.
+    {
+      const { app } = createApp({ readSettingsFromDiskMigrated: async () => ({ ...project, lastSelectedModel: 'alcode/auto' }) });
+      const response = await request(app)
+        .post('/api/alcode/sessions')
+        .send({ directory: '/repo/app', prompt: 'Run this' });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/No model is configured/);
+    }
     const resolveAutoSelection = vi.fn(async () => ({ model: { providerID: 'openai', id: 'gpt-5.5' }, agent: 'build', decision: {} }));
-    expect(await create({ lastSelectedModel: 'alcode/auto' }, { resolveAutoSelection, isAutoReady: async () => false }))
-      .toEqual({ providerID: 'opencode', modelID: 'big-pickle' });
+    {
+      const { app } = createApp({
+        readSettingsFromDiskMigrated: async () => ({ ...project, lastSelectedModel: 'alcode/auto' }),
+        resolveAutoSelection,
+        isAutoReady: async () => false,
+      });
+      const response = await request(app)
+        .post('/api/alcode/sessions')
+        .send({ directory: '/repo/app', prompt: 'Run this' });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/No model is configured/);
+    }
     expect(resolveAutoSelection).not.toHaveBeenCalled();
     expect(await create({ lastSelectedModel: 'alcode/auto' }, { resolveAutoSelection, isAutoReady: async () => true }))
       .toEqual({ providerID: 'openai', modelID: 'gpt-5.5' });

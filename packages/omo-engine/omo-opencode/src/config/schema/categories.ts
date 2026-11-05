@@ -2,7 +2,7 @@ import { OmoReasoningSchema } from "../../../../omo-config-core/src/index.ts"
 import { z } from "zod"
 import { FallbackModelObjectSchema, FallbackModelsSchema } from "./fallback-models"
 
-export const CategoryConfigSchema = z.object({
+const CategoryConfigSchema = z.object({
   /** Human-readable description of the category's purpose. Shown in task prompt. */
   description: z.string().optional(),
   model: z.string().optional(),
@@ -56,5 +56,4 @@ export const BuiltinCategoryNameSchema = z.enum([
 export const CategoriesConfigSchema = z.record(z.string(), CategoryConfigSchema)
 
 export type CategoryConfig = z.infer<typeof CategoryConfigSchema>
-export type CategoriesConfig = z.infer<typeof CategoriesConfigSchema>
-export type BuiltinCategoryName = z.infer<typeof BuiltinCategoryNameSchema>
+

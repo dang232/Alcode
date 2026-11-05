@@ -71,9 +71,9 @@ export async function restoreMovedWorktreeFile(root: string, path: string, moved
   return true
 }
 
-export type WorktreeConditionalResult = boolean | string
+type WorktreeConditionalResult = boolean | string
 
-export interface WorktreeDeletionFinalizer {
+interface WorktreeDeletionFinalizer {
   readonly finish: () => Promise<WorktreeConditionalResult>
 }
 

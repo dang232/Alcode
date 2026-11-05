@@ -21,7 +21,7 @@ export type TaskComplexity = "trivial" | "simple" | "moderate" | "complex";
 export type TaskClarity = "clear" | "partial" | "unclear";
 export type RiskLevel = "low" | "medium" | "high" | "security-sensitive";
 
-export interface GateRequirement {
+interface GateRequirement {
   /** Machine-readable gate id, e.g. "security-review", "human-approval". */
   gate: string;
   /** Why this gate is required for the decision. */

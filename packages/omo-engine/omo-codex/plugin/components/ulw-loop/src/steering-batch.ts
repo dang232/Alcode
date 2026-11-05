@@ -8,7 +8,7 @@ import type { UlwLoopLedgerEntry, UlwLoopPlan, UlwLoopSteeringAudit, UlwLoopStee
 import { iso } from "./types.js";
 import { batchUpdateLedgerEntry } from "./validation-batch.js";
 
-export interface SteerUlwLoopBatchItemResult {
+interface SteerUlwLoopBatchItemResult {
 	readonly accepted: boolean;
 	readonly deduped: boolean;
 	readonly audit: UlwLoopSteeringAudit;

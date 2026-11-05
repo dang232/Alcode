@@ -5,13 +5,13 @@
  * `writeCapable` is the write classification for those same names. Unknown names fail closed
  * (write-capable). Never keep a second copy of either list.
  */
-export type ChildHostTool = {
+type ChildHostTool = {
   readonly name: string
   readonly writeCapable: boolean
   readonly sessionBuiltin?: true
 }
 
-export const CHILD_HOST_TOOLS: readonly ChildHostTool[] = [
+const CHILD_HOST_TOOLS: readonly ChildHostTool[] = [
   { name: "read", writeCapable: false, sessionBuiltin: true },
   { name: "bash", writeCapable: true, sessionBuiltin: true },
   { name: "edit", writeCapable: true, sessionBuiltin: true },

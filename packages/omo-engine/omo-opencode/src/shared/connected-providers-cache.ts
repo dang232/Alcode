@@ -15,7 +15,7 @@ interface ConnectedProvidersCache {
 	updatedAt: string
 }
 
-export interface ModelMetadata {
+interface ModelMetadata {
 	id: string
 	provider?: string
 	context?: number
@@ -38,13 +38,11 @@ export interface ModelMetadata {
 	[key: string]: unknown
 }
 
-export interface ProviderModelsCache {
+interface ProviderModelsCache {
 	models: Record<string, string[] | ModelMetadata[]>
 	connected: string[]
 	updatedAt: string
 }
-
-
 
 function mergeConnectedProviders(
 	previous: string[] | null | undefined,
@@ -93,7 +91,7 @@ function mergeProviderModels(
 	return merged
 }
 
-export function createConnectedProvidersCacheStore(
+function createConnectedProvidersCacheStore(
 	getCacheDir: () => string = dataPath.getOmoOpenCodeCacheDir
 ) {
 	const connectedProvidersCacheStore = createJsonFileCacheStore<ConnectedProvidersCache>({
@@ -239,42 +237,8 @@ export function createConnectedProvidersCacheStore(
 	}
 }
 
-export function findProviderModelMetadata(
-	providerID: string,
-	modelID: string,
-	cache: ProviderModelsCache | null = defaultConnectedProvidersCacheStore.readProviderModelsCache(),
-): ModelMetadata | undefined {
-	const providerModels = cache?.models?.[providerID]
-	if (!providerModels) {
-		return undefined
-	}
-
-	for (const entry of providerModels) {
-		if (typeof entry === "string") {
-			if (entry === modelID) {
-				return { id: entry }
-			}
-			continue
-		}
-
-		if (entry.id === modelID) {
-			return entry
-		}
-	}
-
-	return undefined
-}
-
 const defaultConnectedProvidersCacheStore = createConnectedProvidersCacheStore(
 	() => dataPath.getOmoOpenCodeCacheDir()
 )
 
-export const {
-	readConnectedProvidersCache,
-	hasConnectedProvidersCache,
-	readProviderModelsCache,
-	hasProviderModelsCache,
-	writeProviderModelsCache,
-	updateConnectedProvidersCache,
-	_resetMemCacheForTesting,
-} = defaultConnectedProvidersCacheStore
+const {_resetMemCacheForTesting} = defaultConnectedProvidersCacheStore

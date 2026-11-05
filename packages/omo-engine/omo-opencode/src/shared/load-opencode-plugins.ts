@@ -59,6 +59,3 @@ export function loadOpencodePlugins(directory: string): string[] {
   return pluginEntries
 }
 
-export function clearOpencodePluginsCache(): void {
-  opencodePluginsCache.clear()
-}

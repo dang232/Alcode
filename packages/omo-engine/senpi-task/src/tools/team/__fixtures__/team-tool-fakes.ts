@@ -1,9 +1,9 @@
 import type { RuntimeState, Task } from "../../../../../team-core/src/types.ts"
 
-import type { CreateTeamResult, CreatedMemberInfo, DeleteTeamResult, SendTeamMessageResult } from "../../../team"
-import type { ActiveTeamSummary, TeamToolsService } from "../types"
+import type { CreateTeamResult, CreatedMemberInfo, DeleteTeamResult } from "../../../team"
+import type { TeamToolsService } from "../types"
 
-export type ServiceCall = { readonly method: string; readonly args: readonly unknown[] }
+type ServiceCall = { readonly method: string; readonly args: readonly unknown[] }
 
 // A recording fake for the team-tools service. Every method throws "unexpected" by default so a tool
 // under test must be pointed at exactly the calls it should make; override only the methods a case
@@ -98,12 +98,4 @@ export function fakeCreateResult(overrides: Partial<CreateTeamResult> = {}): Cre
 
 export function fakeDeleteResult(overrides: Partial<DeleteTeamResult> = {}): DeleteTeamResult {
   return { teamRunId: "00000000-0000-4000-8000-000000000000", cancelledTaskIds: ["st_a"], ...overrides }
-}
-
-export function fakeSummary(overrides: Partial<ActiveTeamSummary> = {}): ActiveTeamSummary {
-  return { teamRunId: "run-1", teamName: "demo", status: "active", memberCount: 2, scope: "user", ...overrides }
-}
-
-export function fakeSendResult(result: SendTeamMessageResult): SendTeamMessageResult {
-  return result
 }

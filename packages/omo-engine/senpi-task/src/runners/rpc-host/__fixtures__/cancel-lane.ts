@@ -64,7 +64,7 @@ export function bounded<T>(work: Promise<T>, label: string): Promise<T> {
  * Drop every connection while the host keeps the sessions, and hold the reopen in flight: the child's
  * transport is down and its recovery is waiting, so a cancel now cannot reach it.
  */
-export async function cutWithReopenHeld(world: HostWorld): Promise<void> {
+async function cutWithReopenHeld(world: HostWorld): Promise<void> {
   world.host.withholdReply("open_session")
   const reopenAsked = world.host.waitForCommand("open_session")
   world.host.cutConnections()

@@ -6,17 +6,13 @@ export {
   CATEGORY_PROMPT_APPENDS,
   DEFAULT_CATEGORIES,
   categoryGateModels,
-  isCategoryChainRungResolvable,
-  isCategoryChainViable,
-  isCategoryGateSatisfied,
 } from "./builtins"
-export { resolveCategoryCoverage, type CategoryCoverage, type UnusableCategory } from "./coverage"
+
 export { builtinCategoryChainCandidates, resolveAvailableCategoryNames, resolveCategory } from "./resolver"
 export type {
   BuiltinCategoryDefinition,
   CategoryModelSelection,
   CategoryResolutionResult,
-  ResolveCategoryOptions,
   ResolvedChildSpec,
   SenpiModelPort,
   SenpiModelRegistryPort,

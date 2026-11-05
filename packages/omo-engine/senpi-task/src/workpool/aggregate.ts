@@ -1,6 +1,6 @@
 import type { Json, PoolId, WorkpoolRecord } from "./types"
 
-export type WorkpoolAggregateResult =
+type WorkpoolAggregateResult =
   | { readonly key: string; readonly data: Json }
   | { readonly key: string; readonly error: { readonly code: string; readonly message: string } }
 export type WorkpoolAggregateMessage = {
@@ -8,7 +8,7 @@ export type WorkpoolAggregateMessage = {
   readonly generation: number
   readonly results: readonly WorkpoolAggregateResult[]
 }
-export type WorkpoolAggregateReceipts = {
+type WorkpoolAggregateReceipts = {
   readonly ack: () => void
   readonly fail: (error?: unknown) => void
 }
@@ -29,7 +29,7 @@ export function poolWorkIsFinished(pool: WorkpoolRecord): boolean {
     pool.workers.every(worker => worker.status !== "busy")
 }
 
-export function aggregateResults(pool: WorkpoolRecord): readonly WorkpoolAggregateResult[] | undefined {
+function aggregateResults(pool: WorkpoolRecord): readonly WorkpoolAggregateResult[] | undefined {
   if (pool.status !== "closing" && pool.status !== "cancelled") return undefined
   if (pool.aggregate?.delivered === true && pool.aggregate.generation === pool.generation) return undefined
   if (pool.items.some(item => !terminal.has(item.status))) return undefined

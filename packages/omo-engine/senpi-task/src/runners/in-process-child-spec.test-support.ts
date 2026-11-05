@@ -1,4 +1,6 @@
 
+import "../../test-support/warm-lazy-runtime.ts"
+
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -106,7 +108,7 @@ export function createFakeSession(sessionId = "child-session-1"): FakeSessionCon
 
 export const tmpSessionDirs: string[] = []
 
-export function makeSessionDir(): string {
+function makeSessionDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "senpi-task-in-process-"))
   tmpSessionDirs.push(dir)
   return dir

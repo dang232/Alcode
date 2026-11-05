@@ -50,7 +50,7 @@ export const GATE_REVIEWER_AGENT_NAMES: ReadonlySet<string> = new Set([
 		.map(([legacy]) => legacy),
 ]);
 
-export type UlwLoopGateSection = "codeReview" | "manualQa" | "gateReview" | "iteration" | "criteriaCoverage";
+type UlwLoopGateSection = "codeReview" | "manualQa" | "gateReview" | "iteration" | "criteriaCoverage";
 
 export const REQUIRED_GATE_SECTIONS_BY_SURFACE: Readonly<Record<UlwLoopToolkitSurface, readonly UlwLoopGateSection[]>> =
 	{
@@ -96,7 +96,7 @@ export function reviewerRolesFor(surface: UlwLoopToolkitSurface): UlwLoopReviewe
 	return REVIEWER_ROLES_BY_SURFACE[surface];
 }
 
-export const SURFACE_MARKER_FILENAME = "surface.json";
+const SURFACE_MARKER_FILENAME = "surface.json";
 const SURFACE_ENV_KEY = "OMO_AGENT_TOOLKIT_SURFACE";
 
 function parseSurface(value: unknown): UlwLoopToolkitSurface | null {

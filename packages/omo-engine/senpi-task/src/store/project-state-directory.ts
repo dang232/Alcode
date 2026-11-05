@@ -16,7 +16,7 @@ export interface ProjectStateDirectoryOptions {
 
 // Written into a legacy in-project store once it is seen holding records. Records can later be
 // expunged, but the store must not move: sessions that already resolved it keep writing there.
-export const IN_PROJECT_STORE_MARKER = ".in-project"
+const IN_PROJECT_STORE_MARKER = ".in-project"
 
 const AGENT_DIR_ENV_NAMES = ["OMO_CODING_AGENT_DIR", "SENPI_CODING_AGENT_DIR", "PI_CODING_AGENT_DIR"] as const
 

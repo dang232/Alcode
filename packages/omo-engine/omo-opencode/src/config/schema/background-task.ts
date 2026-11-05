@@ -28,4 +28,3 @@ export const BackgroundTaskConfigSchema = z.object({
   circuitBreaker: CircuitBreakerConfigSchema.optional(),
 })
 
-export type BackgroundTaskConfig = z.infer<typeof BackgroundTaskConfigSchema>

@@ -34,8 +34,6 @@ export function createServerHealthState(): ServerHealthState {
 	}
 }
 
-export const createServerHealthStateForTesting = createServerHealthState
-
 export async function isServerRunning(serverUrl: string, options: IsServerRunningOptions = {}): Promise<boolean> {
 	const fetchImplementation = options.fetchImplementation ?? fetch
 	const state = options.state

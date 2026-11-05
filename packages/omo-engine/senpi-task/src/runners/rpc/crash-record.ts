@@ -26,7 +26,7 @@ export type RecordTaskChildDeathInput = {
   readonly now: number
 }
 
-export function isUnexpectedChildDeath(outcome: ChildExitOutcome, terminationRequested: boolean): boolean {
+function isUnexpectedChildDeath(outcome: ChildExitOutcome, terminationRequested: boolean): boolean {
   if (terminationRequested) return false
   const { code, signal } = outcome.facts
   if (outcome.kind === "killed") return signal !== null && FATAL_SIGNALS.has(signal)

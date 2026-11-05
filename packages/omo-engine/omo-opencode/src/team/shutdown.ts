@@ -9,7 +9,7 @@ import {
   isShutdownRequestUnresolved,
 } from "./shutdown-helpers.ts"
 
-export type ShutdownMessageKind = "shutdown_request" | "shutdown_approved" | "shutdown_rejected"
+type ShutdownMessageKind = "shutdown_request" | "shutdown_approved" | "shutdown_rejected"
 
 /** One shutdown-protocol message the lead emits toward a member. */
 export type ShutdownOutboundMessage = {
@@ -18,7 +18,7 @@ export type ShutdownOutboundMessage = {
   readonly body: string
 }
 
-export type ShutdownMessenger = (message: ShutdownOutboundMessage) => Promise<void>
+type ShutdownMessenger = (message: ShutdownOutboundMessage) => Promise<void>
 
 export type RequestShutdownDeps = {
   readonly config: TeamCoreConfig
@@ -162,4 +162,3 @@ export async function rejectShutdown(
   )
 }
 
-export type { RuntimeState }

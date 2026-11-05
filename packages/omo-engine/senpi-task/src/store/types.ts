@@ -33,7 +33,7 @@ export type PersistedTaskEvent = {
 // carries the committed record as re-read under the lock so the caller can bookkeep orphan pids
 // from authoritative data; "retained" means the fresh record matched the retention predicate;
 // "missing" means the record vanished before the lock section ran.
-export type TombstoneResult =
+type TombstoneResult =
   | { readonly kind: "tombstoned"; readonly record: TaskRecord }
   | { readonly kind: "retained" }
   | { readonly kind: "missing" }

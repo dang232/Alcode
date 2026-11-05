@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { DURABLE_JSON_FS } from "./durable-json"
 import {
@@ -178,7 +179,7 @@ describe("registerStoreIndex", () => {
 
     // given
     const path = indexPath()
-    const writer = join(import.meta.dir, "__fixtures__", "register-stores.ts")
+    const writer = fileURLToPath(new URL("./__fixtures__/register-stores.ts", import.meta.url))
 
     // when
     const writers = Array.from({ length: 32 }, (_, writerIndex) =>

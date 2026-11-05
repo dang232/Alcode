@@ -27,7 +27,7 @@ export type LeadPollerDeps = {
   readonly eventTaskId: (message: Message) => string | undefined; readonly leadSessionFile?: () => string | undefined
 }
 
-export type PendingPhase = "awaiting_flush" | "awaiting_persistence" | "recovery"
+type PendingPhase = "awaiting_flush" | "awaiting_persistence" | "recovery"
 
 export type PendingDelivery = { readonly message: Message; readonly reservation: DeliveryReservation; phase: PendingPhase }
 

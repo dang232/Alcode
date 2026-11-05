@@ -17,4 +17,8 @@ export {
   releaseDeliveryReservation,
   reclaimStaleReservations,
 } from "./reservation"
+export {
+  findDeliveredMessageIds,
+  requeuePendingLiveDeliveries,
+} from "./pending-delivery-recovery"
 export type { DeliveryReservation } from "./reservation"

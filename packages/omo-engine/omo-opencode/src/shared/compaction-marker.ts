@@ -18,11 +18,11 @@ function isCompactionPart(part: unknown): boolean {
   return typeof part === "object" && part !== null && (part as CompactionPartLike).type === "compaction"
 }
 
-export function isCompactionAgent(agent: unknown): boolean {
+function isCompactionAgent(agent: unknown): boolean {
   return typeof agent === "string" && agent.trim().toLowerCase() === "compaction"
 }
 
-export function hasCompactionPart(parts: unknown): boolean {
+function hasCompactionPart(parts: unknown): boolean {
   return Array.isArray(parts) && parts.some((part) => isCompactionPart(part))
 }
 
@@ -30,7 +30,7 @@ export function isCompactionMessage(message: CompactionMessageLike): boolean {
   return isCompactionAgent(message.info?.agent ?? message.agent) || hasCompactionPart(message.parts)
 }
 
-export function getCompactionPartStorageDir(messageID: string): string {
+function getCompactionPartStorageDir(messageID: string): string {
   return join(PART_STORAGE, messageID)
 }
 

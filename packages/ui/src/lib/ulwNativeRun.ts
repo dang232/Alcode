@@ -107,6 +107,19 @@ export const splitUlwResumeTarget = (args: string): { sessionId: string; rest: s
 
 const mintUlwRunId = (): string => `ulw-${crypto.randomUUID()}`
 
+/**
+ * Stable identity for one pending composer submission, minted at the
+ * user-gesture boundary (sendMessage entry) before draft-session creation
+ * and threaded through draft creation into routeMessage params, which
+ * forwards it here as `idempotencyKey`. Concurrent deliveries of the same
+ * submission share it, so they single-flight onto one root run even when a
+ * race minted two draft sessions with different ids. A retry carries the
+ * same value back; separate submissions mint separately, even with
+ * identical text. The `ulw-submit-` prefix keeps submission keys distinct
+ * from run ids (`ulw-...`) in logs and maps.
+ */
+export const mintUlwSubmitIdentity = (): string => `ulw-submit-${crypto.randomUUID()}`
+
 const buildUlwRunTitle = (brief: string): string => {
   const trimmed = brief.trim()
   if (trimmed.length <= 80) return `ulw: ${trimmed}`
@@ -145,7 +158,11 @@ export type UlwNativeRunInput = {
    * the way a normal prompt does.
    */
   ready?: Promise<void>
+  /** Idempotency key for duplicate-submit protection: concurrent calls share one run. */
+  idempotencyKey?: string
 }
+
+const pendingUlwRuns = new Map<string, Promise<UlwNativeRunResult>>();
 
 export type UlwNativeRunResult = {
   /** Session carrying the run: newly created, or the resumed one. */
@@ -162,8 +179,11 @@ export type UlwNativeRunResult = {
  * chat (no goals registered, DAG stuck at 0/0); with it the run drives
  * the same lifecycle the DAG reads.
  */
-export const buildUlwRunProcedure = (runId: string): string => (
-  `ULW run ${runId}: drive the loop with native tools only — exact operations, no discovery calls. Register ALL goals in ONE ulw_goal_create call with complete per-goal briefs; it answers with each goal's goalId. Then spawn one real worker per goal with the host \`task\` tool and keep the child session id that result reports (metadata sessionID/sessionId) — never do the goal's work inline. Dispatch each goal with ulw_dispatch { runId, goalId, workerSessionId } carrying that worker's session id; a goal with no real worker session stays undispatched. Wait with a SINGLE bounded script (poll ulw_status inside one script with backoff and a deadline) instead of repeated status turns. Record each real result once with ulw_evidence { runId, goalId, childSessionId, status, resultRef, reason }, advance once with ulw_checkpoint (it refuses while receipts are missing), finish once with ulw_complete { runId, status }. Never shell out to ulw-loop CLI and never hand-write loop state. Synthesize only after checkpoint accepts; the run ends at ulw_complete. Narrate tersely: one line per phase, no per-call commentary.`
+export const buildUlwRunProcedure = (runId: string, submissionId?: string): string => (
+  `ULW run ${runId}: drive the loop with native tools only — exact operations, no discovery calls. Register ALL goals in ONE ulw_goal_create call with complete per-goal briefs; it answers with each goal's goalId. Map the territory first: query the code_graph tool for symbol, caller, and impact questions — instruct each spawned worker to do the same — and fall back to grep only when the index is unavailable. Then spawn one real worker per goal with the host \`task\` tool and keep the child session id that result reports (metadata sessionID/sessionId) — never do the goal's work inline. Dispatch each goal with ulw_dispatch { runId, goalId, workerSessionId } carrying that worker's session id; a goal with no real worker session stays undispatched. Wait with a SINGLE bounded script (poll ulw_status inside one script with backoff and a deadline) instead of repeated status turns. Record each real result once with ulw_evidence { runId, goalId, childSessionId, status, resultRef, reason }, advance once with ulw_checkpoint (it refuses while receipts are missing), finish once with ulw_complete { runId, status }. Never shell out to ulw-loop CLI and never hand-write loop state. Synthesize only after checkpoint accepts; the run ends at ulw_complete. Narrate tersely: one line per phase, no per-call commentary.` +
+  (submissionId === undefined
+    ? ""
+    : ` Submission ${submissionId}: pass it as submissionId to ulw_goal_create so a retried or redelivered submission resolves to this run instead of forking a duplicate.`)
 )
 
 /**
@@ -178,7 +198,7 @@ export const buildUlwRunProcedure = (runId: string): string => (
  * fails or the server returns no session — the caller must treat that as a
  * send failure, never as a plain prompt.
  */
-export const startUlwNativeRun = async (input: UlwNativeRunInput): Promise<UlwNativeRunResult> => {
+const startUlwNativeRunInner = async (input: UlwNativeRunInput): Promise<UlwNativeRunResult> => {
   const resume = splitUlwResumeTarget(input.args)
   const rest = resume ? resume.rest : input.args
   const trimmedRest = rest.trim()
@@ -222,7 +242,7 @@ export const startUlwNativeRun = async (input: UlwNativeRunInput): Promise<UlwNa
     sessionId = created.id
   }
 
-  const procedureContext = { text: buildUlwRunProcedure(runId) }
+  const procedureContext = { text: buildUlwRunProcedure(runId, input.idempotencyKey) }
   const briefContext = [...(input.context ?? []), procedureContext]
   await optimisticSend({
     runtimeKey: input.runtimeKey,
@@ -249,4 +269,23 @@ export const startUlwNativeRun = async (input: UlwNativeRunInput): Promise<UlwNa
   })
 
   return { sessionId, runId, resumed }
+}
+
+export const startUlwNativeRun = (input: UlwNativeRunInput): Promise<UlwNativeRunResult> => {
+  // Single-flight duplicate-submit protection at the production boundary.
+  // An explicit key wins; otherwise concurrent starts for the same send
+  // session share one run (adopted and resume paths mint no session, so the
+  // second call would only repeat the opening send). Sequential sends are
+  // unaffected: the entry is deleted on settle, and distinct sessions and
+  // distinct explicit keys never share. A failed first attempt deletes its
+  // entry, so retries proceed instead of inheriting the failure.
+  const key = input.idempotencyKey ?? (input.sessionId ? `ulw-adopt:${input.sessionId}` : undefined);
+  if (!key) return startUlwNativeRunInner(input);
+  const pending = pendingUlwRuns.get(key);
+  if (pending) return pending;
+  const run = startUlwNativeRunInner(input).finally(() => {
+    if (pendingUlwRuns.get(key) === run) pendingUlwRuns.delete(key);
+  });
+  pendingUlwRuns.set(key, run);
+  return run;
 }

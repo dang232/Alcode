@@ -193,7 +193,7 @@ async function publishExclusive(lockPath: string, record: LockRecord): Promise<b
 // EEXIST: another contender published first. ENOENT: this candidate vanished mid-publish,
 // which only another process's stale-candidate sweep can cause after CANDIDATE_STALE_AGE_MS;
 // both are lost races the caller retries with a fresh candidate, never protocol failures.
-export function isCandidatePublishRace(error: unknown): boolean {
+function isCandidatePublishRace(error: unknown): boolean {
   const code = errorCode(error)
   return code === "EEXIST" || code === "ENOENT"
 }

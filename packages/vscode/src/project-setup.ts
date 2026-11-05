@@ -33,7 +33,7 @@ export type ProjectAction = {
 
 export type DraftStarter = { type: 'command' | 'skill'; name: string };
 
-export type SetupWorktreeMode = 'append' | 'replace';
+type SetupWorktreeMode = 'append' | 'replace';
 
 /** The personal file's part of the setup; the wait flag is `null` when the file does not set it. */
 export type PersonalProjectSetup = {
@@ -61,7 +61,7 @@ export type SharedProjectConfigRead =
   | { status: 'ok'; config: SharedProjectConfig }
   | { status: 'invalid'; reason: string };
 
-export type ProjectSetupSource = 'shared' | 'personal';
+type ProjectSetupSource = 'shared' | 'personal';
 
 /** The merged view every client sees; see `mergeProjectSetup` for the rules. */
 export type ProjectSetupView = {

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { asNonEmptyString } from '../shared/guards.js';
-import { OpenChamberControlError, asControlError } from '../alcode-control/error.js';
+import { AlcodeControlError, asControlError } from '../alcode-control/error.js';
 
 /**
  * Moves a running session into a new worktree of its repository: the agent's
@@ -97,7 +97,7 @@ export const createSessionWorktreeMover = (dependencies) => {
       stash = await findStash(source, (entry) => !before.has(entry.hash) && entry.message.includes(message));
     } catch (error) {
       // The changes may already be in the stash; a failure here must still say where.
-      throw new OpenChamberControlError(
+      throw new AlcodeControlError(
         `The stash list could not be read after stashing the uncommitted changes: ${error instanceof Error ? error.message : String(error)}. If git stash list shows "${message}", the changes are there`,
         500,
       );
@@ -106,7 +106,7 @@ export const createSessionWorktreeMover = (dependencies) => {
     try {
       await stashApply(destination, { ref: stash.hash });
     } catch (error) {
-      throw new OpenChamberControlError(
+      throw new AlcodeControlError(
         `The uncommitted changes do not apply in the new worktree: ${error instanceof Error ? error.message : String(error)}`,
         409,
         { stash },
@@ -144,25 +144,25 @@ export const createSessionWorktreeMover = (dependencies) => {
    */
   const move = async (input) => {
     const sessionId = asNonEmptyString(input?.sessionId);
-    if (!sessionId) throw new OpenChamberControlError('sessionId is required', 400);
+    if (!sessionId) throw new AlcodeControlError('sessionId is required', 400);
     const source = asNonEmptyString(input?.directory);
-    if (!source) throw new OpenChamberControlError('The session has no directory to move from', 400);
+    if (!source) throw new AlcodeControlError('The session has no directory to move from', 400);
     const name = asNonEmptyString(input?.name);
-    if (!name) throw new OpenChamberControlError('worktree is required: a short folder name for the task', 400);
+    if (!name) throw new AlcodeControlError('worktree is required: a short folder name for the task', 400);
     const existingBranch = asNonEmptyString(input?.existingBranch);
     const branchName = asNonEmptyString(input?.branchName);
     if (existingBranch && (branchName || asNonEmptyString(input?.startRef))) {
-      throw new OpenChamberControlError('existingBranch checks out that branch as it is; do not combine it with branch or startRef', 400);
+      throw new AlcodeControlError('existingBranch checks out that branch as it is; do not combine it with branch or startRef', 400);
     }
     const carry = input?.carry ?? [];
     if (!Array.isArray(carry) || carry.some((path) => !asNonEmptyString(path))) {
-      throw new OpenChamberControlError('carry is a list of file paths', 400);
+      throw new AlcodeControlError('carry is a list of file paths', 400);
     }
     const paths = [...new Set(carry.map((path) => path.trim()))];
     if (paths.length > 0) {
       const unchanged = await getPathsWithoutChanges(source, paths);
       if (unchanged.length > 0) {
-        throw new OpenChamberControlError(`carry paths have no uncommitted changes or cannot be resolved by git: ${unchanged.join(', ')}`, 400);
+        throw new AlcodeControlError(`carry paths have no uncommitted changes or cannot be resolved by git: ${unchanged.join(', ')}`, 400);
       }
     }
 
@@ -205,7 +205,7 @@ export const createSessionWorktreeMover = (dependencies) => {
         try {
           await restoreChanges(source, pending);
         } catch (restoreError) {
-          throw new OpenChamberControlError(
+          throw new AlcodeControlError(
             `${failure.message}. The uncommitted changes are kept in git stash ${pending.hash} (${pending.message}); restoring them failed: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
             500,
           );

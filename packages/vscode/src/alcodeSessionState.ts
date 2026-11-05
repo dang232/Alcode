@@ -154,7 +154,7 @@ export const getAlcodeDataDir = (): string => {
  * only when absent from the new directory, so an upgrade keeps archive flags
  * and unmigrated metadata; nothing is ever written here.
  */
-export const getLegacyAlcodeDataDir = (): string => {
+const getLegacyAlcodeDataDir = (): string => {
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA;
     if (appData) return path.join(appData, 'openchamber');

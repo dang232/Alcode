@@ -8,6 +8,7 @@ import {
   buildWalkthroughPipelineRequest,
   isExplicitlyChosenModel,
   isWalkthroughDispatchRetryable,
+  modelRefString,
   resolveWalkthroughModel,
   WALKTHROUGH_MODEL_CHAIN,
   walkthroughDowngradeRefs,
@@ -356,5 +357,13 @@ describe('advanceThroughWalkthroughCandidates', () => {
 
     expect(thrown).toBe(bad);
     expect(thrown.downgradeAttempted).toEqual(['a/m-one']);
+  });
+});
+
+describe('modelRefString', () => {
+  it('formats provider/model refs and returns null for incomplete models', () => {
+    expect(modelRefString({ providerID: 'anthropic', modelID: 'claude-opus-4-7' })).toBe('anthropic/claude-opus-4-7');
+    expect(modelRefString({ providerID: 'openai' })).toBeNull();
+    expect(modelRefString(null)).toBeNull();
   });
 });

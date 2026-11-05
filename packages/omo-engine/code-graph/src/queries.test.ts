@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,8 +19,11 @@ import type { GraphEdge, GraphNode, GraphSnapshot } from "./extract";
 import { computeScopeFingerprint } from "./schema";
 import {
   detectChanges,
+  explore,
   findTests,
   impact,
+  routesForHandler,
+  screensForSender,
   search,
   symbolContext,
   trace,
@@ -636,4 +639,472 @@ describe("code-graph impact knowledge links and time budget", () => {
       Date.now = realNow;
     }
   });
+});
+
+describe("code-graph explore composed answer", () => {
+  const exploreSym = (id: string, file: string, line = 1): GraphNode => ({
+    id,
+    kind: "symbol",
+    file,
+    line,
+    name: id.split("@")[0]?.replace(/^(fn|class|const):/, ""),
+  });
+  const exploreFile = (file: string): GraphNode => ({
+    id: `file:${file}`,
+    kind: "file",
+    file,
+    line: 1,
+    name: file,
+  });
+  const exploreCall = (from: string, to: string, ref: string, n: number): GraphEdge => ({
+    id: `explore-call-${n}`,
+    kind: "CALLS_STATIC",
+    from,
+    to,
+    confidence: 1,
+    ref,
+  });
+  const exploreDynamic = (from: string, ref: string, n: number): GraphEdge => ({
+    id: `explore-dyn-${n}`,
+    kind: "CALLS_UNRESOLVED",
+    from,
+    to: "unknown",
+    confidence: 0.5,
+    ref,
+    uncertain: true,
+  });
+  const withExploreContent = (
+    snapshot: GraphSnapshot,
+    linesByFile: Record<string, string[]>,
+  ): GraphSnapshot => ({
+    ...snapshot,
+    content: {
+      tokenCap: 5000,
+      files: Object.fromEntries(
+        Object.entries(linesByFile).map(([file, lines]) => [
+          file,
+          {
+            file,
+            language: "ts",
+            isTest: file.endsWith(".test.ts"),
+            lines,
+            tokens: {},
+            tokenCount: 0,
+            tokenTruncated: false,
+          },
+        ]),
+      ),
+      skipped: [],
+    },
+  });
+
+  it(
+    "#given a real fixture #when explore runs #then one call returns bodies plus paths plus blast radius",
+    () => {
+      // given: the real fixture indexed from the checkout
+      const snapshot = indexFiles(fixture("main.ts", "reexport.ts", "main.test.ts"));
+
+      // when
+      const result = explore(snapshot, "add", options());
+
+      // then: the envelope keeps its established fields
+      expect(result.subject).toBe("add");
+      expect(result.suggestedMode).toBe("explore");
+      expect(result.coverage).toBe("indexed");
+      expect(result.completeness).toBe("complete");
+      for (const item of result.items) expect(item.confidence).toBe(1);
+
+      // then: every definition matched with its verbatim line-numbered body, grouped by file
+      expect(result.definitions.map((item) => item.id)).toEqual(["fn:add@math.ts"]);
+      const group = result.bodies.find((entry) => entry.file === "math.ts");
+      expect(group).toBeDefined();
+      const body = group?.bodies.find((entry) => entry.id === "fn:add@math.ts");
+      expect(body?.startLine).toBe(1);
+      expect(body?.truncated).toBe(false);
+      expect(body?.lines.map((entry) => `${entry.line}:${entry.text}`)).toEqual([
+        "1:export function add(a: number, b: number): number {",
+        "2:  return a + b;",
+        "3:}",
+      ]);
+
+      // then: the static call path between the hits, with its evidence ref
+      expect(result.paths.some((path) => path.found && path.hops.length > 0)).toBe(true);
+      const hop = result.paths.flatMap((path) => path.hops).find((entry) => entry.to === "fn:add@math.ts");
+      expect(hop?.ref).toBe("main.ts:4");
+
+      // then: the blast-radius summary names the dependents in the same call
+      expect(result.blastRadius.subjectIds).toEqual(["fn:add@math.ts"]);
+      expect(result.impacted.map((item) => item.id)).toContain("fn:run@main.ts");
+      expect(result.blastRadius.dependentSymbols).toBeGreaterThan(0);
+      expect(result.blastRadius.modules.length).toBeGreaterThan(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it("#given one name on two files #when explore runs #then every definition returns its body", () => {
+    // given: the same symbol name defined in two files
+    const snapshot = withExploreContent(
+      {
+        nodes: [
+          exploreSym("fn:foo@a.ts", "a.ts", 1),
+          exploreSym("fn:foo@b.ts", "b.ts", 1),
+          exploreFile("a.ts"),
+          exploreFile("b.ts"),
+        ],
+        edges: [],
+      },
+      {
+        "a.ts": ["export function foo(): number {", "  return 1;", "}"],
+        "b.ts": ["export function foo(): number {", "  return 2;", "}"],
+      },
+    );
+
+    // when
+    const result = explore(snapshot, "foo", options());
+
+    // then: both definitions, both bodies, ambiguity flagged on the envelope
+    expect(result.definitions.map((item) => item.id).sort()).toEqual(["fn:foo@a.ts", "fn:foo@b.ts"]);
+    expect(result.bodies.map((group) => group.file).sort()).toEqual(["a.ts", "b.ts"]);
+    expect(result.bodies.find((group) => group.file === "a.ts")?.bodies[0]?.lines[1]?.text).toBe("  return 1;");
+    expect(result.bodies.find((group) => group.file === "b.ts")?.bodies[0]?.lines[1]?.text).toBe("  return 2;");
+    expect(result.ambiguousNames).toBe(true);
+    expect(result.coverage).toBe("indexed");
+  });
+
+  it("#given only a dynamic call #when explore runs #then dynamics stay in unresolved with no guessed edge", () => {
+    // given: the subject only calls an unknown callee; nothing static reaches anywhere
+    const snapshot = withExploreContent(
+      {
+        nodes: [
+          exploreSym("fn:loose@d.ts", "d.ts", 2),
+          exploreSym("fn:far@e.ts", "e.ts", 1),
+          exploreFile("d.ts"),
+          exploreFile("e.ts"),
+        ],
+        edges: [exploreDynamic("fn:loose@d.ts", "d.ts:3", 1)],
+      },
+      {
+        "d.ts": ["// dynamic only", "export function loose(x: any): unknown {", "  return x[Math.random()];", "}"],
+        "e.ts": ["export function far(): number {", "  return 7;", "}"],
+      },
+    );
+
+    // when
+    const result = explore(snapshot, "loose", options());
+
+    // then: the dynamic site is disclosed as manual review, never as a proven hop
+    expect(result.definitions.map((item) => item.id)).toEqual(["fn:loose@d.ts"]);
+    expect(result.unresolved.some((note) => note.includes("d.ts:3") && note.includes("unknown callee"))).toBe(true);
+    for (const path of result.paths) {
+      expect(path.hops.every((hop) => hop.to !== "unknown")).toBe(true);
+    }
+    expect(result.paths.some((path) => path.blockedByDynamic)).toBe(false);
+    expect(result.items.every((item) => item.id !== "unknown")).toBe(true);
+    expect(result.blastRadius.unresolvedEdges).toBe(1);
+  });
+});
+
+/** Temporary route fixture: directory plus its indexed snapshot. */
+interface RouteFixture {
+  readonly repo: string;
+  readonly snapshot: GraphSnapshot;
+}
+
+describe("code-graph routes S8 queries", () => {
+  function writeRouteFiles(repo: string, files: Record<string, string>): void {
+    for (const [rel, text] of Object.entries(files)) {
+      const abs = join(repo, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, text);
+    }
+  }
+
+  function routeRepo(): RouteFixture {
+    const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-q-"));
+    writeRouteFiles(repo, {
+      "server.ts":
+        `import express from "express";\n` +
+        `export function listUsers(): number {\n` +
+        `  return 1;\n` +
+        `}\n` +
+        `const app = express();\n` +
+        `app.get('/users', listUsers);\n`,
+      "client.ts":
+        `export function loadUsers(): unknown {\n` +
+        `  return fetch('/users');\n` +
+        `}\n` +
+        `export function goDynamic(dest: string): unknown {\n` +
+        `  return fetch(dest);\n` +
+        `}\n` +
+        `export function goMissing(): unknown {\n` +
+        `  return fetch('/nope');\n` +
+        `}\n`,
+    });
+    const snapshot = indexFiles([join(repo, "server.ts"), join(repo, "client.ts")]);
+    return { repo, snapshot };
+  }
+
+  it(
+    "#given an express handler #when routesForHandler runs #then it returns the URL pattern with framework tags",
+    () => {
+      const { repo, snapshot } = routeRepo();
+      try {
+        const result = routesForHandler(snapshot, "fn:listUsers@server.ts", options());
+        expect(result.handlerId).toBe("fn:listUsers@server.ts");
+        expect(result.routes.length).toBe(1);
+        expect(result.routes[0]?.pattern).toBe("/users");
+        expect(result.routes[0]?.framework).toBe("express");
+        expect(result.routes[0]?.resolver).toBe("express-route-detector");
+        expect(result.coverage).toBe("indexed");
+        expect(result.items.some((item) => item.id.includes("/users"))).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a code sender #when screensForSender runs #then one hop reaches the screen confirmed",
+    () => {
+      const { repo, snapshot } = routeRepo();
+      try {
+        const result = screensForSender(snapshot, "fn:loadUsers@client.ts", options());
+        expect(result.senderId).toBe("fn:loadUsers@client.ts");
+        expect(result.screens.length).toBe(1);
+        expect(result.screens[0]?.pattern).toBe("/users");
+        expect(result.screens[0]?.framework).toBe("express");
+        expect(result.screens[0]?.inferred).toBeUndefined();
+        expect(result.screens[0]?.handlerIds).toContain("fn:listUsers@server.ts");
+        expect(result.items[0]?.verdict).toBe("confirmed");
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given computed and unserved senders #when screensForSender runs #then no screen is guessed and unresolved names review",
+    () => {
+      const { repo, snapshot } = routeRepo();
+      try {
+        const computed = screensForSender(snapshot, "fn:goDynamic@client.ts", options());
+        expect(computed.screens).toEqual([]);
+        expect(computed.unresolved.length).toBeGreaterThan(0);
+        expect(computed.items.some((item) => item.id === "unknown")).toBe(false);
+        const unserved = screensForSender(snapshot, "fn:goMissing@client.ts", options());
+        expect(unserved.screens).toEqual([]);
+        expect(unserved.unresolved.length).toBeGreaterThan(0);
+        expect(unserved.items.some((item) => item.id === "unknown")).toBe(false);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a markup link #when screensForSender runs #then the hop is inferred not confirmed",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s8-q-markup-"));
+      try {
+        writeRouteFiles(repo, {
+          "app/users/page.tsx": `export default function UsersPage(): number {\n  return 1;\n}\n`,
+          "app/nav.tsx":
+            `import { Link } from "next/link";\n` +
+            `export function Nav(): unknown {\n` +
+            `  return <Link href="/users">users</Link>;\n` +
+            `}\n`,
+        });
+        const snapshot = indexFiles([join(repo, "app", "users", "page.tsx"), join(repo, "app", "nav.tsx")], {
+          rootDir: repo,
+        });
+        const result = screensForSender(snapshot, "fn:Nav@app/nav.tsx", options());
+        expect(result.screens.length).toBe(1);
+        expect(result.screens[0]?.inferred).toBe(true);
+        expect(result.items[0]?.verdict).toBe("inferred");
+        expect(result.screens[0]?.framework).toBe("next-app");
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a handler with a route #when symbolContext runs #then callers include the URL pattern",
+    () => {
+      const { repo, snapshot } = routeRepo();
+      try {
+        const result = symbolContext(snapshot, "fn:listUsers@server.ts", options());
+        expect(result.callers.some((caller) => caller.id.includes("/users"))).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a sender and its handler #when trace runs #then the static path crosses the route node",
+    () => {
+      const { repo, snapshot } = routeRepo();
+      try {
+        const result = trace(snapshot, "fn:loadUsers@client.ts", "fn:listUsers@server.ts", options());
+        expect(result.summary.found).toBe(true);
+        expect(result.summary.hops).toBe(2);
+        expect(result.path.some((step) => step.to.includes("/users") || step.from.includes("/users"))).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe("code-graph routes S9 queries", () => {
+  function writeS9qFiles(repo: string, files: Record<string, string>): void {
+    for (const [rel, text] of Object.entries(files)) {
+      const abs = join(repo, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, text);
+    }
+  }
+
+  function s9qRepo(): RouteFixture {
+    const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-q-"));
+    writeS9qFiles(repo, {
+      "router.ts":
+        `import { createRouter, createWebHistory } from "vue-router";\n` +
+        `export function UserView(): number {\n` +
+        `  return 2;\n` +
+        `}\n` +
+        `export const router = createRouter({ history: createWebHistory(), routes: [{ path: "/users/:id", component: UserView }] });\n`,
+      "client.ts":
+        `export function loadUser(): unknown {\n` +
+        `  return fetch("/users/7");\n` +
+        `}\n` +
+        `export function goDynamic(dest: string): unknown {\n` +
+        `  return fetch(dest);\n` +
+        `}\n`,
+    });
+    const snapshot = indexFiles([join(repo, "router.ts"), join(repo, "client.ts")]);
+    return { repo, snapshot };
+  }
+
+  it(
+    "#given a vue handler #when routesForHandler runs #then it returns the pattern with framework tags",
+    () => {
+      const { repo, snapshot } = s9qRepo();
+      try {
+        const result = routesForHandler(snapshot, "fn:UserView@router.ts", options());
+        expect(result.handlerId).toBe("fn:UserView@router.ts");
+        expect(result.routes.length).toBe(1);
+        expect(result.routes[0]?.pattern).toBe("/users/:id");
+        expect(result.routes[0]?.framework).toBe("vue-router");
+        expect(result.routes[0]?.resolver).toBe("vue-router-detector");
+        expect(result.coverage).toBe("indexed");
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a vue sender #when screensForSender runs #then one hop reaches the screen confirmed",
+    () => {
+      const { repo, snapshot } = s9qRepo();
+      try {
+        const result = screensForSender(snapshot, "fn:loadUser@client.ts", options());
+        expect(result.screens.length).toBe(1);
+        expect(result.screens[0]?.pattern).toBe("/users/:id");
+        expect(result.screens[0]?.framework).toBe("vue-router");
+        expect(result.screens[0]?.inferred).toBeUndefined();
+        expect(result.screens[0]?.handlerIds).toContain("fn:UserView@router.ts");
+        expect(result.items[0]?.verdict).toBe("confirmed");
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given computed and unserved s9 senders #when screensForSender runs #then no screen is guessed",
+    () => {
+      const { repo, snapshot } = s9qRepo();
+      try {
+        const computed = screensForSender(snapshot, "fn:goDynamic@client.ts", options());
+        expect(computed.screens).toEqual([]);
+        expect(computed.unresolved.length).toBeGreaterThan(0);
+        expect(computed.items.some((item) => item.id === "unknown")).toBe(false);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given a tanstack markup link #when screensForSender runs #then the hop is inferred not confirmed",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-q-tanstack-"));
+      try {
+        writeS9qFiles(repo, {
+          "routes.tsx":
+            `import { createFileRoute, Link } from "@tanstack/react-router";\n` +
+            `export function UsersPage(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `export const usersRoute = createFileRoute("/users")({ component: UsersPage });\n` +
+            `export function Nav(): unknown {\n` +
+            `  return <Link to="/users">users</Link>;\n` +
+            `}\n`,
+        });
+        const snapshot = indexFiles([join(repo, "routes.tsx")]);
+        const result = screensForSender(snapshot, "fn:Nav@routes.tsx", options());
+        expect(result.screens.length).toBe(1);
+        expect(result.screens[0]?.inferred).toBe(true);
+        expect(result.items[0]?.verdict).toBe("inferred");
+        expect(result.screens[0]?.framework).toBe("tanstack-router");
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given an angular sender and handler #when trace runs #then the static path crosses the route node",
+    () => {
+      const repo = mkdtempSync(join(tmpdir(), "code-graph-s9-q-angular-"));
+      try {
+        writeS9qFiles(repo, {
+          "app.routes.ts":
+            `import { RouterModule } from "@angular/router";\n` +
+            `export function HomeComponent(): number {\n` +
+            `  return 1;\n` +
+            `}\n` +
+            `const routes = [{ path: "home", component: HomeComponent }];\n` +
+            `export const routing = RouterModule.forRoot(routes);\n` +
+            `export function go(router: { navigate: (parts: string[]) => unknown }): unknown {\n` +
+            `  return router.navigate(["home"]);\n` +
+            `}\n`,
+        });
+        const snapshot = indexFiles([join(repo, "app.routes.ts")]);
+        const routed = routesForHandler(snapshot, "fn:HomeComponent@app.routes.ts", options());
+        expect(routed.routes.length).toBe(1);
+        expect(routed.routes[0]?.framework).toBe("angular");
+        const result = trace(snapshot, "fn:go@app.routes.ts", "fn:HomeComponent@app.routes.ts", options());
+        expect(result.summary.found).toBe(true);
+        expect(result.summary.hops).toBe(2);
+        expect(result.path.some((step) => step.to.includes("/home") || step.from.includes("/home"))).toBe(true);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
 });

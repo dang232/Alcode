@@ -50,7 +50,6 @@ import type {
 } from "../plugin-types";
 import {
   detectDuplicateOmoPlugin as defaultDetectDuplicateOmoPlugin,
-  getDuplicateOmoPluginWarning,
 } from "../shared/external-plugin-detector";
 import { readGateFacts } from "../shared/gate-facts";
 import { checkForLegacyPluginEntry } from "../shared/legacy-plugin-warning";

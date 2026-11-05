@@ -24,7 +24,7 @@ import { DELIVERY_CONFIRMATION_TIMEOUT_MS, canCommentOnDocument, nextDraftId, re
 // a second controller would split threads across two owners.
 const INLINE_COMMENT_CONTROLLER_ID = 'alcode.inlineComments';
 
-export interface InlineCommentDraftPayload {
+interface InlineCommentDraftPayload {
     draftId: string;
     filePath: string;
     relativePath: string;

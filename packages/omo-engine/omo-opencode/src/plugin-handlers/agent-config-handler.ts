@@ -25,7 +25,7 @@ const AGENT_FILE_PATTERN = /\.(md|json|jsonc)$/i;
 const RESERVED_SKILL_KEYS = new Set(["sources", "enable", "disable"]);
 
 /** Lowercase disabled-agent set with legacy display names migrated first. */
-export function normalizeDisabledAgents(
+function normalizeDisabledAgents(
   disabledAgents: readonly string[] | undefined,
 ): Set<string> {
   const normalized = new Set<string>();
@@ -164,7 +164,7 @@ function normalizeInlineAgent(agent: unknown): CustomAgentRecord | undefined {
  * components index carries command and skill names only, so it reserves the
  * precedence slot without contributing bodies.
  */
-export function loadAgentTiers(params: {
+function loadAgentTiers(params: {
   directory: string;
   agentDefinitions: readonly string[] | undefined;
   anthropicProvider: string | undefined;

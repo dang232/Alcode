@@ -6,8 +6,6 @@ import type { SuspensionReason } from "../state"
 import type { ChildExtensionListener } from "../runners/child-extension-events"
 import { HOST_TURN_RESUMED_EVENT } from "./host-turn-resumed"
 
-export type { RunnerOutcome } from "../runners/in-process/child-handle"
-
 // The child-event seam the manager subscribes to for transcript logging. `type` is the discriminator;
 // the transcript-bearing fields are OPTIONAL so both runners' concrete events (in-process
 // ChildSessionEvent and rpc AgentSessionEvent) remain assignable to this widened shape.

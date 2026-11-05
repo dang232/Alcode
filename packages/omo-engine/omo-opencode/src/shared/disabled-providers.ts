@@ -6,14 +6,14 @@ import { normalizeFallbackModels } from "./model-resolver"
 
 const HOOK_NAME = "disabled-providers"
 
-export function getModelProvider(model: string): string | undefined {
+function getModelProvider(model: string): string | undefined {
   const slash = model.indexOf("/")
   if (slash <= 0) return undefined
   const provider = model.slice(0, slash).trim()
   return provider || undefined
 }
 
-export function isProviderDisabled(
+function isProviderDisabled(
   model: string | undefined,
   disabled: readonly string[],
 ): boolean {
@@ -24,7 +24,7 @@ export function isProviderDisabled(
   return disabled.some((entry) => entry.trim().toLowerCase() === providerLower)
 }
 
-export function filterDisabledProviderModels<T extends string | FallbackModelObject>(
+function filterDisabledProviderModels<T extends string | FallbackModelObject>(
   models: readonly T[],
   disabled: readonly string[],
 ): T[] {

@@ -44,9 +44,9 @@ type SpawnParamsInput = TargetInput & {
   readonly tasks?: readonly SpawnItemInput[]
 }
 
-export type BatchShapeErrorCode = "prompt_and_tasks" | "no_prompt_or_tasks" | "empty_tasks"
+type BatchShapeErrorCode = "prompt_and_tasks" | "no_prompt_or_tasks" | "empty_tasks"
 
-export type BatchShapeError = {
+type BatchShapeError = {
   readonly code: BatchShapeErrorCode
   readonly message: string
 }
@@ -56,7 +56,7 @@ export type BatchShapeResult =
   | { readonly kind: "batch" }
   | { readonly kind: "error"; readonly error: BatchShapeError }
 
-export type SpawnItemTargetError = {
+type SpawnItemTargetError = {
   readonly code: "item_target"
   readonly index: number
   readonly message: string
@@ -66,7 +66,7 @@ export type ResolveSpawnItemsResult =
   | { readonly kind: "ok"; readonly items: readonly ResolvedSpawnItem[] }
   | { readonly kind: "error"; readonly error: BatchShapeError | SpawnItemTargetError }
 
-export type RunInBackgroundConflictError = {
+type RunInBackgroundConflictError = {
   readonly code: "run_in_background_conflict"
   readonly message: string
 }

@@ -46,7 +46,7 @@ export interface RetrievalRequest {
   readonly nowMs: number;
 }
 
-export interface RankedKnowledgeRecord {
+interface RankedKnowledgeRecord {
   readonly record: ProjectKnowledgeRecord;
   readonly totalScore: number;
   readonly scopeNote: ScopeNote;
@@ -80,7 +80,7 @@ function verificationScore(record: ProjectKnowledgeRecord): number {
   return 0.0;
 }
 
-export interface ScopeMatch {
+interface ScopeMatch {
   readonly score: number;
   readonly note: ScopeNote;
 }

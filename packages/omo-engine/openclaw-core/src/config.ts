@@ -3,7 +3,6 @@ import type {
   OpenClawGateway,
   OpenClawReplyListenerConfig,
 } from "./types"
-export { validateGatewayUrl } from "./gateway-url-validation"
 
 const DEFAULT_REPLY_POLL_INTERVAL_MS = 3000
 const MIN_REPLY_POLL_INTERVAL_MS = 500

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import type { TaskRecord } from "../state"
 import { TaskIdSpaceExhaustedError } from "../state/id"
@@ -10,7 +11,9 @@ import { TaskRecordCollisionError, createTaskRecordStore } from "./record-store"
 import { resolveStateDir } from "./state-dir"
 
 const cleanupRoots: string[] = []
-const claimFloorChildFixturePath = resolve(import.meta.dir, "__fixtures__", "claim-floor-child.ts")
+const claimFloorChildFixturePath = fileURLToPath(
+  new URL("./__fixtures__/claim-floor-child.ts", import.meta.url),
+)
 
 afterEach(() => {
   for (const root of cleanupRoots.splice(0)) rmSync(root, { recursive: true, force: true })

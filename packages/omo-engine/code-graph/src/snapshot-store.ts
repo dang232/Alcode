@@ -39,6 +39,12 @@ export interface SnapshotShard {
 export interface SnapshotManifest {
   readonly version: typeof SNAPSHOT_STORE_VERSION;
   readonly scope: GraphScopeKey;
+  /**
+   * Content-addressed per-file records document (`files-<sha>.json` beside
+   * the manifest), absent on generations written before records existed.
+   * Absence disables reuse, never the snapshot itself.
+   */
+  readonly fileRecords?: string | null;
   readonly observedAtMs: number;
   readonly entryCap: number;
   readonly entryCount: number;
@@ -49,6 +55,18 @@ export interface SnapshotManifest {
   readonly contentSkipped: readonly ContentSkip[];
   readonly dropped: readonly DroppedFile[];
   readonly shards: readonly string[];
+  /**
+   * Generation state carried across restarts: a restored partial must stay
+   * partial (never overwrite into complete), and a restored build keeps its
+   * published number so surfaces sharing one store agree on it. Absent on
+   * generations written before this existed; absence reads as complete with
+   * an unnumbered build, which matches everything previously persisted.
+   */
+  readonly truncated: boolean;
+  readonly truncationReason: string | null;
+  readonly buildSeq: number | null;
+  readonly unreadableFiles: readonly string[];
+  readonly unreadableFileCount: number;
 }
 
 export type ParseSnapshotManifest =
@@ -60,8 +78,18 @@ export type ParseSnapshotShard =
   | { readonly kind: "corrupt"; readonly reason: string };
 
 /** The file a node id belongs to: `file:x` is the file itself, `fn:v@x:12` is `x`. */
-function fileOfNodeId(id: string): string | null {
+export function fileOfNodeId(id: string): string | null {
   if (id.startsWith("file:")) return id.slice("file:".length);
+  if (id.startsWith("call:")) {
+    // call:<file>:<line>:<col>: the call site lives in its file. A call
+    // site misattributed to the unattributed bucket would survive every
+    // merge even after its file was reanalyzed.
+    const rest = id.slice("call:".length);
+    const parts = rest.split(":");
+    if (parts.length < 3) return null;
+    const file = parts.slice(0, -2).join(":");
+    return file.length > 0 ? file : null;
+  }
   const at = id.lastIndexOf("@");
   if (at < 0) return null;
   const withLine = id.slice(at + 1);
@@ -115,9 +143,11 @@ export function splitSnapshotIntoShards(snapshot: GraphSnapshot): SnapshotShard[
 
 export function createSnapshotManifest(
   snapshot: GraphSnapshot,
-  meta: { scope: GraphScopeKey; observedAtMs: number; entryCap: number; entryCount: number },
+  meta: { scope: GraphScopeKey; observedAtMs: number; entryCap: number; entryCount: number; fileRecords?: string | null; truncated?: boolean; truncationReason?: string | null; buildSeq?: number | null; unreadableFiles?: readonly string[]; unreadableFileCount?: number },
 ): SnapshotManifest {
-  return {
+  // The meta fields are statically string/number unions, so absence checks
+  // below detect the same values `typeof` would, without leaving the types.
+  const manifest: SnapshotManifest = {
     version: SNAPSHOT_STORE_VERSION,
     scope: meta.scope,
     observedAtMs: meta.observedAtMs,
@@ -130,7 +160,19 @@ export function createSnapshotManifest(
     contentSkipped: snapshot.content?.skipped ?? [],
     dropped: snapshot.dropped ?? [],
     shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file),
+    truncated: meta.truncated === true,
+    truncationReason: meta.truncationReason ?? null,
+    buildSeq: meta.buildSeq === null || meta.buildSeq === undefined || !Number.isFinite(meta.buildSeq) ? null : meta.buildSeq,
+    unreadableFiles: Array.isArray(meta.unreadableFiles) ? [...meta.unreadableFiles] : [],
+    unreadableFileCount:
+      meta.unreadableFileCount === null || meta.unreadableFileCount === undefined || !Number.isFinite(meta.unreadableFileCount)
+        ? 0
+        : meta.unreadableFileCount,
   };
+  if (meta.fileRecords !== undefined && meta.fileRecords !== null) {
+    return { ...manifest, fileRecords: meta.fileRecords };
+  }
+  return manifest;
 }
 
 export function serializeSnapshotShard(shard: SnapshotShard): string {
@@ -166,28 +208,46 @@ export function parseSnapshotManifest(text: string): ParseSnapshotManifest {
   if (!Number.isFinite(parsed.nodeCount) || !Number.isFinite(parsed.edgeCount)) {
     return { kind: "corrupt", reason: "manifest counts are not numbers" };
   }
-  return {
-    kind: "manifest",
-    manifest: {
-      version: SNAPSHOT_STORE_VERSION,
-      scope: {
-        projectId: String(scope.projectId),
-        worktreeId: String(scope.worktreeId),
-        revision: String(scope.revision),
-        fingerprint: String(scope.fingerprint),
-      },
-      observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
-      entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
-      entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
-      root: typeof parsed.root === "string" ? parsed.root : null,
-      nodeCount: Number(parsed.nodeCount),
-      edgeCount: Number(parsed.edgeCount),
-      contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
-      contentSkipped: Array.isArray(parsed.contentSkipped) ? (parsed.contentSkipped as ContentSkip[]) : [],
-      dropped: Array.isArray(parsed.dropped) ? (parsed.dropped as DroppedFile[]) : [],
-      shards: parsed.shards as string[],
+  // String(decoded) is the identity exactly for primitive strings, so the
+  // strict comparisons below accept the same values `typeof x === "string"`
+  // would, without leaving the decoded types.
+  const fileRecordsText = String(parsed.fileRecords);
+  const truncationReasonText = String(parsed.truncationReason);
+  // SAFETY: every assertion in this literal restores a shape the gates above
+  // just established — Array.isArray for the array fields (shards additionally
+  // passed the all-strings scan, so the string-array assertion repeats the
+  // checked result) and Number.isFinite for the numerics — so the manifest
+  // keeps its SnapshotManifest type without revalidating its own output.
+  const manifest: SnapshotManifest = {
+    version: SNAPSHOT_STORE_VERSION,
+    scope: {
+      projectId: String(scope.projectId),
+      worktreeId: String(scope.worktreeId),
+      revision: String(scope.revision),
+      fingerprint: String(scope.fingerprint),
     },
+    observedAtMs: Number.isFinite(parsed.observedAtMs) ? Number(parsed.observedAtMs) : 0,
+    entryCap: Number.isFinite(parsed.entryCap) ? Number(parsed.entryCap) : 0,
+    entryCount: Number.isFinite(parsed.entryCount) ? Number(parsed.entryCount) : 0,
+    root: typeof parsed.root === "string" ? parsed.root : null,
+    nodeCount: Number(parsed.nodeCount),
+    edgeCount: Number(parsed.edgeCount),
+    contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
+    contentSkipped: Array.isArray(parsed.contentSkipped) ? (parsed.contentSkipped as ContentSkip[]) : [],
+    dropped: Array.isArray(parsed.dropped) ? (parsed.dropped as DroppedFile[]) : [],
+    shards: parsed.shards as string[],
+    truncated: parsed.truncated === true,
+    truncationReason: truncationReasonText === parsed.truncationReason ? truncationReasonText : null,
+    buildSeq: Number.isFinite(parsed.buildSeq) ? (parsed.buildSeq as number) : null,
+    unreadableFiles: Array.isArray(parsed.unreadableFiles)
+      ? parsed.unreadableFiles.filter((entry): entry is string => String(entry) === entry)
+      : [],
+    unreadableFileCount: Number.isFinite(parsed.unreadableFileCount) ? (parsed.unreadableFileCount as number) : 0,
   };
+  if (fileRecordsText === parsed.fileRecords && fileRecordsText.length > 0) {
+    return { kind: "manifest", manifest: { ...manifest, fileRecords: fileRecordsText } };
+  }
+  return { kind: "manifest", manifest };
 }
 
 export function parseSnapshotShard(text: string): ParseSnapshotShard {

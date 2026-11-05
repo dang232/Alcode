@@ -9,13 +9,13 @@ export const R0_SUSPENSION_REASONS = [
   "host_draining",
 ] as const
 
-export const R0_MODEL_START_FAILURE_REASONS = [
+const R0_MODEL_START_FAILURE_REASONS = [
   "model_not_in_child_profile",
   "catalog_probe_timed_out",
   "catalog_probe_failed",
 ] as const
 
-export const R0_HOST_START_FAILURE_REASONS = [
+const R0_HOST_START_FAILURE_REASONS = [
   "protocol",
   "capability",
   "engine_mismatch",
@@ -27,7 +27,7 @@ export const R0_HOST_START_FAILURE_REASONS = [
   "ensure_timed_out",
 ] as const
 
-export const R0_SESSION_START_FAILURE_REASONS = [
+const R0_SESSION_START_FAILURE_REASONS = [
   "open_timed_out",
   "session_path_in_use",
   "session_reservation_limit",

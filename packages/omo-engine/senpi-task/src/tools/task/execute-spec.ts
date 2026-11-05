@@ -19,7 +19,7 @@ export type ResolvedManagerStartSpec = ManagerStartSpec & {
 // data, never policy: the block only appends advisory text to the worker
 // prompt. The builder performs no I/O and no ranking, and knowledge never
 // changes admission, verification, tool allowlists, or repair inputs (H1).
-export type ProjectKnowledgeCategory =
+type ProjectKnowledgeCategory =
   | "source-verified"
   | "previously-verified"
   | "unverified-hypothesis"
@@ -45,7 +45,7 @@ export type InjectedKnowledgeBlock = {
 // (bounded static facts with file:line refs), the linked rationale record ids, and the
 // query-envelope freshness marker. Rendered as advisory untrusted text after the knowledge
 // suffix, never as policy.
-export type GraphContextSymbol = {
+type GraphContextSymbol = {
   readonly id: string
   readonly file: string
   readonly line: number

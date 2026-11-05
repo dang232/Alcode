@@ -1,6 +1,6 @@
 import type { FallbackEntry } from "./model-requirements"
 import type { ProviderCache } from "./provider-cache"
-import * as connectedProvidersCache from "./connected-providers-cache"
+import { connectedProvidersAdapter as connectedProvidersCache } from "./connected-providers-cache"
 import { classifyRuntimeFallbackError, isTerminalQuotaError } from "./runtime-fallback-error-classifier"
 
 /**

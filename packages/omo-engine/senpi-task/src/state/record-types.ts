@@ -26,7 +26,7 @@ export type StartQueued = {
   readonly queue_position: number
 }
 
-export type ReviveDeliveryUncertainty = {
+type ReviveDeliveryUncertainty = {
   readonly run_epoch: number
   readonly message_sha256: string
 }

@@ -4,7 +4,7 @@ import { DEFAULT_CATEGORIES, resolveCategory, type SenpiModelPort, type SenpiMod
 import { findExactAgentModel } from "./agent-model-registry"
 import type { ResolvedModelRecord } from "../state"
 
-export type AgentCategoryTuning = {
+type AgentCategoryTuning = {
   readonly variant?: string
   readonly reasoningEffort?: string
 }

@@ -11,7 +11,7 @@ export type TaskIsolationSpec = {
   readonly apply: boolean
 }
 
-export type IsolationMergeKind =
+type IsolationMergeKind =
   | "applied" | "already-applied" | "not-applied" | "branch-merged" | "branch-merge-failed" | "no-changes" | "retained"
 
 export type IsolationMergeResult = {
@@ -117,7 +117,6 @@ export { isSpawnSpecV1 } from "./record-types"
 export type {
   LegacyProcessSpawnSpec,
   PendingSteeringEntry,
-  ReviveDeliveryUncertainty,
   SpawnSpecV1,
   StartQueued,
   TaskNotification,

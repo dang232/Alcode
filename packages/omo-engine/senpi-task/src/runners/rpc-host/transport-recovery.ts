@@ -5,13 +5,13 @@
  * connection is fine is never failed by it.
  */
 
-export const TRANSPORT_RECOVERY_BOUND_MS = 180_000
+const TRANSPORT_RECOVERY_BOUND_MS = 180_000
 
 import { TRANSPORT_LOST_REASON } from "../../state/transport-loss"
 
 export { TRANSPORT_LOST_REASON }
 
-export interface RecoveryClock {
+interface RecoveryClock {
   schedule(ms: number, expire: () => void): () => void
 }
 

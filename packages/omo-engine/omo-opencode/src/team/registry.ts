@@ -6,15 +6,15 @@ import type { TeamSpec } from "../../../team-core/src/types.ts"
 import { validateTeamMembers, type TeamMemberPorts } from "./member-validator.ts"
 import { normalizeTeamSpec, TeamSpecError } from "./normalize.ts"
 
-export type TeamSpecSource = "project" | "inline"
+type TeamSpecSource = "project" | "inline"
 
-export type TeamRegistryEntry = {
+type TeamRegistryEntry = {
   readonly name: string
   readonly source: TeamSpecSource
   readonly spec: TeamSpec
 }
 
-export type TeamRegistryError = {
+type TeamRegistryError = {
   readonly name: string
   readonly source: TeamSpecSource
   readonly code: string

@@ -6,7 +6,7 @@ const CLAIM_SUFFIX = ".claim"
 
 export type DayClaimOutcome = "claimed" | "already-claimed" | "unavailable"
 
-export function getTelemetryDayClaimFilePath(stateDir: string, dayUTC: string): string {
+function getTelemetryDayClaimFilePath(stateDir: string, dayUTC: string): string {
   return join(stateDir, `${CLAIM_PREFIX}${dayUTC}${CLAIM_SUFFIX}`)
 }
 

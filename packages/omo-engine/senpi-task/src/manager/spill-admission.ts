@@ -7,7 +7,7 @@ export type SpillAdmission = {
   readonly lease: SpillLease | undefined
 }
 
-export type SpillLease = {
+type SpillLease = {
   readonly taskId: string
   readonly epoch: number
   release(): void
@@ -35,10 +35,6 @@ export function admitSpill(
     }
   }
   return { plan, lease: undefined }
-}
-
-export function spillCandidates(plan: ResolvedChildPlan, concurrency: TaskConcurrency): readonly string[] {
-  return candidatesFor(plan, concurrency).map((candidate) => candidate.model)
 }
 
 function candidatesFor(plan: ResolvedChildPlan, concurrency: TaskConcurrency): readonly Candidate[] {

@@ -1,0 +1,118 @@
+name: Code Graph Packaged Acceptance
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - packages/omo-engine/code-graph/**
+      - packages/web/server/lib/code-graph/**
+      - packages/omo-engine/omo-opencode/src/tools/code-graph/**
+      - packages/electron/scripts/prepare-typescript.mjs
+      - packages/electron/scripts/prepare-typescript.test.mjs
+      - packages/electron/scripts/code-graph-packaged-accept.mjs
+      - packages/electron/scripts/packaged-app-contents.cjs
+      - packages/electron/scripts/after-pack.cjs
+      - packages/electron/package.json
+      - packages/web/package.json
+      - bun.lock
+      - .github/workflows/code-graph-packaged.yml
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  packaged-accept:
+    # Entries with scope 'artifacts' cross-build on a foreign-arch host:
+    # they prove the package ships the right files, but the target
+    # compiler cannot start there, so runtime acceptance for that target
+    # comes from its native entry. A green artifacts job is never a
+    # runtime PASS.
+    name: Packaged code-graph (${{ matrix.platform }}${{ matrix.scope == 'artifacts' && ', cross-built artifacts' || '' }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+            platform: win32-x64
+            pack-os: win
+            electron-builder-arch: --x64
+            scope: runtime
+          - os: windows-2022
+            arch: arm64
+            platform: win32-arm64
+            pack-os: win
+            electron-builder-arch: --arm64
+            scope: artifacts
+          - os: windows-11-arm
+            arch: arm64
+            platform: win32-arm64
+            pack-os: win
+            electron-builder-arch: --arm64
+            scope: runtime
+          - os: macos-15
+            arch: arm64
+            platform: darwin-arm64
+            pack-os: mac
+            electron-builder-arch: --arm64
+            scope: runtime
+          - os: macos-15-intel
+            arch: x64
+            platform: darwin-x64
+            pack-os: mac
+            electron-builder-arch: --x64
+            scope: runtime
+          - os: ubuntu-latest
+            arch: x64
+            platform: linux-x64
+            pack-os: linux
+            electron-builder-arch: --x64
+            scope: runtime
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux-arm64
+            pack-os: linux
+            electron-builder-arch: --arm64
+            scope: runtime
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build desktop package
+        working-directory: packages/electron
+        shell: bash
+        env:
+          OPENCHAMBER_TARGET_ARCH: ${{ matrix.arch }}
+          ELECTRON_BUILDER_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          bun run build:web-assets
+          bun run prepare:opencode-cli
+          bun run prepare:ripgrep
+          bun run prepare:ulw-loop-cli
+          bun run prepare:typescript
+          bun run bundle:main
+          bun run rebuild:native
+          node ./scripts/package.mjs --${{ matrix.pack-os }} ${{ matrix.electron-builder-arch }} --publish=never
+      - name: Packaged code-graph acceptance
+        working-directory: packages/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          node ./scripts/code-graph-packaged-accept.mjs --app-root dist --arch ${{ matrix.arch }} 2>&1 | tee code-graph-packaged-accept.log
+      - name: Upload acceptance log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: code-graph-packaged-${{ matrix.platform }}-${{ matrix.scope }}-${{ github.run_id }}
+          path: packages/electron/code-graph-packaged-accept.log
+          retention-days: 7

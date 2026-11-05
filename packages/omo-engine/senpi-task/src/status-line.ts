@@ -138,12 +138,12 @@ function formatSpendFacts(costUsd: number | undefined, cacheHitRate: number | un
   return cacheHit === undefined ? cost : `${cost} ${cacheHit}`
 }
 
-export function formatCostUsd(costUsd: number | undefined): string | undefined {
+function formatCostUsd(costUsd: number | undefined): string | undefined {
   if (costUsd === undefined || !Number.isFinite(costUsd) || costUsd < 0) return undefined
   return `$${costUsd.toFixed(4)}`
 }
 
-export function formatCacheHitPercent(cacheHitRate: number | undefined): string | undefined {
+function formatCacheHitPercent(cacheHitRate: number | undefined): string | undefined {
   if (cacheHitRate === undefined || !Number.isFinite(cacheHitRate) || cacheHitRate < 0 || cacheHitRate > 1) {
     return undefined
   }

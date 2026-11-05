@@ -35,7 +35,7 @@ export {
 	sameBlockerOccurrences,
 } from "./quality-gate-blockers.js";
 
-export interface QualityGateFs {
+interface QualityGateFs {
 	readonly existsSync: (path: string) => boolean;
 	readonly statSync: (path: string) => { readonly size: number };
 }

@@ -1,5 +1,3 @@
-import type { Message } from "../../../../team-core/src/types.ts"
-
 import type { PersistedTaskEvent, StateDirConfig } from "../../store"
 import type { MemberTaskMap } from "../member-map"
 import type { TeamCoreConfig } from "../runtime-config"
@@ -26,4 +24,4 @@ export type SendTeamMessageResult =
   | { readonly kind: "to_lead"; readonly messageId: string }
   | { readonly kind: "to_members"; readonly messageId: string; readonly recipients: readonly string[] }
 
-export type { Message, MemberTaskMap }
+export type { MemberTaskMap }

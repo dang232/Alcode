@@ -6,9 +6,9 @@ import type { ManagedChildHandle } from "./child-handle"
 import { terminalFailureMessage } from "./credential-failure"
 import { nowIso } from "./manager-helpers"
 
-export type ManagedOutcome = Awaited<ReturnType<ManagedChildHandle["waitForOutcome"]>>
+type ManagedOutcome = Awaited<ReturnType<ManagedChildHandle["waitForOutcome"]>>
 
-export type ErrorOutcomeInput = {
+type ErrorOutcomeInput = {
   readonly taskId: string
   readonly handle: ManagedChildHandle
   readonly model: string

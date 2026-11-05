@@ -18,7 +18,7 @@ import type { ReconcileDeferredReason, ReconcileOutcome } from "./types"
 export { deferred } from "./revive-rollback"
 export type { SuspendedResidency } from "./revive-rollback"
 
-export const REVIVABLE_STATUSES = new Set(["pending", "running", "interrupted"])
+const REVIVABLE_STATUSES = new Set(["pending", "running", "interrupted"])
 const activeLocalReclamations = new Set<string>()
 
 export type SessionPathResolver = (taskId: string) => string | undefined

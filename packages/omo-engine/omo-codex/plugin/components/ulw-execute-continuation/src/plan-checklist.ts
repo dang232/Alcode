@@ -52,7 +52,7 @@ export function getPlanChecklist(planPath: string): PlanChecklist {
 	}
 }
 
-export function parsePlanChecklist(markdown: string): PlanChecklist {
+function parsePlanChecklist(markdown: string): PlanChecklist {
 	const lines = markdown.split(/\r?\n/);
 	if (!hasStructuredSection(lines)) return parseSimpleChecklist(lines);
 

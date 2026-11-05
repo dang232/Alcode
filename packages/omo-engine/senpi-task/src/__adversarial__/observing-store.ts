@@ -21,7 +21,7 @@ export function isTerminalStatus(status: TaskStatus): boolean {
 
 // One recorded breach of invariant 1 (exactly-once) or invariant 2 (terminal idempotence) seen at
 // the store seam, carrying enough context to name the offending record.
-export type StoreBreach = {
+type StoreBreach = {
   readonly invariant: 1 | 2
   readonly detail: string
 }

@@ -1,10 +1,10 @@
 import { z } from "zod"
 import { TMUX_ISOLATION_VALUES, TMUX_LAYOUT_VALUES } from "../../../../tmux-core/src/index.ts"
-import type { TmuxConfig, TmuxIsolation, TmuxLayout } from "../../../../tmux-core/src/index.ts"
+import type { TmuxConfig} from "../../../../tmux-core/src/index.ts"
 
-export const TmuxLayoutSchema = z.enum(TMUX_LAYOUT_VALUES)
+const TmuxLayoutSchema = z.enum(TMUX_LAYOUT_VALUES)
 
-export const TmuxIsolationSchema = z.enum(TMUX_ISOLATION_VALUES)
+const TmuxIsolationSchema = z.enum(TMUX_ISOLATION_VALUES)
 
 export const TmuxConfigSchema = z.object({
   enabled: z.boolean().default(false),
@@ -15,4 +15,3 @@ export const TmuxConfigSchema = z.object({
   isolation: TmuxIsolationSchema.default("inline"),
 }) satisfies z.ZodType<TmuxConfig>
 
-export type { TmuxConfig, TmuxIsolation, TmuxLayout }

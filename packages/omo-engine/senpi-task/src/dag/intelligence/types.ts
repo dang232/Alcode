@@ -17,7 +17,7 @@ export const UNDERSTANDING_LIMITS = {
   renderBytes: 4096,
 } as const
 
-export type UnderstandingLimits = {
+type UnderstandingLimits = {
   readonly [K in keyof typeof UNDERSTANDING_LIMITS]?: number
 }
 
@@ -32,9 +32,9 @@ export const EVIDENCE_QUERY_KINDS = [
 
 export type EvidenceQueryKind = (typeof EVIDENCE_QUERY_KINDS)[number]
 
-export type QueryCoverage = "indexed" | "partial" | "unindexed"
+type QueryCoverage = "indexed" | "partial" | "unindexed"
 
-export type EvidenceFreshness = "fresh" | "stale"
+type EvidenceFreshness = "fresh" | "stale"
 
 export type KnowledgeTrust =
   | "source-verified"
@@ -89,7 +89,7 @@ export type FindTestsEnvelopeInput = EvidenceEnvelopeInput & {
   readonly candidates?: readonly EvidenceItemInput[]
 }
 
-export type ChangeItemInput = {
+type ChangeItemInput = {
   readonly id: string
   readonly file: string
   readonly line: number
@@ -101,7 +101,7 @@ export type DetectChangesEnvelopeInput = EvidenceEnvelopeInput & {
   readonly changes?: readonly ChangeItemInput[]
 }
 
-export type TraceEnvelopeInput = EvidenceEnvelopeInput
+type TraceEnvelopeInput = EvidenceEnvelopeInput
 
 export type TaskUnderstandingQueries = {
   readonly search?: EvidenceEnvelopeInput
@@ -159,7 +159,7 @@ export type UnderstandingConstraint = {
   readonly authoritative: boolean
 }
 
-export type UnderstandingUncertaintyKind =
+type UnderstandingUncertaintyKind =
   | "stale"
   | "cross-project"
   | "revision-mismatch"

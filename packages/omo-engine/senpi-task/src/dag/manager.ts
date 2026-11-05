@@ -201,7 +201,7 @@ export type DagStartParams = {
   readonly rootSessionId: string
 }
 
-export type DagAmendParams = {
+type DagAmendParams = {
   readonly runId?: DagRunId
   readonly key?: string
   readonly definition: DagDefinition

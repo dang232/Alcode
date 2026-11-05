@@ -15,10 +15,22 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { createCodeGraphRuntime } from './runtime.js';
 
+const watcherEnabled = process.env.ALCODE_CODE_GRAPH_WATCHER === '1'
+  || process.env.ALCODE_CODE_GRAPH_WATCHER === 'true'
+  || process.env.CODEGRAPH_WATCHER_ENABLED === '1'
+  || process.env.CODEGRAPH_WATCHER_ENABLED === 'true';
+const watcherDebounceMs = process.env.ALCODE_CODE_GRAPH_WATCH_DEBOUNCE_MS
+  ?? process.env.CODEGRAPH_WATCH_DEBOUNCE_MS
+  ?? undefined;
+
 const runtimeOptions = {
   maxEntryFiles: process.env.ALCODE_CODE_GRAPH_MAX_ENTRIES
     ? Number(process.env.ALCODE_CODE_GRAPH_MAX_ENTRIES)
     : undefined,
+  // S4: opt-in native watcher per scope key (debounced single-flight sync).
+  // Unset by default: the worker keeps the revision-gate + manual-refresh
+  // path unless the host opts in through env. The escape hatch
+  // (CODEGRAPH_NO_WATCHER=1) is honoured inside the runtime.
   // Warm opens read the persisted generation from here; an unset directory
   // simply means the store is off and every open rebuilds.
   storeDir: process.env.ALCODE_CODE_GRAPH_STORE ?? '',
@@ -29,6 +41,15 @@ const runtimeOptions = {
     process.send?.({ event: 'progress', progress });
   },
 };
+
+// Optional watcher inputs ride as plain assignments so the options object
+// never hides an omission behind a conditional empty-object spread.
+if (watcherEnabled) {
+  runtimeOptions.watcherEnabled = true;
+}
+if (watcherDebounceMs !== undefined) {
+  runtimeOptions.watcherDebounceMs = Number(watcherDebounceMs);
+}
 
 const runtime = createCodeGraphRuntime({ fsPromises: fs, path, execFile }, runtimeOptions);
 
@@ -48,6 +69,12 @@ process.on('message', async (message) => {
   const { id, op } = message ?? {};
   if (!op) return;
   if (op === 'shutdown') {
+    // S4: drop watcher handles before exiting so no scope stays watched.
+    try {
+      await runtime.closeWatchers?.();
+    } catch {
+      // Shutdown cleanup is best-effort.
+    }
     process.send?.({ id, ok: true, result: { stopped: true } });
     setImmediate(() => process.exit(0));
     return;

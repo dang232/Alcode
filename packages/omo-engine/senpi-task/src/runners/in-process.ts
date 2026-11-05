@@ -30,7 +30,7 @@ export type {
   RunnerFailure,
   RunnerOutcome,
 } from "./in-process/child-handle"
-export type { ChildRetryOverride } from "./in-process/runtime-fallback-settings"
+
 export {
   childVisibleToolNames,
   filterSharedParentTools,

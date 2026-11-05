@@ -36,13 +36,13 @@ export type NativeMemberPorts = {
   readonly agentNames?: readonly string[]
 }
 
-export type TeamRegistryEntry = {
+type TeamRegistryEntry = {
   readonly name: string
   readonly source: TeamSpecSource
   readonly spec: TeamSpec
 }
 
-export type TeamRegistryError = {
+type TeamRegistryError = {
   readonly name: string
   readonly source: TeamSpecSource
   readonly code: string

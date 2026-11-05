@@ -1,4 +1,4 @@
-import { resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { afterEach, describe, expect, test } from "bun:test"
 
@@ -70,7 +70,9 @@ function managerWithStore(
   return { manager, inProcess, process }
 }
 
-const seedFloorChildFixturePath = resolve(import.meta.dir, "__fixtures__", "seed-floor-child.ts")
+const seedFloorChildFixturePath = fileURLToPath(
+  new URL("./__fixtures__/seed-floor-child.ts", import.meta.url),
+)
 
 async function expectSeedFloorChildModeToSucceed(mode: string): Promise<void> {
   const child = Bun.spawn([process.execPath, seedFloorChildFixturePath, mode], { stdout: "pipe", stderr: "pipe", env: { ...process.env } })

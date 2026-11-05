@@ -40,10 +40,6 @@ export const RawAgentDefinitionSchema = z.object({
   max_turns: z.number().int().nonnegative().optional(),
 }).passthrough()
 
-export const OmoAgentOverlaySchema = z.object({
-  agents: z.record(z.string(), RawAgentDefinitionSchema).optional(),
-}).passthrough()
-
 export type RawAgentDefinition = z.infer<typeof RawAgentDefinitionSchema>
 
 export function defineAgent(raw: AgentDefinitionInput): AgentDefinition {

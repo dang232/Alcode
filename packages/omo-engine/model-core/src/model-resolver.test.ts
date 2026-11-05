@@ -4,7 +4,7 @@ import { describe, expect, test, spyOn, beforeEach, afterEach, mock } from "bun:
 
 import { resolveModel, resolveModelWithFallback, type ModelResolutionInput, type ExtendedModelResolutionInput, type ModelResolutionResult } from "./model-resolver"
 import { _setModelResolutionLogImplementationForTesting } from "./model-resolution-pipeline"
-import * as connectedProvidersCache from "./connected-providers-cache"
+import { connectedProvidersAdapter as connectedProvidersCache } from "./connected-providers-cache"
 
 const logMock = mock(() => {})
 

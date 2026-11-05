@@ -3,7 +3,7 @@ import { z } from "zod"
 import { FallbackModelObjectSchema, FallbackModelsSchema } from "./fallback-models"
 import { AgentPermissionSchema } from "./internal/permission"
 
-export const AgentOverrideConfigSchema = z.object({
+const AgentOverrideConfigSchema = z.object({
   /** @deprecated Use `category` instead. Model is inherited from category defaults. */
   model: z.string().optional(),
   /** Ordered model chain; the first entry is primary and the rest are fallbacks. */
@@ -85,5 +85,3 @@ export const AgentOverridesSchema = z.object({
   atlas: AgentOverrideConfigSchema.optional(),
 }).catchall(AgentOverrideConfigSchema.optional())
 
-export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>
-export type AgentOverrides = z.infer<typeof AgentOverridesSchema>

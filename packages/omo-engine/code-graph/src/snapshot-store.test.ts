@@ -13,7 +13,9 @@ import { indexFiles } from "./extract";
 import { searchContent } from "./schema";
 import {
   SNAPSHOT_STORE_VERSION,
+  UNATTRIBUTED_SHARD,
   createSnapshotManifest,
+  fileOfNodeId,
   joinSnapshotShards,
   parseSnapshotManifest,
   parseSnapshotShard,
@@ -57,6 +59,66 @@ const roundTrip = (snapshot: ReturnType<typeof buildSnapshot>) => {
 };
 
 describe("snapshot store", () => {
+  it(
+    "#given generation state #when round-tripped #then partiality, numbering, and unreadables survive; absence reads complete",
+    () => {
+      const snapshot = buildSnapshot();
+      const manifest = createSnapshotManifest(snapshot, {
+        scope,
+        observedAtMs: 1_700_000_000_000,
+        entryCap: 5000,
+        entryCount: 4,
+        truncated: true,
+        truncationReason: "unreadable-files",
+        buildSeq: 7,
+        unreadableFiles: ["gone.ts"],
+        unreadableFileCount: 1,
+      });
+      const parsed = parseSnapshotManifest(serializeSnapshotManifest(manifest));
+      expect(parsed.kind).toBe("manifest");
+      if (parsed.kind !== "manifest") throw new Error("manifest did not parse");
+      expect(parsed.manifest.truncated).toBe(true);
+      expect(parsed.manifest.truncationReason).toBe("unreadable-files");
+      expect(parsed.manifest.buildSeq).toBe(7);
+      expect(parsed.manifest.unreadableFiles).toEqual(["gone.ts"]);
+      expect(parsed.manifest.unreadableFileCount).toBe(1);
+
+      const legacy = { ...JSON.parse(serializeSnapshotManifest(manifest)) };
+      delete legacy.truncated;
+      delete legacy.truncationReason;
+      delete legacy.buildSeq;
+      delete legacy.unreadableFiles;
+      delete legacy.unreadableFileCount;
+      const reparsed = parseSnapshotManifest(JSON.stringify(legacy));
+      expect(reparsed.kind).toBe("manifest");
+      if (reparsed.kind !== "manifest") throw new Error("legacy manifest did not parse");
+      expect(reparsed.manifest.truncated).toBe(false);
+      expect(reparsed.manifest.truncationReason).toBe(null);
+      expect(reparsed.manifest.buildSeq).toBe(null);
+      expect(reparsed.manifest.unreadableFiles).toEqual([]);
+      expect(reparsed.manifest.unreadableFileCount).toBe(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "#given call-site nodes #when sharding #then they attribute to their file instead of the unattributed bucket",
+    () => {
+      expect(fileOfNodeId("call:b.ts:2:0")).toBe("b.ts");
+      expect(fileOfNodeId("call:C:/repo/x.ts:12:4")).toBe("C:/repo/x.ts");
+      expect(fileOfNodeId("file:a.ts")).toBe("a.ts");
+      expect(fileOfNodeId("fn:x@a.ts")).toBe("a.ts");
+      expect(fileOfNodeId("knowledge:abc")).toBe(null);
+      const snapshot = buildSnapshot();
+      const shards = splitSnapshotIntoShards(snapshot);
+      const unattributed = shards.find((shard) => shard.file === UNATTRIBUTED_SHARD);
+      const callSites = snapshot.nodes.filter((node) => node.kind === "call-site");
+      for (const node of callSites) {
+        expect(unattributed?.nodes.some((other) => other.id === node.id) ?? false).toBe(false);
+      }
+    },
+  );
+
   it(
     "#given a built snapshot #when it is sharded and rejoined #then every node, edge and content entry survives",
     () => {

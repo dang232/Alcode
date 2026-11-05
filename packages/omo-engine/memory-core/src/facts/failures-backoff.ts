@@ -145,4 +145,4 @@ export function clearForRetry(
   })
 }
 
-export { type FactsFailureReason, type FactsFailureRecord } from "./failures-schema"
+export { type FactsFailureRecord } from "./failures-schema"

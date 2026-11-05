@@ -126,9 +126,9 @@ function lruEvictable(context: LifecycleContext, residents: readonly TaskRecord[
 // section contains ONLY record reads and store.mutate claims - no respawn I/O, no filesystem
 // deletion, no process spawning - so it stays short by construction.
 
-export type BatchAdmissionDeferral = "capacity" | "lock_contended" | "foreign_live_owner" | "lease_lost"
+type BatchAdmissionDeferral = "capacity" | "lock_contended" | "foreign_live_owner" | "lease_lost"
 
-export type BatchAdmissionOutcome =
+type BatchAdmissionOutcome =
   | { readonly task_id: string; readonly kind: "claimed" }
   | { readonly task_id: string; readonly kind: "deferred"; readonly reason: BatchAdmissionDeferral }
 

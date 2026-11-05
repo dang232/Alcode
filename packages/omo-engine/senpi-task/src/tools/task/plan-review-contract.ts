@@ -15,7 +15,7 @@ const PLAN_PATH_GLOBAL = /[^\s"'`()\[\]]*\.omo[\\/]plans[\\/][^\s"'`()\[\]/\\]+\
 export const PLAN_REVIEW_DENY_MESSAGE =
   "plan-reviewer requires exactly one .omo/plans/*.md path: include the plan path in the prompt, or touch the plan file in this session first."
 
-export function extractPlanPaths(text: string): readonly string[] {
+function extractPlanPaths(text: string): readonly string[] {
   const seen = new Set<string>()
   const paths: string[] = []
   for (const match of text.matchAll(PLAN_PATH_GLOBAL)) {
@@ -27,9 +27,9 @@ export function extractPlanPaths(text: string): readonly string[] {
   return paths
 }
 
-export type PlanReviewTarget = { readonly kind: "path"; readonly path: string } | { readonly kind: "deny"; readonly message: string }
+type PlanReviewTarget = { readonly kind: "path"; readonly path: string } | { readonly kind: "deny"; readonly message: string }
 
-export function resolvePlanReviewTarget(callerPrompt: string, state: SkillInvocationState): PlanReviewTarget {
+function resolvePlanReviewTarget(callerPrompt: string, state: SkillInvocationState): PlanReviewTarget {
   const references = state.planArtifactReferences()
   const explicit = extractPlanPaths(callerPrompt)
   if (explicit.length === 1) {
@@ -59,7 +59,7 @@ function planSuffix(path: string): string | undefined {
   return index === -1 ? undefined : normalized.slice(index)
 }
 
-export function buildPlanReviewPrompt(path: string): string {
+function buildPlanReviewPrompt(path: string): string {
   return `Review the work plan at ${path} for contradictions and blocking issues.`
 }
 

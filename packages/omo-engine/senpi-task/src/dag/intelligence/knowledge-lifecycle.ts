@@ -140,7 +140,7 @@ export function deriveAcceptedKnowledgeCandidate(
   return candidate === undefined ? undefined : { candidate, sourceFile }
 }
 
-export function mapCandidateToRecord(
+function mapCandidateToRecord(
   candidate: KnowledgeCandidate,
   context: {
     readonly projectId: string
@@ -181,7 +181,7 @@ export type AcceptedRunHookInput = {
  * Default hook body for the scheduler seam: reads the run's persisted verification records and
  * hands them to the lifecycle. Shaped for `DagSchedulerOptions.knowledgeHook`.
  */
-export async function recordAcceptedRunKnowledgeFromStore(
+async function recordAcceptedRunKnowledgeFromStore(
   input: AcceptedRunHookInput,
   env?: Record<string, string | undefined>,
 ): Promise<KnowledgeLifecycleResult> {

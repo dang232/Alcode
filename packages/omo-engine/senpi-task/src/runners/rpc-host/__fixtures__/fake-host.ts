@@ -17,7 +17,7 @@ import { handleWireLine, writeFrame, type FakeHostCommand, type FakeHostOpenFail
  * parks a session, holds a path while it drains, hands its socket to a newer generation, and dies.
  */
 
-export type { FakeHostCommand, FakeHostOpenFailure, FakeHostWarmAnswer } from "./fake-host-wire"
+export type { FakeHostCommand } from "./fake-host-wire"
 export type { FakeHostSession } from "./fake-host-sessions"
 
 export interface FakeHostOptions extends FakeHostIdentityOptions {

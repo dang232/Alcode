@@ -88,11 +88,3 @@ export function noteExecutionStart(sessionID: string): void {
   entryFor(sessionID).executeStarted = true;
 }
 
-/** Forget one session, or every session when no ID is given (teardown/tests). */
-export function resetGateFacts(sessionID?: string): void {
-  if (sessionID === undefined) {
-    factsBySession.clear();
-    return;
-  }
-  factsBySession.delete(sessionID);
-}

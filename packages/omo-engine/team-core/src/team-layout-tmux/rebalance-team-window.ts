@@ -46,19 +46,3 @@ export async function rebalanceTeamWindowWith(
 
   return true
 }
-
-export async function rebalanceTeamWindow(
-  windowId: string,
-  layout: RebalanceLayout,
-): Promise<boolean> {
-  const [{ log }, { runTmuxCommand }] = await Promise.all([
-    import("../logger"),
-    import("@oh-my-opencode/tmux-core"),
-  ])
-  const tmuxPath = "tmux"
-
-  return rebalanceTeamWindowWith(windowId, layout, {
-    runTmux: (args) => runTmuxCommand(tmuxPath, args),
-    log,
-  })
-}

@@ -40,7 +40,7 @@ export interface HostSessionChannel extends HostSessionPort {
   open(input: HostSessionOpenInput): Promise<OpenedHostSession>
 }
 
-export type { EnsureTaskDaemonPort, ShardResolver } from "./rpc-host/child-endpoint"
+export type { EnsureTaskDaemonPort } from "./rpc-host/child-endpoint"
 export type CreateHostSessionChannel = (socketPath: string) => HostSessionChannel
 
 /** The per-child runner this one delegates to when the daemon cannot host a child. */

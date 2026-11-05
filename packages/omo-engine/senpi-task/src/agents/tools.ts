@@ -4,7 +4,7 @@ import type { AgentToolRule } from "./types"
 
 const ToolActionSchema = z.enum(["allow", "deny", "ask"])
 
-export const ToolRuleEntrySchema = z.union([
+const ToolRuleEntrySchema = z.union([
   z.string(),
   z.object({
     pattern: z.string().optional(),

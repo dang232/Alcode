@@ -583,8 +583,13 @@ describe('code graph panel', () => {
     expect(container.textContent).toContain('Stale');
     expect(container.textContent).toContain('HEAD-MOVE');
     expect(container.textContent).toContain('engine exploded');
-    await clickButton('Refresh');
-    expect(requests.filter((entry) => entry.includes('refresh=1')).length).toBeGreaterThan(0);
+    // No manual refresh affordance: the panel keeps itself current through its
+    // own poll and the sync watcher, so a stale graph names the reason instead
+    // of offering a rebuild button.
+    const refreshLabels = Array.from(container.querySelectorAll('button'))
+      .map((button) => button.textContent?.trim() ?? '')
+      .filter((label) => label === 'Refresh');
+    expect(refreshLabels).toEqual([]);
   });
 
   test('shows the backend failure with a retry instead of a fake empty list', async () => {
@@ -799,7 +804,10 @@ describe('code graph panel', () => {
     expect(container.textContent).toContain('src');
 
     failExplore = true;
-    await clickButton('Refresh');
+    // No refresh button any more. A fresh mount is the deterministic way to ask
+    // for the query again, and the failure must surface rather than a fake empty
+    // list.
+    await render();
     await act(async () => {});
     await act(async () => {});
     expect(container.textContent).toContain('engine exploded');
@@ -2018,5 +2026,70 @@ describe('code graph trace and impact answers', () => {
 
     expect(container.textContent).toContain('No test path identified in the current graph');
     expect(container.textContent).not.toContain('Untested');
+  });
+});
+
+describe('code graph staleness banners', () => {
+  test('a referenced edited file renders the stale banner naming it', async () => {
+    const staleTriple = {
+      staleFiles: [{ file: 'math.ts', ageMs: 5000 }],
+      pendingSync: ['math.ts'],
+      syncStatus: 'ok',
+    };
+    stubFetch((url) => {
+      if (url.pathname === '/api/code-graph/index') return json(indexPayload());
+      if (url.searchParams.get('kind') === 'search') return json({ ...searchPayload, ...staleTriple });
+      if (url.searchParams.get('kind') === 'context') return json({ ...contextPayload, ...staleTriple });
+      if (url.searchParams.get('kind') === 'impact') return json(impactPayload);
+      if (url.searchParams.get('kind') === 'tests') return json(testsPayload);
+      return json({ error: 'unexpected' }, 500);
+    });
+
+    await render();
+    await typeSearch('add');
+
+    const banner = container.querySelector('[data-testid="code-graph-stale-files"]');
+    expect(banner !== null).toBe(true);
+    expect(banner?.textContent).toContain('math.ts');
+    expect(banner?.textContent).toContain('Read them directly');
+    expect(container.querySelector('[data-testid="code-graph-sync-disabled"]') === null).toBe(true);
+  });
+
+  test('an unreferenced pending file renders only the pending footer', async () => {
+    const footerTriple = { staleFiles: [], pendingSync: ['other.ts'], syncStatus: 'ok' };
+    stubFetch((url) => {
+      if (url.pathname === '/api/code-graph/index') return json(indexPayload());
+      if (url.searchParams.get('kind') === 'search') return json({ ...searchPayload, ...footerTriple });
+      if (url.searchParams.get('kind') === 'context') return json({ ...contextPayload, ...footerTriple });
+      if (url.searchParams.get('kind') === 'impact') return json(impactPayload);
+      if (url.searchParams.get('kind') === 'tests') return json(testsPayload);
+      return json({ error: 'unexpected' }, 500);
+    });
+
+    await render();
+    await typeSearch('add');
+
+    expect(container.querySelector('[data-testid="code-graph-stale-files"]') === null).toBe(true);
+    expect(container.querySelector('[data-testid="code-graph-sync-disabled"]') === null).toBe(true);
+    const footer = container.querySelector('[data-testid="code-graph-pending-footer"]');
+    expect(footer !== null).toBe(true);
+    expect(footer?.textContent).toContain('other.ts');
+  });
+
+  test('a disabled sync renders the whole-index banner', async () => {
+    stubFetch((url) => {
+      if (url.pathname === '/api/code-graph/index') {
+        return json({ ...indexPayload(), staleFiles: [], pendingSync: [], syncStatus: 'disabled' });
+      }
+      return json({ error: 'unexpected' }, 500);
+    });
+
+    await render();
+
+    const banner = container.querySelector('[data-testid="code-graph-sync-disabled"]');
+    expect(banner !== null).toBe(true);
+    expect(banner?.textContent).toContain('whole index may be stale');
+    expect(container.querySelector('[data-testid="code-graph-stale-files"]') === null).toBe(true);
+    expect(container.querySelector('[data-testid="code-graph-pending-footer"]') === null).toBe(true);
   });
 });

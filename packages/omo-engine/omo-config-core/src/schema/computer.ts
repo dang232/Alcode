@@ -37,9 +37,7 @@ export const OmoComputerSettingsLayerSchema = z
     "Experimental computer use in OmO Native: screenshots, windows, accessibility trees and native mouse and keyboard input. Every key is optional; defaults depend on the host.",
   )
 
-export const OmoComputerSettingsSchema = OmoComputerSettingsLayerSchema
-
-export type OmoComputerSettings = z.infer<typeof OmoComputerSettingsSchema>
+export type OmoComputerSettings = z.infer<typeof OmoComputerSettingsLayerSchema>
 
 type ComputerSettingKey = keyof OmoComputerSettings
 type ComputerSettingPath = `computer.${ComputerSettingKey}`

@@ -1,7 +1,10 @@
 ---
-mode: primary
+mode: subagent
 hidden: true
-permission: deny
+permissions:
+  - action: "*"
+    resource: "*"
+    effect: deny
 ---
 
 You are a provider smoke-test agent. Respond directly to the user's prompt without using tools.

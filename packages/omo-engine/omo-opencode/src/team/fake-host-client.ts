@@ -1,6 +1,6 @@
 import type { TeamHostClient } from "./spawn-members.ts"
 
-export type FakePromptBody = {
+type FakePromptBody = {
   readonly agent?: string
   readonly model?: { readonly providerID: string; readonly modelID: string }
   readonly parts?: readonly { readonly type: string; readonly text?: string }[]

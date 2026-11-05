@@ -15,7 +15,7 @@ import {
 import { DAG_VERIFICATION_DIRECTIVE } from "./dag-verification-directive"
 import type { CompletionDetails, ParentNotifierMessage } from "./types"
 
-export const FINAL_RESPONSE_TRANSPORT_LIMIT = 32_000
+const FINAL_RESPONSE_TRANSPORT_LIMIT = 32_000
 
 export type BuildDetailsOptions = {
   readonly tokens?: number

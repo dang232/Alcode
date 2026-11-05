@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { resolveStateDir } from "./state-dir"
 
 const cleanupRoots: string[] = []
-const claimRaceChildFixturePath = resolve(import.meta.dir, "__fixtures__", "claim-race-child.ts")
+const claimRaceChildFixturePath = fileURLToPath(
+  new URL("./__fixtures__/claim-race-child.ts", import.meta.url),
+)
 const frozenNowMs = 0x10 * 0x10000
 
 afterEach(() => {

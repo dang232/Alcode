@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const BrowserAutomationProviderSchema = z.enum([
+const BrowserAutomationProviderSchema = z.enum([
   "playwright",
   "dev-browser",
   "playwright-cli",
@@ -38,7 +38,3 @@ export const BrowserAutomationConfigSchema = z.object({
   playwright_mcp_args: z.array(z.string()).optional(),
 })
 
-export type BrowserAutomationProvider = z.infer<
-  typeof BrowserAutomationProviderSchema
->
-export type BrowserAutomationConfig = z.infer<typeof BrowserAutomationConfigSchema>

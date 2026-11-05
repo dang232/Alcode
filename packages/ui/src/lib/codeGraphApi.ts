@@ -18,7 +18,95 @@
  * its own.
  */
 
-import { runtimeFetch } from './runtime-fetch';
+import { runtimeFetch, type RuntimeFetchOptions } from './runtime-fetch';
+
+/**
+ * Client-side diagnostics. Disabled by default; enable in the browser console with
+ * `localStorage.setItem('alcode.codeGraph.debug', '1')` (same key read in tests
+ * via the `CODE_GRAPH_DEBUG_KEY`). When on, every route call logs one line at
+ * start and one at finish carrying a correlation id, the directory, kind,
+ * duration, outcome, and — when the server sent one — the generation, scope root,
+ * phase, and stalled flag, so a UI state can be correlated with the server job
+ * that produced it. Payload bodies, secrets, and tokens are never logged.
+ */
+export const CODE_GRAPH_DEBUG_KEY = 'alcode.codeGraph.debug';
+
+export const CODE_GRAPH_REQUEST_TIMEOUT_MS = 60_000;
+
+let codeGraphRequestSeq = 0;
+
+/** Correlation id for one panel-initiated request, carried on start/finish debug lines. */
+const mintCorrelationId = (): string => {
+  codeGraphRequestSeq += 1;
+  try {
+    const uuid = globalThis.crypto?.randomUUID?.();
+    if (isJsonText(uuid) && uuid.length > 0) return `${uuid.slice(0, 8)}-${codeGraphRequestSeq}`;
+  } catch {
+    // Fall through to the counter-only id below.
+  }
+  return `cg-${Date.now().toString(36)}-${codeGraphRequestSeq}`;
+};
+
+const isDebugEnabled = (): boolean => {
+  try {
+    return globalThis.localStorage?.getItem(CODE_GRAPH_DEBUG_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const debugLog = (message: string, detail?: Record<string, string | number | boolean | null | undefined>): void => {
+  if (!isDebugEnabled()) return;
+  try {
+    // eslint-disable-next-line no-console
+    console.debug(`[code-graph] ${message}`, detail ?? {});
+  } catch {
+    // Diagnostics must never break the request they observe.
+  }
+};
+
+/**
+ * Bounds a panel-initiated request. The index and query routes answer from
+ * memory (a pending job or a served snapshot), so tens of seconds without a
+ * byte means the server side is wedged, not slow: abort with a labelled
+ * error the panel already renders with its retry action instead of spinning
+ * forever. Callers may pass `timeoutMs` (tests use tens of milliseconds).
+ */
+const fetchWithTimeout = async (
+  url: string,
+  init: RuntimeFetchOptions,
+  label: string,
+  timeoutMs: number | undefined,
+): Promise<Response> => {
+  const budget = timeoutMs ?? CODE_GRAPH_REQUEST_TIMEOUT_MS;
+  const controller = new AbortController();
+  const callerSignal = init.signal ?? null;
+  const onCallerAbort = (): void => controller.abort();
+  if (callerSignal !== null) {
+    if (callerSignal.aborted) controller.abort();
+    else callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+  }
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(new Error(`${label} timed out after ${budget}ms without a server answer; the indexer may be wedged — retry once, then report the scope`));
+    }, budget);
+  });
+  try {
+    // Race, not just abort: a wedged transport may ignore the abort signal
+    // and never settle, so the timeout must reject on its own.
+    return await Promise.race([runtimeFetch(url, { ...init, signal: controller.signal }), timeout]);
+  } catch (error) {
+    if (timedOut) throw error;
+    throw error;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    callerSignal?.removeEventListener('abort', onCallerAbort);
+  }
+};
 
 export type CodeGraphFreshness = 'fresh' | 'stale' | 'unindexed';
 export type CodeGraphCoverage = 'indexed' | 'partial' | 'unindexed';
@@ -119,15 +207,49 @@ export interface CodeGraphFreshnessBinding {
   truncated?: boolean;
 }
 
+/** One edited-but-unsynced file an answer references: repo-relative path plus edit age. */
+export interface CodeGraphStaleFile {
+  file: string;
+  /** Milliseconds since the edit, when the server measured it; null for deletions. */
+  ageMs: number | null;
+}
+
+/** Whole-index sync health: `disabled`/`recovering` render the whole-index banner. */
+export type CodeGraphSyncStatus = 'ok' | 'disabled' | 'recovering';
+
+export interface CodeGraphIndexMetrics {
+  dirsVisited?: number;
+  filesDiscovered?: number;
+  symlinksSkipped?: number;
+  maxDepthSeen?: number;
+}
+
+export interface CodeGraphRepositoryTotals {
+  analyzedFiles?: number;
+  unanalyzedFiles?: number;
+  excludedFiles?: number;
+}
+
 export interface CodeGraphIndexSummary extends Partial<CodeGraphFreshnessBinding> {
   binding?: string;
   snapshotRoot?: string | null;
   nodeCount: number;
   edgeCount: number;
   entryCount: number;
+  entryCap?: number;
+  generation?: number;
   indexTruncated?: boolean;
+  truncationReason?: string | null;
   excludedCount?: number;
   excludedSample?: string[];
+  scopeRoot?: string | null;
+  scopeMode?: string | null;
+  metrics?: CodeGraphIndexMetrics | null;
+  nestedRepoRoots?: string[];
+  /** Working-tree dirtiness of the indexed scope, exactly as the server reports it. */
+  dirty?: string | null;
+  /** Why the scope reads dirty, when the server says so. */
+  dirtyReason?: string | null;
   /**
    * False while a build runs and nothing has been published yet. The panel must
    * render progress from `indexState` instead of an empty graph, and must not
@@ -135,6 +257,22 @@ export interface CodeGraphIndexSummary extends Partial<CodeGraphFreshnessBinding
    */
   ready?: boolean;
   indexState?: CodeGraphIndexState;
+  /**
+   * Edited-but-unsynced files this scope references, repo-relative with edit
+   * age. Empty when fully synced; the panel banners exactly these with the
+   * Read-directly instruction.
+   */
+  staleFiles?: CodeGraphStaleFile[];
+  /**
+   * Every path pending re-index, referenced or not. The banner names
+   * `staleFiles`; the rest renders as a small footer.
+   */
+  pendingSync?: string[];
+  /**
+   * Whole-index sync health. `disabled` (explicit opt-out) and `recovering`
+   * (blind status probe) render the whole-index banner instead.
+   */
+  syncStatus?: CodeGraphSyncStatus;
 }
 
 /**
@@ -150,7 +288,14 @@ export interface CodeGraphIndexState {
   projectsTotal?: number;
   startedAtMs?: number | null;
   error?: string | null;
+  truncationReason?: string | null;
   generation?: number | null;
+  /** Milliseconds since the job started, when the server reported it. */
+  elapsedMs?: number;
+  /** Last time the server observed build progress, when reported. */
+  lastProgressAtMs?: number;
+  /** True when building but silent past the server watchdog threshold. */
+  stalled?: boolean;
   /**
    * Bounded projection of the projects analysed so far, carried on the progress
    * message while a build runs: the worker's loop is blocked by the build, so
@@ -270,8 +415,18 @@ export interface CodeGraphQueryResult extends Partial<CodeGraphFreshnessBinding>
   truncated?: boolean;
   /** True when the index walk skipped files, so `coverage` reads `partial`. */
   indexTruncated?: boolean;
+  truncationReason?: string | null;
   excludedCount?: number;
   excludedSample?: string[];
+  /** S6 visible budget: the entry cap behind this answer's generation. */
+  entryCap?: number;
+  scopeRoot?: string | null;
+  scopeMode?: string | null;
+  metrics?: CodeGraphIndexMetrics | null;
+  nestedRepoRoots?: string[];
+  repositoryTotals?: CodeGraphRepositoryTotals;
+  skippedDirs?: string[];
+  unreadableDirs?: string[];
   items: CodeGraphItem[];
   /** Present only on `kind: 'content'`: source-text hits with excerpts. */
   contentItems?: CodeGraphContentItem[];
@@ -310,6 +465,21 @@ export interface CodeGraphQueryResult extends Partial<CodeGraphFreshnessBinding>
   completenessReason?: CodeGraphCompletenessReason;
   /** Monotonic build identity, so a client never mixes rows across rebuilds. */
   generation?: number;
+  /**
+   * Edited-but-unsynced files this answer references, repo-relative with edit
+   * age. The panel prepends the warning banner naming exactly these.
+   */
+  staleFiles?: CodeGraphStaleFile[];
+  /**
+   * Every path pending re-index, referenced or not. Unreferenced entries
+   * render as a small footer, never in the banner.
+   */
+  pendingSync?: string[];
+  /**
+   * Whole-index sync health. `disabled`/`recovering` render the whole-index
+   * banner instead of the per-file one.
+   */
+  syncStatus?: CodeGraphSyncStatus;
 }
 
 export interface CodeGraphQueryInput {
@@ -324,6 +494,8 @@ export interface CodeGraphQueryInput {
   to?: string;
   limit?: number;
   refresh?: boolean;
+  /** Per-request budget override; the default bounds every panel-initiated call. */
+  timeoutMs?: number;
   /** Neighborhood depth for subject-bearing kinds; clamped to 1..3 when sent. */
   depth?: number;
   signal?: AbortSignal;
@@ -334,13 +506,27 @@ export interface CodeGraphQueryInput {
   contentDirectory?: string;
 }
 
-/** One repo-relative path bucket of indexed files, as the server grouped it. */
+/** One repo-relative path bucket of indexed files, as the server grouped it.
+ *
+ * Walk-measured coverage rides each bucket when the walk counted it:
+ * analyzed entry files, unanalyzed files by extension, and eligible files
+ * excluded (entry cap or skipped generated/vendored directories). Absent on
+ * older payloads; the toolbar reads them to name what the index does not
+ * see instead of presenting a partial module as fully understood. */
 export interface CodeGraphModule {
   name: string;
   fileCount: number;
   testFileCount: number;
   symbolCount: number;
   edgeCount: number;
+  /** Files the engine analyzed in this module. */
+  analyzedFiles?: number;
+  /** Files the engine never analyzes in this module. */
+  unanalyzedFiles?: number;
+  /** Unanalyzed files grouped by extension. */
+  unanalyzedByExtension?: Array<{ ext: string; count: number }>;
+  /** Files excluded as generated/vendored or cut by the entry cap. */
+  excludedFiles?: number;
   sampleSymbols: Array<{ id: string; file: string; name?: string; line?: number }>;
 }
 
@@ -506,12 +692,135 @@ const parseContentItems = (value: CodeGraphJsonField): CodeGraphContentItem[] =>
   return out;
 };
 
-/** Truncation counters shared by the index and query answers. */
+/** Truncation counters shared by the index and query answers.
+ *
+ * S6 visible budget: `entryCap` is the entry cap that produced the
+ * generation (`DEFAULT_MAX_ENTRY_FILES = 5000`, hard clamp 20000). The
+ * toolbar names it beside the exclusion count so a truncated scope reads
+ * as a budget, not a bare stale flag. */
 export interface CodeGraphIndexTruncation {
   indexTruncated?: boolean;
+  truncationReason?: string | null;
   excludedCount?: number;
   excludedSample?: string[];
+  entryCap?: number;
+  scopeRoot?: string | null;
+  scopeMode?: string | null;
+  metrics?: CodeGraphIndexMetrics | null;
+  nestedRepoRoots?: string[];
+  generation?: number;
 }
+
+const parseTruncationReason = (value: CodeGraphJsonField): string | null | undefined => {
+  const text = asText(value);
+  if (text === undefined) return undefined;
+  return text.length > 0 ? text : null;
+};
+
+const parseScopeRoot = (value: CodeGraphJsonField): string | null | undefined => {
+  const text = asText(value);
+  if (text === undefined) return undefined;
+  return text.length > 0 ? text : null;
+};
+
+const parseScopeMode = (value: CodeGraphJsonField): string | null | undefined => {
+  const text = asText(value);
+  if (text === undefined) return undefined;
+  return text.length > 0 ? text : null;
+};
+
+const parseMetrics = (value: CodeGraphJsonField): CodeGraphIndexMetrics | null | undefined => {
+  if (value === null) return null;
+  if (!isJsonRecord(value)) return undefined;
+  const out: CodeGraphIndexMetrics = {};
+  let seen = false;
+  for (const key of ['dirsVisited', 'filesDiscovered', 'symlinksSkipped', 'maxDepthSeen'] as const) {
+    const count = value[key];
+    if (isFiniteJsonNumber(count)) {
+      out[key] = count;
+      seen = true;
+    }
+  }
+  return seen ? out : undefined;
+};
+
+const parseNestedRepoRoots = (value: CodeGraphJsonField): string[] | undefined => {
+  if (!isJsonArray(value)) return undefined;
+  const roots = asStringArray(value).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  return roots;
+};
+
+/**
+ * S2 per-file staleness. Every entry needs a non-empty repo-relative `file`;
+ * `ageMs` rides through when finite, else null (deletions). Malformed entries
+ * are dropped, never half-parsed. Absent stays `undefined`.
+ */
+const parseStaleFiles = (value: CodeGraphJsonField): CodeGraphStaleFile[] | undefined => {
+  if (!isJsonArray(value)) return undefined;
+  const out: CodeGraphStaleFile[] = [];
+  for (const entry of value) {
+    if (!isJsonRecord(entry)) continue;
+    const file = asNonEmptyText(entry.file);
+    if (file === undefined) continue;
+    out.push({ file, ageMs: isFiniteJsonNumber(entry.ageMs) ? entry.ageMs : null });
+  }
+  return out;
+};
+
+/** Pending-sync set: repo-relative paths pending re-index. Absent stays `undefined`. */
+const parsePendingSync = (value: CodeGraphJsonField): string[] | undefined => {
+  if (!isJsonArray(value)) return undefined;
+  return asStringArray(value).map((file) => file.trim()).filter((file) => file.length > 0);
+};
+
+/** Whole-index sync health. Unknown values stay `undefined`, never a guessed state. */
+const parseSyncStatus = (value: CodeGraphJsonField): CodeGraphSyncStatus | undefined => (
+  value === 'ok' || value === 'disabled' || value === 'recovering' ? value : undefined
+);
+
+const parseSkippedDirs = (value: CodeGraphJsonField): string[] | undefined => {
+  if (!isJsonArray(value)) return undefined;
+  return asStringArray(value);
+};
+
+const parseRepositoryTotals = (value: CodeGraphJsonField): CodeGraphRepositoryTotals | undefined => {
+  if (!isJsonRecord(value)) return undefined;
+  const out: CodeGraphRepositoryTotals = {};
+  let seen = false;
+  for (const key of ['analyzedFiles', 'unanalyzedFiles', 'excludedFiles'] as const) {
+    const count = value[key];
+    if (isFiniteJsonNumber(count)) {
+      out[key] = count;
+      seen = true;
+    }
+  }
+  return seen ? out : undefined;
+};
+
+const parsePartialModule = (value: CodeGraphJsonField): { module: string; count: number } | null => {
+  if (!isJsonRecord(value)) return null;
+  const module = asNonEmptyText(value.module);
+  if (module === undefined) return null;
+  return { module, count: isFiniteJsonNumber(value.count) ? value.count : 0 };
+};
+
+const parsePartialProjection = (value: CodeGraphJsonField): CodeGraphIndexState['partial'] | undefined => {
+  if (value === null) return null;
+  if (!isJsonRecord(value)) return undefined;
+  const partial: NonNullable<CodeGraphIndexState['partial']> = {};
+  if (isFiniteJsonNumber(value.nodes)) partial.nodes = value.nodes;
+  if (isFiniteJsonNumber(value.edges)) partial.edges = value.edges;
+  if (isJsonArray(value.modules)) {
+    const modules = [];
+    for (const entry of value.modules) {
+      const parsed = parsePartialModule(entry);
+      if (parsed) modules.push(parsed);
+    }
+    partial.modules = modules;
+  }
+  if (isFiniteJsonNumber(value.modulesTotal)) partial.modulesTotal = value.modulesTotal;
+  return partial;
+};
 
 const parseIndexState = (value: CodeGraphJsonField): CodeGraphIndexState | undefined => {
   if (!isJsonRecord(value)) return undefined;
@@ -521,6 +830,8 @@ const parseIndexState = (value: CodeGraphJsonField): CodeGraphIndexState | undef
   const failure = asText(value.error);
   if (failure !== undefined) state.error = failure;
   if (isFiniteJsonNumber(value.generation)) state.generation = value.generation;
+  const jobReason = parseTruncationReason(value.truncationReason);
+  if (jobReason !== undefined) state.truncationReason = jobReason;
   if (isFiniteJsonNumber(value.startedAtMs)) state.startedAtMs = value.startedAtMs;
   // Counts arrive either flattened (indexState) or inside the job's own
   // `progress` record; both describe the same measured work.
@@ -530,13 +841,31 @@ const parseIndexState = (value: CodeGraphJsonField): CodeGraphIndexState | undef
   if (isFiniteJsonNumber(progress.files)) state.files = progress.files;
   if (isFiniteJsonNumber(progress.projectsDone)) state.projectsDone = progress.projectsDone;
   if (isFiniteJsonNumber(progress.projectsTotal)) state.projectsTotal = progress.projectsTotal;
+  if (isFiniteJsonNumber(value.elapsedMs)) state.elapsedMs = value.elapsedMs;
+  else if (isFiniteJsonNumber(progress.elapsedMs)) state.elapsedMs = progress.elapsedMs;
+  if (isFiniteJsonNumber(value.lastProgressAtMs)) state.lastProgressAtMs = value.lastProgressAtMs;
+  if (value.stalled === true) state.stalled = true;
+  const partial = parsePartialProjection(value.partial);
+  if (partial !== undefined) state.partial = partial;
   return state;
 };
 
 const parseIndexTruncation = (value: CodeGraphJsonRecord): CodeGraphIndexTruncation => {  const truncation: CodeGraphIndexTruncation = {};
+  if (isFiniteJsonNumber(value.entryCap)) truncation.entryCap = value.entryCap;
   if (value.indexTruncated === true) truncation.indexTruncated = true;
+  const reason = parseTruncationReason(value.truncationReason);
+  if (reason !== undefined) truncation.truncationReason = reason;
   if (isFiniteJsonNumber(value.excludedCount)) truncation.excludedCount = value.excludedCount;
   if (isJsonArray(value.excludedSample)) truncation.excludedSample = asStringArray(value.excludedSample);
+  const scopeRoot = parseScopeRoot(value.scopeRoot);
+  if (scopeRoot !== undefined) truncation.scopeRoot = scopeRoot;
+  const scopeMode = parseScopeMode(value.scopeMode);
+  if (scopeMode !== undefined) truncation.scopeMode = scopeMode;
+  const metrics = parseMetrics(value.metrics);
+  if (metrics !== undefined) truncation.metrics = metrics;
+  const nested = parseNestedRepoRoots(value.nestedRepoRoots);
+  if (nested !== undefined) truncation.nestedRepoRoots = nested;
+  if (isFiniteJsonNumber(value.generation)) truncation.generation = value.generation;
   return truncation;
 };
 
@@ -680,14 +1009,23 @@ const parseModules = (value: CodeGraphJsonField): CodeGraphModule[] | undefined 
         samples.push(symbol);
       }
     }
-    out.push({
+    const bucket: CodeGraphModule = {
       name: entry.name,
       fileCount: countOrZero(entry, 'fileCount'),
       testFileCount: countOrZero(entry, 'testFileCount'),
       symbolCount: countOrZero(entry, 'symbolCount'),
       edgeCount: countOrZero(entry, 'edgeCount'),
       sampleSymbols: samples,
-    });
+    };
+    const analyzedFiles = optionalCount(entry, 'analyzedFiles');
+    if (analyzedFiles !== undefined) bucket.analyzedFiles = analyzedFiles;
+    const unanalyzedFiles = optionalCount(entry, 'unanalyzedFiles');
+    if (unanalyzedFiles !== undefined) bucket.unanalyzedFiles = unanalyzedFiles;
+    const unanalyzedByExtension = parseUnanalyzedByExtension(entry.unanalyzedByExtension);
+    if (unanalyzedByExtension) bucket.unanalyzedByExtension = unanalyzedByExtension;
+    const excludedFiles = optionalCount(entry, 'excludedFiles');
+    if (excludedFiles !== undefined) bucket.excludedFiles = excludedFiles;
+    out.push(bucket);
   }
   return out;
 };
@@ -971,17 +1309,26 @@ export const cancelCodeGraphIndex = async (
 
 export const fetchCodeGraphIndex = async (
   directory: string | null | undefined,
-  options: { signal?: AbortSignal; refresh?: boolean } = {},
+  options: { signal?: AbortSignal; refresh?: boolean; timeoutMs?: number } = {},
 ): Promise<CodeGraphIndexSummary> => {
   const resolved = requireDirectory(directory);
+  const startedAt = Date.now();
+  const correlationId = mintCorrelationId();
+  debugLog('index request started', { correlationId, directory: resolved, refresh: options.refresh === true });
   const query: CodeGraphIndexQueryParams = { directory: resolved };
   if (options.refresh) query.refresh = '1';
-  const response = await runtimeFetch(`${BASE_PATH}/index`, {
-    query,
-    directory: resolved,
-    cache: 'no-store',
-    signal: options.signal,
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${BASE_PATH}/index`, {
+      query,
+      directory: resolved,
+      cache: 'no-store',
+      signal: options.signal,
+    }, 'Code graph index request', options.timeoutMs);
+  } catch (error) {
+    debugLog('index request failed', { correlationId, directory: resolved, elapsedMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
   if (!response.ok) {
     return failed(response, 'Failed to load code graph index');
   }
@@ -1004,8 +1351,20 @@ export const fetchCodeGraphIndex = async (
   };
   const binding = asText(payload.binding);
   if (binding !== undefined) summary.binding = binding;
+  const staleFiles = parseStaleFiles(payload.staleFiles);
+  if (staleFiles !== undefined) summary.staleFiles = staleFiles;
+  const pendingSync = parsePendingSync(payload.pendingSync);
+  if (pendingSync !== undefined) summary.pendingSync = pendingSync;
+  const syncStatus = parseSyncStatus(payload.syncStatus);
+  if (syncStatus !== undefined) summary.syncStatus = syncStatus;
   const snapshotRoot = asNonEmptyText(payload.snapshotRoot);
   if (snapshotRoot !== undefined) summary.snapshotRoot = snapshotRoot;
+  if (isFiniteJsonNumber(payload.entryCap)) summary.entryCap = payload.entryCap;
+  const dirty = asText(payload.dirty);
+  if (dirty !== undefined) summary.dirty = dirty;
+  const dirtyReason = asText(payload.dirtyReason);
+  if (dirtyReason !== undefined) summary.dirtyReason = dirtyReason;
+  debugLog('index request finished', { correlationId, directory: resolved, elapsedMs: Date.now() - startedAt, ready: summary.ready === true, freshness: summary.freshness ?? 'unknown', generation: summary.generation ?? null, scopeRoot: summary.scopeRoot ?? null, state: summary.indexState?.state ?? null, phase: summary.indexState?.phase ?? null, stalled: summary.indexState?.stalled === true });
   return summary;
 };
 
@@ -1052,12 +1411,22 @@ export const queryCodeGraph = async (
   if (input.language) query.language = input.language;
   if (input.contentKind) query.contentKind = input.contentKind;
   if (input.contentDirectory) query.contentDirectory = input.contentDirectory;
-  const response = await runtimeFetch(`${BASE_PATH}/query`, {
-    query,
-    directory: resolved,
-    cache: 'no-store',
-    signal: input.signal,
-  });
+  const startedAt = Date.now();
+  const correlationId = mintCorrelationId();
+  debugLog('query request started', { correlationId, directory: resolved, kind: input.kind });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${BASE_PATH}/query`, {
+      query,
+      directory: resolved,
+      cache: 'no-store',
+      signal: input.signal,
+    }, `Code graph ${input.kind} query`, input.timeoutMs);
+  } catch (error) {
+    debugLog('query request failed', { correlationId, directory: resolved, kind: input.kind, elapsedMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
+  debugLog('query request finished', { correlationId, directory: resolved, kind: input.kind, elapsedMs: Date.now() - startedAt, status: response.status });
   if (!response.ok) {
     return failed(response, 'Failed to query code graph');
   }
@@ -1138,5 +1507,17 @@ export const queryCodeGraph = async (
   if (completenessReason !== undefined) result.completenessReason = completenessReason;
   const generation = parseGeneration(payload.generation);
   if (generation !== undefined) result.generation = generation;
+  const repositoryTotals = parseRepositoryTotals(payload.repositoryTotals);
+  if (repositoryTotals) result.repositoryTotals = repositoryTotals;
+  const staleFiles = parseStaleFiles(payload.staleFiles);
+  if (staleFiles !== undefined) result.staleFiles = staleFiles;
+  const pendingSync = parsePendingSync(payload.pendingSync);
+  if (pendingSync !== undefined) result.pendingSync = pendingSync;
+  const syncStatus = parseSyncStatus(payload.syncStatus);
+  if (syncStatus !== undefined) result.syncStatus = syncStatus;
+  const skippedDirs = parseSkippedDirs(payload.skippedDirs);
+  if (skippedDirs) result.skippedDirs = skippedDirs;
+  const unreadableDirs = parseSkippedDirs(payload.unreadableDirs);
+  if (unreadableDirs) result.unreadableDirs = unreadableDirs;
   return result;
 };

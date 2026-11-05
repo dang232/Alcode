@@ -74,6 +74,56 @@ describe('code graph client', () => {
     expect(summary.revision).toBeUndefined();
   });
 
+  test('a stalled build keeps its phase and carries elapsed time with the stall flag', async () => {
+    stubFetchByQuery(() => ({
+      ready: false,
+      freshness: 'unindexed',
+      projectId: null,
+      worktreeId: null,
+      revision: null,
+      fingerprint: null,
+      nodeCount: 0,
+      edgeCount: 0,
+      entryCount: 0,
+      indexState: { state: 'analyzing', phase: 'projects', files: 5000, projectsDone: 4, projectsTotal: 23, startedAtMs: 1000, elapsedMs: 400000, lastProgressAtMs: 2000, stalled: true, partial: { nodes: 120, edges: 90, modules: [{ module: 'a/b', count: 3 }], modulesTotal: 1 } },
+    }));
+
+    const summary = await fetchCodeGraphIndex('/home/me/repo');
+
+    expect(summary.ready).toBe(false);
+    expect(summary.indexState?.state).toBe('analyzing');
+    expect(summary.indexState?.phase).toBe('projects');
+    expect(summary.indexState?.elapsedMs).toBe(400000);
+    expect(summary.indexState?.partial).toEqual({ nodes: 120, edges: 90, modules: [{ module: 'a/b', count: 3 }], modulesTotal: 1 });
+    expect(summary.indexState?.lastProgressAtMs).toBe(2000);
+    expect(summary.indexState?.stalled).toBe(true);
+    expect(summary.indexState?.error ?? null).toBe(null);
+  });
+
+  test('an explore answer during a build parses as unindexed with partial modules attached', async () => {
+    stubFetchByQuery(() => ({
+      kind: 'explore',
+      freshness: 'unindexed',
+      coverage: 'unindexed',
+      knowledgeIds: [],
+      unresolved: ['index analyzing: no graph published yet for this directory'],
+      unsupported: [],
+      items: [],
+      totals: { displayed: 0, known: 0, hidden: 0 },
+      modules: [{ name: 'a/b', fileCount: 0, testFileCount: 0, symbolCount: 0, edgeCount: 0, sampleSymbols: [] }],
+      files: [],
+      truncated: true,
+      indexState: { state: 'analyzing', phase: 'projects', projectsDone: 1, projectsTotal: 4 },
+    }));
+
+    const answer = await queryCodeGraph('/home/me/repo', { kind: 'explore' });
+
+    expect(answer.coverage).toBe('unindexed');
+    expect(answer.modules?.length).toBe(1);
+    expect(answer.modules?.[0].name).toBe('a/b');
+    expect(answer.indexState?.state).toBe('analyzing');
+  });
+
   test('an explore answer keeps the module buckets the server derived', async () => {
     stubFetchByQuery(() => ({
       ...indexPayload(),

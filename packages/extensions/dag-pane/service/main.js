@@ -34,25 +34,35 @@ var __esm = (fn, res, err) => () => {
 // ../../../web/server/lib/code-graph/code-graph.bundle.js
 var exports_code_graph_bundle = {};
 __export(exports_code_graph_bundle, {
+  FILE_RECORDS_VERSION: () => FILE_RECORDS_VERSION,
   MAX_CONTENT_TOKENS_PER_FILE: () => MAX_CONTENT_TOKENS_PER_FILE,
+  PARSER_RECORD_VERSION: () => PARSER_RECORD_VERSION,
   SNAPSHOT_STORE_VERSION: () => SNAPSHOT_STORE_VERSION,
   STALE_AFTER_MS: () => STALE_AFTER_MS,
   computeScopeFingerprint: () => computeScopeFingerprint,
   createSnapshotManifest: () => createSnapshotManifest,
+  exportSurfaceKey: () => exportSurfaceKey,
+  fileOfNodeId: () => fileOfNodeId,
   findTests: () => findTests,
   findUnreferenced: () => findUnreferenced,
+  fingerprintBytes: () => fingerprintBytes,
+  fingerprintContent: () => fingerprintContent,
   impact: () => impact,
   indexFiles: () => indexFiles,
   joinSnapshotShards: () => joinSnapshotShards,
+  parseFileRecordsDoc: () => parseFileRecordsDoc,
   parseSnapshotManifest: () => parseSnapshotManifest,
   parseSnapshotShard: () => parseSnapshotShard,
+  rebuildIncremental: () => rebuildIncremental,
   search: () => search,
   searchContent: () => searchContent,
+  serializeFileRecordsDoc: () => serializeFileRecordsDoc,
   serializeSnapshotManifest: () => serializeSnapshotManifest,
   serializeSnapshotShard: () => serializeSnapshotShard,
   splitSnapshotIntoShards: () => splitSnapshotIntoShards,
   symbolContext: () => symbolContext,
-  trace: () => trace
+  trace: () => trace,
+  validateFileRecords: () => validateFileRecords
 });
 import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -65,6 +75,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { closeSync, openSync, readSync, writeSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 function unescapeLeadingUnderscores(identifier) {
   const id = identifier;
   return id.length >= 3 && id.charCodeAt(0) === CharacterCodes._ && id.charCodeAt(1) === CharacterCodes._ && id.charCodeAt(2) === CharacterCodes._ ? id.slice(1) : id;
@@ -6093,6 +6104,14 @@ function termsInOrder(line, terms) {
   }
   return true;
 }
+function buildFailure(code, message) {
+  return Object.assign(new Error(message), { code, name: code === "CANCELLED" ? "AbortError" : "Error" });
+}
+function throwIfAborted(signal) {
+  if (signal?.aborted === true) {
+    throw buildFailure("CANCELLED", "code-graph: indexing cancelled (AbortSignal aborted)");
+  }
+}
 function isTestPath(path2) {
   const normalized = path2.replace(/\\/g, "/");
   return /(^|\/)__tests__\//.test(normalized) || /\.test\.[cm]?[tj]sx?$/.test(normalized) || /\.spec\.[cm]?[tj]sx?$/.test(normalized) || /(^|\/)(test|tests)\//.test(normalized);
@@ -6216,6 +6235,9 @@ class GraphBuilder {
       byFile[entry.file] = entry;
     const skipped = [...this.contentSkipped].sort((left, right) => left.file < right.file ? -1 : 1);
     return { nodes, edges, content: { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: byFile, skipped } };
+  }
+  size() {
+    return { nodes: this.nodes.size, edges: this.edges.size, files: this.files.size };
   }
   addEntries(project, entries) {
     const program = project.program;
@@ -6752,6 +6774,11 @@ class GraphBuilder {
 function indexFiles(entryFiles, options = {}) {
   if (entryFiles.length === 0)
     return { nodes: [], edges: [], content: emptyContentIndex() };
+  throwIfAborted(options.signal);
+  const maxFiles = options.budgets?.maxFiles;
+  if (maxFiles !== undefined && Number.isFinite(maxFiles) && entryFiles.length > maxFiles) {
+    throw buildFailure("BUDGET_FILES", `code-graph: entry budget exceeded (${entryFiles.length} entries > maxFiles ${maxFiles})`);
+  }
   const absoluteEntries = entryFiles.map((entry) => resolve(entry));
   if (options.rootDir === undefined) {
     const root = commonDir(absoluteEntries.map(toPosixPath));
@@ -6788,10 +6815,34 @@ function indexFiles(entryFiles, options = {}) {
 function buildGraph(absoluteEntries, root, strictRoot, options) {
   const tsserverPath = options.tsserverPath ?? defaultTsServerPath();
   const report = options.onProgress;
+  const signal = options.signal;
+  const budgets = options.budgets;
+  const generation = options.generation;
+  const startMs = Date.now();
+  const elapsed = () => Date.now() - startMs;
+  const checkTimeBudget = () => {
+    const maxMs = budgets?.maxMs;
+    if (maxMs !== undefined && Number.isFinite(maxMs) && elapsed() > maxMs) {
+      throw buildFailure("BUDGET_TIME", `code-graph: time budget exceeded (${elapsed()}ms > maxMs ${maxMs})`);
+    }
+  };
+  const checkSizeBudgets = (size) => {
+    const maxNodes = budgets?.maxNodes;
+    if (maxNodes !== undefined && Number.isFinite(maxNodes) && size.nodes > maxNodes) {
+      throw buildFailure("BUDGET_NODES", `code-graph: node budget exceeded (${size.nodes} nodes > maxNodes ${maxNodes})`);
+    }
+    const maxEdges = budgets?.maxEdges;
+    if (maxEdges !== undefined && Number.isFinite(maxEdges) && size.edges > maxEdges) {
+      throw buildFailure("BUDGET_EDGES", `code-graph: edge budget exceeded (${size.edges} edges > maxEdges ${maxEdges})`);
+    }
+  };
+  throwIfAborted(signal);
   const api = new API({ tsserverPath, cwd: root });
   try {
     const snapshot = api.updateSnapshot({ openFiles: [...absoluteEntries] });
-    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0 });
+    throwIfAborted(signal);
+    checkTimeBudget();
+    report?.({ phase: "program", files: absoluteEntries.length, projectsDone: 0, projectsTotal: 0, elapsedMs: elapsed(), generation });
     try {
       const builder = new GraphBuilder(root, strictRoot);
       const byProject = new Map;
@@ -6808,17 +6859,29 @@ function buildGraph(absoluteEntries, root, strictRoot, options) {
       const projectsTotal = byProject.size;
       let projectsDone = 0;
       for (const [project, entries] of byProject) {
+        throwIfAborted(signal);
+        checkTimeBudget();
         builder.addEntries(project, entries);
         projectsDone += 1;
-        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal });
+        const size = builder.size();
+        checkSizeBudgets(size);
+        checkTimeBudget();
+        throwIfAborted(signal);
+        report?.({ phase: "projects", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: size.nodes, edges: size.edges, elapsedMs: elapsed(), generation });
         if (options.onPartialSnapshot !== undefined && projectsDone < projectsTotal) {
           options.onPartialSnapshot(builder.snapshot(), { projectsDone, projectsTotal });
         }
       }
-      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal });
+      throwIfAborted(signal);
+      checkTimeBudget();
+      const preEdges = builder.size();
+      report?.({ phase: "edges", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: preEdges.nodes, edges: preEdges.edges, elapsedMs: elapsed(), generation });
       builder.addKnowledgeLinks(options.knowledge ?? []);
       const snapshotOut = builder.snapshot();
-      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal });
+      checkSizeBudgets({ nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length });
+      checkTimeBudget();
+      throwIfAborted(signal);
+      report?.({ phase: "done", files: absoluteEntries.length, projectsDone, projectsTotal, nodes: snapshotOut.nodes.length, edges: snapshotOut.edges.length, elapsedMs: elapsed(), generation });
       return { snapshot: snapshotOut, dropped: builder.dropped };
     } finally {
       snapshot.dispose();
@@ -8134,6 +8197,14 @@ function findUnreferenced(snapshot, options) {
 function fileOfNodeId(id) {
   if (id.startsWith("file:"))
     return id.slice("file:".length);
+  if (id.startsWith("call:")) {
+    const rest = id.slice("call:".length);
+    const parts = rest.split(":");
+    if (parts.length < 3)
+      return null;
+    const file = parts.slice(0, -2).join(":");
+    return file.length > 0 ? file : null;
+  }
   const at = id.lastIndexOf("@");
   if (at < 0)
     return null;
@@ -8199,7 +8270,8 @@ function createSnapshotManifest(snapshot, meta) {
     contentTokenCap: snapshot.content?.tokenCap ?? null,
     contentSkipped: snapshot.content?.skipped ?? [],
     dropped: snapshot.dropped ?? [],
-    shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file)
+    shards: splitSnapshotIntoShards(snapshot).map((shard) => shard.file),
+    ...meta.fileRecords !== undefined && meta.fileRecords !== null ? { fileRecords: meta.fileRecords } : {}
   };
 }
 function serializeSnapshotShard(shard) {
@@ -8254,7 +8326,8 @@ function parseSnapshotManifest(text) {
       contentTokenCap: Number.isFinite(parsed.contentTokenCap) ? Number(parsed.contentTokenCap) : null,
       contentSkipped: Array.isArray(parsed.contentSkipped) ? parsed.contentSkipped : [],
       dropped: Array.isArray(parsed.dropped) ? parsed.dropped : [],
-      shards: parsed.shards
+      shards: parsed.shards,
+      ...typeof parsed.fileRecords === "string" && parsed.fileRecords.length > 0 ? { fileRecords: parsed.fileRecords } : {}
     }
   };
 }
@@ -8310,7 +8383,202 @@ function joinSnapshotShards(manifest, shards) {
   };
   return { kind: "snapshot", snapshot };
 }
-var CompletionItemKind, DiagnosticCategory, ElementFlags, ModuleKind, NodeBuilderFlags, ObjectFlags, SignatureFlags, SignatureKind, SymbolFlags, TypeFlags, TypePredicateKind, CharacterCodes, CommentDirectiveType, InternalSymbolName, LanguageVariant, ModifierFlags, NodeFlags, RegularExpressionFlags, ScriptKind, ScriptTarget, SyntaxKind, TokenFlags, OuterExpressionKinds, visitEachChildTable, forEachChildTable, EscapeSequenceScanningFlags, textToKeywordObj, textToKeyword, textToToken, charCodeToRegExpFlag, jsDocTagTerminators, tokenStrings, childProperties, singleChildNodePropertyNames, PROTOCOL_VERSION = 5, HEADER_OFFSET_METADATA = 0, HEADER_OFFSET_HASH_LO0 = 4, HEADER_OFFSET_HASH_LO1 = 8, HEADER_OFFSET_HASH_HI0 = 12, HEADER_OFFSET_HASH_HI1 = 16, HEADER_OFFSET_PARSE_OPTIONS = 20, HEADER_OFFSET_STRING_TABLE_OFFSETS = 24, HEADER_OFFSET_STRING_TABLE = 28, HEADER_OFFSET_EXTENDED_DATA = 32, HEADER_OFFSET_STRUCTURED_DATA = 36, HEADER_OFFSET_NODES = 40, HEADER_SIZE = 44, NODE_LEN = 28, NODE_OFFSET_KIND = 0, NODE_OFFSET_POS = 4, NODE_OFFSET_END = 8, NODE_OFFSET_NEXT = 12, NODE_OFFSET_PARENT = 16, NODE_OFFSET_DATA = 20, NODE_OFFSET_FLAGS = 24, KIND_NODE_LIST = 4294967295, NODE_DATA_TYPE_CHILDREN = 0, NODE_DATA_TYPE_STRING = 1073741824, NODE_DATA_TYPE_EXTENDED = 2147483648, surrogateLeadByte = 237, surrogateSecondByteMin = 160, surrogateSecondByteMax = 191, continuationByteMin = 128, continuationByteMax = 191, Wtf8Decoder, MSGPACK_FIXARRAY3 = 147, MSGPACK_BIN8 = 196, MSGPACK_BIN16 = 197, MSGPACK_BIN32 = 198, MSGPACK_UINT8 = 204, encoder, decoder, NODE_FIELDS, NODE_FIELD_NEXT = 3, NO_STRUCTURED_DATA = 4294967295, _encoder, popcount8, NODE_DATA_TYPE_MASK = 3221225472, NODE_CHILD_MASK = 255, NODE_STRING_INDEX_MASK = 16777215, NODE_EXTENDED_DATA_MASK = 16777215, RemoteNodeList, RemoteNode, NO_STRUCTURED_DATA2 = 4294967295, RemoteSourceFile, CharacterCodesSlash = 47, CharacterCodesBackslash = 92, CharacterCodesColon = 58, CharacterCodesPercent = 37, CharacterCodes3 = 51, CharacterCodesa = 97, CharacterCodesz = 122, CharacterCodesA = 65, CharacterCodesZ = 90, CharacterCodesDot = 46, directorySeparator = "/", altDirectorySeparator = "\\", urlSchemeSeparator = "://", backslashRegExp, relativePathSegmentRegExp, bundledScheme = "bundled:///", fsCallbackNames, MSG_REQUEST = 1, MSG_CALL_RESPONSE = 2, MSG_CALL_ERROR = 3, MSG_RESPONSE = 4, MSG_ERROR = 5, MSG_CALL = 6, sleepBuf, EMPTY_BUF, liveChildren, RECENT_REQUEST_CAPACITY = 5, Snapshot, STALE_AFTER_MS, MAX_CONTENT_TOKENS_PER_FILE = 5000, MAX_CONTENT_FILE_BYTES, CONTENT_SEARCH_TIME_BUDGET_MS = 1000, CONTENT_DEFAULT_LIMIT = 20, CONTENT_MAX_LIMIT = 50, LANGUAGE_ALIASES, STATIC_CONFIDENCE = 1, UNRESOLVED_CONFIDENCE = 0.5, UNKNOWN = "unknown", RECORD_ID, MAX_ALIAS_DEPTH = 10, SEARCH_RANK, DEFAULT_RESULT_LIMIT = 20, MAX_RESULT_LIMIT = 50, MAX_EXPLORED_EDGES = 20000, DEFAULT_QUERY_BUDGET_MS = 2000, MAX_QUERY_BUDGET_MS = 60000, DEFAULT_MAX_DEPTH = 5, MAX_DEPTH_LIMIT = 10, SUPPORTED_FILE, KIND_PRIORITY, CONFIRMED_EVIDENCE_KINDS, snapshotIndexes, UNANALYZED_NOTE, SNAPSHOT_STORE_VERSION = 1, UNATTRIBUTED_SHARD = "__unattributed__";
+function exportSurfaceKey(shard) {
+  const parts = [];
+  for (const node of shard.nodes ?? []) {
+    if (node.kind === "export-contract")
+      parts.push(`contract:${node.id}=>${node.target ?? ""}`);
+  }
+  for (const edge of shard.edges ?? []) {
+    if (edge.kind === "EXPORTS")
+      parts.push(`exports:${edge.id}`);
+  }
+  return parts.sort().join(`
+`);
+}
+function fingerprintContent(text) {
+  return createHash2("sha256").update(text, "utf8").digest("hex");
+}
+function fingerprintBytes(bytes) {
+  return createHash2("sha256").update(bytes).digest("hex");
+}
+function parseFileRecordsDoc(value) {
+  if (!isRecord22(value))
+    return null;
+  if (value.version !== FILE_RECORDS_VERSION)
+    return null;
+  if (value.parser !== PARSER_RECORD_VERSION)
+    return null;
+  if (value.schema !== SNAPSHOT_STORE_VERSION)
+    return null;
+  if (!isRecord22(value.files))
+    return null;
+  const files = {};
+  for (const [key, entry] of Object.entries(value.files)) {
+    if (typeof key !== "string" || key.length === 0)
+      return null;
+    if (!isRecord22(entry))
+      return null;
+    if (entry.file !== key || !isHex64(entry.blob))
+      return null;
+    const size = entry.size;
+    const mtimeMs = entry.mtimeMs;
+    const stat = typeof size === "number" && Number.isFinite(size) && size >= 0 && typeof mtimeMs === "number" && Number.isFinite(mtimeMs) && mtimeMs >= 0 ? { size, mtimeMs } : undefined;
+    files[key] = stat === undefined ? { file: key, blob: entry.blob } : { file: key, blob: entry.blob, ...stat };
+  }
+  return { version: FILE_RECORDS_VERSION, parser: PARSER_RECORD_VERSION, schema: SNAPSHOT_STORE_VERSION, files };
+}
+function serializeFileRecordsDoc(doc) {
+  const files = {};
+  for (const key of Object.keys(doc.files).sort()) {
+    const entry = doc.files[key];
+    files[key] = entry.size !== undefined && entry.mtimeMs !== undefined ? { file: entry.file, blob: entry.blob, size: entry.size, mtimeMs: entry.mtimeMs } : { file: entry.file, blob: entry.blob };
+  }
+  return JSON.stringify({ version: doc.version, parser: doc.parser, schema: doc.schema, files });
+}
+function validateFileRecords(doc, current) {
+  const reused = new Set;
+  const changed = new Set;
+  const added = new Set;
+  const deleted = new Set;
+  if (doc === null) {
+    for (const file of current.keys())
+      added.add(file);
+    return { reused, changed, added, deleted };
+  }
+  for (const [file, blob] of current) {
+    const record = doc.files[file];
+    if (record === undefined)
+      added.add(file);
+    else if (record.blob === blob)
+      reused.add(file);
+    else
+      changed.add(file);
+  }
+  for (const file of Object.keys(doc.files)) {
+    if (!current.has(file))
+      deleted.add(file);
+  }
+  return { reused, changed, added, deleted };
+}
+function rebuildIncremental(previous, changedFiles, freshChanged) {
+  const previousShards = splitSnapshotIntoShards(previous);
+  const keptShards = [];
+  for (const shard of previousShards) {
+    if (!changedFiles.has(shard.file))
+      keptShards.push(shard);
+  }
+  const freshShards = splitSnapshotIntoShards(freshChanged);
+  const changedFreshShards = [];
+  for (const shard of freshShards) {
+    if (changedFiles.has(shard.file))
+      changedFreshShards.push(shard);
+  }
+  const nodeById = new Map;
+  for (const shard of keptShards) {
+    for (const node of shard.nodes) {
+      if (!nodeById.has(node.id))
+        nodeById.set(node.id, node);
+    }
+  }
+  for (const shard of changedFreshShards) {
+    for (const node of shard.nodes)
+      nodeById.set(node.id, node);
+  }
+  const fileOfId = (id) => {
+    if (id === "unknown")
+      return null;
+    const known = nodeById.get(id);
+    if (known !== undefined && typeof known.file === "string" && known.file.length > 0)
+      return known.file;
+    return fileOfNodeId(id);
+  };
+  let invalidatedEdges = 0;
+  const keptEdges = [];
+  for (const shard of keptShards) {
+    for (const edge of shard.edges) {
+      const fromFile = fileOfId(edge.from);
+      const toFile = fileOfId(edge.to);
+      const fromAlive = nodeById.has(edge.from);
+      const toAlive = edge.to === "unknown" || nodeById.has(edge.to);
+      if (!fromAlive || !toAlive) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      if (fromFile === null && toFile === null) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      if (fromFile !== null && changedFiles.has(fromFile)) {
+        invalidatedEdges += 1;
+        continue;
+      }
+      keptEdges.push(edge);
+    }
+  }
+  const seenEdgeIds = new Set(keptEdges.map((edge) => edge.id));
+  const freshEdges = [];
+  for (const shard of changedFreshShards) {
+    for (const edge of shard.edges) {
+      if (seenEdgeIds.has(edge.id))
+        continue;
+      seenEdgeIds.add(edge.id);
+      freshEdges.push(edge);
+    }
+  }
+  const nodes = [...nodeById.values()].sort((a, b) => a.id < b.id ? -1 : 1);
+  const edges = [...keptEdges, ...freshEdges].sort((a, b) => a.id < b.id ? -1 : 1);
+  const byFile = {};
+  const skippedMap = new Map;
+  for (const entry of previous.content?.skipped ?? []) {
+    const fileOf = entry.file;
+    if (!changedFiles.has(fileOf))
+      skippedMap.set(fileOf, entry);
+  }
+  for (const entry of freshChanged.content?.skipped ?? []) {
+    skippedMap.set(entry.file, entry);
+  }
+  const prevFiles = previous.content?.files ?? {};
+  for (const entry of Object.entries(prevFiles)) {
+    const file = entry[0];
+    const record = entry[1];
+    if (!changedFiles.has(file))
+      byFile[file] = record;
+  }
+  const freshFiles = freshChanged.content?.files ?? {};
+  for (const entry of Object.entries(freshFiles)) {
+    const file = entry[0];
+    const record = entry[1];
+    if (changedFiles.has(file))
+      byFile[file] = record;
+  }
+  const mergedDroppedMap = new Map;
+  for (const drop of previous.dropped ?? [])
+    mergedDroppedMap.set(drop.file, drop);
+  for (const drop of freshChanged.dropped ?? [])
+    mergedDroppedMap.set(drop.file, drop);
+  for (const file of Object.keys(byFile)) {
+    for (const key of [...mergedDroppedMap.keys()]) {
+      if (key.endsWith("/" + file) || key === file)
+        mergedDroppedMap.delete(key);
+    }
+  }
+  const mergedDropped = [...mergedDroppedMap.values()].sort((a, b) => a.file < b.file ? -1 : 1);
+  const tokenCap = previous.content?.tokenCap ?? freshChanged.content?.tokenCap ?? 5000;
+  const snapshot = {
+    nodes,
+    edges,
+    content: {
+      tokenCap,
+      files: byFile,
+      skipped: [...skippedMap.values()].sort((a, b) => a.file < b.file ? -1 : 1)
+    },
+    ...previous.root !== undefined || freshChanged.root !== undefined ? { root: freshChanged.root ?? previous.root } : {},
+    ...mergedDropped.length > 0 ? { dropped: mergedDropped } : {}
+  };
+  return { snapshot, reusedFiles: keptShards.length, invalidatedEdges };
+}
+var CompletionItemKind, DiagnosticCategory, ElementFlags, ModuleKind, NodeBuilderFlags, ObjectFlags, SignatureFlags, SignatureKind, SymbolFlags, TypeFlags, TypePredicateKind, CharacterCodes, CommentDirectiveType, InternalSymbolName, LanguageVariant, ModifierFlags, NodeFlags, RegularExpressionFlags, ScriptKind, ScriptTarget, SyntaxKind, TokenFlags, OuterExpressionKinds, visitEachChildTable, forEachChildTable, EscapeSequenceScanningFlags, textToKeywordObj, textToKeyword, textToToken, charCodeToRegExpFlag, jsDocTagTerminators, tokenStrings, childProperties, singleChildNodePropertyNames, PROTOCOL_VERSION = 5, HEADER_OFFSET_METADATA = 0, HEADER_OFFSET_HASH_LO0 = 4, HEADER_OFFSET_HASH_LO1 = 8, HEADER_OFFSET_HASH_HI0 = 12, HEADER_OFFSET_HASH_HI1 = 16, HEADER_OFFSET_PARSE_OPTIONS = 20, HEADER_OFFSET_STRING_TABLE_OFFSETS = 24, HEADER_OFFSET_STRING_TABLE = 28, HEADER_OFFSET_EXTENDED_DATA = 32, HEADER_OFFSET_STRUCTURED_DATA = 36, HEADER_OFFSET_NODES = 40, HEADER_SIZE = 44, NODE_LEN = 28, NODE_OFFSET_KIND = 0, NODE_OFFSET_POS = 4, NODE_OFFSET_END = 8, NODE_OFFSET_NEXT = 12, NODE_OFFSET_PARENT = 16, NODE_OFFSET_DATA = 20, NODE_OFFSET_FLAGS = 24, KIND_NODE_LIST = 4294967295, NODE_DATA_TYPE_CHILDREN = 0, NODE_DATA_TYPE_STRING = 1073741824, NODE_DATA_TYPE_EXTENDED = 2147483648, surrogateLeadByte = 237, surrogateSecondByteMin = 160, surrogateSecondByteMax = 191, continuationByteMin = 128, continuationByteMax = 191, Wtf8Decoder, MSGPACK_FIXARRAY3 = 147, MSGPACK_BIN8 = 196, MSGPACK_BIN16 = 197, MSGPACK_BIN32 = 198, MSGPACK_UINT8 = 204, encoder, decoder, NODE_FIELDS, NODE_FIELD_NEXT = 3, NO_STRUCTURED_DATA = 4294967295, _encoder, popcount8, NODE_DATA_TYPE_MASK = 3221225472, NODE_CHILD_MASK = 255, NODE_STRING_INDEX_MASK = 16777215, NODE_EXTENDED_DATA_MASK = 16777215, RemoteNodeList, RemoteNode, NO_STRUCTURED_DATA2 = 4294967295, RemoteSourceFile, CharacterCodesSlash = 47, CharacterCodesBackslash = 92, CharacterCodesColon = 58, CharacterCodesPercent = 37, CharacterCodes3 = 51, CharacterCodesa = 97, CharacterCodesz = 122, CharacterCodesA = 65, CharacterCodesZ = 90, CharacterCodesDot = 46, directorySeparator = "/", altDirectorySeparator = "\\", urlSchemeSeparator = "://", backslashRegExp, relativePathSegmentRegExp, bundledScheme = "bundled:///", fsCallbackNames, MSG_REQUEST = 1, MSG_CALL_RESPONSE = 2, MSG_CALL_ERROR = 3, MSG_RESPONSE = 4, MSG_ERROR = 5, MSG_CALL = 6, sleepBuf, EMPTY_BUF, liveChildren, RECENT_REQUEST_CAPACITY = 5, Snapshot, STALE_AFTER_MS, MAX_CONTENT_TOKENS_PER_FILE = 5000, MAX_CONTENT_FILE_BYTES, CONTENT_SEARCH_TIME_BUDGET_MS = 1000, CONTENT_DEFAULT_LIMIT = 20, CONTENT_MAX_LIMIT = 50, LANGUAGE_ALIASES, STATIC_CONFIDENCE = 1, UNRESOLVED_CONFIDENCE = 0.5, UNKNOWN = "unknown", RECORD_ID, MAX_ALIAS_DEPTH = 10, SEARCH_RANK, DEFAULT_RESULT_LIMIT = 20, MAX_RESULT_LIMIT = 50, MAX_EXPLORED_EDGES = 20000, DEFAULT_QUERY_BUDGET_MS = 2000, MAX_QUERY_BUDGET_MS = 60000, DEFAULT_MAX_DEPTH = 5, MAX_DEPTH_LIMIT = 10, SUPPORTED_FILE, KIND_PRIORITY, CONFIRMED_EVIDENCE_KINDS, snapshotIndexes, UNANALYZED_NOTE, SNAPSHOT_STORE_VERSION = 1, UNATTRIBUTED_SHARD = "__unattributed__", PARSER_RECORD_VERSION = 1, FILE_RECORDS_VERSION = 1, isRecord22 = (value) => typeof value === "object" && value !== null && !Array.isArray(value), isHex64 = (value) => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 var init_code_graph_bundle = __esm(() => {
   (function(CompletionItemKind) {
     CompletionItemKind[CompletionItemKind["Text"] = 1] = "Text";
@@ -11976,7 +12244,7 @@ import { Buffer as Buffer3 } from "node:buffer";
 
 // handlers.js
 import { execFileSync } from "node:child_process";
-import { tmpdir as osTmpdir } from "node:os";
+import { tmpdir as osTmpdir, homedir as osHomedir } from "node:os";
 import { join as joinPath } from "node:path";
 import nodeFs from "node:fs";
 import { promises as nodeFsPromises } from "node:fs";
@@ -13138,7 +13406,7 @@ var cancelRun = (handle, reason, dependencies = {}) => {
 };
 
 // ../../../web/server/lib/code-graph/runtime.js
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 import { execFile } from "node:child_process";
 
 // ../../../web/server/lib/code-graph/snapshot-storage.js
@@ -13146,6 +13414,7 @@ import crypto from "node:crypto";
 var STORE_VERSION = 1;
 var safeSegment = (value) => String(value ?? "").replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 80);
 var shardName = (text) => `${crypto.createHash("sha256").update(text).digest("hex").slice(0, 32)}.json`;
+var recordsName = (text) => `files-${crypto.createHash("sha256").update(text).digest("hex").slice(0, 32)}.json`;
 var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
   const enabled = typeof storeDir === "string" && storeDir.length > 0;
   const scopeDir = (projectId, worktreeId) => path.join(storeDir, `${safeSegment(projectId)}--${safeSegment(worktreeId)}`);
@@ -13180,14 +13449,24 @@ var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
           await fsPromises.writeFile(target, text, "utf8");
           written += 1;
         }
+        let recordsNameWritten = null;
+        if (entry.fileRecords !== undefined && entry.fileRecords !== null) {
+          const recordsText = engine.serializeFileRecordsDoc(entry.fileRecords);
+          recordsNameWritten = recordsName(recordsText);
+          const recordsTarget = path.join(dir, recordsNameWritten);
+          const recordsThere = await fsPromises.stat(recordsTarget).then(() => true, () => false);
+          if (!recordsThere)
+            await fsPromises.writeFile(recordsTarget, recordsText, "utf8");
+        }
         const manifest = engine.createSnapshotManifest(entry.snapshot, {
           scope: entry.scope,
           observedAtMs: entry.observedAtMs,
           entryCap: entry.entryCap ?? 0,
-          entryCount: entry.entryCount ?? 0
+          entryCount: entry.entryCount ?? 0,
+          ...recordsNameWritten !== null ? { fileRecords: recordsNameWritten } : {}
         });
         await writeAtomic(path.join(dir, "manifest.json"), engine.serializeSnapshotManifest({ ...manifest, shards: names, storeVersion: STORE_VERSION }));
-        await this.prune(dir, new Set(names));
+        await this.prune(dir, new Set(recordsNameWritten !== null ? [...names, recordsNameWritten] : names));
         return { written: true, shards: names.length, writtenShards: written, reusedShards: reused };
       } catch (error) {
         return { written: false, reason: error instanceof Error ? error.message : String(error) };
@@ -13241,7 +13520,16 @@ var createSnapshotStorage = ({ fsPromises, path, engine, storeDir }) => {
       const joined = engine.joinSnapshotShards(manifest, shards);
       if (joined.kind !== "snapshot")
         return { status: "miss", reason: joined.reason };
-      return { status: "hit", snapshot: joined.snapshot, manifest };
+      let fileRecords = null;
+      if (typeof manifest.fileRecords === "string" && manifest.fileRecords.length > 0) {
+        try {
+          const recordsText = await fsPromises.readFile(path.join(dir, manifest.fileRecords), "utf8");
+          fileRecords = engine.parseFileRecordsDoc(JSON.parse(recordsText));
+        } catch {
+          fileRecords = null;
+        }
+      }
+      return { status: "hit", snapshot: joined.snapshot, manifest, fileRecords };
     },
     async clear(scope) {
       if (!enabled)
@@ -13261,15 +13549,41 @@ var loadEngine = () => {
   return enginePromise;
 };
 var GIT_STATUS_TTL_MS = 1500;
+var FAILURE_RETRY_COOLDOWN_MS = 60000;
+var MAX_UNREADABLE_FILES = 100;
 var DEFAULT_MAX_ENTRY_FILES = 5000;
 var HARD_MAX_ENTRY_FILES = 20000;
 var MAX_EXCLUDED_SAMPLE = 10;
+var MAX_CONFIG_FILES_SEEN = 64;
+var DEFAULT_MAX_DIRS_VISITED = 25000;
+var HARD_MAX_DIRS_VISITED = 1e5;
+var DEFAULT_MAX_FILES_DISCOVERED = 120000;
+var HARD_MAX_FILES_DISCOVERED = 500000;
+var DEFAULT_MAX_CANDIDATE_FILES = 20000;
+var DEFAULT_MAX_TRAVERSAL_DEPTH = 25;
+var HARD_MAX_TRAVERSAL_DEPTH = 64;
+var DEFAULT_MAX_FILE_SIZE_BYTES = 1048576;
+var DEFAULT_TRAVERSAL_TIME_BUDGET_MS = 30000;
+var clampInt = (value, fallback, min, max) => {
+  const num = Number(value);
+  if (!Number.isFinite(num))
+    return fallback;
+  return Math.min(max, Math.max(min, Math.floor(num)));
+};
 var resolveMaxEntryFiles = (value) => {
   if (value === undefined || value === null || !Number.isFinite(Number(value))) {
     return DEFAULT_MAX_ENTRY_FILES;
   }
   return Math.min(HARD_MAX_ENTRY_FILES, Math.max(1, Math.floor(Number(value))));
 };
+var resolveTraversalBudgets = (options = {}) => ({
+  maxDirsVisited: clampInt(options.maxDirsVisited, DEFAULT_MAX_DIRS_VISITED, 1, HARD_MAX_DIRS_VISITED),
+  maxFilesDiscovered: clampInt(options.maxFilesDiscovered, DEFAULT_MAX_FILES_DISCOVERED, 1, HARD_MAX_FILES_DISCOVERED),
+  maxCandidateFiles: clampInt(options.maxCandidateFiles, DEFAULT_MAX_CANDIDATE_FILES, 1, HARD_MAX_ENTRY_FILES),
+  maxDepth: clampInt(options.maxDepth, DEFAULT_MAX_TRAVERSAL_DEPTH, 1, HARD_MAX_TRAVERSAL_DEPTH),
+  maxFileSizeBytes: clampInt(options.maxFileSizeBytes, DEFAULT_MAX_FILE_SIZE_BYTES, 1, 33554432),
+  timeBudgetMs: clampInt(options.timeBudgetMs, DEFAULT_TRAVERSAL_TIME_BUDGET_MS, 1000, 300000)
+});
 var SKIPPED_DIRS = new Set([
   "node_modules",
   ".git",
@@ -13290,15 +13604,20 @@ var SKIPPED_DIRS = new Set([
   ".parcel-cache"
 ]);
 var ENTRY_FILE = /\.[cm]?[tj]sx?$/;
+var isConfigBasename = (name) => /^tsconfig(\..*)?\.json$/i.test(name);
 var HEX40 = /^[0-9a-f]{40}$/;
 var sanitizeSlug = (value, fallback) => {
   const cleaned = String(value ?? "").replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? "";
   const slug = cleaned.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
   return slug || fallback;
 };
-var sha256Hex2 = (value) => createHash2("sha256").update(value, "utf8").digest("hex");
-var sha1Hex = (value) => createHash2("sha1").update(value, "utf8").digest("hex");
+var sha256Hex2 = (value) => createHash3("sha256").update(value, "utf8").digest("hex");
+var sha1Hex = (value) => createHash3("sha1").update(value, "utf8").digest("hex");
 var isString = (value) => Object.prototype.toString.call(value) === "[object String]";
+var isFunction = (value) => {
+  const tag = Object.prototype.toString.call(value);
+  return tag === "[object Function]" || tag === "[object AsyncFunction]";
+};
 var runGitHead = (spawnGit, directory) => new Promise((resolve) => {
   spawnGit("git", ["-C", directory, "rev-parse", "HEAD"], { timeout: 1e4 }, (error, stdout) => {
     if (error) {
@@ -13425,22 +13744,65 @@ var createGitHeadReader = ({ fsPromises, path }) => {
     return parsed;
   };
 };
+var stripTrailingSep = (value, sep) => {
+  if (value.length > 1 && value.endsWith(sep))
+    return value.replace(/[/\\]+$/, "") || sep;
+  return value;
+};
+var scopeKeyOf = (value, pathLike) => {
+  const canonical = stripTrailingSep(pathLike.normalize(String(value ?? "")), pathLike.sep);
+  return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+};
 var createDirectoryNormalizer = ({ fsPromises, path }) => async (directory) => {
   const trimmed = isString(directory) ? directory.trim() : "";
   if (!trimmed) {
     return { error: "directory is required" };
   }
-  const normalized = path.normalize(trimmed);
+  const normalized = stripTrailingSep(path.normalize(trimmed), path.sep);
+  let canonical = normalized;
+  try {
+    canonical = stripTrailingSep(path.normalize(await fsPromises.realpath(normalized)), path.sep);
+  } catch {
+    canonical = normalized;
+  }
   let stat = null;
   try {
-    stat = await fsPromises.stat(normalized);
+    stat = await fsPromises.stat(canonical);
   } catch {
     return { error: `directory not found: ${trimmed}`, status: 404 };
   }
   if (!stat.isDirectory()) {
     return { error: `not a directory: ${trimmed}`, status: 404 };
   }
-  return { directory: normalized };
+  return { directory: canonical };
+};
+var findGitRoot = async ({ fsPromises, path }, startDir) => {
+  let current = startDir;
+  const seen = new Set;
+  for (let depth = 0;depth < HARD_MAX_TRAVERSAL_DEPTH; depth += 1) {
+    const key = String(current).toLowerCase();
+    if (seen.has(key))
+      return null;
+    seen.add(key);
+    try {
+      await fsPromises.lstat(path.join(current, ".git"));
+      return current;
+    } catch {}
+    const parent = path.dirname(current);
+    if (parent === current)
+      return null;
+    current = parent;
+  }
+  return null;
+};
+var resolveIndexScope = async ({ fsPromises, path }, directory, mode = "auto") => {
+  const requested = directory;
+  if (mode === "directory")
+    return { scopeRoot: requested, gitRoot: await findGitRoot({ fsPromises, path }, requested), mode: "directory" };
+  const gitRoot = await findGitRoot({ fsPromises, path }, requested);
+  if (gitRoot)
+    return { scopeRoot: gitRoot, gitRoot, mode: "repo" };
+  return { scopeRoot: requested, gitRoot: null, mode: "directory" };
 };
 var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, runtimeOptions = {}) => {
   if (!fsPromises || !path) {
@@ -13511,7 +13873,7 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     } else {
       const lines = [];
       for (const entry of parseGitStatusZ(ran.stdout)) {
-        if (!entry.paths.some(isEntryCandidateRel))
+        if (!entry.paths.some((rel) => isEntryCandidateRel(rel) || isConfigBasename(path.basename(rel))))
           continue;
         for (const rel of entry.paths) {
           lines.push(`${entry.code} ${await stampDirtyPath(directory, rel)}`);
@@ -13526,15 +13888,51 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
   let buildSeq = 0;
   const MAX_CACHED_QUERIES = 200;
   const snapshots = new Map;
+  const completeSnapshots = new Map;
+  const requestToScope = new Map;
+  const MAX_SCOPE_ALIASES = 200;
+  const rememberScopeAlias = (requestedKey, key) => {
+    requestToScope.delete(requestedKey);
+    requestToScope.set(requestedKey, key);
+    while (requestToScope.size > MAX_SCOPE_ALIASES) {
+      requestToScope.delete(requestToScope.keys().next().value);
+    }
+  };
   const partialByDirectory = new Map;
   const jobs = new Map;
+  const lastTerminalFailure = new Map;
+  const pendingCancels = new Set;
+  const MAX_PENDING_CANCELS = 200;
+  const rememberPendingCancel = (key) => {
+    pendingCancels.delete(key);
+    pendingCancels.add(key);
+    while (pendingCancels.size > MAX_PENDING_CANCELS) {
+      pendingCancels.delete(pendingCancels.values().next().value);
+    }
+  };
+  const takePendingCancel = (key) => {
+    if (!pendingCancels.has(key))
+      return false;
+    pendingCancels.delete(key);
+    return true;
+  };
   const MAX_RETAINED_SNAPSHOTS = 3;
   const normalizeDirectory = createDirectoryNormalizer({ fsPromises, path });
   const deriveScopeIds = (directory) => {
-    const digest = sha256Hex2(directory);
+    const canonical = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
+    const digest = sha256Hex2(canonical.toLowerCase());
     return {
-      projectId: `${sanitizeSlug(path.basename(directory), "project")}-${digest.slice(0, 8)}`,
-      worktreeId: sanitizeSlug(path.basename(directory), "worktree")
+      projectId: `${sanitizeSlug(path.basename(canonical), "project")}-${digest.slice(0, 8)}`,
+      worktreeId: sanitizeSlug(path.basename(canonical), "worktree")
+    };
+  };
+  const deriveScopeIdsForRoot = (scopeRoot) => {
+    const canonicalRoot = stripTrailingSep(path.normalize(String(scopeRoot ?? "")), path.sep);
+    const digest = sha256Hex2(canonicalRoot.toLowerCase());
+    return {
+      projectId: `${sanitizeSlug(path.basename(canonicalRoot), "project")}-${digest.slice(0, 8)}`,
+      worktreeId: sanitizeSlug(path.basename(canonicalRoot), "worktree"),
+      scopeRoot: canonicalRoot
     };
   };
   const MAX_SKIPPED_SCAN_FILES = 1e4;
@@ -13546,14 +13944,61 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     const ext = path.extname(String(name ?? "")).toLowerCase();
     return ext.length > 0 ? ext : "(no-extension)";
   };
-  const listEntryFiles = async (directory, maxEntryFiles) => {
+  const listEntryFiles = async (directory, maxEntryFiles, walkOptions = {}) => {
     const cap = resolveMaxEntryFiles(maxEntryFiles ?? defaultMaxEntryFiles);
+    const budgets = resolveTraversalBudgets({ ...runtimeOptions, ...walkOptions });
+    const shouldCancel = walkOptions.shouldCancel;
+    const checkCancelled = () => {
+      if (isFunction(shouldCancel) && shouldCancel()) {
+        const err = new Error("code-graph index cancelled");
+        err.code = "CANCELLED";
+        throw err;
+      }
+    };
+    let canonicalRoot = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
+    try {
+      canonicalRoot = stripTrailingSep(path.normalize(await fsPromises.realpath(directory)), path.sep);
+    } catch {
+      canonicalRoot = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
+    }
+    const canonicalRootLower = canonicalRoot.toLowerCase();
+    const visitedInodes = new Set;
+    const visitedReals = new Set([canonicalRootLower]);
+    const deadlineMs = Date.now() + budgets.timeBudgetMs;
+    let opsSinceYield = 0;
+    const maybeYield = async () => {
+      opsSinceYield += 1;
+      if (opsSinceYield >= 200) {
+        opsSinceYield = 0;
+        checkCancelled();
+        if (Date.now() > deadlineMs) {
+          const err = new Error("code-graph discovery time budget exceeded");
+          err.code = "TRUNCATED";
+          err.reason = "time-budget";
+          throw err;
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    };
+    const isWithinRoot = (real) => {
+      const lower = String(real ?? "").toLowerCase();
+      return lower === canonicalRootLower || lower.startsWith(`${canonicalRootLower}${path.sep}`.toLowerCase()) || lower.startsWith(`${canonicalRootLower}/`);
+    };
     const entries = [];
     let scanned = 0;
     let excludedCount = 0;
     const excludedSample = [];
+    const configFiles = [];
+    let configTruncated = false;
     const skippedDirs = [];
     const unreadableDirs = [];
+    const skippedSymlinks = [];
+    const nestedRepoRoots = [];
+    let dirsVisited = 0;
+    let filesDiscovered = 0;
+    let symlinksSkipped = 0;
+    let maxDepthSeen = 0;
+    let truncationReason = null;
     const byModule = new Map;
     const bucketStats = (bucket) => {
       let stats = byModule.get(bucket);
@@ -13584,20 +14029,85 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
         if (name === "." || name === "..")
           continue;
         scanState.count += 1;
-        let stat = null;
+        await maybeYield();
+        const full = path.join(dir, name);
+        let linkStat = null;
         try {
-          stat = await fsPromises.stat(path.join(dir, name));
+          linkStat = await fsPromises.lstat(full);
         } catch {
           continue;
         }
-        if (stat.isDirectory()) {
-          await countSkipped(path.join(dir, name), bucket);
-        } else if (stat.isFile()) {
+        if (linkStat.isSymbolicLink()) {
+          symlinksSkipped += 1;
+          continue;
+        }
+        if (linkStat.isDirectory()) {
+          let real = null;
+          try {
+            real = await fsPromises.realpath(full);
+          } catch {
+            continue;
+          }
+          if (!isWithinRoot(real))
+            continue;
+          const lower = String(real).toLowerCase();
+          if (visitedReals.has(lower))
+            continue;
+          if (visitedReals.size > budgets.maxDirsVisited) {
+            scanState.truncated = true;
+            truncationReason = truncationReason ?? "dirs-visited";
+            return;
+          }
+          visitedReals.add(lower);
+          await countSkipped(full, bucket);
+        } else if (linkStat.isFile()) {
           bucketStats(bucket).excludedFiles += 1;
         }
       }
     };
-    const visit = async (dir) => {
+    const visit = async (dir, depth) => {
+      checkCancelled();
+      if (depth > budgets.maxDepth) {
+        truncationReason = truncationReason ?? "max-depth";
+        return;
+      }
+      if (dirsVisited >= budgets.maxDirsVisited) {
+        truncationReason = truncationReason ?? "dirs-visited";
+        return;
+      }
+      if (filesDiscovered >= budgets.maxFilesDiscovered) {
+        truncationReason = truncationReason ?? "files-discovered";
+        return;
+      }
+      if (Date.now() > deadlineMs) {
+        truncationReason = truncationReason ?? "time-budget";
+        return;
+      }
+      let realDir = null;
+      try {
+        realDir = await fsPromises.realpath(dir);
+      } catch {
+        const rel = relOf(dir);
+        unreadableDirs.push(rel.length > 0 ? rel : ".");
+        return;
+      }
+      if (!isWithinRoot(realDir))
+        return;
+      const realLower = String(realDir).toLowerCase();
+      let dirStat = null;
+      try {
+        dirStat = await fsPromises.stat(realDir);
+      } catch {
+        const rel = relOf(dir);
+        unreadableDirs.push(rel.length > 0 ? rel : ".");
+        return;
+      }
+      const inodeKey = `${Number(dirStat.dev ?? 0)}:${Number(dirStat.ino ?? 0)}`;
+      if (visitedInodes.has(inodeKey))
+        return;
+      visitedInodes.add(inodeKey);
+      dirsVisited += 1;
+      maxDepthSeen = Math.max(maxDepthSeen, depth);
       let names = [];
       try {
         names = await fsPromises.readdir(dir);
@@ -13606,30 +14116,70 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
         unreadableDirs.push(rel.length > 0 ? rel : ".");
         return;
       }
+      if (depth > 0 && names.includes(".git")) {
+        const rel = relOf(dir);
+        nestedRepoRoots.push(rel.length > 0 ? rel : ".");
+        return;
+      }
       names.sort();
       for (const name of names) {
         if (name === "." || name === "..")
           continue;
         const full = path.join(dir, name);
-        let stat = null;
+        let linkStat = null;
         try {
-          stat = await fsPromises.stat(full);
+          linkStat = await fsPromises.lstat(full);
         } catch {
+          const rel = relOf(full);
+          unreadableDirs.push(rel.length > 0 ? rel : ".");
           continue;
         }
-        if (stat.isDirectory()) {
+        if (linkStat.isSymbolicLink()) {
+          symlinksSkipped += 1;
+          const rel = relOf(full);
+          if (skippedSymlinks.length < MAX_EXCLUDED_SAMPLE)
+            skippedSymlinks.push(rel);
+          continue;
+        }
+        await maybeYield();
+        filesDiscovered += 1;
+        if (filesDiscovered > budgets.maxFilesDiscovered) {
+          truncationReason = truncationReason ?? "files-discovered";
+          return;
+        }
+        if (linkStat.isDirectory()) {
           if (SKIPPED_DIRS.has(name)) {
             const rel = relOf(full);
             skippedDirs.push(rel);
             await countSkipped(full, bucketOfRel(rel));
             continue;
           }
-          await visit(full);
-        } else if (stat.isFile()) {
+          let realChild = null;
+          try {
+            realChild = await fsPromises.realpath(full);
+          } catch {
+            const rel = relOf(full);
+            unreadableDirs.push(rel.length > 0 ? rel : ".");
+            continue;
+          }
+          if (!isWithinRoot(realChild))
+            continue;
+          const childLower = String(realChild).toLowerCase();
+          if (visitedReals.has(childLower))
+            continue;
+          visitedReals.add(childLower);
+          await visit(full, depth + 1);
+        } else if (linkStat.isFile()) {
           scanned += 1;
           const rel = relOf(full);
           const bucket = bucketOfRel(rel);
           if (!ENTRY_FILE.test(name)) {
+            if (isConfigBasename(name)) {
+              if (configFiles.length < MAX_CONFIG_FILES_SEEN)
+                configFiles.push(full);
+              else
+                configTruncated = true;
+            }
             const stats = bucketStats(bucket);
             stats.unanalyzedFiles += 1;
             const ext = extOf(name);
@@ -13638,6 +14188,25 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
           }
           if (entries.length >= cap) {
             excludedCount += 1;
+            truncationReason = truncationReason ?? "entry-cap";
+            bucketStats(bucket).excludedFiles += 1;
+            if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
+              excludedSample.push(rel);
+            }
+            continue;
+          }
+          if (entries.length >= budgets.maxCandidateFiles) {
+            excludedCount += 1;
+            truncationReason = truncationReason ?? "candidate-cap";
+            bucketStats(bucket).excludedFiles += 1;
+            if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
+              excludedSample.push(rel);
+            }
+            continue;
+          }
+          if (Number(linkStat.size ?? 0) > budgets.maxFileSizeBytes) {
+            excludedCount += 1;
+            truncationReason = truncationReason ?? "file-size";
             bucketStats(bucket).excludedFiles += 1;
             if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
               excludedSample.push(rel);
@@ -13649,7 +14218,18 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
         }
       }
     };
-    await visit(directory);
+    let walkError = null;
+    try {
+      await visit(canonicalRoot, 0);
+    } catch (error) {
+      if (error?.code === "CANCELLED")
+        throw error;
+      if (error?.code === "TRUNCATED") {
+        truncationReason = truncationReason ?? error.reason ?? "time-budget";
+      } else {
+        walkError = error instanceof Error ? error.message : String(error);
+      }
+    }
     entries.sort();
     skippedDirs.sort();
     unreadableDirs.sort();
@@ -13674,7 +14254,34 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
       }
     }
     totals.unanalyzedByExtension = Object.fromEntries(Object.entries(totals.unanalyzedByExtension).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
-    return { entries, scanned, truncated: excludedCount > 0, excludedCount, excludedSample, maxEntryFiles: cap, coverage: { byModule: modules, totals, skippedDirs, unreadableDirs, excludedTruncated: scanState.truncated } };
+    const truncated = excludedCount > 0 || truncationReason !== null || scanState.truncated;
+    if (truncationReason === null && scanState.truncated)
+      truncationReason = "skipped-scan";
+    if (truncationReason === null && excludedCount > 0)
+      truncationReason = "entry-cap";
+    skippedSymlinks.sort();
+    nestedRepoRoots.sort();
+    return {
+      entries,
+      scanned,
+      truncated,
+      truncationReason,
+      excludedCount,
+      excludedSample,
+      maxEntryFiles: cap,
+      configFiles,
+      configTruncated,
+      dirsVisited,
+      filesDiscovered,
+      symlinksSkipped,
+      skippedSymlinks,
+      nestedRepoRoots,
+      maxDepthSeen,
+      scopeRoot: canonicalRoot,
+      walkError,
+      budgets: { maxDirsVisited: budgets.maxDirsVisited, maxFilesDiscovered: budgets.maxFilesDiscovered, maxDepth: budgets.maxDepth },
+      coverage: { byModule: modules, totals, skippedDirs, unreadableDirs, excludedTruncated: scanState.truncated, skippedSymlinks, nestedRepoRoots, dirsVisited, filesDiscovered, symlinksSkipped, truncationReason }
+    };
   };
   const readRevision = async (directory, entryFiles, { forceStatus = false } = {}) => {
     const local = await readGitHead(directory);
@@ -13727,44 +14334,304 @@ ${stamped.join(`
       modulesTotal: ranked.length
     };
   };
-  const buildSnapshot = async (directory, maxEntryFiles, { forceStatus = false, onProgress = null } = {}) => {
+  const buildSnapshot = async (key, requestedKey, scopeRoot, mode, maxEntryFiles, { forceStatus = false, onProgress = null, shouldCancel = null, scopeMode = "auto", walkBudgets = {}, prewalked = null } = {}) => {
     const engine = await loadEngine();
-    const { entries, truncated, excludedCount, excludedSample, maxEntryFiles: cap, coverage } = await listEntryFiles(directory, maxEntryFiles);
-    const { revision, binding, dirty, dirtyReason } = await readRevision(directory, entries, { forceStatus });
-    const { projectId, worktreeId } = deriveScopeIds(directory);
+    const indexRoot = scopeRoot;
+    const walk = prewalked ?? await listEntryFiles(indexRoot, maxEntryFiles, { ...walkBudgets, shouldCancel });
+    const { entries, truncated, truncationReason, excludedCount, excludedSample, maxEntryFiles: cap, coverage } = walk;
+    const { revision, binding, dirty, dirtyReason } = await readRevision(indexRoot, entries, { forceStatus });
+    if (isFunction(shouldCancel) && shouldCancel()) {
+      const err = new Error("code-graph index cancelled");
+      err.code = "CANCELLED";
+      throw err;
+    }
+    const ids = deriveScopeIdsForRoot(scopeRoot);
+    const projectId = ids.projectId;
+    const worktreeId = ids.worktreeId;
     const fingerprint = engine.computeScopeFingerprint(projectId, worktreeId, revision);
-    const snapshot = engine.indexFiles(entries, {
-      rootDir: directory,
+    if (isFunction(shouldCancel) && shouldCancel()) {
+      const err = new Error("code-graph index cancelled");
+      err.code = "CANCELLED";
+      throw err;
+    }
+    const posixRootOf = (value) => {
+      const slashed = String(value ?? "").replace(/\\/g, "/");
+      return /^[a-zA-Z]:\//.test(slashed) ? slashed[0].toLowerCase() + slashed.slice(1) : slashed;
+    };
+    const relOfEntry = (abs) => {
+      const prefix = `${posixRootOf(indexRoot).replace(/\/+$/, "")}/`;
+      const key = posixRootOf(abs);
+      if (!key.startsWith(prefix))
+        return null;
+      const rel = key.slice(prefix.length);
+      return rel.length > 0 ? rel : null;
+    };
+    const previousForReuse = completeSnapshots.get(key) ?? snapshots.get(key) ?? null;
+    const fingerprints = new Map;
+    const fileStats = new Map;
+    const relByAbs = new Map;
+    const unreadableFiles = [];
+    let statHits = 0;
+    {
+      const previousRecords = previousForReuse?.fileRecords?.files ?? {};
+      let fingerprinted = 0;
+      for (const abs of entries) {
+        if (isFunction(shouldCancel) && shouldCancel()) {
+          const err = new Error("code-graph index cancelled");
+          err.code = "CANCELLED";
+          throw err;
+        }
+        const rel = relOfEntry(abs);
+        relByAbs.set(abs, rel);
+        if (rel !== null) {
+          const record = previousRecords[rel];
+          let stat = null;
+          try {
+            stat = await fsPromises.stat(abs);
+          } catch {
+            stat = null;
+          }
+          const statMatch = stat !== null && stat.isFile() && record !== undefined && Number.isFinite(record.size) && Number.isFinite(record.mtimeMs) && record.size === stat.size && record.mtimeMs === stat.mtimeMs;
+          if (statMatch && record !== undefined) {
+            fingerprints.set(rel, record.blob);
+            fileStats.set(rel, { size: stat.size, mtimeMs: stat.mtimeMs });
+            statHits += 1;
+          } else {
+            try {
+              const bytes = await fsPromises.readFile(abs);
+              fingerprints.set(rel, engine.fingerprintBytes(bytes));
+              if (stat !== null && stat.isFile())
+                fileStats.set(rel, { size: stat.size, mtimeMs: stat.mtimeMs });
+            } catch {
+              unreadableFiles.push(rel);
+            }
+          }
+        }
+        fingerprinted += 1;
+        if (fingerprinted % 200 === 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+      }
+    }
+    for (const abs of walk.configFiles ?? []) {
+      if (isFunction(shouldCancel) && shouldCancel()) {
+        const err = new Error("code-graph index cancelled");
+        err.code = "CANCELLED";
+        throw err;
+      }
+      const rel = relOfEntry(abs);
+      if (rel === null)
+        continue;
+      try {
+        const bytes = await fsPromises.readFile(abs);
+        fingerprints.set(rel, engine.fingerprintBytes(bytes));
+        const stat = await fsPromises.stat(abs).catch(() => null);
+        if (stat !== null && stat.isFile())
+          fileStats.set(rel, { size: stat.size, mtimeMs: stat.mtimeMs });
+      } catch {}
+    }
+    const validated = engine.validateFileRecords(previousForReuse?.fileRecords ?? null, fingerprints);
+    const configMoved = [...validated.changed, ...validated.added, ...validated.deleted].some((rel) => isConfigBasename(rel.split("/").pop() ?? rel));
+    const buildEntries = entries.filter((abs) => {
+      const rel = relByAbs.get(abs);
+      return rel === null || rel === undefined || fingerprints.has(rel);
+    });
+    const unreadableFileSet = new Set(unreadableFiles);
+    const unreadableFileRels = [...unreadableFileSet].sort().slice(0, MAX_UNREADABLE_FILES);
+    const buildCoverage = unreadableFileSet.size === 0 ? coverage : {
+      ...coverage,
+      unreadableFiles: unreadableFileRels,
+      unreadableFileCount: unreadableFileSet.size
+    };
+    const buildTruncationReason = truncationReason ?? (unreadableFileSet.size > 0 ? "unreadable-files" : null);
+    const buildTruncated = truncated || unreadableFileSet.size > 0;
+    if (entries.length > 0 && buildEntries.length === 0) {
+      const error = new Error(`code-graph: no readable source files in scope (${entries.length} listed, all unreadable)`);
+      error.code = "NO_READABLE_ENTRIES";
+      throw error;
+    }
+    const triggerRels = new Set([...validated.changed, ...validated.added, ...validated.deleted]);
+    const expandDependents = (seed) => {
+      const out = new Set;
+      if (previousForReuse === null || seed.size === 0)
+        return out;
+      const fileByNodeId = new Map;
+      for (const node of previousForReuse.snapshot.nodes ?? []) {
+        if (typeof node?.id === "string" && typeof node?.file === "string" && node.file.length > 0) {
+          fileByNodeId.set(node.id, node.file);
+        }
+      }
+      const dependentKinds = new Set(["IMPORTS", "EXPORTS", "TESTS", "CALLS_STATIC", "CALLS_UNRESOLVED"]);
+      for (const edge of previousForReuse.snapshot.edges ?? []) {
+        if (!dependentKinds.has(edge?.kind))
+          continue;
+        const toFile = edge.to === "unknown" ? null : fileByNodeId.get(edge.to) ?? null;
+        if (toFile === null || !seed.has(toFile))
+          continue;
+        const fromFile = fileByNodeId.get(edge.from) ?? null;
+        if (fromFile !== null && !seed.has(fromFile))
+          out.add(fromFile);
+      }
+      return out;
+    };
+    const reuseActive = previousForReuse !== null && !configMoved && validated.reused.size > 0;
+    const subsetFor = (rels) => entries.filter((abs) => {
+      const rel = relByAbs.get(abs);
+      return rel === null || rel === undefined || rels.has(rel);
+    });
+    const recordsDoc = {
+      version: engine.FILE_RECORDS_VERSION,
+      parser: engine.PARSER_RECORD_VERSION,
+      schema: engine.SNAPSHOT_STORE_VERSION,
+      files: Object.fromEntries([...fingerprints].map(([file, blob]) => {
+        const stat = fileStats.get(file);
+        return stat !== undefined ? [file, { file, blob, size: stat.size, mtimeMs: stat.mtimeMs }] : [file, { file, blob }];
+      }))
+    };
+    const runCompiler = (targetAbs) => engine.indexFiles(targetAbs, {
+      rootDir: indexRoot,
       onProgress: onProgress ?? undefined,
       onPartialSnapshot: (partialSnapshot, progress) => {
-        partialByDirectory.set(directory, assembleEntry({
+        if (isFunction(shouldCancel) && shouldCancel()) {
+          const err = new Error("code-graph index cancelled");
+          err.code = "CANCELLED";
+          throw err;
+        }
+        partialByDirectory.set(key, assembleEntry({
           snapshot: partialSnapshot,
-          scope: { projectId, worktreeId, revision, fingerprint },
+          scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey },
           binding,
           dirty,
           dirtyReason,
           truncated,
+          truncationReason,
           excludedCount,
           excludedSample,
           cap,
-          entries,
-          coverage
+          entries: targetAbs,
+          coverage,
+          metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen }
         }));
         onProgress?.({
           phase: "projects",
-          files: entries.length,
+          files: targetAbs.length,
           projectsDone: progress.projectsDone,
           projectsTotal: progress.projectsTotal,
           partial: summarizePartialSnapshot(partialSnapshot)
         });
       }
     });
-    const built = assembleEntry({ snapshot, scope: { projectId, worktreeId, revision, fingerprint }, binding, dirty, dirtyReason, truncated, excludedCount, excludedSample, cap, entries, coverage });
-    partialByDirectory.delete(directory);
-    persistEntry(directory, built);
+    const concatSnapshots = (left, right) => ({
+      nodes: [...left.nodes ?? [], ...right.nodes ?? []],
+      edges: [...left.edges ?? [], ...right.edges ?? []],
+      root: left.root ?? right.root,
+      dropped: [...left.dropped ?? [], ...right.dropped ?? []],
+      ...(left.content ?? null) !== null || (right.content ?? null) !== null ? {
+        content: {
+          tokenCap: left.content?.tokenCap ?? right.content?.tokenCap,
+          files: { ...left.content?.files ?? {}, ...right.content?.files ?? {} },
+          skipped: [...left.content?.skipped ?? [], ...right.content?.skipped ?? []]
+        }
+      } : {}
+    });
+    const shardSurface = (shards, file) => {
+      const shard = shards.get(file);
+      if (shard === undefined)
+        return null;
+      return engine.exportSurfaceKey(shard);
+    };
+    let finalSnapshot;
+    let incremental;
+    let analyzedCount = 0;
+    if (!reuseActive) {
+      const snapshot = runCompiler(buildEntries);
+      analyzedCount = buildEntries.length;
+      finalSnapshot = snapshot;
+      incremental = {
+        statReused: statHits,
+        reused: 0,
+        reanalyzed: buildEntries.length,
+        added: validated.added.size,
+        deleted: validated.deleted.size,
+        invalidatedEdges: 0,
+        unreadableFiles: unreadableFileRels,
+        unreadableFileCount: unreadableFileSet.size
+      };
+    } else if (triggerRels.size === 0) {
+      finalSnapshot = previousForReuse.snapshot;
+      incremental = {
+        statReused: statHits,
+        reused: validated.reused.size,
+        reanalyzed: 0,
+        added: 0,
+        deleted: 0,
+        invalidatedEdges: 0,
+        unreadableFiles: [],
+        unreadableFileCount: 0
+      };
+    } else {
+      const phaseASet = new Set([...validated.changed, ...validated.added]);
+      const subsetA = subsetFor(phaseASet);
+      const freshA = runCompiler(subsetA);
+      analyzedCount += subsetA.length;
+      const prevShards = new Map(engine.splitSnapshotIntoShards(previousForReuse.snapshot).map((shard) => [shard.file, shard]));
+      const freshShards = new Map(engine.splitSnapshotIntoShards(freshA).map((shard) => [shard.file, shard]));
+      const differers = new Set;
+      for (const rel of validated.changed) {
+        if (shardSurface(prevShards, rel) !== shardSurface(freshShards, rel))
+          differers.add(rel);
+      }
+      const dependents = expandDependents(new Set([...differers, ...validated.deleted]));
+      const analysisRels = new Set([...triggerRels, ...dependents]);
+      const reusedFiles = [...validated.reused].filter((file) => !analysisRels.has(file));
+      if ([...fingerprints.keys()].every((file) => analysisRels.has(file))) {
+        const snapshot = runCompiler(buildEntries);
+        analyzedCount = buildEntries.length;
+        finalSnapshot = snapshot;
+        incremental = {
+          statReused: statHits,
+          reused: 0,
+          reanalyzed: buildEntries.length,
+          added: validated.added.size,
+          deleted: validated.deleted.size,
+          invalidatedEdges: 0,
+          unreadableFiles: unreadableFileRels,
+          unreadableFileCount: unreadableFileSet.size
+        };
+      } else {
+        if (isFunction(shouldCancel) && shouldCancel()) {
+          const err = new Error("code-graph index cancelled");
+          err.code = "CANCELLED";
+          throw err;
+        }
+        const subsetB = entries.filter((abs) => {
+          const rel = relByAbs.get(abs);
+          return rel !== null && rel !== undefined && dependents.has(rel) && !phaseASet.has(rel);
+        });
+        const freshB = subsetB.length > 0 ? runCompiler(subsetB) : null;
+        analyzedCount += subsetB.length;
+        const combined = freshB === null ? freshA : concatSnapshots(freshA, freshB);
+        const merged = engine.rebuildIncremental(previousForReuse.snapshot, analysisRels, combined);
+        finalSnapshot = merged.snapshot;
+        incremental = {
+          statReused: statHits,
+          reused: reusedFiles.length,
+          reanalyzed: analyzedCount,
+          added: validated.added.size,
+          deleted: validated.deleted.size,
+          invalidatedEdges: merged.invalidatedEdges,
+          unreadableFiles: unreadableFileRels,
+          unreadableFileCount: unreadableFileSet.size
+        };
+      }
+    }
+    const built = assembleEntry({ snapshot: finalSnapshot, scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey }, binding, dirty, dirtyReason, truncated: buildTruncated, truncationReason: buildTruncationReason, excludedCount, excludedSample, cap, entries, coverage: buildCoverage, metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen }, fileRecords: recordsDoc, incremental });
+    partialByDirectory.delete(key);
+    await persistEntry(key, built);
+    lastTerminalFailure.delete(key);
     return built;
   };
-  const assembleEntry = ({ snapshot, scope, binding, dirty, dirtyReason, truncated, excludedCount, excludedSample, cap, entries, coverage, observedAtMs }) => {
+  const assembleEntry = ({ snapshot, scope, binding, dirty, dirtyReason, truncated, truncationReason = null, excludedCount, excludedSample, cap, entries, coverage, metrics = null, observedAtMs, fileRecords = null, incremental = null }) => {
     buildSeq += 1;
     const built = {
       snapshot,
@@ -13773,13 +14640,17 @@ ${stamped.join(`
       binding,
       dirty: dirty ?? null,
       truncated,
+      truncationReason: truncationReason ?? null,
       indexTruncated: truncated,
       excludedCount,
       excludedSample,
       entryCap: cap,
       entryCount: entries.length,
       entryFiles: entries,
+      fileRecords: fileRecords ?? null,
+      incremental: incremental ?? null,
       coverage,
+      metrics,
       buildSeq,
       queryCache: new Map
     };
@@ -13798,52 +14669,58 @@ ${stamped.join(`
     }
     return snapshotStorage;
   };
-  const persistEntry = async (directory, entry) => {
+  const persistEntry = async (scopeKey, entry) => {
     if (entry.truncated)
       return;
     const storage = await getStorage();
     if (!storage)
       return;
-    const result = await storage.write(directory, entry);
+    const result = await storage.write(scopeKey, entry);
     if (!result.written) {
-      emitProgress(directory, { state: "ready", storeWriteFailed: result.reason ?? "unknown" });
+      emitProgress(scopeKey, { state: "ready", storeWriteFailed: result.reason ?? "unknown" });
     }
   };
-  const restoreFromStore = async (directory, cap) => {
+  const restoreFromStore = async ({ requestedKey, scopeRoot, mode }, cap, shareWalk = false) => {
     const storage = await getStorage();
     if (!storage)
       return null;
     const engine = await loadEngine();
-    const { entries, truncated, excludedCount, excludedSample, coverage } = await listEntryFiles(directory, cap);
-    if (truncated)
+    const walk = await listEntryFiles(scopeRoot, cap);
+    if (walk.truncated)
       return null;
-    const { revision, binding, dirty, dirtyReason } = await readRevision(directory, entries, { forceStatus: false });
-    const { projectId, worktreeId } = deriveScopeIds(directory);
+    const { entries, excludedCount, excludedSample, coverage } = walk;
+    const { revision, binding, dirty, dirtyReason } = await readRevision(scopeRoot, entries, { forceStatus: false });
+    const ids = deriveScopeIdsForRoot(scopeRoot);
+    const projectId = ids.projectId;
+    const worktreeId = ids.worktreeId;
     const fingerprint = engine.computeScopeFingerprint(projectId, worktreeId, revision);
     let read;
     try {
-      read = await storage.read(directory, { projectId, worktreeId, revision, fingerprint });
+      read = await storage.read(requestedKey, { projectId, worktreeId, revision, fingerprint });
     } catch (error) {
-      emitProgress(directory, { state: "discovering", storeReadFailed: error instanceof Error ? error.message : String(error) });
-      return null;
+      emitProgress(requestedKey, { state: "discovering", storeReadFailed: error instanceof Error ? error.message : String(error) });
+      return shareWalk ? { miss: true, walk } : null;
     }
     if (read.status !== "hit")
-      return null;
+      return shareWalk ? { miss: true, walk } : null;
     const built = assembleEntry({
       snapshot: read.snapshot,
-      scope: { projectId, worktreeId, revision, fingerprint },
+      scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey },
       binding,
       dirty,
       dirtyReason,
       truncated: false,
+      truncationReason: null,
       excludedCount,
       excludedSample,
       cap,
       entries,
       coverage,
-      observedAtMs: read.manifest.observedAtMs
+      metrics: { dirsVisited: walk.dirsVisited, filesDiscovered: walk.filesDiscovered, symlinksSkipped: walk.symlinksSkipped, maxDepthSeen: walk.maxDepthSeen },
+      observedAtMs: read.manifest.observedAtMs,
+      fileRecords: read.fileRecords ?? null
     });
-    emitProgress(directory, {
+    emitProgress(requestedKey, {
       state: "ready",
       seeded: true,
       restoredFromStore: true,
@@ -13854,42 +14731,116 @@ ${stamped.join(`
     });
     return built;
   };
-  const ensureIndex = async (directory, { refresh = false, maxEntryFiles, block = false } = {}) => {
+  const serveBuilt = (entry) => entry.truncated ? { ...entry, freshness: "stale", staleReason: "index-truncated" } : { ...entry, freshness: "fresh" };
+  const ensureIndex = async (directory, { refresh = false, maxEntryFiles, block = false, scopeMode = "auto", walkBudgets = {} } = {}) => {
     const engine = await loadEngine();
     const cap = resolveMaxEntryFiles(maxEntryFiles ?? defaultMaxEntryFiles);
-    const cached = snapshots.get(directory);
-    if (!refresh && cached && cached.entryCap === cap) {
-      const { revision } = await readRevision(directory, cached.entryFiles ?? []);
-      if (revision === cached.scope.revision && Date.now() - cached.observedAtMs <= engine.STALE_AFTER_MS) {
-        return { entry: { ...cached, freshness: "fresh" } };
+    const rawCanonical = stripTrailingSep(path.normalize(String(directory ?? "")), path.sep);
+    const rawKey = scopeKeyOf(rawCanonical, path);
+    let scopeRoot = rawCanonical;
+    try {
+      scopeRoot = stripTrailingSep(path.normalize(await fsPromises.realpath(scopeRoot)), path.sep);
+    } catch {}
+    const requestedKey = scopeKeyOf(scopeRoot, path);
+    const resolved = await resolveIndexScope({ fsPromises, path }, scopeRoot, scopeMode);
+    let resolvedRoot = stripTrailingSep(path.normalize(String(resolved.scopeRoot ?? scopeRoot)), path.sep);
+    try {
+      resolvedRoot = stripTrailingSep(path.normalize(await fsPromises.realpath(resolvedRoot)), path.sep);
+    } catch {}
+    scopeRoot = resolvedRoot;
+    const key = scopeKeyOf(scopeRoot, path);
+    const mode = resolved.mode;
+    rememberScopeAlias(rawKey, key);
+    rememberScopeAlias(requestedKey, key);
+    const cached = snapshots.get(key);
+    const revisionMatches = async (entry) => {
+      if (!entry || entry.entryCap !== cap)
+        return false;
+      const { revision } = await readRevision(scopeRoot, entry.entryFiles ?? []);
+      return revision === entry.scope.revision && Date.now() - entry.observedAtMs <= engine.STALE_AFTER_MS;
+    };
+    const fallbackEntry = () => completeSnapshots.get(key) ?? snapshots.get(key) ?? null;
+    const serveFallback = (staleReason, extra = {}) => {
+      const fallback = fallbackEntry();
+      if (!fallback)
+        return null;
+      return {
+        ...fallback,
+        freshness: "stale",
+        staleReason: fallback.truncated ? "index-truncated" : staleReason,
+        ...extra
+      };
+    };
+    const refreshErrorOf = (error) => error instanceof Error ? error.message : String(error);
+    const cancelBeforeStart = !refresh && takePendingCancel(key);
+    let prewalked = null;
+    if (!refresh) {
+      const complete = !cached || cached.truncated ? completeSnapshots.get(key) : cached;
+      if (complete && await revisionMatches(complete)) {
+        return { entry: { ...complete, freshness: "fresh" }, scopeKey: key, scopeRoot, scopeMode: mode };
+      }
+      if (cached && cached.truncated && await revisionMatches(cached)) {
+        return { entry: serveFallback("index-truncated"), scopeKey: key, scopeRoot, scopeMode: mode };
+      }
+      const shareWalk = Object.keys(walkBudgets).length === 0;
+      const restored = await restoreFromStore({ requestedKey, scopeRoot, mode }, cap, shareWalk).catch(() => null);
+      if (restored !== null && restored.miss !== true) {
+        retainSnapshot(key, restored);
+        return { entry: { ...restored, freshness: "fresh" }, scopeKey: key, scopeRoot, scopeMode: mode };
+      }
+      if (restored !== null && restored.miss === true)
+        prewalked = restored.walk ?? null;
+    }
+    if (refresh)
+      takePendingCancel(key);
+    else if (cancelBeforeStart) {
+      if (block) {
+        const cancelled = new Error("code-graph index cancelled");
+        cancelled.code = "CANCELLED";
+        throw cancelled;
+      }
+      return { pending: { state: "cancelled", startedAtMs: Date.now(), progress: null, cancelRequested: true, superseded: false, error: null, truncationReason: null }, cached: serveFallback("rebuild-cancelled"), scopeKey: key, scopeRoot, scopeMode: mode };
+    }
+    const running = jobs.get(key);
+    if (running && refresh) {
+      running.superseded = true;
+      running.cancelRequested = true;
+      jobs.delete(key);
+      emitProgress(running.directory, { state: "superseded", supersededBy: "refresh" });
+    }
+    const active = jobs.get(key);
+    if (active) {
+      active.requesters.add(requestedKey);
+      announceJobState(active, requestedKey);
+      if (!block)
+        return { pending: jobFacts(active), cached: serveFallback("rebuild-pending"), scopeKey: key, scopeRoot, scopeMode: mode };
+      try {
+        return { entry: serveBuilt(await active.promise), scopeKey: key, scopeRoot, scopeMode: mode };
+      } catch (error) {
+        const fallback = fallbackEntry();
+        return fallback ? { entry: serveFallback("rebuild-failed", { refreshError: refreshErrorOf(error) }), refreshFailed: error, scopeKey: key, scopeRoot, scopeMode: mode } : Promise.reject(error);
       }
     }
     if (!refresh) {
-      const restored = await restoreFromStore(directory, cap).catch(() => null);
-      if (restored) {
-        retainSnapshot(directory, restored);
-        return { entry: { ...restored, freshness: "fresh" } };
+      const failure = lastTerminalFailure.get(key);
+      if (failure !== undefined && Date.now() - failure.atMs < FAILURE_RETRY_COOLDOWN_MS) {
+        return { pending: { state: failure.state, startedAtMs: failure.atMs, progress: null, cancelRequested: false, superseded: false, error: failure.error, truncationReason: null }, cached: serveFallback("rebuild-failed"), scopeKey: key, scopeRoot, scopeMode: mode };
       }
+      if (failure !== undefined)
+        lastTerminalFailure.delete(key);
+    } else {
+      lastTerminalFailure.delete(key);
     }
-    const running = jobs.get(directory);
-    if (running) {
-      if (!block)
-        return { pending: jobFacts(running), cached: cached ?? null };
-      try {
-        return { entry: { ...await running.promise, freshness: "fresh" } };
-      } catch (error) {
-        return cached ? { entry: { ...cached, freshness: "stale" }, refreshFailed: error } : Promise.reject(error);
-      }
-    }
-    const job = startJob(directory, cap, { refresh });
+    const job = startJob(key, requestedKey, scopeRoot, mode, cap, { refresh, scopeMode, walkBudgets, prewalked });
     if (!block)
-      return { pending: jobFacts(job), cached: cached ?? null };
+      return { pending: jobFacts(job), cached: serveFallback("rebuild-pending"), scopeKey: key, scopeRoot, scopeMode: mode };
     try {
-      return { entry: { ...await job.promise, freshness: "fresh" } };
+      return { entry: serveBuilt(await job.promise), scopeKey: key, scopeRoot, scopeMode: mode };
     } catch (error) {
-      const lastValid = snapshots.get(directory);
-      if (lastValid)
-        return { entry: { ...lastValid, freshness: "stale" }, refreshFailed: error };
+      const fallback = fallbackEntry();
+      if (fallback) {
+        return { entry: serveFallback("rebuild-failed", { refreshError: refreshErrorOf(error) }), refreshFailed: error, scopeKey: key, scopeRoot, scopeMode: mode };
+      }
       throw error;
     }
   };
@@ -13898,7 +14849,9 @@ ${stamped.join(`
     startedAtMs: job.startedAtMs,
     progress: job.progress ?? null,
     cancelRequested: job.cancelRequested === true,
-    error: job.error ?? null
+    superseded: job.superseded === true,
+    error: job.error ?? null,
+    truncationReason: job.truncationReason ?? null
   });
   const emitProgress = (directory, event) => {
     if (typeof runtimeOptions.onProgress !== "function")
@@ -13907,31 +14860,72 @@ ${stamped.join(`
       runtimeOptions.onProgress({ directory, atMs: Date.now(), ...event });
     } catch {}
   };
-  const retainSnapshot = (directory, entry) => {
-    partialByDirectory.delete(directory);
-    snapshots.set(directory, entry);
+  const evictOldest = (map, protectKey) => {
+    const oldest = [...map.entries()].filter(([mapKey]) => mapKey !== protectKey).sort((left, right) => (left[1].observedAtMs ?? 0) - (right[1].observedAtMs ?? 0))[0];
+    if (!oldest)
+      return;
+    map.delete(oldest[0]);
+    return oldest[0];
+  };
+  const retainSnapshot = (key, entry) => {
+    partialByDirectory.delete(key);
+    snapshots.set(key, entry);
+    if (!entry.truncated) {
+      completeSnapshots.set(key, entry);
+      while (completeSnapshots.size > MAX_RETAINED_SNAPSHOTS) {
+        evictOldest(completeSnapshots, key);
+      }
+    }
     while (snapshots.size > MAX_RETAINED_SNAPSHOTS) {
-      const oldest = [...snapshots.entries()].filter(([key]) => key !== directory).sort((left, right) => (left[1].observedAtMs ?? 0) - (right[1].observedAtMs ?? 0))[0];
-      if (!oldest)
+      const evicted = evictOldest(snapshots, key);
+      if (!evicted)
         break;
-      snapshots.delete(oldest[0]);
+      completeSnapshots.delete(evicted);
+      for (const [requestedKey, scopeKey] of requestToScope) {
+        if (scopeKey === evicted)
+          requestToScope.delete(requestedKey);
+      }
     }
   };
-  const startJob = (directory, cap, { refresh }) => {
+  const announceJobState = (job, requestedKey) => {
+    emitProgress(requestedKey, {
+      state: job.state,
+      phase: job.progress?.phase ?? null,
+      files: job.progress?.files ?? null,
+      projectsDone: job.progress?.projectsDone ?? null,
+      projectsTotal: job.progress?.projectsTotal ?? null
+    });
+  };
+  const startJob = (key, requestedKey, scopeRoot, mode, cap, { refresh, scopeMode = "auto", walkBudgets = {}, prewalked = null } = {}) => {
     const job = {
-      directory,
+      key,
+      directory: requestedKey,
+      scopeRoot,
+      scopeMode: mode,
+      requesters: new Set([requestedKey]),
       startedAtMs: Date.now(),
       state: "queued",
       progress: null,
       cancelRequested: false,
+      superseded: false,
+      truncationReason: null,
       error: null
     };
+    const emitJob = (event) => {
+      for (const requester of job.requesters)
+        emitProgress(requester, event);
+    };
+    jobs.set(key, job);
     job.promise = (async () => {
       job.state = "discovering";
-      emitProgress(directory, { state: "discovering" });
+      emitJob({ state: "discovering", elapsedMs: 0 });
       try {
-        const entry = await buildSnapshot(directory, cap, {
+        const entry = await buildSnapshot(key, requestedKey, scopeRoot, mode, cap, {
           forceStatus: refresh,
+          scopeMode,
+          walkBudgets,
+          prewalked,
+          shouldCancel: () => job.cancelRequested === true,
           onProgress: (event) => {
             if (job.cancelRequested) {
               const cancelled = new Error("code-graph index cancelled");
@@ -13940,19 +14934,24 @@ ${stamped.join(`
             }
             job.state = event.phase === "done" ? "persisting" : "analyzing";
             job.progress = event;
-            emitProgress(directory, {
+            emitJob({
               state: job.state,
               phase: event.phase,
               files: event.files,
               projectsDone: event.projectsDone,
-              projectsTotal: event.projectsTotal
+              projectsTotal: event.projectsTotal,
+              elapsedMs: event.elapsedMs ?? Date.now() - job.startedAtMs,
+              generation: event.generation ?? null,
+              partial: event.partial ?? null
             });
           }
         });
-        retainSnapshot(directory, entry);
-        job.state = "ready";
-        emitProgress(directory, {
-          state: "ready",
+        retainSnapshot(key, entry);
+        job.truncationReason = entry.truncationReason ?? null;
+        job.state = entry.truncated ? "truncated" : "ready";
+        emitJob({
+          state: job.state,
+          truncationReason: job.truncationReason,
           generation: entry.buildSeq,
           nodes: entry.snapshot.nodes.length,
           edges: entry.snapshot.edges.length,
@@ -13966,26 +14965,40 @@ ${stamped.join(`
         });
         return entry;
       } catch (error) {
-        const cancelled = job.cancelRequested === true || error?.code === "CANCELLED";
-        job.state = cancelled ? "cancelled" : "failed";
-        job.error = cancelled ? null : error instanceof Error ? error.message : String(error);
-        partialByDirectory.delete(directory);
-        emitProgress(directory, { state: job.state, error: job.error });
+        if (job.superseded === true) {
+          job.state = "superseded";
+          job.error = null;
+        } else {
+          const cancelled = job.cancelRequested === true || error?.code === "CANCELLED";
+          job.state = cancelled ? "cancelled" : "failed";
+          job.error = cancelled ? null : error instanceof Error ? error.message : String(error);
+        }
+        if (job.state === "failed" || job.state === "cancelled") {
+          lastTerminalFailure.set(key, { atMs: Date.now(), state: job.state, error: job.error });
+          while (lastTerminalFailure.size > MAX_RETAINED_SNAPSHOTS * 8) {
+            lastTerminalFailure.delete(lastTerminalFailure.keys().next().value);
+          }
+        }
+        partialByDirectory.delete(key);
+        emitJob({ state: job.state, error: job.error });
         throw error;
       } finally {
-        jobs.delete(directory);
+        jobs.delete(key);
       }
     })();
     job.promise.catch(() => {});
-    jobs.set(directory, job);
     return job;
   };
   const cancelIndex = (directory) => {
-    const job = jobs.get(directory);
-    if (!job)
+    const wanted = scopeKeyOf(directory, path);
+    const key = requestToScope.get(wanted) ?? wanted;
+    const job = jobs.get(key);
+    if (!job) {
+      rememberPendingCancel(key);
       return { cancelled: false, state: "idle" };
+    }
     job.cancelRequested = true;
-    emitProgress(directory, { state: "cancelled" });
+    emitProgress(job.directory, { state: "cancelled" });
     return { cancelled: true, state: job.state };
   };
   const awaitIndex = async (directory, options = {}) => {
@@ -13994,10 +15007,12 @@ ${stamped.join(`
     return { ...freshnessFields({ ...entry, staleAfterMs: engine.STALE_AFTER_MS }), ready: true };
   };
   const indexState = (directory) => {
-    const job = jobs.get(directory);
+    const wanted = scopeKeyOf(directory, path);
+    const key = requestToScope.get(wanted) ?? wanted;
+    const job = jobs.get(key);
     if (job)
       return jobFacts(job);
-    const entry = snapshots.get(directory);
+    const entry = snapshots.get(key);
     if (entry) {
       return {
         state: "ready",
@@ -14008,15 +15023,19 @@ ${stamped.join(`
         generation: entry.buildSeq,
         nodes: entry.snapshot.nodes.length,
         edges: entry.snapshot.edges.length,
-        entryCount: entry.entryCount
+        entryCount: entry.entryCount,
+        scopeRoot: entry.scope?.scopeRoot ?? null,
+        scopeMode: entry.scope?.scopeMode ?? null
       };
     }
     return { state: "not-indexed", startedAtMs: null, progress: null, cancelRequested: false, error: null };
   };
   const seedSnapshot = (directory, entry) => {
-    retainSnapshot(directory, entry);
+    const key = entry?.scope?.scopeRoot ? scopeKeyOf(entry.scope.scopeRoot, path) : scopeKeyOf(directory, path);
+    rememberScopeAlias(scopeKeyOf(directory, path), key);
+    retainSnapshot(key, entry);
     buildSeq = Math.max(buildSeq, Number(entry.buildSeq) || 0);
-    emitProgress(directory, {
+    emitProgress(key, {
       state: "ready",
       seeded: true,
       generation: entry.buildSeq,
@@ -14037,8 +15056,12 @@ ${stamped.join(`
       staleAfterMs: entry.staleAfterMs,
       generation: entry.buildSeq,
       indexTruncated: entry.indexTruncated === true,
+      truncationReason: entry.truncationReason ?? null,
       excludedCount: entry.excludedCount ?? 0,
-      excludedSample: entry.excludedSample ?? []
+      excludedSample: entry.excludedSample ?? [],
+      scopeRoot: entry.scope?.scopeRoot ?? null,
+      scopeMode: entry.scope?.scopeMode ?? null,
+      metrics: entry.metrics ?? null
     };
     if (entry.dirty) {
       fields.dirty = entry.dirty;
@@ -14054,12 +15077,48 @@ ${stamped.join(`
     }
     return fields;
   };
-  const indexExclusionNote = (entry) => `index incomplete: ${entry.excludedCount ?? 0} files excluded by the entry cap (${entry.entryCap ?? defaultMaxEntryFiles} max)`;
-  const applyIndexCoverage = (envelope, entry) => {
-    if (!entry.indexTruncated)
+  const indexExclusionNote = (entry) => {
+    const reason = entry.truncationReason ? ` (${entry.truncationReason})` : "";
+    return `index incomplete: ${entry.excludedCount ?? 0} files excluded by the entry cap (${entry.entryCap ?? defaultMaxEntryFiles} max)${reason}`;
+  };
+  const applyUnreadableCoverage = (envelope, entry) => {
+    const unreadable = entry.coverage?.unreadableDirs;
+    const unreadableFiles = entry.coverage?.unreadableFiles;
+    const fileCount = Number.isFinite(entry.coverage?.unreadableFileCount) ? entry.coverage.unreadableFileCount : Array.isArray(unreadableFiles) ? unreadableFiles.length : 0;
+    const hasDirs = Array.isArray(unreadable) && unreadable.length > 0;
+    const hasFiles = Array.isArray(unreadableFiles) && unreadableFiles.length > 0;
+    if (!hasDirs && !hasFiles)
       return envelope;
     if (envelope.coverage !== "indexed" && envelope.coverage !== "partial")
       return envelope;
+    const unresolved = Array.isArray(envelope.unresolved) ? envelope.unresolved : [];
+    const notes = [];
+    if (hasDirs)
+      notes.push(`walk could not read ${unreadable.length} directorie(s): ${unreadable.join(", ")}`);
+    if (hasFiles)
+      notes.push(`${fileCount} file(s) unreadable: ${unreadableFiles.join(", ")}`);
+    const next = {
+      ...envelope,
+      unresolved: [...unresolved]
+    };
+    const kinds = notes.map((note) => note.startsWith("walk could not read") ? "walk could not read" : "file(s) unreadable");
+    notes.forEach((note, index) => {
+      if (!next.unresolved.some((line) => typeof line === "string" && line.includes(kinds[index])))
+        next.unresolved.push(note);
+    });
+    if (next.coverage === "indexed")
+      next.coverage = "partial";
+    if (next.completeness === "complete" || next.completeness === "truncated") {
+      next.completeness = "partial";
+      next.completenessReason = hasFiles ? "unreadable-files" : "unreadable-dirs";
+    }
+    return next;
+  };
+  const applyIndexCoverage = (envelope, entry) => {
+    if (!entry.indexTruncated)
+      return applyUnreadableCoverage(envelope, entry);
+    if (envelope.coverage !== "indexed" && envelope.coverage !== "partial")
+      return applyUnreadableCoverage(envelope, entry);
     const note = indexExclusionNote(entry);
     const unresolved = Array.isArray(envelope.unresolved) ? envelope.unresolved : [];
     const next = {
@@ -14072,7 +15131,7 @@ ${stamped.join(`
       next.completeness = "partial";
       next.completenessReason = "index-truncated";
     }
-    return next;
+    return applyUnreadableCoverage(next, entry);
   };
   const readIndex = async (directory, options = {}) => {
     const engine = await loadEngine();
@@ -14083,6 +15142,8 @@ ${stamped.join(`
       return {
         ready: false,
         indexState: outcome.pending,
+        scopeRoot: outcome.scopeRoot ?? null,
+        scopeMode: outcome.scopeMode ?? null,
         ...base ?? {
           projectId: null,
           worktreeId: null,
@@ -14120,7 +15181,8 @@ ${stamped.join(`
       nodeCount: entry.snapshot.nodes.length,
       edgeCount: entry.snapshot.edges.length,
       entryCount: entry.entryCount,
-      entryCap: entry.entryCap ?? defaultMaxEntryFiles
+      entryCap: entry.entryCap ?? defaultMaxEntryFiles,
+      incremental: entry.incremental ?? null
     };
   };
   const resolveFileId = (entry, rel) => {
@@ -14161,7 +15223,8 @@ ${stamped.join(`
         unsupported: [],
         items: [],
         totals: { displayed: 0, known: 0, hidden: 0 },
-        completeness: "partial"
+        completeness: "partial",
+        completenessReason: "index-excluded"
       };
     }
     const knowledgeByNode = new Map;
@@ -14340,9 +15403,10 @@ ${stamped.join(`
       ...unreadableDirs.length > 0 ? [`walk could not read ${unreadableDirs.length} directorie(s): ${unreadableDirs.join(", ")}`] : [],
       ...skippedDirs.length > 0 ? [`walk skipped generated/vendored directorie(s): ${skippedDirs.join(", ")}`] : []
     ];
+    const unreadable = unreadableDirs.length > 0;
     return {
       ...base,
-      coverage: "indexed",
+      coverage: unreadable ? "partial" : "indexed",
       truncated: modules.length > limit,
       knowledgeIds: [],
       unresolved,
@@ -14350,7 +15414,8 @@ ${stamped.join(`
       items: [],
       modules: limited,
       totals: { displayed: limited.length, known: modules.length, hidden: modules.length - limited.length },
-      completeness: "complete",
+      completeness: unreadable ? "partial" : "complete",
+      ...unreadable ? { completenessReason: "unreadable-dirs" } : {},
       repositoryTotals: walkCoverage?.totals ?? emptyTotals,
       skippedDirs,
       unreadableDirs
@@ -14414,7 +15479,7 @@ ${stamped.join(`
     const limit = input.limit === undefined ? 20 : Math.min(50, Math.max(1, Math.floor(input.limit)));
     const rawDepth = Number(input.depth);
     const depth = Number.isFinite(rawDepth) ? Math.min(3, Math.max(1, Math.floor(rawDepth))) : 1;
-    const outcome = await ensureIndex(directory, { refresh: input.refresh === true, block: blockOnRead });
+    const outcome = await ensureIndex(directory, { refresh: input.refresh === true, block: blockOnRead, scopeMode: input.scopeMode ?? "auto" });
     const entry = outcome.entry ?? outcome.cached ?? null;
     if (!entry) {
       const pending = outcome.pending ?? { state: "not-indexed" };
@@ -14453,7 +15518,7 @@ ${stamped.join(`
       limit,
       depth
     ]);
-    const stored = snapshots.get(directory);
+    const stored = snapshots.get(outcome.scopeKey ?? scopeKeyOf(directory, path));
     const queryCache = stored && stored.buildSeq === entry.buildSeq && stored.queryCache instanceof Map ? stored.queryCache : null;
     const cachedAnswer = queryCache?.get(cacheKey);
     if (cachedAnswer !== undefined)
@@ -14538,13 +15603,13 @@ ${stamped.join(`
     const childKey = compareKey(path.resolve(child));
     return childKey === parentKey || childKey.startsWith(`${parentKey}/`);
   };
-  const resolveFile = async (directory, file) => {
+  const resolveFile = async (directory, file, { scopeMode = "auto" } = {}) => {
     const raw = isString(file) ? file.trim() : "";
     if (raw.length === 0) {
       return { ok: false, reason: "missing-file-id" };
     }
     const relative = raw;
-    const outcome = await ensureIndex(directory, { block: blockOnRead });
+    const outcome = await ensureIndex(directory, { block: blockOnRead, scopeMode });
     const entry = outcome.entry ?? outcome.cached ?? null;
     if (!entry) {
       return { ok: false, reason: "index-not-ready", indexState: outcome.pending ?? { state: "not-indexed" }, snapshotRoot: null };
@@ -14583,6 +15648,8 @@ ${stamped.join(`
   return {
     normalizeDirectory,
     deriveScopeIds,
+    listEntryFiles: (directory, maxEntryFiles, walkOptions) => listEntryFiles(directory, maxEntryFiles, walkOptions),
+    resolveIndexScope: (directory, mode) => resolveIndexScope({ fsPromises, path }, directory, mode),
     readIndex,
     query,
     resolveFile,
@@ -14594,7 +15661,7 @@ ${stamped.join(`
 };
 
 // ../../../omo-engine/memory-core/src/project-knowledge/record.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 
 // ../../../omo-engine/memory-core/src/fs/resilient.ts
 import * as fsSync from "node:fs";
@@ -14632,7 +15699,7 @@ function retryOnEintrSync(operation) {
 var CONTENTION_CODES = new Set(["EPERM", "EBUSY", "EACCES"]);
 
 // ../../../omo-engine/memory-core/src/fs/resilient.ts
-function isFunction(value) {
+function isFunction2(value) {
   return typeof value === "function";
 }
 function withAsyncRetry(operation) {
@@ -14649,11 +15716,11 @@ function resilientNamespace(namespace, kind) {
       if (cache.has(property))
         return cache.get(property);
       const value = Reflect.get(target, property);
-      if (!isFunction(value))
+      if (!isFunction2(value))
         return value;
       const wrapped = wrapFunction(value);
       const native = Reflect.get(value, "native");
-      if (isFunction(native))
+      if (isFunction2(native))
         Object.assign(wrapped, { native: wrapFunction(native) });
       cache.set(property, wrapped);
       return wrapped;
@@ -15156,7 +16223,7 @@ var SOURCE_SYMBOL = /^(?:file|fn:[^\s:]+|class:[^\s:]+|const:[^\s:]+)$/;
 var ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 var CONFIDENCE_TEXT = /^(?:0(?:\.\d{1,2})?|1(?:\.0{1,2})?)$/;
 function sha256Hex3(value) {
-  return createHash3("sha256").update(value, "utf8").digest("hex");
+  return createHash4("sha256").update(value, "utf8").digest("hex");
 }
 function computeRecordId(sourceFile, sourceSymbol, claim) {
   return `pk-${sha256Hex3(`${sourceFile}
@@ -17005,7 +18072,8 @@ var createDagServiceHandlers = (dependencies = {}) => {
     }),
     codeGraphRuntime = null
   } = dependencies;
-  const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime({ fsPromises: nodeFsPromises, path: nodePath }, { blockOnRead: true });
+  const codeGraphStoreDir = process.env.ALCODE_DATA_DIR !== undefined && process.env.ALCODE_DATA_DIR.length > 0 ? joinPath(nodePath.resolve(process.env.ALCODE_DATA_DIR), "code-graph-store") : joinPath(osHomedir(), ".config", "alcode", "code-graph-store");
+  const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime({ fsPromises: nodeFsPromises, path: nodePath }, { blockOnRead: true, storeDir: codeGraphStoreDir });
   try {
     fs.mkdirSync(snapshotDir, { recursive: true });
   } catch {}

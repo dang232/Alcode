@@ -18,7 +18,7 @@ import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_CHECKPOINT_NAME = "ulw_checkpoint"
 
-export const ULW_CHECKPOINT_DESCRIPTION = "Gate a ULW checkpoint on recorded child results."
+const ULW_CHECKPOINT_DESCRIPTION = "Gate a ULW checkpoint on recorded child results."
 
 export type UlwCheckpointDeps = {
   readonly store?: UlwStore

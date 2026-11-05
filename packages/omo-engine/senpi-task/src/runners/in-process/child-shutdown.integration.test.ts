@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import type { ExtensionAPI } from "@code-yeongyu/senpi"
 
@@ -20,8 +20,8 @@ import { createRestoredChildHandle, type ChildSession } from "./child-handle"
 // bridge server only on session_shutdown. A bridge port that still accepts connections after
 // teardown is exactly the leak that kept `omo -p` alive.
 
-const PRINT_RUN = join(import.meta.dir, "__fixtures__", "print-run.ts")
-const BRIDGE_RUN = join(import.meta.dir, "__fixtures__", "bridge-run.ts")
+const PRINT_RUN = fileURLToPath(new URL("./__fixtures__/print-run.ts", import.meta.url))
+const BRIDGE_RUN = fileURLToPath(new URL("./__fixtures__/bridge-run.ts", import.meta.url))
 const PRINT_RUN_BOUND_MS = 90_000
 
 let watch: ServerWatch | undefined

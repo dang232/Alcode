@@ -23,8 +23,6 @@ import {
   type TeamMemberModel,
 } from "./spawn-members.ts"
 
-export type { TeamHostClient, TeamMemberModel }
-
 export type TeamBounds = {
   readonly maxMembers: number
   readonly maxParallelMembers: number
@@ -56,11 +54,11 @@ function toTeamCoreConfig(bounds: TeamBounds, teamsBaseDir: string): TeamModeCon
 }
 
 /** Runtime-state root for every native team run: `<stateDir>/teams`. */
-export function teamStorageBaseDir(stateDir: string): string {
+function teamStorageBaseDir(stateDir: string): string {
   return join(stateDir, "teams")
 }
 
-export type CreatedTeamMember = {
+type CreatedTeamMember = {
   readonly name: string
   readonly sessionId: string
   readonly status: SpawnedMember["status"]

@@ -5,7 +5,7 @@ function formatTimestamp(date: Date): string {
   return `${hh}:${mm}:${ss}`
 }
 
-export function createTimestampTransformer(now: () => Date = () => new Date()): (chunk: string) => string {
+function createTimestampTransformer(now: () => Date = () => new Date()): (chunk: string) => string {
   let atLineStart = true
 
   return (chunk: string): string => {

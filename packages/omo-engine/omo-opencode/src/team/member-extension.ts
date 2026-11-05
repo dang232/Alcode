@@ -10,7 +10,6 @@
 export const MEMBER_IDENTITY_ENV = "OMO_TEAM_MEMBER"
 export const MEMBER_TASK_ID_ENV = "OMO_TEAM_MEMBER_TASK_ID"
 export const MEMBER_TEAM_CONFIG_ENV = "OMO_TEAM_CONFIG"
-export const MEMBER_EXTENSION_BUNDLE_NAME = "omo-member-extension.js"
 
 export type MemberExtensionConfigErrorCode =
   | "missing_identity"
@@ -82,6 +81,3 @@ export function formatMemberIdentity(teamRunId: string, memberName: string): str
   return `${teamRunId}::${memberName}`
 }
 
-export function resolveMemberExtensionEntryPath(extensionUrl = import.meta.url): string {
-  return new URL(`./${MEMBER_EXTENSION_BUNDLE_NAME}`, extensionUrl).href
-}

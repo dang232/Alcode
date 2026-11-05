@@ -35,7 +35,7 @@ export const ULW_LOOP_SUBCOMMANDS = [
 	"record-review-blockers",
 ] as const;
 
-export type UlwLoopSubcommand = (typeof ULW_LOOP_SUBCOMMANDS)[number];
+type UlwLoopSubcommand = (typeof ULW_LOOP_SUBCOMMANDS)[number];
 
 export function isUlwLoopSubcommand(value: string): value is UlwLoopSubcommand {
 	return (ULW_LOOP_SUBCOMMANDS as readonly string[]).includes(value);

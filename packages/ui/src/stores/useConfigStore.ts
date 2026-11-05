@@ -36,8 +36,6 @@ import { readCachedCatalog, shouldHoldFirstLoadAgainstCache, writeCachedCatalogW
 const MODELS_DEV_API_URL = "https://models.dev/api.json";
 const MODELS_DEV_PROXY_URL = "/api/alcode/models-metadata";
 
-const FALLBACK_PROVIDER_ID = "opencode";
-const FALLBACK_MODEL_ID = "big-pickle";
 // Sentinel selectedProviderId used by the providers UI while the "Add provider"
 // form is open. It is intentionally not a real provider id and must not be
 // persisted as a stable provider selection.
@@ -306,7 +304,7 @@ const resolveProviderModelSelection = ({
     }
 
     if (!allowFallback) return null;
-    return resolveLastSelectedModel(fallbackPrefs) ?? resolveFallbackModel(providers, fallbackPrefs.hiddenModels);
+    return resolveLastSelectedModel(fallbackPrefs);
 };
 
 /** What the automatic pick reads from the user's model preferences. */
@@ -338,38 +336,6 @@ const resolveLastSelectedModel = (
     return parsed;
 };
 
-// The pick when nothing is configured or remembered: Big Pickle, else the first
-// model. A model the user hid in the picker is skipped; configured defaults never
-// come through here, so they stay honoured even when hidden. With every model
-// hidden the conversation still needs one to send with, so the unfiltered pick stands.
-const resolveFallbackModel = (
-    providers: ProviderWithModelList[],
-    hiddenModels: readonly ModelRef[],
-): { providerId: string; modelId: string } | null => {
-    const isVisible = (providerId: string, modelId: string) => !isModelHidden(hiddenModels, providerId, modelId);
-
-    const hasBigPickle = hasProviderModel(providers, FALLBACK_PROVIDER_ID, FALLBACK_MODEL_ID);
-    if (hasBigPickle && isVisible(FALLBACK_PROVIDER_ID, FALLBACK_MODEL_ID)) {
-        return { providerId: FALLBACK_PROVIDER_ID, modelId: FALLBACK_MODEL_ID };
-    }
-    for (const provider of providers) {
-        const visibleModel = provider.models.find((model) => isVisible(provider.id, model.modelID));
-        if (visibleModel) {
-            return { providerId: provider.id, modelId: visibleModel.modelID };
-        }
-    }
-
-    if (hasBigPickle) {
-        return { providerId: FALLBACK_PROVIDER_ID, modelId: FALLBACK_MODEL_ID };
-    }
-    const firstProvider = providers[0];
-    const firstModel = firstProvider?.models[0];
-    if (firstProvider && firstModel) {
-        return { providerId: firstProvider.id, modelId: firstModel.modelID };
-    }
-    return null;
-};
-
 type DefaultAgentModelSelection = {
     agentName: string | undefined;
     providerId?: string;
@@ -382,7 +348,7 @@ type DefaultAgentModelSelection = {
 //
 //   Agent: project.defaultAgent → settings.defaultAgent → opencode default_agent → build → first primary → first
 //   Model: project.defaultModel → settings.defaultModel → resolved agent's pinned model+variant → opencode config.model
-//          → last model picked in a chat → opencode/big-pickle → first (these three skip models hidden in the picker)
+//          → last model picked in a chat (skipping models hidden in the picker)
 //
 // The opencode default_agent / default model (config fields on the OpenCode server) are honored
 // only when our own settings have no default. A configured identifier remains
@@ -493,9 +459,9 @@ const resolveDefaultAgentModelSelection = ({
     }
 
     if (!providerId) {
-        const fallback = resolveLastSelectedModel(fallbackPrefs) ?? resolveFallbackModel(providers, fallbackPrefs.hiddenModels);
-        providerId = fallback?.providerId;
-        modelId = fallback?.modelId;
+        const lastPick = resolveLastSelectedModel(fallbackPrefs);
+        providerId = lastPick?.providerId;
+        modelId = lastPick?.modelId;
     }
 
     return { agentName: resolvedAgent?.name, providerId, modelId, variant };
@@ -3041,7 +3007,7 @@ export const useConfigStore = create<ConfigStore>()(
 
                             // Resolve agent + model via the shared cascade:
                             //   project.defaultAgent → settings.defaultAgent → opencode default_agent → build → first primary → first
-                            //   project.defaultModel → settings.defaultModel → resolved agent's model+variant → opencode config.model → last chat pick → opencode/big-pickle → first (skipping hidden models)
+                            //   project.defaultModel → settings.defaultModel → resolved agent's model+variant → opencode config.model → last chat pick (skipping hidden models)
                             const resolvedDefault = resolveDefaultAgentModelSelection({
                                 agents: safeAgents,
                                 providers,
@@ -3515,21 +3481,24 @@ export const useConfigStore = create<ConfigStore>()(
 
                 // Re-applies the same priority cascade used at app startup (see loadAgents):
                 //   agent: settings.defaultAgent → build → first primary → first agent
-                //   model: project.defaultModel → settings.defaultModel → agent's preferred model → opencode config.model → last chat pick → opencode/big-pickle → first (skipping hidden models)
+                //   model: project.defaultModel → settings.defaultModel → agent's preferred model → opencode config.model → last chat pick (skipping hidden models)
                 // Used when entering a fresh draft session so model/agent reset to defaults
                 // instead of sticking to the previously open session's selection.
                 dropStaleAutoSelection: () => {
                     const current = get();
                     if (!isStaleAutoSelection(current.currentProviderId, current.currentModelId)) return;
                     const projectDefaults = getProjectDefaultsForConfigDirectory(fromDirectoryKey(current.activeDirectoryKey));
-                    const resolved = resolveProviderModelSelection({
+                    const fallbackResolved = resolveProviderModelSelection({
                         providers: current.providers,
                         settingsDefaultModel: projectDefaults.projectDefaultModel || current.settingsDefaultModel,
                         settingsDefaultVariant: projectDefaults.projectDefaultModel ? projectDefaults.projectDefaultVariant : current.settingsDefaultVariant,
                         allowFallback: true,
                         fallbackPrefs: readFallbackModelPrefs(),
                     });
-                    if (!resolved) return;
+                    // A stale Auto with nothing to fall back to clears the
+                    // selection instead of keeping a model the server cannot
+                    // route: the composer falls back to asking, not sending.
+                    const resolved = fallbackResolved ?? { agentName: undefined, providerId: undefined, modelId: undefined, variant: undefined };
                     set((state) => {
                         const directoryKey = state.activeDirectoryKey;
                         const baseSnapshot: DirectoryScopedConfig = state.directoryScoped[directoryKey] ?? {
@@ -3545,15 +3514,15 @@ export const useConfigStore = create<ConfigStore>()(
                         };
                         const nextSnapshot: DirectoryScopedConfig = {
                             ...baseSnapshot,
-                            currentProviderId: resolved.providerId,
-                            currentModelId: resolved.modelId,
+                            currentProviderId: resolved.providerId ?? "",
+                            currentModelId: resolved.modelId ?? "",
                             currentVariant: resolved.variant,
                             currentVariantSelection: { override: undefined, inherited: resolved.variant },
                             selectionSource: "auto",
                         };
                         return {
-                            currentProviderId: resolved.providerId,
-                            currentModelId: resolved.modelId,
+                            currentProviderId: resolved.providerId ?? "",
+                            currentModelId: resolved.modelId ?? "",
                             currentVariant: resolved.variant,
                             currentVariantSelection: { override: undefined, inherited: resolved.variant },
                             selectionSource: "auto",
@@ -3561,9 +3530,11 @@ export const useConfigStore = create<ConfigStore>()(
                         };
                     });
                     // The session remembers its own pick; overwrite the stale one so the
-                    // next restore does not bring Auto back.
+                    // next restore does not bring Auto back. Nothing is written when
+                    // the drop left no model: an undefined pick must not paper over
+                    // the session's saved selection with empty values.
                     const sessionId = useSessionUIStore.getState().currentSessionId;
-                    if (sessionId) {
+                    if (sessionId && resolved.providerId && resolved.modelId) {
                         const selection = useSelectionStore.getState();
                         selection.saveSessionModelSelection(sessionId, resolved.providerId, resolved.modelId);
                         if (current.currentAgentName) selection.saveAgentModelForSession(sessionId, current.currentAgentName, resolved.providerId, resolved.modelId);

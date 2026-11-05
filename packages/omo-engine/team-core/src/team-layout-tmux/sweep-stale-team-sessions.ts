@@ -1,34 +1,11 @@
 const UUID_V4ISH_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
-export const TEAM_SESSION_PATTERN = new RegExp(`^omo-team-(${UUID_V4ISH_PATTERN})$`)
+const TEAM_SESSION_PATTERN = new RegExp(`^omo-team-(${UUID_V4ISH_PATTERN})$`)
 
 export type TeamSweepDeps = {
 	listCandidates: () => Promise<string[]>
 	killSession: (name: string) => Promise<void>
 	log: (message: string, payload?: unknown) => void
-}
-
-async function listTeamSessionsViaTmux(tmuxPath: string): Promise<string[]> {
-	const { runTmuxCommand } = await import("@oh-my-opencode/tmux-core")
-	const result = await runTmuxCommand(tmuxPath, ["list-sessions", "-F", "#{session_name}"])
-
-	if (!result.success) {
-		return []
-	}
-
-	return result.output
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((sessionName) => sessionName.length > 0)
-}
-
-async function killTeamSessionViaTmux(tmuxPath: string, sessionName: string): Promise<void> {
-	const { runTmuxCommand } = await import("@oh-my-opencode/tmux-core")
-	const result = await runTmuxCommand(tmuxPath, ["kill-session", "-t", sessionName])
-
-	if (!result.success) {
-		throw new Error(`Failed to kill tmux session: ${sessionName}`)
-	}
 }
 
 export async function sweepStaleTeamSessionsWith(
@@ -55,15 +32,4 @@ export async function sweepStaleTeamSessionsWith(
 			},
 		},
 	)
-}
-
-export async function sweepStaleTeamSessions(activeTeamRunIds: ReadonlySet<string>): Promise<string[]> {
-	const { log } = await import("../logger")
-	const tmuxPath = "tmux"
-
-	return sweepStaleTeamSessionsWith(activeTeamRunIds, {
-		listCandidates: () => listTeamSessionsViaTmux(tmuxPath),
-		killSession: (sessionName) => killTeamSessionViaTmux(tmuxPath, sessionName),
-		log,
-	})
 }

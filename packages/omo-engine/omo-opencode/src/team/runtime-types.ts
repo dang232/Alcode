@@ -124,7 +124,7 @@ export type MemberStartSpec = {
   readonly memberEnv?: Readonly<Record<string, string>>
 }
 
-export type MemberStartOutcome = {
+type MemberStartOutcome = {
   readonly taskId: string
   readonly sessionId?: string
 }
@@ -142,6 +142,3 @@ export type TeamMemberExtensionConfig = {
   readonly inheritedExtensions?: readonly string[]
 }
 
-export type SpawnMemberExtensionConfig = TeamMemberExtensionConfig & {
-  readonly teamConfig: string
-}

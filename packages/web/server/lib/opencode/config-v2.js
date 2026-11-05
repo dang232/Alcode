@@ -22,11 +22,8 @@ import { isRecord } from '../shared/guards.js';
 import {
   OmoConfigLayerSchema,
   OmoConfigSchema,
-  OmoConfigWriteError,
   readOmoConfig,
   validateOmoConfig,
-  validateOmoConfigLayer,
-  writeOmoConfig,
 } from './omo-config.bundle.js';
 
 // ============== SECTIONS ==============
@@ -873,9 +870,6 @@ export {
   writeWarmingDuration,
   OmoConfigLayerSchema,
   OmoConfigSchema,
-  OmoConfigWriteError,
   readOmoConfig,
   validateOmoConfig,
-  validateOmoConfigLayer,
-  writeOmoConfig,
 };

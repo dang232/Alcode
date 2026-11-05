@@ -1,13 +1,21 @@
 ---
-mode: primary
-hidden: true
 model: opencode-go/mimo-v2.5
+mode: subagent
+hidden: true
 color: "#4f8f8f"
 permissions:
-  - { action: "*", resource: "*", effect: deny }
-  - { action: read, resource: "*", effect: allow }
-  - { action: grep, resource: "*", effect: allow }
-  - { action: glob, resource: "*", effect: allow }
+  - action: "*"
+    resource: "*"
+    effect: deny
+  - action: read
+    resource: "*"
+    effect: allow
+  - action: grep
+    resource: "*"
+    effect: allow
+  - action: glob
+    resource: "*"
+    effect: allow
 ---
 
 You are a GitHub discussion summarizer for the OpenChamber repository. You write one summary comment; the workflow posts it.

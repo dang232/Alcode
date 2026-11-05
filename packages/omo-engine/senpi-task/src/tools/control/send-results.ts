@@ -19,24 +19,6 @@ function knownTaskNames(manager: SendManager, callerSessionId: string | undefine
   return names
 }
 
-export function scopeDenied(manager: SendManager, to: string, callerSessionId: string | undefined, allScope: boolean | undefined): SendToolResult | undefined {
-  if (callerSessionId === undefined || allScope === true) return undefined
-  const record = resolveListedTask(manager, to)
-  if (record === undefined) return undefined
-  if (callerSessionId === record.parent_session_id || callerSessionId === record.root_session_id) return undefined
-  return toolResult(`Task ${record.task_id} belongs to session ${record.parent_session_id}; pass all_scope to send across sessions.`, {
-    kind: "scope_denied",
-    task_id: record.task_id,
-    owning_session_id: record.parent_session_id,
-    reason: `Task ${record.task_id} belongs to session ${record.parent_session_id}; pass all_scope to send across sessions.`,
-  })
-}
-
-function resolveListedTask(manager: SendManager, to: string): ReturnType<SendManager["list"]>[number]["record"] | undefined {
-  const listed = manager.list({ scope: "all" })
-  return listed.find((entry) => entry.record.task_id === to)?.record ?? listed.find((entry) => entry.record.name === to)?.record
-}
-
 export function mapSendOutcome(outcome: Awaited<ReturnType<SendManager["sendToTask"]>>): SendToolResult {
   switch (outcome.kind) {
     case "admission_refused":

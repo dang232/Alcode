@@ -77,7 +77,7 @@ export function captureIdentity(pid: number): ProcessIdentity | null {
   return command === null ? null : { pid, command }
 }
 
-export function identityMatches(identity: ProcessIdentity): boolean {
+function identityMatches(identity: ProcessIdentity): boolean {
   const command = commandForPid(identity.pid)
   return command !== null && command === identity.command
 }

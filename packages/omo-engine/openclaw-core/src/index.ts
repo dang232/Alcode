@@ -143,4 +143,9 @@ export async function initializeOpenClaw(config: OpenClawConfig): Promise<void> 
 }
 
 export { startReplyListener, stopReplyListener }
+// Daemon main for the out-of-band reply-listener process spawned by
+// reply-listener-spawn (bun run <daemon> --openclaw-reply-listener-daemon).
+// Re-exported from the package entry so the daemon entrypoint resolves to
+// public API instead of a deep import.
+export { pollLoop } from "./reply-listener-poll-loop"
 export type * from "./types"

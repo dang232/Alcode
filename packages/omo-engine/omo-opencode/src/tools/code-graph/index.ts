@@ -10,10 +10,6 @@
 import type { OmoToolMap } from "../../plugin-types.ts"
 import { CODE_GRAPH_NAME, createCodeGraphTool, type CodeGraphToolDeps } from "./code-graph.ts"
 
-export const CODE_GRAPH_TOOL_NAMES = [CODE_GRAPH_NAME] as const
-
-export type CodeGraphToolName = (typeof CODE_GRAPH_TOOL_NAMES)[number]
-
 export type CodeGraphToolsDeps = CodeGraphToolDeps
 
 /** Builds the single code-graph tool definition. */

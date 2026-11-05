@@ -8,7 +8,7 @@ export function sortCandidates<T extends RuleCandidate>(candidates: ReadonlyArra
 		.map(({ candidate }) => candidate);
 }
 
-export function compareCandidates(a: RuleCandidate, b: RuleCandidate): number {
+function compareCandidates(a: RuleCandidate, b: RuleCandidate): number {
 	return (
 		compareBoolean(a.isGlobal, b.isGlobal) ||
 		compareNumber(a.distance, b.distance) ||

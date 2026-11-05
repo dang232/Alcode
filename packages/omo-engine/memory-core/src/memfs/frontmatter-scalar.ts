@@ -18,10 +18,6 @@ const CORE_SCHEMA_NUMBER_RE =
 const DOUBLE_QUOTED_JSON_RE = /^"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"$/
 const SINGLE_QUOTED_RE = /^'(?:[^']|'')*'$/
 
-export function isYamlMapping(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
 export function isQuotedScalarSource(raw: string): boolean {
   return raw.length >= 2 && (raw.startsWith('"') || raw.startsWith("'"))
 }

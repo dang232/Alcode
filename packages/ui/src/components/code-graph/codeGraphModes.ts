@@ -17,6 +17,7 @@
 
 import type {
   CodeGraphCoverage,
+  CodeGraphIndexSummary,
   CodeGraphItem,
   CodeGraphModule,
   CodeGraphQueryResult,
@@ -65,6 +66,62 @@ export interface CodeGraphTrailView {
   coverage: CodeGraphCoverage | null;
   notes: string[];
 }
+
+/**
+ * Truncation facts the toolbar surfaces next to totals, read verbatim from
+ * server fields. The walk caps its sample at ten repo-relative paths; the
+ * derivation caps again so a longer sample from any future payload cannot
+ * widen the toolbar line. Only modules with exclusions ride along: a fully
+ * indexed module has nothing to say here.
+ */
+export interface CodeGraphTruncationModule {
+  name: string;
+  analyzedFiles: number;
+  unanalyzedFiles: number;
+  excludedFiles: number;
+}
+
+export interface CodeGraphTruncationView {
+  reason: string | null;
+  excludedCount: number;
+  excludedSample: string[];
+  modules: CodeGraphTruncationModule[];
+}
+
+const MAX_TOOLBAR_SAMPLE = 10;
+
+/**
+ * Answer-first truncation: a query answer and the index summary carry the
+ * same server fields, and the fresher answer wins. Null when neither names
+ * a reason nor counts an exclusion, so the toolbar stays quiet on a fully
+ * indexed scope instead of stating a zero-exclusion fact.
+ */
+export const deriveTruncationView = (
+  answer: CodeGraphQueryResult | null,
+  index: CodeGraphIndexSummary | null,
+): CodeGraphTruncationView | null => {
+  const reason = answer?.truncationReason ?? index?.truncationReason ?? null;
+  const excludedCount = answer?.excludedCount ?? index?.excludedCount ?? 0;
+  if (reason === null && excludedCount <= 0) return null;
+  const sample = answer?.excludedSample ?? index?.excludedSample ?? [];
+  const modules: CodeGraphTruncationModule[] = [];
+  for (const bucket of answer?.modules ?? []) {
+    const excluded = bucket.excludedFiles ?? 0;
+    if (excluded <= 0) continue;
+    modules.push({
+      name: bucket.name,
+      analyzedFiles: bucket.analyzedFiles ?? 0,
+      unanalyzedFiles: bucket.unanalyzedFiles ?? 0,
+      excludedFiles: excluded,
+    });
+  }
+  return {
+    reason,
+    excludedCount,
+    excludedSample: sample.slice(0, MAX_TOOLBAR_SAMPLE),
+    modules,
+  };
+};
 
 /**
  * A row is graph-confirmed when an edge kind the index resolves supports it

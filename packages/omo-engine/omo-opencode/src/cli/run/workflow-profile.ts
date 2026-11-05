@@ -19,7 +19,7 @@ import type {
   WorkflowStrategy,
 } from "./workflow-select";
 
-export interface ResolvedModelRef {
+interface ResolvedModelRef {
   providerID: string;
   modelID: string;
 }
@@ -54,7 +54,7 @@ export interface WorkflowProfileInput {
   runId?: string;
 }
 
-export interface ProfileSignal {
+interface ProfileSignal {
   field: string;
   value: string | number | boolean;
   provenance: string;

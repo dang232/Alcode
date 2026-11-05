@@ -1,12 +1,8 @@
 import { z } from "zod"
 import type {
-  OpenClawConfig as CoreOpenClawConfig,
-  OpenClawGateway as CoreOpenClawGateway,
-  OpenClawHook as CoreOpenClawHook,
-  OpenClawReplyListenerConfig as CoreOpenClawReplyListenerConfig,
 } from "../../../../openclaw-core/src/index.ts"
 
-export const OpenClawGatewaySchema = z.object({
+const OpenClawGatewaySchema = z.object({
   type: z.enum(["http", "command"]).default("http"),
   // HTTP specific
   url: z.string().optional(),
@@ -18,13 +14,13 @@ export const OpenClawGatewaySchema = z.object({
   timeout: z.number().optional(),
 })
 
-export const OpenClawHookSchema = z.object({
+const OpenClawHookSchema = z.object({
   enabled: z.boolean().default(true),
   gateway: z.string(),
   instruction: z.string(),
 })
 
-export const OpenClawReplyListenerConfigSchema = z.object({
+const OpenClawReplyListenerConfigSchema = z.object({
   discordBotToken: z.string().optional(),
   discordChannelId: z.string().optional(),
   discordMention: z.string().optional(), // For allowed_mentions
@@ -50,8 +46,3 @@ export const OpenClawConfigSchema = z.object({
   replyListener: OpenClawReplyListenerConfigSchema.optional(),
 })
 
-export type OpenClawConfig = z.infer<typeof OpenClawConfigSchema> & CoreOpenClawConfig
-export type OpenClawGateway = z.infer<typeof OpenClawGatewaySchema> & CoreOpenClawGateway
-export type OpenClawHook = z.infer<typeof OpenClawHookSchema> & CoreOpenClawHook
-export type OpenClawReplyListenerConfig =
-  z.infer<typeof OpenClawReplyListenerConfigSchema> & CoreOpenClawReplyListenerConfig

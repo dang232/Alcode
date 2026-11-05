@@ -4,7 +4,7 @@
  * is never copied anywhere: only a closed class, an allow-listed command name and a shape-checked
  * host error code leave this module.
  */
-export type StartCauseClass = "request_timeout" | "host_refused" | "transport_lost"
+type StartCauseClass = "request_timeout" | "host_refused" | "transport_lost"
 
 export type StartCause = {
   readonly cause_class: StartCauseClass

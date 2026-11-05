@@ -12,7 +12,7 @@
 // directly with a stub bridge, so no server or engine is needed to prove
 // the steer/cancel wiring.
 import { execFileSync } from 'node:child_process';
-import { tmpdir as osTmpdir } from 'node:os';
+import { tmpdir as osTmpdir, homedir as osHomedir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import nodeFs from 'node:fs';
 import { promises as nodeFsPromises } from 'node:fs';
@@ -657,9 +657,17 @@ export const createDagServiceHandlers = (dependencies = {}) => {
   // loop stalls for the whole build anyway (measured 3.4 s on this package),
   // while a blocking read returns at the same wall-clock moment with facts.
   // An injected runtime is used verbatim, never reconfigured.
+  //
+  // The default runtime shares the canonical persisted store with the panel
+  // server and the agent tool (same directory, same generations): without a
+  // storeDir this service rebuilt in memory on every process start, a third
+  // indexing silo beside the other two surfaces.
+  const codeGraphStoreDir = process.env.ALCODE_DATA_DIR !== undefined && process.env.ALCODE_DATA_DIR.length > 0
+    ? joinPath(nodePath.resolve(process.env.ALCODE_DATA_DIR), 'code-graph-store')
+    : joinPath(osHomedir(), '.config', 'alcode', 'code-graph-store');
   const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime(
     { fsPromises: nodeFsPromises, path: nodePath },
-    { blockOnRead: true },
+    { blockOnRead: true, storeDir: codeGraphStoreDir },
   );
 
   try {

@@ -98,7 +98,7 @@ export interface UlwLoopManualQaArtifactRef {
 	readonly path: string;
 }
 
-export interface UlwLoopManualQaSurfaceEvidence {
+interface UlwLoopManualQaSurfaceEvidence {
 	readonly id: string;
 	readonly criterionRef: string;
 	readonly surface: UlwLoopManualQaSurface;
@@ -107,7 +107,7 @@ export interface UlwLoopManualQaSurfaceEvidence {
 	readonly artifactRefs: readonly string[];
 }
 
-export interface UlwLoopManualQaAdversarialCase {
+interface UlwLoopManualQaAdversarialCase {
 	readonly id: string;
 	readonly criterionRef: string;
 	readonly scenario: string;
@@ -149,7 +149,7 @@ interface UlwLoopQualityGateCommon {
 	};
 }
 
-export interface UlwLoopQualityGateLazycodex extends UlwLoopQualityGateCommon {
+interface UlwLoopQualityGateLazycodex extends UlwLoopQualityGateCommon {
 	readonly surface: "lazycodex";
 	readonly codeReview?: {
 		readonly by: string;
@@ -161,7 +161,7 @@ export interface UlwLoopQualityGateLazycodex extends UlwLoopQualityGateCommon {
 	};
 }
 
-export interface UlwLoopQualityGateSenpi extends UlwLoopQualityGateCommon {
+interface UlwLoopQualityGateSenpi extends UlwLoopQualityGateCommon {
 	readonly surface: "omo-senpi";
 }
 

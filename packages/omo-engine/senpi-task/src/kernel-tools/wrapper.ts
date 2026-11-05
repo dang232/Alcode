@@ -9,7 +9,7 @@ import {
 } from "./contract"
 import type { KernelToolGrant } from "./resolve"
 
-export type KernelToolResultDetails = {
+type KernelToolResultDetails = {
   readonly kernel_tool: string
   readonly error?: { readonly code: KernelToolErrorCode; readonly message: string }
 }
@@ -31,7 +31,7 @@ function envelope(details: KernelToolResultDetails, value: unknown): AgentToolRe
   }
 }
 
-export function kernelToolErrorResult(
+function kernelToolErrorResult(
   name: string,
   code: KernelToolErrorCode,
   message: string,

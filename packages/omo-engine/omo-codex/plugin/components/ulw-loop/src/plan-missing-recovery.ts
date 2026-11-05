@@ -1,13 +1,13 @@
 import { UlwLoopError } from "./runtime.js";
 import type { UlwLoopToolkitSurface } from "./surface.js";
 
-export const ULW_LOOP_CREATE_GOALS_COMMAND = 'omo-agent-toolkit ulw-loop create-goals --brief "<brief>" --json';
+const ULW_LOOP_CREATE_GOALS_COMMAND = 'omo-agent-toolkit ulw-loop create-goals --brief "<brief>" --json';
 
 export function createGoalsAction(surface: UlwLoopToolkitSurface): string {
 	return surface === "omo-senpi" ? 'agentToolkit.createGoals({ brief: "<brief>" })' : ULW_LOOP_CREATE_GOALS_COMMAND;
 }
 
-export interface PlanMissingRecovery {
+interface PlanMissingRecovery {
 	readonly message: string;
 	readonly details?: { readonly existingSessionIds: readonly string[] };
 }
@@ -16,7 +16,7 @@ export interface PlanMissingRecovery {
  * A missing plan is either "never bootstrapped" or "bootstrapped under a different
  * session id"; the recovery text has to answer both without the caller guessing.
  */
-export function planMissingRecovery(
+function planMissingRecovery(
 	existingSessionIds: readonly string[],
 	surface: UlwLoopToolkitSurface = "lazycodex",
 ): PlanMissingRecovery {

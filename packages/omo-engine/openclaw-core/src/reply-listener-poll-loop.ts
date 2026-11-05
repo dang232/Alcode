@@ -19,7 +19,7 @@ import { pruneStale } from "./session-registry"
 
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000
 
-export function shouldContinuePolling(state: ReplyListenerDaemonState): boolean {
+function shouldContinuePolling(state: ReplyListenerDaemonState): boolean {
   return state.isRunning || (state.pid === null && state.lastPollAt === null)
 }
 

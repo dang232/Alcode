@@ -13,7 +13,7 @@ import type { ChildSpec } from "../../in-process"
 // #9413. A machine whose in-process children load the real builtin extensions (codemode included)
 // and talk to a local fake provider: only the provider's replies are faked.
 
-export type ChildTurn = "succeeds" | "fails"
+type ChildTurn = "succeeds" | "fails"
 
 const PROVIDER = "runtime-fallback-test"
 

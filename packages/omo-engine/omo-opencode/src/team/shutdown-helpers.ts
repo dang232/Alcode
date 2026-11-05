@@ -1,20 +1,5 @@
 import type { RuntimeState, RuntimeStateMember } from "../../../team-core/src/types.ts"
 
-/**
- * Member statuses safe to tear down at team deletion: a member that
- * finished, was approved for shutdown, or errored out holds no live turn.
- * Any other status means the member may still be working.
- */
-export const DELETABLE_MEMBER_STATUSES: ReadonlySet<RuntimeStateMember["status"]> = new Set([
-  "completed",
-  "shutdown_approved",
-  "errored",
-])
-
-export function isMemberDeletable(status: RuntimeStateMember["status"]): boolean {
-  return DELETABLE_MEMBER_STATUSES.has(status)
-}
-
 export function findTeamMember(state: RuntimeState, memberName: string): RuntimeStateMember | undefined {
   return state.members.find((candidate) => candidate.name === memberName)
 }

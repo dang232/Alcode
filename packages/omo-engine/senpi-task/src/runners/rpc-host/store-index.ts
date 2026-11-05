@@ -11,7 +11,7 @@ import { DURABLE_JSON_FS, DURABLE_JSON_LOCK_OPTIONS, isRecord, type DurableJsonF
  * Registering is an admission precondition: a child is opened only once its store reads back here.
  */
 
-export const TASK_STORE_INDEX_VERSION = 1
+const TASK_STORE_INDEX_VERSION = 1
 
 interface StoreIndexEntry {
   readonly first_seen: string

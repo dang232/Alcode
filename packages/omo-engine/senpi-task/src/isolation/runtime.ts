@@ -32,7 +32,7 @@ import type { IsolationBackendKind } from "../../../omo-config-core/src/index.ts
 
 export type { CoreMergeResult, IsolationHandle, IsolationOwner, OwnerProbe, SweepResult, WorktreeBaseline }
 
-export type EnsureInput = {
+type EnsureInput = {
   readonly repoRoot: string
   readonly id: string
   readonly preferred: IsolationBackendKind

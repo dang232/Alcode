@@ -5,7 +5,7 @@ import type { ToolDefinition } from "@code-yeongyu/senpi"
 // Team tools and the lead-only `workflow` orchestrator stay excluded. Task/workpool tools remain
 // available, matching process children and relying on the existing depth and allow/deny policy.
 
-export const CHILD_DIRECT_EXPOSURE_TOOL_NAMES: ReadonlySet<string> = new Set(["x_search"])
+const CHILD_DIRECT_EXPOSURE_TOOL_NAMES: ReadonlySet<string> = new Set(["x_search"])
 
 export type SharedToolFilterOptions = {
   readonly uiOnlyToolNames?: Iterable<string>

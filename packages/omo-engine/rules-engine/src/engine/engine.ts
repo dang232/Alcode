@@ -23,8 +23,6 @@ import { formatDynamicBlock, formatStaticBlock } from "./formatter.js";
 import { disabledSourcesFromConfig } from "./sources.js";
 import type { LoadedRule, PiRulesConfig, RuleDiagnostic, SessionState } from "./types.js";
 
-export type { Engine, EngineDeps } from "./engine-types.js";
-
 export function defaultConfig(): PiRulesConfig {
 	return {
 		disabled: false,

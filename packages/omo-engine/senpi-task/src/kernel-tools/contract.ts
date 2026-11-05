@@ -67,7 +67,7 @@ export type KernelToolInvokeRequest = {
  * Host tools the nested calls of ONE invoked closure may reach: `allow` narrows to exactly those
  * names, `deny` refuses the named ones, and `deny` wins where both name the same tool.
  */
-export type KernelToolHostScope = {
+type KernelToolHostScope = {
   readonly allow?: readonly string[]
   readonly deny?: readonly string[]
 }

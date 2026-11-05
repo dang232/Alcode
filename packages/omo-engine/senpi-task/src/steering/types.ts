@@ -121,4 +121,3 @@ export type SteeringEngine = {
   dropPending(taskId: string): void
 }
 
-export type { TaskRecord }

@@ -4,7 +4,7 @@ import * as z from "zod"
 
 export const DAEMON_LAUNCH_SPEC_FILENAME = "daemon-launch-spec.json"
 
-export const DAEMON_LAUNCH_SPEC_ERROR_CODES = [
+const DAEMON_LAUNCH_SPEC_ERROR_CODES = [
   "launch_spec_insecure",
   "launch_spec_path_escape",
   "launch_spec_env_denied",

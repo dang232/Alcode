@@ -37,7 +37,7 @@ import { getDeferredSafeStorage } from "@/stores/utils/safeStorage"
 import { markPendingUserSendAnimation } from "@/lib/userSendAnimation"
 import { prepareUserMessageResume } from "./user-message-resume"
 import { revealDagPaneForUlvStart } from "@/lib/dagAutoOpen"
-import { ULW_COMMAND_NAME, resolveUlwRunIntent, startUlwNativeRun } from "@/lib/ulwNativeRun"
+import { ULW_COMMAND_NAME, mintUlwSubmitIdentity, resolveUlwRunIntent, startUlwNativeRun } from "@/lib/ulwNativeRun"
 import { resolveAutoRunIntent } from "@/lib/ulwAutoEngage"
 import { dagRouteSample, recordDagRouteDecision, type DagRouteDecision, type DagRouteReport } from "@/lib/dagRouteLog"
 import { normalizePath } from "@/lib/pathNormalization"
@@ -175,6 +175,74 @@ export function resolveSendSelection(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Pending-submission identity — duplicate-submit protection for ULW run starts
+// ---------------------------------------------------------------------------
+
+/** One stable identity per open draft while its submission is in flight. */
+const pendingSubmissionIdentityByDraft = new Map<number, string>()
+/** Draft-session creations in flight, keyed by submission identity. */
+const pendingDraftMaterializations = new Map<string, Promise<MaterializedDraftSession | null>>()
+
+/**
+ * Resolve the stable identity for one composer submission.
+ *
+ * An explicit key wins: a retry carries its submission's own key back so
+ * the redelivery shares the original root run instead of minting a second
+ * one. Otherwise an open draft reuses the identity minted for it — two
+ * rapid sends racing before either closes the draft resolve the same draft
+ * id, so both share one key and never a fresh key per click. No draft (an
+ * existing-session send) mints fresh: each such send is its own
+ * submission, and concurrent same-session sends keep the adopted-session
+ * single-flight inside startUlwNativeRun.
+ */
+export const resolveSubmissionIdentity = (explicitKey?: string, draftId?: number | null): string => {
+  if (explicitKey) return explicitKey
+  if (draftId != null) {
+    const pending = pendingSubmissionIdentityByDraft.get(draftId)
+    if (pending) return pending
+    const minted = mintUlwSubmitIdentity()
+    pendingSubmissionIdentityByDraft.set(draftId, minted)
+    return minted
+  }
+  return mintUlwSubmitIdentity()
+}
+
+/**
+ * Share one draft-session creation across concurrent deliveries of the same
+ * submission. The entry is removed on settle (the same discipline as the
+ * run-start single-flight), so a later intentional submission always
+ * creates fresh; a failed creation is re-created by the retry, which
+ * reuses the same submission identity.
+ */
+const shareDraftMaterialization = (
+  submissionId: string,
+  materialize: () => Promise<MaterializedDraftSession | null>,
+): Promise<MaterializedDraftSession | null> => {
+  const pending = pendingDraftMaterializations.get(submissionId)
+  if (pending) return pending
+  const run = materialize().finally(() => {
+    if (pendingDraftMaterializations.get(submissionId) === run) pendingDraftMaterializations.delete(submissionId)
+  })
+  pendingDraftMaterializations.set(submissionId, run)
+  return run
+}
+
+/**
+ * Release a draft's submission identity. Called when the submission
+ * completes (or its draft closes) so a later intentional send mints fresh
+ * and is never blocked behind this one. A failed send keeps its identity
+ * so the retry reuses it. Deleting another submission's identity is a
+ * no-op: the equality check keeps a newer submission on the same draft
+ * id untouched.
+ */
+const releaseSubmissionIdentity = (draftId: number | null | undefined, submissionId?: string): void => {
+  if (draftId == null) return
+  if (submissionId === undefined || pendingSubmissionIdentityByDraft.get(draftId) === submissionId) {
+    pendingSubmissionIdentityByDraft.delete(draftId)
+  }
+}
+
 export async function routeMessage(params: {
   runtimeKey?: string
   sessionId: string
@@ -191,6 +259,8 @@ export async function routeMessage(params: {
   additionalParts?: Array<{ text: string; synthetic?: boolean; metadata?: ContextPartMetadata; files?: Array<{ type: "file"; mime: string; url: string; filename: string }> }>
   appendSubmissions?: () => void
   delivery?: 'steer'
+  /** Stable key for one submission: concurrent retries share one ULW run start. */
+  idempotencyKey?: string
   skills?: SkillMentions
   /**
    * The session's project knowledge being written into it. A prompt's message
@@ -309,6 +379,7 @@ export async function routeMessage(params: {
         runtimeKey: params.runtimeKey,
         directory: requestDirectory,
         sessionId: params.sessionId,
+        idempotencyKey: params.idempotencyKey,
         content: params.content,
         args,
         providerID: params.providerID,
@@ -383,6 +454,7 @@ export async function routeMessage(params: {
       runtimeKey: params.runtimeKey,
       directory: requestDirectory,
       sessionId: params.sessionId,
+      idempotencyKey: params.idempotencyKey,
       content: params.content,
       args: proseIntent.args,
       providerID: params.providerID,
@@ -414,6 +486,7 @@ export async function routeMessage(params: {
       runtimeKey: params.runtimeKey,
       directory: requestDirectory,
       sessionId: params.sessionId,
+      idempotencyKey: params.idempotencyKey,
       content: params.content,
       args: autoIntent.args,
       providerID: params.providerID,
@@ -479,6 +552,14 @@ type SendMessageOptions = {
   /** Immutable copy of the new-session draft at submit time; used instead of the live draft. */
   draftSnapshot?: NewSessionDraftState
   delivery?: 'steer'
+  /**
+   * Stable identity for this composer submission, minted at the
+   * user-gesture boundary and threaded through draft creation into
+   * routeMessage so concurrent deliveries share one ULW root run. A retry
+   * passes the same value back; omit it and sendMessage resolves (or
+   * mints) one via resolveSubmissionIdentity.
+   */
+  idempotencyKey?: string
   /** Skills named inline, attached to the prompt once the session exists. */
   skills?: SkillMentions
   /**
@@ -1675,7 +1756,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
     // Config (providers/agents/default model+agent) lives at the PROJECT level. When the user
     // came from a worktree session, `directory` is the worktree path, whose provider list does
     // not include project/global-scoped providers (e.g. the default agent's non-opencode model)
-    // — resolving defaults against it would wrongly fall back to opencode/big-pickle. Activate
+    // — resolving defaults against it would leave the draft with no model. Activate
     // the project's config instead so the default cascade matches app startup, then re-apply it
     // (a fresh draft must start from defaults, not inherit the previous session's selection).
     applyDraftTargetSelectionDefaults(nextDraft, availableWorktreesByProject, selectedProject)
@@ -1722,6 +1803,9 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
   // ---------------------------------------------------------------------------
   closeNewSessionDraft: () => {
     const currentDraft = get().newSessionDraft
+    // Closing the draft ends its submission: a later send from a reopened
+    // draft must mint a fresh identity, never inherit this one's.
+    releaseSubmissionIdentity(currentDraft.draftId)
     if (currentDraft.preparedChatDirectory) {
       void deleteChatDirectory(currentDraft.preparedChatDirectory).catch(() => undefined)
     }
@@ -2019,12 +2103,19 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
 
       // ---- New session from draft ----
       if (!capturedTarget && !options?.sessionId && draft?.open) {
-        const createdDraftSession = await materializeOpenDraftSession({
+        // One stable identity per pending composer submission, minted here
+        // at the user-gesture boundary before draft-session creation: two
+        // rapid sends racing here resolve the same open draft, so both
+        // share this key — never a fresh key per click — and concurrent
+        // deliveries share one session creation and one root run. A retry
+        // passes the same key back explicitly.
+        const submissionId = resolveSubmissionIdentity(options?.idempotencyKey, draft.draftId)
+        const createdDraftSession = await shareDraftMaterialization(submissionId, () => materializeOpenDraftSession({
           providerID,
           modelID,
           agent: trimmedAgent,
           variant,
-        }, options?.draftSnapshot)
+        }, options?.draftSnapshot))
         if (!createdDraftSession) throw new Error("Failed to create session")
 
         const draftParts: Array<{ text: string; attachments?: AttachedFile[]; synthetic?: boolean; metadata?: ContextPartMetadata }> | undefined = createdDraftSession.syntheticParts?.length
@@ -2066,6 +2157,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
         revealDagPaneForUlvStart(content, createdDraftSession.directory, { inputMode })
         await routeMessage({
           sessionId: createdDraftSession.sessionId,
+          idempotencyKey: submissionId,
           directory: createdDraftSession.directory,
           content,
           providerID,
@@ -2091,6 +2183,10 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
             })),
           })),
         })
+        // The submission completed: release its identity so a later
+        // intentional send mints fresh and is never blocked behind this
+        // one. A failed send keeps its identity so the retry reuses it.
+        releaseSubmissionIdentity(draft.draftId, submissionId)
         return
       }
 
@@ -2180,6 +2276,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
       await routeMessage({
         runtimeKey: capturedTarget?.runtimeKey,
         sessionId: targetSessionId || "",
+        idempotencyKey: options?.idempotencyKey,
         directory: currentSessionDirectory,
         content,
         providerID,

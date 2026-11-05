@@ -1,4 +1,4 @@
-import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL, OPENCHAMBER_SDK_API_VERSION, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
+import { ALCODE_SDK_API_VERSION, ALCODE_SDK_CHANNEL } from './api-version.ts';
 import { GUEST_STORAGE_KEY_MAX, GUEST_STORAGE_VALUE_BYTES, type GuestProjectsSnapshot, type GuestWorktreesSnapshot, type GuestSessionsSnapshot, type GuestWorkspaceQuery, type GuestWorkspaceSnapshot, type GuestStorageOptions, type GuestStorageRequest, type GuestStorageResult } from './workspace.ts';
 import type { GuestStatusControl, GuestStatusControlEvent } from './status-controls.ts';
 import { isGuestStatusControls } from './status-controls.ts';
@@ -359,7 +359,7 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
   const listenForLateGenerate = (): void => {
     if (disposed || target.parent === target || lateGenerateListeners.size === 0
       || lastReady?.features?.lateGenerateResults !== true) return;
-    post({ channel: OPENCHAMBER_SDK_CHANNEL, v: OPENCHAMBER_SDK_API_VERSION, type: 'generate-late-listen' });
+    post({ channel: ALCODE_SDK_CHANNEL, v: ALCODE_SDK_API_VERSION, type: 'generate-late-listen' });
   };
 
   // One listener that throws must not starve the ones after it; the error

@@ -1,8 +1,8 @@
-export type PluginEntryOptions = Record<string, unknown>
-export type PluginTupleEntry = readonly [string, PluginEntryOptions]
+type PluginEntryOptions = Record<string, unknown>
+type PluginTupleEntry = readonly [string, PluginEntryOptions]
 export type PluginEntry = string | PluginTupleEntry
 
-export function isPluginTupleEntry(entry: unknown): entry is PluginTupleEntry {
+function isPluginTupleEntry(entry: unknown): entry is PluginTupleEntry {
   return Array.isArray(entry) && typeof entry[0] === "string"
 }
 

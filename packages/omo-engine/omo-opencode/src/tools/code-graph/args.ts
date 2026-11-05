@@ -7,9 +7,9 @@
 
 import { z } from "zod"
 
-export const CodeGraphOpSchema = z.enum(["status", "context", "search", "trace", "impact", "tests"])
+const CodeGraphOpSchema = z.enum(["status", "context", "search", "trace", "impact", "tests", "explore"])
 
-export const CodeGraphSubjectKindSchema = z.enum(["file", "symbol", "changes", "query"])
+const CodeGraphSubjectKindSchema = z.enum(["file", "symbol", "changes", "query"])
 
 export const CodeGraphArgsSchema = z.object({
   op: CodeGraphOpSchema,
@@ -23,6 +23,3 @@ export const CodeGraphArgsSchema = z.object({
 
 export type CodeGraphArgs = z.infer<typeof CodeGraphArgsSchema>
 
-export type CodeGraphOp = CodeGraphArgs["op"]
-
-export type CodeGraphSubjectKind = NonNullable<CodeGraphArgs["subjectKind"]>

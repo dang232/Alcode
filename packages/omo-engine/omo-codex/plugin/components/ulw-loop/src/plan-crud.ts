@@ -22,7 +22,6 @@ import { iso, UlwLoopError } from "./types.js";
 import { parseValidationBatches } from "./validation-batch.js";
 
 export { deriveGoalCandidates, seedDefaultSuccessCriteria } from "./plan-goal-factory.js";
-export type { SuccessCriterionInput } from "./success-criteria-input.js";
 
 export type UlwLoopPlanSummary = {
 	readonly total: number;

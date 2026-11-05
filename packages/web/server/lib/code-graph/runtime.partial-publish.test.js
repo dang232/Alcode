@@ -47,9 +47,43 @@ const makeMonorepo = (name) => {
   return dir;
 };
 
+/**
+ * Fail-closed fixture readiness: freshly written files can be briefly
+ * unstatted under on-access scanning, and the walk skips what lstat
+ * refuses. Polling for visibility (bounded, failing loudly) separates
+ * that environment race from product behavior under test.
+ */
+const awaitFilesVisible = async (dir, rels, budgetMs = 10000) => {
+  const start = Date.now();
+  for (;;) {
+    const missing = [];
+    for (const rel of rels) {
+      try {
+        await fsPromises.stat(join(dir, ...rel.split('/')));
+      } catch {
+        missing.push(rel);
+      }
+    }
+    if (missing.length === 0) return;
+    if (Date.now() - start > budgetMs) {
+      throw new Error(`fixture files never became visible: ${missing.join(', ')}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
+
+const FIXTURE_FILES = [
+  'packages/alpha/tsconfig.json',
+  'packages/alpha/src/alpha.ts',
+  'packages/beta/tsconfig.json',
+  'packages/beta/src/beta.ts',
+];
+
 const completeNodeCount = async (name) => {
   const runtime = createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true });
-  return (await runtime.readIndex(makeMonorepo(name))).nodeCount;
+  const fixture = makeMonorepo(name);
+  await awaitFilesVisible(fixture, FIXTURE_FILES);
+  return (await runtime.readIndex(fixture)).nodeCount;
 };
 
 describe('a partial build is never served as a generation', () => {
@@ -110,7 +144,10 @@ describe('a partial build is never served as a generation', () => {
     expect(goodNodes).toBeGreaterThan(0);
 
     // A refresh that gets cancelled must not replace the good graph with its
-    // own half-built projection.
+    // own half-built projection. The comment-only edit forces real analysis:
+    // without a content change the refresh reuses every record and the
+    // cancel trigger below would never fire.
+    writeFileSync(join(dir, 'packages', 'beta', 'src', 'beta.ts'), 'export function betaFn(): number {\n  return 2;\n}\n// refresh\n');
     armed = true;
     await runtime.readIndex(dir, { refresh: true }).catch(() => null);
     expect(cancelled).toBe(true);
@@ -119,4 +156,33 @@ describe('a partial build is never served as a generation', () => {
     expect(after.ready).toBe(true);
     expect(after.nodeCount).toBe(goodNodes);
   }, 180000);
+
+  it('uncapped walk completes with zero excluded and a fresh generation', async () => {
+    const dir = join(root, 'uncapped-walk');
+    mkdirSync(dir, { recursive: true });
+    for (let index = 0; index < 15; index += 1) {
+      const padded = String(index).padStart(2, '0');
+      writeFileSync(join(dir, `g${padded}.ts`), `export function g${padded}(): number {\n  return ${index};\n}\n`);
+    }
+    const runtime = createCodeGraphRuntime({ fsPromises, path }, { blockOnRead: true });
+    // Legacy cap arguments are accepted and ignored: the walk is unbounded.
+    const walk = await runtime.listEntryFiles(dir, 5);
+    expect(walk.truncated).toBe(false);
+    expect(walk.truncationReason).toBe(null);
+    expect(walk.excludedCount).toBe(0);
+    expect(walk.excludedSample).toEqual([]);
+    expect(walk.entries.length).toBe(15);
+    expect(walk.maxEntryFiles).toBe(null);
+    const widened = await runtime.listEntryFiles(dir, 20);
+    expect(widened.truncated).toBe(false);
+    expect(widened.excludedCount).toBe(0);
+    expect(widened.entries.length).toBe(15);
+    const indexed = await runtime.readIndex(dir);
+    expect(indexed.ready).toBe(true);
+    expect(indexed.freshness).toBe('fresh');
+    expect(indexed.indexTruncated).toBe(false);
+    expect(indexed.excludedCount).toBe(0);
+    expect(indexed.entryCount).toBe(15);
+    expect(indexed.entryCap).toBe(null);
+  });
 });

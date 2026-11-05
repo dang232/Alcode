@@ -73,7 +73,7 @@ export function resolveChildEndpoint(ports: ChildEndpointPorts, spec: RpcRunnerS
   }
 }
 
-export function shardIdentityMissing(detail: string): RunnerError {
+function shardIdentityMissing(detail: string): RunnerError {
   return new RunnerError({
     kind: "host_unavailable",
     reason: "shard_identity_missing",

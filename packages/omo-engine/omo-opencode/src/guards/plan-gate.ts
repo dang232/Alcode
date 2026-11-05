@@ -11,7 +11,7 @@
  */
 
 /** Subagent types confined behind the plan gate. */
-export const PLAN_GATED_SUBAGENT_TYPES: readonly string[] = [
+const PLAN_GATED_SUBAGENT_TYPES: readonly string[] = [
   "plan-consultant",
   "plan-reviewer",
 ];

@@ -1,2 +1,2 @@
 [test]
-preload = ["./test-support/warm-lazy-runtime.ts"]
+preload = ["./test-support/warm-pi-tui.ts"]

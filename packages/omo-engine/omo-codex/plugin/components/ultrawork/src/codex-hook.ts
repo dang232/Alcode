@@ -15,7 +15,7 @@ const CONTEXT_PRESSURE_MARKERS = [
 	"long threads and multiple compactions",
 ] as const;
 
-export type CodexUserPromptSubmitInput = {
+type CodexUserPromptSubmitInput = {
 	readonly hook_event_name: "UserPromptSubmit";
 	readonly prompt: string;
 	readonly transcript_path?: string | null;

@@ -60,7 +60,7 @@ export class V2UnsupportedServerError extends V2ProtocolError {
   }
 }
 
-export class V2ReadinessError extends V2ProtocolError {
+class V2ReadinessError extends V2ProtocolError {
   constructor(message: string, options?: { cause?: Error }) {
     super(message, { code: "V2_READINESS_TIMEOUT", ...options })
     this.name = "V2ReadinessError"
@@ -96,7 +96,7 @@ export interface ManagedV2Server {
   stop: () => Promise<void>
 }
 
-export interface SpawnedServerProcess {
+interface SpawnedServerProcess {
   readonly stdout: ReadableStream<Uint8Array> | undefined
   kill(signal?: NodeJS.Signals): void
   readonly exited: Promise<unknown>
@@ -304,8 +304,6 @@ export async function spawnManagedV2Server(
   }
 }
 
-
-
 const STATUS_BY_TAG = new Map<string, number>([
   ["InvalidRequestError", 400],
   ["InvalidCursorError", 400],
@@ -382,7 +380,7 @@ export function normalizeV2Failure(operation: string, error: FailureInput): neve
   throw error
 }
 
-export type V2Envelope<T> = { data?: T; error?: V2ProtocolError }
+type V2Envelope<T> = { data?: T; error?: V2ProtocolError }
 
 async function envelope<T>(operation: string, run: () => Promise<T>): Promise<V2Envelope<T>> {
   try {
@@ -400,20 +398,18 @@ async function envelope<T>(operation: string, run: () => Promise<T>): Promise<V2
   }
 }
 
-
-
-export interface EngineMessagePart {
+interface EngineMessagePart {
   type?: string
   text?: string
 }
 
-export interface EngineMessageModel {
+interface EngineMessageModel {
   providerID?: string
   modelID?: string
   variant?: string
 }
 
-export interface EngineMessage {
+interface EngineMessage {
   id?: string
   info?: {
     agent?: string
@@ -424,19 +420,19 @@ export interface EngineMessage {
   parts?: EngineMessagePart[]
 }
 
-export interface EngineAgent {
+interface EngineAgent {
   name?: string
   color?: string
 }
 
-export interface V2PromptBody {
+interface V2PromptBody {
   agent?: string
   model?: { providerID?: string; modelID?: string }
   tools?: { question?: boolean }
   parts?: Array<{ type?: string; text?: string }>
 }
 
-export interface V2EngineSessionClient {
+interface V2EngineSessionClient {
   create(input: {
     body?: {
       id?: string
@@ -470,11 +466,11 @@ export interface V2EngineSessionClient {
   }): Promise<V2Envelope<SessionInboxUser>>
 }
 
-export interface V2EngineAppClient {
+interface V2EngineAppClient {
   agents(directory?: string): Promise<V2Envelope<EngineAgent[]>>
 }
 
-export interface V2EngineEventClient {
+interface V2EngineEventClient {
   subscribe(input?: { signal?: AbortSignal }): AsyncIterable<EventPayload>
 }
 
@@ -497,7 +493,6 @@ function authHeaders(password: string | undefined) {
   if (!header) return {}
   return { Authorization: header }
 }
-
 
 function mapPermission(
   permission: Array<{ permission?: string; action?: string; pattern?: string }> | undefined,
@@ -762,8 +757,6 @@ export function createV2EngineClient(options: CreateV2EngineClientOptions): V2En
 
   return { session, app, event }
 }
-
-
 
 const wireEventSchema = z.object({
   type: z.string(),

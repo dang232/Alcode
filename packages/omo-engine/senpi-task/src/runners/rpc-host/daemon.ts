@@ -10,7 +10,6 @@ import {
   senpiEnsureHost,
   senpiProbeHost,
   type EnsureHostInput,
-  type HostEnginePolicy,
   type SenpiHostProtocolInfo,
   type TaskDaemonHostPort,
 } from "../../lazy/senpi-barrel"
@@ -33,26 +32,21 @@ import { log } from "../../../../utils/src/index.ts"
 
 // The daemon's launch surface is documented from this module: `omo daemon run` and a
 // child-triggered ensure must reach the same producer.
-export { daemonLaunchOptions, daemonLaunchProfileId }
+export { daemonLaunchOptions }
 export {
   HostUnavailableError,
-  TASK_DAEMON_CACHE_TTL_MS,
   TASK_DAEMON_PROTOCOL_VERSION,
   TASK_DAEMON_REQUIRED_CAPABILITIES,
   TASK_HOST_SOCKET_ENV_NAMES,
   isHostIncompatible,
   resolveTaskHostSocket,
 } from "./daemon-contract"
-export type { DaemonLaunchOptions, DaemonLaunchOptionsInput } from "./launch-options"
+
 export type {
   EnsuredTaskDaemon,
   EnsureTaskDaemonInput,
   HostUnavailableReason,
-  LoadedDaemonLaunchSpec,
-  TaskDaemonPorts,
 } from "./daemon-contract"
-export type { HostEnginePolicy }
-
 interface DaemonCacheEntry {
   readonly socket: string
   readonly expiresAt: number

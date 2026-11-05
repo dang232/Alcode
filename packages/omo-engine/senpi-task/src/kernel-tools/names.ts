@@ -1,13 +1,13 @@
 import { isTaskOrTeamFamilyTool } from "../runners/in-process/shared-tool-filter"
 
-export const KERNEL_TOOL_NAME_MAX_LENGTH = 64
+const KERNEL_TOOL_NAME_MAX_LENGTH = 64
 
 /**
  * The senpi kernel bridge's own reserved identifiers plus the host names omo never lets a parent
  * closure shadow. The task/team family is covered by isTaskOrTeamFamilyTool, which already owns
  * that vocabulary for the child tool surface.
  */
-export const RESERVED_KERNEL_TOOL_ALIASES: readonly string[] = [
+const RESERVED_KERNEL_TOOL_ALIASES: readonly string[] = [
   "__agent__",
   "__output__",
   "__schema__",
@@ -16,7 +16,7 @@ export const RESERVED_KERNEL_TOOL_ALIASES: readonly string[] = [
 ]
 
 // MCP tool-name grammar (the same rules the producer applies before fencing a descriptor).
-export function sanitizeKernelToolNamePart(name: string): string {
+function sanitizeKernelToolNamePart(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, "_")
 }
 

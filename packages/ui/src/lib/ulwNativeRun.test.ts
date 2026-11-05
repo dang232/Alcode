@@ -334,6 +334,13 @@ describe('procedure names an executable dispatch sequence', () => {
     expect(procedure).toContain('childSessionId');
   });
 
+  test('names code_graph for exploration with a grep fallback', () => {
+    const procedure = buildUlwRunProcedure('session-run-1');
+
+    expect(procedure).toContain('code_graph');
+    expect(procedure).toContain('grep');
+  });
+
   test('names the lifecycle in execution order', () => {
     const procedure = buildUlwRunProcedure('session-run-1');
     const order = ['ulw_goal_create', 'task', 'ulw_dispatch', 'ulw_evidence', 'ulw_checkpoint', 'ulw_complete']
@@ -385,5 +392,48 @@ describe('brief selection: args vs content vs empty', () => {
 
     expect(createCalls).toHaveLength(1);
     expect(sendCalls[0].text).toBe('fallback body');
+  });
+});
+
+describe('production submission boundary', () => {
+  test('concurrent starts on one send session share one opening send', async () => {
+    const input = baseInput({ sessionId: 'session-same-send' });
+    const [first, second] = await Promise.all([startUlwNativeRun(input), startUlwNativeRun(input)]);
+    expect(first).toEqual(second);
+    expect(createCalls).toHaveLength(0);
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0].id).toBe('session-same-send');
+  });
+
+  test('sequential sends on one session stay separate runs', async () => {
+    const input = baseInput({ sessionId: 'session-same-send' });
+    await startUlwNativeRun(input);
+    await startUlwNativeRun(input);
+    expect(sendCalls).toHaveLength(2);
+  });
+
+  test('a failed start does not poison the retry', async () => {
+    opencodeClient.sendMessage = async (params) => {
+      sendCalls.push(params);
+      throw new Error('send offline');
+    };
+    await expect(startUlwNativeRun(baseInput({ sessionId: 'session-flaky' }))).rejects.toThrow();
+    opencodeClient.sendMessage = async (params) => {
+      sendCalls.push(params);
+      return 'msg-sent';
+    };
+    const result = await startUlwNativeRun(baseInput({ sessionId: 'session-flaky' }));
+    expect(result.sessionId).toBe('session-flaky');
+    expect(sendCalls).toHaveLength(2);
+  });
+});
+
+describe('duplicate-submit protection', () => {
+  test('concurrent calls with one idempotency key share one session', async () => {
+    const input = baseInput({ idempotencyKey: 'key-dedupe-1' });
+    const [first, second] = await Promise.all([startUlwNativeRun(input), startUlwNativeRun(input)]);
+    expect(first.sessionId).toBe(second.sessionId);
+    expect(first.runId).toBe(second.runId);
+    expect(createCalls).toHaveLength(1);
   });
 });

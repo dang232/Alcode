@@ -50,7 +50,6 @@ const baseProps = (overrides: Partial<CodeGraphToolbarProps> = {}): CodeGraphToo
   onSearchSubmit: () => {},
   onScopeChange: () => {},
   onFiltersChange: () => {},
-  onRefresh: () => {},
   onFit: () => {},
   onReset: () => {},
   ...overrides,
@@ -149,6 +148,47 @@ describe('code graph toolbar', () => {
   test('no element offers a row-count or limit choice', async () => {
     await render(baseProps({ totals: { displayed: 20, known: 47, hidden: 27 } }));
     expect(container.querySelector('[data-testid="code-graph-limit"]')).toBeNull();
+  });
+
+  test('truncation surfaces excludedCount, entry-cap reason, 10-sample title, and byModule', async () => {
+    const sample = Array.from({ length: 10 }, (_, index) => `src/f${String(index).padStart(2, '0')}.ts`);
+    await render(baseProps({
+      truncation: {
+        reason: 'entry-cap',
+        excludedCount: 10,
+        excludedSample: sample,
+        modules: [{ name: 'src', analyzedFiles: 5, unanalyzedFiles: 0, excludedFiles: 10 }],
+      },
+    }));
+    const line = container.querySelector('[data-testid="code-graph-index-truncation"]');
+    expect(line?.textContent).toContain('10');
+    expect(line?.textContent).toContain('entry-cap');
+    expect(line?.getAttribute('title')).toBe(sample.join(', '));
+    const byModule = container.querySelector('[data-testid="code-graph-truncation-modules"]');
+    expect(byModule?.textContent).toContain('src (10)');
+  });
+
+  test('budget line names the entry cap beside the exclusion count', async () => {
+    await render(baseProps({
+      truncation: {
+        reason: 'entry-cap',
+        excludedCount: 2251,
+        excludedSample: ['a.ts'],
+        modules: [],
+        entryCap: 5000,
+      },
+      entryCap: 5000,
+    }));
+    const budget = container.querySelector('[data-testid="code-graph-budget"]');
+    expect(budget?.textContent).toContain('5000');
+    expect(container.querySelector('[data-testid="code-graph-index-truncation"]')?.textContent).toContain('2251');
+  });
+
+  test('truncation stays quiet on a fully indexed scope', async () => {
+    await render(baseProps({ truncation: null }));
+    expect(container.querySelector('[data-testid="code-graph-index-truncation"]')).toBeNull();
+    expect(container.querySelector('[data-testid="code-graph-truncation-modules"]')).toBeNull();
+    expect(container.querySelector('[data-testid="code-graph-budget"]')).toBeNull();
   });
 
   test('submitting the search calls onSearchSubmit with the current query', async () => {

@@ -8,7 +8,7 @@ function resolveReplyListenerHomeDir(): string {
   return process.env.HOME ?? process.env.USERPROFILE ?? homedir()
 }
 
-export function getReplyListenerStateDir(): string {
+function getReplyListenerStateDir(): string {
   return join(resolveReplyListenerHomeDir(), ".omo", "openclaw", "state")
 }
 

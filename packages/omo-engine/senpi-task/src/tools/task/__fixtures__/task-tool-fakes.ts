@@ -5,7 +5,7 @@ import { createTaskRecord } from "../../../state"
 import type { TaskRecord } from "../../../state"
 import type { SkillResolution, TaskToolContext, TaskToolDeps } from "../types"
 
-export const OMO_CONFIG: OmoConfig = { categories: {}, agents: {} }
+const OMO_CONFIG: OmoConfig = { categories: {}, agents: {} }
 
 export const CTX: TaskToolContext = {
   cwd: "/work/project",

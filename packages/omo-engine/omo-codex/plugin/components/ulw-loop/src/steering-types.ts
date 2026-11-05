@@ -5,7 +5,7 @@ import type {
 } from "./constants.js";
 import type { UlwLoopItem, UlwLoopPlan } from "./domain-types.js";
 
-export interface UlwLoopSteeringInvariantResult {
+interface UlwLoopSteeringInvariantResult {
 	accepted: boolean;
 	structuralInvariantAccepted: boolean;
 	evidenceBackedNecessity: boolean;
@@ -19,7 +19,7 @@ export interface UlwLoopSteeringChildGoal {
 	objective: string;
 }
 
-export interface UlwLoopSteeringAfterPayload {
+interface UlwLoopSteeringAfterPayload {
 	title?: string;
 	objective?: string;
 	pendingGoalIds?: string[];

@@ -2,7 +2,7 @@ import type { TaskRecord } from "../state"
 
 export type ReviveDriftPolicy = "recorded_warn" | "recorded_silent" | "refuse"
 // Owner OQ5 is pending. This internal policy constant is the one-line owner switch, not config.
-export const ACTIVE_REVIVE_DRIFT_POLICY: ReviveDriftPolicy = "recorded_warn"
+const ACTIVE_REVIVE_DRIFT_POLICY: ReviveDriftPolicy = "recorded_warn"
 export type ReviveGenerationWarning = {
   readonly code: "config_generation_mismatch"
   readonly task_id: string

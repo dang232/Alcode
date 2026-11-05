@@ -41,13 +41,13 @@ export const ULW_LOOP_SUCCESS_CRITERION_USER_MODELS = [
 ] as const satisfies readonly string[];
 export type UlwLoopSuccessCriterionUserModel = (typeof ULW_LOOP_SUCCESS_CRITERION_USER_MODELS)[number];
 
-export const ULW_LOOP_TASK_KINDS = ["implementation", "readonly", "mixed"] as const satisfies readonly string[];
+const ULW_LOOP_TASK_KINDS = ["implementation", "readonly", "mixed"] as const satisfies readonly string[];
 export type UlwLoopTaskKind = (typeof ULW_LOOP_TASK_KINDS)[number];
 
 export const ULW_LOOP_CRITERION_STATUSES = ["pending", "pass", "fail", "blocked"] as const satisfies readonly string[];
 export type UlwLoopCriterionStatus = (typeof ULW_LOOP_CRITERION_STATUSES)[number];
 
-export const ULW_LOOP_LEDGER_EVENT_KINDS = [
+const ULW_LOOP_LEDGER_EVENT_KINDS = [
 	"plan_created",
 	"goal_started",
 	"goal_resumed",

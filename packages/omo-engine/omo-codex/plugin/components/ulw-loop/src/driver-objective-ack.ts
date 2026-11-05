@@ -1,6 +1,6 @@
 import type { UlwLoopPlan } from "./types.js";
 
-export function normalizeDriverObjective(value: string): string {
+function normalizeDriverObjective(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
 

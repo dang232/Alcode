@@ -106,13 +106,13 @@ export type DetachedRevivalResult =
 
 export type DetachedRevivalRollbackResult = "rolled_back" | "not_owner"
 
-export type CapacityReservation =
+type CapacityReservation =
   | { readonly ok: false }
   | { readonly ok: true; release(): void }
 
 export type RespawnPort = (record: TaskRecord, resumeSessionPath?: string) => Promise<RespawnResult>
 export type ReattachPort = (record: TaskRecord, handle: ManagedChildHandle) => Promise<ReattachResult>
-export type ReserveReattachPort = (record: TaskRecord) => CapacityReservation
+type ReserveReattachPort = (record: TaskRecord) => CapacityReservation
 
 export type LifecycleReattachPorts = {
   readonly reserve: ReserveReattachPort

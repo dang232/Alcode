@@ -30,7 +30,7 @@ import type { InheritedExtensions } from "../runners/rpc/parent-extensions"
 import type { WorkpoolEngine } from "../workpool/engine"
 import type { ChildExtensionEvent } from "../runners/child-extension-events"
 
-export type { ExecutionMode, ExecutionModeGate } from "./execution-mode"
+export type { ExecutionMode } from "./execution-mode"
 
 // The unified spec both runner adapters accept. A superset: the rpc adapter uses the subset it
 // needs (task_id, cwd, state_dir, prompt); the in-process adapter also consumes model/tools/agent.
@@ -183,7 +183,7 @@ export type StartResult =
 
 // A resident child named by a residency rejection: enough for the caller to tell whether the cap
 // is held by live work (wait for it) or by nothing that could ever free a slot (give up).
-export type ResidentSummary = {
+type ResidentSummary = {
   readonly task_id: string
   readonly name: string
   readonly status: TaskStatus

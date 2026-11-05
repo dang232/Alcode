@@ -44,14 +44,14 @@ export interface GraphPolicyDecision {
 
 export const GRAPH_POLICY_ENV = "OMO_GRAPH_PREFLIGHT";
 
-export const GRAPH_LEVEL_BYTES: Record<GraphContextLevel, number> = {
+const GRAPH_LEVEL_BYTES: Record<GraphContextLevel, number> = {
   0: 0,
   1: 1024,
   2: 4096,
   3: 4096,
 };
 
-export const GRAPH_LEVEL_SUBJECTS: Record<GraphContextLevel, number> = {
+const GRAPH_LEVEL_SUBJECTS: Record<GraphContextLevel, number> = {
   0: 0,
   1: 1,
   2: 3,

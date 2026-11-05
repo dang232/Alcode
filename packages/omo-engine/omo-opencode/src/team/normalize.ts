@@ -26,7 +26,7 @@ export class TeamSpecError extends Error {
  * Sentinel identity for the calling OpenCode session acting as team lead.
  * It is recorded as leadAgentId and is never a spawnable member.
  */
-export const TEAM_LEAD_SENTINEL = "lead"
+const TEAM_LEAD_SENTINEL = "lead"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)

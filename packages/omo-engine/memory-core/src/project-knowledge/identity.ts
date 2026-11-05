@@ -20,7 +20,7 @@ import { createHash } from "node:crypto"
 import { basename, resolve } from "node:path"
 import { realpathSync } from "node:fs"
 
-export type ProjectIdentityKind = "remote" | "git-dir" | "path"
+type ProjectIdentityKind = "remote" | "git-dir" | "path"
 
 export type ProjectIdentity = {
   /** `<safe-slug>-<sha256-8>`: legal for `pk-project` and stable per repository. */

@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from "node:path"
 
 import { readSessionContext } from "./session-role"
 
-export const HOST_SOCKET_CONTEXT = "host_socket"
+const HOST_SOCKET_CONTEXT = "host_socket"
 
 /** Absent for a session that is not inside a host (a root session). */
 export function readOwnHostSocket(pi: unknown): string | undefined {

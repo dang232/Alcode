@@ -38,7 +38,10 @@ export type GraphEdgeKind =
   | "EXPORTS"
   | "TESTS"
   | "LINKS_KNOWLEDGE"
-  | "INVALIDATED_BY";
+  | "INVALIDATED_BY"
+  | "ROUTE"
+  | "REFERENCES"
+  | "NAVIGATES";
 
 export const GRAPH_EDGE_KINDS: readonly GraphEdgeKind[] = [
   "DEFINES",
@@ -49,6 +52,9 @@ export const GRAPH_EDGE_KINDS: readonly GraphEdgeKind[] = [
   "TESTS",
   "LINKS_KNOWLEDGE",
   "INVALIDATED_BY",
+  "ROUTE",
+  "REFERENCES",
+  "NAVIGATES",
 ];
 
 /** Number in [0, 1] with at most 2 decimals. Validated at every boundary. */
@@ -182,7 +188,10 @@ export function isEdgeKind(value: string): value is GraphEdgeKind {
     value === "EXPORTS" ||
     value === "TESTS" ||
     value === "LINKS_KNOWLEDGE" ||
-    value === "INVALIDATED_BY"
+    value === "INVALIDATED_BY" ||
+    value === "ROUTE" ||
+    value === "REFERENCES" ||
+    value === "NAVIGATES"
   );
 }
 
@@ -199,7 +208,10 @@ export function maxEdgeConfidence(kind: GraphEdgeKind): GraphConfidence {
  * Per-edge confidence rule (schema-draft section 3): resolved kinds are
  * 1.00 or the edge is not emitted; CALLS_UNRESOLVED is capped at 0.50 and
  * never proven; LINKS_KNOWLEDGE inherits the linked record's confidence
- * unchanged, so any valid confidence holds.
+ * unchanged, so any valid confidence holds. S8/S9 route kinds (ROUTE,
+ * REFERENCES, NAVIGATES) are resolved: literal-only destinations emit at
+ * 1.00, computed or unserved destinations never emit a route hop and fail
+ * closed as CALLS_UNRESOLVED (capped at 0.50, never proven).
  */
 export function isEdgeConfidence(kind: GraphEdgeKind, confidence: number): boolean {
   if (!isConfidence(confidence)) return false;
@@ -245,11 +257,11 @@ export const MAX_CONTENT_FILE_BYTES = 256 * 1024;
 /** Wall-clock bound for one searchContent call; the cut names itself. */
 export const CONTENT_SEARCH_TIME_BUDGET_MS = 1000;
 
-export const CONTENT_DEFAULT_LIMIT = 20;
-export const CONTENT_MAX_LIMIT = 50;
+const CONTENT_DEFAULT_LIMIT = 20;
+const CONTENT_MAX_LIMIT = 50;
 
 /** Why a file was left out of the content index. */
-export type ContentSkipReason = "binary" | "too-large";
+type ContentSkipReason = "binary" | "too-large";
 
 export interface ContentSkip {
   readonly file: string;
@@ -288,11 +300,11 @@ export function emptyContentIndex(): ContentIndex {
   return { tokenCap: MAX_CONTENT_TOKENS_PER_FILE, files: {}, skipped: [] };
 }
 
-export type ContentMatchReason = "literal" | "token" | "phrase";
+type ContentMatchReason = "literal" | "token" | "phrase";
 
-export type ContentCoverage = "indexed" | "partial" | "unindexed";
+type ContentCoverage = "indexed" | "partial" | "unindexed";
 
-export interface ContentSearchItem {
+interface ContentSearchItem {
   readonly file: string;
   /** 1-based line number. */
   readonly line: number;
@@ -304,7 +316,7 @@ export interface ContentSearchItem {
   readonly confidence: 1;
 }
 
-export interface ContentSearchOptions {
+interface ContentSearchOptions {
   /** Result cap; clamped to [1, CONTENT_MAX_LIMIT]. Defaults to 20. */
   readonly limit?: number;
   /** Keep only files whose repo-relative path starts with this prefix. */
@@ -317,7 +329,7 @@ export interface ContentSearchOptions {
   readonly directory?: string;
 }
 
-export interface ContentSearchResult {
+interface ContentSearchResult {
   readonly items: readonly ContentSearchItem[];
   /** True when `limit` or the time budget cut the answer. */
   readonly truncated: boolean;
@@ -629,4 +641,114 @@ export function isGraphEdge(edge: GraphEdge, knownIds: ReadonlySet<string>): boo
   if (edge.kind === "LINKS_KNOWLEDGE") return isKnowledgeRecordId(edge.to);
   if (edge.kind === "INVALIDATED_BY") return isInvalidationCause(edge.to);
   return ENTITY_ID.test(edge.to) && knownIds.has(edge.to);
+}
+
+/* ------------------------------------------------------------------
+ * Project config (codegraph.json): per-project scope overrides.
+ *
+ * The site runtime (`packages/web/server/lib/code-graph/runtime.js`)
+ * reads this optional file at the scope root and layers it over the skip
+ * defaults: `exclude` / `include` / `deprioritize` pattern lists with `!`
+ * negation, an `extensions` mapping for extra entry extensions, and a
+ * `maxFileSizeBytes` override clamped to the existing 32 MiB bound.
+ * Overrides only move files between the visible coverage buckets
+ * (analyzed / unanalyzed / excluded); truncation reasons and the exactness
+ * of the counts are unchanged. Rollback is deleting the file: an absent
+ * config is today's defaults, and malformed configs fail open with a
+ * stated error instead of changing the walk. The runtime re-declares this
+ * grammar in JS so it stays dependency-free; the shapes match on purpose.
+ * ------------------------------------------------------------------ */
+
+/** Basename of the optional per-project config file, read at the scope root only. */
+const CODEGRAPH_CONFIG_BASENAME = "codegraph.json";
+
+/** Floor for the `maxFileSizeBytes` override. */
+const PROJECT_CONFIG_MIN_FILE_SIZE_BYTES = 1;
+
+/** Hard clamp for the `maxFileSizeBytes` override: the existing 32 MiB bound. */
+const PROJECT_CONFIG_MAX_FILE_SIZE_BYTES = 32 * 1024 * 1024;
+
+/** Default cap when the config omits `maxFileSizeBytes` (the 1 MB skip default). */
+const PROJECT_CONFIG_DEFAULT_FILE_SIZE_BYTES = 1024 * 1024;
+
+/** Upper bound for entries in one config pattern list. */
+const PROJECT_CONFIG_MAX_PATTERNS = 256;
+
+/** Upper bound for extension-mapping keys. */
+const PROJECT_CONFIG_MAX_EXTENSIONS = 64;
+
+/** Normalized project config: every list is strings, every mapping is ext -> boolean. */
+interface ProjectConfig {
+  readonly exclude: readonly string[];
+  readonly include: readonly string[];
+  readonly deprioritize: readonly string[];
+  readonly extensions: Readonly<Record<string, boolean>>;
+  readonly maxFileSizeBytes: number | null;
+}
+
+/** Unvalidated project-config input: parsed JSON at the scope root. */
+interface ProjectConfigInput {
+  readonly exclude?: readonly string[];
+  readonly include?: readonly string[];
+  readonly deprioritize?: readonly string[];
+  readonly extensions?: Readonly<Record<string, string | boolean | null>>;
+  readonly maxFileSizeBytes?: number;
+}
+
+function clampConfigFileSize(value: number): number {
+  if (!Number.isFinite(value)) return PROJECT_CONFIG_DEFAULT_FILE_SIZE_BYTES;
+  const floored = Math.floor(value);
+  if (floored < PROJECT_CONFIG_MIN_FILE_SIZE_BYTES) return PROJECT_CONFIG_MIN_FILE_SIZE_BYTES;
+  if (floored > PROJECT_CONFIG_MAX_FILE_SIZE_BYTES) return PROJECT_CONFIG_MAX_FILE_SIZE_BYTES;
+  return floored;
+}
+
+function cleanConfigPatterns(value: readonly string[] | undefined): readonly string[] {
+  if (value === undefined || !Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (out.length >= PROJECT_CONFIG_MAX_PATTERNS) break;
+    // Runtime guard for untyped callers; the tag check avoids a `typeof`
+    // per the repo's anti-slop gate, and the item stays typed `string`.
+    if (Object.prototype.toString.call(item) === "[object String]" && item.trim().length > 0 && item.length <= 512) {
+      out.push(item.trim());
+    }
+  }
+  return out;
+}
+
+/**
+ * Canonical project-config validation: unknown fields are ignored, invalid
+ * entries are dropped, and `maxFileSizeBytes` is clamped to
+ * [1, 32 MiB]. Never throws; an absent input binds the skip defaults.
+ */
+function normalizeProjectConfig(input?: ProjectConfigInput | null): ProjectConfig {
+  const source = input ?? {};
+  const extensions: Record<string, boolean> = {};
+  const rawExtensions = source.extensions;
+  if (rawExtensions !== undefined && Object.prototype.toString.call(rawExtensions) === "[object Object]") {
+    for (const [key, mapped] of Object.entries(rawExtensions)) {
+      if (Object.keys(extensions).length >= PROJECT_CONFIG_MAX_EXTENSIONS) break;
+      const ext = key.trim().toLowerCase();
+      if (!ext.startsWith(".") || ext.length < 2 || ext.length > 16) continue;
+      if (mapped === false || mapped === null) {
+        extensions[ext] = false;
+      } else if (Object.prototype.toString.call(mapped) === "[object String]" && String(mapped).trim().length > 0) {
+        // The value names the language; only presence as an entry counts.
+        extensions[ext] = true;
+      }
+    }
+  }
+  let maxFileSizeBytes: number | null = null;
+  if (source.maxFileSizeBytes !== undefined && source.maxFileSizeBytes !== null) {
+    const rawSize = Number(source.maxFileSizeBytes);
+    if (Number.isFinite(rawSize)) maxFileSizeBytes = clampConfigFileSize(rawSize);
+  }
+  return {
+    exclude: cleanConfigPatterns(source.exclude),
+    include: cleanConfigPatterns(source.include),
+    deprioritize: cleanConfigPatterns(source.deprioritize),
+    extensions,
+    maxFileSizeBytes,
+  };
 }

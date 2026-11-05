@@ -5,4 +5,3 @@ export const I18nConfigSchema = z.object({
   locale: z.string().optional(),
 })
 
-export type I18nConfig = z.infer<typeof I18nConfigSchema>

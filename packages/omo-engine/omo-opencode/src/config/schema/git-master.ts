@@ -11,4 +11,3 @@ export const GitMasterConfigSchema = z.object({
   git_env_prefix: GitEnvPrefixSchema,
 })
 
-export type GitMasterConfig = z.infer<typeof GitMasterConfigSchema>

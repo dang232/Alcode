@@ -66,6 +66,6 @@ export async function resolveRunnableRunAgent(
   }
 }
 
-export class UnknownRunAgentError extends Error {
+class UnknownRunAgentError extends Error {
   override readonly name = "UnknownRunAgentError"
 }

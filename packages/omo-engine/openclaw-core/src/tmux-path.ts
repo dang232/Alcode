@@ -75,9 +75,3 @@ export async function getTmuxPath(): Promise<string | null> {
 
   return initPromise
 }
-
-export function resetTmuxPathCacheForTesting(): void {
-  tmuxPath = null
-  initPromise = null
-  tmuxPathEnvironmentKey = null
-}

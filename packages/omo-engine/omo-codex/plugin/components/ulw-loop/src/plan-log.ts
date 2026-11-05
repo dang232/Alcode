@@ -20,7 +20,7 @@ export function readOptional(path: string): string | undefined {
 		throw error;
 	}
 }
-export function logNames(dir: string): string[] {
+function logNames(dir: string): string[] {
 	try {
 		return readdirSync(join(dir, "revisions"))
 			.filter((name) => /^\d{8,}\.json$/.test(name))

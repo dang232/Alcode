@@ -67,7 +67,7 @@ export type CreateTeamDeps = {
   readonly writeMemberMap?: (runtimeDir: string, map: MemberTaskMap) => Promise<void>
 }
 
-export type CreatedMemberRole =
+type CreatedMemberRole =
   | { readonly kind: "category"; readonly category: string }
   | { readonly kind: "subagent_type"; readonly subagentType: string }
 

@@ -5,18 +5,14 @@ import { reviewerRolesFor, type UlwLoopToolkitSurface } from "../../src/surface.
 import { CLI_TEST_SESSION_ID } from "./cli-session.js";
 
 // v2 evidence layout: artifacts must live inside the goal's current attempt dir
-export function qaDirFor(goalId: string, attempt = 1, sessionId = CLI_TEST_SESSION_ID): string {
+function qaDirFor(goalId: string, attempt = 1, sessionId = CLI_TEST_SESSION_ID): string {
 	return `.omo/evidence/ulw/${sessionId}/${goalId}/a${attempt}`;
 }
 
 export const QA_DIR = qaDirFor("G001-finished");
-export const CODE_REVIEW_PATH = `${QA_DIR}/code-review.md`;
-export const GATE_REVIEW_PATH = `${QA_DIR}/gate-review.md`;
-export const CLI_PASS_PATH = `${QA_DIR}/cli-pass.txt`;
-export const REJECTION_LOG_PATH = `${QA_DIR}/rejection.txt`;
 export const MISSING_ARTIFACT_PATH = `${QA_DIR}/missing.txt`;
 
-export async function writeQualityGateArtifacts(repoRoot: string, qaDir = QA_DIR): Promise<void> {
+async function writeQualityGateArtifacts(repoRoot: string, qaDir = QA_DIR): Promise<void> {
 	await mkdir(join(repoRoot, qaDir), { recursive: true });
 	await writeFile(join(repoRoot, `${qaDir}/code-review.md`), "code review approved\n", "utf8");
 	await writeFile(join(repoRoot, `${qaDir}/gate-review.md`), "gate review approved\n", "utf8");

@@ -106,7 +106,7 @@ export async function isReplyListenerDaemonProcess(pid: number): Promise<boolean
   return isReplyListenerDaemonProcessWithDeps(pid, { spawn })
 }
 
-export async function isReplyListenerDaemonProcessWithDeps(
+async function isReplyListenerDaemonProcessWithDeps(
   pid: number,
   deps: ReplyListenerProcessDeps,
 ): Promise<boolean> {

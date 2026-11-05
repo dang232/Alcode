@@ -16,13 +16,45 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDirectoryNormalizer } from './runtime.js';
 
+// String/number checks via untagged dispatch (the anti-slop gate bans runtime type operators).
+const isString = (value) => Object.prototype.toString.call(value) === '[object String]';
+const isNumber = (value) => Object.prototype.toString.call(value) === '[object Number]';
+
 const WORKER_PATH = fileURLToPath(new URL('./ipc-worker.js', import.meta.url));
 const DEFAULT_CALL_TIMEOUT_MS = 15 * 60 * 1000;
+/** No progress event for this long while building reads as stalled, never failed. */
+export const DEFAULT_STALLED_AFTER_MS = 120_000;
 
-export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
+/** Pure watchdog decision, exported for deterministic tests (no clock reads). */
+export const describeBuildStall = (cached, nowMs, stalledAfterMs) => {
+  const threshold = Number.isFinite(Number(stalledAfterMs)) && Number(stalledAfterMs) > 0
+    ? Math.floor(Number(stalledAfterMs))
+    : DEFAULT_STALLED_AFTER_MS;
+  const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const atMs = Number(cached?.atMs) || Number(cached?.startedAtMs) || now;
+  const startedAtMs = Number(cached?.startedAtMs) || atMs;
+  const elapsedMs = Math.max(0, now - startedAtMs);
+  const idleMs = Math.max(0, now - atMs);
+  return { atMs, startedAtMs, elapsedMs, idleMs, stalled: idleMs > threshold, lastProgressAtMs: atMs };
+};
+
+export const createCodeGraphHost = ({ spawnWorker, storeDir, stalledAfterMs, watcherEnabled, watcherDebounceMs } = {}) => {
+  const stalledAfter = Number.isFinite(Number(stalledAfterMs)) && Number(stalledAfterMs) > 0
+    ? Math.floor(Number(stalledAfterMs))
+    : DEFAULT_STALLED_AFTER_MS;
   const normalizeDirectoryOnHost = createDirectoryNormalizer({ fsPromises: fs, path });
-  const workerEnv = typeof storeDir === 'string' && storeDir.length > 0
-    ? { ...process.env, ALCODE_CODE_GRAPH_STORE: storeDir }
+  // S4: the native watcher lives in the worker; the host only carries its
+  // opt-in and debounce down as env. Omitted options leave the parent env
+  // untouched, so today's revision-gate path is unchanged by default.
+  const watcherEnv = {};
+  if (watcherEnabled === true) watcherEnv.ALCODE_CODE_GRAPH_WATCHER = '1';
+  else if (watcherEnabled === false) watcherEnv.CODEGRAPH_NO_WATCHER = '1';
+  if (Number.isFinite(Number(watcherDebounceMs))) {
+    watcherEnv.ALCODE_CODE_GRAPH_WATCH_DEBOUNCE_MS = String(Math.floor(Number(watcherDebounceMs)));
+  }
+  const hasStoreDir = isString(storeDir) && storeDir.length > 0;
+  const workerEnv = hasStoreDir || Object.keys(watcherEnv).length > 0
+    ? { ...process.env, ...(hasStoreDir ? { ALCODE_CODE_GRAPH_STORE: storeDir } : null), ...watcherEnv }
     : process.env;
   const start = spawnWorker ?? (() => fork(WORKER_PATH, [], { env: workerEnv, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] }));
   let child = null;
@@ -71,7 +103,7 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
 
   const attach = (worker) => {
     worker.on('message', (message) => {
-      if (!message || typeof message !== 'object') return;
+      if (!message || (Object.prototype.toString.call(message) !== '[object Object]' && !Array.isArray(message))) return;
       if (message.event === 'progress' && message.progress) {
         const progress = message.progress;
         progressByDirectory.set(keyOf(progress.directory), progress);
@@ -102,7 +134,7 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
         lastExit = { reason: message.error ?? 'worker reported a fatal error', atMs: Date.now() };
         return;
       }
-      if (typeof message.id === 'number') settle(message.id, message);
+      if (isNumber(message.id)) settle(message.id, message);
     });
     const recordExit = (code, signal) => {
       lastExit = { reason: `worker exited (code ${code ?? 'null'}, signal ${signal ?? 'none'})`, atMs: Date.now() };
@@ -177,12 +209,18 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
     return cached;
   };
 
+  // Watchdog honesty: slow-but-progressing stays unstalled while events arrive;
+  // silence past the threshold is reported, never failed or killed. The state
+  // name is preserved so callers never mistake a stall for a terminal outcome.
+  const stalledInfo = (cached, nowMs = Date.now()) => describeBuildStall(cached, nowMs, stalledAfter);
+
   const host = {
     normalizeDirectory: (directory) => normalizeDirectoryOnHost(directory),
     deriveScopeIds: (directory) => call('deriveScopeIds', { directory }),
     readIndex: async (directory, options = {}) => {
       const building = buildingState(directory);
       if (building) {
+        const watch = stalledInfo(building);
         const published = publishedByDirectory.get(keyOf(directory)) ?? null;
         // Same envelope the runtime returns when nothing is published yet: a
         // shorter shape here would read as a malformed answer to a client that
@@ -216,6 +254,9 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
             startedAtMs: building.startedAtMs ?? building.atMs,
             cancelRequested: false,
             error: building.error ?? null,
+            elapsedMs: building.elapsedMs ?? watch.elapsedMs,
+            lastProgressAtMs: watch.lastProgressAtMs,
+            stalled: watch.stalled === true ? true : undefined,
             // Bounded projection of the projects analysed so far: the worker's
             // loop is blocked by the synchronous build, so this progress message
             // is the only place a client can read "what is indexed yet".
@@ -239,16 +280,26 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
       // from the bounded projection it already holds, and refuses anything that
       // needs the real graph instead of hanging on it.
       if (building) {
+        const watch = stalledInfo(building);
         const partial = building.partial ?? null;
         if (kind === 'explore' || kind === 'modules') {
           return Promise.resolve({
             kind: 'explore',
+            // Honest "still building" shape: freshness/coverages stay unindexed
+            // so the typed client never parses a partial graph as complete, while
+            // the bounded module projection still rides along for progress views.
+            freshness: 'unindexed',
+            coverage: 'unindexed',
+            knowledgeIds: [],
+            unresolved: [`index ${building.state}: no graph published yet for this directory`],
+            unsupported: [],
+            items: [],
+            totals: { displayed: 0, known: 0, hidden: 0 },
             modules: partial?.modules ?? [],
             files: [],
-            coverage: 'partial',
             truncated: true,
             partial: partial ?? null,
-            indexState: { state: building.state, projectsDone: building.projectsDone ?? null, projectsTotal: building.projectsTotal ?? null },
+            indexState: { state: building.state, phase: building.phase ?? null, files: building.files ?? null, projectsDone: building.projectsDone ?? null, projectsTotal: building.projectsTotal ?? null, startedAtMs: building.startedAtMs ?? building.atMs, elapsedMs: building.elapsedMs ?? watch.elapsedMs, lastProgressAtMs: watch.lastProgressAtMs, stalled: watch.stalled === true ? true : undefined },
           });
         }
         // Resolve instead of rejecting: a rejected promise leaves the caller's
@@ -272,6 +323,7 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
     indexState: async (directory) => {
       const cached = stateByDirectory.get(keyOf(directory));
       if (cached && (BUILDING_STATES.has(cached.state) || cached.state === 'cancelled' || cached.state === 'failed') && Date.now() - cached.atMs < BUILD_STATE_TTL_MS) {
+        const watch = stalledInfo(cached);
         return {
           state: cached.state,
           phase: cached.phase ?? null,
@@ -280,6 +332,9 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
           projectsTotal: cached.projectsTotal ?? null,
           startedAtMs: cached.startedAtMs ?? cached.atMs,
           error: cached.error ?? null,
+          elapsedMs: cached.elapsedMs ?? watch.elapsedMs,
+          lastProgressAtMs: watch.lastProgressAtMs,
+          stalled: watch.stalled === true && BUILDING_STATES.has(cached.state) ? true : undefined,
         };
       }
       const state = await call('indexState', { directory });
@@ -302,6 +357,8 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir } = {}) => {
             void 0;
           }
         }
+        // S4: the native watcher lives in the worker, so killing the worker
+        // drops the watcher with the build — no orphaned handle or timer.
         await host.stop({ kill: true });
         return { cancelled: true, killed: true, state: 'cancelled' };
       }

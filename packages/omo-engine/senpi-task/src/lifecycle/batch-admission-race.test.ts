@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { createTaskRecordStore } from "../store"
 import { cleanupProjects, seedRecord, tempStore } from "./__fixtures__/lifecycle-fakes"
 
 const cleanupRoots: string[] = []
-const raceChildFixturePath = resolve(import.meta.dir, "__fixtures__", "batch-admission-race-child.ts")
+const raceChildFixturePath = fileURLToPath(
+  new URL("./__fixtures__/batch-admission-race-child.ts", import.meta.url),
+)
 
 afterEach(() => {
   cleanupProjects()

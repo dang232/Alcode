@@ -23,7 +23,7 @@ import type { RuleCandidate } from "./types.js";
 export type { RuleDiscoveryCache } from "./finder-cache.js";
 export { createRuleDiscoveryCache } from "./finder-cache.js";
 
-export interface FinderOptions {
+interface FinderOptions {
 	/** Project root absolute path (use findProjectRoot to get this). */
 	projectRoot: string | null;
 	/** Target file path (used for distance calculation in dynamic injection mode). null for static mode. */

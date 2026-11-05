@@ -49,11 +49,11 @@ import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_DISPATCH_NAME = "ulw_dispatch"
 
-export const ULW_DISPATCH_DESCRIPTION =
+const ULW_DISPATCH_DESCRIPTION =
   "Dispatch ULW goals: record worker sessions, or spawn them through the team pool."
 
 /** Pool bounds in the team runtime's vocabulary; `createTeam` defaults are 4 members and 120 minutes. */
-export type UlwDispatchPoolBounds = Pick<TeamBounds, "maxParallelMembers" | "maxWallClockMinutes">
+type UlwDispatchPoolBounds = Pick<TeamBounds, "maxParallelMembers" | "maxWallClockMinutes">
 
 const DEFAULT_POOL_BOUNDS: UlwDispatchPoolBounds = {
   maxParallelMembers: 4,

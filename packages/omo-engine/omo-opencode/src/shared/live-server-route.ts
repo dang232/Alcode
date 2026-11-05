@@ -32,64 +32,14 @@ type RouteRegistration = {
 }
 
 const registrations = new Map<unknown, RouteRegistration>()
-let lastRegistration: RouteRegistration | undefined
 
 let liveParentWakeRoutingDisabled = false
 
 type FetchImpl = typeof fetch
 let fetchImplementationForTesting: FetchImpl | undefined
 
-export function _setFetchImplementationForTesting(impl: FetchImpl | undefined): void {
-  fetchImplementationForTesting = impl
-}
-
 function getFetch(): FetchImpl {
   return fetchImplementationForTesting ?? fetch
-}
-
-export function _setLiveClientForTesting(client: unknown): void {
-  if (lastRegistration) {
-    lastRegistration.liveClient = client
-  }
-}
-
-export function setLiveParentWakeRoutingDisabled(disabled: boolean): void {
-  liveParentWakeRoutingDisabled = disabled
-}
-
-export function isLiveParentWakeRoutingDisabled(): boolean {
-  return liveParentWakeRoutingDisabled
-}
-
-export function initLiveServerRoute(opts: {
-  serverUrl: URL | undefined
-  directory: string
-  inProcessClient: unknown
-}): void {
-  const registration: RouteRegistration = {
-    serverUrl: opts.serverUrl,
-    directory: opts.directory,
-    liveClient: undefined,
-    available: undefined,
-    probeTimestamp: 0,
-    inFlightProbe: undefined,
-    warnedOnce: false,
-    sessionAffinity: new Map(),
-    inFlightAffinity: new Map(),
-  }
-  registrations.set(opts.inProcessClient, registration)
-  lastRegistration = registration
-  log("[live-server-route] registered", {
-    directory: opts.directory,
-    hasServerUrl: !!opts.serverUrl,
-    registrationCount: registrations.size,
-  })
-}
-
-export function warmLiveServerProbe(): void {
-  if (lastRegistration) {
-    void probe(lastRegistration)
-  }
 }
 
 async function probe(registration: RouteRegistration): Promise<boolean> {
@@ -390,9 +340,3 @@ export function markLiveRouteUnavailable(reason: string): void {
   log(`[live-server-route] marked unavailable: ${reason}`)
 }
 
-export function resetLiveServerRouteForTesting(): void {
-  registrations.clear()
-  lastRegistration = undefined
-  liveParentWakeRoutingDisabled = false
-  fetchImplementationForTesting = undefined
-}

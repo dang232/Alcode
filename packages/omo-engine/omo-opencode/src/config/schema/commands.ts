@@ -9,4 +9,3 @@ export const BuiltinCommandNameSchema = z.enum([
  "hyperplan",
 ])
 
-export type BuiltinCommandName = z.infer<typeof BuiltinCommandNameSchema>

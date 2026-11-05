@@ -10,8 +10,6 @@ import type {
   TaskStartFailureKind,
   TaskStartFailureReason,
 } from "../../state"
-import type { TaskToolParamsStatic } from "./params"
-
 // The narrow slice of senpi's ExtensionContext the task tool reads. ExtensionContext satisfies it
 // structurally, so the tool stays testable with a tiny fake while the ToolDefinition keeps the full
 // senpi context type at its execute() boundary.
@@ -175,4 +173,3 @@ export type TaskToolDetails = {
   readonly kernel_tools?: TaskKernelToolsDetail
 }
 
-export type { TaskToolParamsStatic }

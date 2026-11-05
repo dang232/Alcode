@@ -1,9 +1,11 @@
-import { resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "bun:test"
 
 import { bumpTaskId, createTaskId, createTaskIdFactory } from "./id"
 
-const idChildFixturePath = resolve(import.meta.dir, "__fixtures__", "id-child.ts")
+const idChildFixturePath = fileURLToPath(
+  new URL("./__fixtures__/id-child.ts", import.meta.url),
+)
 
 async function expectChildModeToSucceed(mode: string): Promise<void> {
   const child = Bun.spawn([process.execPath, idChildFixturePath, mode], { stdout: "pipe", stderr: "pipe" })
