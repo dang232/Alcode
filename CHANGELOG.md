@@ -4113,6 +4113,23 @@
 - Added GitHub Actions release pipeline with macOS signing/notarization, npm publish, and release asset uploads.
 - Introduced OpenCode agent chat experience with section-based navigation, theming, and session persistence.
 
+## [0.2.3] - 2026-11-05
+
+### Improvements
+
+- **Code graph:** an indexed project shows its symbols in seconds, including after you close and reopen the app.
+- Code graph: the panel updates itself as files change, so the Refresh buttons are gone.
+- Code graph: the panel names the files it left out and says when the graph covers only part of a project.
+
+### Fixes
+
+- Code graph: a project with a git-ignored file stopped rebuilding every time it opened.
+- Alcore: after signing in, the composer stayed off Alcore even with the key in place; it connects now.
+
+### SDK
+
+- Extension API: the legacy OpenChamber channel, version and engines aliases are gone; use `ALCODE_SDK_CHANNEL`, `ALCODE_SDK_API_VERSION` and `engines.alcode`.
+
 ## [0.2.2] - 2026-10-31
 
 ### New

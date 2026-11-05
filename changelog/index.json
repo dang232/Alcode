@@ -7047,6 +7047,34 @@
     "vscode": null
   },
   {
+    "version": "0.2.3",
+    "date": "2026-11-05",
+    "title": "Code graph opens in seconds",
+    "intro": null,
+    "app": {
+      "new": [],
+      "improvements": [
+        "**Code graph:** an indexed project shows its symbols in seconds, including after you close and reopen the app.",
+        "Code graph: the panel updates itself as files change, so the Refresh buttons are gone.",
+        "Code graph: the panel names the files it left out and says when the graph covers only part of a project."
+      ],
+      "fixes": [
+        "Code graph: a project with a git-ignored file stopped rebuilding every time it opened.",
+        "Alcore: after signing in, the composer stayed off Alcore even with the key in place; it connects now."
+      ],
+      "sdk": [
+        "Extension API: the legacy OpenChamber channel, version and engines aliases are gone; use `ALCODE_SDK_CHANNEL`, `ALCODE_SDK_API_VERSION` and `engines.alcode`."
+      ],
+      "misc": []
+    },
+    "vscode": {
+      "new": [],
+      "improvements": [],
+      "fixes": [],
+      "misc": []
+    }
+  },
+  {
     "version": "0.2.2",
     "date": "2026-10-31",
     "title": "The workflow starts itself",
