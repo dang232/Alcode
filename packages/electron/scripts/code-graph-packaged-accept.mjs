@@ -203,9 +203,13 @@ const denialProbe = async (file) => {
  */
 const readStoreManifests = (storeDir) => {
   const out = [];
+  // The store root also holds a .gitignore (the repo-local self-ignore), so a
+  // scope is only a scope when it actually carries a manifest.
   for (const scope of fs.readdirSync(storeDir)) {
-    const manifest = JSON.parse(fs.readFileSync(path.join(storeDir, scope, 'manifest.json'), 'utf8'));
-    out.push({ scope, manifest });
+    const manifestPath = path.join(storeDir, scope, 'manifest.json');
+    let body = null;
+    try { body = fs.readFileSync(manifestPath, 'utf8'); } catch { continue; }
+    out.push({ scope, manifest: JSON.parse(body) });
   }
   return out;
 };
@@ -536,28 +540,43 @@ const main = async () => {
       write('c.ts', "import { alpha } from './a';\nexport function gamma(): number { return alpha(); }\n");
       execFileSync('git', ['init', '-q', '.'], { cwd: root, stdio: 'ignore' });
       execFileSync('git', ['add', '-A'], { cwd: root, stdio: 'ignore' });
-      const store = path.join(workdir, 'store');
-      fs.mkdirSync(store, { recursive: true });
+      // The publish point for a git scope is repo-local (<repo>/.algraph/<scope>);
+      // an explicit storeDir is only the fallback root. Every assertion below
+      // therefore resolves the store from the fixture itself: pointing them at a
+      // private directory reads an empty path the runtime never writes.
+      const fallbackStore = path.join(workdir, 'store');
+      fs.mkdirSync(fallbackStore, { recursive: true });
+      const storeRoot = path.join(root, '.algraph');
+      const snapshotStore = () => {
+        const out = new Map();
+        let scopes = [];
+        try { scopes = fs.readdirSync(storeRoot); } catch { return out; }
+        for (const sc of scopes) {
+          try { out.set(sc, fs.readFileSync(path.join(storeRoot, sc, 'manifest.json'), 'utf8')); } catch { /* scope without a manifest */ }
+        }
+        return out;
+      };
       const scriptEvents = [];
       const dumpStore = (tag) => {
-        try {
-          const scopes = fs.readdirSync(store);
-          for (const sc of scopes) {
-            const m = JSON.parse(fs.readFileSync(path.join(store, sc, 'manifest.json'), 'utf8'));
+        let scopes = [];
+        try { scopes = fs.readdirSync(storeRoot); } catch { step(tag, `store absent at ${storeRoot}`); return; }
+        for (const sc of scopes) {
+          try {
+            const m = JSON.parse(fs.readFileSync(path.join(storeRoot, sc, 'manifest.json'), 'utf8'));
             step(tag, `manifest buildSeq=${m.buildSeq} nodes=${m.nodeCount}`);
-          }
-        } catch (e) { step(tag, `store unreadable: ${String(e).slice(0, 80)}`); }
+          } catch { /* scope without a manifest */ }
+        }
       };
       const runtime = createCodeGraphRuntime(
         { fsPromises: fs.promises, path, execFile: (await import('node:child_process')).execFile },
-        { storeDir: store, blockOnRead: true, onProgress: (e) => { if (e.storeWriteFailed !== undefined) scriptEvents.push(`writeFailed:${e.storeWriteFailed}`); } },
+        { storeDir: fallbackStore, blockOnRead: true, onProgress: (e) => { if (e.storeWriteFailed !== undefined) scriptEvents.push(`writeFailed:${e.storeWriteFailed}`); } },
       );
       const pick = (s) => ({ gen: s.generation ?? null, ready: s.ready });
       const cold = await runtime.readIndex(root, { block: true });
       expect('cold', cold.ready === true && cold.incremental?.reanalyzed === 3, `gen ${cold.generation}, reanalyzed 3`);
       expect('cold-status', cold.indexState?.state === 'ready' && cold.generation !== null && cold.nodeCount > 0, `state=${cold.indexState?.state ?? 'none'} gen=${cold.generation} nodes=${cold.nodeCount}`);
       dumpStore('store-after-cold');
-      expectStoreAgrees('cold-persisted', store, cold);
+      expectStoreAgrees('cold-persisted', storeRoot, cold);
       const search = await runtime.query(root, { kind: 'search', query: 'alpha' });
       expect('search', search.items.some((item) => item.name === 'alpha'), 'alpha found');
       const context = await runtime.query(root, { kind: 'context', symbol: 'fn:alpha@a.ts', depth: 1 });
@@ -600,7 +619,7 @@ const main = async () => {
         const partial = await runtime.readIndex(root, { block: true, refresh: true });
         expect('partial', partial.ready === true && (partial.incremental?.unreadableFileCount ?? 0) >= 1, 'partial with unreadable recorded');
         expect('partial-names', (partial.incremental?.unreadableFiles ?? []).some((name) => String(name).includes('b.ts')), `unreadable=${(partial.incremental?.unreadableFiles ?? []).join(',')}`);
-        expectStoreAgrees('partial-persisted', store, cold);
+        expectStoreAgrees('partial-persisted', storeRoot, cold);
         // Refresh-forced: plain reads inside the git-status TTL window may
         // still serve the pre-edit complete generation as fresh, which is
         // correct serving behavior but nondeterministic for assertions.
@@ -620,6 +639,7 @@ const main = async () => {
       const restoreStormB = await denyRead(path.join(root, 'b.ts'));
       const restoreC = await denyRead(path.join(root, 'c.ts'));
       const events = [];
+      const beforeFail = snapshotStore();
       const failing = createCodeGraphRuntime(
         { fsPromises: fs.promises, path, execFile: (await import('node:child_process')).execFile },
         { storeDir: path.join(workdir, 'store-fail'), blockOnRead: true, onProgress: (event) => events.push(event.state) },
@@ -635,20 +655,15 @@ const main = async () => {
       expect('terminal-events', terminals >= 1, `${terminals} terminal event(s) observed`);
       expect('terminal-no-ready', !events.some((state) => state === 'ready'), 'failed build never published ready');
       {
-        const leaked = [];
-        const walkFail = (dir) => {
-          for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
-            const full = path.join(dir, dirent.name);
-            if (dirent.isDirectory()) walkFail(full);
-            else if (dirent.name === 'manifest.json') leaked.push(full);
-          }
-        };
-        try {
-          walkFail(path.join(workdir, 'store-fail'));
-        } catch {
-          // Absent store is the expected case: nothing was persisted.
-        }
-        expect('terminal-no-persist', leaked.length === 0, leaked.length === 0 ? 'failed build persisted nothing' : `failed build leaked manifests: ${leaked.join(',')}`);
+        // The store already holds the last complete generation, so "persisted
+        // nothing" means the failed build neither added nor rewrote a manifest -
+        // a stronger statement than an emptiness check on a fresh directory.
+        const afterFail = snapshotStore();
+        const added = [...afterFail.keys()].filter((scope) => !beforeFail.has(scope));
+        const rewritten = [...afterFail.entries()].filter(([scope, body]) => beforeFail.get(scope) !== body).map(([scope]) => scope);
+        expect('terminal-no-persist', added.length === 0 && rewritten.length === 0, added.length === 0 && rewritten.length === 0
+          ? `failed build published nothing (${afterFail.size} prior generation(s) intact)`
+          : `failed build touched the store: added=${added.join(',') || 'none'} rewritten=${rewritten.join(',') || 'none'}`);
       }
       for (let i = 0; i < 3; i += 1) {
         const polled = await failing.readIndex(root);
@@ -672,7 +687,7 @@ const main = async () => {
       expect('retry-clean', (recovered.incremental?.unreadableFiles ?? []).length === 0, 'no unreadable files remain');
       expect('retry-status', recovered.indexState?.state === 'ready', `state=${recovered.indexState?.state ?? 'none'}`);
       dumpStore('store-after-retry');
-      expectStoreAgrees('retry-persisted', store, recovered);
+      expectStoreAgrees('retry-persisted', storeRoot, recovered);
       step('contract-a-priv-restore', 're-enabling backup privileges after isolated denies; readability no longer depends on them');
       await setBackupPrivilege(true);
       step('write-events', scriptEvents.length === 0 ? 'none' : scriptEvents.join(' | '));
@@ -680,27 +695,27 @@ const main = async () => {
       expect('retry-search', found.items.some((item) => item.name === 'beta'), 'beta searchable again');
       const revived = createCodeGraphRuntime(
         { fsPromises: fs.promises, path, execFile: (await import('node:child_process')).execFile },
-        { storeDir: store, blockOnRead: true },
+        { storeDir: fallbackStore, blockOnRead: true },
       );
       try {
-        const scopes = fs.readdirSync(store);
+        const scopes = fs.readdirSync(storeRoot);
         for (const sc of scopes) {
-          const m = JSON.parse(fs.readFileSync(path.join(store, sc, 'manifest.json'), 'utf8'));
+          const m = JSON.parse(fs.readFileSync(path.join(storeRoot, sc, 'manifest.json'), 'utf8'));
           step('store-pre-revive', `manifest buildSeq=${m.buildSeq} nodes=${m.nodeCount}`);
         }
       } catch (e) { step('store-pre-revive', `unreadable: ${String(e).slice(0, 80)}`); }
       const revivedSummary = await revived.readIndex(root);
       try {
-        const scopes = fs.readdirSync(store);
+        const scopes = fs.readdirSync(storeRoot);
         for (const sc of scopes) {
-          const m = JSON.parse(fs.readFileSync(path.join(store, sc, 'manifest.json'), 'utf8'));
+          const m = JSON.parse(fs.readFileSync(path.join(storeRoot, sc, 'manifest.json'), 'utf8'));
           step('store-final', `manifest buildSeq=${m.buildSeq} nodes=${m.nodeCount}`);
         }
       } catch (e) { step('store-final', `unreadable: ${String(e).slice(0, 80)}`); }
       step('restart-observed', `ready=${revivedSummary.ready} gen=${revivedSummary.generation ?? null} state=${revivedSummary.indexState?.state ?? null}`);
       expect('restart', revivedSummary.ready === true && revivedSummary.generation === recovered.generation, `same generation ${recovered.generation} after restart`);
       expect('restart-status', revivedSummary.indexState?.state === 'ready', `state=${revivedSummary.indexState?.state ?? 'none'}`);
-      expectStoreAgrees('restart-persisted', store, revivedSummary);
+      expectStoreAgrees('restart-persisted', storeRoot, revivedSummary);
       step('contract-a-done', `Contract A green: partial isolated, terminal remembered, retry clean, restart gen ${revivedSummary.generation} (native=${nativeResult})`);
       step('done', `packaged acceptance green on ${process.platform}-${arch}`);
     } finally {
