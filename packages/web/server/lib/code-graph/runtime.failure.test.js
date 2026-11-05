@@ -38,6 +38,20 @@ const makeRuntime = (options = {}, fs = fsPromises, events = null) =>
     { fsPromises: fs, path },
     events === null ? options : { ...options, onProgress: (event) => events.push(event) },
   );
+/**
+ * Non-blocking reads answer before a background build reaches its terminal
+ * state, so a poll that asserts on the failure counter must wait for the event
+ * rather than assume it already arrived. Bounded, and it never sleeps past the
+ * signal: on an idle host it returns on the first tick.
+ */
+const waitForFailures = async (events, count) => {
+  const deadline = Date.now() + 60000;
+  const seen = () => events.filter((event) => event.state === 'failed').length;
+  while (seen() < count) {
+    if (Date.now() > deadline) throw new Error(`waited 60000ms for ${count} failed event(s), saw ${seen()}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+};
 
 const isDenied = async (file) => {
   try {
@@ -171,10 +185,12 @@ describe('failure recovery', () => {
       const settled = await Promise.all([runtime.readIndex(dir), runtime.readIndex(dir), runtime.readIndex(dir)]);
       expect(settled.every((s) => s.ready === false)).toBe(true);
       // The concurrent polls shared a single build: exactly one failure.
+      await waitForFailures(events, 1);
       expect(events.filter((event) => event.state === 'failed').length).toBe(1);
       await expect(runtime.readIndex(dir, { block: true, refresh: true })).rejects.toThrow('no readable source files');
       // An explicit refresh retries the doomed build (documented
       // refresh-retries contract) and fails a second time.
+      await waitForFailures(events, 2);
       expect(events.filter((event) => event.state === 'failed').length).toBe(2);
     } finally {
       await restore();
