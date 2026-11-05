@@ -73,13 +73,13 @@ __export(exports_code_graph_bundle, {
   trace: () => trace2,
   validateFileRecords: () => validateFileRecords
 });
-import { existsSync as existsSync15, readdirSync as readdirSync6 } from "node:fs";
+import { existsSync as existsSync14, readdirSync as readdirSync6 } from "node:fs";
 import { createRequire as createRequire2 } from "node:module";
-import { dirname as dirname6, join as join12, resolve as resolve6 } from "node:path";
+import { dirname as dirname5, join as join10, resolve as resolve6 } from "node:path";
 import { Buffer as Buffer22 } from "node:buffer";
 import fs4 from "node:fs";
 import module2 from "node:module";
-import path5 from "node:path";
+import path4 from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { spawn as spawn2 } from "node:child_process";
 import { closeSync as closeSync3, openSync as openSync3, readSync as readSync2, writeSync as writeSync3 } from "node:fs";
@@ -3939,9 +3939,9 @@ class SourceFileCache2 {
   }
 }
 function getExePath2() {
-  const __dirname2 = path5.dirname(fileURLToPath3(import.meta.url));
+  const __dirname2 = path4.dirname(fileURLToPath3(import.meta.url));
   const normalizedDirname = __dirname2.replace(/\\/g, "/");
-  const pkg = JSON.parse(fs4.readFileSync(path5.join(__dirname2, "..", "package.json"), "utf8"));
+  const pkg = JSON.parse(fs4.readFileSync(path4.join(__dirname2, "..", "package.json"), "utf8"));
   const pkgName = pkg.name;
   const baseName = pkgName.startsWith("@") ? pkgName.split("/")[1] : pkgName;
   const expectedBinName = baseName === "typescript" ? "tsc" : "tsgo";
@@ -3953,27 +3953,27 @@ function getExePath2() {
   let exeDir;
   const expectedPackage = baseName + "-" + process.platform + "-" + process.arch;
   if (normalizedDirname.endsWith("/_packages/" + baseName + "/lib")) {
-    exeDir = path5.resolve(__dirname2, "..", "..", "..", "built", "local");
+    exeDir = path4.resolve(__dirname2, "..", "..", "..", "built", "local");
     binName = "tsgo";
   } else if (normalizedDirname.endsWith("/built/npm/" + baseName + "/lib")) {
-    exeDir = path5.resolve(__dirname2, "..", "..", expectedPackage, "lib");
+    exeDir = path4.resolve(__dirname2, "..", "..", expectedPackage, "lib");
   } else {
     const platformPackageName = "@typescript/" + expectedPackage;
     try {
       if (typeof import.meta.resolve === "undefined") {
         const require2 = module2.createRequire(import.meta.url);
         const packageJson = require2.resolve(platformPackageName + "/package.json");
-        exeDir = path5.join(path5.dirname(packageJson), "lib");
+        exeDir = path4.join(path4.dirname(packageJson), "lib");
       } else {
         const packageJson = import.meta.resolve(platformPackageName + "/package.json");
         const packageJsonPath = fileURLToPath3(packageJson);
-        exeDir = path5.join(path5.dirname(packageJsonPath), "lib");
+        exeDir = path4.join(path4.dirname(packageJsonPath), "lib");
       }
     } catch (e) {
       throw new Error("Unable to resolve " + platformPackageName + ". Either your platform is unsupported, or you are missing the package on disk.");
     }
   }
-  let exe = path5.join(exeDir, binName);
+  let exe = path4.join(exeDir, binName);
   if (process.platform === "win32") {
     exe += ".exe";
     if (exe.length >= 248) {
@@ -6182,7 +6182,7 @@ function preferUnpacked2(candidate) {
       continue;
     const twin = candidate.slice(0, at) + marker.replace("app.asar", "app.asar.unpacked") + candidate.slice(at + marker.length);
     try {
-      if (existsSync15(twin))
+      if (existsSync14(twin))
         return twin;
     } catch {}
   }
@@ -6190,23 +6190,23 @@ function preferUnpacked2(candidate) {
 }
 function defaultTsServerPath2() {
   const require2 = createRequire2(import.meta.url);
-  const tsDir = dirname6(require2.resolve("typescript/package.json"));
-  const platformRoot = join12(tsDir, "..", "@typescript");
-  if (existsSync15(platformRoot)) {
+  const tsDir = dirname5(require2.resolve("typescript/package.json"));
+  const platformRoot = join10(tsDir, "..", "@typescript");
+  if (existsSync14(platformRoot)) {
     const platform = `typescript-${process.platform}-${process.arch}`;
     const names = readdirSync6(platformRoot).sort();
     const ordered = [...names.filter((name) => name === platform), ...names.filter((name) => name !== platform)];
     for (const name of ordered) {
       for (const binary of ["tsc.exe", "tsgo", "tsc"]) {
-        const candidate = join12(platformRoot, name, "lib", binary);
-        if (existsSync15(candidate))
+        const candidate = join10(platformRoot, name, "lib", binary);
+        if (existsSync14(candidate))
           return preferUnpacked2(candidate);
       }
     }
   }
   for (const binary of process.platform === "win32" ? ["tsc.exe", "tsc"] : ["tsc"]) {
-    const candidate = join12(tsDir, "..", ".bin", binary);
-    if (existsSync15(candidate))
+    const candidate = join10(tsDir, "..", ".bin", binary);
+    if (existsSync14(candidate))
       return preferUnpacked2(candidate);
   }
   throw new Error("code-graph: TypeScript native server binary not found inside typescript@7.0.2; " + "pass IndexOptions.tsserverPath explicitly");
@@ -20405,7 +20405,6 @@ var OmoComputerSettingsLayerSchema = object({
   engine_path: string2().min(1),
   cua_adapter: boolean2()
 }).partial().strict().describe("Experimental computer use in OmO Native: screenshots, windows, accessibility trees and native mouse and keyboard input. Every key is optional; defaults depend on the host.");
-var OmoComputerSettingsSchema = OmoComputerSettingsLayerSchema;
 
 // ../../../../omo-engine/omo-config-core/src/schema/git-master.ts
 var OmoGitMasterSettingsShape = {
@@ -20924,7 +20923,7 @@ var OmoConfigSchema = object({
   model_profile: string2().optional(),
   memory: OmoMemorySettingsSchema.optional(),
   telemetry: OmoTelemetrySettingsSchema.optional(),
-  computer: OmoComputerSettingsSchema.optional(),
+  computer: OmoComputerSettingsLayerSchema.optional(),
   disabled_skills: OmoDisabledSkillsSchema.optional(),
   "[opencode]": OmoOpenCodeHarnessConfigSchema.optional(),
   "[native]": OmoTypedHarnessConfigSchema.optional(),
@@ -27692,12 +27691,10 @@ function isAmbiguousPostDispatchPromptFailure(result) {
 var PLUGIN_NAME = "oh-my-openagent";
 var LEGACY_PLUGIN_NAME = "oh-my-opencode";
 var LOG_FILENAME = "oh-my-opencode.log";
-var CACHE_DIR_NAME = "oh-my-opencode";
 
 // ../../../../omo-engine/omo-opencode/src/shared/logger.ts
 var logger = createLogger({ logFileName: LOG_FILENAME });
 var log2 = logger.log;
-var getLogFilePath = logger.getLogFilePath;
 configureSharedSubunitLogger(log2);
 // ../../../../omo-engine/model-core/src/model-normalization.ts
 function normalizeModelID(modelID) {
@@ -27731,269 +27728,6 @@ function normalizeModelFormat(model) {
   }
   return;
 }
-// ../../../../omo-engine/omo-opencode/src/shared/data-path.ts
-import * as path2 from "node:path";
-import * as os2 from "node:os";
-import { accessSync, constants, mkdirSync } from "node:fs";
-function resolveWritableDirectory(preferredDir, fallbackSuffix) {
-  try {
-    mkdirSync(preferredDir, { recursive: true });
-    accessSync(preferredDir, constants.W_OK);
-    return preferredDir;
-  } catch (error) {
-    if (!(error instanceof Error)) {
-      throw error;
-    }
-    const fallbackDir = path2.join(os2.tmpdir(), fallbackSuffix);
-    mkdirSync(fallbackDir, { recursive: true });
-    return fallbackDir;
-  }
-}
-function getCacheDir() {
-  const preferredDir = process.env.XDG_CACHE_HOME ?? path2.join(os2.homedir(), ".cache");
-  return resolveWritableDirectory(preferredDir, "opencode-cache");
-}
-function getOmoOpenCodeCacheDir() {
-  return path2.join(getCacheDir(), CACHE_DIR_NAME);
-}
-
-// ../../../../omo-engine/omo-opencode/src/shared/json-file-cache-store.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync } from "node:fs";
-import { join as join5 } from "node:path";
-function toLogLabel(cacheLabel) {
-  return cacheLabel.toLowerCase();
-}
-function createJsonFileCacheStore(options) {
-  let memoryValue;
-  let writtenInCurrentProcess = false;
-  function getCacheFilePath() {
-    return join5(options.getCacheDir(), options.filename);
-  }
-  function ensureCacheDir() {
-    const cacheDir = options.getCacheDir();
-    if (!existsSync4(cacheDir)) {
-      mkdirSync2(cacheDir, { recursive: true });
-    }
-  }
-  function read() {
-    if (memoryValue !== undefined) {
-      return memoryValue;
-    }
-    const cacheFile = getCacheFilePath();
-    if (!existsSync4(cacheFile)) {
-      memoryValue = null;
-      log2(`[${options.logPrefix}] ${options.cacheLabel} file not found`, { cacheFile });
-      return null;
-    }
-    try {
-      const content = readFileSync2(cacheFile, "utf-8");
-      const value = JSON.parse(content);
-      memoryValue = value;
-      log2(`[${options.logPrefix}] Read ${toLogLabel(options.cacheLabel)}`, options.describe(value));
-      return value;
-    } catch (error) {
-      memoryValue = null;
-      log2(`[${options.logPrefix}] Error reading ${toLogLabel(options.cacheLabel)}`, {
-        error: String(error)
-      });
-      return null;
-    }
-  }
-  function has() {
-    if (memoryValue !== undefined && memoryValue !== null) {
-      return true;
-    }
-    if (writtenInCurrentProcess) {
-      return true;
-    }
-    return existsSync4(getCacheFilePath());
-  }
-  function write(value) {
-    ensureCacheDir();
-    const cacheFile = getCacheFilePath();
-    try {
-      writeFileSync(cacheFile, options.serialize?.(value) ?? JSON.stringify(value, null, 2));
-      memoryValue = value;
-      writtenInCurrentProcess = true;
-      log2(`[${options.logPrefix}] ${options.cacheLabel} written`, options.describe(value));
-    } catch (error) {
-      log2(`[${options.logPrefix}] Error writing ${toLogLabel(options.cacheLabel)}`, {
-        error: String(error)
-      });
-    }
-  }
-  function resetMemory() {
-    memoryValue = undefined;
-    writtenInCurrentProcess = false;
-  }
-  return {
-    read,
-    has,
-    write,
-    resetMemory
-  };
-}
-
-// ../../../../omo-engine/omo-opencode/src/shared/connected-providers-cache.ts
-var providerModelsCacheWrittenInCurrentProcess = false;
-var CONNECTED_PROVIDERS_CACHE_FILE = "connected-providers.json";
-var PROVIDER_MODELS_CACHE_FILE = "provider-models.json";
-function mergeConnectedProviders(previous, fetched, reportedProviderIDs) {
-  if (!previous || previous.length === 0) {
-    return fetched;
-  }
-  if (fetched.length === 0 && reportedProviderIDs.size === 0) {
-    return previous;
-  }
-  const fetchedSet = new Set(fetched);
-  const droppedPreviousProvider = previous.some((provider) => !fetchedSet.has(provider));
-  if (!droppedPreviousProvider) {
-    return fetched;
-  }
-  const fetchedSetWithConfirmedDisconnects = new Set(fetched);
-  for (const provider of previous) {
-    if (!reportedProviderIDs.has(provider)) {
-      fetchedSetWithConfirmedDisconnects.add(provider);
-    }
-  }
-  return Array.from(fetchedSetWithConfirmedDisconnects);
-}
-function mergeProviderModels(previous, fetched, connected, reportedModelProviderIDs) {
-  const merged = {};
-  for (const provider of connected) {
-    if (fetched[provider]) {
-      merged[provider] = fetched[provider];
-    } else if (reportedModelProviderIDs.has(provider) && previous?.[provider]) {
-      merged[provider] = [];
-    } else if (previous?.[provider]) {
-      merged[provider] = previous[provider];
-    }
-  }
-  return merged;
-}
-function createConnectedProvidersCacheStore(getCacheDir = getOmoOpenCodeCacheDir) {
-  const connectedProvidersCacheStore = createJsonFileCacheStore({
-    getCacheDir,
-    filename: CONNECTED_PROVIDERS_CACHE_FILE,
-    logPrefix: "connected-providers-cache",
-    cacheLabel: "Cache",
-    describe: (value) => ({ count: value.connected.length, updatedAt: value.updatedAt })
-  });
-  const providerModelsCacheStore = createJsonFileCacheStore({
-    getCacheDir,
-    filename: PROVIDER_MODELS_CACHE_FILE,
-    logPrefix: "connected-providers-cache",
-    cacheLabel: "Provider-models cache",
-    describe: (value) => ({
-      providerCount: Object.keys(value.models).length,
-      updatedAt: value.updatedAt
-    })
-  });
-  function readConnectedProvidersCache() {
-    return connectedProvidersCacheStore.read()?.connected ?? null;
-  }
-  function hasConnectedProvidersCache() {
-    return connectedProvidersCacheStore.has();
-  }
-  function writeConnectedProvidersCache(connected) {
-    connectedProvidersCacheStore.write({
-      connected,
-      updatedAt: new Date().toISOString()
-    });
-  }
-  function readProviderModelsCache() {
-    return providerModelsCacheStore.read();
-  }
-  function hasProviderModelsCache() {
-    if (providerModelsCacheWrittenInCurrentProcess) {
-      return true;
-    }
-    return providerModelsCacheStore.has();
-  }
-  function writeProviderModelsCache(data) {
-    providerModelsCacheStore.write({
-      ...data,
-      updatedAt: new Date().toISOString()
-    });
-    providerModelsCacheWrittenInCurrentProcess = true;
-  }
-  async function updateConnectedProvidersCache(client) {
-    if (!client?.provider?.list) {
-      log2("[connected-providers-cache] client.provider.list not available");
-      return;
-    }
-    try {
-      const previousConnected = readConnectedProvidersCache();
-      const previousProviderModels = readProviderModelsCache();
-      const result = await client.provider.list();
-      const fetchedConnected = result.data?.connected ?? [];
-      const allProviders = result.data?.all ?? [];
-      const reportedProviderIDs = new Set(allProviders.map((provider) => provider.id));
-      const connected = mergeConnectedProviders(previousConnected ?? previousProviderModels?.connected, fetchedConnected, reportedProviderIDs);
-      log2("[connected-providers-cache] Fetched connected providers", {
-        count: fetchedConnected.length,
-        providers: fetchedConnected
-      });
-      writeConnectedProvidersCache(connected);
-      const modelsByProvider = {};
-      const reportedModelProviderIDs = new Set;
-      for (const provider of allProviders) {
-        if (provider.models) {
-          reportedModelProviderIDs.add(provider.id);
-          const modelMetadata = Object.entries(provider.models).map(([modelID, rawMetadata]) => {
-            if (!isRecord9(rawMetadata)) {
-              return { id: modelID };
-            }
-            const normalizedID = typeof rawMetadata.id === "string" ? rawMetadata.id : modelID;
-            return {
-              ...rawMetadata,
-              id: normalizedID
-            };
-          });
-          if (modelMetadata.length > 0) {
-            modelsByProvider[provider.id] = modelMetadata;
-          }
-        }
-      }
-      const mergedModelsByProvider = mergeProviderModels(previousProviderModels?.models, modelsByProvider, connected, reportedModelProviderIDs);
-      log2("[connected-providers-cache] Extracted models from provider list", {
-        providerCount: Object.keys(mergedModelsByProvider).length,
-        totalModels: Object.values(mergedModelsByProvider).reduce((sum, ids) => sum + ids.length, 0)
-      });
-      writeProviderModelsCache({
-        models: mergedModelsByProvider,
-        connected
-      });
-    } catch (err) {
-      log2("[connected-providers-cache] Error updating cache", { error: String(err) });
-    }
-  }
-  function _resetMemCacheForTesting() {
-    connectedProvidersCacheStore.resetMemory();
-    providerModelsCacheStore.resetMemory();
-    providerModelsCacheWrittenInCurrentProcess = false;
-  }
-  return {
-    readConnectedProvidersCache,
-    hasConnectedProvidersCache,
-    readProviderModelsCache,
-    hasProviderModelsCache,
-    writeProviderModelsCache,
-    updateConnectedProvidersCache,
-    _resetMemCacheForTesting
-  };
-}
-var defaultConnectedProvidersCacheStore = createConnectedProvidersCacheStore(() => getOmoOpenCodeCacheDir());
-var {
-  readConnectedProvidersCache,
-  hasConnectedProvidersCache,
-  readProviderModelsCache,
-  hasProviderModelsCache,
-  writeProviderModelsCache,
-  updateConnectedProvidersCache,
-  _resetMemCacheForTesting
-} = defaultConnectedProvidersCacheStore;
-
 // ../../../../omo-engine/omo-opencode/src/shared/disabled-providers.ts
 var HOOK_NAME = "disabled-providers";
 function getModelProvider(model) {
@@ -28315,41 +28049,6 @@ var BuiltinAgentNameSchema = _enum([
   "momus",
   "atlas",
   "sisyphus-junior",
-  "plan-consultant",
-  "plan-reviewer",
-  "omo-native-code-reviewer",
-  "omo-native-qa-executor",
-  "omo-native-gate-reviewer"
-]);
-var BuiltinSkillNameSchema = _enum([
-  "playwright",
-  "dev-browser",
-  "frontend",
-  "git-master",
-  "review-work",
-  "remove-ai-slops",
-  "init-deep",
-  "debugging",
-  "security-research",
-  "security-review",
-  "visual-qa",
-  "team-mode"
-]);
-var OverridableAgentNameSchema = _enum([
-  "build",
-  "plan",
-  "sisyphus",
-  "hephaestus",
-  "sisyphus-junior",
-  "OpenCode-Builder",
-  "prometheus",
-  "metis",
-  "momus",
-  "oracle",
-  "librarian",
-  "explore",
-  "multimodal-looker",
-  "atlas",
   "plan-consultant",
   "plan-reviewer",
   "omo-native-code-reviewer",
@@ -28709,7 +28408,6 @@ var NotificationConfigSchema = object({
   force_enable: boolean2().optional()
 });
 // ../../../../omo-engine/omo-opencode/src/mcp/types.ts
-var McpNameSchema = _enum(["websearch", "context7", "grep_app", "lsp"]);
 var AnyMcpNameSchema = string2().min(1);
 
 // ../../../../omo-engine/omo-opencode/src/config/schema/agent-definitions.ts
@@ -29135,22 +28833,22 @@ function validatePluginConfig(directory, environment = process.env) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/features/run-continuation-state/storage.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync3, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join6 } from "node:path";
+import { existsSync as existsSync4, mkdirSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
+import { join as join4 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/features/run-continuation-state/constants.ts
 var CONTINUATION_MARKER_DIR = ".omo/run-continuation";
 
 // ../../../../omo-engine/omo-opencode/src/features/run-continuation-state/storage.ts
 function getMarkerPath(directory, sessionID) {
-  return join6(directory, CONTINUATION_MARKER_DIR, `${sessionID}.json`);
+  return join4(directory, CONTINUATION_MARKER_DIR, `${sessionID}.json`);
 }
 function readContinuationMarker(directory, sessionID) {
   const markerPath = getMarkerPath(directory, sessionID);
-  if (!existsSync5(markerPath))
+  if (!existsSync4(markerPath))
     return null;
   try {
-    const raw = readFileSync3(markerPath, "utf-8");
+    const raw = readFileSync2(markerPath, "utf-8");
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
       return null;
@@ -29178,8 +28876,8 @@ function setContinuationMarkerSource(directory, sessionID, source, state, reason
     }
   };
   const markerPath = getMarkerPath(directory, sessionID);
-  mkdirSync3(join6(directory, CONTINUATION_MARKER_DIR), { recursive: true });
-  writeFileSync2(markerPath, JSON.stringify(next, null, 2), "utf-8");
+  mkdirSync(join4(directory, CONTINUATION_MARKER_DIR), { recursive: true });
+  writeFileSync(markerPath, JSON.stringify(next, null, 2), "utf-8");
   return next;
 }
 function isContinuationMarkerActive(marker) {
@@ -29201,8 +28899,8 @@ function getActiveContinuationMarkerReason(marker) {
 var HOOK_NAME2 = "atlas";
 
 // ../../../../omo-engine/omo-opencode/src/hooks/ralph-loop/storage.ts
-import { existsSync as existsSync6, readFileSync as readFileSync4, writeFileSync as writeFileSync3, unlinkSync as unlinkSync2, mkdirSync as mkdirSync4 } from "node:fs";
-import { dirname as dirname3, join as join7 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync3 } from "node:fs";
+import { join as join5 } from "node:path";
 // ../../../../omo-engine/omo-opencode/src/hooks/ralph-loop/constants.ts
 var DEFAULT_STATE_FILE = ".omo/ralph-loop.local.md";
 var DEFAULT_MAX_ITERATIONS = 100;
@@ -29210,15 +28908,15 @@ var DEFAULT_COMPLETION_PROMISE = "DONE";
 
 // ../../../../omo-engine/omo-opencode/src/hooks/ralph-loop/storage.ts
 function getStateFilePath(directory, customPath) {
-  return customPath ? join7(directory, customPath) : join7(directory, DEFAULT_STATE_FILE);
+  return customPath ? join5(directory, customPath) : join5(directory, DEFAULT_STATE_FILE);
 }
 function readState(directory, customPath) {
   const filePath = getStateFilePath(directory, customPath);
-  if (!existsSync6(filePath)) {
+  if (!existsSync5(filePath)) {
     return null;
   }
   try {
-    const content = readFileSync4(filePath, "utf-8");
+    const content = readFileSync3(filePath, "utf-8");
     const { data, body } = parseFrontmatter(content);
     const active = data.active;
     const iteration = data.iteration;
@@ -29641,12 +29339,12 @@ function resolveProjectIdentity(directory, deps = {}) {
 
 // ../../../../omo-engine/omo-opencode/src/cli/run/plan-evidence.ts
 import { promises as fs3 } from "node:fs";
-import path4 from "node:path";
+import path3 from "node:path";
 
 // ../../../../omo-engine/code-graph/src/extract.ts
-import { existsSync as existsSync7, readdirSync } from "node:fs";
+import { existsSync as existsSync6, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname as dirname4, join as join8, resolve as resolve4 } from "node:path";
+import { dirname as dirname3, join as join6, resolve as resolve4 } from "node:path";
 
 // ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/dist/enums/completionItemKind.js
 var CompletionItemKind;
@@ -37215,12 +36913,12 @@ var fsCallbackNames = ["readFile", "fileExists", "directoryExists", "getAccessib
 // ../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript/lib/getExePath.js
 import fs2 from "node:fs";
 import module from "node:module";
-import path3 from "node:path";
+import path2 from "node:path";
 import { fileURLToPath } from "node:url";
 function getExePath() {
-  const __dirname2 = path3.dirname(fileURLToPath(import.meta.url));
+  const __dirname2 = path2.dirname(fileURLToPath(import.meta.url));
   const normalizedDirname = __dirname2.replace(/\\/g, "/");
-  const pkg = JSON.parse(fs2.readFileSync(path3.join(__dirname2, "..", "package.json"), "utf8"));
+  const pkg = JSON.parse(fs2.readFileSync(path2.join(__dirname2, "..", "package.json"), "utf8"));
   const pkgName = pkg.name;
   const baseName = pkgName.startsWith("@") ? pkgName.split("/")[1] : pkgName;
   const expectedBinName = baseName === "typescript" ? "tsc" : "tsgo";
@@ -37232,27 +36930,27 @@ function getExePath() {
   let exeDir;
   const expectedPackage = baseName + "-" + process.platform + "-" + process.arch;
   if (normalizedDirname.endsWith("/_packages/" + baseName + "/lib")) {
-    exeDir = path3.resolve(__dirname2, "..", "..", "..", "built", "local");
+    exeDir = path2.resolve(__dirname2, "..", "..", "..", "built", "local");
     binName = "tsgo";
   } else if (normalizedDirname.endsWith("/built/npm/" + baseName + "/lib")) {
-    exeDir = path3.resolve(__dirname2, "..", "..", expectedPackage, "lib");
+    exeDir = path2.resolve(__dirname2, "..", "..", expectedPackage, "lib");
   } else {
     const platformPackageName = "@typescript/" + expectedPackage;
     try {
       if (typeof import.meta.resolve === "undefined") {
         const require2 = module.createRequire(import.meta.url);
         const packageJson = require2.resolve(platformPackageName + "/package.json");
-        exeDir = path3.join(path3.dirname(packageJson), "lib");
+        exeDir = path2.join(path2.dirname(packageJson), "lib");
       } else {
         const packageJson = import.meta.resolve(platformPackageName + "/package.json");
         const packageJsonPath = fileURLToPath(packageJson);
-        exeDir = path3.join(path3.dirname(packageJsonPath), "lib");
+        exeDir = path2.join(path2.dirname(packageJsonPath), "lib");
       }
     } catch (e) {
       throw new Error("Unable to resolve " + platformPackageName + ". Either your platform is unsupported, or you are missing the package on disk.");
     }
   }
-  let exe = path3.join(exeDir, binName);
+  let exe = path2.join(exeDir, binName);
   if (process.platform === "win32") {
     exe += ".exe";
     if (exe.length >= 248) {
@@ -39378,7 +39076,7 @@ function preferUnpacked(candidate) {
       continue;
     const twin = candidate.slice(0, at) + marker.replace("app.asar", "app.asar.unpacked") + candidate.slice(at + marker.length);
     try {
-      if (existsSync7(twin))
+      if (existsSync6(twin))
         return twin;
     } catch {}
   }
@@ -39386,23 +39084,23 @@ function preferUnpacked(candidate) {
 }
 function defaultTsServerPath() {
   const require2 = createRequire(import.meta.url);
-  const tsDir = dirname4(require2.resolve("typescript/package.json"));
-  const platformRoot = join8(tsDir, "..", "@typescript");
-  if (existsSync7(platformRoot)) {
+  const tsDir = dirname3(require2.resolve("typescript/package.json"));
+  const platformRoot = join6(tsDir, "..", "@typescript");
+  if (existsSync6(platformRoot)) {
     const platform = `typescript-${process.platform}-${process.arch}`;
     const names = readdirSync(platformRoot).sort();
     const ordered = [...names.filter((name) => name === platform), ...names.filter((name) => name !== platform)];
     for (const name of ordered) {
       for (const binary of ["tsc.exe", "tsgo", "tsc"]) {
-        const candidate = join8(platformRoot, name, "lib", binary);
-        if (existsSync7(candidate))
+        const candidate = join6(platformRoot, name, "lib", binary);
+        if (existsSync6(candidate))
           return preferUnpacked(candidate);
       }
     }
   }
   for (const binary of process.platform === "win32" ? ["tsc.exe", "tsc"] : ["tsc"]) {
-    const candidate = join8(tsDir, "..", ".bin", binary);
-    if (existsSync7(candidate))
+    const candidate = join6(tsDir, "..", ".bin", binary);
+    if (existsSync6(candidate))
       return preferUnpacked(candidate);
   }
   throw new Error("code-graph: TypeScript native server binary not found inside typescript@7.0.2; " + "pass IndexOptions.tsserverPath explicitly");
@@ -42930,18 +42628,18 @@ var {
   unlink
 } = promises;
 var {
-  accessSync: accessSync2,
+  accessSync,
   chmodSync,
   fsyncSync,
   linkSync,
   lstatSync: lstatSync2,
-  mkdirSync: mkdirSync5,
-  readFileSync: readFileSync5,
+  mkdirSync: mkdirSync2,
+  readFileSync: readFileSync4,
   readdirSync: readdirSync2,
   realpathSync: realpathSync4,
   statSync: statSync3,
-  unlinkSync: unlinkSync3,
-  writeFileSync: writeFileSync4,
+  unlinkSync: unlinkSync2,
+  writeFileSync: writeFileSync2,
   writeSync: writeSync2
 } = sync;
 
@@ -44366,14 +44064,14 @@ async function collectSourceFiles(directory, maxFiles = PLAN_EVIDENCE_MAX_FILES)
       if (entry.isDirectory()) {
         if (SKIPPED_DIRECTORIES.has(entry.name))
           continue;
-        await walk(path4.join(current, entry.name));
+        await walk(path3.join(current, entry.name));
         continue;
       }
       if (!entry.isFile())
         continue;
-      if (!SOURCE_EXTENSIONS.has(path4.extname(entry.name)))
+      if (!SOURCE_EXTENSIONS.has(path3.extname(entry.name)))
         continue;
-      collected.push(path4.join(current, entry.name));
+      collected.push(path3.join(current, entry.name));
     }
   };
   await walk(directory);
@@ -44386,7 +44084,7 @@ async function readWorktreeRevision(directory) {
     return;
   let head;
   try {
-    head = (await fs3.readFile(path4.join(gitDir, "HEAD"), "utf8")).trim();
+    head = (await fs3.readFile(path3.join(gitDir, "HEAD"), "utf8")).trim();
   } catch {
     return;
   }
@@ -44396,7 +44094,7 @@ async function readWorktreeRevision(directory) {
   return await readRefValue(gitDir, ref);
 }
 async function resolveGitDir(directory) {
-  const dotGit = path4.join(directory, ".git");
+  const dotGit = path3.join(directory, ".git");
   try {
     const stat = await fs3.stat(dotGit);
     if (stat.isDirectory())
@@ -44407,7 +44105,7 @@ async function resolveGitDir(directory) {
     const target = content.slice("gitdir:".length).trim();
     if (target.length === 0)
       return;
-    return path4.isAbsolute(target) ? target : path4.resolve(directory, target);
+    return path3.isAbsolute(target) ? target : path3.resolve(directory, target);
   } catch {
     return;
   }
@@ -44415,9 +44113,9 @@ async function resolveGitDir(directory) {
 async function refRoots(gitDir) {
   const roots = [gitDir];
   try {
-    const common = (await fs3.readFile(path4.join(gitDir, "commondir"), "utf8")).trim();
+    const common = (await fs3.readFile(path3.join(gitDir, "commondir"), "utf8")).trim();
     if (common.length > 0) {
-      roots.push(path4.isAbsolute(common) ? common : path4.resolve(gitDir, common));
+      roots.push(path3.isAbsolute(common) ? common : path3.resolve(gitDir, common));
     }
   } catch {
     return roots;
@@ -44427,12 +44125,12 @@ async function refRoots(gitDir) {
 async function readRefValue(gitDir, ref) {
   for (const root of await refRoots(gitDir)) {
     try {
-      const value = (await fs3.readFile(path4.join(root, ref), "utf8")).trim();
+      const value = (await fs3.readFile(path3.join(root, ref), "utf8")).trim();
       if (/^[0-9a-f]{7,64}$/.test(value))
         return value;
     } catch {}
     try {
-      const packed = await fs3.readFile(path4.join(root, "packed-refs"), "utf8");
+      const packed = await fs3.readFile(path3.join(root, "packed-refs"), "utf8");
       for (const line of packed.split(`
 `)) {
         const trimmed = line.trim();
@@ -44458,7 +44156,7 @@ async function readRecordDirectory(dir, label) {
   for (const name of names.sort()) {
     if (!name.endsWith(RECORD_FILE_EXTENSION))
       continue;
-    const filePath = path4.join(dir, name);
+    const filePath = path3.join(dir, name);
     let content;
     try {
       content = await fs3.readFile(filePath, "utf8");
@@ -44486,7 +44184,7 @@ async function readRecordDirectory(dir, label) {
   return { records, dropped };
 }
 async function loadKnowledgeRecords(directory, externalRoot) {
-  const local = await readRecordDirectory(path4.join(directory, PROJECT_KNOWLEDGE_DIR), PROJECT_KNOWLEDGE_DIR);
+  const local = await readRecordDirectory(path3.join(directory, PROJECT_KNOWLEDGE_DIR), PROJECT_KNOWLEDGE_DIR);
   if (externalRoot === undefined)
     return local;
   const external = await readRecordDirectory(externalRoot, PROJECT_KNOWLEDGE_DIR);
@@ -44624,7 +44322,7 @@ async function buildPlannerEvidence(options) {
     return unavailable("revision-unresolved", { keywords });
   const loaded = options.knowledge === undefined ? await loadKnowledgeRecords(options.directory, options.knowledgeRoot) : { records: options.knowledge, dropped: 0 };
   const projectId = deriveProjectId(options.directory, options.projectId);
-  const worktreeId = path4.resolve(options.directory);
+  const worktreeId = path3.resolve(options.directory);
   const scope = {
     projectId,
     worktreeId,
@@ -44990,12 +44688,12 @@ function loadPluginConfig(directory, _context) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-handlers/agent-config-handler.ts
-import { existsSync as existsSync13, readdirSync as readdirSync4, readFileSync as readFileSync8 } from "node:fs";
-import { homedir as homedir3 } from "node:os";
-import { join as join10 } from "node:path";
+import { existsSync as existsSync12, readdirSync as readdirSync4, readFileSync as readFileSync7 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { join as join8 } from "node:path";
 
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/agent-definitions-loader.ts
-import { existsSync as existsSync10, readFileSync as readFileSync7 } from "fs";
+import { existsSync as existsSync9, readFileSync as readFileSync6 } from "fs";
 import { basename as basename3, extname } from "path";
 // ../../../../omo-engine/claude-code-compat-core/src/shared/plugin-identity.ts
 var LOG_FILENAME2 = "oh-my-opencode.log";
@@ -45003,7 +44701,6 @@ var LOG_FILENAME2 = "oh-my-opencode.log";
 // ../../../../omo-engine/claude-code-compat-core/src/shared/logger.ts
 var logger2 = createLogger({ logFileName: LOG_FILENAME2 });
 var log3 = logger2.log;
-var getLogFilePath2 = logger2.getLogFilePath;
 
 // ../../../../omo-engine/claude-code-compat-core/src/shared/parse-tools-config.ts
 function parseToolsConfig(toolsValue) {
@@ -45027,7 +44724,7 @@ function parseToolsConfig(toolsValue) {
 }
 
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/json-agent-loader.ts
-import { existsSync as existsSync9, readFileSync as readFileSync6 } from "fs";
+import { existsSync as existsSync8, readFileSync as readFileSync5 } from "fs";
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/claude-model-mapper.ts
 var ANTHROPIC_PREFIX = "anthropic/";
 var CLAUDE_CODE_ALIAS_MAP = new Map([
@@ -45070,10 +44767,10 @@ function mapClaudeModelToOpenCode(model, anthropicProvider) {
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/json-agent-loader.ts
 function parseJsonAgentFile(filePath, scope) {
   try {
-    if (!existsSync9(filePath)) {
+    if (!existsSync8(filePath)) {
       return null;
     }
-    const content = readFileSync6(filePath, "utf-8");
+    const content = readFileSync5(filePath, "utf-8");
     const { data } = parseJsoncSafe2(content);
     if (!data) {
       return null;
@@ -45111,10 +44808,10 @@ function parseJsonAgentFile(filePath, scope) {
 // ../../../../omo-engine/claude-code-compat-core/src/features/claude-code-agent-loader/agent-definitions-loader.ts
 function parseMarkdownAgentFile(filePath, scope, anthropicProvider) {
   try {
-    if (!existsSync10(filePath)) {
+    if (!existsSync9(filePath)) {
       return null;
     }
-    const content = readFileSync7(filePath, "utf-8");
+    const content = readFileSync6(filePath, "utf-8");
     const { data, body } = parseFrontmatter(content);
     const fileName = basename3(filePath);
     const agentName = fileName.replace(/\.md$/i, "");
@@ -45148,7 +44845,7 @@ function parseMarkdownAgentFile(filePath, scope, anthropicProvider) {
 function loadAgentDefinitions(paths, scope, anthropicProvider) {
   const result = Object.create(null);
   for (const filePath of paths) {
-    if (!existsSync10(filePath)) {
+    if (!existsSync9(filePath)) {
       log3(`[agent-definitions-loader] File not found, skipping: ${filePath}`);
       continue;
     }
@@ -45172,25 +44869,25 @@ function loadAgentDefinitions(paths, scope, anthropicProvider) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/shared/resolve-agent-definition-paths.ts
-import { homedir as homedir2 } from "node:os";
-import { existsSync as existsSync11 } from "node:fs";
-import { dirname as dirname5, isAbsolute as isAbsolute2, join as join9, resolve as resolve5 } from "node:path";
+import { homedir } from "node:os";
+import { existsSync as existsSync10 } from "node:fs";
+import { dirname as dirname4, isAbsolute as isAbsolute2, join as join7, resolve as resolve5 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 function resolveBundledAgentsDir() {
   if (typeof OMO_BUNDLED_AGENTS_DIR === "string" && OMO_BUNDLED_AGENTS_DIR.length > 0) {
-    return join9(dirname5(fileURLToPath2(import.meta.url)), OMO_BUNDLED_AGENTS_DIR);
+    return join7(dirname4(fileURLToPath2(import.meta.url)), OMO_BUNDLED_AGENTS_DIR);
   }
   const resourcesPath = process.resourcesPath;
   if (typeof resourcesPath === "string" && resourcesPath.length > 0) {
-    const staged = join9(resourcesPath, "omo-engine", "omo-opencode", "agents");
-    if (existsSync11(staged))
+    const staged = join7(resourcesPath, "omo-engine", "omo-opencode", "agents");
+    if (existsSync10(staged))
       return staged;
   }
-  return join9(import.meta.dir, "..", "..", "agents");
+  return join7(import.meta.dir, "..", "..", "agents");
 }
 function resolveAgentDefinitionPaths(paths, baseDir, containmentDir) {
   return paths.flatMap((p) => {
-    const expanded = p.startsWith("~/") ? join9(homedir2(), p.slice(2)) : p;
+    const expanded = p.startsWith("~/") ? join7(homedir(), p.slice(2)) : p;
     const resolved = isAbsolute2(expanded) ? expanded : resolve5(baseDir, expanded);
     if (containmentDir !== null && !isWithinProject(resolved, containmentDir)) {
       log2(`agent_definitions path rejected (outside project boundary): ${p} -> ${resolved}`);
@@ -45198,81 +44895,6 @@ function resolveAgentDefinitionPaths(paths, baseDir, containmentDir) {
     }
     return [resolved];
   });
-}
-
-// ../../../../omo-engine/omo-opencode/src/shared/agent-display-names.ts
-var AGENT_DISPLAY_NAMES = {
-  sisyphus: "Sisyphus - ultraworker",
-  hephaestus: "Hephaestus - Deep Agent",
-  prometheus: "Prometheus - Plan Builder",
-  atlas: "Atlas - Plan Executor",
-  "sisyphus-junior": "Sisyphus-Junior",
-  metis: "Metis - Plan Consultant",
-  momus: "Momus - Plan Critic",
-  athena: "Athena - Council",
-  "athena-junior": "Athena-Junior - Council",
-  oracle: "oracle",
-  librarian: "librarian",
-  explore: "explore",
-  "multimodal-looker": "multimodal-looker",
-  "plan-consultant": "Plan Consultant",
-  "plan-reviewer": "Plan Reviewer",
-  "omo-native-code-reviewer": "Code Reviewer - Final Gate",
-  "omo-native-qa-executor": "QA Executor - Final Gate",
-  "omo-native-gate-reviewer": "Gate Reviewer - Final",
-  "council-member": "council-member"
-};
-var INVISIBLE_AGENT_CHARACTERS_REGEX = /[\u200B\u200C\u200D\uFEFF]/g;
-var VISIBLE_AGENT_LIST_SORT_PREFIX_REGEX = /^\d+\|/;
-var AGENT_WRAPPER_CHARS_REGEX = /^[\\/"']+|[\\/"']+$/g;
-function stripInvisibleAgentCharacters(agentName) {
-  return agentName.replace(INVISIBLE_AGENT_CHARACTERS_REGEX, "");
-}
-function stripAgentListSortPrefix(agentName) {
-  return stripInvisibleAgentCharacters(agentName).replace(VISIBLE_AGENT_LIST_SORT_PREFIX_REGEX, "").replace(AGENT_WRAPPER_CHARS_REGEX, "");
-}
-function getAgentDisplayName(configKey, overrides) {
-  if (overrides) {
-    const override = overrides[configKey] ?? Object.entries(overrides).find(([k]) => k.toLowerCase() === configKey.toLowerCase())?.[1];
-    if (override?.displayName)
-      return override.displayName;
-  }
-  const exactMatch = AGENT_DISPLAY_NAMES[configKey];
-  if (exactMatch !== undefined)
-    return exactMatch;
-  const lowerKey = configKey.toLowerCase();
-  for (const [k, v] of Object.entries(AGENT_DISPLAY_NAMES)) {
-    if (k.toLowerCase() === lowerKey)
-      return v;
-  }
-  return configKey;
-}
-var REVERSE_DISPLAY_NAMES = Object.fromEntries(Object.entries(AGENT_DISPLAY_NAMES).map(([key, displayName]) => [displayName.toLowerCase(), key]));
-var LEGACY_DISPLAY_NAMES = {
-  "sisyphus (ultraworker)": "sisyphus",
-  "hephaestus (deep agent)": "hephaestus",
-  "prometheus (plan builder)": "prometheus",
-  "atlas (plan executor)": "atlas",
-  "metis (plan consultant)": "metis",
-  "momus (plan critic)": "momus",
-  "athena (council)": "athena",
-  "athena-junior (council)": "athena-junior"
-};
-function resolveKnownAgentConfigKey(agentName) {
-  const lower = stripAgentListSortPrefix(agentName).trim().toLowerCase();
-  const reversed = REVERSE_DISPLAY_NAMES[lower];
-  if (reversed !== undefined)
-    return reversed;
-  const legacy = LEGACY_DISPLAY_NAMES[lower];
-  if (legacy !== undefined)
-    return legacy;
-  if (AGENT_DISPLAY_NAMES[lower] !== undefined)
-    return lower;
-  return;
-}
-function getAgentConfigKey(agentName) {
-  const lower = stripAgentListSortPrefix(agentName).trim().toLowerCase();
-  return resolveKnownAgentConfigKey(agentName) ?? lower;
 }
 
 // ../../../../omo-engine/omo-opencode/src/tools/delegate-task/google-categories.ts
@@ -45658,15 +45280,13 @@ function buildCategoryRecord(selector) {
   return Object.fromEntries(BUILTIN_CATEGORIES.map((definition) => [definition.name, selector(definition)]));
 }
 var DEFAULT_CATEGORIES = buildCategoryRecord((definition) => definition.config);
-var CATEGORY_PROMPT_APPENDS = buildCategoryRecord((definition) => definition.promptAppend);
-var CATEGORY_DESCRIPTIONS = buildCategoryRecord((definition) => definition.description);
-var CATEGORY_CALLER_GUIDANCE = buildCategoryRecord((definition) => definition.callerGuidance);
 var CATEGORY_PROMPT_APPEND_RESOLVERS = Object.fromEntries(BUILTIN_CATEGORIES.filter((definition) => definition.resolvePromptAppend !== undefined).map((definition) => [definition.name, definition.resolvePromptAppend]));
 // ../../../../omo-engine/omo-opencode/src/shared/migration.ts
 configureMigrationCategoryDefaults(DEFAULT_CATEGORIES);
 
 // ../../../../omo-engine/omo-opencode/src/plugin-handlers/agent-config-assembly.ts
-import { existsSync as existsSync12, readdirSync as readdirSync3 } from "node:fs";
+import { existsSync as existsSync11, readdirSync as readdirSync3 } from "node:fs";
+
 // ../../../../omo-engine/omo-opencode/src/agents/dynamic-agent-core-sections.ts
 function buildAgentIdentitySection(agentName, roleDescription) {
   return `<agent-identity>
@@ -45675,6 +45295,81 @@ You are "${agentName}" - ${roleDescription}.
 When asked who you are, always identify as ${agentName}. Do not identify as any other assistant or AI.
 </agent-identity>`;
 }
+// ../../../../omo-engine/omo-opencode/src/shared/agent-display-names.ts
+var AGENT_DISPLAY_NAMES = {
+  sisyphus: "Sisyphus - ultraworker",
+  hephaestus: "Hephaestus - Deep Agent",
+  prometheus: "Prometheus - Plan Builder",
+  atlas: "Atlas - Plan Executor",
+  "sisyphus-junior": "Sisyphus-Junior",
+  metis: "Metis - Plan Consultant",
+  momus: "Momus - Plan Critic",
+  athena: "Athena - Council",
+  "athena-junior": "Athena-Junior - Council",
+  oracle: "oracle",
+  librarian: "librarian",
+  explore: "explore",
+  "multimodal-looker": "multimodal-looker",
+  "plan-consultant": "Plan Consultant",
+  "plan-reviewer": "Plan Reviewer",
+  "omo-native-code-reviewer": "Code Reviewer - Final Gate",
+  "omo-native-qa-executor": "QA Executor - Final Gate",
+  "omo-native-gate-reviewer": "Gate Reviewer - Final",
+  "council-member": "council-member"
+};
+var INVISIBLE_AGENT_CHARACTERS_REGEX = /[\u200B\u200C\u200D\uFEFF]/g;
+var VISIBLE_AGENT_LIST_SORT_PREFIX_REGEX = /^\d+\|/;
+var AGENT_WRAPPER_CHARS_REGEX = /^[\\/"']+|[\\/"']+$/g;
+function stripInvisibleAgentCharacters(agentName) {
+  return agentName.replace(INVISIBLE_AGENT_CHARACTERS_REGEX, "");
+}
+function stripAgentListSortPrefix(agentName) {
+  return stripInvisibleAgentCharacters(agentName).replace(VISIBLE_AGENT_LIST_SORT_PREFIX_REGEX, "").replace(AGENT_WRAPPER_CHARS_REGEX, "");
+}
+function getAgentDisplayName(configKey, overrides) {
+  if (overrides) {
+    const override = overrides[configKey] ?? Object.entries(overrides).find(([k]) => k.toLowerCase() === configKey.toLowerCase())?.[1];
+    if (override?.displayName)
+      return override.displayName;
+  }
+  const exactMatch = AGENT_DISPLAY_NAMES[configKey];
+  if (exactMatch !== undefined)
+    return exactMatch;
+  const lowerKey = configKey.toLowerCase();
+  for (const [k, v] of Object.entries(AGENT_DISPLAY_NAMES)) {
+    if (k.toLowerCase() === lowerKey)
+      return v;
+  }
+  return configKey;
+}
+var REVERSE_DISPLAY_NAMES = Object.fromEntries(Object.entries(AGENT_DISPLAY_NAMES).map(([key, displayName]) => [displayName.toLowerCase(), key]));
+var LEGACY_DISPLAY_NAMES = {
+  "sisyphus (ultraworker)": "sisyphus",
+  "hephaestus (deep agent)": "hephaestus",
+  "prometheus (plan builder)": "prometheus",
+  "atlas (plan executor)": "atlas",
+  "metis (plan consultant)": "metis",
+  "momus (plan critic)": "momus",
+  "athena (council)": "athena",
+  "athena-junior (council)": "athena-junior"
+};
+function resolveKnownAgentConfigKey(agentName) {
+  const lower = stripAgentListSortPrefix(agentName).trim().toLowerCase();
+  const reversed = REVERSE_DISPLAY_NAMES[lower];
+  if (reversed !== undefined)
+    return reversed;
+  const legacy = LEGACY_DISPLAY_NAMES[lower];
+  if (legacy !== undefined)
+    return legacy;
+  if (AGENT_DISPLAY_NAMES[lower] !== undefined)
+    return lower;
+  return;
+}
+function getAgentConfigKey(agentName) {
+  const lower = stripAgentListSortPrefix(agentName).trim().toLowerCase();
+  return resolveKnownAgentConfigKey(agentName) ?? lower;
+}
+
 // ../../../../omo-engine/omo-opencode/src/tools/delegate-task/metis-agent.ts
 var METIS_CORE_AGENT = {
   key: "metis",
@@ -45812,6 +45507,7 @@ Result discipline:
 - Your text goes back unfiltered, so write the final recommendation, not notes.
 </Oracle_Consultation>`
 };
+
 // ../../../../omo-engine/omo-opencode/src/shared/agent-variant.ts
 function findAgentOverride(config, agentName) {
   const stripped = stripInvisibleAgentCharacters(agentName);
@@ -45871,7 +45567,7 @@ function isProtectedAgentName(name, protectedNames) {
 function readBundledAgentNames() {
   try {
     const bundledDir = resolveBundledAgentsDir();
-    if (!existsSync12(bundledDir))
+    if (!existsSync11(bundledDir))
       return [...FALLBACK_BUNDLED_AGENT_NAMES];
     const stems = readdirSync3(bundledDir, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => entry.name.slice(0, -".md".length));
     return stems.length > 0 ? stems : [...FALLBACK_BUNDLED_AGENT_NAMES];
@@ -46166,23 +45862,23 @@ function normalizeDisabledSkills(disabledSkills) {
   return new Set((disabledSkills ?? []).map((name) => name.toLowerCase()));
 }
 function claudeConfigDir() {
-  return process.env.CLAUDE_CONFIG_DIR ?? join10(homedir3(), ".claude");
+  return process.env.CLAUDE_CONFIG_DIR ?? join8(homedir2(), ".claude");
 }
 function opencodeGlobalDir() {
-  const xdg = process.env.XDG_CONFIG_HOME ?? join10(homedir3(), ".config");
-  return process.env.OPENCODE_CONFIG_DIR ?? join10(xdg, "opencode");
+  const xdg = process.env.XDG_CONFIG_HOME ?? join8(homedir2(), ".config");
+  return process.env.OPENCODE_CONFIG_DIR ?? join8(xdg, "opencode");
 }
 function collectAgentFiles(root) {
-  if (!existsSync13(root))
+  if (!existsSync12(root))
     return [];
   try {
-    return readdirSync4(root, { withFileTypes: true }).filter((entry) => entry.isFile() && AGENT_FILE_PATTERN.test(entry.name)).map((entry) => join10(root, entry.name));
+    return readdirSync4(root, { withFileTypes: true }).filter((entry) => entry.isFile() && AGENT_FILE_PATTERN.test(entry.name)).map((entry) => join8(root, entry.name));
   } catch {
     return [];
   }
 }
 function loadFileTier(root, scope, anthropicProvider) {
-  const paths = collectAgentFiles(root).filter((path) => existsSync13(path));
+  const paths = collectAgentFiles(root).filter((path) => existsSync12(path));
   if (paths.length === 0)
     return {};
   const loaded = loadAgentDefinitions(paths, scope, anthropicProvider);
@@ -46242,9 +45938,9 @@ function stripJsoncComments(content) {
 }
 function readJsonObject(path) {
   try {
-    if (!existsSync13(path))
+    if (!existsSync12(path))
       return;
-    const parsed = JSON.parse(stripJsoncComments(readFileSync8(path, "utf-8")));
+    const parsed = JSON.parse(stripJsoncComments(readFileSync7(path, "utf-8")));
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed;
     }
@@ -46272,10 +45968,10 @@ function loadAgentTiers(params) {
   const bundledPaths = collectAgentFiles(bundledDir);
   const bundled = bundledPaths.length > 0 ? mapCustomTier(loadAgentDefinitions(bundledPaths, "definition-file", params.anthropicProvider)) : {};
   const plugin = {};
-  const user = params.includeClaudeAgents ? loadFileTier(join10(claudeConfigDir(), "agents"), "user", params.anthropicProvider) : {};
-  const opencodeGlobal = loadFileTier(join10(opencodeGlobalDir(), "agents"), "opencode", undefined);
-  const project = params.includeClaudeAgents ? loadFileTier(join10(params.directory, ".claude", "agents"), "project", params.anthropicProvider) : {};
-  const opencodeProject = loadFileTier(join10(params.directory, ".opencode", "agents"), "opencode-project", undefined);
+  const user = params.includeClaudeAgents ? loadFileTier(join8(claudeConfigDir(), "agents"), "user", params.anthropicProvider) : {};
+  const opencodeGlobal = loadFileTier(join8(opencodeGlobalDir(), "agents"), "opencode", undefined);
+  const project = params.includeClaudeAgents ? loadFileTier(join8(params.directory, ".claude", "agents"), "project", params.anthropicProvider) : {};
+  const opencodeProject = loadFileTier(join8(params.directory, ".opencode", "agents"), "opencode-project", undefined);
   const definitionFiles = loadAgentDefinitionTier(params);
   const opencodeConfig = loadOpencodeConfigTier(params.directory, params.hostAgents);
   return [bundled, plugin, user, opencodeGlobal, project, opencodeProject, definitionFiles, opencodeConfig];
@@ -46283,7 +45979,7 @@ function loadAgentTiers(params) {
 function loadAgentDefinitionTier(params) {
   if (!params.agentDefinitions || params.agentDefinitions.length === 0)
     return {};
-  const resolved = resolveAgentDefinitionPaths([...params.agentDefinitions], params.directory, params.directory).filter((path) => existsSync13(path));
+  const resolved = resolveAgentDefinitionPaths([...params.agentDefinitions], params.directory, params.directory).filter((path) => existsSync12(path));
   if (resolved.length === 0)
     return {};
   return mapCustomTier(loadAgentDefinitions(resolved, "definition-file", params.anthropicProvider));
@@ -46291,10 +45987,10 @@ function loadAgentDefinitionTier(params) {
 function loadOpencodeConfigTier(directory, hostAgents) {
   const tier = {};
   const configPaths = [
-    join10(directory, ".opencode", "opencode.json"),
-    join10(directory, ".opencode", "opencode.jsonc"),
-    join10(opencodeGlobalDir(), "opencode.json"),
-    join10(opencodeGlobalDir(), "opencode.jsonc")
+    join8(directory, ".opencode", "opencode.json"),
+    join8(directory, ".opencode", "opencode.jsonc"),
+    join8(opencodeGlobalDir(), "opencode.json"),
+    join8(opencodeGlobalDir(), "opencode.jsonc")
   ];
   for (const configPath of configPaths) {
     const data = readJsonObject(configPath);
@@ -46313,8 +46009,8 @@ function loadOpencodeConfigTier(directory, hostAgents) {
     const nestedDefinitions = data.agent_definitions;
     const nestedPaths = typeof nestedDefinitions === "string" ? [nestedDefinitions] : Array.isArray(nestedDefinitions) ? nestedDefinitions.filter((entry) => typeof entry === "string") : [];
     if (nestedPaths.length > 0) {
-      const configDir = join10(configPath, "..");
-      const resolved = resolveAgentDefinitionPaths(nestedPaths, configDir, directory).filter((path) => existsSync13(path));
+      const configDir = join8(configPath, "..");
+      const resolved = resolveAgentDefinitionPaths(nestedPaths, configDir, directory).filter((path) => existsSync12(path));
       if (resolved.length > 0) {
         for (const [name, config] of Object.entries(loadAgentDefinitions(resolved, "opencode-config", undefined))) {
           if (!Object.hasOwn(tier, name))
@@ -46350,7 +46046,7 @@ function parseSkillFrontmatter(content) {
 function discoverSkillFiles(roots, scope) {
   const found = [];
   for (const root of roots) {
-    if (!existsSync13(root))
+    if (!existsSync12(root))
       continue;
     let entries;
     try {
@@ -46361,12 +46057,12 @@ function discoverSkillFiles(roots, scope) {
     for (const entry of entries) {
       if (!entry.isDirectory())
         continue;
-      const skillFile = join10(root, entry.name, "SKILL.md");
-      if (!existsSync13(skillFile))
+      const skillFile = join8(root, entry.name, "SKILL.md");
+      if (!existsSync12(skillFile))
         continue;
       let description;
       try {
-        const frontmatter = parseSkillFrontmatter(readFileSync8(skillFile, "utf-8"));
+        const frontmatter = parseSkillFrontmatter(readFileSync7(skillFile, "utf-8"));
         if (frontmatter.name && frontmatter.name !== entry.name)
           continue;
         description = frontmatter.description;
@@ -46430,8 +46126,8 @@ function collectConfiguredSkillNames(skills) {
 async function discoverSkillsForPromptInjection(params) {
   const includeClaudeSkills = params.pluginConfig.claude_code?.skills ?? true;
   const fileSkills = includeClaudeSkills ? [
-    ...discoverSkillFiles([join10(params.directory, ".claude", "skills"), join10(params.directory, ".agents", "skills")], "project"),
-    ...discoverSkillFiles([join10(claudeConfigDir(), "skills")], "user")
+    ...discoverSkillFiles([join8(params.directory, ".claude", "skills"), join8(params.directory, ".agents", "skills")], "project"),
+    ...discoverSkillFiles([join8(claudeConfigDir(), "skills")], "user")
   ] : [];
   const configured = collectConfiguredSkillNames(params.pluginConfig.skills);
   const disabled = normalizeDisabledSkills([
@@ -46709,16 +46405,16 @@ function applyToolConfig(params) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-handlers/plugin-components-loader.ts
-import { existsSync as existsSync14, readdirSync as readdirSync5 } from "node:fs";
-import { homedir as homedir4 } from "node:os";
-import { join as join11 } from "node:path";
+import { existsSync as existsSync13, readdirSync as readdirSync5 } from "node:fs";
+import { homedir as homedir3 } from "node:os";
+import { join as join9 } from "node:path";
 var DEFAULT_PLUGIN_LOAD_TIMEOUT_MS = 1e4;
 var EMPTY_INDEX = {
   commandNames: [],
   skillNames: []
 };
 function listCommandNames(root) {
-  if (!existsSync14(root))
+  if (!existsSync13(root))
     return [];
   const found = [];
   for (const entry of readdirSync5(root, { withFileTypes: true })) {
@@ -46729,13 +46425,13 @@ function listCommandNames(root) {
   return found;
 }
 function listSkillNames(root) {
-  if (!existsSync14(root))
+  if (!existsSync13(root))
     return [];
   const found = [];
   for (const entry of readdirSync5(root, { withFileTypes: true })) {
     if (!entry.isDirectory())
       continue;
-    if (existsSync14(join11(root, entry.name, "SKILL.md"))) {
+    if (existsSync13(join9(root, entry.name, "SKILL.md"))) {
       found.push(entry.name);
     }
   }
@@ -46743,16 +46439,16 @@ function listSkillNames(root) {
 }
 function commandRoots(directory) {
   return [
-    join11(directory, ".claude", "commands"),
-    join11(directory, ".agents", "commands"),
-    join11(homedir4(), ".claude", "commands")
+    join9(directory, ".claude", "commands"),
+    join9(directory, ".agents", "commands"),
+    join9(homedir3(), ".claude", "commands")
   ];
 }
 function skillRoots(directory) {
   return [
-    join11(directory, ".claude", "skills"),
-    join11(directory, ".agents", "skills"),
-    join11(homedir4(), ".claude", "skills")
+    join9(directory, ".claude", "skills"),
+    join9(directory, ".agents", "skills"),
+    join9(homedir3(), ".claude", "skills")
   ];
 }
 function discoverIndex(directory) {
@@ -46984,7 +46680,7 @@ function buildToolRegistry(args) {
 import { execFile as execFile3 } from "node:child_process";
 import { readFile as readFile2 } from "node:fs/promises";
 import { promisify } from "node:util";
-import path7 from "node:path";
+import path6 from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/ulw/errors.ts
 function describeMissing(missing) {
@@ -47052,8 +46748,8 @@ var CodeGraphArgsSchema = object({
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/canonical-runtime.ts
 import { execFile as execFile2 } from "node:child_process";
 import { promises as fsPromises } from "node:fs";
-import { homedir as homedir5 } from "node:os";
-import path6 from "node:path";
+import { homedir as homedir4 } from "node:os";
+import path5 from "node:path";
 
 // ../code-graph/runtime.js
 import { createHash as createHash6 } from "node:crypto";
@@ -48390,23 +48086,30 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
   };
   const decidePolicyExclusion = async (policy, canonicalRoot, rel, defaultExcluded = false) => {
     if (rel === ".git" || rel.startsWith(".git/"))
-      return true;
+      return "gitignore";
     let excluded = defaultExcluded;
+    let layer = excluded ? "gitignore" : null;
     if (policy.sawIgnorePatterns) {
       const tracked = await ensureTrackedSet(policy, canonicalRoot);
       if (!tracked.has(rel)) {
         const ignoreVerdict = verdictOfMatch(decideIgnored(policy, rel));
-        if (ignoreVerdict !== null)
+        if (ignoreVerdict !== null) {
           excluded = ignoreVerdict;
+          layer = ignoreVerdict ? "gitignore" : null;
+        }
       }
     }
     const excludeVerdict = verdictOfMatch(lastPatternMatch(policy.exclude, rel, false));
-    if (excludeVerdict !== null)
+    if (excludeVerdict !== null) {
       excluded = excludeVerdict;
+      layer = excludeVerdict ? "config" : null;
+    }
     const includeVerdict = verdictOfMatch(lastPatternMatch(policy.include, rel, false));
-    if (includeVerdict !== null)
+    if (includeVerdict !== null) {
       excluded = !includeVerdict;
-    return excluded;
+      layer = includeVerdict ? null : "config";
+    }
+    return excluded ? layer ?? "config" : false;
   };
   const isEntryFileName = (policy, name) => {
     const ext = extOf(name);
@@ -48692,9 +48395,10 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
             stats.unanalyzedByExtension[ext] = (stats.unanalyzedByExtension[ext] ?? 0) + 1;
             continue;
           }
-          if (await decidePolicyExclusion(policy, canonicalRoot, rel, underSkipped)) {
+          const policyLayer = await decidePolicyExclusion(policy, canonicalRoot, rel, underSkipped);
+          if (policyLayer) {
             excludedCount += 1;
-            truncationReason = truncationReason ?? "project-config";
+            truncationReason = truncationReason ?? (policyLayer === "gitignore" ? "gitignore" : "project-config");
             bucketStats(bucket).excludedFiles += 1;
             if (excludedSample.length < MAX_EXCLUDED_SAMPLE) {
               excludedSample.push(rel);
@@ -48742,9 +48446,8 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
       }
     }
     totals.unanalyzedByExtension = Object.fromEntries(Object.entries(totals.unanalyzedByExtension).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
-    const truncated = excludedCount > 0 || truncationReason !== null;
-    if (truncationReason === null && excludedCount > 0)
-      truncationReason = "entry-cap";
+    const policyExclusionReason = truncationReason === "project-config" || truncationReason === "gitignore";
+    const truncated = truncationReason !== null && !policyExclusionReason;
     skippedSymlinks.sort();
     nestedRepoRoots.sort();
     return {
@@ -50669,8 +50372,8 @@ var countOrZero = (value) => {
   return parsed.success ? parsed.data : 0;
 };
 function resolveCanonicalStoreDir() {
-  const root = process.env.ALCODE_DATA_DIR !== undefined && process.env.ALCODE_DATA_DIR.length > 0 ? path6.resolve(process.env.ALCODE_DATA_DIR) : path6.join(homedir5(), ".config", "alcode");
-  return path6.join(root, "code-graph-store");
+  const root = process.env.ALCODE_DATA_DIR !== undefined && process.env.ALCODE_DATA_DIR.length > 0 ? path5.resolve(process.env.ALCODE_DATA_DIR) : path5.join(homedir4(), ".config", "alcode");
+  return path5.join(root, "code-graph-store");
 }
 var asFactory = (value) => {
   if (!(value instanceof Function))
@@ -50747,7 +50450,7 @@ function getCanonicalRuntime(deps = {}) {
   const existing = sharedByStoreDir.get(storeDir);
   if (existing !== undefined)
     return existing;
-  const created = wrapRawRuntime(asFactory(createCodeGraphRuntime)({ fsPromises, path: path6, execFile: execFile2 }, { storeDir, blockOnRead: false }));
+  const created = wrapRawRuntime(asFactory(createCodeGraphRuntime)({ fsPromises, path: path5, execFile: execFile2 }, { storeDir, blockOnRead: false }));
   sharedByStoreDir.set(storeDir, created);
   return created;
 }
@@ -50776,7 +50479,7 @@ async function collectChangedPaths(directory) {
     return [];
   }
   return stdout.split(`
-`).map((line) => line.trim()).filter((line) => line.length > 3).map((line) => line.slice(2).trim().replace(/^"|"$/g, "")).flatMap((entry) => entry.includes(" -> ") ? entry.split(" -> ") : [entry]).filter((entry) => SOURCE_EXTENSIONS2.has(path7.extname(entry))).sort();
+`).map((line) => line.trim()).filter((line) => line.length > 3).map((line) => line.slice(2).trim().replace(/^"|"$/g, "")).flatMap((entry) => entry.includes(" -> ") ? entry.split(" -> ") : [entry]).filter((entry) => SOURCE_EXTENSIONS2.has(path6.extname(entry))).sort();
 }
 function looksLikeNodeId(subject) {
   return subject.includes(":") || subject.includes("@") || subject.includes("/") || subject.includes("\\");
@@ -51020,7 +50723,7 @@ var exploreModuleOf = (file) => {
 async function readExploreBody(directory, definition) {
   let text;
   try {
-    text = await readFile2(path7.join(directory, definition.file), "utf8");
+    text = await readFile2(path6.join(directory, definition.file), "utf8");
   } catch {
     return { note: `explore: body unreadable for ${definition.file} (${definition.id}); omitted, never synthesized` };
   }
@@ -52884,10 +52587,6 @@ function resolveGateRoleName(role) {
 
 // ../../../../omo-engine/omo-opencode/src/features/claude-code-session-state/state.ts
 var subagentSessions = new Set;
-var syncSubagentSessions = new Set;
-var handedBackSyncSessions = new Set;
-var registeredAgentNames = new Set;
-var registeredAgentAliases = new Map;
 var sessionAgentMap = new Map;
 
 // ../../../../omo-engine/omo-opencode/src/shared/opencode-server-auth.ts
@@ -56226,11 +55925,11 @@ ${notes.join(`
 
 // ../../../../omo-engine/omo-opencode/src/shared/load-opencode-plugins.ts
 import * as fs5 from "node:fs";
-import * as path8 from "node:path";
+import * as path7 from "node:path";
 // ../../../../omo-engine/omo-opencode/src/shared/opencode-config-dir.ts
-import { existsSync as existsSync16, realpathSync as realpathSync5 } from "node:fs";
-import { homedir as homedir6 } from "node:os";
-import { join as join13, posix as posix2, resolve as resolve7, win32 } from "node:path";
+import { existsSync as existsSync15, realpathSync as realpathSync5 } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { join as join11, posix as posix2, resolve as resolve7, win32 } from "node:path";
 var TAURI_APP_IDENTIFIER = "ai.opencode.desktop";
 var TAURI_APP_IDENTIFIER_DEV = "ai.opencode.desktop.dev";
 function isDevBuild(version) {
@@ -56242,15 +55941,15 @@ function getTauriConfigDir(identifier) {
   const platform = process.platform;
   switch (platform) {
     case "darwin":
-      return join13(homedir6(), "Library", "Application Support", identifier);
+      return join11(homedir5(), "Library", "Application Support", identifier);
     case "win32": {
-      const appData = process.env.APPDATA || join13(homedir6(), "AppData", "Roaming");
+      const appData = process.env.APPDATA || join11(homedir5(), "AppData", "Roaming");
       return win32.join(appData, identifier);
     }
     case "linux":
     default: {
-      const xdgConfig = process.env.XDG_CONFIG_HOME || join13(homedir6(), ".config");
-      return join13(xdgConfig, identifier);
+      const xdgConfig = process.env.XDG_CONFIG_HOME || join11(homedir5(), ".config");
+      return join11(xdgConfig, identifier);
     }
   }
 }
@@ -56259,7 +55958,7 @@ function resolveConfigPath(pathValue) {
     return posix2.normalize(pathValue);
   }
   const resolvedPath = resolve7(pathValue);
-  if (!existsSync16(resolvedPath))
+  if (!existsSync15(resolvedPath))
     return resolvedPath;
   try {
     return realpathSync5(resolvedPath);
@@ -56293,8 +55992,8 @@ function getWslLinuxHomeDir(windowsConfigRoot) {
 function getCliDefaultConfigDir() {
   const envXdgConfig = process.env.XDG_CONFIG_HOME?.trim();
   const shouldIgnoreWindowsXdg = envXdgConfig !== undefined && envXdgConfig.length > 0 && isWslEnvironment() && isWindowsUserConfigRoot(envXdgConfig);
-  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join13(homedir6(), ".config");
-  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join13(xdgConfig, "opencode");
+  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join11(homedir5(), ".config");
+  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join11(xdgConfig, "opencode");
   return resolveConfigPath(configDir);
 }
 function getCliCustomConfigDir() {
@@ -56327,9 +56026,9 @@ function getOpenCodeConfigDir(options) {
   const tauriDir = process.platform === "win32" ? win32.isAbsolute(tauriDirBase) ? win32.normalize(tauriDirBase) : win32.resolve(tauriDirBase) : resolveConfigPath(tauriDirBase);
   if (checkExisting) {
     const legacyDir = getCliConfigDir();
-    const legacyConfig = join13(legacyDir, "opencode.json");
-    const legacyConfigC = join13(legacyDir, "opencode.jsonc");
-    if (existsSync16(legacyConfig) || existsSync16(legacyConfigC)) {
+    const legacyConfig = join11(legacyDir, "opencode.json");
+    const legacyConfigC = join11(legacyDir, "opencode.jsonc");
+    if (existsSync15(legacyConfig) || existsSync15(legacyConfigC)) {
       return legacyDir;
     }
   }
@@ -56339,9 +56038,9 @@ function getOpenCodeConfigPaths(options) {
   const configDir = getOpenCodeConfigDir(options);
   return {
     configDir,
-    configJson: join13(configDir, "opencode.json"),
-    configJsonc: join13(configDir, "opencode.jsonc"),
-    packageJson: join13(configDir, "package.json")
+    configJson: join11(configDir, "opencode.json"),
+    configJsonc: join11(configDir, "opencode.jsonc"),
+    packageJson: join11(configDir, "package.json")
   };
 }
 
@@ -56350,11 +56049,11 @@ var opencodePluginsCache = new Map;
 function getConfigPaths(directory) {
   const configDirs = getOpenCodeConfigDirs({ binary: "opencode" });
   return [
-    path8.join(directory, ".opencode", "opencode.json"),
-    path8.join(directory, ".opencode", "opencode.jsonc"),
+    path7.join(directory, ".opencode", "opencode.json"),
+    path7.join(directory, ".opencode", "opencode.jsonc"),
     ...configDirs.flatMap((dir) => [
-      path8.join(dir, "opencode.json"),
-      path8.join(dir, "opencode.jsonc")
+      path7.join(dir, "opencode.json"),
+      path7.join(dir, "opencode.jsonc")
     ])
   ];
 }
@@ -56466,8 +56165,8 @@ Multiple ${PLUGIN_NAME} instances can inject internal prompts into the same live
 }
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
-import { existsSync as existsSync18, readFileSync as readFileSync10 } from "node:fs";
-import { join as join15 } from "node:path";
+import { existsSync as existsSync17, readFileSync as readFileSync9 } from "node:fs";
+import { join as join13 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/plugin-entry-shape.ts
 function isPluginTupleEntry(entry) {
@@ -56483,18 +56182,18 @@ function withPluginEntryName(entry, name) {
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
 function getOpenCodeConfigPath(overrideConfigDir) {
   if (overrideConfigDir) {
-    const jsonPath = join15(overrideConfigDir, "opencode.json");
-    const jsoncPath = join15(overrideConfigDir, "opencode.jsonc");
-    if (existsSync18(jsoncPath))
+    const jsonPath = join13(overrideConfigDir, "opencode.json");
+    const jsoncPath = join13(overrideConfigDir, "opencode.jsonc");
+    if (existsSync17(jsoncPath))
       return jsoncPath;
-    if (existsSync18(jsonPath))
+    if (existsSync17(jsonPath))
       return jsonPath;
     return null;
   }
   const { configJsonc, configJson } = getOpenCodeConfigPaths({ binary: "opencode", version: null });
-  if (existsSync18(configJsonc))
+  if (existsSync17(configJsonc))
     return configJsonc;
-  if (existsSync18(configJson))
+  if (existsSync17(configJson))
     return configJson;
   return null;
 }
@@ -56512,7 +56211,7 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
     return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath: null };
   }
   try {
-    const content = readFileSync10(configPath, "utf-8");
+    const content = readFileSync9(configPath, "utf-8");
     const parseResult = parseJsoncSafe2(content);
     if (!parseResult.data) {
       return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath };
@@ -56534,49 +56233,49 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
-import { existsSync as existsSync21, readdirSync as readdirSync8 } from "node:fs";
-import { join as join17 } from "node:path";
+import { existsSync as existsSync20, readdirSync as readdirSync8 } from "node:fs";
+import { join as join15 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-workspace-migration.ts
-import { copyFileSync, existsSync as existsSync19, lstatSync as lstatSync3, mkdirSync as mkdirSync6, readdirSync as readdirSync7 } from "node:fs";
-import { dirname as dirname7, join as join16, relative as relative3 } from "node:path";
+import { copyFileSync, existsSync as existsSync18, lstatSync as lstatSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync7 } from "node:fs";
+import { dirname as dirname6, join as join14, relative as relative3 } from "node:path";
 var LEGACY_WORKSPACE_DIR = ".sisyphus";
 var WORKSPACE_DIR = ".omo";
 function copyMissingEntries(legacyPath, targetPath, targetRoot, skipped) {
   const legacyStat = lstatSync3(legacyPath);
   if (legacyStat.isSymbolicLink()) {
-    skipped.push(join16(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join14(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
     return false;
   }
-  if (existsSync19(targetPath)) {
+  if (existsSync18(targetPath)) {
     if (legacyStat.isDirectory() && lstatSync3(targetPath).isDirectory()) {
       let copiedChild = false;
       for (const entry of readdirSync7(legacyPath)) {
-        copiedChild = copyMissingEntries(join16(legacyPath, entry), join16(targetPath, entry), targetRoot, skipped) || copiedChild;
+        copiedChild = copyMissingEntries(join14(legacyPath, entry), join14(targetPath, entry), targetRoot, skipped) || copiedChild;
       }
       return copiedChild;
     }
-    skipped.push(join16(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join14(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
     return false;
   }
   if (legacyStat.isDirectory()) {
-    mkdirSync6(targetPath, { recursive: true });
+    mkdirSync3(targetPath, { recursive: true });
     let copiedChild = false;
     for (const entry of readdirSync7(legacyPath)) {
-      copiedChild = copyMissingEntries(join16(legacyPath, entry), join16(targetPath, entry), targetRoot, skipped) || copiedChild;
+      copiedChild = copyMissingEntries(join14(legacyPath, entry), join14(targetPath, entry), targetRoot, skipped) || copiedChild;
     }
     return copiedChild;
   }
-  mkdirSync6(dirname7(targetPath), { recursive: true });
+  mkdirSync3(dirname6(targetPath), { recursive: true });
   copyFileSync(legacyPath, targetPath);
   return true;
 }
 function migrateLegacyWorkspaceDirectory(directory) {
-  const legacyDirectory = join16(directory, LEGACY_WORKSPACE_DIR);
-  if (!existsSync19(legacyDirectory)) {
+  const legacyDirectory = join14(directory, LEGACY_WORKSPACE_DIR);
+  if (!existsSync18(legacyDirectory)) {
     return { migrated: false, skipped: [] };
   }
-  const targetDirectory = join16(directory, WORKSPACE_DIR);
+  const targetDirectory = join14(directory, WORKSPACE_DIR);
   const skipped = [];
   try {
     const migrated = copyMissingEntries(legacyDirectory, targetDirectory, targetDirectory, skipped);
@@ -56716,8 +56415,8 @@ function planArtifactTouched(directory) {
   try {
     if (!directory)
       return false;
-    const plansDir = join17(directory, ".omo", "plans");
-    if (!existsSync21(plansDir))
+    const plansDir = join15(directory, ".omo", "plans");
+    if (!existsSync20(plansDir))
       return false;
     return readdirSync8(plansDir).some((entry) => entry.endsWith(".md"));
   } catch {
