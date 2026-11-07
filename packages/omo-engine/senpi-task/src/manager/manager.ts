@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdirSync } from "node:fs"
+import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { log } from "../../../utils/src/index.ts"
@@ -24,7 +24,22 @@ import { runtimeFallbackCandidates } from "./credential-failure"
 import { createWorkpoolAdmission } from "./workpool-admission"
 import { withResidentStart } from "./resident-start"
 import { createWorkpoolEngine, type WorkpoolEngine } from "../workpool/engine"
+import { CURATED_READONLY_AGENT_NAMES } from "../agents/builtin"
 import { createWorkpoolWorkerTool } from "../tools/workpool"
+import { approvalAuthorityFor } from "../verification/approval-authority"
+import { readApprovals } from "../verification/approval-store"
+import { resolveCatalogue, WORKSPACE_ID } from "../verification/resolution"
+import { runRepairAttempt, type RepairDiagnosisInvoker as RepairAttemptInvoker, type RepairEditExecutor } from "../repair/orchestrator"
+import { createHostDiagnosisInvoker } from "../repair/model-diagnosis"
+import { createFileEvidenceStore, workspaceRevision } from "../verification/evidence-store"
+import { isVerificationAccepting, parseVerificationRecord, runVerificationCommand } from "../dag/verification"
+import type { VerificationRunner } from "../verification/contract"
+import type { ChildSpec } from "../runners/in-process"
+import { evaluateOrdinaryCompletion } from "../verification/completion-gate"
+import type { CompletionGateVerdict } from "../verification/completion-status"
+import type { OrdinaryCatalogue } from "../verification/catalogue"
+import { snapshotWorkspace, type WorkspaceBaseline } from "../verification/run-provenance"
+import { createWorkerVerificationTool } from "../verification/worker-tool-factory"
 import { admitSpill } from "./spill-admission"
 import { decideDepthPolicy } from "./depth-policy"
 import { onceOnly } from "./once-only"
@@ -96,6 +111,27 @@ type TaskWaiter = {
   readonly cleanup: () => void
 }
 
+type RepairEligibility = {
+  readonly eligible: boolean
+  readonly reason: string
+}
+
+type RepairEvidenceCollection = {
+  readonly failedCheckIds: readonly string[]
+  readonly failedEvidenceIds: readonly string[]
+}
+
+type RepairFinishedPayload = {
+  readonly reason: string
+  readonly attempt_id: string
+  readonly final_state: string
+  readonly gate_verdict: string
+  readonly verification_status: "blocked"
+  readonly changed_files: readonly string[]
+  readonly gate_code?: string
+  readonly detail?: string
+}
+
 type RpcRespawnRunner = {
   start(spec: RpcRunnerSpec): Promise<RpcChildHandle>
 }
@@ -143,6 +179,12 @@ class TaskManagerImpl implements TaskManager {
   readonly #names = new NameRegistry()
   readonly #taskSequence = new TaskSequence()
   readonly #live = new Map<string, LiveTask>()
+  // Spawn-time catalogue per ordinary child: the completion gate's immutable required set.
+  readonly #verificationCatalogue = new Map<string, OrdinaryCatalogue>()
+  // Repair attempts in flight, keyed by task id to the run_epoch they were started for. Exactly
+  // one attempt runs per (task, epoch): a second blocked completion for the same epoch reuses
+  // the guard instead of starting a second model call. Cleared on settle and on forget().
+  readonly #repairInFlight = new Map<string, number>()
   // Children whose teardown rejected and that have no pid or daemon session for the orphan path. They
   // are resident for the lifecycle (eviction, idle reclaim, shutdown and TTL see them and retry their
   // teardown) but are not live children: steering never reaches them, and only a teardown that
@@ -246,6 +288,8 @@ class TaskManagerImpl implements TaskManager {
       settleWaiters: (taskId, terminal) => this.#settleWaiters(taskId, terminal),
       tryRuntimeFallback: (input) => this.#tryRuntimeFallback(input),
       stopSettlement: (taskId) => this.#stopsPending.settlement(taskId),
+      // The ordinary-completion gate: consulted before any 'completed' is published.
+      verifyCompletion: (taskId, owned) => this.#verifyOrdinaryCompletion(taskId, owned),
     })
     this.workpools = createWorkpoolEngine(options.store.stateDir, createWorkpoolAdmission({
       options, concurrency: this.#concurrency, hostPid: this.#hostPid,
@@ -609,6 +653,8 @@ class TaskManagerImpl implements TaskManager {
     // never reaches its own release: free its lane now or every suspension leaks a slot (#8973).
     this.#releaseSlotForTask(taskId)
     this.#outcome.release(taskId)
+    this.#verificationCatalogue.delete(taskId)
+    this.#repairInFlight.delete(taskId)
     this.#live.get(taskId)?.unsubscribe()
     this.#live.delete(taskId)
     const subscribers = this.#childSubscribers.get(taskId)
@@ -675,6 +721,9 @@ class TaskManagerImpl implements TaskManager {
       stateDir: this.#options.store.stateDir,
       runners: this.#options.runners,
       rpcRunner: this.#rpcRespawnRunner,
+      // Revived ordinary children carry the same live verification tool a fresh launch mounts;
+      // the trust decision (dag/member/curated skips) lives in #verificationToolFor.
+      attachVerification: (spec) => this.#verificationToolFor(record, spec),
       beforeLaunch: () => {
         // Respawn bypasses start's status transition; persist the same durable launch boundary
         // without changing the status or epoch that lifecycle reattachment owns. It is also the last
@@ -773,7 +822,7 @@ class TaskManagerImpl implements TaskManager {
       return { ok: false, error: "task was cancelled before launch" }
     }
 
-    let context = initial
+    let context = this.#withVerificationTool(initial)
     let handle: ManagedChildHandle
     for (;;) {
       const { record, managedSpec, runner, model } = context
@@ -794,7 +843,9 @@ class TaskManagerImpl implements TaskManager {
             this.#settleWaiters(record.task_id)
             return { ok: false, error: "task stopped during launch" }
           }
-          context = advanced.context
+          // The next chain rung is a fresh launch: re-mount the verification tool so a child that
+          // starts after an admission-refusal fallback still carries its host-built verify closure.
+          context = this.#withVerificationTool(advanced.context)
           continue
         }
         const failure = describeStartFailure(error)
@@ -841,6 +892,334 @@ class TaskManagerImpl implements TaskManager {
       ok: true,
       run_epoch: record.notification.run_epoch,
       ...(record.resolved_model === undefined ? {} : { resolved_model: record.resolved_model }),
+    }
+  }
+
+  /**
+   * Mount the ordinary worker's verification tool onto the launch spec. Ordinary means NOT a DAG
+   * node (the DAG gate owns that path) and NOT a team member (out-of-process, unreachable from a
+   * live host closure). The tool is rebuilt from live host state on every launch — start, queued
+   * promotion, runtime fallback — so it carries the current epoch and a fresh baseline, and it
+   * travels only on the transient spec: never the store, never the spawn_spec, never JSONL.
+   */
+  #withVerificationTool(context: LaunchContext): LaunchContext {
+    return { ...context, managedSpec: this.#verificationToolFor(context.record, context.managedSpec) }
+  }
+
+  // The single trust decision for the ordinary worker's verification tool. DAG nodes (the DAG gate
+  // owns that path), team members (out-of-process, unreachable from a live host closure) and
+  // curated read-only children (a command-executing tool would widen their documented contract)
+  // never receive it. The tool travels only on the transient spec: never the store, never the
+  // spawn_spec, never JSONL.
+  #verificationToolFor(record: TaskRecord, managedSpec: ManagedStartSpec): ManagedStartSpec {
+    if (record.owner?.kind === "dag" || record.team_role === "member") return managedSpec
+    if (record.agent_type !== undefined && CURATED_READONLY_AGENT_NAMES.has(record.agent_type)) return managedSpec
+    // A tree the host cannot snapshot must fail closed as verification_provenance_unknown, never
+    // as an invented empty change set.
+    let baseline: WorkspaceBaseline | null
+    try {
+      baseline = snapshotWorkspace(managedSpec.cwd)
+    } catch {
+      baseline = null
+    }
+    const taskId = record.task_id
+    const authority = approvalAuthorityFor(managedSpec.cwd, this.#options.verificationAuthorityRoot)
+    // ONE approval snapshot for both halves of the gate: the tool that may execute and the
+    // completion gate that may accept. Reading twice would let a mid-run write reach one of them.
+    const approvals = readApprovals(authority, WORKSPACE_ID)
+    // The catalogue is resolved once, at spawn, from that snapshot: the required set cannot be
+    // relaxed later by deleting an approval record the run can write to.
+    this.#verificationCatalogue.set(
+      taskId,
+      resolveCatalogue({ projectRoot: managedSpec.cwd, workspaceId: WORKSPACE_ID, changedFiles: null, authority, approvals }),
+    )
+    return {
+      ...managedSpec,
+      verificationTool: createWorkerVerificationTool({
+        taskId,
+        // The same value persisted as spawn_spec.cwd: the directory the worker actually runs in.
+        projectRoot: managedSpec.cwd,
+        // Host state, never the workspace: an injected root wins, otherwise the host default. The
+        // child cannot reach the value because it is never read from the record, the request or cwd.
+        authority,
+        approvals,
+        evidenceRoot: join(this.#options.store.stateDir, "verifications"),
+        record: () => this.#tryLoad(taskId) ?? undefined,
+        baseline,
+        isCancelled: () => this.#tryLoad(taskId)?.status === "cancelled",
+      }),
+    }
+  }
+
+  // The ordinary-completion gate. Only runs the host actually equipped (a catalogue snapshot exists)
+  // are gated; a DAG node, a team member or a curated child never reaches this map and keeps its own
+  // path. The verdict is computed from the SNAPSHOT the child ran under, never a fresh read. A run
+  // without a catalogue keeps its historical behaviour - it still publishes success - but honestly
+  // marked "unverified": only a gate verdict of "verified" may ever write "verified".
+  // Repair wiring: when the verdict is "blocked" AND the block is attributable to a failed
+  // approved check, exactly one repair attempt starts (fire-and-forget) for this (task, epoch).
+  // Every other block keeps its current behaviour and gains an explicit repair_skipped reason.
+  // evaluateOrdinaryCompletion stays the sole authority: this method adds no second gate, changes
+  // no rule, and no repair path writes "verified" onto the task record.
+  #verifyOrdinaryCompletion(taskId: string, owned: TaskRecord): CompletionGateVerdict {
+    const catalogue = this.#verificationCatalogue.get(taskId)
+    if (catalogue === undefined) return { verification: "unverified", reason: "this run carried no verification catalogue, so no verification is claimed" }
+    const verdict = evaluateOrdinaryCompletion({
+      taskId,
+      catalogue,
+      evidenceRoot: join(this.#options.store.stateDir, "verifications"),
+      workspaceDir: this.#repairWorkspaceDir(owned),
+      epoch: owned.notification.run_epoch,
+    })
+    this.#maybeStartRepair(taskId, owned, verdict, catalogue)
+    return verdict
+  }
+
+  // Repair eligibility: only a failed approved check is repairable. Cancellation, an invalid
+  // catalogue, malformed/foreign/untrusted evidence (missing/stale/malformed), and
+  // verification_provenance_unknown all keep their current blocked behaviour plus an explicit
+  // reason. Only verification_failed on a configured catalogue may start a repair attempt.
+  #isRepairEligible(
+    owned: TaskRecord,
+    verdict: CompletionGateVerdict,
+    catalogue: OrdinaryCatalogue,
+  ): RepairEligibility {
+    if (verdict.verification !== "blocked") return { eligible: false, reason: "not_blocked" }
+    if (owned.status === "cancelled" || owned.cancel_requested !== undefined) return { eligible: false, reason: "cancelled" }
+    if (catalogue.status === "invalid") return { eligible: false, reason: "invalid_catalogue" }
+    if (catalogue.status !== "configured") return { eligible: false, reason: `catalogue_not_configured:${catalogue.status}` }
+    switch (verdict.code) {
+      case "verification_failed":
+        return { eligible: true, reason: "failed_approved_check" }
+      case "verification_provenance_unknown":
+        return { eligible: false, reason: "verification_provenance_unknown" }
+      case "verification_evidence_malformed":
+        return { eligible: false, reason: "verification_evidence_malformed" }
+      case "verification_evidence_missing":
+        return { eligible: false, reason: "verification_evidence_missing" }
+      case "verification_stale":
+        return { eligible: false, reason: "verification_stale" }
+      default:
+        return { eligible: false, reason: `non_repairable:${verdict.code ?? "unknown"}` }
+    }
+  }
+
+  #repairWorkspaceDir(record: TaskRecord): string {
+    const spec = record.spawn_spec
+    if (spec !== undefined && Object.prototype.toString.call(spec.cwd) === "[object String]" && spec.cwd.length > 0) return spec.cwd
+    return this.#options.cwd
+  }
+
+  // Workspace identity derived from the spawn spec cwd. The repair attempt id forbids path
+  // separators, so the cwd is hashed to a safe segment instead of being stored verbatim; the
+  // hash still attributes the attempt to exactly the tree the run executed in.
+  #repairWorkspaceIdentity(workspaceDir: string): string {
+    return createHash("sha256").update(workspaceDir).digest("hex").slice(0, 16)
+  }
+
+  // Original failed evidence for attributability: the failed check ids and evidence file names
+  // for this epoch. Malformed/unreadable files are skipped (the gate already judged them); when
+  // nothing failed is found the lists stay empty and the orchestrator fails closed as
+  // diagnosis_unavailable instead of inventing a failure.
+  #collectRepairEvidence(
+    taskId: string,
+    epoch: number,
+    evidenceRoot: string,
+  ): RepairEvidenceCollection {
+    let listed: readonly string[]
+    try {
+      listed = createFileEvidenceStore(evidenceRoot).listVerifications(taskId)
+    } catch {
+      return { failedCheckIds: [], failedEvidenceIds: [] }
+    }
+    const failedCheckIds = new Set<string>()
+    const failedEvidenceIds = new Set<string>()
+    for (const file of listed) {
+      if (!file.endsWith(".json")) continue
+      let text: string
+      try {
+        text = readFileSync(join(evidenceRoot, taskId, file), "utf8")
+      } catch {
+        continue
+      }
+      const record = parseVerificationRecord(text)
+      if (record === null) continue
+      if (record.workerAttempt !== undefined && record.workerAttempt !== epoch) continue
+      if (isVerificationAccepting(record.status)) continue
+      failedCheckIds.add(record.checkId)
+      failedEvidenceIds.add(file)
+    }
+    return { failedCheckIds: [...failedCheckIds].sort(), failedEvidenceIds: [...failedEvidenceIds].sort() }
+  }
+
+  // Injectable invoker seam: tests supply a scripted orchestrator invoker; production defaults
+  // to the real host adapter from src/repair/model-diagnosis.ts. Without a live model the adapter
+  // throws typed model_unavailable before any model call, so the attempt settles repair_failed
+  // and the task stays blocked - a diagnosis is never fabricated.
+  #resolveRepairInvoker(workspaceDir: string): RepairAttemptInvoker {
+    const injected = this.#options.repair?.invoker
+    if (injected !== undefined) return injected
+    return async (request) => {
+      const raw = createHostDiagnosisInvoker({
+        runner: {
+          start: async () => {
+            throw new RunnerError({
+              kind: "model_unavailable",
+              message: "model_unavailable: repair diagnosis has no live model in this host; no diagnosis child was started",
+            })
+          },
+        },
+        childSpecFor: (prompt) => {
+          // SAFETY: the host builds the same launch fields toChildSpec sets; ChildSpec names that closed shape.
+          const childSpec = {
+            taskId: request.diagnosis.taskId,
+            cwd: workspaceDir,
+            sessionDir: join(this.#options.store.stateDir, "children", request.diagnosis.taskId, "sessions", request.diagnosis.taskId),
+            depth: 1,
+            parentSessionId: "",
+            rootSessionId: "",
+            prompt,
+          } as ChildSpec;
+          return childSpec;
+        },
+      })
+      await raw({
+        systemInstructions: "Repair diagnosis host context: cite only the host-observed diagnosis JSON.",
+        diagnosisContextJson: JSON.stringify(request.diagnosis),
+        outputContract: "No plan is synthesized by the default host adapter.",
+      }).catch((error) => {
+        // Preserve the production adapter's typed model_unavailable failure with the code in the
+        // message, so the attempt settles repair_failed naming model_unavailable explicitly.
+        if (RunnerError.is(error) && error.failure.kind === "model_unavailable") {
+          throw new RunnerError({
+            kind: "model_unavailable",
+            message: `model_unavailable: ${error.failure.message}`,
+          })
+        }
+        throw error
+      })
+      return {
+        status: "no_defensible_diagnosis",
+        reason: "model_unavailable: default host adapter produced no plan; refusing to fabricate a repair",
+      }
+    }
+  }
+
+  #resolveRepairEditExecutor(): RepairEditExecutor {
+    return this.#options.repair?.editExecutor ?? (async () => ({ changedFiles: [] }))
+  }
+
+  #resolveRepairRunner(): VerificationRunner {
+    return this.#options.repair?.runner ?? runVerificationCommand
+  }
+
+  // Fire-and-forget entry from the sync gate path. Starts exactly one attempt per (task, epoch);
+  // non-repairable blocks keep current behaviour and gain an explicit repair_skipped reason.
+  #maybeStartRepair(taskId: string, owned: TaskRecord, verdict: CompletionGateVerdict, catalogue: OrdinaryCatalogue): void {
+    const epoch = owned.notification.run_epoch
+    if (verdict.verification !== "blocked") return
+    const eligibility = this.#isRepairEligible(owned, verdict, catalogue)
+    if (!eligibility.eligible) {
+      try {
+        this.#options.store.appendEvent(taskId, {
+          type: "repair_skipped",
+          payload: { reason: eligibility.reason, code: verdict.code, verification_status: "blocked" },
+        })
+      } catch {
+        // The event log must never change gate behaviour.
+      }
+      return
+    }
+    const live = this.#tryLoad(taskId)
+    if (live?.status === "cancelled" || live?.cancel_requested !== undefined) {
+      try {
+        this.#options.store.appendEvent(taskId, {
+          type: "repair_skipped",
+          payload: { reason: "cancelled", code: verdict.code, verification_status: "blocked" },
+        })
+      } catch {
+        // The event log must never change gate behaviour.
+      }
+      return
+    }
+    if (this.#repairInFlight.get(taskId) === epoch) return
+    this.#repairInFlight.set(taskId, epoch)
+    const pending = this.#runRepairForBlocked(taskId, epoch, verdict, catalogue)
+    void pending.then(
+      () => {
+        if (this.#repairInFlight.get(taskId) === epoch) this.#repairInFlight.delete(taskId)
+      },
+      (error) => {
+        if (this.#repairInFlight.get(taskId) === epoch) this.#repairInFlight.delete(taskId)
+        log("senpi-task repair attempt failed", { taskId, error: String(error) })
+      },
+    )
+  }
+
+  // One repair attempt for a blocked run. Persists task id, epoch, attempt id, workspace identity
+  // and the original failed evidence (via runRepairAttempt's durable save) before any model call.
+  // A stale epoch publishes nothing: when the record moved on, no event is appended and no record
+  // field is touched. On repair_failed/blocked the task stays blocked and the repair_finished
+  // event says so; nothing here writes "verified" - the gate verdict alone decides the attempt.
+  async #runRepairForBlocked(
+    taskId: string,
+    epoch: number,
+    verdict: CompletionGateVerdict,
+    catalogue: OrdinaryCatalogue,
+  ): Promise<void> {
+    const live = this.#tryLoad(taskId)
+    if (live === null || live.notification.run_epoch !== epoch) return
+    if (live.status === "cancelled" || live.cancel_requested !== undefined) return
+    const workspaceDir = this.#repairWorkspaceDir(live)
+    const evidenceRoot = join(this.#options.store.stateDir, "verifications")
+    const repairStoreRoot = join(this.#options.store.stateDir, "repairs")
+    const { failedCheckIds, failedEvidenceIds } = this.#collectRepairEvidence(taskId, epoch, evidenceRoot)
+    let diagnosisRevision: string
+    try {
+      diagnosisRevision = workspaceRevision(workspaceDir)
+    } catch {
+      diagnosisRevision = "unknown"
+    }
+    const outcome = await runRepairAttempt({
+      taskId,
+      runEpoch: epoch,
+      workspaceId: this.#repairWorkspaceIdentity(workspaceDir),
+      catalogue,
+      evidenceRoot,
+      workspaceDir,
+      repairStoreRoot,
+      failedCheckIds,
+      failedEvidenceIds,
+      diagnosisRevision,
+      invoker: this.#resolveRepairInvoker(workspaceDir),
+      editExecutor: this.#resolveRepairEditExecutor(),
+      runner: this.#resolveRepairRunner(),
+      isCancelled: () => {
+        const current = this.#tryLoad(taskId)
+        return current?.status === "cancelled" || current?.cancel_requested !== undefined
+      },
+    })
+    void verdict
+    // Stale epoch guard: the record moved on while the attempt ran - publish nothing.
+    const current = this.#tryLoad(taskId)
+    if (current === null || current.notification.run_epoch !== epoch) return
+    let finishedPayload: RepairFinishedPayload = {
+      reason: outcome.reason ?? outcome.gateCode ?? outcome.finalState,
+      attempt_id: outcome.attemptId,
+      final_state: outcome.finalState,
+      gate_verdict: outcome.gateVerdict ?? "blocked",
+      verification_status: "blocked",
+      changed_files: [...outcome.changedFiles],
+    };
+    if (outcome.gateCode !== undefined) finishedPayload = { ...finishedPayload, gate_code: outcome.gateCode };
+    if (outcome.detail !== undefined) finishedPayload = { ...finishedPayload, detail: outcome.detail };
+    try {
+      this.#options.store.appendEvent(taskId, {
+        type: "repair_finished",
+        payload: finishedPayload,
+      })
+    } catch {
+      // Bookkeeping must never change the published terminal.
     }
   }
 
@@ -1338,7 +1717,9 @@ class TaskManagerImpl implements TaskManager {
     }
   }
 
-  async #launchRuntimeFallback(context: LaunchContext): Promise<void> {
+  async #launchRuntimeFallback(initial: LaunchContext): Promise<void> {
+    // A fallback relaunch is still a launch: without this the new rung would lose `verify`.
+    const context = this.#withVerificationTool(initial)
     this.#options.store.mutate(context.record.task_id, (fresh) => {
       if (fresh.start_queued === undefined) return fresh
       const { start_queued: _granted, ...rest } = fresh

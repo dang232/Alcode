@@ -7,6 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { MiniChatLayout } from '@/components/mini-chat/MiniChatLayout';
 import { AppLinkConfirmDialog } from '@/components/chat/AppLinkConfirmDialog';
 import { SharedTrustConfirmDialog } from '@/components/projects/SharedTrustConfirmDialog';
+import { VerificationApprovalSlot } from '@/components/verification/VerificationApprovalSlot';
 import { usePushVisibilityBeacon } from '@/hooks/usePushVisibilityBeacon';
 import { useWindowTitle } from '@/hooks/useWindowTitle';
 import { useRoutingSync } from '@/hooks/useRoutingSync';
@@ -355,6 +356,7 @@ export function ElectronMiniChatApp({ apis }: ElectronMiniChatAppProps) {
               <ElectronMiniChatContent config={config} />
               <AppLinkConfirmDialog />
               <SharedTrustConfirmDialog />
+              <VerificationApprovalSlot />
               <Toaster />
             </div>
           </TooltipProvider>

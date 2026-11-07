@@ -676,7 +676,12 @@ const agentMemoryRuntime = createAgentMemoryRuntime({
  * there is nothing to switch off. Missing engine support degrades per
  * request, never at startup (see lib/code-graph/DOCUMENTATION.md).
  */
-const codeGraphRuntime = createCodeGraphHost({ storeDir: path.join(ALCODE_DATA_DIR, 'code-graph-store') });
+// The indexer keeps itself current: the native watcher is enabled here by
+// default so a saved file reaches the graph without anyone pressing refresh.
+// Every explicit opt-out still wins - the settings sync gate, and the
+// ALCODE_CODE_GRAPH_WATCHER=0 / CODEGRAPH_NO_WATCHER=1 kill switches - so a
+// host or an operator can turn watching off and keep the revision-gate path.
+const codeGraphRuntime = createCodeGraphHost({ storeDir: path.join(ALCODE_DATA_DIR, 'code-graph-store'), watcherEnabled: true });
 // The indexer is a separate process holding the graph; an app exit must not
 // leave it behind on a machine the person is about to power down.
 process.once('exit', () => {
@@ -2629,7 +2634,20 @@ async function main(options = {}) {
   relayService.registerRoutes(app);
 
   registerBrowserControlRoutes(app, { express, broker: browserControlBroker });
-
+  // Mounted from the built artifact under dist/, never the TypeScript source: this server runs under
+  // Node and cannot resolve a .ts entry. A build that has not run yet leaves no approval surface at
+  // all, which is the safe direction - a surface that cannot load must not pretend to exist.
+  if (uiAuthController) {
+    try {
+      const { createPrincipalResolver, registerVerificationApprovalRoutes } = await import('./dist/verification-approval.js');
+      registerVerificationApprovalRoutes(app, {
+        requireAuth: uiAuthController.requireAuth,
+        resolvePrincipal: createPrincipalResolver(uiAuthController),
+      });
+    } catch (error) {
+      console.warn('[verification] approval routes not mounted:', error?.message ?? error);
+    }
+  }
   // One scanner backs both discovery and the tunnel allowlist, so a port the
   // user can see is exactly a port the tunnel will dial.
   const devServerScanner = createDevServerScanner({ spawn, platform: process.platform });

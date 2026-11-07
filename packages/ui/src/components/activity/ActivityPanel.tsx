@@ -5,6 +5,7 @@ import { useDirectorySync } from '@/sync/sync-context';
 import type { Message, Part } from '@/lib/opencode/model';
 import { useDagRunModel } from '@/lib/useDagRunModel';
 import { fetchRunSnapshot, RunSnapshotMissingError } from '@/lib/runGraphApi';
+import type { SnapshotRepairIndex } from '@/lib/runGraphApi';
 import type { SnapshotDoc } from '@/components/activity/snapshotDoc';
 import { engineSnapshotToView } from './engineSnapshotModel';
 import { useUIStore } from '@/stores/useUIStore';
@@ -17,6 +18,7 @@ import {
   buildInspectorTimeline,
   taskAssociatedFiles,
 } from './activityModel';
+import type { VerificationStatus } from './verificationStatus';
 import { TaskExplorer } from './TaskExplorer';
 import { TaskInspector } from './TaskInspector';
 import { TaskChanges } from './TaskChanges';
@@ -35,6 +37,8 @@ type Props = {
 const EMPTY_CONVERSATION_MESSAGES: Message[] = [];
 const EMPTY_PARTS: Record<string, Part[]> = {};
 
+type RunSnapshot = SnapshotDoc & { repairIndex: SnapshotRepairIndex };
+
 /**
  * Live activity workspace for one conversation. The run model comes from the
  * sync store (live, no polling); the inspector reads the same store slices.
@@ -45,7 +49,7 @@ export const ActivityPanel: React.FC<Props> = ({ directory, conversationId, conv
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
   const model = useDagRunModel(conversationId ?? null, conversationTitle, directory || undefined);
-  const [snapshotDoc, setSnapshotDoc] = React.useState<SnapshotDoc | null | undefined>(undefined);
+  const [snapshotDoc, setSnapshotDoc] = React.useState<RunSnapshot | null | undefined>(undefined);
   const [snapshotAttempt, setSnapshotAttempt] = React.useState(0);
   const [snapshotFailed, setSnapshotFailed] = React.useState(false);
   React.useEffect(() => {
@@ -71,7 +75,7 @@ export const ActivityPanel: React.FC<Props> = ({ directory, conversationId, conv
   const engineView = React.useMemo(
     () => (snapshotDoc === undefined || snapshotDoc === null || !conversationId
       ? null
-      : engineSnapshotToView({ doc: snapshotDoc, conversationId })),
+      : engineSnapshotToView({ doc: snapshotDoc, conversationId, repairIndex: snapshotDoc.repairIndex })),
     [snapshotDoc, conversationId],
   );
   const messages = useDirectorySync(
@@ -117,14 +121,33 @@ export const ActivityPanel: React.FC<Props> = ({ directory, conversationId, conv
     () => engineView?.rows ?? buildActivityTree(model),
     [engineView, model],
   );
-  const selectedLabel = rows.find((row) => row.id === selectedId)?.label ?? null;
+  // Verification words for the selected task's settlement lines. Only
+  // completed rows name a claim; older records without one read Unverified.
+  const verificationById = React.useMemo(() => {
+    const map = new Map<string, VerificationStatus>();
+    for (const row of rows) {
+      if (row.state === 'completed') map.set(row.id, row.verificationStatus ?? 'unverified');
+    }
+    return map;
+  }, [rows]);
+  const verificationLabel = React.useCallback((taskId: string): string | null => {
+    const status = verificationById.get(taskId);
+    return status ? t(`activity.verification.${status}`) : null;
+  }, [verificationById, t]);
+  const selectedRow = rows.find((row) => row.id === selectedId) ?? null;
+  const selectedLabel = selectedRow?.label ?? null;
+  // Repair evidence belongs to the selected record's current-epoch attempt.
+  // Rows without a snapshot projection carry no repair, so the inspector
+  // renders exactly as before for live chat-path tasks.
+  const selectedRepair = selectedRow?.repair ?? null;
+  const selectedRepairError = selectedRow?.repairError ?? null;
   // Freshness comes from the store, not the fetch: a 'persisted' session list
   // was restored from cache and has not been confirmed live yet.
   const storeBootstrapping = useDirectorySync((state) => state.status === 'loading', directory || undefined);
   const storeStale = useDirectorySync((state) => state.sessionListSource === 'persisted', directory || undefined);
   const timeline = React.useMemo(
-    () => (model && selectedId ? buildInspectorTimeline({ model, messages, parts, selectedId }) : []),
-    [model, messages, parts, selectedId],
+    () => (model && selectedId ? buildInspectorTimeline({ model, messages, parts, selectedId, verificationLabel }) : []),
+    [model, messages, parts, selectedId, verificationLabel],
   );
   const summaries = React.useMemo(
     () => (model && selectedId ? buildInspectorSummaries({ model, messages, parts, selectedId }) : []),
@@ -136,8 +159,8 @@ export const ActivityPanel: React.FC<Props> = ({ directory, conversationId, conv
     return taskAssociatedFiles(scope, parts, selectedId);
   }, [model, messages, parts, selectedId, selectedMessages]);
   const card = React.useMemo(
-    () => (model && selectedId ? buildExplanationCard({ model, messages, parts, selectedId }) : null),
-    [model, messages, parts, selectedId],
+    () => (model && selectedId ? buildExplanationCard({ model, messages, parts, selectedId, verificationLabel }) : null),
+    [model, messages, parts, selectedId, verificationLabel],
   );
 
   if (!conversationId) {
@@ -183,7 +206,7 @@ export const ActivityPanel: React.FC<Props> = ({ directory, conversationId, conv
         aria-label={t('activity.inspector.label')}
         className="min-h-0 flex-1 overflow-auto border-t border-[var(--surface-border)] pt-2"
       >
-        <TaskInspector selectedLabel={selectedLabel} events={timeline} summaries={summaries} files={files} onOpenFile={openFileInCode} card={card} />
+        <TaskInspector selectedLabel={selectedLabel} events={timeline} summaries={summaries} files={files} onOpenFile={openFileInCode} card={card} repair={selectedRepair} repairError={selectedRepairError} />
         <TaskChanges directory={directory} files={files} onOpenFile={openFileInCode} />
       </section>
     </div>

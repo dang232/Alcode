@@ -9,6 +9,7 @@ import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { OpenCodeUpdateToast } from '@/components/update/OpenCodeUpdateToast';
 import { AppLinkConfirmDialog } from '@/components/chat/AppLinkConfirmDialog';
 import { SharedTrustConfirmDialog } from '@/components/projects/SharedTrustConfirmDialog';
+import { VerificationApprovalSlot } from '@/components/verification/VerificationApprovalSlot';
 import { VSCodeLayout } from '@/components/layout/VSCodeLayout';
 import { useEnterprisePolicySync } from '@/hooks/useEnterprisePolicySync';
 import { usePushVisibilityBeacon } from '@/hooks/usePushVisibilityBeacon';
@@ -91,6 +92,7 @@ export function VSCodeApp({ apis }: VSCodeAppProps) {
                 <VSCodeLayout />
                 <AppLinkConfirmDialog />
                 <SharedTrustConfirmDialog />
+                <VerificationApprovalSlot />
                 <OpenCodeUpdateToast />
                 <Toaster position="top-center" />
                 <ConfigUpdateOverlay />

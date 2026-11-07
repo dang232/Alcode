@@ -27,6 +27,10 @@ export default defineConfig({
     // bridge/engine modules are linted as tracked sources; main.js only
     // re-emits them, so its inline copies are not counted again here.
     "packages/extensions/dag-pane/service/main.js",
+    // Shipped DAG SDK vendored verbatim from oh-my-openAlcore for the senpi-task
+    // end-to-end proof; authored upstream, not here. Its provenance is recorded
+    // beside it, and the style findings are the upstream file's, not this repo's.
+    "packages/omo-engine/senpi-task/test-vendor/omo-senpi/**",
     "patches/**",
     "bun-patches/**",
     "tools/oxlint/**",

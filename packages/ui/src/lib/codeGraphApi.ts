@@ -217,6 +217,17 @@ export interface CodeGraphStaleFile {
 /** Whole-index sync health: `disabled`/`recovering` render the whole-index banner. */
 export type CodeGraphSyncStatus = 'ok' | 'disabled' | 'recovering';
 
+/**
+ * File-watcher state the server reports with the index summary. Absent on
+ * older servers, which never sent it; the panel renders no watcher line then
+ * instead of guessing. Counts ride along only when the server measured them.
+ */
+export interface CodeGraphWatcher {
+  enabled: boolean;
+  watchedScopes?: number;
+  debounceMs?: number;
+}
+
 export interface CodeGraphIndexMetrics {
   dirsVisited?: number;
   filesDiscovered?: number;
@@ -273,6 +284,11 @@ export interface CodeGraphIndexSummary extends Partial<CodeGraphFreshnessBinding
    * (blind status probe) render the whole-index banner instead.
    */
   syncStatus?: CodeGraphSyncStatus;
+  /**
+   * File-watcher state for this scope. Optional so older servers that never
+   * sent it still type-check; the panel renders no watcher line then.
+   */
+  watcher?: CodeGraphWatcher;
 }
 
 /**
@@ -777,6 +793,20 @@ const parsePendingSync = (value: CodeGraphJsonField): string[] | undefined => {
 const parseSyncStatus = (value: CodeGraphJsonField): CodeGraphSyncStatus | undefined => (
   value === 'ok' || value === 'disabled' || value === 'recovering' ? value : undefined
 );
+
+/**
+ * Watcher state rides the index envelope. `enabled` must be a real boolean;
+ * counts ride through only when finite, never defaulted. Absent or malformed
+ * stays `undefined` so older servers simply have no watcher line.
+ */
+const parseWatcher = (value: CodeGraphJsonField): CodeGraphWatcher | undefined => {
+  if (!isJsonRecord(value)) return undefined;
+  if (value.enabled !== true && value.enabled !== false) return undefined;
+  const watcher: CodeGraphWatcher = { enabled: value.enabled };
+  if (isFiniteJsonNumber(value.watchedScopes)) watcher.watchedScopes = value.watchedScopes;
+  if (isFiniteJsonNumber(value.debounceMs)) watcher.debounceMs = value.debounceMs;
+  return watcher;
+};
 
 const parseSkippedDirs = (value: CodeGraphJsonField): string[] | undefined => {
   if (!isJsonArray(value)) return undefined;
@@ -1357,6 +1387,8 @@ export const fetchCodeGraphIndex = async (
   if (pendingSync !== undefined) summary.pendingSync = pendingSync;
   const syncStatus = parseSyncStatus(payload.syncStatus);
   if (syncStatus !== undefined) summary.syncStatus = syncStatus;
+  const watcher = parseWatcher(payload.watcher);
+  if (watcher !== undefined) summary.watcher = watcher;
   const snapshotRoot = asNonEmptyText(payload.snapshotRoot);
   if (snapshotRoot !== undefined) summary.snapshotRoot = snapshotRoot;
   if (isFiniteJsonNumber(payload.entryCap)) summary.entryCap = payload.entryCap;

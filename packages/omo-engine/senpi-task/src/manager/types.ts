@@ -1,7 +1,10 @@
 import type { ToolDefinition } from "@code-yeongyu/senpi"
 import type { DelegateFallbackEntry } from "../../../delegate-core/src/index.ts"
 import type { OmoTaskSettings } from "../../../omo-config-core/src/index.ts"
+import type { VerificationStatus } from "../verification/completion-status"
 
+import type { VerificationRunner } from "../verification/contract"
+import type { RepairDiagnosisInvoker as RepairAttemptInvoker, RepairEditExecutor } from "../repair/orchestrator"
 import type { DagTaskOwner, DagTaskOwnerKey, OwnedStartResult } from "../dag/owner"
 import type { IsolationRuntime, IsolationStartedDetails } from "../isolation"
 import type { KernelToolBindingRegistry } from "../kernel-tools/bindings"
@@ -31,6 +34,15 @@ import type { WorkpoolEngine } from "../workpool/engine"
 import type { ChildExtensionEvent } from "../runners/child-extension-events"
 
 export type { ExecutionMode } from "./execution-mode"
+
+// An ordinary completion's terminal record: the durable TaskRecord plus the completion gate's
+// verification claim. Optional so records written before the gate existed stay readable; it is
+// only ever "verified" when the gate returned a "verified" verdict for the run. Typed loads drop
+// unknown fields until the state/store lane parses it, so the on-disk JSON and the completion
+// events are the readable carriers today.
+export type TerminalTaskRecord = TaskRecord & {
+  readonly verification_status?: VerificationStatus
+}
 
 // The unified spec both runner adapters accept. A superset: the rpc adapter uses the subset it
 // needs (task_id, cwd, state_dir, prompt); the in-process adapter also consumes model/tools/agent.
@@ -63,6 +75,9 @@ export type ManagedStartSpec = {
   // TRANSIENT parent kernel-tool grant (item 6). Process-lifetime only: never persisted onto the
   // record or the v1 spawn_spec, which carry plain launch data exclusively.
   readonly kernelTools?: KernelToolGrant
+  // TRANSIENT ordinary-worker verification tool. Same lifetime rule as kernelTools: a live
+  // host-built closure, never persisted onto the record or the v1 spawn_spec.
+  readonly verificationTool?: ToolDefinition
   readonly extensions?: readonly string[]
   readonly memberEnv?: Readonly<Record<string, string>>
 }
@@ -286,6 +301,21 @@ export type TaskManagerOptions = {
   // capability check). Absent -> `auto` reads as in-process, which is what a wiring without a
   // daemon (tests, a pinned engine without the host surface) must do.
   readonly executionModeGate?: ExecutionModeGate
+  // Host-owned root for approval authority. Absent uses the host default (a directory under the
+  // user's home, never inside a workspace); a host that keeps state elsewhere injects its own.
+  // Tests MUST inject a temp root so no test can read or write the real authority.
+  readonly verificationAuthorityRoot?: string
+  // Model-driven repair of a blocked ordinary completion (senpi-task repair vertical slice).
+  // The invoker is the orchestrator's RepairDiagnosisInvoker seam: tests inject a scripted one
+  // (unit test of the wiring); production defaults to the real host adapter built from
+  // src/repair/model-diagnosis.ts, which fails closed as model_unavailable when no live model
+  // can be resolved. Edit and runner default to fail-closed/no-op and the real verification
+  // command runner respectively; all three keep the existing gate the sole authority.
+  readonly repair?: {
+    readonly invoker?: RepairAttemptInvoker
+    readonly editExecutor?: RepairEditExecutor
+    readonly runner?: VerificationRunner
+  }
 }
 
 export type TaskManager = {

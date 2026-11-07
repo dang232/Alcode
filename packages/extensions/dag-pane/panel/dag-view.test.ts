@@ -4,7 +4,15 @@
 // proves the pane renders what the adapter actually writes.
 import { describe, expect, test } from 'bun:test';
 
-import { keepStoredRunModel, mergeRunModelPost, parseSnapshotDoc, resolveSelectedSession } from './dag-view.ts';
+import {
+  keepStoredRunModel,
+  mergeRepairEntry,
+  mergeRunModelPost,
+  parseSnapshotDoc,
+  resolveSelectedSession,
+  type DagRepairView,
+  type WireRecord,
+} from './dag-view.ts';
 import { DAG_PANE_LOCALES, stringsFor } from './strings.ts';
 import fixture from '../../../web/server/lib/opencode/omo-bridge-fixture.json';
 
@@ -209,5 +217,178 @@ describe('run counts truthfulness (audit-fixes-b)', () => {
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(outcome.view.runs[0]?.counts).toEqual({ pending: 1, running: 0, completed: 2, failed: 0, cancelled: 0 });
+  });
+});
+
+describe('repair on the run/tasks payload', () => {
+  const repair = (overrides: Partial<DagRepairView> = {}): DagRepairView => ({
+    attemptId: 'st_repair.e2.r1',
+    taskId: 'st_repair',
+    epoch: 2,
+    state: 'repairing',
+    failedChecks: ['unit', 'lint'],
+    rerunChecks: ['unit'],
+    changedFiles: ['src/a.ts'],
+    verificationStatus: 'blocked',
+    hostFacts: [],
+    modelHypotheses: [],
+    updatedAt: 2,
+    ...overrides,
+  });
+
+  const runEntry = (repairBlock?: DagRepairView): WireRecord => {
+    const entry: WireRecord = {
+      run_id: 'st_repair',
+      run_key: 'repair-key',
+      name: 'repair run',
+      status: 'error',
+      nodes: [],
+      edges: [],
+      waves: [],
+    };
+    if (repairBlock !== undefined) {
+      entry.repair = { ...repairBlock };
+    }
+    return entry;
+  };
+
+  const taskEntry = (repairBlock?: DagRepairView): WireRecord => {
+    const entry: WireRecord = {
+      task_id: 'st_repair',
+      status: 'error',
+      name: 'repair run',
+      task_summary: 'repair run',
+    };
+    if (repairBlock !== undefined) {
+      entry.repair = { ...repairBlock };
+    }
+    return entry;
+  };
+
+  const docWith = (runEntries: WireRecord[], taskEntries: WireRecord[]) => ({
+    schemaVersion: 1,
+    sessionId: 'ses_repair',
+    updatedAt: '2026-11-07T00:00:00.000Z',
+    dag: { runs: runEntries },
+    tasks: { tasks: taskEntries },
+  });
+
+  test('parses the repair block on runs and tasks with the gate verdict separate from the attempt state', () => {
+    const block = repair({ state: 'reverifying', verificationStatus: 'unverified' });
+    const outcome = parseSnapshotDoc(docWith([runEntry(block)], [taskEntry(block)]));
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const run = outcome.view.runs[0];
+    const task = outcome.view.tasks[0];
+    expect(run?.repair).toEqual(block);
+    expect(task?.repair).toEqual(block);
+    expect(run?.repair?.state).toBe('reverifying');
+    expect(run?.repair?.verificationStatus).toBe('unverified');
+    expect(run?.repairError).toBeUndefined();
+    expect(task?.repairError).toBeUndefined();
+  });
+
+  test('repaired plus a blocked gate stays blocked, never verified', () => {
+    const block = repair({ state: 'repaired', verificationStatus: 'blocked' });
+    const outcome = parseSnapshotDoc(docWith([runEntry(block)], [taskEntry(block)]));
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const runRepair = outcome.view.runs[0]?.repair;
+    expect(runRepair?.state).toBe('repaired');
+    expect(runRepair?.verificationStatus).toBe('blocked');
+    expect(JSON.stringify(runRepair)).not.toContain('verified');
+  });
+
+  test('a record without a repair block gains no repair field', () => {
+    const outcome = parseSnapshotDoc(docWith([runEntry()], [taskEntry()]));
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const run = outcome.view.runs[0];
+    const task = outcome.view.tasks[0];
+    expect(Object.hasOwn(run ?? {}, 'repair')).toBe(false);
+    expect(Object.hasOwn(task ?? {}, 'repair')).toBe(false);
+    expect(run?.repairError).toBeUndefined();
+    expect(task?.repairError).toBeUndefined();
+  });
+
+  test('a malformed repair block becomes repairError, never "no repair"', () => {
+    const malformedRun: WireRecord = {
+      ...runEntry(),
+      repair: {
+        attemptId: 'st_repair.e2.r1',
+        taskId: 'st_repair',
+        epoch: 2,
+        state: 'done',
+        failedChecks: [],
+        rerunChecks: [],
+        changedFiles: [],
+        verificationStatus: null,
+        hostFacts: [],
+        modelHypotheses: [],
+        updatedAt: 2,
+      },
+    };
+    const outcome = parseSnapshotDoc(docWith([malformedRun], []));
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const run = outcome.view.runs[0];
+    expect(run?.repair).toBeUndefined();
+    expect(run?.repairError).toContain('malformed');
+  });
+
+  test('a server repairError survives verbatim and leaves repair absent', () => {
+    const failedRun: WireRecord = {
+      ...runEntry(),
+      repairError: 'repair attempt store unreadable for st_repair: boom',
+    };
+    const outcome = parseSnapshotDoc(docWith([failedRun], []));
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const run = outcome.view.runs[0];
+    expect(run?.repair).toBeUndefined();
+    expect(run?.repairError).toBe('repair attempt store unreadable for st_repair: boom');
+  });
+});
+
+describe('mergeRepairEntry epoch fencing', () => {
+  const block = (epoch: number, state: DagRepairView['state'], updatedAt: number): DagRepairView => ({
+    attemptId: `st_a.e${epoch}.r1`,
+    taskId: 'st_a',
+    epoch,
+    state,
+    failedChecks: [],
+    rerunChecks: [],
+    changedFiles: [],
+    verificationStatus: null,
+    hostFacts: [],
+    modelHypotheses: [],
+    updatedAt,
+  });
+
+  test('a stale-epoch observation never overwrites the current attempt', () => {
+    const current = block(2, 'repaired', 20);
+    const stale = block(1, 'diagnosing', 30);
+
+    expect(mergeRepairEntry(current, stale)).toBe(current);
+    expect(mergeRepairEntry(stale, current)).toBe(current);
+  });
+
+  test('same-epoch observations keep the newest update', () => {
+    const older = block(2, 'repairing', 10);
+    const newer = block(2, 'repaired', 20);
+
+    expect(mergeRepairEntry(older, newer)).toBe(newer);
+    expect(mergeRepairEntry(newer, older)).toBe(newer);
+  });
+
+  test('a duplicate observation collapses to the same entry', () => {
+    const first = block(2, 'repairing', 10);
+
+    expect(mergeRepairEntry(first, { ...first })).toEqual(first);
   });
 });

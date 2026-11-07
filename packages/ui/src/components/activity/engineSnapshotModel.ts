@@ -1,9 +1,12 @@
+import type { RepairEntry, SnapshotRepairIndex } from '@/lib/runGraphApi';
 import { type SnapshotDoc } from './snapshotDoc';
 import {
   NODE_HEIGHT,
   NODE_WIDTH,
+  buildRepairView,
   type ActivityNodeState,
   type ActivityTreeRow,
+  type RepairView,
   type RunGraph,
 } from './activityModel';
 
@@ -11,6 +14,32 @@ export type EngineSnapshotSource = {
   /** Parsed engine snapshot, or null when no snapshot exists. */
   doc: SnapshotDoc | null;
   conversationId: string;
+  /** Current-epoch repair projection keyed by run id and task id. */
+  repairIndex?: SnapshotRepairIndex;
+};
+
+/**
+ * Repair projection for one node: the merged view when the attempt is readable,
+ * or the read error that stands in for it.
+ */
+type NodeRepairProjection = { repair?: RepairView; repairError?: string };
+
+/**
+ * Repair view for one node id. The run and task projections of the same
+ * attempt are merged, so a repeated block never renders twice. A read error
+ * stays an error unless the other projection supplied a usable block.
+ */
+const repairFor = (
+  id: string,
+  index: SnapshotRepairIndex | undefined,
+): NodeRepairProjection => {
+  if (!index) return {};
+  const entries = [index.tasks[id], index.runs[id]].filter((entry): entry is RepairEntry => entry !== undefined);
+  if (entries.length === 0) return {};
+  const repair = buildRepairView(entries.flatMap((entry) => (entry.repair ? [entry.repair] : [])));
+  if (repair) return { repair };
+  const repairError = entries.find((entry) => entry.repairError !== undefined)?.repairError;
+  return repairError ? { repairError } : {};
 };
 
 const toActivityState = (state: string): ActivityNodeState => {
@@ -56,8 +85,10 @@ export const engineSnapshotToView = (source: EngineSnapshotSource): EngineRunVie
     label: node.label,
     detail: node.prompt || null,
     state: toActivityState(node.state),
+    verificationStatus: node.verificationStatus ?? (node.id === run.runId ? run.verificationStatus : undefined),
     agent: null,
     progress: null,
+    ...repairFor(node.id, source.repairIndex),
   }));
   const waveIndex = new Map<string, number>();
   for (const wave of run.waves) {
@@ -81,9 +112,11 @@ export const engineSnapshotToView = (source: EngineSnapshotSource): EngineRunVie
       id: node.id,
       label: node.label,
       state: toActivityState(node.state),
+      verificationStatus: node.verificationStatus ?? (node.id === run.runId ? run.verificationStatus : undefined),
       wave,
       x: wave * (NODE_WIDTH + WAVE_GAP_X),
       y: Math.max(0, order) * (NODE_HEIGHT + ROW_GAP_Y),
+      ...repairFor(node.id, source.repairIndex),
     };
   });
   const edges = run.edges

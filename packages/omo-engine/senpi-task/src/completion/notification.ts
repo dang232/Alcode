@@ -13,13 +13,83 @@ import {
   rendererVisibleWidth,
 } from "../tools/task/renderers"
 import { DAG_VERIFICATION_DIRECTIVE } from "./dag-verification-directive"
-import type { CompletionDetails, ParentNotifierMessage } from "./types"
+import type { RepairState } from "../repair/state"
+import type { VerificationStatus } from "../verification/completion-status"
+
+// The gate's claim rides on the persisted record JSON but is intentionally absent from the
+// TaskRecord type (typed loads drop it until the state/store lane parses it), so it is read
+// through this narrow structural view instead of widening TaskRecord itself.
+type VerifiableRecord = TaskRecord & { readonly verification_status?: VerificationStatus }
+
+function recordGateVerdict(record: TaskRecord): VerificationStatus | undefined {
+  // SAFETY: VerifiableRecord only names the persisted verification_status claim the store
+  // parses; the cast reads that optional field without widening TaskRecord.
+  return (record as VerifiableRecord).verification_status
+}
+import type {
+  CompletionDetails,
+  ParentNotifierMessage,
+  RepairOutcomeForCompletion,
+  RepairOutcomeStatus,
+} from "./types"
 
 const FINAL_RESPONSE_TRANSPORT_LIMIT = 32_000
+
+// Input for deriving the completion repair outcome. The outcome is derived ONLY from the gate
+// verdict plus the persisted attempt state: `gateVerdict` is the completion gate verdict for the
+// run (defaults to the record's `verification_status`), and `attemptState` is the persisted
+// repair attempt state. No model claim is read here, and a repair state alone never decides the
+// outcome - only the gate verdict can authorize a "verified" word downstream.
+export type RepairOutcomeDerivationInput = {
+  readonly gateVerdict?: VerificationStatus
+  readonly attemptState?: RepairState
+  readonly attemptId?: string
+  readonly reason?: string
+  readonly cancelled?: boolean
+}
 
 export type BuildDetailsOptions = {
   readonly tokens?: number
   readonly stateDir?: string
+  readonly repair?: RepairOutcomeDerivationInput
+}
+
+// Derives the parent-facing repair outcome from the gate verdict plus the persisted attempt
+// state. Returns undefined when no repair ran (no attempt state and not cancelled), so callers
+// only carry `repair_outcome` for completions a repair actually touched.
+//
+// The security invariant: a "repaired" attempt with a gate verdict that is not "verified"
+// reports "edited_but_blocked" when the gate is "blocked" (and never "repaired_and_verified"),
+// so a repair state alone can never publish a verified word the gate did not earn. A repaired
+// attempt against an "unverified" gate reports "repaired_but_unverified": work was done but no
+// verification was claimed.
+export function deriveRepairOutcomeForCompletion(
+  input: RepairOutcomeDerivationInput,
+): RepairOutcomeForCompletion | undefined {
+  const gateVerdict = input.gateVerdict
+  const attemptState = input.attemptState
+  const attemptId = input.attemptId
+  const reason = input.reason
+  const withContext = (status: RepairOutcomeStatus): RepairOutcomeForCompletion => {
+    let outcome: RepairOutcomeForCompletion = { status }
+    if (gateVerdict !== undefined) outcome = { ...outcome, gateVerdict }
+    if (attemptState !== undefined) outcome = { ...outcome, attemptState }
+    if (attemptId !== undefined) outcome = { ...outcome, attemptId }
+    if (reason !== undefined) outcome = { ...outcome, reason }
+    return outcome
+  }
+  if (input.cancelled === true || attemptState === "repair_cancelled") {
+    return withContext("repair_cancelled")
+  }
+  if (attemptState === undefined) return undefined
+  if (attemptState === "repair_failed") return withContext("repair_failed")
+  if (attemptState === "repaired") {
+    if (gateVerdict === "verified") return withContext("repaired_and_verified")
+    if (gateVerdict === "blocked") return withContext("edited_but_blocked")
+    if (gateVerdict === "unverified") return withContext("repaired_but_unverified")
+    return withContext("edited_but_blocked")
+  }
+  return undefined
 }
 
 export function buildCompletionDetails(record: TaskRecord, options: BuildDetailsOptions = {}): CompletionDetails {
@@ -54,7 +124,25 @@ export function buildCompletionDetails(record: TaskRecord, options: BuildDetails
       : {}),
     ...(isolation === undefined ? {} : { isolation }),
   }
-  return tokens === undefined ? base : { ...base, tokens }
+  // The gate's claim is added by statement, not by an empty-object spread: a completed run with
+  // no claim predates the gate and reads as unverified downstream, never as verified.
+  const recordVerdict = recordGateVerdict(record)
+  const claimed: CompletionDetails =
+    recordVerdict === undefined ? base : { ...base, verification_status: recordVerdict }
+  const gateVerdict = options.repair?.gateVerdict ?? recordVerdict
+  const repairOutcome =
+    options.repair === undefined
+      ? undefined
+      : deriveRepairOutcomeForCompletion({
+        gateVerdict,
+        attemptState: options.repair.attemptState,
+        attemptId: options.repair.attemptId,
+        reason: options.repair.reason,
+        cancelled: options.repair.cancelled,
+      })
+  const repaired: CompletionDetails =
+    repairOutcome === undefined ? claimed : { ...claimed, repair_outcome: repairOutcome }
+  return tokens === undefined ? repaired : { ...repaired, tokens }
 }
 
 export function buildCompletionMessage(
@@ -116,6 +204,8 @@ function completionDetailLines(detail: CompletionDetails, width: number | undefi
     }),
     fallbackToken(detail),
     `status:${normalizeRendererText(detail.status)}`,
+    verificationToken(detail),
+    repairToken(detail),
   ])
   const stats = joinRendererTokens([
     `duration:${formatDuration(detail.duration_ms)}`,
@@ -144,6 +234,22 @@ function completionDetailLines(detail: CompletionDetails, width: number | undefi
       ? []
       : [`${nextPrefix}${excerptForWidth(continuation, width, nextPrefix, "")}`]),
   ]
+}
+
+// The parent agent reads this line to decide whether the work is done. A completed run whose record
+// carries no claim predates the gate (or was never gated), so it reports unverified - never verified.
+function verificationToken(detail: CompletionDetails): string | undefined {
+  if (detail.verification_status !== undefined) {
+    return `verification:${normalizeRendererText(detail.verification_status)}`
+  }
+  return detail.status === "completed" ? "verification:unverified" : undefined
+}
+
+// The parent agent reads this token to learn the repair outcome without parsing structured
+// details. Absent when no repair ran; present as `repair:<status>` otherwise.
+function repairToken(detail: CompletionDetails): string | undefined {
+  if (detail.repair_outcome === undefined) return undefined
+  return `repair:${normalizeRendererText(detail.repair_outcome.status)}`
 }
 
 function fallbackToken(detail: CompletionDetails): string | undefined {

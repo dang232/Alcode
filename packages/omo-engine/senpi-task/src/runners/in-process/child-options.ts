@@ -116,9 +116,12 @@ export function buildChildSessionOptions(input: BuildChildSessionOptionsInput): 
       existingToolNames,
       bindings: input.kernelToolBindings,
     })
+  // The ordinary-worker's verification tool rides both branches like the workpool-yield tools do:
+  // a curated child keeps its read-only bash override AND the host-owned verify closure.
+  const verificationTools = spec.verificationTool === undefined ? [] : [spec.verificationTool]
   const customTools = curated
-    ? [...mergedCustomTools.filter((tool) => tool.name !== "bash" && (toolAllowlist?.includes(tool.name) || isWorkpoolYieldTool(tool))), createCuratedReadonlyBashTool(spec.cwd)]
-    : [...mergedCustomTools, ...kernelTools]
+    ? [...mergedCustomTools.filter((tool) => tool.name !== "bash" && (toolAllowlist?.includes(tool.name) || isWorkpoolYieldTool(tool))), createCuratedReadonlyBashTool(spec.cwd), ...verificationTools]
+    : [...mergedCustomTools, ...kernelTools, ...verificationTools]
   const caller = {
     cwd: spec.cwd,
     agentDir: spec.agentDir ?? senpiBarrel().getAgentDir(),
@@ -142,7 +145,7 @@ export function buildChildSessionOptions(input: BuildChildSessionOptionsInput): 
     ...(spec.model !== undefined && { model: spec.model }),
     ...(spec.thinkingLevel !== undefined && { thinkingLevel: spec.thinkingLevel }),
     settingsManager,
-    ...(toolAllowlist !== undefined && { tools: [...toolAllowlist, ...mergedCustomTools.filter(isWorkpoolYieldTool).map(tool => tool.name), ...kernelTools.map(tool => tool.name)] }),
+    ...(toolAllowlist !== undefined && { tools: [...toolAllowlist, ...mergedCustomTools.filter(isWorkpoolYieldTool).map(tool => tool.name), ...kernelTools.map(tool => tool.name), ...verificationTools.map(tool => tool.name)] }),
     ...(spec.toolDenylist !== undefined && { excludeTools: [...spec.toolDenylist] }),
   }
 }

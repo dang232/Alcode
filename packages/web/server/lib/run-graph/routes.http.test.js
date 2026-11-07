@@ -69,4 +69,25 @@ describe('conversation scope', () => {
     expect(response.body.sessionId).toBe('ses_1');
     expect(received.snapshot).toEqual({ directory: '/projects/proj', conversationId: 'ses_1' });
   });
+
+  it('passes a recorded verification_status through unchanged', async () => {
+    const snapshot = {
+      sessionId: 'ses_1',
+      dag: {
+        runs: [{
+          run_id: 'ses_1',
+          status: 'completed',
+          verification_status: 'blocked',
+          nodes: [{ id: 'n1', state: 'completed', verification_status: 'verified' }],
+        }],
+      },
+    };
+    const { app } = createApp({ runtime: { readSnapshot: async () => snapshot } });
+
+    const response = await request(app).get('/api/run-graph/snapshot?directory=proj&conversationId=ses_1');
+
+    expect(response.status).toBe(200);
+    expect(response.body.dag.runs[0].verification_status).toBe('blocked');
+    expect(response.body.dag.runs[0].nodes[0].verification_status).toBe('verified');
+  });
 });
