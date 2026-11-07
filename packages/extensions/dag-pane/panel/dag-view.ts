@@ -48,6 +48,164 @@ const wireStringArray = (value: JsonValue | undefined): string[] | null => {
   return entries;
 };
 
+/**
+ * The repair lifecycle vocabulary, deliberately disjoint from the completion
+ * gate's verdicts: what the attempt did is never what the gate decided.
+ */
+export const REPAIR_STATES = [
+  'diagnosing',
+  'repair_planned',
+  'repairing',
+  'reverifying',
+  'repaired',
+  'repair_failed',
+  'repair_cancelled',
+] as const;
+
+export type RepairState = (typeof REPAIR_STATES)[number];
+
+export type RepairVerificationStatus = 'verified' | 'unverified' | 'blocked';
+
+const isRepairState = (value: string): value is RepairState => (
+  value === 'diagnosing'
+  || value === 'repair_planned'
+  || value === 'repairing'
+  || value === 'reverifying'
+  || value === 'repaired'
+  || value === 'repair_failed'
+  || value === 'repair_cancelled'
+);
+
+const isRepairVerificationStatus = (value: string): value is RepairVerificationStatus => (
+  value === 'verified' || value === 'unverified' || value === 'blocked'
+);
+
+/**
+ * One repair attempt as the run/tasks payload projects it. `verificationStatus`
+ * is read only from the persisted completion gate record; it is never derived
+ * from `state`, so "repaired" alone can never mean "verified". It is null when
+ * the gate recorded no claim, and callers render that as unverified (fail
+ * closed), never verified.
+ */
+export type DagRepairView = {
+  attemptId: string;
+  taskId: string;
+  epoch: number;
+  state: RepairState;
+  failedChecks: string[];
+  rerunChecks: string[];
+  changedFiles: string[];
+  verificationStatus: RepairVerificationStatus | null;
+  hostFacts: string[];
+  modelHypotheses: string[];
+  updatedAt: number;
+};
+
+type RepairRead = { repair?: DagRepairView; repairError?: string };
+
+const readRepair = (raw: JsonValue | undefined): DagRepairView | null => {
+  if (!isWireRecord(raw)) {
+    return null;
+  }
+  const attemptId = wireString(raw.attemptId);
+  const taskId = wireString(raw.taskId);
+  const epoch = wireNumber(raw.epoch);
+  const state = wireString(raw.state);
+  const failedChecks = wireStringArray(raw.failedChecks);
+  const rerunChecks = wireStringArray(raw.rerunChecks);
+  const changedFiles = wireStringArray(raw.changedFiles);
+  const hostFacts = wireStringArray(raw.hostFacts);
+  const modelHypotheses = wireStringArray(raw.modelHypotheses);
+  const updatedAt = wireNumber(raw.updatedAt);
+  const updatedDate = updatedAt === null ? null : new Date(updatedAt);
+  const verificationClaim = raw.verificationStatus;
+  let verificationStatus: RepairVerificationStatus | null | undefined;
+  if (verificationClaim === null || verificationClaim === undefined) {
+    verificationStatus = null;
+  } else {
+    const claim = wireString(verificationClaim);
+    verificationStatus =
+      claim !== null && isRepairVerificationStatus(claim) ? claim : undefined;
+  }
+  if (
+    attemptId === null
+    || attemptId.length === 0
+    || taskId === null
+    || taskId.length === 0
+    || epoch === null
+    || !Number.isInteger(epoch)
+    || epoch < 0
+    || state === null
+    || !isRepairState(state)
+    || failedChecks === null
+    || rerunChecks === null
+    || changedFiles === null
+    || hostFacts === null
+    || modelHypotheses === null
+    || updatedAt === null
+    || updatedDate === null
+    || Number.isNaN(updatedDate.getTime())
+    || verificationStatus === undefined
+  ) {
+    return null;
+  }
+  return {
+    attemptId,
+    taskId,
+    epoch,
+    state,
+    failedChecks,
+    rerunChecks,
+    changedFiles,
+    verificationStatus,
+    hostFacts,
+    modelHypotheses,
+    updatedAt,
+  };
+};
+
+/**
+ * A malformed repair block is a read error, never "no repair": the caller must
+ * be able to say the state exists but is unreadable. An absent block stays
+ * absent so a record without repair renders exactly as it did before.
+ */
+const readRepairEntry = (raw: WireRecord, recordId: string): RepairRead => {
+  if (raw.repair !== undefined) {
+    const repair = readRepair(raw.repair);
+    if (repair === null) {
+      return { repairError: `repair state payload is malformed for ${recordId}` };
+    }
+    return { repair };
+  }
+  const repairError = wireString(raw.repairError);
+  if (repairError !== null && repairError.length > 0) {
+    return { repairError };
+  }
+  return {};
+};
+
+/**
+ * Epoch-fenced merge for repeated observations of the same task. A lower
+ * epoch never overwrites a higher one; for the same epoch the newer attempt
+ * observation wins. Duplicate observations collapse to one entry, which is
+ * what keeps a duplicate lifecycle event from adding or reordering a row.
+ */
+export const mergeRepairEntry = (
+  current: DagRepairView | undefined,
+  incoming: DagRepairView,
+): DagRepairView => {
+  if (current === undefined) {
+    return incoming;
+  }
+  if (incoming.epoch !== current.epoch) {
+    return incoming.epoch > current.epoch ? incoming : current;
+  }
+  if (incoming.updatedAt !== current.updatedAt) {
+    return incoming.updatedAt > current.updatedAt ? incoming : current;
+  }
+  return incoming.attemptId >= current.attemptId ? incoming : current;
+};
+
 export type DagNodeView = {
   id: string;
   label: string;
@@ -73,6 +231,10 @@ export type DagRunView = {
   nodes: DagNodeView[];
   edges: { from: string; to: string }[];
   waves: DagRunWave[];
+  /** Current-epoch repair attempt; absent when the record carries none. */
+  repair?: DagRepairView;
+  /** The attempt store could not be read; never render this as "no repair". */
+  repairError?: string;
 };
 
 export type DagTaskView = {
@@ -80,6 +242,10 @@ export type DagTaskView = {
   status: string;
   name: string;
   summary: string;
+  /** Current-epoch repair attempt; absent when the record carries none. */
+  repair?: DagRepairView;
+  /** The attempt store could not be read; never render this as "no repair". */
+  repairError?: string;
 };
 
 export type DagSnapshotView = {
@@ -200,6 +366,7 @@ const readRun = (raw: JsonValue | undefined): DagRunView | null => {
     nodes,
     edges,
     waves,
+    ...readRepairEntry(raw, runId),
   };
 };
 
@@ -225,6 +392,7 @@ const readTasks = (raw: JsonValue | undefined): DagTaskView[] | null => {
       status,
       name: wireString(entry.name) ?? taskId,
       summary: wireString(entry.task_summary) ?? '',
+      ...readRepairEntry(entry, taskId),
     });
   }
   return tasks;

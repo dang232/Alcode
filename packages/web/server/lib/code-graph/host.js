@@ -38,6 +38,27 @@ export const describeBuildStall = (cached, nowMs, stalledAfterMs) => {
   return { atMs, startedAtMs, elapsedMs, idleMs, stalled: idleMs > threshold, lastProgressAtMs: atMs };
 };
 
+/**
+ * The watcher env the host hands its worker. Pure and exported because this is
+ * the production decision itself: a host that enables watching must not
+ * overwrite a flag the operator set explicitly, in either direction.
+ */
+export const resolveWatcherEnv = ({ watcherEnabled, watcherDebounceMs } = {}, env = process.env) => {
+  const watcherEnv = {};
+  if (watcherEnabled === true) {
+    // `=0` must disable a host that defaults to on, `=1` enables a host that
+    // does not ask; only an unset flag is defaulted here.
+    const existing = env?.ALCODE_CODE_GRAPH_WATCHER;
+    if (existing === undefined || existing === null) watcherEnv.ALCODE_CODE_GRAPH_WATCHER = '1';
+  } else if (watcherEnabled === false) {
+    watcherEnv.CODEGRAPH_NO_WATCHER = '1';
+  }
+  if (Number.isFinite(Number(watcherDebounceMs))) {
+    watcherEnv.ALCODE_CODE_GRAPH_WATCH_DEBOUNCE_MS = String(Math.floor(Number(watcherDebounceMs)));
+  }
+  return watcherEnv;
+};
+
 export const createCodeGraphHost = ({ spawnWorker, storeDir, stalledAfterMs, watcherEnabled, watcherDebounceMs } = {}) => {
   const stalledAfter = Number.isFinite(Number(stalledAfterMs)) && Number(stalledAfterMs) > 0
     ? Math.floor(Number(stalledAfterMs))
@@ -46,12 +67,7 @@ export const createCodeGraphHost = ({ spawnWorker, storeDir, stalledAfterMs, wat
   // S4: the native watcher lives in the worker; the host only carries its
   // opt-in and debounce down as env. Omitted options leave the parent env
   // untouched, so today's revision-gate path is unchanged by default.
-  const watcherEnv = {};
-  if (watcherEnabled === true) watcherEnv.ALCODE_CODE_GRAPH_WATCHER = '1';
-  else if (watcherEnabled === false) watcherEnv.CODEGRAPH_NO_WATCHER = '1';
-  if (Number.isFinite(Number(watcherDebounceMs))) {
-    watcherEnv.ALCODE_CODE_GRAPH_WATCH_DEBOUNCE_MS = String(Math.floor(Number(watcherDebounceMs)));
-  }
+  const watcherEnv = resolveWatcherEnv({ watcherEnabled, watcherDebounceMs }, process.env);
   const hasStoreDir = isString(storeDir) && storeDir.length > 0;
   const workerEnv = hasStoreDir || Object.keys(watcherEnv).length > 0
     ? { ...process.env, ...(hasStoreDir ? { ALCODE_CODE_GRAPH_STORE: storeDir } : null), ...watcherEnv }

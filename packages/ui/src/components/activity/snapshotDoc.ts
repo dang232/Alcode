@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { JsonValue } from '@alcode/sdk';
+import { parseVerificationStatus, type VerificationStatus } from './verificationStatus';
 
 const nodeSchema = z.object({
   id: z.string(),
@@ -8,6 +9,7 @@ const nodeSchema = z.object({
   state: z.string(),
   prompt: z.string(),
   depends_on: z.array(z.string()),
+  verification_status: z.string().optional(),
 });
 
 const edgeSchema = z.object({ from: z.string(), to: z.string() });
@@ -19,6 +21,7 @@ const runSchema = z.object({
   run_key: z.string(),
   name: z.string(),
   status: z.string(),
+  verification_status: z.string().optional(),
   nodes: z.array(nodeSchema),
   edges: z.array(edgeSchema).optional(),
   waves: z.array(waveSchema).optional(),
@@ -36,6 +39,8 @@ export type SnapshotNode = {
   state: string;
   prompt: string;
   dependsOn: string[];
+  /** Terminal completion claim, when the writer recorded one. Absent on older records. */
+  verificationStatus?: VerificationStatus;
 };
 
 export type SnapshotRun = {
@@ -43,6 +48,8 @@ export type SnapshotRun = {
   runKey: string;
   name: string;
   status: string;
+  /** Terminal completion claim for the run itself, when the writer recorded one. */
+  verificationStatus?: VerificationStatus;
   nodes: SnapshotNode[];
   edges: { from: string; to: string }[];
   waves: { index: number; nodeIds: string[] }[];
@@ -67,12 +74,14 @@ export const parseSnapshotDoc = (raw: JsonValue): SnapshotDoc | null => {
       runKey: run.run_key,
       name: run.name,
       status: run.status,
+      verificationStatus: parseVerificationStatus(run.verification_status),
       nodes: run.nodes.map((node) => ({
         id: node.id,
         label: node.label,
         state: node.state,
         prompt: node.prompt,
         dependsOn: [...node.depends_on],
+        verificationStatus: parseVerificationStatus(node.verification_status),
       })),
       edges: run.edges?.map((edge) => ({ from: edge.from, to: edge.to })) ?? [],
       waves: run.waves?.map((wave) => ({ index: wave.index, nodeIds: [...wave.node_ids] })) ?? [],

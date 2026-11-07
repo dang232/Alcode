@@ -8,6 +8,8 @@
  */
 import type { DagChildState, DagRunChild, DagRunModel } from '@/lib/dagRunModel';
 import { findSubagentRun, readSubagentRun } from '@/lib/opencode/subagent-run';
+import type { RepairBlock, RepairState } from '@/lib/runGraphApi';
+import type { VerificationStatus } from './verificationStatus';
 import { isFileChangeTool, isSubagentTool, normalizeToolName, OPENCODE_TOOLS, patchInputFiles, toolInputPath } from '@/lib/opencode/tools';
 import type { Message, Part } from '@/lib/opencode/model';
 
@@ -26,6 +28,16 @@ export type ActivityTreeRow = {
   label: string;
   detail: string | null;
   state: ActivityNodeState;
+  /** Current-epoch repair attempt for this record, when the snapshot carries one. */
+  repair?: RepairView;
+  /** The repair store could not be read; absence is unknown, not "no repair". */
+  repairError?: string;
+  /**
+   * Terminal completion claim from the record, when one was recorded.
+   * Absent on older records and on live chat-path rows, which have no
+   * verification source; completed rows without one render Unverified.
+   */
+  verificationStatus?: VerificationStatus;
   agent: string | null;
   /** Settled children over total children; null when not applicable. */
   progress: { settled: number; total: number } | null;
@@ -35,6 +47,12 @@ export type RunGraphNode = {
   id: string;
   label: string;
   state: ActivityNodeState;
+  /** Same claim as the matching row: completed nodes without one render Unverified. */
+  verificationStatus?: VerificationStatus;
+  /** Same current-epoch repair view as the matching row. */
+  repair?: RepairView;
+  /** Same unreadable-repair note as the matching row. */
+  repairError?: string;
   wave: number;
   x: number;
   y: number;
@@ -79,6 +97,130 @@ export type InspectorSummary = {
 };
 
 const childStateOf = (state: DagRunChild['state']): ActivityNodeState => state;
+
+/** One ordered milestone of the repair lifecycle. */
+export type RepairLifecycleStep = {
+  state: RepairState;
+  /** True only for the state the attempt record currently projects. */
+  current: boolean;
+};
+
+/**
+ * One repair attempt as the activity surfaces consume it. Every field comes
+ * from the projected repair block; `verificationStatus` comes only from the
+ * persisted completion gate and is never derived from `state`.
+ */
+export type RepairView = {
+  attemptId: string;
+  taskId: string;
+  epoch: number;
+  state: RepairState;
+  lifecycle: RepairLifecycleStep[];
+  verificationStatus: VerificationStatus | null;
+  failedChecks: string[];
+  rerunChecks: string[];
+  changedFiles: string[];
+  hostFacts: string[];
+  modelHypotheses: string[];
+};
+
+const TERMINAL_REPAIR_STATES = new Set<RepairState>(['repaired', 'repair_failed', 'repair_cancelled']);
+
+/** Milestones the engine must have passed to reach a non-terminal state. */
+const repairPathTo = (state: RepairState): RepairState[] => {
+  switch (state) {
+    case 'diagnosing': return ['diagnosing'];
+    case 'repair_planned': return ['diagnosing', 'repair_planned'];
+    case 'repairing': return ['diagnosing', 'repair_planned', 'repairing'];
+    case 'reverifying': return ['diagnosing', 'repair_planned', 'repairing', 'reverifying'];
+    case 'repaired': return ['diagnosing', 'repair_planned', 'repairing', 'reverifying', 'repaired'];
+    default: return [];
+  }
+};
+
+/**
+ * Milestones for one attempt. A failed or cancelled attempt may stop at any
+ * stage, so its earlier rows name only what the block itself evidences:
+ * changed files prove a repair ran, rerun checks prove re-verification ran.
+ */
+const repairLifecycleOf = (block: RepairBlock): RepairLifecycleStep[] => {
+  const states = TERMINAL_REPAIR_STATES.has(block.state) && block.state !== 'repaired'
+    ? (() => {
+        const reached: RepairState[] = ['diagnosing'];
+        if (block.changedFiles.length > 0 || block.rerunChecks.length > 0) {
+          reached.push('repair_planned', 'repairing');
+        }
+        if (block.rerunChecks.length > 0) reached.push('reverifying');
+        reached.push(block.state);
+        return reached;
+      })()
+    : repairPathTo(block.state);
+  return states.map((state) => ({ state, current: state === block.state }));
+};
+
+/** Progress rank used only to break equal-clock duplicates, never to infer state. */
+const REPAIR_STATE_RANK = {
+  diagnosing: 0,
+  repair_planned: 1,
+  repairing: 2,
+  reverifying: 3,
+  repaired: 4,
+  repair_failed: 4,
+  repair_cancelled: 4,
+} satisfies Record<RepairState, number>;
+
+/**
+ * Repeated projections of one attempt (the run record and the task record
+ * carry the same block) collapse to the latest write. Attempts stay ordered
+ * by epoch, then attempt id.
+ */
+const mergeRepairAttempts = (blocks: readonly RepairBlock[]): RepairBlock[] => {
+  const latest = new Map<string, RepairBlock>();
+  for (const block of blocks) {
+    const seen = latest.get(block.attemptId);
+    if (
+      !seen
+      || block.updatedAt > seen.updatedAt
+      || (block.updatedAt === seen.updatedAt && REPAIR_STATE_RANK[block.state] >= REPAIR_STATE_RANK[seen.state])
+    ) {
+      latest.set(block.attemptId, block);
+    }
+  }
+  return [...latest.values()].sort((left, right) => (
+    left.epoch - right.epoch
+    || (left.attemptId < right.attemptId ? -1 : left.attemptId > right.attemptId ? 1 : 0)
+  ));
+};
+
+/**
+ * Build the rendered repair view. Only attempts at the fence epoch count:
+ * `currentEpoch` when the caller knows the record's run epoch, otherwise the
+ * newest epoch the blocks carry. A stale attempt never renders as current.
+ */
+export const buildRepairView = (
+  blocks: readonly RepairBlock[],
+  currentEpoch?: number,
+): RepairView | null => {
+  const attempts = mergeRepairAttempts(blocks);
+  const newest = attempts[attempts.length - 1];
+  if (!newest) return null;
+  const fence = currentEpoch ?? newest.epoch;
+  const current = attempts.filter((attempt) => attempt.epoch === fence).at(-1) ?? null;
+  if (!current) return null;
+  return {
+    attemptId: current.attemptId,
+    taskId: current.taskId,
+    epoch: current.epoch,
+    state: current.state,
+    lifecycle: repairLifecycleOf(current),
+    verificationStatus: current.verificationStatus,
+    failedChecks: [...current.failedChecks],
+    rerunChecks: [...current.rerunChecks],
+    changedFiles: [...current.changedFiles],
+    hostFacts: [...current.hostFacts],
+    modelHypotheses: [...current.modelHypotheses],
+  };
+};
 
 const assistantTextOf = (messages: Message[], parts: Record<string, Part[]>): { text: string; id: string }[] => {
   const out: { text: string; id: string }[] = [];
@@ -173,6 +315,27 @@ type TimelineInput = {
   parts: Record<string, Part[]>;
   /** Selected row id: parent session id, child session id, or 'synthesis'. */
   selectedId: string;
+  /**
+   * Translated verification word for one task id, or null when the task did
+   * not complete. Completed settlement lines append it after the state;
+   * every other line renders exactly as before.
+   */
+  verificationLabel?: (taskId: string) => string | null;
+};
+
+/**
+ * Verification suffix for a completed settlement line. Only an explicit
+ * completed state earns one: anything else renders exactly as before, and
+ * a task the lookup does not know renders nothing rather than a guess.
+ */
+const completedVerificationSuffix = (
+  input: Pick<TimelineInput, 'verificationLabel'>,
+  taskId: string,
+  state: string,
+): string => {
+  if (state !== 'completed') return '';
+  const label = input.verificationLabel?.(taskId);
+  return label ? ` · ${label}` : '';
 };
 
 const toolEventsOf = (messages: Message[], parts: Record<string, Part[]>, sessionId: string): InspectorEvent[] => {
@@ -214,7 +377,7 @@ export const buildInspectorTimeline = (input: TimelineInput): InspectorEvent[] =
         id: `report:${message.id}`,
         at: run.reportedAt,
         kind: 'result',
-        label: `Subagent ${run.childSessionID} ${run.state}`,
+        label: `Subagent ${run.childSessionID} ${run.state}${completedVerificationSuffix(input, run.childSessionID, run.state)}`,
         detail: run.output ? run.output.slice(0, 500) : null,
         receiptId: message.id,
       });
@@ -261,7 +424,7 @@ export const buildInspectorTimeline = (input: TimelineInput): InspectorEvent[] =
       id: `report:${child.sessionId}`,
       at: report.reportedAt,
       kind: 'result',
-      label: `Settled: ${report.state}`,
+      label: `Settled: ${report.state}${completedVerificationSuffix(input, child.sessionId, report.state)}`,
       detail: report.output ? report.output.slice(0, 500) : null,
       receiptId: child.sessionId,
     });
@@ -270,7 +433,7 @@ export const buildInspectorTimeline = (input: TimelineInput): InspectorEvent[] =
       id: `state:${child.sessionId}`,
       at: null,
       kind: 'state',
-      label: `Current state: ${child.state}`,
+      label: `Current state: ${child.state}${completedVerificationSuffix(input, child.sessionId, child.state)}`,
       detail: null,
       receiptId: null,
     });
@@ -349,8 +512,8 @@ export const buildExplanationCard = (input: Omit<TimelineInput, 'model'> & { mod
     return {
       objective: { text: child.description ?? child.label, receiptId: null },
       outcome: settledReport
-        ? { text: `Settled: ${settledReport.state}`, receiptId: child.sessionId }
-        : { text: `Current state: ${child.state}`, receiptId: null },
+        ? { text: `Settled: ${settledReport.state}${completedVerificationSuffix(input, child.sessionId, settledReport.state)}`, receiptId: child.sessionId }
+        : { text: `Current state: ${child.state}${completedVerificationSuffix(input, child.sessionId, child.state)}`, receiptId: null },
       evidence,
       next: nextOfChild(child.state),
       rationale: null,
@@ -358,7 +521,7 @@ export const buildExplanationCard = (input: Omit<TimelineInput, 'model'> & { mod
   }
   return {
     objective: { text: model.prompt || model.label, receiptId: null },
-    outcome: { text: `Current state: ${model.state}`, receiptId: null },
+    outcome: { text: `Current state: ${model.state}${completedVerificationSuffix(input, model.parentSessionId, model.state)}`, receiptId: null },
     evidence,
     next: model.state === 'running' ? 'running' : 'settled',
     rationale: null,

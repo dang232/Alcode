@@ -31,7 +31,7 @@ setDefaultTimeout(process.platform === "win32" ? 60_000 : 20_000)
 const cleanupRoots: string[] = []
 const parentSessionId = "session-e2e-parent"
 const rootSessionId = "session-e2e-root"
-const sdkPath = join(import.meta.dir, "../../../omo-senpi/plugin/runtime/dag/sdk.js")
+const sdkPath = join(import.meta.dir, "../../test-vendor/omo-senpi/plugin/runtime/dag/sdk.js")
 
 let originalTool: unknown
 

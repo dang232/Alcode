@@ -94,6 +94,10 @@ export type ChildSpec = {
    * the task record carry no closure, descriptor or requested name (see buildSpawnSpecV1).
    */
   readonly kernelTools?: KernelToolGrant
+  // TRANSIENT ordinary-worker verification tool: a live host-built closure like kernelTools above.
+  // Never persisted — SpawnSpecV1, the JSONL session_init and the task record carry no executable
+  // tool, so a resumed child re-resolves authority from the live process instead of a transcript.
+  readonly verificationTool?: ToolDefinition
   readonly depth: number
   readonly parentSessionId: string
   readonly rootSessionId: string

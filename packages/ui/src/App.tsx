@@ -5,6 +5,7 @@ import { AppStartupOverlay } from '@/components/ui/AppStartupOverlay';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { AppLinkConfirmDialog } from '@/components/chat/AppLinkConfirmDialog';
 import { SharedTrustConfirmDialog } from '@/components/projects/SharedTrustConfirmDialog';
+import { VerificationApprovalSlot } from '@/components/verification/VerificationApprovalSlot';
 import { FireworksProvider } from '@/contexts/FireworksContext';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from '@/components/ui';
@@ -895,6 +896,7 @@ function App({ apis }: AppProps) {
                   <Toaster />
                   <AppLinkConfirmDialog />
                   <SharedTrustConfirmDialog />
+                  <VerificationApprovalSlot />
                   <ConfigUpdateOverlay />
                   <AboutDialogWrapper />
                   {showMemoryDebug && (

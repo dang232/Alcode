@@ -2031,6 +2031,29 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
   const staleUnreferenced = (staleInfo?.pendingSync ?? [])
     .filter((file) => file.length > 0)
     .filter((file) => !staleReferenced.includes(file));
+  const stalePendingCount = staleReferenced.length + staleUnreferenced.length;
+
+  // Watcher state rides the index summary: on means edits are picked up
+  // automatically, off means the graph only re-checks on focus return or
+  // directory change. Pending files (or a degraded sync) always qualify the
+  // line, so it never claims everything is current with work outstanding.
+  const watcherLine = React.useMemo(() => {
+    const watcher = index?.watcher;
+    if (!watcher) return null;
+    const pendingCount = stalePendingCount;
+    const hasPending = pendingCount > 0 || staleSyncDegraded;
+    if (watcher.enabled) {
+      if (!hasPending) return 'Watching for changes · picks them up automatically';
+      if (pendingCount > 0) {
+        return `Watching for changes · ${pendingCount === 1 ? '1 file' : `${pendingCount} files`} pending re-index`;
+      }
+      return 'Watching for changes · updates paused while sync is unavailable';
+    }
+    if (pendingCount > 0) {
+      return `Not watching for changes · ${pendingCount === 1 ? '1 file' : `${pendingCount} files`} pending re-index · re-checks when you return or change directory`;
+    }
+    return 'Not watching for changes · re-checks when you return or change directory';
+  }, [index?.watcher, stalePendingCount, staleSyncDegraded]);
 
   const toolbarBusy = indexLoading || searchLoading || detailLoading || exploreLoading || trailLoading || impactRunsLoading;
 
@@ -2216,6 +2239,11 @@ export const CodeGraphPanel: React.FC<{ directory: string | null | undefined; fo
             </span>
             {index.nodeCount} / {index.edgeCount} · {(index.revision ?? '').slice(0, 8)}
           </p>
+          {watcherLine !== null ? (
+            <p className="typography-micro text-muted-foreground" data-testid="code-graph-watcher-state">
+              {watcherLine}
+            </p>
+          ) : null}
           {(currentScopeRoot || currentScopeMode || index.metrics) ? (
             <p className="typography-micro text-muted-foreground" data-testid="code-graph-scope-current">
               {t('codeGraph.scope.current', { scope: currentScopeRoot ?? directory ?? '' })}

@@ -1,6 +1,8 @@
 import type { IsolationDetails } from "../isolation/details"
+import type { RepairState } from "../repair/state"
 import type { ResolvedModelRecord, TaskRecord, TaskRunStats, TaskStatus } from "../state"
 import type { ListTaskRecordsResult, PersistedTaskEvent } from "../store"
+import type { VerificationStatus } from "../verification/completion-status"
 
 export type TransitionReason = "compacting" | "session_switching" | "session_shutdown"
 
@@ -17,6 +19,30 @@ export type RoutingDecision =
   | { readonly kind: "deliver_streaming" }
   | { readonly kind: "buffer"; readonly reason: TransitionReason }
 
+// The repair outcome carried on a completion notification. The five statuses are exhaustive:
+// - "repaired_and_verified": the persisted attempt reached "repaired" AND the gate verdict is "verified".
+// - "edited_but_blocked": the gate verdict is "blocked" (a "repaired" attempt with a non-"verified"
+//   verdict reports this, never verified).
+// - "repaired_but_unverified": the gate verdict is "unverified" after a repair ran.
+// - "repair_failed": the persisted attempt settled as "repair_failed".
+// - "repair_cancelled": the persisted attempt settled as "repair_cancelled" (or the repair was
+//   cancelled). Derived ONLY from the gate verdict plus the persisted attempt state in
+//   notification.ts, never from a model claim or a repair state alone.
+export type RepairOutcomeStatus =
+  | "repaired_and_verified"
+  | "edited_but_blocked"
+  | "repaired_but_unverified"
+  | "repair_failed"
+  | "repair_cancelled"
+
+export type RepairOutcomeForCompletion = {
+  readonly status: RepairOutcomeStatus
+  readonly gateVerdict?: VerificationStatus
+  readonly attemptState?: RepairState
+  readonly attemptId?: string
+  readonly reason?: string
+}
+
 export type CompletionDetails = {
   readonly task_id: string
   readonly name: string
@@ -32,7 +58,14 @@ export type CompletionDetails = {
   readonly run_stats?: TaskRunStats
   readonly final_response: string
   readonly final_response_file?: string
+  // The gate's claim about this completion, carried so the parent agent cannot read a finished run as
+  // verified when nothing was verified. Absent means the record predates the claim; a completed run
+  // with no claim is reported as unverified, never as verified.
+  readonly verification_status?: VerificationStatus
   readonly continuation_hint: string
+  // The repair outcome for this completion, when a repair attempt ran. Absent when no repair ran.
+  // The parent agent reads `status` plus the rendered `repair:<status>` token in the message body.
+  readonly repair_outcome?: RepairOutcomeForCompletion
   // The child resumed on its own (a monitor or background job woke it) after an earlier completion.
   readonly resumed_turn?: true
   // Present once an isolated child settled: what happened to its clone and where the artifacts are.

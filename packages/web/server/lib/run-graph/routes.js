@@ -8,6 +8,19 @@ import { createRunGraphRuntime } from './runtime.js';
  *   JSON. The file is written by the engine-side snapshot writer; this route
  *   never writes.
  *
+ * Each `dag.runs[]` and `tasks.tasks[]` record is enriched from authoritative
+ * durable state, never from UI state:
+ * - `repair`: the current-epoch record of
+ *   `<stateDir>/repairs/<taskId>/<attemptId>.json`,
+ *   `{ attemptId, taskId, epoch, state, failedChecks[], rerunChecks[],
+ *     changedFiles[], verificationStatus, hostFacts[], modelHypotheses[],
+ *     updatedAt }` (`verificationStatus` comes only from the persisted gate
+ *   record's `verification_status`).
+ * - absent when the task has no repair attempt, and omitted when the newest
+ *   attempt's epoch is not the task record's current `run_epoch`.
+ * - `repairError`: the store or task record could not be read. A read failure
+ *   is never reported as "no repair".
+ *
  * Failures are explicit: a missing directory or conversation id answers 400,
  * a missing snapshot answers 404, and a backend failure answers 5xx. The
  * panel treats every failure as "unknown", never as an empty run.
