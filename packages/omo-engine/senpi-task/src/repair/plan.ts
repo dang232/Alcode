@@ -11,6 +11,7 @@
 
 import { catalogueChecks, type OrdinaryCatalogue } from "../verification/catalogue";
 import type { DagVerifyCheck } from "../dag/verification";
+import type { ProposedRepairEdit } from "./edit-executor";
 
 // The repair proposal. filesToChange is the closed file set the repair may
 // touch; scopeJustification is the justification field the host must fill when
@@ -39,7 +40,9 @@ export type RepairPlanViolationCode =
   | "outside_approved_scope"
   | "unknown_check"
   | "claims_completion"
-  | "missing_rerun_set";
+  | "missing_rerun_set"
+  | "empty_replacement"
+  | "no_op_edit";
 
 export type RepairPlanViolation = {
   readonly code: RepairPlanViolationCode;
@@ -56,9 +59,18 @@ export type ValidateRepairPlanResult = {
 // filesToChange. The validator cannot diff: the host populates addsTestSkip /
 // narrowsAssertions from the real diff, and an unpopulated hint reads as
 // "not observed", never as proof of safety.
-type PlannedFileOperation = {
+//
+// A concrete payload is optional so a bare path-only operation stays valid:
+// an operation without a payload is simply not applicable. A "modify" carries
+// the same `ProposedRepairEdit` entries `ApplyRepairEditsInput.edits` consumes
+// (exact `oldText`, unique in the file, replaced by `newText`), so nothing has
+// to be translated between the plan and the executor. A "create" may carry
+// `content`, the full initial file text.
+export type PlannedFileOperation = {
   readonly path: string;
   readonly operation: "create" | "modify" | "delete";
+  readonly edits?: readonly ProposedRepairEdit[];
+  readonly content?: string;
   readonly addsTestSkip?: boolean;
   readonly narrowsAssertions?: boolean;
 };
@@ -129,7 +141,38 @@ export function validateRepairPlan(plan: RepairPlan, ctx: ValidateRepairPlanCont
     }
   };
   guardPaths(plan.filesToChange, "filesToChange");
-  guardPaths((ctx.fileOperations ?? []).map((operation) => operation.path), "fileOperations");
+  guardPaths(plan.filesToChange, "filesToChange");
+  guardPaths(
+    (ctx.fileOperations ?? []).flatMap((operation) => [
+      operation.path,
+      ...(operation.edits ?? []).map((edit) => edit.path),
+    ]),
+    "fileOperations",
+  );
+
+  // A concrete edit payload must be applicable: an empty replacement erases
+  // matched text (that is a deletion disguised as an edit) and oldText ===
+  // newText is a no-op that claims a change it never makes. Path protection is
+  // checked above for every operation and edit path, payload or not, so a
+  // payload can never launder access to a protected path.
+  for (const operation of ctx.fileOperations ?? []) {
+    for (const edit of operation.edits ?? []) {
+      if (edit.newText === "") {
+        violations.push({
+          code: "empty_replacement",
+          message: `repair edit for ${edit.path} replaces matched text with an empty string`,
+          path: edit.path,
+        });
+      }
+      if (edit.oldText === edit.newText) {
+        violations.push({
+          code: "no_op_edit",
+          message: `repair edit for ${edit.path} replaces text with itself; the edit would change nothing`,
+          path: edit.path,
+        });
+      }
+    }
+  }
 
   // A repair that removes or weakens a required test is not a repair: deleted
   // test files, added skip/only markers, or narrowed assertion paths all read
@@ -164,12 +207,18 @@ export function validateRepairPlan(plan: RepairPlan, ctx: ValidateRepairPlanCont
   const justified = plan.scopeJustification !== undefined && plan.scopeJustification.trim().length > 0;
   if (!justified) {
     for (const operation of ctx.fileOperations ?? []) {
-      if (!declared.has(normalizePlanPath(operation.path))) {
-        violations.push({
-          code: "unjustified_scope_broadening",
-          message: `repair touches ${operation.path} beyond filesToChange without a scopeJustification`,
-          path: operation.path,
-        });
+      const touchedPaths = new Set([
+        operation.path,
+        ...(operation.edits ?? []).map((edit) => edit.path),
+      ]);
+      for (const touchedPath of touchedPaths) {
+        if (!declared.has(normalizePlanPath(touchedPath))) {
+          violations.push({
+            code: "unjustified_scope_broadening",
+            message: `repair touches ${touchedPath} beyond filesToChange without a scopeJustification`,
+            path: touchedPath,
+          });
+        }
       }
     }
   }

@@ -309,8 +309,9 @@ export type TaskManagerOptions = {
   // The invoker is the orchestrator's RepairDiagnosisInvoker seam: tests inject a scripted one
   // (unit test of the wiring); production defaults to the real host adapter built from
   // src/repair/model-diagnosis.ts, which fails closed as model_unavailable when no live model
-  // can be resolved. Edit and runner default to fail-closed/no-op and the real verification
-  // command runner respectively; all three keep the existing gate the sole authority.
+  // can be resolved. The editor defaults to the real authorized applier seeded with the run's
+  // workspace and pre-repair revision baseline; the runner defaults to the real verification
+  // command runner. All three keep the existing gate the sole authority.
   readonly repair?: {
     readonly invoker?: RepairAttemptInvoker
     readonly editExecutor?: RepairEditExecutor

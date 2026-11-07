@@ -17,6 +17,7 @@ import {
   evaluateAcceptance,
   parseVerificationRecord,
   readRunVerificationRecords,
+  verificationRecordKey,
   type DagVerificationRecord,
   type DagVerificationRequirement,
 } from "../dag/verification"
@@ -87,8 +88,10 @@ export function evaluateOrdinaryCompletion(input: CompletionGateInput): Completi
     return { verification: "blocked", code: "verification_evidence_missing", reason: "this run produced no verification evidence" }
   }
 
-  const parsed: DagVerificationRecord[] = []
-  for (const file of listed) {
+  const parsed: { readonly record: DagVerificationRecord; readonly attempt: number }[] = []
+  const latestAttempt = new Map<string, number>()
+  // Stable order makes a same-attempt tie deterministic; attempt selection below is by number.
+  for (const file of [...listed].sort()) {
     if (!file.endsWith(".json")) continue
     const parts = file.replace(/\.json$/, "").split(".")
     const nodeId = parts[0] ?? ""
@@ -100,24 +103,30 @@ export function evaluateOrdinaryCompletion(input: CompletionGateInput): Completi
     if (record === null) {
       return { verification: "blocked", code: "verification_evidence_malformed", reason: `unreadable verification record: ${file}` }
     }
-    parsed.push(record)
+    parsed.push({ record, attempt })
+    // Highest attempt wins per (node, check). A repair's rerun is a NEW attempt, so the original
+    // failed record stays on disk as history without ever shadowing the fresh evidence.
+    const key = verificationRecordKey(record.nodeId, record.checkId)
+    latestAttempt.set(key, Math.max(latestAttempt.get(key) ?? attempt, attempt))
   }
   if (parsed.length === 0) {
     return { verification: "blocked", code: "verification_evidence_missing", reason: "no parseable verification record for this run" }
   }
 
   // Epoch fencing first: a record from another epoch belongs to another run of this task id.
-  for (const record of parsed) {
+  for (const { record } of parsed) {
     const freshness = ordinaryEvidenceFreshness(record, { sourceRevision, epoch: input.epoch })
     if (!freshness.fresh && record.workerAttempt !== input.epoch) {
       return { verification: "blocked", code: "verification_stale", reason: `verification record from another epoch: ${freshness.reason}` }
     }
   }
 
+  // Selected by the filename's attempt number, never by directory order, so the fresh post-repair
+  // evidence deterministically beats the preserved failed attempt next to it.
   const byKey = new Map<string, DagVerificationRecord>()
-  for (const record of parsed) {
-    const key = record.nodeId === undefined ? record.checkId : `${record.nodeId}/${record.checkId}`
-    byKey.set(key, record)
+  for (const { record, attempt } of parsed) {
+    const key = verificationRecordKey(record.nodeId, record.checkId)
+    if (latestAttempt.get(key) === attempt) byKey.set(key, record)
   }
   const requirements: DagVerificationRequirement[] = catalogueChecks(input.catalogue).map((check) => ({ check }))
   // An approved catalogue that requires nothing verifies nothing: the completion is unverified,
@@ -133,7 +142,7 @@ export function evaluateOrdinaryCompletion(input: CompletionGateInput): Completi
   })
   if (verdict.accepted) return { verification: "verified" }
 
-  const failed = parsed.some((record) => record.status !== "passed")
+  const failed = parsed.some(({ record }) => record.status !== "passed")
   const stale = verdict.reasons.some((reason) => reason.startsWith("stale"))
   const missing = verdict.reasons.some((reason) => reason.startsWith("missing"))
   const code: CompletionBlockCode = failed ? "verification_failed" : stale ? "verification_stale" : missing ? "verification_evidence_missing" : "verification_evidence_malformed"

@@ -30,13 +30,14 @@ import { approvalAuthorityFor } from "../verification/approval-authority"
 import { readApprovals } from "../verification/approval-store"
 import { resolveCatalogue, WORKSPACE_ID } from "../verification/resolution"
 import { runRepairAttempt, type RepairDiagnosisInvoker as RepairAttemptInvoker, type RepairEditExecutor } from "../repair/orchestrator"
+import { applyRepairEdits } from "../repair/edit-executor"
 import { createHostDiagnosisInvoker } from "../repair/model-diagnosis"
 import { createFileEvidenceStore, workspaceRevision } from "../verification/evidence-store"
 import { isVerificationAccepting, parseVerificationRecord, runVerificationCommand } from "../dag/verification"
 import type { VerificationRunner } from "../verification/contract"
 import type { ChildSpec } from "../runners/in-process"
 import { evaluateOrdinaryCompletion } from "../verification/completion-gate"
-import type { CompletionGateVerdict } from "../verification/completion-status"
+import { completionBlockedMessage, type CompletionGateVerdict, type VerificationStatus } from "../verification/completion-status"
 import type { OrdinaryCatalogue } from "../verification/catalogue"
 import { snapshotWorkspace, type WorkspaceBaseline } from "../verification/run-provenance"
 import { createWorkerVerificationTool } from "../verification/worker-tool-factory"
@@ -126,7 +127,7 @@ type RepairFinishedPayload = {
   readonly attempt_id: string
   readonly final_state: string
   readonly gate_verdict: string
-  readonly verification_status: "blocked"
+  readonly verification_status: VerificationStatus
   readonly changed_files: readonly string[]
   readonly gate_code?: string
   readonly detail?: string
@@ -1105,8 +1106,34 @@ class TaskManagerImpl implements TaskManager {
     }
   }
 
-  #resolveRepairEditExecutor(): RepairEditExecutor {
-    return this.#options.repair?.editExecutor ?? (async () => ({ changedFiles: [] }))
+  // Default repair applier: the real authorized executor over the run's own workspace and the
+  // pre-repair revision baseline the manager snapshotted for this attempt. The plan's file set is
+  // the closed write allowlist (applyRepairEdits enforces it), and a rejected receipt - revision
+  // conflict, out-of-plan path, protected path, no on-disk change, edit failure - throws so the
+  // orchestrator settles repair_failed. A rejection is never reported as a successful empty change
+  // set. An injected executor still overrides the whole seam for tests.
+  #resolveRepairEditExecutor(workspaceDir: string, baselineRevision: string): RepairEditExecutor {
+    const injected = this.#options.repair?.editExecutor
+    if (injected !== undefined) return injected
+    return async (request) => {
+      const receipt = await applyRepairEdits({
+        plan: request.plan,
+        workspaceDir,
+        baselineRevision,
+        edits: request.edits,
+      })
+      if (receipt.status !== "applied") {
+        const failures = receipt.failures
+          .map((failure) =>
+            failure.path === undefined
+              ? `${failure.code}: ${failure.message}`
+              : `${failure.code}(${failure.path}): ${failure.message}`,
+          )
+          .join("; ")
+        throw new Error(`repair edits rejected: ${failures.length > 0 ? failures : "no failure detail"}`)
+      }
+      return { changedFiles: receipt.files.map((file) => file.path) }
+    }
   }
 
   #resolveRepairRunner(): VerificationRunner {
@@ -1160,7 +1187,8 @@ class TaskManagerImpl implements TaskManager {
   // and the original failed evidence (via runRepairAttempt's durable save) before any model call.
   // A stale epoch publishes nothing: when the record moved on, no event is appended and no record
   // field is touched. On repair_failed/blocked the task stays blocked and the repair_finished
-  // event says so; nothing here writes "verified" - the gate verdict alone decides the attempt.
+  // event says so; only a re-asked gate verdict of "verified" may correct the terminal (see
+  // #publishVerifiedRepair) - never the repair state or a model claim.
   async #runRepairForBlocked(
     taskId: string,
     epoch: number,
@@ -1192,23 +1220,42 @@ class TaskManagerImpl implements TaskManager {
       failedEvidenceIds,
       diagnosisRevision,
       invoker: this.#resolveRepairInvoker(workspaceDir),
-      editExecutor: this.#resolveRepairEditExecutor(),
+      editExecutor: this.#resolveRepairEditExecutor(workspaceDir, diagnosisRevision),
       runner: this.#resolveRepairRunner(),
       isCancelled: () => {
         const current = this.#tryLoad(taskId)
         return current?.status === "cancelled" || current?.cancel_requested !== undefined
       },
     })
-    void verdict
     // Stale epoch guard: the record moved on while the attempt ran - publish nothing.
     const current = this.#tryLoad(taskId)
     if (current === null || current.notification.run_epoch !== epoch) return
+    // CANONICAL TERMINAL-RECORD SEMANTICS
+    // - status is the run's lifecycle fact (the terminal transition that ended the run).
+    // - verification_status is the completion gate's final word about the CURRENT evidence.
+    // - error_message is the CURRENT terminal error only; it is absent on a clean success.
+    // A gate-verified repair upgrades the gate-blocked terminal IN PLACE through the same
+    // store.mutate primitive and the same epoch fence, clearing the error text the block wrote.
+    // The original verification failure is HISTORY and stays readable elsewhere: the pre-repair
+    // evidence file (attempt 1) stays on disk, the repair attempt store keeps failedCheckIds /
+    // failedEvidenceIds / outcome, and the task event log keeps verification_blocked and
+    // repair_finished. History is never re-used as the live error_message.
+    // Re-ask the gate over the fresh evidence - never trusting the repair state or the model - and
+    // only a verified verdict reaches the correction. Anything short of verified leaves the
+    // existing terminal untouched, so a failed repair is still reported as the failure it is.
+    let publishedVerification: RepairFinishedPayload["verification_status"] = "blocked"
+    if (outcome.finalState === "repaired") {
+      const fresh = this.#verifyOrdinaryCompletion(taskId, current)
+      if (fresh.verification === "verified" && this.#publishVerifiedRepair(taskId, epoch, verdict)) {
+        publishedVerification = "verified"
+      }
+    }
     let finishedPayload: RepairFinishedPayload = {
       reason: outcome.reason ?? outcome.gateCode ?? outcome.finalState,
       attempt_id: outcome.attemptId,
       final_state: outcome.finalState,
       gate_verdict: outcome.gateVerdict ?? "blocked",
-      verification_status: "blocked",
+      verification_status: publishedVerification,
       changed_files: [...outcome.changedFiles],
     };
     if (outcome.gateCode !== undefined) finishedPayload = { ...finishedPayload, gate_code: outcome.gateCode };
@@ -1221,6 +1268,33 @@ class TaskManagerImpl implements TaskManager {
     } catch {
       // Bookkeeping must never change the published terminal.
     }
+  }
+
+  // The ONLY path that upgrades a gate-blocked terminal to a verified success, and only for the
+  // run that produced the block. It runs inside the repair's own epoch fence and the store's own
+  // mutate lock, so there is no second completion authority and no write around the gate:
+  // - the caller re-asked the gate over fresh evidence and only its "verified" verdict gets here;
+  // - the record must still carry the gate's failed terminal for this epoch, identified by the
+  //   exact blocked message the gate wrote. An infrastructure failure, a cancellation, a repair
+  //   failure, and another epoch's terminal never match, so their real error text is never cleared;
+  // - clearing error_message is the point: the gate block it described is no longer the outcome.
+  #publishVerifiedRepair(taskId: string, epoch: number, blocked: CompletionGateVerdict): boolean {
+    const expectedError = completionBlockedMessage(blocked)
+    let published = false
+    this.#options.store.mutate(taskId, (record) => {
+      if (record.notification.run_epoch !== epoch) return record
+      if (record.status !== "error" && record.status !== "completed") return record
+      if (record.error_message !== expectedError) return record
+      published = true
+      return {
+        ...record,
+        status: "completed",
+        error_message: undefined,
+        verification_status: "verified",
+        updated_at: nowIso(this.#now),
+      }
+    })
+    return published
   }
 
   /**

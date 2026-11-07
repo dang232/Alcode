@@ -6,12 +6,16 @@
 // for the production adapter.
 
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import { RunnerError } from "../runners/in-process/runner-error";
+import type { PlannedFileOperation } from "./plan";
 import type { ChildHandle, ChildSpec } from "../runners/in-process";
 import type { RunnerOutcome } from "../runners/in-process/child-handle";
 import {
   createHostDiagnosisInvoker,
+  REPAIR_DIAGNOSIS_ANSWER_CONTRACT,
+  REPAIR_FILE_OPERATION_PAYLOAD_CONTRACT,
   RepairDiagnosisError,
   requestRepairDiagnosis,
   type RepairDiagnosisInvoker,
@@ -23,6 +27,10 @@ const REQUEST: RepairDiagnosisRequest = {
   diagnosisContextJson: JSON.stringify({ taskId: "task-1", failedChecks: ["unit-a"] }),
   outputContract: "Respond with the diagnosis JSON contract.",
 };
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
 
 function validAnswerText(): string {
   return JSON.stringify({
@@ -38,6 +46,24 @@ function validAnswerText(): string {
     confidence: 0.7,
     missingInformation: ["the full unit-a log beyond the excerpt"],
     proposedNextAction: "Fix the retry counter in src/fix.ts and rerun unit-a.",
+  });
+}
+
+function answerWithFileOperations(fileOperations: readonly PlannedFileOperation[]): string {
+  return JSON.stringify({
+    observedFacts: ["unit-a failed with exit code 4", "evidence revision abc matches the current tree"],
+    hypotheses: [
+      {
+        statement: "The retry counter is off by one.",
+        supportingFactIndexes: [0],
+        supportingEvidence: ["exit code 4 in the unit-a output excerpt"],
+      },
+    ],
+    supportingEvidence: ["exit code 4 in the unit-a output excerpt"],
+    confidence: 0.7,
+    missingInformation: ["the full unit-a log beyond the excerpt"],
+    proposedNextAction: "Fix the retry counter in src/fix.ts and rerun unit-a.",
+    fileOperations,
   });
 }
 
@@ -115,6 +141,62 @@ describe("repair model diagnosis", () => {
     expect(result.diagnosis.confidence).toBe(0.7);
     expect(result.diagnosis.missingInformation).toEqual(["the full unit-a log beyond the excerpt"]);
     expect(result.diagnosis.proposedNextAction).toBe("Fix the retry counter in src/fix.ts and rerun unit-a.");
+    // No file operations declared: parses, and there is nothing to apply.
+    expect(result.diagnosis.fileOperations).toEqual([]);
+  });
+
+  test("file operations parse with their exact change text: find/replace for modify and content for create", async () => {
+    const invoker: RepairDiagnosisInvoker = async () =>
+      answerWithFileOperations([
+        { path: "src/fix.ts", operation: "modify", find: "counter = 0", replace: "counter = 1" },
+        { path: "src/new.ts", operation: "create", content: "export const made = true;\n" },
+        { path: "src/old.ts", operation: "delete" },
+      ]);
+    const result = await requestRepairDiagnosis(invoker, REQUEST);
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}: ${result.detail}`);
+    expect(result.diagnosis.fileOperations).toEqual([
+      {
+        path: "src/fix.ts",
+        operation: "modify",
+        edits: [{ path: "src/fix.ts", oldText: "counter = 0", newText: "counter = 1" }],
+      },
+      { path: "src/new.ts", operation: "create", content: "export const made = true;\n" },
+      { path: "src/old.ts", operation: "delete" },
+    ]);
+  });
+
+  test("operations without payloads still parse and simply carry no change text", async () => {
+    const invoker: RepairDiagnosisInvoker = async () =>
+      answerWithFileOperations([
+        { path: "src/fix.ts", operation: "modify" },
+        { path: "src/new.ts", operation: "create" },
+      ]);
+    const result = await requestRepairDiagnosis(invoker, REQUEST);
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}: ${result.detail}`);
+    expect(result.diagnosis.fileOperations).toEqual([
+      { path: "src/fix.ts", operation: "modify" },
+      { path: "src/new.ts", operation: "create" },
+    ]);
+  });
+
+  test("malformed payloads are typed failures, never coerced", async () => {
+    const payloads: readonly unknown[] = [
+      [{ path: "src/fix.ts", operation: "modify", find: 42, replace: "x" }],
+      [{ path: "src/fix.ts", operation: "modify", find: "counter = 0" }],
+      [{ path: "src/fix.ts", operation: "modify", replace: "counter = 1" }],
+      [{ path: "src/fix.ts", operation: "modify", find: "", replace: "counter = 1" }],
+      [{ path: "src/new.ts", operation: "create", content: 7 }],
+      [{ path: "src/old.ts", operation: "delete", content: "stale" }],
+      [{ path: "", operation: "modify", find: "a", replace: "b" }],
+      [{ path: "src/fix.ts", operation: "rewrite", find: "a", replace: "b" }],
+    ];
+    for (const payload of payloads) {
+      const invoker: RepairDiagnosisInvoker = async () => answerWithFileOperations(payload);
+      const result = await requestRepairDiagnosis(invoker, REQUEST);
+      if (result.ok) throw new Error(`expected a typed failure for payload ${JSON.stringify(payload)}`);
+      expect(result.reason).toBe("malformed_answer");
+      expect(result.detail.length).toBeGreaterThan(0);
+    }
   });
 
   test("fenced JSON answer parses the payload, not the wrapping", async () => {
@@ -130,6 +212,96 @@ describe("repair model diagnosis", () => {
     if (result.ok) throw new Error("expected a failure");
     expect(result.reason).toBe("malformed_answer");
     expect(result.detail.length).toBeGreaterThan(0);
+  });
+
+  test("a prose answer is re-asked exactly once with the parse error and the exact shape, then succeeds", async () => {
+    const requests: RepairDiagnosisRequest[] = [];
+    const invoker: RepairDiagnosisInvoker = async (request) => {
+      requests.push(request);
+      return requests.length === 1 ? "I think the retry counter is off by one." : validAnswerText();
+    };
+    const result = await requestRepairDiagnosis(invoker, REQUEST);
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}: ${result.detail}`);
+    expect(result.reAskCount).toBe(1);
+    expect(result.diagnosis.hypotheses.length).toBe(1);
+    // Exactly two model calls: the prose answer and one bounded re-ask.
+    expect(requests.length).toBe(2);
+    expect(requests[0].reAsk).toBeUndefined();
+    const reAsk = requests[1].reAsk;
+    if (reAsk === undefined) throw new Error("expected the re-ask marker on the second request");
+    expect(reAsk.attempt).toBe(1);
+    expect(reAsk.parseError).toContain("The model answer is not valid JSON");
+    expect(reAsk.requiredContract).toBe(REPAIR_DIAGNOSIS_ANSWER_CONTRACT);
+  });
+
+  test("malformed twice fails closed with both answer hashes and no third call", async () => {
+    const answers = ["I think the retry counter is off by one.", "Still prose, no JSON here."];
+    const requests: RepairDiagnosisRequest[] = [];
+    const invoker: RepairDiagnosisInvoker = async (request) => {
+      requests.push(request);
+      return answers[requests.length - 1];
+    };
+    const result = await requestRepairDiagnosis(invoker, REQUEST);
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.reason).toBe("malformed_answer");
+    // The bounded retry is exhausted at two calls - never a third.
+    expect(requests.length).toBe(2);
+    expect(requests[1].reAsk?.attempt).toBe(1);
+    // Both raw answers are represented by length + sha256 only, never text.
+    for (const answer of answers) {
+      expect(result.detail).toContain(`length=${answer.length}`);
+      expect(result.detail).toContain(sha256(answer));
+      expect(result.detail).not.toContain(answer);
+    }
+  });
+
+  test("a valid first answer is never re-asked", async () => {
+    let calls = 0;
+    const invoker: RepairDiagnosisInvoker = async () => {
+      calls += 1;
+      return validAnswerText();
+    };
+    const result = await requestRepairDiagnosis(invoker, REQUEST);
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}: ${result.detail}`);
+    expect(calls).toBe(1);
+    expect(result.reAskCount).toBe(0);
+  });
+
+  test("a valid answer the model declines to defend is not re-asked", async () => {
+    let calls = 0;
+    const invoker: RepairDiagnosisInvoker = async () => {
+      calls += 1;
+      return JSON.stringify({ defensible: false, observedFacts: [], hypotheses: [] });
+    };
+    const result = await requestRepairDiagnosis(invoker, REQUEST);
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.reason).toBe("no_defensible_diagnosis");
+    expect(calls).toBe(1);
+  });
+
+  test("host adapter puts the parse error and exact JSON shape into the re-ask prompt", async () => {
+    const prompts: string[] = [];
+    const answers = ["I looked at the failing check and the retry counter is off by one.", validAnswerText()];
+    const invoker = createHostDiagnosisInvoker({
+      runner: {
+        start: async () => {
+          const answer = answers[prompts.length - 1];
+          return fakeHandle({ status: "completed", finalResponse: answer }).handle;
+        },
+      },
+      childSpecFor: (prompt) => {
+        prompts.push(prompt);
+        return baseSpec(prompt);
+      },
+    });
+    const result = await requestRepairDiagnosis(invoker, REQUEST);
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}: ${result.detail}`);
+    expect(result.reAskCount).toBe(1);
+    expect(prompts.length).toBe(2);
+    expect(prompts[0]).not.toContain("## Re-ask");
+    expect(prompts[1]).toContain("## Re-ask: the previous answer could not be parsed");
+    expect(prompts[1]).toContain("The model answer is not valid JSON");
+    expect(prompts[1]).toContain(REPAIR_DIAGNOSIS_ANSWER_CONTRACT);
   });
 
   test("wrongly shaped answer is rejected as malformed", async () => {
@@ -238,6 +410,13 @@ describe("repair model diagnosis", () => {
     expect(seen[0]).toContain(REQUEST.systemInstructions);
     expect(seen[0]).toContain(REQUEST.diagnosisContextJson);
     expect(seen[0]).toContain(REQUEST.outputContract);
+    // The model is asked for the concrete change text, not just file names,
+    // and told where the host-provided file content lives.
+    expect(seen[0]).toContain(REPAIR_FILE_OPERATION_PAYLOAD_CONTRACT);
+    expect(seen[0]).toContain("workspaceContext");
+    expect(seen[0]).toContain("verbatim");
+    expect(seen[0]).toContain("find");
+    expect(seen[0]).toContain("replace");
     expect(disposed()).toBe(true);
   });
 

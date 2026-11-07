@@ -32,20 +32,17 @@
 //      otherwise repair_failed. "verified" is never written from a repair
 //      state or a model claim - the gate verdict is the only source.
 //
-// ADAPTATIONS (parallel-lane files absent from src/repair at write time):
-// - There is no ./model-diagnosis module on disk, so the invoker is an
-//   injected dependency typed here (RepairDiagnosisInvoker). If a
-//   model-diagnosis module lands later, its call should be wrapped to fit
-//   this signature.
-// - There is no ./edit-executor module on disk (no applyRepairEdits to
-//   read), so the edit step is an injected dependency typed here
-//   (RepairEditExecutor). If an edit-executor module lands later, it should
-//   be wrapped to fit this signature.
+// ADAPTATIONS:
+// - The model boundary is injected (RepairDiagnosisInvoker), so a host wraps
+//   ./model-diagnosis' `requestRepairDiagnosis` to fit this signature.
+// - The edit step is injected (RepairEditExecutor), so a host wraps
+//   ./edit-executor's `applyRepairEdits` to fit this signature. The request
+//   carries the validated operations' `edits` in the executor's own
+//   `ProposedRepairEdit` shape (exact oldText/newText), not just file names.
 // - ./diagnosis does not export its RepairDiagnosisInput type, so it is
 //   re-derived here with Extract over the exported
-//   RepairDiagnosisInputResult. ./plan does not export its
-//   PlannedFileOperation type, so it is re-derived here from the exported
-//   ValidateRepairPlanContext.
+//   RepairDiagnosisInputResult. ./plan now exports PlannedFileOperation;
+//   RepairPlannedFileOperation stays as the orchestrator-facing alias.
 // - ./attempt also exports a minimal RepairPlan (summary/steps/createdAt)
 //   that is DISTINCT from ./plan's RepairPlan. The terminal-capable plan
 //   object validated and executed is always ./plan's RepairPlan; the
@@ -65,8 +62,10 @@ import {
   type RepairDiagnosisInputResult,
 } from "./diagnosis";
 import { reverifyAfterRepair } from "./execute";
+import type { ProposedRepairEdit } from "./edit-executor";
 import {
   validateRepairPlan,
+  type PlannedFileOperation,
   type RepairPlan,
   type RepairPlanViolation,
   type ValidateRepairPlanContext,
@@ -82,11 +81,9 @@ type RepairDiagnosisInput = Extract<
   { readonly ok: true }
 >["input"];
 
-// One proposed file operation behind filesToChange. Re-derived here because
-// ./plan exports the validation context but not this member type.
-export type RepairPlannedFileOperation = NonNullable<
-  ValidateRepairPlanContext["fileOperations"]
->[number];
+// One proposed file operation behind filesToChange, including its optional
+// concrete change text. Same named type ./plan validates.
+export type RepairPlannedFileOperation = PlannedFileOperation;
 
 // What the model is asked, per round. correctionRound 0 is the initial ask;
 // 1..MAX_PLAN_CORRECTIONS are bounded corrections carrying the previous
@@ -107,18 +104,22 @@ export type RepairModelProposal =
     }
   | { readonly status: "no_defensible_diagnosis"; readonly reason: string };
 
-// Injected model boundary (./model-diagnosis is absent on disk; this is the
-// seam a future module wraps to fit). The orchestrator never treats a
-// proposal as verified - it is validated, executed, and judged by the gate.
+// Injected model boundary (a host wraps ./model-diagnosis' parsed answer to
+// fit this signature). The orchestrator never treats a proposal as verified -
+// it is validated, executed, and judged by the gate.
 export type RepairDiagnosisInvoker = (
   request: RepairModelRequest,
 ) => Promise<RepairModelProposal>;
 
-type RepairEditRequest = {
+export type RepairEditRequest = {
   readonly plan: RepairPlan;
   readonly diagnosis: RepairDiagnosisInput;
   readonly attemptId: string;
   readonly workspaceDir: string;
+  // The exact edits that passed validateRepairPlan, flattened into the same
+  // ProposedRepairEdit entries `ApplyRepairEditsInput.edits` consumes. Empty
+  // when the model proposed no concrete payload.
+  readonly edits: readonly ProposedRepairEdit[];
   readonly isCancelled?: () => boolean;
 };
 
@@ -126,9 +127,9 @@ type RepairEditResult = {
   readonly changedFiles: readonly string[];
 };
 
-// Injected edit boundary (./edit-executor is absent on disk; this is the
-// seam a future applyRepairEdits wraps to fit). The executor owns the
-// workspace writes; the orchestrator only routes its reported footprint.
+// Injected edit boundary (a host wraps ./edit-executor's applyRepairEdits to
+// fit this signature). The executor owns the workspace writes; the
+// orchestrator only routes the validated operations and reported footprint.
 export type RepairEditExecutor = (
   request: RepairEditRequest,
 ) => Promise<RepairEditResult>;
@@ -332,6 +333,7 @@ export async function runRepairAttempt(
   // Model rounds: initial proposal plus at most MAX_PLAN_CORRECTIONS
   // corrections. Violations from each rejection feed the next round.
   let plan: RepairPlan | null = null;
+  let acceptedFileOperations: readonly RepairPlannedFileOperation[] | undefined;
   let previousViolations: readonly RepairPlanViolation[] | undefined;
   for (let round = 0; round <= MAX_PLAN_CORRECTIONS; round += 1) {
     if (cancelled()) return settleCancelled(attempt);
@@ -362,6 +364,7 @@ export async function runRepairAttempt(
     const validation = validateRepairPlan(proposal.plan, validationContext);
     if (validation.ok) {
       plan = proposal.plan;
+      acceptedFileOperations = proposal.fileOperations;
       break;
     }
     previousViolations = validation.violations;
@@ -382,11 +385,13 @@ export async function runRepairAttempt(
   if (cancelled()) return settleCancelled(attempt);
 
   try {
+    const edits = (acceptedFileOperations ?? []).flatMap((operation) => operation.edits ?? []);
     const edited = await input.editExecutor({
       plan,
       diagnosis,
       attemptId: attempt.attemptId,
       workspaceDir: input.workspaceDir,
+      edits,
       isCancelled: input.isCancelled,
     });
     changedFiles = [...edited.changedFiles];
@@ -417,6 +422,7 @@ export async function runRepairAttempt(
       changedFiles,
       isCancelled: input.isCancelled,
       sessionId: input.sessionId,
+      attemptNumber: attempt.attemptNumber,
     });
   } catch (error) {
     return settle(

@@ -52,6 +52,10 @@ type OrdinaryCaptureInput = {
   readonly binding: OrdinaryRunBinding
   readonly changedFiles: readonly string[]
   readonly available: readonly DagVerifyCheck[]
+  // Evidence attempt number in the record filename. The ordinary run writes attempt 1; a post-
+  // repair reverification writes the NEXT attempt so the original failed record survives on disk
+  // as history instead of being overwritten by the rerun.
+  readonly attempt?: number
 }
 
 type OrdinaryCaptureResult = {
@@ -93,12 +97,13 @@ export function createOrdinaryVerificationCapture(deps: OrdinaryCaptureDeps): Or
       const selection = selectVerificationChecks(scopeFor(input.changedFiles), input.available)
       const records: DagVerificationRecord[] = []
       const persistedPaths: string[] = []
+      const attempt = input.attempt ?? 1
       for (const check of selection.required) {
         if (deps.isCancelled?.() === true) break
         // Read the revision immediately before running: the record then names the tree the command
         // actually saw, not a tree from before a concurrent edit.
         const sourceRevision = deps.currentRevision()
-        const base = { check, projectDir: deps.projectDir, attempt: 1 }
+        const base = { check, projectDir: deps.projectDir, attempt }
         const result =
           deps.isCancelled === undefined
             ? await runner(base)
@@ -122,7 +127,7 @@ export function createOrdinaryVerificationCapture(deps: OrdinaryCaptureDeps): Or
           input.binding.runId,
           ORDINARY_VERIFICATION_NODE,
           check.checkId,
-          1,
+          attempt,
           serializeVerificationRecord(record),
         )
         records.push(record)

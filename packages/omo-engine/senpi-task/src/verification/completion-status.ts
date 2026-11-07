@@ -29,6 +29,13 @@ export type CompletionGateVerdict = {
   readonly reason?: string;
 };
 
+// The ONE spelling of a blocked run's terminal error, written when the gate blocks a completion.
+// A repair that later verifies compares the terminal error against this exact text: only the gate's
+// own block may be replaced by a verified repair, never an infrastructure failure or a cancel.
+export function completionBlockedMessage(verdict: CompletionGateVerdict): string {
+  return `completion blocked: ${verdict.code}: ${verdict.reason}`
+}
+
 // A run may publish success only when the gate verified it. Anything else is not a pass.
 export function isVerified(verdict: CompletionGateVerdict): boolean {
   return verdict.verification === "verified";

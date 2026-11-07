@@ -19,12 +19,13 @@ import type {
 import { createFileEvidenceStore, workspaceRevision } from "../verification/evidence-store";
 import { createOrdinaryVerificationCapture } from "../verification/ordinary-capture";
 import { createRepairAttemptStore } from "./store";
-import type { RepairPlan } from "./plan";
+import type { PlannedFileOperation, RepairPlan } from "./plan";
 import {
   MAX_PLAN_CORRECTIONS,
   runRepairAttempt,
   type RepairDiagnosisInvoker,
   type RepairEditExecutor,
+  type RepairEditRequest,
   type RepairModelProposal,
   type RunRepairAttemptInput,
 } from "./orchestrator";
@@ -226,6 +227,98 @@ describe("repair orchestrator", () => {
     expect(stored?.diagnosisRevision).toBe(revision);
     // The persisted summary names the diagnosed cause, not a model verdict.
     expect(stored?.plan?.summary).toContain("off-by-one");
+  });
+
+  test("model payload travels through validation into the edit executor request", async () => {
+    const workspace = gitWorkspace("orch-payload-");
+    const evidenceRoot = join(tempRoot("orch-payload-ev-"), "evidence");
+    const repairRoot = join(tempRoot("orch-payload-rep-"), "repairs");
+    const checks = [makeCheck("unit-a", ["src"])];
+    await captureEvidence({ workspace, evidenceRoot, runId: "task-1", epoch: 0, checks, exitCode: 4, output: "red" });
+
+    const payload: readonly PlannedFileOperation[] = [
+      {
+        path: "src/fix.ts",
+        operation: "modify",
+        edits: [{ path: "src/fix.ts", oldText: "counter = 0", newText: "counter = 1" }],
+      },
+    ];
+    let seen: RepairEditRequest | undefined;
+    const outcome = await runRepairAttempt(
+      baseInput({
+        workspace,
+        evidenceRoot,
+        repairRoot,
+        catalogue: catalogueFor(checks),
+        runId: "task-1",
+        epoch: 0,
+        invoker: async () => {
+          const proposal: RepairModelProposal = { status: "proposed", plan: goodPlan(), fileOperations: payload };
+          return proposal;
+        },
+        editExecutor: async (request) => {
+          seen = request;
+          mkdirSync(join(workspace, "src"), { recursive: true });
+          writeFileSync(join(workspace, "src", "fix.ts"), "counter = 1\n");
+          return { changedFiles: ["src/fix.ts"] };
+        },
+        runner: stubRunner(0, "green"),
+      }),
+    );
+
+    expect(outcome.finalState).toBe("repaired");
+    expect(outcome.gateVerdict).toBe("verified");
+    // The executor receives the change text itself in its own edits shape,
+    // not only the file name.
+    expect(seen?.edits).toEqual([
+      { path: "src/fix.ts", oldText: "counter = 0", newText: "counter = 1" },
+    ]);
+    expect(seen?.edits?.[0]?.oldText).toBe("counter = 0");
+    expect(seen?.edits?.[0]?.newText).toBe("counter = 1");
+  });
+
+  test("payload rejected by plan validation never reaches the executor", async () => {
+    const workspace = gitWorkspace("orch-payload-reject-");
+    const evidenceRoot = join(tempRoot("orch-payload-reject-ev-"), "evidence");
+    const repairRoot = join(tempRoot("orch-payload-reject-rep-"), "repairs");
+    const checks = [makeCheck("unit-a", ["src"])];
+    await captureEvidence({ workspace, evidenceRoot, runId: "task-1", epoch: 0, checks, exitCode: 4, output: "red" });
+
+    let editsRan = false;
+    const outcome = await runRepairAttempt(
+      baseInput({
+        workspace,
+        evidenceRoot,
+        repairRoot,
+        catalogue: catalogueFor(checks),
+        runId: "task-1",
+        epoch: 0,
+        invoker: async () => {
+          const proposal: RepairModelProposal = {
+            status: "proposed",
+            plan: goodPlan(),
+            fileOperations: [
+              {
+                path: "src/fix.ts",
+                operation: "modify",
+                edits: [{ path: "src/fix.ts", oldText: "counter = 0", newText: "counter = 0" }],
+              },
+            ],
+          };
+          return proposal;
+        },
+        editExecutor: async () => {
+          editsRan = true;
+          return { changedFiles: [] };
+        },
+        runner: stubRunner(0, "green"),
+      }),
+    );
+
+    expect(outcome.finalState).toBe("repair_failed");
+    expect(outcome.reason).toBe("plan_retry_exhausted");
+    expect(outcome.detail ?? "").toContain("no_op_edit");
+    expect(editsRan).toBe(false);
   });
 
   test("model says no defensible diagnosis: repair_failed with an explicit reason, edits never run", async () => {

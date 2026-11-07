@@ -21,6 +21,7 @@ type ErrorOutcomeInput = {
 // Live manager state the tracker reads through, so every ownership verdict is computed from the
 // freshest handles and the freshest on-disk record rather than facts captured when the tracking
 // cycle was armed.
+import { completionBlockedMessage } from "../verification/completion-status"
 import type { CompletionGateVerdict, VerificationStatus } from "../verification/completion-status"
 import type { TerminalTaskRecord } from "./types"
 
@@ -279,7 +280,7 @@ export function createOutcomeTracker(ports: OutcomeTrackerPorts): OutcomeTracker
             persistTerminal(taskId, owned, timestamp, {
               type: "fail",
               timestamp,
-              error_message: `completion blocked: ${verdict.code}: ${verdict.reason}`,
+              error_message: completionBlockedMessage(verdict),
               ...runStatsField,
             })
             stampVerificationStatus(ports, taskId, epoch, "blocked")

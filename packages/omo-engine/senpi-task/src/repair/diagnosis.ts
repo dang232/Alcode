@@ -5,8 +5,9 @@
 // configured scopes, carries each failed record's exit status and bounded
 // output, the timeout/execution metadata, the evidence revision the records
 // were taken against alongside the CURRENT workspace revision, the changed
-// files that are trustworthy only when a revision is available, and the
-// previous repair attempts with their outcomes.
+// files that are trustworthy only when a revision is available, a bounded
+// host-observed view of the files those checks own (so an exact `find` string
+// can be quoted), and the previous repair attempts with their outcomes.
 //
 // Fail-closed: the builder returns a typed reason instead of an input when no
 // failed record exists, when the evidence revision cannot be determined, or
@@ -21,6 +22,8 @@
 // invents none.
 
 import { execFileSync } from "node:child_process";
+import { closeSync, lstatSync, openSync, readdirSync, readSync, type Dirent } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
   isVerificationAccepting,
   parseVerificationRecord,
@@ -42,6 +45,28 @@ import type { RepairAttemptStore } from "./store";
 // one verbose failure cannot bloat the repair input. Stated on every failed
 // check entry as `outputCapChars` alongside `outputTruncated`.
 const DIAGNOSIS_OUTPUT_CAP_CHARS = 2000;
+
+// Bound on the host-observed workspace view: at most this many bytes of each
+// file, at most this many files, so one large tree cannot bloat the prompt.
+// A file larger than the cap is reported as truncated (sizeBytes >
+// contentBytes) and its content ends with an explicit host marker.
+export const DIAGNOSIS_FILE_CONTENT_CAP_BYTES = 8 * 1024;
+export const DIAGNOSIS_MAX_CONTEXT_FILES = 3;
+
+// Directories that never describe the code under repair: repository internals,
+// installed dependencies, and Alcode's own approval/verification state.
+const WORKSPACE_CONTEXT_SKIP_DIRS = new Set([".git", "node_modules", ".alcode", ".omo"]);
+
+// One file in the bounded workspace view. `content` is the first
+// DIAGNOSIS_FILE_CONTENT_CAP_BYTES bytes of the file exactly as stored; when
+// `truncated` is true a host marker line was appended to say what was cut.
+export type RepairWorkspaceFileContext = {
+  readonly path: string;
+  readonly sizeBytes: number;
+  readonly contentBytes: number;
+  readonly truncated: boolean;
+  readonly content: string;
+};
 
 // One failed check with its configured scope and bounded execution evidence.
 type FailedCheckDiagnosis = {
@@ -112,6 +137,11 @@ type RepairDiagnosisInput = {
   // be determined (changedFilesTrustworthy); otherwise empty.
   readonly changedFiles: readonly string[];
   readonly changedFilesTrustworthy: boolean;
+  // Host-observed file contents for the failed checks' scopes (first
+  // DIAGNOSIS_MAX_CONTEXT_FILES files, first DIAGNOSIS_FILE_CONTENT_CAP_BYTES
+  // bytes each). Facts only: the model may quote a `find` from here, never
+  // invent one.
+  readonly workspaceContext: readonly RepairWorkspaceFileContext[];
   readonly previousAttempts: readonly PreviousAttemptSummary[];
 };
 
@@ -232,6 +262,130 @@ function listChangedFiles(workspaceDir: string): readonly string[] {
   return [...new Set(files)].sort();
 }
 
+function toWorkspaceRelativePath(workspaceDir: string, absolutePath: string): string | null {
+  const rel = relative(workspaceDir, absolutePath);
+  if (rel.length === 0) return null;
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+  return rel.split(sep).join("/");
+}
+
+// List the regular files a scope owns. A file scope yields that file; a
+// directory scope (or "" for a run-scoped check) is walked deterministically
+// and stops at `limit` files. Symlinks are skipped so the view cannot leave
+// the workspace, and repository/dependency internals are never walked.
+function collectScopeFiles(workspaceDir: string, scope: string, limit: number): readonly string[] {
+  if (limit <= 0) return [];
+  const absolute = resolve(workspaceDir, scope);
+  let stats: ReturnType<typeof lstatSync>;
+  try {
+    stats = lstatSync(absolute);
+  } catch {
+    return [];
+  }
+  if (stats.isSymbolicLink()) return [];
+  if (stats.isFile()) {
+    const rel = toWorkspaceRelativePath(workspaceDir, absolute);
+    return rel === null ? [] : [rel];
+  }
+  if (!stats.isDirectory()) return [];
+  const rootRelative = toWorkspaceRelativePath(workspaceDir, absolute);
+  if (rootRelative === null && resolve(absolute) !== resolve(workspaceDir)) return [];
+
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    if (files.length >= limit) return;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+    for (const entry of entries) {
+      if (files.length >= limit) return;
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        if (WORKSPACE_CONTEXT_SKIP_DIRS.has(entry.name)) continue;
+        walk(resolve(dir, entry.name));
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const rel = toWorkspaceRelativePath(workspaceDir, resolve(dir, entry.name));
+      if (rel !== null) files.push(rel);
+    }
+  };
+  walk(absolute);
+  return files;
+}
+
+// Deterministic candidate order: each failed check's scopes in catalogue order
+// (declaration order in the catalogue's [a-z] sorted check list), then the
+// changed files already in the input, capped globally.
+function collectWorkspaceContextFiles(
+  workspaceDir: string,
+  scopesByCheck: readonly (readonly string[])[],
+  changedFiles: readonly string[],
+): readonly string[] {
+  const files: string[] = [];
+  const seen = new Set<string>();
+  const add = (candidate: string): void => {
+    if (files.length >= DIAGNOSIS_MAX_CONTEXT_FILES) return;
+    const normalized = candidate.replace(/\\/g, "/").replace(/^\.\//, "");
+    if (normalized.length === 0 || seen.has(normalized)) return;
+    seen.add(normalized);
+    files.push(normalized);
+  };
+  for (const scopes of scopesByCheck) {
+    if (files.length >= DIAGNOSIS_MAX_CONTEXT_FILES) break;
+    // An empty configuredScope means the check is run-scoped: it owns the tree.
+    for (const scope of scopes.length === 0 ? [""] : scopes) {
+      if (files.length >= DIAGNOSIS_MAX_CONTEXT_FILES) break;
+      for (const file of collectScopeFiles(workspaceDir, scope, DIAGNOSIS_MAX_CONTEXT_FILES - files.length)) {
+        add(file);
+      }
+    }
+  }
+  for (const changed of changedFiles) add(changed);
+  return files;
+}
+
+// Read at most DIAGNOSIS_FILE_CONTENT_CAP_BYTES from one file. The read itself
+// is bounded (one extra byte proves truncation without loading a huge file),
+// and a truncated file says so both structurally and in its content.
+function readWorkspaceFileContext(workspaceDir: string, relativePath: string): RepairWorkspaceFileContext | null {
+  const absolute = resolve(workspaceDir, relativePath);
+  const normalized = toWorkspaceRelativePath(workspaceDir, absolute);
+  if (normalized === null) return null;
+  let stats: ReturnType<typeof lstatSync>;
+  try {
+    stats = lstatSync(absolute);
+  } catch {
+    return null;
+  }
+  if (stats.isSymbolicLink() || !stats.isFile()) return null;
+  const sizeBytes = stats.size;
+  const readBytes = Math.min(sizeBytes, DIAGNOSIS_FILE_CONTENT_CAP_BYTES + 1);
+  const buffer = Buffer.alloc(readBytes);
+  let bytesRead = 0;
+  try {
+    const fd = openSync(absolute, "r");
+    try {
+      bytesRead = readSync(fd, buffer, 0, readBytes, 0);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const prefix = buffer.subarray(0, Math.min(bytesRead, DIAGNOSIS_FILE_CONTENT_CAP_BYTES));
+  const truncated = sizeBytes > prefix.length;
+  let content = prefix.toString("utf8");
+  if (truncated) {
+    content += `\n[host truncated: showing first ${prefix.length} of ${sizeBytes} bytes]`;
+  }
+  return { path: normalized, sizeBytes, contentBytes: prefix.length, truncated, content };
+}
+
 export function buildRepairDiagnosisInput(deps: BuildRepairDiagnosisInputDeps): RepairDiagnosisInputResult {
   const store = createFileEvidenceStore(deps.evidenceRoot);
   let listed: readonly string[];
@@ -328,6 +482,17 @@ export function buildRepairDiagnosisInput(deps: BuildRepairDiagnosisInputDeps): 
     scopeByCheckId.set(check.checkId, check.coveredPaths === undefined ? [] : [...check.coveredPaths]);
   }
 
+  const workspaceContext: RepairWorkspaceFileContext[] = [];
+  const contextFiles = collectWorkspaceContextFiles(
+    deps.workspaceDir,
+    failed.map((record) => scopeByCheckId.get(record.checkId) ?? []),
+    changedFiles,
+  );
+  for (const file of contextFiles) {
+    const context = readWorkspaceFileContext(deps.workspaceDir, file);
+    if (context !== null) workspaceContext.push(context);
+  }
+
   return {
     ok: true,
     input: {
@@ -340,6 +505,7 @@ export function buildRepairDiagnosisInput(deps: BuildRepairDiagnosisInputDeps): 
       revisionsMatch: evidenceRevision === currentRevision,
       changedFiles,
       changedFilesTrustworthy,
+      workspaceContext,
       previousAttempts: deps.attemptStore.list(deps.taskId).map(summarizeAttempt),
     },
   };

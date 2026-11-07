@@ -26,6 +26,9 @@ export type ReverifyAfterRepairInput = {
   readonly changedFiles: readonly string[];
   readonly isCancelled?: () => boolean;
   readonly sessionId?: string;
+  // Repair attempt number. Post-repair evidence is written at the NEXT evidence attempt, so the
+  // pre-repair record (attempt 1) is preserved as history rather than overwritten by the rerun.
+  readonly attemptNumber?: number;
 };
 
 export type ReverifyAfterRepairResult =
@@ -80,6 +83,9 @@ export async function reverifyAfterRepair(input: ReverifyAfterRepairInput): Prom
     binding: { runId: input.taskId, sessionId: input.sessionId ?? input.taskId, epoch: input.runEpoch },
     changedFiles: input.changedFiles,
     available,
+    // A repair rerun is a NEW evidence attempt: the original failure stays readable on disk while
+    // the gate reads the highest attempt for the current revision.
+    attempt: (input.attemptNumber ?? 1) + 1,
   });
   const executedCheckIds = captured.records.map((record) => record.checkId);
 

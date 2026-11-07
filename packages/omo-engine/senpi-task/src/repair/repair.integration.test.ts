@@ -26,6 +26,11 @@ import { isBlocked, isVerified } from "../verification/completion-status";
 import { createFileEvidenceStore, workspaceRevision } from "../verification/evidence-store";
 import { createOrdinaryVerificationCapture } from "../verification/ordinary-capture";
 import { advanceRepairAttempt, createRepairAttempt } from "./attempt";
+import {
+  buildRepairDiagnosisInput,
+  DIAGNOSIS_FILE_CONTENT_CAP_BYTES,
+  DIAGNOSIS_MAX_CONTEXT_FILES,
+} from "./diagnosis";
 import { applyRepairEdits } from "./edit-executor";
 import { reverifyAfterRepair } from "./execute";
 import { MAX_PLAN_CORRECTIONS, runRepairAttempt } from "./orchestrator";
@@ -315,6 +320,121 @@ describe("repair integration", () => {
     expect(missing.ok).toBe(false);
     expect(missing.violations.map((violation) => violation.code)).toContain("missing_rerun_set");
     expect(validateRepairPlan(goodPlan(), { catalogue }).ok).toBe(true);
+  });
+
+  test("payload validation: empty replacement and no-op edits reject, while absent payloads and protected payload paths keep today's verdict", () => {
+    const catalogue = catalogueFor([makeCheck("unit-a", ["src"])]);
+    const codes = (result: ReturnType<typeof validateRepairPlan>): readonly string[] =>
+      result.violations.map((violation) => violation.code);
+
+    const emptyReplacement = validateRepairPlan(goodPlan(), {
+      catalogue,
+      fileOperations: [
+        {
+          path: "src/fix.ts",
+          operation: "modify",
+          edits: [{ path: "src/fix.ts", oldText: "counter = 0", newText: "" }],
+        },
+      ],
+    });
+    expect(emptyReplacement.ok).toBe(false);
+    expect(codes(emptyReplacement)).toContain("empty_replacement");
+
+    const noOp = validateRepairPlan(goodPlan(), {
+      catalogue,
+      fileOperations: [
+        {
+          path: "src/fix.ts",
+          operation: "modify",
+          edits: [{ path: "src/fix.ts", oldText: "counter = 0", newText: "counter = 0" }],
+        },
+      ],
+    });
+    expect(noOp.ok).toBe(false);
+    expect(codes(noOp)).toContain("no_op_edit");
+
+    // A bare operation (no payload) stays valid; it is simply not applicable.
+    expect(
+      validateRepairPlan(goodPlan(), {
+        catalogue,
+        fileOperations: [{ path: "src/fix.ts", operation: "modify" }],
+      }).ok,
+    ).toBe(true);
+
+    // A payload on a protected path is rejected exactly like a bare operation.
+    const protectedBare = validateRepairPlan(goodPlan(), {
+      catalogue,
+      fileOperations: [{ path: "verification/catalogue.json", operation: "modify" }],
+    });
+    const protectedPayload = validateRepairPlan(goodPlan(), {
+      catalogue,
+      fileOperations: [
+        {
+          path: "verification/catalogue.json",
+          operation: "modify",
+          edits: [
+            { path: "verification/catalogue.json", oldText: '"checks":[]', newText: '"checks":["x"]' },
+          ],
+        },
+      ],
+    });
+    expect(codes(protectedBare)).toContain("protected_verification_authority");
+    expect(codes(protectedPayload)).toContain("protected_verification_authority");
+  });
+
+  test("diagnosis input carries a bounded host-observed workspace view so an exact find can be quoted", async () => {
+    const workspace = gitWorkspace("rint-context-");
+    writeFileSync(
+      join(workspace, "src", "a-large.ts"),
+      "x".repeat(DIAGNOSIS_FILE_CONTENT_CAP_BYTES + 500),
+    );
+    writeFileSync(join(workspace, "src", "z-extra.ts"), "export const extra = true;\n");
+    const evidenceRoot = join(tempRoot("rint-context-ev-"), "evidence");
+    const checks = [makeCheck("unit-a", ["src"])];
+    await captureEvidence({ workspace, evidenceRoot, runId: "task-1", epoch: 0, checks, exitCode: 1, output: "red" });
+
+    const built = buildRepairDiagnosisInput({
+      taskId: "task-1",
+      runId: "task-1",
+      epoch: 0,
+      catalogue: catalogueFor(checks),
+      evidenceRoot,
+      workspaceDir: workspace,
+      attemptStore: createRepairAttemptStore({ root: join(tempRoot("rint-context-rep-"), "repairs") }),
+      changedFiles: () => ["package.json"],
+    });
+    if (!built.ok) throw new Error("diagnosis build failed: " + built.detail);
+    const context = built.input.workspaceContext;
+    // Deterministic alphabetical walk, capped: z-extra.ts and the changed
+    // package.json are beyond the file cap.
+    expect(context.length).toBe(DIAGNOSIS_MAX_CONTEXT_FILES);
+    expect(context.map((entry) => entry.path)).toEqual(["src/a-large.ts", "src/fix.ts", "src/other.ts"]);
+
+    const large = context[0];
+    expect(large?.truncated).toBe(true);
+    expect(large?.sizeBytes).toBe(DIAGNOSIS_FILE_CONTENT_CAP_BYTES + 500);
+    expect(large?.contentBytes).toBe(DIAGNOSIS_FILE_CONTENT_CAP_BYTES);
+    expect(large?.content.startsWith("x".repeat(DIAGNOSIS_FILE_CONTENT_CAP_BYTES))).toBe(true);
+    // Truncation is stated, never silent.
+    expect(large?.content).toContain("[host truncated:");
+
+    const fix = context.find((entry) => entry.path === "src/fix.ts");
+    expect(fix?.truncated).toBe(false);
+    expect(fix?.content).toBe(readFileSync(join(workspace, "src", "fix.ts"), "utf8"));
+
+    // A file-scoped check leaves room for the changed file already in the input.
+    const fileScoped = buildRepairDiagnosisInput({
+      taskId: "task-1",
+      runId: "task-1",
+      epoch: 0,
+      catalogue: catalogueFor([makeCheck("unit-a", ["src/fix.ts"])]),
+      evidenceRoot,
+      workspaceDir: workspace,
+      attemptStore: createRepairAttemptStore({ root: join(tempRoot("rint-context-file-rep-"), "repairs") }),
+      changedFiles: () => ["package.json"],
+    });
+    if (!fileScoped.ok) throw new Error("diagnosis build failed: " + fileScoped.detail);
+    expect(fileScoped.input.workspaceContext.map((entry) => entry.path)).toEqual(["src/fix.ts", "package.json"]);
   });
 
   test("model cannot bypass plan validation: orchestrator refuses an unvalidated plan without running edits", async () => {
