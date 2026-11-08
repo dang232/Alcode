@@ -208,6 +208,8 @@ export const mergeRepairEntry = (
 
 export type DagNodeView = {
   id: string;
+  /** Child task record that executed this node; null when the wire carries none. */
+  readonly taskId: string | null;
   label: string;
   state: string;
   attempt: number;
@@ -278,11 +280,13 @@ const readNode = (raw: JsonValue | undefined): DagNodeView | null => {
   const state = wireString(raw.state);
   const prompt = wireString(raw.prompt);
   const dependsOn = wireStringArray(raw.depends_on);
+  const rawTaskId = wireString(raw.task_id);
   if (id === null || label === null || state === null || prompt === null || dependsOn === null) {
     return null;
   }
   return {
     id,
+    taskId: rawTaskId !== null && rawTaskId.length > 0 ? rawTaskId : null,
     label,
     state,
     attempt: wireNumber(raw.attempt) ?? 0,

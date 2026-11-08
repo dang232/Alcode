@@ -546,12 +546,18 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       badgeRow.append(text('span', 'dag-badge dag-details-auto', 'auto-selected'));
       card.append(badgeRow);
     }
+    // The wire node carries no node output (the engine persists a bounded preview, but the panel
+    // payload does not include it), so this row shows the PROMPT. Labelling it "output" made the
+    // panel assert something false about what a node produced.
     const rows: [string, string][] = [
       ['id', node.id],
+      // The child task that actually ran this node. A node without one shows
+      // an em dash: attribution is never guessed.
+      ['task_id', node.taskId ?? '—'],
       ['label', node.label],
       ['state', node.state],
       ['attempt', String(node.attempt)],
-      ['output', node.prompt],
+      ['prompt', node.prompt],
       ['depends_on', node.dependsOn.join(', ') || '—'],
       ['started', node.startedAt ?? '—'],
       ['completed', node.completedAt ?? '—'],

@@ -111,6 +111,43 @@ describe('parseSnapshotDoc', () => {
   });
 });
 
+describe('node task attribution', () => {
+  const docWithTaskId = (taskId?: string) => {
+    const node: WireRecord = {
+      id: 'a', label: 'a', state: 'running', attempt: 1, prompt: 'do a',
+      depends_on: [], started_at: null, completed_at: null,
+    };
+    if (taskId !== undefined) node.task_id = taskId;
+    return {
+      schemaVersion: 1,
+      sessionId: 'ses_a',
+      updatedAt: '2026-11-07T00:00:00.000Z',
+      dag: {
+        runs: [{
+          run_id: 'r1', run_key: 'k', name: 'n', status: 'running',
+          nodes: [node],
+          edges: [],
+        }],
+      },
+      tasks: null,
+    };
+  };
+
+  test('reads the child task id the wire node carries', () => {
+    const outcome = parseSnapshotDoc(docWithTaskId('st_child01'));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0]?.nodes[0]?.taskId).toBe('st_child01');
+  });
+
+  test('an absent child task id stays null, never invented', () => {
+    const outcome = parseSnapshotDoc(docWithTaskId());
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0]?.nodes[0]?.taskId).toBeNull();
+  });
+});
+
 describe('stringsFor', () => {
   test('covers every shipped locale with real text', () => {
     expect(DAG_PANE_LOCALES).toHaveLength(13);
