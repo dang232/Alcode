@@ -16,6 +16,7 @@ import type { DagNodeView, DagRepairView, DagRunView, DagSnapshotView, DagTaskVi
 const node = (overrides: Partial<DagNodeView>): DagNodeView => ({
   id: 'a',
   taskId: null,
+  nodeId: null,
   label: 'a',
   state: 'pending',
   attempt: 1,
@@ -48,6 +49,7 @@ const viewWithTasks = (runs: DagRunView[], tasks: DagTaskView[]): DagSnapshotVie
 
 const task = (overrides: Partial<DagTaskView> = {}): DagTaskView => ({
   taskId: 'a',
+  nodeId: null,
   status: 'error',
   name: 'a',
   summary: '',
