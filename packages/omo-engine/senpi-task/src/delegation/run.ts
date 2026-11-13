@@ -1,7 +1,7 @@
 import type { DagManager, DagStartParams } from "../dag/manager"
 import type { DagRunResult } from "../dag/handle"
 import { isTerminalDagRunStatus } from "../dag/types"
-import type { DagRunId } from "../dag/types"
+import type { DagNodeId, DagRunId } from "../dag/types"
 
 import {
   buildEngineeringDelegationPlan,
@@ -64,27 +64,90 @@ export type EngineeringDelegationRunDeps = {
 }
 
 /**
- * What this seam could do about a deadline. The manager exposes no run-cancel
- * (DagManager: manager.ts:211-218; its attach handle: manager.ts:161-164), so it is either
- * unnecessary or unavailable. The engine's only cancel is DagScheduler.cancel
- * (scheduler.ts:151,336), which the scheduler owner - not this module - wires.
+ * The deadline cannot be honoured at this seam. The manager exposes no run-cancel
+ * (DagManager: manager.ts:211-218; its attach handle: manager.ts:161-164), and the engine's only
+ * cancel is DagScheduler.cancel (scheduler.ts:151,336), which the scheduler owner - not this
+ * module - wires. Once the wait surface reports a non-terminal snapshot there is no way for this
+ * module to stop the run.
+ *
+ * This is an explicit typed failure, not a completion: `ok: false` means a caller cannot read it
+ * as success, and no cancellation is claimed. The real node observations ride along so the caller
+ * can report what actually happened.
  */
-type EngineeringDelegationDeadlineCancellation = "not_needed" | "unavailable_at_manager_seam"
+export type EngineeringDelegationDeadlineUnavailable = {
+  readonly ok: false
+  readonly kind: "deadline_unavailable_at_manager_seam"
+  readonly reason: string
+  readonly runId: DagRunId
+  readonly outcomes: readonly DelegationNodeOutcome[]
+  readonly unresolved: boolean
+}
 
 export type EngineeringDelegationRunCompletion = {
   readonly ok: true
   readonly runId: DagRunId
   readonly outcomes: readonly DelegationNodeOutcome[]
   readonly unresolved: boolean
-  readonly deadlineExceeded: boolean
-  readonly deadlineCancellation: EngineeringDelegationDeadlineCancellation
+  // Which planned node(s) had no terminal outcome and which outcome(s) belong to a node the plan
+  // never carried. They stay separate so a caller can name both directions, not just a boolean.
+  readonly missingNodeIds: readonly DagNodeId[]
+  readonly foreignNodeIds: readonly DagNodeId[]
+}
+
+// Module-private on purpose: the union below is the published contract, and no consumer imports
+// the plan-rejection member by name (manager.ts imports the completion and deadline members).
+type EngineeringDelegationPlanRejected = {
+  readonly ok: false
+  readonly rejection: DelegationPlanRejection
 }
 
 export type EngineeringDelegationRunResult =
   | EngineeringDelegationRunCompletion
-  | { readonly ok: false; readonly rejection: DelegationPlanRejection }
+  | EngineeringDelegationDeadlineUnavailable
+  | EngineeringDelegationPlanRejected
 
 const NO_DEADLINE = Number.POSITIVE_INFINITY
+
+/**
+ * Why a run's terminal node set does not match the plan. The two set conditions stay separate so
+ * a caller can name the missing planned node(s) and the unplanned outcome(s); a count cannot tell
+ * them apart. `run_record_unreadable` is the manager seam's own condition, never a set mismatch.
+ */
+type DelegationNodeSetMismatch =
+  | "planned_node_outcomes_missing"
+  | "unplanned_node_outcomes_present"
+  | "planned_and_unplanned_node_outcomes"
+
+export type DelegationUnresolvedReason = DelegationNodeSetMismatch | "run_record_unreadable"
+
+export type DelegationNodeSetComparison = {
+  readonly missingNodeIds: readonly DagNodeId[]
+  readonly foreignNodeIds: readonly DagNodeId[]
+  readonly mismatch: DelegationNodeSetMismatch | undefined
+}
+
+/**
+ * Compare planned node ids against terminal outcome ids. A count is not an oracle: one planned
+ * node dropped and one unplanned node added keeps the length while changing the result, so both
+ * directions are derived from the id sets and reported by name.
+ */
+export function compareDelegationNodeSets(
+  plannedNodeIds: readonly DagNodeId[],
+  outcomes: readonly DelegationNodeOutcome[],
+): DelegationNodeSetComparison {
+  const planned = new Set<string>(plannedNodeIds)
+  const observed = new Set<DagNodeId>(outcomes.map((outcome) => outcome.nodeId))
+  const missingNodeIds = plannedNodeIds.filter((nodeId) => !observed.has(nodeId))
+  const foreignNodeIds = [...observed].filter((nodeId) => !planned.has(nodeId))
+  const mismatch = missingNodeIds.length === 0 && foreignNodeIds.length === 0
+    ? undefined
+    : missingNodeIds.length > 0 && foreignNodeIds.length > 0
+      ? "planned_and_unplanned_node_outcomes"
+      : missingNodeIds.length > 0
+        ? "planned_node_outcomes_missing"
+        : "unplanned_node_outcomes_present"
+  return { missingNodeIds, foreignNodeIds, mismatch }
+}
 
 export async function runEngineeringDelegation(
   deps: EngineeringDelegationRunDeps,
@@ -96,13 +159,11 @@ export async function runEngineeringDelegation(
       "runEngineeringDelegation needs the engine wait surface; it cannot invent a terminal result",
     )
   }
-  if (
-    request.deadlineMs !== undefined
-    && (!Number.isFinite(request.deadlineMs) || request.deadlineMs < 0)
-  ) {
+  const deadlineMs = request.deadlineMs
+  if (deadlineMs !== undefined && (!Number.isFinite(deadlineMs) || deadlineMs < 0)) {
     throw new DelegationRunError(
       "invalid_deadline",
-      `deadlineMs must be a finite non-negative number, received ${request.deadlineMs}`,
+      `deadlineMs must be a finite non-negative number, received ${deadlineMs}`,
     )
   }
 
@@ -125,9 +186,13 @@ export async function runEngineeringDelegation(
     return { ok: false, rejection: plan }
   }
 
+  // SAFETY: every node id in this definition was branded by delegationNodeId() inside the plan
+  // builder; DagNodeInput widens ids back to string, so the plan owns this narrowing.
+  const plannedNodeIds = plan.definition.nodes.map((node) => node.id as DagNodeId)
+
   const now = deps.now ?? Date.now
   const startedAt = now()
-  const deadlineAt = request.deadlineMs === undefined ? undefined : startedAt + request.deadlineMs
+  const deadlineAt = deadlineMs === undefined ? undefined : startedAt + deadlineMs
 
   // Idempotency belongs to the engine, not to this module: createDagManager.start holds the key
   // lock and reuses a run whose SUBMITTED definition fingerprints identically (manager.ts:373-387),
@@ -146,35 +211,49 @@ export async function runEngineeringDelegation(
   const stoppedBeforeTerminal = !isTerminalDagRunStatus(result.status)
   // The wait contract returns a non-terminal snapshot only when the deadline elapsed. Without a
   // deadline there is nothing to exceed, so that shape stays `unresolved` rather than mislabelled.
-  const deadlineExceeded = stoppedBeforeTerminal && request.deadlineMs !== undefined
+  const deadlineElapsed = stoppedBeforeTerminal && deadlineMs !== undefined
 
-  // The engine's only cancel is DagScheduler.cancel (scheduler.ts:151,336), and it is not on the
-  // manager (manager.ts:211-218) or on the handle manager.attach returns (manager.ts:161-164).
-  // A deadline therefore cannot be cancelled from this seam. Report the children's real states and
-  // the missing capability; never write a synthetic `timed_out` status the engine does not have.
-  const deadlineCancellation: EngineeringDelegationDeadlineCancellation = stoppedBeforeTerminal
-    ? "unavailable_at_manager_seam"
-    : "not_needed"
-
-  // Node records stay authoritative: a terminal run reads the durable record, a run stopped by the
-  // deadline reads the same record through the live handle. Both are engine state, never ours.
+  // Node records stay authoritative: a terminal run reads the durable record, a run that stopped
+  // before its terminal state reads the same record through the live handle. Both are engine
+  // state, never ours.
   const nodes = stoppedBeforeTerminal
     ? deps.dagManager.attach(runId, request.parentSessionId).snapshot().nodes
     : deps.dagManager.record(runId, request.parentSessionId).nodes
 
   const { results } = collectDelegationResults(nodes)
+  // A running node has no terminal outcome, so collectDelegationResults omits it; `unresolved`
+  // reports that absence instead of inventing a state for it. The comparison is by planned id, not
+  // by count: an unplanned terminal node never stands in for a missing planned one.
+  const comparison = compareDelegationNodeSets(plannedNodeIds, results)
+  const unresolved = comparison.mismatch !== undefined
+
+  // The deadline elapsed before the run settled, and the engine's only cancel is DagScheduler.cancel
+  // (scheduler.ts:151,336) - not on the manager (manager.ts:211-218) or on the handle
+  // manager.attach returns (manager.ts:161-164). Fail loudly with the real observations instead of
+  // returning a success-shaped completion or inventing a terminal status the engine does not have.
+  if (deadlineElapsed) {
+    return {
+      ok: false,
+      kind: "deadline_unavailable_at_manager_seam",
+      reason:
+        `deadline of ${deadlineMs}ms elapsed before run ${runId} reached a terminal state; ` +
+        "the manager seam exposes no run cancel, so the run was left running and the deadline " +
+        "could not be honoured (DagScheduler.cancel belongs to the scheduler owner)",
+      runId,
+      outcomes: results,
+      unresolved,
+    }
+  }
 
   // Deliberately no verification verdict: no `verified`, `accepted`, or pass/fail field exists on
   // this result. The engine's evidence gate owns acceptance (dag/verification.ts), and inferring
   // "every node completed" as success here is exactly the judgement this layer must not make.
-  // A running node has no terminal outcome, so collectDelegationResults omits it; `unresolved`
-  // reports that absence instead of inventing a state for it.
   return {
     ok: true,
     runId,
     outcomes: results,
-    unresolved: results.length < plan.definition.nodes.length,
-    deadlineExceeded,
-    deadlineCancellation,
+    unresolved,
+    missingNodeIds: comparison.missingNodeIds,
+    foreignNodeIds: comparison.foreignNodeIds,
   }
 }

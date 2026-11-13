@@ -189,8 +189,11 @@ function delegationRequest(project: string): EngineeringDelegationRunRequest {
 }
 
 function completionOf(result: EngineeringDelegationRunResult): EngineeringDelegationRunCompletion {
-  if (!result.ok) throw new Error(`expected a run completion, received ${result.rejection.code}`)
-  return result
+  if (result.ok) return result
+  if ("rejection" in result) {
+    throw new Error(`expected a run completion, received plan rejection ${result.rejection.code}`)
+  }
+  throw new Error(`expected a run completion, received ${result.kind}: ${result.reason}`)
 }
 
 function nodeState(record: DagRunRecordV1, nodeId: DagNodeId): DagNodeState {
@@ -227,8 +230,8 @@ const OUTCOME_KEYS = ["nodeId", "outcome", "outputBytes", "role", "state"]
 
 function expectNoVerdict(completion: EngineeringDelegationRunCompletion): void {
   expect(Object.keys(completion).sort()).toEqual([
-    "deadlineCancellation",
-    "deadlineExceeded",
+    "foreignNodeIds",
+    "missingNodeIds",
     "ok",
     "outcomes",
     "runId",
@@ -260,8 +263,6 @@ describe("runEngineeringDelegation over the real DAG manager", () => {
     const completion = completionOf(result)
     expect(fixture.runner.startedNodeIds).toEqual([INVESTIGATE, REVIEW, VERIFY])
     expect(completion.unresolved).toBe(false)
-    expect(completion.deadlineExceeded).toBe(false)
-    expect(completion.deadlineCancellation).toBe("not_needed")
 
     // The run id exists in the manager's listing and its durable run record is on disk.
     const listed = fixture.manager.list(PARENT_SESSION_ID)
@@ -328,7 +329,6 @@ describe("runEngineeringDelegation over the real DAG manager", () => {
     expect(completion.outcomes).toEqual(collected.results)
     expect(completion.outcomes.some((outcome) => outcome.outcome === "failed")).toBe(true)
     expect(completion.unresolved).toBe(false)
-    expect(completion.deadlineExceeded).toBe(false)
     expectNoVerdict(completion)
   })
 })

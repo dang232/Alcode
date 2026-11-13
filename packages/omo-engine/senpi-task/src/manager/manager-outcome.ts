@@ -47,10 +47,12 @@ export type OutcomeTrackerPorts = {
   readonly settleIsolation?: (taskId: string, merge: boolean) => Promise<void>
   // The ordinary-completion gate. Consulted before a run may publish `completed`; a "blocked" verdict
   // turns the terminal into a typed failure instead, while a "verified"/"unverified" verdict publishes
-  // success carrying that verification_status. Absent means the wiring cannot verify (no verification
-  // authority at all), and the caller keeps the historical behaviour - publish success as "unverified"
-  // - rather than blocking every run.
-  readonly verifyCompletion?: (taskId: string, owned: TaskRecord) => CompletionGateVerdict
+  // success carrying that verification_status. The host capture that stages the evidence runs before
+  // the gate decides, so the port is async: awaiting it is the authority boundary between a settled
+  // child and any terminal publication. Absent means the wiring cannot verify (no verification
+  // authority at all), and the caller keeps the historical behaviour - publish success as
+  // "unverified" - rather than blocking every run.
+  readonly verifyCompletion?: (taskId: string, owned: TaskRecord) => CompletionGateVerdict | Promise<CompletionGateVerdict>
 }
 
 export type OutcomeTracker = {
@@ -267,11 +269,18 @@ export function createOutcomeTracker(ports: OutcomeTrackerPorts): OutcomeTracker
           // The one publication point for ordinary success. A "blocked" verdict is a real terminal
           // failure with the gate's code in error_message, never a "completed" the parent would
           // trust; a "verified"/"unverified" verdict publishes success carrying that claim, so the
-          // terminal record and the emitted event state it explicitly.
-          const verdict: CompletionGateVerdict = ports.verifyCompletion?.(taskId, owned) ?? {
+          // terminal record and the emitted event state it explicitly. The awaited call is the host
+          // capture plus gate: no terminal may land before the host has produced/read its evidence.
+          const verdict: CompletionGateVerdict = (await ports.verifyCompletion?.(taskId, owned)) ?? {
             verification: "unverified",
             reason: "no verification authority wired",
           }
+          // The capture executes real commands and therefore yields. A stop that arrived while it
+          // ran wins over the verdict, and a run this tracker no longer owns (revival moved the
+          // epoch, teardown released the handle) publishes no terminal from here.
+          const stoppedAfterVerification = ports.stopSettlement?.(taskId)
+          if (stoppedAfterVerification !== undefined) return await settleStopped(taskId, handle, model, epoch, stoppedAfterVerification)
+          if (ownedRecord(ports, taskId, handle, epoch) === null) return
           if (verdict.verification === "blocked") {
             ports.store.appendEvent(taskId, {
               type: "verification_blocked",

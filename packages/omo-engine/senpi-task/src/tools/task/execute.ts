@@ -1,6 +1,7 @@
 import type { AgentToolResult, AgentToolUpdateCallback } from "@code-yeongyu/senpi"
 
 import { loadSenpiBarrel } from "../../lazy/senpi-barrel"
+import { runDelegatedTask } from "./delegated-start"
 import { executeBatch } from "./execute-batch"
 import { runSpawn } from "./execute-single"
 import { buildStartSpec, ensureAutoExecutionMode, singleSpawnParams, taskTargetOf } from "./execute-spec"
@@ -55,6 +56,12 @@ function deliveredKernelTools(detail: TaskKernelToolsDetail, details: TaskToolDe
 
 export function buildTaskExecute(deps: TaskToolDeps, options: ForegroundWaitOptions = {}): TaskExecute {
   return async (_toolCallId, params, signal, onUpdate, ctx) => {
+    // A delegated request is a new top-level branch: it starts ONE parent through the ordinary
+    // manager and never touches the ordinary spawn path below, which stays byte-identical.
+    if (params.delegation !== undefined) {
+      return runDelegatedTask(deps, { params, delegation: params.delegation, signal, ctx })
+    }
+
     const shape = validateBatchShape(params)
     if (shape.kind === "error") return invalidArguments(shape.error.message)
 

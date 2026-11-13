@@ -107,6 +107,21 @@ describe("taskCallLines", () => {
     expect(lines).toEqual(['task "Audit the task tool boundary" foreground'])
   })
 
+  test("#given a delegated call without a prompt #when rendered #then the objective names the work", () => {
+    // given
+    const args = {
+      category: "quick",
+      delegation: { objective: "Prove the delegated tool entry" },
+      run_in_background: false,
+    }
+
+    // when
+    const lines = taskCallLines(args)
+
+    // then
+    expect(lines).toEqual(['task "Prove the delegated tool entry" foreground'])
+  })
+
   test("#given a task_summary #when rendered width-bounded #then the summary replaces the prompt excerpt", () => {
     // given
     const args = {

@@ -16,6 +16,41 @@ const isolationParams = {
   })),
 }
 
+const delegationRoleKeys = ["investigate", "review", "implement", "verify"] as const
+
+// A delegated parent is a coordination record, not a spawned child: the roles below are admitted by
+// the manager's injected admission port, and the parent settles before this tool returns. The
+// objective is the plan input; prompt (when present) is only the parent record's prompt.
+const delegationParams = {
+  objective: Type.String({ minLength: 1, description: "The engineering objective the delegated run must satisfy. The manager builds the DAG plan from this and the roles." }),
+  working_directory: Type.Optional(
+    Type.String({ minLength: 1, description: "Project directory the delegated roles work in; defaults to the caller's cwd." }),
+  ),
+  roles: Type.Array(
+    Type.Object({
+      key: Type.Union([
+        Type.Literal(delegationRoleKeys[0]),
+        Type.Literal(delegationRoleKeys[1]),
+        Type.Literal(delegationRoleKeys[2]),
+        Type.Literal(delegationRoleKeys[3]),
+      ], { description: "Role the node plays: investigate, review, implement, or verify." }),
+      assignment: Type.String({ minLength: 1, description: "What this role must do. MUST be written in English." }),
+      depends_on: Type.Optional(
+        Type.Array(Type.String({ minLength: 1 }), {
+          description: "Role keys this node must wait for, in addition to the plan's built-in ordering.",
+        }),
+      ),
+    }),
+    { minItems: 1, description: "At least one role. The manager plans the run; it never spawns these roles itself." },
+  ),
+  max_nodes: Type.Optional(
+    Type.Integer({ minimum: 1, description: "Optional cap on planned nodes; the plan builder rejects a role set above it." }),
+  ),
+  deadline_ms: Type.Optional(
+    Type.Number({ minimum: 0, description: "Optional elapsed budget. The run is never reported complete when the budget elapses first." }),
+  ),
+}
+
 export const TaskToolParams = Type.Object({
   prompt: Type.Optional(
     Type.String({ description: "The instruction for the child task. MUST be written in English. Mutually exclusive with tasks; provide exactly one of prompt or tasks." }),
@@ -79,6 +114,11 @@ export const TaskToolParams = Type.Object({
         description: "Batch of up to 16 child tasks to spawn in one call. Empty provider padding is normalized before validation. Mutually exclusive with prompt; top-level category/subagent_type/model/load_skills are inherited by items that omit them. An item whose effective target is a category must not carry a model (own or inherited). run_in_background is batch-wide: set it once at the top level; item-level copies must agree.",
       },
     ),
+  ),
+  delegation: Type.Optional(
+    Type.Object(delegationParams, {
+      description: "Start a delegated engineering parent through the ordinary manager. Mutually exclusive with tasks; requires category or subagent_type. The admission port is supplied where the manager is constructed.",
+    }),
   ),
 })
 

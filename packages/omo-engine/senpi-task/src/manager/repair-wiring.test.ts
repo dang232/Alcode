@@ -153,7 +153,7 @@ async function captureEvidence(options: {
     runner: stubRunner(options.exitCode, options.output),
   })
   await capture.capture({
-    binding: { runId: options.runId, sessionId: "repair-wiring-parent", epoch: options.epoch },
+    binding: { taskId: options.runId, sessionId: "repair-wiring-parent", epoch: options.epoch },
     changedFiles: [],
     available: [makeCheck(options.checkId)],
   })
@@ -254,7 +254,7 @@ describe("manager repair wiring (scripted invoker unit test)", () => {
   test("blocked-by-failed-check starts exactly one attempt", async () => {
     const workspace = makeGitWorkspace()
     const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-wiring-auth-")))
-    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
     approveDeclaredCheck(workspace, approvalAuthorityFor(workspace, authorityRoot), "unit-a")
 
     let invokerCalls = 0
@@ -316,7 +316,7 @@ describe("manager repair wiring (scripted invoker unit test)", () => {
   test("cancelled task starts none", async () => {
     const workspace = makeGitWorkspace()
     const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-wiring-auth-")))
-    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
     approveDeclaredCheck(workspace, approvalAuthorityFor(workspace, authorityRoot), "unit-a")
 
     let invokerCalls = 0
@@ -379,7 +379,7 @@ describe("manager repair wiring (scripted invoker unit test)", () => {
   test("malformed evidence starts none", async () => {
     const workspace = makeGitWorkspace()
     const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-wiring-auth-")))
-    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
     approveDeclaredCheck(workspace, approvalAuthorityFor(workspace, authorityRoot), "unit-a")
 
     let invokerCalls = 0
@@ -393,10 +393,11 @@ describe("manager repair wiring (scripted invoker unit test)", () => {
     if (started.kind !== "started") throw new Error("expected started")
     const taskId = started.task_id
 
-    // Malformed (unparseable) evidence: the gate blocks as malformed, which is never repairable.
+    // A foreign/unapproved malformed record the host capture never writes (its own check is
+    // unit-a). The gate lists it, cannot parse it, and blocks as malformed - not repairable.
     const dir = join(harness.evidenceRoot, taskId)
     mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, "run.unit-a.1.json"), "this is not json{")
+    writeFileSync(join(dir, "run.unit-z.1.json"), "this is not json{")
 
     const waiter = harness.manager.waitFor(taskId)
     harness.inProcess.handles.get(taskId)?.settle({ status: "completed", finalResponse: "done" })
@@ -414,7 +415,7 @@ describe("manager repair wiring (scripted invoker unit test)", () => {
   test("a repair that cannot fix leaves the task blocked and never publishes success", async () => {
     const workspace = makeGitWorkspace()
     const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-wiring-auth-")))
-    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
     approveDeclaredCheck(workspace, approvalAuthorityFor(workspace, authorityRoot), "unit-a")
 
     let invokerCalls = 0
@@ -476,7 +477,7 @@ describe("manager repair wiring (scripted invoker unit test)", () => {
   test("a stale epoch publishes nothing", async () => {
     const workspace = makeGitWorkspace()
     const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-wiring-auth-")))
-    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
     approveDeclaredCheck(workspace, approvalAuthorityFor(workspace, authorityRoot), "unit-a")
 
     let invokerCalls = 0
@@ -542,7 +543,7 @@ describe("manager repair wiring (scripted invoker unit test)", () => {
   test("default host adapter without a live model ends repair_failed and stays blocked", async () => {
     const workspace = makeGitWorkspace()
     const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-wiring-auth-")))
-    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
     approveDeclaredCheck(workspace, approvalAuthorityFor(workspace, authorityRoot), "unit-a")
 
     // No scripted invoker: the production default adapter fails closed as model_unavailable.

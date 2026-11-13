@@ -142,7 +142,7 @@ async function captureEvidence(options: {
     runner: stubRunner(options.exitCode, options.output),
   })
   await capture.capture({
-    binding: { runId: options.runId, sessionId: "repair-apply-parent", epoch: options.epoch },
+    binding: { taskId: options.runId, sessionId: "repair-apply-parent", epoch: options.epoch },
     changedFiles: [],
     available: [makeCheck(options.checkId)],
   })
@@ -282,7 +282,7 @@ type BlockedRun = {
 async function blockedRun(invoker: RepairDiagnosisInvoker, repairRunner: VerificationRunner): Promise<BlockedRun> {
   const workspace = makeGitWorkspace()
   const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-apply-auth-")))
-  writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+  writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
   approveDeclaredCheck(workspace, authorityRoot, "unit-a")
 
   const harness = makeRepairHarness({ workspace, authorityRoot, invoker, runner: repairRunner })
@@ -354,7 +354,7 @@ describe("manager default repair applier (scripted payload plan, real executor)"
   test("refuses to write when the workspace moved after the repair baseline", async () => {
     const workspace = makeGitWorkspace()
     const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-apply-auth-")))
-    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+    writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
     approveDeclaredCheck(workspace, authorityRoot, "unit-a")
 
     let invokerCalls = 0

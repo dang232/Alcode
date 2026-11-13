@@ -158,7 +158,7 @@ async function captureEvidence(options: {
     runner: stubRunner(options.exitCode, options.output),
   })
   await capture.capture({
-    binding: { runId: options.runId, sessionId: "repair-terminal-parent", epoch: options.epoch },
+    binding: { taskId: options.runId, sessionId: "repair-terminal-parent", epoch: options.epoch },
     changedFiles: [],
     available: [makeCheck(options.checkId)],
   })
@@ -275,7 +275,7 @@ function readEvidence(harness: RepairHarness, taskId: string, checkId: string, a
 async function blockedRun(invoker: RepairDiagnosisInvoker, repairRunner: VerificationRunner): Promise<BlockedRun> {
   const workspace = makeGitWorkspace()
   const authorityRoot = track(mkdtempSync(join(tmpdir(), "repair-terminal-auth-")))
-  writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(0)"])
+  writeDeclaredCheck(workspace, "unit-a", ["node", "-e", "process.exit(1)"])
   approveDeclaredCheck(workspace, authorityRoot, "unit-a")
 
   const harness = makeRepairHarness({ workspace, authorityRoot, invoker, runner: repairRunner })

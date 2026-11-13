@@ -1,11 +1,22 @@
 import type { ToolDefinition } from "@code-yeongyu/senpi"
 import type { DelegateFallbackEntry } from "../../../delegate-core/src/index.ts"
 import type { OmoTaskSettings } from "../../../omo-config-core/src/index.ts"
-import type { VerificationStatus } from "../verification/completion-status"
 
 import type { VerificationRunner } from "../verification/contract"
 import type { RepairDiagnosisInvoker as RepairAttemptInvoker, RepairEditExecutor } from "../repair/orchestrator"
 import type { DagTaskOwner, DagTaskOwnerKey, OwnedStartResult } from "../dag/owner"
+import type { DagDefinition } from "../dag/graph"
+import type { DagNode, DagNodeId, DagRunId } from "../dag/types"
+import type {
+  DelegationNodeOutcome,
+  DelegationPlanRejectionCode,
+  DelegationRole,
+  EngineeringDelegationRequest,
+  RoleSpec,
+} from "../delegation/plan"
+// The typed deadline refusal from the delegation run seam (p25 todo 16). Type-only: the manager
+// propagates this exact error instead of inventing a `timed_out` status or a success shape.
+import type { EngineeringDelegationDeadlineUnavailable, DelegationUnresolvedReason } from "../delegation/run"
 import type { IsolationRuntime, IsolationStartedDetails } from "../isolation"
 import type { KernelToolBindingRegistry } from "../kernel-tools/bindings"
 import type { KernelToolGrant } from "../kernel-tools/resolve"
@@ -35,14 +46,11 @@ import type { ChildExtensionEvent } from "../runners/child-extension-events"
 
 export type { ExecutionMode } from "./execution-mode"
 
-// An ordinary completion's terminal record: the durable TaskRecord plus the completion gate's
-// verification claim. Optional so records written before the gate existed stay readable; it is
-// only ever "verified" when the gate returned a "verified" verdict for the run. Typed loads drop
-// unknown fields until the state/store lane parses it, so the on-disk JSON and the completion
-// events are the readable carriers today.
-export type TerminalTaskRecord = TaskRecord & {
-  readonly verification_status?: VerificationStatus
-}
+// The terminal projection of an ordinary completion. TaskRecord parses the completion gate's
+// verification_status itself, so this alias names the terminal use of a record rather than adding a
+// field. The claim stays optional: records written before the gate existed carry none, and absence
+// means no verification was ever claimed.
+export type TerminalTaskRecord = TaskRecord
 
 // The unified spec both runner adapters accept. A superset: the rpc adapter uses the subset it
 // needs (task_id, cwd, state_dir, prompt); the in-process adapter also consumes model/tools/agent.
@@ -117,6 +125,28 @@ export type ManagerStartSpec = {
   readonly kernelTools?: KernelToolGrant
   readonly extensions?: readonly string[]
   readonly memberEnv?: Readonly<Record<string, string>>
+  // A delegated request riding the ordinary start() path. Present => the manager builds the plan
+  // and owns the run lifecycle through TaskManagerOptions.admission; absent => today's spawn path
+  // runs byte-identically. `workingDirectory` defaults to spec.cwd and then TaskManagerOptions.cwd.
+  readonly delegation?: ManagerDelegationSpec
+}
+
+// The delegation-shaped part of an ordinary start spec. It carries only the plan input: objective,
+// roles, optional node cap, and the caller-observable deadline. It is NOT a second spawn request:
+// the manager never starts these children itself (see ManagerAdmissionPort).
+export type ManagerDelegationSpec = {
+  readonly objective: string
+  readonly workingDirectory?: string
+  readonly roles: readonly RoleSpec[]
+  readonly maxNodes?: number
+  // The caller-observable budget for the delegated start. The timer starts when the admission drive
+  // starts (after the catalogue/baseline snapshot, which is host setup rather than admitted work)
+  // and covers startRun, admit, the waits, AND the host-side verification capture that runs the
+  // approved checks. Elapsed in any of those phases => the parent is failed as deadline-exceeded and
+  // the typed refusal propagates; never a completed (and never a completed+verified) parent. The
+  // budget cannot kill a check command already in flight - that command keeps its own timeoutMs -
+  // but its late result is marked cancelled and is never consulted for the parent's terminal.
+  readonly deadlineMs?: number
 }
 
 export type ResolvedChildPlan = {
@@ -257,6 +287,186 @@ export type SpawnAdmission =
 
 export type AdmitResident = (parentSessionId: string) => Promise<SpawnAdmission>
 
+// Manager-owned delegation admission (p25 todo 13). The manager must never import the DAG runtime:
+// the host composes this port around the real DAG manager, scheduler admission, and task wait
+// surface, while tests compose a fake. Every DAG-facing shape below is structural and imported
+// TYPE-ONLY, so this module adds no runtime edge into ../dag.
+export type ManagerAdmissionRunSpec = {
+  readonly definition: DagDefinition
+  readonly parentSessionId: string
+  readonly rootSessionId: string
+  // The tree this run's nodes execute in: the request's `workingDirectory`, defaulted to the
+  // caller's spec cwd and then the manager's construction cwd. It is a REQUEST fact, never the
+  // manager's construction cwd when the request names its own directory; the gate runs against the
+  // same value, so children and verification can never observe two different trees.
+  readonly workingDirectory: string
+}
+
+// The run identity startRun returns. A production adapter projects `DagStartResult` onto this:
+// `{ runId: started.snapshot.runId, reused: started.reused }`.
+export type ManagerAdmissionRun = {
+  readonly runId: DagRunId
+  readonly reused?: boolean
+}
+
+// A node the manager asks the port to admit. The engine's node id is the unambiguous target; a
+// role-only target exists for ports that resolve a plan's role to its node themselves, and such a
+// port owns rejecting an ambiguous role. The target addresses a RUN, and the run spec above owns
+// that run's working directory: the directory is deliberately not repeated here, because two
+// copies could disagree and an admitted child could run in a different tree than the gate.
+export type ManagerAdmissionNodeTarget =
+  | { readonly runId: DagRunId; readonly nodeId: DagNodeId; readonly role?: DelegationRole }
+  | { readonly runId: DagRunId; readonly role: DelegationRole }
+
+// The child that executes an admitted node. `taskId` is the engine task id the manager waits on.
+export type ManagerAdmissionChild = {
+  readonly taskId: string
+  readonly nodeId?: DagNodeId
+  readonly role?: DelegationRole
+}
+
+export type ManagerAdmissionWaitOptions = {
+  readonly signal?: AbortSignal
+}
+
+// The terminal projection of a child the manager waited on. A production adapter maps
+// `TaskRecord` onto `{ taskId: record.task_id, status: record.status }`; the manager never needs
+// the rest of the record to know the wait settled.
+export type ManagerAdmissionTerminal = {
+  readonly taskId: string
+  readonly status: TaskStatus
+}
+
+// The persisted run projection the manager folds outcomes from. A production adapter serves the
+// DAG manager's record, whose `nodes` are the authoritative node records already.
+export type ManagerAdmissionRunRecord = {
+  readonly runId: DagRunId
+  readonly nodes: readonly DagNode[]
+}
+
+export type ManagerAdmissionPort = {
+  /** Create or reuse the fingerprint-keyed run and return its identity. */
+  startRun(spec: ManagerAdmissionRunSpec): Promise<ManagerAdmissionRun>
+  /**
+   * Admit one planned node and return its child. The PORT owns dependency gating and readiness:
+   * admitting a node whose dependencies are not complete either waits or rejects there, so the
+   * manager never grows a scheduler of its own.
+   */
+  admit(target: ManagerAdmissionNodeTarget): Promise<ManagerAdmissionChild>
+  /** Resolve only when the child reaches a terminal state (or the caller aborts). */
+  wait(taskId: string, options?: ManagerAdmissionWaitOptions): Promise<ManagerAdmissionTerminal>
+  /** Read the persisted run record. `nodes` stays authoritative for node outcomes. */
+  record(runId: DagRunId): ManagerAdmissionRunRecord
+  /**
+   * Optional cancellation. The manager CALLS this when a deadline elapses after the run identity
+   * exists, so a deadline-failed parent cannot leave admitted children running. Absent means the
+   * host exposes no run cancel at this seam, and the typed deadline result says so explicitly.
+   * A port that defines cancel must stop admitting new nodes for that run once it is cancelled.
+   */
+  cancel?(runId: DagRunId, reason?: string): Promise<void>
+}
+
+export type ManagerDelegationStartRequest = EngineeringDelegationRequest & {
+  readonly parent_session_id: string
+  readonly root_session_id?: string
+  // Elapsed after the run identity exists => `deadline_unavailable_at_manager_seam` (with the
+  // port's cancel invoked when it has one); elapsed while the port is still creating the run =>
+  // `delegation_start_failed` with reason `admission_start_timeout`, because a run-scoped refusal
+  // cannot name a run the port never reported without inventing an id. This seam has no terminal
+  // fold, so the budget covers startRun, admit, and the waits only. Never a completed run.
+  readonly deadlineMs?: number
+}
+
+// The delegated start's ONLY outcomes. There is deliberately no `verified`, `success`, or verdict
+// field: node outcomes are readable evidence, and the completion gate remains the sole judge.
+export type ManagerDelegationStartResult =
+  | {
+      readonly kind: "delegated"
+      // The authoritative parent TaskRecord id produced by the production scheduler for this
+      // delegation. Correlates the delegation operation, child tasks, task epoch, subsequent
+      // terminal events, and verification intent/evidence. A successful return does NOT imply
+      // that delegated work or verification has completed.
+      readonly task_id: string
+      readonly runId: DagRunId
+      readonly outcomes: readonly DelegationNodeOutcome[]
+      // Some planned node had no terminal record when the run was read: never report that as done.
+      readonly unresolved: boolean
+    }
+  // The run settled, but its terminal node set is not this plan's result, or its record could not
+  // be read. The seam refuses with the typed reason and the observed ids instead of answering a
+  // success-shaped `delegated` with no cause; the ordinary start path folds and fails the parent.
+  | {
+      readonly kind: "delegation_unresolved"
+      // The authoritative parent TaskRecord id produced by the production scheduler for this
+      // delegation, even when the run did not settle. Correlates the delegation operation,
+      // child tasks, task epoch, and subsequent terminal events.
+      readonly task_id: string
+      readonly runId: DagRunId
+      readonly reason: DelegationUnresolvedReason
+      readonly message: string
+      readonly outcomes: readonly DelegationNodeOutcome[]
+      readonly missingNodeIds: readonly DagNodeId[]
+      readonly foreignNodeIds: readonly DagNodeId[]
+    }
+  // The plan (objective/roles/working directory) could not be turned into a definition: nothing ran.
+  | {
+      readonly kind: "plan_unresolved"
+      readonly error: PlanResolutionError
+    }
+  // The parent record could not be claimed (id/name contention). No child was admitted.
+  | {
+      readonly kind: "delegation_start_failed"
+      // `admission_start_timeout`: the deadline elapsed before `startRun` reported a run identity,
+      // so no run-scoped deadline refusal could be built. A late run is cancelled when it appears.
+      readonly reason: "record_claim_failed" | "verification_catalogue_unavailable" | "admission_start_timeout"
+      readonly message: string
+    }
+  // The deadline elapsed before the delegated start finished. The checkbox-16 typed error rides
+  // through unchanged: `ok: false` means the caller cannot read it as success, and a cancelled run
+  // is never claimed when the seam cannot honour the deadline. On the ordinary start path this also
+  // covers a capture that outlived the budget after the run settled; the parent record is failed as
+  // deadline-exceeded and the `reason` names the capture phase.
+  | EngineeringDelegationDeadlineUnavailable
+  | {
+      readonly kind: "admission_unavailable"
+      readonly reason: "admission_unavailable"
+      readonly message: string
+    }
+  | {
+      readonly kind: "delegation_plan_rejected"
+      readonly code: DelegationPlanRejectionCode
+      readonly message: string
+      readonly roleKeys: readonly string[]
+    }
+
+// The ordinary start() path's delegated success additionally names the manager-owned parent
+// TaskRecord that carries the terminal state and the gate's verification claim. There is still no
+// verdict field here: the record and the completion gate own that judgement.
+export type ManagerDelegatedStartResult =
+  | (Extract<ManagerDelegationStartResult, { readonly kind: "delegated" }> & {
+      readonly task_id: string
+    })
+  // `delegation_unresolved` belongs to the public startDelegated seam only; the ordinary start path
+  // folds the same observation into a failed parent and returns its `delegated` result unchanged.
+  | Exclude<ManagerDelegationStartResult, { readonly kind: "delegated" | "delegation_unresolved" }>
+
+// One re-drive result per persisted intent. `folded` means this call ran capture + gate + terminal;
+// the other outcomes say why it published nothing. A caller merges these into its session-start
+// reconciliation instead of treating an untouched parent as verified.
+export type DelegatedVerificationResumeOutcome = {
+  readonly taskId: string
+  readonly epoch: number
+  readonly outcome:
+    | "folded"
+    | "already_terminal"
+    | "stale_epoch"
+    | "record_missing"
+    | "run_not_completed"
+    | "run_record_unreadable"
+  readonly status?: TaskRecord["status"]
+  readonly verification_status?: TaskRecord["verification_status"]
+}
+
 export type TrustedRespawnLaunch = {
   readonly extensions?: readonly string[]
   readonly memberEnv?: Readonly<Record<string, string>>
@@ -282,6 +492,11 @@ export type TaskManagerOptions = {
   // Injected by the todo-17 wiring. Consulted at spawn so the residency cap (LRU eviction) gates a
   // new child; absent -> admission is skipped (pre-wiring/unit behaviour, no cap enforcement).
   readonly admit?: AdmitResident
+  // Manager-owned delegation seam, supplied at construction. Absent => an ordinary start behaves
+  // exactly as before, and a delegated start refuses as `admission_unavailable` instead of
+  // silently admitting nothing. Present => the manager drives this port for a delegated request
+  // without importing the DAG runtime.
+  readonly admission?: ManagerAdmissionPort
   // Resolves launch inputs from the current runtime. Persisted task records never supply executable
   // extensions or environment during a respawn.
   readonly trustedRespawnLaunch?: TrustedRespawnLaunchResolver
@@ -324,7 +539,29 @@ export type TaskManager = {
   // Optional for structural adapters; the concrete manager exposes its live lease allocator.
   readonly concurrency?: TaskConcurrency
   findTaskByChildSession?(sessionId: string): TaskRecord | undefined
+  // A spec that carries a delegation request is answered by the delegated start's own result set;
+  // the ordinary signature below stays unchanged for every existing caller. The return is the UNION
+  // rather than only the delegated set so a caller can still refuse a wiring that ignored
+  // `spec.delegation` and returned an ordinary outcome, instead of silently calling it delegated.
+  // The concrete manager returns the delegated set alone; returning a supertype keeps every
+  // structural start() fake (which answers ordinary specs) satisfying this overload too.
+  start(
+    spec: ManagerStartSpec & { readonly delegation: ManagerDelegationSpec },
+  ): Promise<StartResult | ManagerDelegatedStartResult>
   start(spec: ManagerStartSpec): Promise<StartResult>
+  // Manager-owned delegated start. The port owns run creation and node admission; the manager owns
+  // the call sequence, collects the persisted node outcomes, and never writes a verdict. Optional so
+  // structural TaskManager fakes keep compiling; the concrete manager always implements it.
+  startDelegated?(request: ManagerDelegationStartRequest): Promise<ManagerDelegationStartResult>
+  // Late-bound admission (p27 todo 7). A composition root that builds this manager before its DAG
+  // runtime can install the port here; the setter replaces any port supplied at construction and
+  // creates nothing itself. Optional so structural fakes keep compiling, and absent-before-set still
+  // refuses a delegated start as `admission_unavailable`.
+  // Re-drive delegated parents whose host-side verification was interrupted, from the durable
+  // intent the fold writes before capture. Optional so structural fakes keep compiling; the concrete
+  // manager always implements it. A terminal parent is never re-published.
+  resumeDelegatedVerifications?(sessionId?: string): Promise<readonly DelegatedVerificationResumeOutcome[]>
+  setAdmissionPort?(port: ManagerAdmissionPort): void
   startOwned(spec: ManagerStartSpec, owner: DagTaskOwner): Promise<OwnedStartResult>
   findOwnedTask(owner: DagTaskOwnerKey): TaskRecord | undefined
   continueTask(taskIdOrName: string, prompt: string, deliverAs?: "steer" | "followUp"): Promise<ContinueResult>

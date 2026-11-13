@@ -226,4 +226,38 @@ describe("task argument normalization", () => {
     if (resolved.kind !== "error") throw new Error("expected meaningful prompt/tasks ambiguity to fail")
     expect(resolved.error.code).toBe("prompt_and_tasks")
   })
+
+  test("#given a delegated request #when arguments are prepared #then the plan input survives normalization intact", () => {
+    // given
+    const tool = createTool()
+    const prepareArguments = tool.prepareArguments
+    if (prepareArguments === undefined) throw new Error("task prepareArguments is missing")
+
+    // when
+    const prepared = prepareArguments({
+      category: "quick",
+      delegation: {
+        objective: "prove the delegated entry",
+        working_directory: "/work/project",
+        max_nodes: 4,
+        deadline_ms: 1500,
+        roles: [
+          { key: "investigate", assignment: "find the seam", depends_on: ["review"] },
+          { key: "review", assignment: "check the finding" },
+        ],
+      },
+    })
+
+    // then
+    expect(prepared.delegation).toEqual({
+      objective: "prove the delegated entry",
+      working_directory: "/work/project",
+      max_nodes: 4,
+      deadline_ms: 1500,
+      roles: [
+        { key: "investigate", assignment: "find the seam", depends_on: ["review"] },
+        { key: "review", assignment: "check the finding" },
+      ],
+    })
+  })
 })

@@ -1,15 +1,17 @@
 import type { OmoConfig } from "../../../../omo-config-core/src/index.ts"
 
 import type { AgentDefinition, SkillInvocationState } from "../../agents"
+import type { DelegationNodeOutcome } from "../../delegation/plan"
 import type { IsolationDetails, IsolationStartedDetails } from "../../isolation/details"
 import type { KernelToolErrorCode } from "../../kernel-tools/contract"
-import type { ExecutionModeGate, TaskManager } from "../../manager"
+import type { ExecutionModeGate, TaskManager, TerminalTaskRecord } from "../../manager"
 import type {
   ResolvedModelRecord,
   TaskRunStats,
   TaskStartFailureKind,
   TaskStartFailureReason,
 } from "../../state"
+import type { VerificationStatus } from "../../verification/completion-status"
 // The narrow slice of senpi's ExtensionContext the task tool reads. ExtensionContext satisfies it
 // structurally, so the tool stays testable with a tiny fake while the ToolDefinition keeps the full
 // senpi context type at its execute() boundary.
@@ -80,9 +82,25 @@ export type TaskToolDeps = {
   // The parent session's ONE resolution of `task.default_execution_mode: "auto"` (the shared-daemon
   // capability check). Absent -> `auto` reads as in-process and the manager decides at spawn.
   readonly executionModeGate?: ExecutionModeGate
+  // The persisted terminal record INCLUDING the completion gate's verification_status claim. The
+  // typed record lane parses that field, so this reader carries cross-process authority: a wiring
+  // whose manager cannot see the record's store reads the raw persisted claim here. Absent, the
+  // manager's own record is used, and an unverified or missing claim fails CLOSED.
+  readonly readTerminalRecord?: (taskId: string) => TerminalTaskRecord | undefined
 }
 
 export type TaskToolMode = "spawn"
+
+// The delegated parent's terminal projection. `terminal_status` is the record's own status; the
+// tool's `status` adds the gate's claim (a completed-but-unverified run is never reported as
+// completed). `verification_status` is read from the persisted record, never computed here.
+export type TaskDelegationDetail = {
+  readonly run_id: string
+  readonly terminal_status: string
+  readonly outcomes: readonly DelegationNodeOutcome[]
+  readonly unresolved: boolean
+  readonly verification_status?: VerificationStatus
+}
 
 type ResolvedSpawnItemBase = {
   readonly isolated?: boolean
@@ -171,5 +189,6 @@ export type TaskToolDetails = {
   readonly run_stats?: TaskRunStats
   readonly skills?: TaskSkillSummary
   readonly kernel_tools?: TaskKernelToolsDetail
+  readonly delegation?: TaskDelegationDetail
 }
 
