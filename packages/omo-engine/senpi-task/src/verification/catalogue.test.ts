@@ -30,27 +30,28 @@ function configuredCatalogue(): OrdinaryCatalogue {
   return { status: "configured", checks: [ENTRY] }
 }
 
+// The fake store is a literal implementation of the host's evidence seam: validating it with
+// `satisfies` gives every method its host signature while the returned shape stays inferred.
 function tempStore() {
   const root = mkdtempSync(join(tmpdir(), "catalogue-"))
   const dir = (runId: string) => join(root, "verifications", runId)
-  return {
-    root,
-    store: {
-      writeVerification(runId, _nodeId, checkId, _attempt, record) {
-        mkdirSync(dir(runId), { recursive: true })
-        const target = join(dir(runId), `run.${checkId}.1.json`)
-        writeFileSync(target, record)
-        return target
-      },
-      readVerification(runId, _nodeId, checkId) {
-        const target = join(dir(runId), `run.${checkId}.1.json`)
-        return existsSync(target) ? readFileSync(target, "utf8") : null
-      },
-      listVerifications(runId) {
-        return existsSync(dir(runId)) ? readdirSync(dir(runId)) : []
-      },
+  const store = {
+    rootDir: join(root, "verifications"),
+    writeVerification(runId, _nodeId, checkId, _attempt, record) {
+      mkdirSync(dir(runId), { recursive: true })
+      const target = join(dir(runId), `run.${checkId}.1.json`)
+      writeFileSync(target, record)
+      return target
     },
-  }
+    readVerification(runId, _nodeId, checkId) {
+      const target = join(dir(runId), `run.${checkId}.1.json`)
+      return existsSync(target) ? readFileSync(target, "utf8") : null
+    },
+    listVerifications(runId) {
+      return existsSync(dir(runId)) ? readdirSync(dir(runId)) : []
+    },
+  } satisfies OrdinaryEvidenceStore
+  return { root, store }
 }
 
 function toolWith(
@@ -61,7 +62,7 @@ function toolWith(
   const capture = createOrdinaryVerificationCapture({ store, projectDir: process.cwd(), currentRevision: () => "rev-1" })
   return createVerificationWorkerTool({
     capture,
-    binding: () => ({ runId: "run-c", sessionId: "sess-c", epoch: 1 }),
+    binding: () => ({ taskId: "run-c", sessionId: "sess-c", epoch: 1 }),
     changedFiles: () => changedFiles,
     catalogue: () => catalogue,
   })

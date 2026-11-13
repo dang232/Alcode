@@ -9,6 +9,7 @@
 // at spawn. A workspace with no approved catalogue requires no evidence, and its completion is not
 // reported as verified - the gate does not invent a requirement the host never authorized.
 import { workspaceRevision } from "./evidence-store"
+import { readCaptureReceipt, sha256Text, verificationReceiptRoot } from "./evidence-store"
 import type { CompletionBlockCode, CompletionGateVerdict } from "./completion-status"
 import { ordinaryEvidenceFreshness } from "./ordinary-capture"
 import type { OrdinaryCatalogue } from "./catalogue"
@@ -19,9 +20,17 @@ import {
   readRunVerificationRecords,
   verificationRecordKey,
   type DagVerificationRecord,
-  type DagVerificationRequirement,
+  type DagAcceptanceRequirement,
+  type DagVerifyCheck,
 } from "../dag/verification"
 import { createFileEvidenceStore } from "./evidence-store"
+
+// Host attribution state. A baseline the host could not snapshot is a PROVENANCE failure: the run
+// was never attributable to a change set, so "no evidence was written" would be a worker-shaped
+// claim about an attribution the host never had. The two must not share a code.
+export type CompletionGatePreconditions = {
+  readonly baseline: "available" | "unavailable"
+}
 
 export type CompletionGateInput = {
   readonly taskId: string
@@ -29,6 +38,19 @@ export type CompletionGateInput = {
   readonly evidenceRoot: string
   readonly workspaceDir: string
   readonly epoch: number
+  // The host-owned requirement set the capture ran. When present the gate demands EXACTLY these
+  // checks instead of re-deriving a set from the catalogue on its own side; capture and gate must
+  // never disagree about what "required" means.
+  readonly requirements?: readonly DagVerifyCheck[]
+  // The ONE revision the host capture pinned for this run. When present the gate judges the
+  // evidence against that exact tree instead of re-reading a revision after the checks ran: a
+  // check's own write must not invalidate the revision it was told it ran against. The delegated
+  // fold re-reads the tree after capture and blocks `verification_stale` when it moved.
+  readonly sourceRevision?: string
+  // Host attribution state, checked before any evidence is read.
+  readonly preconditions?: CompletionGatePreconditions
+  // Defaults to the evidence root's sibling receipt tree.
+  readonly receiptRoot?: string
 }
 
 // A catalogue the host never approved requires nothing: the run is ordinary (ungated) and its
@@ -63,16 +85,39 @@ export function evaluateOrdinaryCompletion(input: CompletionGateInput): Completi
   if (skip !== null) return skip
   if (input.catalogue.status !== "configured") return { verification: "unverified", reason: "no approved verification checks apply to this workspace" }
 
-  // The revision the record must match. A tree the host cannot describe blocks: an unattributable
-  // completion is not a verified one.
-  let sourceRevision: string
-  try {
-    sourceRevision = workspaceRevision(input.workspaceDir)
-  } catch (error) {
+  const checks = input.requirements ?? catalogueChecks(input.catalogue)
+  // An approved catalogue that requires nothing verifies nothing: the completion is unverified,
+  // never reported as a pass. Decided before any evidence read so a configured-empty catalogue
+  // cannot degrade into "evidence missing".
+  if (checks.length === 0) {
+    return { verification: "unverified", reason: "approved catalogue requires no checks, so no verification is claimed" }
+  }
+
+  // Attribution first: a baseline the host could not snapshot means it could not name the change
+  // set this run was verified against. That is provenance, never "the run produced no evidence".
+  if (input.preconditions?.baseline === "unavailable") {
     return {
       verification: "blocked",
       code: "verification_provenance_unknown",
-      reason: `workspace revision unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      reason: "workspace baseline unavailable: the host could not attribute this run's change set, so no evidence can be trusted",
+    }
+  }
+
+  // The revision the record must match. The capture's pinned revision wins: re-reading here would
+  // judge evidence against a tree the checks may have changed after they were stamped. A tree the
+  // host cannot describe (and did not pin) blocks: an unattributable completion is not a verified one.
+  let sourceRevision: string
+  if (input.sourceRevision !== undefined) {
+    sourceRevision = input.sourceRevision
+  } else {
+    try {
+      sourceRevision = workspaceRevision(input.workspaceDir)
+    } catch (error) {
+      return {
+        verification: "blocked",
+        code: "verification_provenance_unknown",
+        reason: `workspace revision unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      }
     }
   }
 
@@ -81,14 +126,14 @@ export function evaluateOrdinaryCompletion(input: CompletionGateInput): Completi
   try {
     listed = store.listVerifications(input.taskId)
   } catch {
-    // No directory for this run: the worker never asked for verification.
+    // No directory for this task: the host capture never wrote evidence for it.
     return { verification: "blocked", code: "verification_evidence_missing", reason: "this run produced no verification evidence" }
   }
   if (listed.length === 0) {
     return { verification: "blocked", code: "verification_evidence_missing", reason: "this run produced no verification evidence" }
   }
 
-  const parsed: { readonly record: DagVerificationRecord; readonly attempt: number }[] = []
+  const parsed: { readonly record: DagVerificationRecord; readonly attempt: number; readonly file: string; readonly text: string }[] = []
   const latestAttempt = new Map<string, number>()
   // Stable order makes a same-attempt tie deterministic; attempt selection below is by number.
   for (const file of [...listed].sort()) {
@@ -100,10 +145,10 @@ export function evaluateOrdinaryCompletion(input: CompletionGateInput): Completi
     const raw = store.readVerification(input.taskId, nodeId, checkId, Number.isFinite(attempt) ? attempt : 1)
     const record = raw === null ? null : parseVerificationRecord(raw)
     // A file that cannot be parsed is evidence of a broken writer, never evidence of a pass.
-    if (record === null) {
+    if (record === null || raw === null) {
       return { verification: "blocked", code: "verification_evidence_malformed", reason: `unreadable verification record: ${file}` }
     }
-    parsed.push({ record, attempt })
+    parsed.push({ record, attempt, file, text: raw })
     // Highest attempt wins per (node, check). A repair's rerun is a NEW attempt, so the original
     // failed record stays on disk as history without ever shadowing the fresh evidence.
     const key = verificationRecordKey(record.nodeId, record.checkId)
@@ -121,6 +166,68 @@ export function evaluateOrdinaryCompletion(input: CompletionGateInput): Completi
     }
   }
 
+  // A record counts only when the HOST capture receipt for this exact (task, epoch) lists it and
+  // its bytes still match the digest the host recorded. A hand-written record has no entry; a
+  // rewritten one no longer matches. Both are malformed evidence, never a pass.
+  const receiptRoot = input.receiptRoot ?? verificationReceiptRoot(input.evidenceRoot)
+  const receiptRead = readCaptureReceipt(receiptRoot, input.taskId, input.epoch)
+  if (receiptRead.kind === "missing") {
+    return {
+      verification: "blocked",
+      code: "verification_evidence_malformed",
+      reason: `no host capture receipt for task ${input.taskId} epoch ${input.epoch}; untrusted evidence is never accepted`,
+    }
+  }
+  if (receiptRead.kind === "invalid") {
+    return {
+      verification: "blocked",
+      code: "verification_evidence_malformed",
+      reason: `host capture receipt is unreadable: ${receiptRead.reason}`,
+    }
+  }
+  if (receiptRead.receipt.taskId !== input.taskId || receiptRead.receipt.epoch !== input.epoch) {
+    return {
+      verification: "blocked",
+      code: "verification_evidence_malformed",
+      reason: `host capture receipt names ${receiptRead.receipt.taskId} epoch ${receiptRead.receipt.epoch}, not ${input.taskId} epoch ${input.epoch}`,
+    }
+  }
+  const receiptByFile = new Map(receiptRead.receipt.records.map((entry) => [entry.file, entry] as const))
+  for (const { file, record, text } of parsed) {
+    const entry = receiptByFile.get(file)
+    if (entry === undefined) {
+      return {
+        verification: "blocked",
+        code: "verification_evidence_malformed",
+        reason: `verification record ${file} is not listed in the host capture receipt for this task and epoch`,
+      }
+    }
+    if (entry.checkId !== record.checkId) {
+      return {
+        verification: "blocked",
+        code: "verification_evidence_malformed",
+        reason: `verification record ${file} names check ${record.checkId}, but the host capture receipt names ${entry.checkId}`,
+      }
+    }
+    if (sha256Text(text) !== entry.sha256) {
+      return {
+        verification: "blocked",
+        code: "verification_evidence_malformed",
+        reason: `verification record ${file} does not match the digest the host capture receipt recorded`,
+      }
+    }
+  }
+  const listedFiles = new Set(parsed.map((entry) => entry.file))
+  for (const entry of receiptRead.receipt.records) {
+    if (!listedFiles.has(entry.file)) {
+      return {
+        verification: "blocked",
+        code: "verification_evidence_malformed",
+        reason: `host capture receipt lists ${entry.file}, which is missing from the evidence directory`,
+      }
+    }
+  }
+
   // Selected by the filename's attempt number, never by directory order, so the fresh post-repair
   // evidence deterministically beats the preserved failed attempt next to it.
   const byKey = new Map<string, DagVerificationRecord>()
@@ -128,12 +235,7 @@ export function evaluateOrdinaryCompletion(input: CompletionGateInput): Completi
     const key = verificationRecordKey(record.nodeId, record.checkId)
     if (latestAttempt.get(key) === attempt) byKey.set(key, record)
   }
-  const requirements: DagVerificationRequirement[] = catalogueChecks(input.catalogue).map((check) => ({ check }))
-  // An approved catalogue that requires nothing verifies nothing: the completion is unverified,
-  // never reported as a pass.
-  if (requirements.length === 0) {
-    return { verification: "unverified", reason: "approved catalogue requires no checks, so no verification is claimed" }
-  }
+  const requirements: DagAcceptanceRequirement[] = checks.map((check) => ({ check }))
   const verdict = evaluateAcceptance({
     requirements,
     records: byKey,

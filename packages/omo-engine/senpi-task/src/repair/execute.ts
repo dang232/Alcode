@@ -80,7 +80,9 @@ export async function reverifyAfterRepair(input: ReverifyAfterRepairInput): Prom
     isCancelled: input.isCancelled,
   });
   const captured = await capture.capture({
-    binding: { runId: input.taskId, sessionId: input.sessionId ?? input.taskId, epoch: input.runEpoch },
+    // The parent task id is the evidence namespace. A repair rerun for one task must never read or
+    // overwrite another task's evidence, and the DAG run id is not an identity.
+    binding: { taskId: input.taskId, sessionId: input.sessionId ?? input.taskId, epoch: input.runEpoch },
     changedFiles: input.changedFiles,
     available,
     // A repair rerun is a NEW evidence attempt: the original failure stays readable on disk while

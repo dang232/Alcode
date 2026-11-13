@@ -108,7 +108,7 @@ async function captureEvidence(options: {
     runner: stubRunner(options.exitCode, options.output),
   });
   await capture.capture({
-    binding: { runId: options.runId, sessionId: "repair-orchestrator", epoch: options.epoch },
+    binding: { taskId: options.runId, sessionId: "repair-orchestrator", epoch: options.epoch },
     changedFiles: ["tracked.txt"],
     available: options.checks,
   });

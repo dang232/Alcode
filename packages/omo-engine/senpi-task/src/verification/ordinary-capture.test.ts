@@ -14,29 +14,30 @@ import {
   type OrdinaryEvidenceStore,
 } from "./ordinary-capture"
 
+// The fake store is a literal implementation of the host's evidence seam: validating it with
+// `satisfies` gives every method its host signature while the returned shape stays inferred.
 function tempStore() {
   const root = mkdtempSync(join(tmpdir(), "ordinary-verify-"))
   const dir = (runId: string) => join(root, "verifications", runId)
   const path = (runId: string, nodeId: string, checkId: string, attempt: number) =>
     join(dir(runId), `${nodeId}.${checkId}.${attempt}.json`)
-  return {
-    root,
-    store: {
-      writeVerification(runId, nodeId, checkId, attempt, record) {
-        mkdirSync(dir(runId), { recursive: true })
-        const target = path(runId, nodeId, checkId, attempt)
-        writeFileSync(target, record)
-        return target
-      },
-      readVerification(runId, nodeId, checkId, attempt) {
-        const target = path(runId, nodeId, checkId, attempt)
-        return existsSync(target) ? readFileSync(target, "utf8") : null
-      },
-      listVerifications(runId) {
-        return existsSync(dir(runId)) ? readdirSync(dir(runId)) : []
-      },
+  const store = {
+    rootDir: join(root, "verifications"),
+    writeVerification(runId, nodeId, checkId, attempt, record) {
+      mkdirSync(dir(runId), { recursive: true })
+      const target = path(runId, nodeId, checkId, attempt)
+      writeFileSync(target, record)
+      return target
     },
-  }
+    readVerification(runId, nodeId, checkId, attempt) {
+      const target = path(runId, nodeId, checkId, attempt)
+      return existsSync(target) ? readFileSync(target, "utf8") : null
+    },
+    listVerifications(runId) {
+      return existsSync(dir(runId)) ? readdirSync(dir(runId)) : []
+    },
+  } satisfies OrdinaryEvidenceStore
+  return { root, store }
 }
 
 const PASSING: DagVerifyCheck = {
@@ -65,7 +66,7 @@ describe("ordinary capture - execution provenance", () => {
   test("#given a passing command #when captured #then the host records a passed record with exit 0", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-pass", sessionId: "sess-1", epoch: 7 },
+      binding: { taskId: "run-pass", sessionId: "sess-1", epoch: 7 },
       changedFiles: ["src/a.ts"],
       available: [PASSING],
     })
@@ -82,7 +83,7 @@ describe("ordinary capture - execution provenance", () => {
   test("#given a failing command #when captured #then the record is failed and never passed", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-fail", sessionId: "sess-1", epoch: 1 },
+      binding: { taskId: "run-fail", sessionId: "sess-1", epoch: 1 },
       changedFiles: ["src/a.ts"],
       available: [FAILING],
     })
@@ -94,7 +95,7 @@ describe("ordinary capture - execution provenance", () => {
   test("#given a command that outlives its timeout #when captured #then the status is timed_out", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-hang", sessionId: "sess-1", epoch: 1 },
+      binding: { taskId: "run-hang", sessionId: "sess-1", epoch: 1 },
       changedFiles: ["src/a.ts"],
       available: [HANGING],
     })
@@ -111,7 +112,7 @@ describe("ordinary capture - execution provenance", () => {
       isCancelled: () => true,
     })
     const result = await capture.capture({
-      binding: { runId: "run-cancel", sessionId: "sess-1", epoch: 1 },
+      binding: { taskId: "run-cancel", sessionId: "sess-1", epoch: 1 },
       changedFiles: ["src/a.ts"],
       available: [PASSING],
     })
@@ -124,7 +125,7 @@ describe("ordinary capture - freshness", () => {
   test("#given a record just executed #when judged against the same revision and epoch #then it is fresh", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-fresh", sessionId: "sess-1", epoch: 4 },
+      binding: { taskId: "run-fresh", sessionId: "sess-1", epoch: 4 },
       changedFiles: ["src/a.ts"],
       available: [PASSING],
     })
@@ -134,7 +135,7 @@ describe("ordinary capture - freshness", () => {
   test("#given the source changed after execution #when judged #then the record is stale", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-stale", sessionId: "sess-1", epoch: 4 },
+      binding: { taskId: "run-stale", sessionId: "sess-1", epoch: 4 },
       changedFiles: ["src/a.ts"],
       available: [PASSING],
     })
@@ -146,7 +147,7 @@ describe("ordinary capture - freshness", () => {
   test("#given the run epoch moved on #when judged #then the record is rejected", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-epoch", sessionId: "sess-1", epoch: 4 },
+      binding: { taskId: "run-epoch", sessionId: "sess-1", epoch: 4 },
       changedFiles: ["src/a.ts"],
       available: [PASSING],
     })
@@ -158,7 +159,7 @@ describe("ordinary capture - freshness", () => {
   test("#given covered paths #when a covered file changes #then the record is affected, an unrelated file is not", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-covered", sessionId: "sess-1", epoch: 1 },
+      binding: { taskId: "run-covered", sessionId: "sess-1", epoch: 1 },
       changedFiles: ["src/a.ts"],
       available: [PASSING],
     })
@@ -173,7 +174,7 @@ describe("ordinary capture - persistence", () => {
   test("#given a captured record #when a fresh store instance reads it #then the evidence survives", async () => {
     const { store, root } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-persist", sessionId: "sess-1", epoch: 2 },
+      binding: { taskId: "run-persist", sessionId: "sess-1", epoch: 2 },
       changedFiles: ["src/a.ts"],
       available: [PASSING],
     })
@@ -191,12 +192,12 @@ describe("ordinary capture - persistence", () => {
   test("#given two runs capturing the same check #when both persist #then each run keeps its own evidence", async () => {
     const { store } = tempStore()
     await harness(store).capture({
-      binding: { runId: "run-a", sessionId: "sess-a", epoch: 1 },
+      binding: { taskId: "run-a", sessionId: "sess-a", epoch: 1 },
       changedFiles: ["src/a.ts"],
       available: [PASSING],
     })
     await harness(store).capture({
-      binding: { runId: "run-b", sessionId: "sess-b", epoch: 1 },
+      binding: { taskId: "run-b", sessionId: "sess-b", epoch: 1 },
       changedFiles: ["src/a.ts"],
       available: [FAILING],
     })
@@ -215,7 +216,7 @@ describe("ordinary capture - policy reuse", () => {
   test("#given a documentation-only change #when captured #then no executable check is required", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-docs", sessionId: "sess-1", epoch: 1 },
+      binding: { taskId: "run-docs", sessionId: "sess-1", epoch: 1 },
       changedFiles: ["docs/architecture/agent-quality-gate.md"],
       available: [PASSING],
     })
@@ -227,11 +228,40 @@ describe("ordinary capture - policy reuse", () => {
   test("#given a code change #when captured #then the existing policy requires the executable check", async () => {
     const { store } = tempStore()
     const result = await harness(store).capture({
-      binding: { runId: "run-code", sessionId: "sess-1", epoch: 1 },
+      binding: { taskId: "run-code", sessionId: "sess-1", epoch: 1 },
       changedFiles: ["packages/web/server/lib/code-graph/runtime.js"],
       available: [PASSING],
     })
     expect(result.selection.required.map((check) => check.checkId)).toContain("unit-core")
     expect(result.records).toHaveLength(1)
+  })
+
+  test("approved catalogue #given a host-owned required set #when captured #then the same array runs verbatim and is returned by identity", async () => {
+    const { store } = tempStore()
+    const required: readonly DagVerifyCheck[] = [{ ...PASSING, checkId: "build-core", category: "build" }]
+    // A docs-only change would make the legacy selection drop every executable check; the host-owned
+    // requirement set must bypass that heuristic, and the returned array must be the same object so
+    // capture and gate cannot diverge.
+    const result = await harness(store).capture({
+      binding: { taskId: "run-required", sessionId: "sess-1", epoch: 1 },
+      changedFiles: ["docs/architecture/agent-quality-gate.md"],
+      available: required,
+      required,
+    })
+    expect(result.selection.required).toBe(required)
+    expect(result.selection.omitted).toHaveLength(0)
+    expect(result.records.map((record) => record.checkId)).toEqual(["build-core"])
+    expect(result.records[0]?.status).toBe("passed")
+    expect(existsSync(result.receiptPath)).toBe(true)
+
+    // The same requirement set, without the host-owned array, still proves the pre-fix defect: the
+    // legacy scope policy omits the build check and the gate would find no evidence.
+    const legacy = await harness(store).capture({
+      binding: { taskId: "run-legacy", sessionId: "sess-1", epoch: 1 },
+      changedFiles: ["docs/architecture/agent-quality-gate.md"],
+      available: required,
+    })
+    expect(legacy.selection.required).toHaveLength(0)
+    expect(legacy.records).toHaveLength(0)
   })
 })

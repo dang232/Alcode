@@ -3,13 +3,12 @@
 // handle whose outcome the test settles - exactly the knob a completed turn turns in production.
 //
 // Every case asserts the PERSISTED status, not just an error string: the typed terminal status
-// plus the gate's verification_status read back from the on-disk record JSON. (Typed loads drop
-// unknown fields, so the record file and the completion events are the readable carriers of the
-// claim the manager stamp writes.) A blocked verdict must land as an error carrying "blocked",
-// never as a completed run.
+// plus the gate's verification_status read back from the on-disk record JSON. (The typed parser now
+// carries the claim as well; the record file and the completion events are independent carriers to
+// compare against.) A blocked verdict must land as an error carrying "blocked", never as a completed run.
 import { afterEach, describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -26,6 +25,7 @@ import { evaluateOrdinaryCompletion } from "./completion-gate"
 import { isBlocked, isVerified } from "./completion-status"
 import { createFileEvidenceStore, workspaceRevision } from "./evidence-store"
 import { createOrdinaryVerificationCapture } from "./ordinary-capture"
+import type { OrdinaryCatalogue } from "./catalogue"
 import { VERIFICATION_CONFIG_VERSION } from "./config"
 
 const roots: string[] = []
@@ -53,6 +53,8 @@ function gatePlanner(spec: ManagerStartSpec) {
 
 const CHECK_ID = "unit-gate"
 const COMMAND = ["node", "-e", "process.exit(0)"]
+const FAILING_COMMAND = ["node", "-e", "process.exit(4)"]
+const WRITING_COMMAND = ["node", "-e", "require('fs').appendFileSync('tracked.txt','check wrote\\n')"]
 
 type FixtureOptions = {
   // "standard": one approved check. "absent": no verification.json at all. "malformed": a
@@ -60,6 +62,9 @@ type FixtureOptions = {
   readonly config?: "standard" | "absent" | "malformed"
   // package.json scripts. Omitted entirely by default, so discovery finds no candidates.
   readonly scripts?: Record<string, string>
+  // The approved check's command. The host capture executes it at completion, so a test that wants
+  // a failing/stale verdict selects the command instead of pre-writing a record.
+  readonly command?: readonly string[]
 }
 
 type Fixture = {
@@ -79,7 +84,7 @@ type StatusPackageJson = {
 }
 
 function fixture(options: FixtureOptions = {}): Fixture {
-  const { config = "standard", scripts } = options
+  const { config = "standard", scripts, command = COMMAND } = options
   const root = tempRoot("p22-status-")
   const workspace = join(root, "workspace")
   const stateDir = join(root, "state")
@@ -91,7 +96,7 @@ function fixture(options: FixtureOptions = {}): Fixture {
   if (config === "standard") {
     writeFileSync(
       join(workspace, ".alcode", "verification.json"),
-      JSON.stringify({ version: 1, checks: [{ id: CHECK_ID, name: "gate check", category: "unit", command: COMMAND, timeoutMs: 20_000 }] }),
+      JSON.stringify({ version: 1, checks: [{ id: CHECK_ID, name: "gate check", category: "unit", command, timeoutMs: 20_000 }] }),
     )
   } else if (config === "malformed") {
     writeFileSync(join(workspace, ".alcode", "verification.json"), "{ not json\n")
@@ -100,10 +105,10 @@ function fixture(options: FixtureOptions = {}): Fixture {
 
   const authority = approvalAuthorityFor(workspace, join(root, "authority"))
   if (config === "standard") {
-    const subject = { workspaceId: ".", checkId: CHECK_ID, command: COMMAND, cwd: ".", packageScope: "", timeoutMs: 20_000, configVersion: VERIFICATION_CONFIG_VERSION }
+    const subject = { workspaceId: ".", checkId: CHECK_ID, command, cwd: ".", packageScope: "", timeoutMs: 20_000, configVersion: VERIFICATION_CONFIG_VERSION }
     approveCandidate({
       authority,
-      candidate: { fingerprint: approvalFingerprint(subject), checkId: CHECK_ID, command: COMMAND, cwd: ".", packageScope: "", timeoutMs: 20_000 },
+      candidate: { fingerprint: approvalFingerprint(subject), checkId: CHECK_ID, command, cwd: ".", packageScope: "", timeoutMs: 20_000 },
       workspaceId: ".",
       configVersion: VERIFICATION_CONFIG_VERSION,
       approvedBy: "alcode:tester",
@@ -172,14 +177,15 @@ async function writeEvidence(f: Fixture, taskId: string, options: { status: "pas
     isCancelled: () => false,
   })
   await capture.capture({
-    binding: { runId: taskId, sessionId: "parent-status", epoch: options.epoch },
+    binding: { taskId: taskId, sessionId: "parent-status", epoch: options.epoch },
     changedFiles: ["tracked.txt"],
     available: [{ checkId: CHECK_ID, category: "unit", command: COMMAND, timeoutMs: 20_000, criteria: [] }],
   })
 }
 
 // The persisted record as it sits on disk: status plus the gate's verification_status claim the
-// manager stamp writes. Read raw because typed loads drop unknown fields.
+// manager stamp writes. Read raw so the assertion covers the persisted bytes independently of the
+// typed parser.
 type RawCompletionRecord = {
   readonly status: string
   readonly verification_status: unknown
@@ -249,20 +255,34 @@ describe("completion status", () => {
     expect(readRaw(f.stateDir, result.taskId).verification_status).toBe("blocked")
   })
 
-  test("#given a configured catalogue whose check produced no record #when the child completes #then it is blocked as missing", async () => {
+  test("#given a configured catalogue whose check produced no record #when the gate evaluates #then it is blocked as missing", () => {
+    // A configured ordinary completion now always runs the host capture first, so the missing
+    // evidence mapping is pinned where it is still reachable: the gate's own boundary.
     const f = fixture()
-    const result = await spawnAndSettle(f)
-    expect(result.status).toBe("error")
-    expect(result.error).toContain("verification_evidence_missing")
-    expect(readRaw(f.stateDir, result.taskId).verification_status).toBe("blocked")
+    const catalogue: OrdinaryCatalogue = {
+      status: "configured",
+      checks: [
+        {
+          check: { checkId: CHECK_ID, category: "unit", command: COMMAND, timeoutMs: 20_000, criteria: [] },
+          provenance: { source: "config", location: ".alcode/verification.json", reason: "completion-status fixture" },
+        },
+      ],
+    }
+    const verdict = evaluateOrdinaryCompletion({
+      taskId: "st_status_missing",
+      catalogue,
+      evidenceRoot: join(f.store.stateDir, "verifications"),
+      workspaceDir: f.workspace,
+      epoch: 0,
+    })
+    expect(verdict.verification).toBe("blocked")
+    if (verdict.verification !== "blocked") throw new Error("a run with no evidence was verified")
+    expect(verdict.code).toBe("verification_evidence_missing")
   })
 
-  test("#given evidence predating a workspace edit #when the child completes #then it is blocked as stale", async () => {
-    const f = fixture()
-    const result = await spawnAndSettle(f, async (taskId) => {
-      await writeEvidence(f, taskId, { status: "passed", epoch: f.manager.get(taskId)?.notification.run_epoch ?? 0 })
-      writeFileSync(join(f.workspace, "tracked.txt"), "edited after verification\n")
-    })
+  test("#given an approved check that writes the tree #when the child completes #then its own evidence is blocked as stale", async () => {
+    const f = fixture({ command: WRITING_COMMAND })
+    const result = await spawnAndSettle(f)
     expect(result.status).toBe("error")
     expect(result.error).toContain("verification_stale")
     expect(readRaw(f.stateDir, result.taskId).verification_status).toBe("blocked")
@@ -270,9 +290,7 @@ describe("completion status", () => {
 
   test("#given passing approved evidence #when the child completes #then the run is completed and reported verified", async () => {
     const f = fixture()
-    const result = await spawnAndSettle(f, async (taskId) => {
-      await writeEvidence(f, taskId, { status: "passed", epoch: f.manager.get(taskId)?.notification.run_epoch ?? 0 })
-    })
+    const result = await spawnAndSettle(f)
     expect(result.status).toBe("completed")
     const raw = readRaw(f.stateDir, result.taskId)
     expect(raw.status).toBe("completed")
@@ -283,10 +301,8 @@ describe("completion status", () => {
   test("#given failing evidence for a completed turn #when the gate blocks #then the persisted record is an error carrying blocked, never completed", async () => {
     // The revert this pins: publishing the runner's "completed" while the gate says blocked,
     // which a parent would trust as done work.
-    const f = fixture()
-    const result = await spawnAndSettle(f, async (taskId) => {
-      await writeEvidence(f, taskId, { status: "failed", epoch: f.manager.get(taskId)?.notification.run_epoch ?? 0 })
-    })
+    const f = fixture({ command: FAILING_COMMAND })
+    const result = await spawnAndSettle(f)
     expect(result.status).toBe("error")
     expect(result.error).toContain("verification_failed")
     const raw = readRaw(f.stateDir, result.taskId)
@@ -295,10 +311,11 @@ describe("completion status", () => {
     expect(raw.verification_status).toBe("blocked")
   })
 
-  test("#given a blocked run #when a fresh store opens the same state root #then the blocked claim is still there and a fresh run without evidence is still blocked", async () => {
-    const f = fixture()
+  test("#given a blocked run #when a fresh store opens the same state root #then the blocked claim is still there and a fresh run is still blocked", async () => {
+    const f = fixture({ command: FAILING_COMMAND })
     const first = await spawnAndSettle(f)
     expect(first.status).toBe("error")
+    expect(first.error).toContain("verification_failed")
     expect(readRaw(f.stateDir, first.taskId).verification_status).toBe("blocked")
 
     // A brand-new store over the same state root: restart is not a bypass. The state_dir
@@ -331,18 +348,17 @@ describe("completion status", () => {
     const done = manager.waitFor(started.task_id)
     for (const handle of handles) handle.settle({ status: "completed", finalResponse: "done" })
     const settled = await done
-    // Reverting the missing-evidence mapping would let this post-restart run complete.
+    // Reverting the failing-check mapping would let this post-restart run complete.
     expect(settled.status).toBe("error")
-    expect(settled.error_message).toContain("verification_evidence_missing")
+    expect(settled.error_message).toContain("verification_failed")
     expect(readRaw(reopened.stateDir, started.task_id).verification_status).toBe("blocked")
   })
 
-  test("#given two concurrent runs #when only one produced evidence #then the other is blocked and borrows no status", async () => {
+  test("#given two concurrent runs #when both complete #then each reports its own host-captured status", async () => {
     const f = fixture()
     const first = await f.manager.start({ prompt: "a", parent_session_id: "parent-status", depth: 1, category: "quick", cwd: f.workspace, execution_mode: "in-process" })
     const second = await f.manager.start({ prompt: "b", parent_session_id: "parent-status", depth: 1, category: "quick", cwd: f.workspace, execution_mode: "in-process" })
     if (first.kind !== "started" || second.kind !== "started") throw new Error("spawn refused")
-    await writeEvidence(f, first.task_id, { status: "passed", epoch: f.manager.get(first.task_id)?.notification.run_epoch ?? 0 })
     const doneFirst = f.manager.waitFor(first.task_id)
     const doneSecond = f.manager.waitFor(second.task_id)
     f.settleAll()
@@ -350,22 +366,22 @@ describe("completion status", () => {
     const b = await doneSecond
     expect(a.status).toBe("completed")
     expect(readRaw(f.stateDir, first.task_id).verification_status).toBe("verified")
-    // The revert this pins: the second run inheriting the first run's evidence and completing.
-    expect(b.status).toBe("error")
-    expect(b.error_message).toContain("verification_evidence_missing")
-    expect(readRaw(f.stateDir, second.task_id).verification_status).toBe("blocked")
+    // Each run's evidence is captured under its own task id; neither borrows the other's.
+    expect(b.status).toBe("completed")
+    expect(readRaw(f.stateDir, second.task_id).verification_status).toBe("verified")
+    expect(existsSync(join(f.store.stateDir, "verifications", first.task_id))).toBe(true)
+    expect(existsSync(join(f.store.stateDir, "verifications", second.task_id))).toBe(true)
   })
 
   test("#given persisted terminal records #when their JSON is serialized again #then verification_status survives with its exact literal value", async () => {
     // Exact literals: any revert that swaps verified/unverified, drops the claim, or writes a
     // non-literal (a boolean, a code) in its place fails here.
     const f = fixture()
-    const ok = await spawnAndSettle(f, async (taskId) => {
-      await writeEvidence(f, taskId, { status: "passed", epoch: f.manager.get(taskId)?.notification.run_epoch ?? 0 })
-    })
-    const blocked = await spawnAndSettle(f)
+    const ok = await spawnAndSettle(f)
+    const blockedFixture = fixture({ command: FAILING_COMMAND })
+    const blocked = await spawnAndSettle(blockedFixture)
     const okPath = join(f.stateDir, "tasks", `${ok.taskId}.json`)
-    const blockedPath = join(f.stateDir, "tasks", `${blocked.taskId}.json`)
+    const blockedPath = join(blockedFixture.stateDir, "tasks", `${blocked.taskId}.json`)
     expect(readFileSync(okPath, "utf8")).toContain('"verification_status":"verified"')
     expect(readFileSync(blockedPath, "utf8")).toContain('"verification_status":"blocked"')
     for (const [path, literal] of [[okPath, "verified"], [blockedPath, "blocked"]] as const) {

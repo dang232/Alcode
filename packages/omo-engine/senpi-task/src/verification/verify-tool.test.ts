@@ -11,6 +11,7 @@ function tempStore() {
   const root = mkdtempSync(join(tmpdir(), "verify-tool-"))
   const dir = (runId: string) => join(root, "verifications", runId)
   const store = {
+    rootDir: join(root, "verifications"),
     writeVerification(runId, _nodeId, checkId, _attempt, record) {
       mkdirSync(dir(runId), { recursive: true })
       const target = join(dir(runId), `run.${checkId}.1.json`)
@@ -49,7 +50,7 @@ function toCatalogue(checks: readonly DagVerifyCheck[]): OrdinaryCatalogue {
 
 function buildTool(
   store: OrdinaryEvidenceStore,
-  binding: { runId: string; sessionId: string; epoch: number } | null,
+  binding: { taskId: string; sessionId: string; epoch: number } | null,
   catalogue: OrdinaryCatalogue,
   changedFiles: readonly string[] | null = ["src/a.ts"],
 ): VerifyTool {
@@ -85,7 +86,7 @@ describe("verify tool - ownership", () => {
     const { store } = tempStore()
     const result = await buildTool(
       store,
-      { runId: "run-a", sessionId: "sess-a", epoch: 3 },
+      { taskId: "run-a", sessionId: "sess-a", epoch: 3 },
       toCatalogue([PASSING]),
     ).execute()
     expect(result.isError).toBe(false)
@@ -99,8 +100,8 @@ describe("verify tool - ownership", () => {
 
   test("#given two children #when both request verification #then each keeps its own evidence", async () => {
     const { store } = tempStore()
-    await buildTool(store, { runId: "run-a", sessionId: "sess-a", epoch: 1 }, toCatalogue([PASSING])).execute()
-    await buildTool(store, { runId: "run-b", sessionId: "sess-b", epoch: 1 }, toCatalogue([FAILING])).execute()
+    await buildTool(store, { taskId: "run-a", sessionId: "sess-a", epoch: 1 }, toCatalogue([PASSING])).execute()
+    await buildTool(store, { taskId: "run-b", sessionId: "sess-b", epoch: 1 }, toCatalogue([FAILING])).execute()
     expect(store.listVerifications("run-a")).toHaveLength(1)
     expect(store.listVerifications("run-b")).toHaveLength(1)
     expect(parseVerificationRecord(store.readVerification("run-a", "run", "unit-core")!)?.status).toBe("passed")
@@ -111,7 +112,7 @@ describe("verify tool - ownership", () => {
     const { store } = tempStore()
     const result = await buildTool(
       store,
-      { runId: "run-u", sessionId: "sess-u", epoch: 1 },
+      { taskId: "run-u", sessionId: "sess-u", epoch: 1 },
       toCatalogue([PASSING]),
       null,
     ).execute()
@@ -127,7 +128,7 @@ describe("verify tool - truthfulness", () => {
     const { store } = tempStore()
     const result = await buildTool(
       store,
-      { runId: "run-f", sessionId: "sess-f", epoch: 1 },
+      { taskId: "run-f", sessionId: "sess-f", epoch: 1 },
       toCatalogue([FAILING]),
     ).execute()
     expect(result.isError).toBe(true)
@@ -139,7 +140,7 @@ describe("verify tool - truthfulness", () => {
     const { store } = tempStore()
     const result = await buildTool(
       store,
-      { runId: "run-doc", sessionId: "sess-doc", epoch: 1 },
+      { taskId: "run-doc", sessionId: "sess-doc", epoch: 1 },
       toCatalogue([PASSING]),
       ["docs/architecture/agent-quality-gate.md"],
     ).execute()
@@ -155,7 +156,7 @@ describe("verify tool - catalogue refusals", () => {
     const { root, store } = tempStore()
     const result = await buildTool(
       store,
-      { runId: "run-empty", sessionId: "sess-empty", epoch: 1 },
+      { taskId: "run-empty", sessionId: "sess-empty", epoch: 1 },
       { status: "configured", checks: [] },
     ).execute()
     expect(result.isError).toBe(true)
@@ -171,7 +172,7 @@ describe("verify tool - catalogue refusals", () => {
     const reason = "no verification checks are declared for this workspace"
     const result = await buildTool(
       store,
-      { runId: "run-none", sessionId: "sess-none", epoch: 1 },
+      { taskId: "run-none", sessionId: "sess-none", epoch: 1 },
       { status: "none", reason },
     ).execute()
     expect(result.isError).toBe(true)
@@ -188,7 +189,7 @@ describe("verify tool - catalogue refusals", () => {
     const diagnostics = ["manifest declares no command", "config check is missing a category"]
     const result = await buildTool(
       store,
-      { runId: "run-invalid", sessionId: "sess-invalid", epoch: 1 },
+      { taskId: "run-invalid", sessionId: "sess-invalid", epoch: 1 },
       { status: "invalid", diagnostics },
     ).execute()
     expect(result.isError).toBe(true)
@@ -205,7 +206,7 @@ describe("verify tool - catalogue refusals", () => {
     const reason = "this project type has no verification adapter"
     const result = await buildTool(
       store,
-      { runId: "run-unsupported", sessionId: "sess-unsupported", epoch: 1 },
+      { taskId: "run-unsupported", sessionId: "sess-unsupported", epoch: 1 },
       { status: "unsupported", reason },
     ).execute()
     expect(result.isError).toBe(true)
@@ -223,7 +224,7 @@ describe("verify tool - catalogue refusals", () => {
     const reason = "candidates need explicit approval before they may run"
     const result = await buildTool(
       store,
-      { runId: "run-approval", sessionId: "sess-approval", epoch: 1 },
+      { taskId: "run-approval", sessionId: "sess-approval", epoch: 1 },
       { status: "approval_required", pending, reason },
     ).execute()
     expect(result.isError).toBe(true)

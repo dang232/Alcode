@@ -6,7 +6,7 @@
 // never widen its own scope.
 
 export type WorkerVerificationBinding = {
-  readonly runId: string
+  readonly taskId: string
   readonly sessionId: string
   readonly epoch: number
 }
@@ -37,7 +37,7 @@ export function resolveWorkerVerificationContext(source: WorkerContextSource): W
   const epoch = source.notification.run_epoch
   if (!Number.isInteger(epoch) || epoch < 0) return null
   return {
-    binding: { runId: source.task_id, sessionId: source.parent_session_id, epoch },
+    binding: { taskId: source.task_id, sessionId: source.parent_session_id, epoch },
     workspaceDir,
   }
 }

@@ -16,15 +16,10 @@ import { DAG_VERIFICATION_DIRECTIVE } from "./dag-verification-directive"
 import type { RepairState } from "../repair/state"
 import type { VerificationStatus } from "../verification/completion-status"
 
-// The gate's claim rides on the persisted record JSON but is intentionally absent from the
-// TaskRecord type (typed loads drop it until the state/store lane parses it), so it is read
-// through this narrow structural view instead of widening TaskRecord itself.
-type VerifiableRecord = TaskRecord & { readonly verification_status?: VerificationStatus }
-
+// The gate's claim rides on the persisted record JSON and on TaskRecord itself, so the typed record
+// read is the authoritative carrier in this process.
 function recordGateVerdict(record: TaskRecord): VerificationStatus | undefined {
-  // SAFETY: VerifiableRecord only names the persisted verification_status claim the store
-  // parses; the cast reads that optional field without widening TaskRecord.
-  return (record as VerifiableRecord).verification_status
+  return record.verification_status
 }
 import type {
   CompletionDetails,

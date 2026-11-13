@@ -1,14 +1,18 @@
-// Integration proof that the ordinary worker's verification tool works through a REAL
-// worker: a real task store, a real task manager, and a real InProcessRunner with only the
-// LLM turn scripted (an injected createSession port). Every tool under test is read out of
-// the CAPTURED CreateAgentSessionOptions.customTools array, never constructed by the test.
+// Integration proof of the ordinary child's verification authority through a REAL worker: a real
+// task store, a real task manager, and a real InProcessRunner with only the LLM turn scripted (an
+// injected createSession port). The child surface is read out of the CAPTURED
+// CreateAgentSessionOptions.customTools array; the evidence is read from the host's own state tree.
+//
+// Authority model (Policy C): NO child - ordinary, revived, DAG, member or curated - receives a
+// verification tool. The host captures the spawn-time approved catalogue when the child's turn
+// settles, and only the completion gate may publish a verdict. These tests therefore assert two
+// things in one place: the denied child surface, and the host path's resulting verdict/evidence.
 //
 // Trust rules this file obeys:
-// - No approval is ever manufactured: no approval record is written and no approve* helper is
-//   called. Any path that would need authorization asserts the fail-closed refusal instead.
+// - An approval is only written through the real approveCandidate host action; no test fakes a
+//   check result or a capture receipt.
 // - P7/P9 use the evidence-store + ordinary-capture path directly with a stubbed command
-//   runner because they are storage/freshness tests, not authorization tests; executing a
-//   real check there would need an approval that must not be faked.
+//   runner because they are storage/freshness tests, not authorization tests.
 // - Markers live OUTSIDE the git workspace so the provenance snapshot cannot see them.
 import { afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
@@ -36,7 +40,7 @@ import {
   createOrdinaryVerificationCapture,
   ordinaryEvidenceFreshness,
 } from "./ordinary-capture"
-import { VERIFY_TOOL_NAME, type VerifyTool } from "./verify-tool"
+import { VERIFY_TOOL_NAME } from "./verify-tool"
 import { createFileEvidenceStore } from "./evidence-store"
 
 const PARENT_SESSION_ID = "verify-it-parent"
@@ -305,16 +309,47 @@ function capturedOptions(harness: Harness, index: number): CreateAgentSessionOpt
   return capturedSurface(harness, index).options
 }
 
-function requireVerifyTool(harness: Harness, index: number): VerifyTool {
-  const found = (capturedOptions(harness, index).customTools ?? []).find(
-    (tool) => tool.name === VERIFY_TOOL_NAME,
-  )
-  expect(found).toBeDefined()
-  if (found === undefined) throw new Error("verify-it: verify tool missing from captured child surface")
-  // SAFETY: the only tool carrying VERIFY_TOOL_NAME is the one createVerificationWorkerTool built,
-  // and this object is the very instance the real InProcessRunner installed on this child, so the
-  // name check above establishes the VerifyTool contract.
-  return found as VerifyTool
+function capturedToolNames(harness: Harness, index: number): string[] {
+  return (capturedOptions(harness, index).customTools ?? []).map((tool) => tool.name)
+}
+
+// P1/P2/P10 share this: an approval written by the host before the child's turn is what lets the
+// completion capture execute the configured check. Later approvals must never reach that snapshot.
+function approveMarkerCheck(harness: Harness, approvedBy = "alcode:tester"): void {
+  const candidate = candidateForApproval({
+    projectRoot: harness.workspace,
+    workspaceId: ".",
+    changedFiles: [],
+    checkId: "marker-check",
+  })
+  if (candidate === null) throw new Error("verify-it: expected the declared candidate")
+  approveCandidate({
+    authority: harness.authority,
+    candidate: {
+      fingerprint: candidate.fingerprint,
+      checkId: candidate.checkId,
+      command: candidate.command,
+      cwd: candidate.cwd,
+      packageScope: candidate.packageScope,
+      timeoutMs: candidate.timeoutMs,
+    },
+    workspaceId: ".",
+    configVersion: VERIFICATION_CONFIG_VERSION,
+    approvedBy,
+  })
+}
+
+// Settle the scripted turn, then read the PERSISTED terminal: the waiter is settled by the terminal
+// write and the verification claim is stamped right after it.
+async function completeChild(harness: Harness, taskId: string, surfaceIndex: number, text = "done") {
+  const terminal = harness.manager.waitFor(taskId)
+  const fake = capturedSurface(harness, surfaceIndex).fake
+  fake.lastText.value = text
+  fake.resolvePrompt()
+  await terminal
+  const persisted = harness.store.load(taskId)
+  if (persisted === null) throw new Error(`verify-it: no persisted terminal for ${taskId}`)
+  return persisted
 }
 
 function evidenceEntries(evidenceRoot: string): string[] {
@@ -322,71 +357,61 @@ function evidenceEntries(evidenceRoot: string): string[] {
 }
 
 describe("worker verification through a real ordinary child", () => {
-  test("#given a real child #when the session is constructed #then customTools carries a working verify tool (P1)", async () => {
-    // P1: tool present on the real child surface.
-    const harness = makeHarness("valid")
+  test("#given a real child #when the session is constructed #then it has no verify tool and the host capture verifies the configured check (P1)", async () => {
+    // P1: the authority surface moved. The real child must NOT carry a verification tool, while the
+    // host capture still executes the approved check at completion and the gate publishes verified.
+    const root = trackRoot("senpi-verify-it-p1root-")
+    const marker = join(root, "marker.txt")
+    const harness = makeHarness("valid", marker)
     try {
-      const { surfaceIndex } = await harness.startChild({ category: "quick" })
-      const names = (capturedOptions(harness, surfaceIndex).customTools ?? []).map((tool) => tool.name)
-      expect(names).toContain(VERIFY_TOOL_NAME)
-      const verify = requireVerifyTool(harness, surfaceIndex)
-      // A working execute function produces a shaped result without the test naming any run.
-      const probe = await verify.execute()
-      expect(probe.details).toBeDefined()
-      expect(Array.isArray(probe.details.required)).toBe(true)
+      approveMarkerCheck(harness)
+      const { taskId, surfaceIndex } = await harness.startChild({ category: "quick" })
+      expect(capturedToolNames(harness, surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
+      const terminal = await completeChild(harness, taskId, surfaceIndex)
+      expect(terminal.status).toBe("completed")
+      expect(terminal.verification_status).toBe("verified")
+      // The approved command really ran, and the evidence lives under the task id the host owns.
+      expect(existsSync(marker)).toBe(true)
+      expect(evidenceEntries(harness.evidenceRoot)).toEqual([taskId])
+      const files = readdirSync(join(harness.evidenceRoot, taskId))
+      expect(files.some((file) => file.startsWith(`${ORDINARY_VERIFICATION_NODE}.marker-check.`))).toBe(true)
     } finally {
       await harness.cleanup()
     }
   })
 
-  test("#given a live child with no approval #when verify runs #then it refuses as approval_required, and a completed run fences as unavailable (P2)", async () => {
-    // P2: host identity. The catalogue declares a candidate but nothing is approved, so the
-    // tool must refuse; the refusal is tied to the host's own live record, and once the run
-    // is terminal the same captured tool fences as unavailable (revive-style fencing without
-    // fabricating any record: the run genuinely completed).
+  test("#given a live child with no approval #when it completes #then the host captures nothing and the run is unverified (P2)", async () => {
+    // P2: with no approval the spawn-time catalogue is approval_required, so no host capture runs.
+    // The completion still publishes success (the ordinary run is not gated) but claims nothing.
     const harness = makeHarness("valid")
     try {
       const { taskId, surfaceIndex } = await harness.startChild({ category: "quick" })
-      const verify = requireVerifyTool(harness, surfaceIndex)
-      const refused = await verify.execute()
-      expect(refused.isError).toBe(true)
-      expect(refused.details.error?.code).toBe("verification_approval_required")
-
+      expect(capturedToolNames(harness, surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
       const live = harness.manager.get(taskId)
       expect(live?.status).toBe("running")
       expect(live?.spawn_spec?.cwd).toBe(harness.workspace)
-
-      // Complete the run for real through the scripted turn, then the same surface must fence.
-      const terminal = harness.manager.waitFor(taskId)
-      const fake = capturedSurface(harness, surfaceIndex).fake
-      if (fake === undefined) throw new Error("verify-it: scripted session missing for completion")
-      fake.lastText.value = "done"
-      fake.resolvePrompt()
-      const completed = await terminal
+      const completed = await completeChild(harness, taskId, surfaceIndex)
       expect(completed.status).toBe("completed")
-      const fenced = await verify.execute()
-      expect(fenced.isError).toBe(true)
-      expect(fenced.details.error?.code).toBe("verification_unavailable")
-      expect(fenced.details.records).toBe(0)
+      expect(completed.verification_status).toBe("unverified")
+      expect(existsSync(join(harness.evidenceRoot, taskId))).toBe(false)
     } finally {
       await harness.cleanup()
     }
   })
 
-  test("#given declared candidates and no approval #when verify runs #then the check command never runs (P3)", async () => {
+  test("#given declared candidates and no approval #when the child completes #then the check command never runs (P3)", async () => {
     // P3: approval gate. The marker sits OUTSIDE the workspace so the provenance snapshot
-    // stays clean; the proof is the marker's absence plus zero records plus an empty
-    // evidence root, i.e. the refusal happened before any capture could run.
+    // stays clean; the proof is the marker's absence plus an empty evidence root, i.e. the host
+    // capture never started the declared command because nothing approved it.
     const root = trackRoot("senpi-verify-it-p3root-")
     const marker = join(root, "marker.txt")
     const harness = makeHarness("valid", marker)
     try {
       const { taskId, surfaceIndex } = await harness.startChild({ category: "quick" })
-      const verify = requireVerifyTool(harness, surfaceIndex)
-      const result = await verify.execute()
-      expect(result.isError).toBe(true)
-      expect(result.details.error?.code).toBe("verification_approval_required")
-      expect(result.details.records).toBe(0)
+      expect(capturedToolNames(harness, surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
+      const terminal = await completeChild(harness, taskId, surfaceIndex)
+      expect(terminal.status).toBe("completed")
+      expect(terminal.verification_status).toBe("unverified")
       expect(existsSync(marker)).toBe(false)
       expect(existsSync(join(harness.evidenceRoot, taskId))).toBe(false)
       expect(evidenceEntries(harness.evidenceRoot)).toEqual([])
@@ -395,61 +420,63 @@ describe("worker verification through a real ordinary child", () => {
     }
   })
 
-  test("#given a child outside any git work tree #when verify runs #then it fails closed as provenance_unknown and writes nothing (P4)", async () => {
-    // P4: provenance fail-closed. The host cannot snapshot a tree that is not a work tree,
-    // so it must refuse rather than guess an empty change set.
-    const harness = makeHarness("valid")
-    const bare = join(harness.root, "bare")
-    mkdirSync(bare, { recursive: true })
+  test("#given a child outside any git work tree #when it completes #then the host fails closed as provenance_unknown and writes nothing (P4)", async () => {
+    // P4: provenance fail-closed. The host cannot snapshot a tree that is not a work tree, so the
+    // completion is blocked as provenance_unknown rather than guessed from an empty change set.
+    const root = trackRoot("senpi-verify-it-p4root-")
+    const marker = join(root, "marker.txt")
+    const harness = makeHarness("valid", marker)
     try {
-      const { taskId, surfaceIndex } = await harness.startChild({ category: "quick", cwd: bare })
-      const verify = requireVerifyTool(harness, surfaceIndex)
-      const result = await verify.execute()
-      expect(result.isError).toBe(true)
-      expect(result.details.error?.code).toBe("verification_provenance_unknown")
-      expect(result.details.records).toBe(0)
+      approveMarkerCheck(harness)
+      // Same approved workspace minus its VCS identity: the catalogue still resolves, but the host
+      // can no longer attribute the change set it would run the check against.
+      rmSync(join(harness.workspace, ".git"), { recursive: true, force: true })
+      const { taskId, surfaceIndex } = await harness.startChild({ category: "quick" })
+      expect(capturedToolNames(harness, surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
+      const terminal = await completeChild(harness, taskId, surfaceIndex)
+      expect(terminal.status).toBe("error")
+      expect(terminal.verification_status).toBe("blocked")
+      expect(terminal.error_message).toContain("verification_provenance_unknown")
       expect(existsSync(join(harness.evidenceRoot, taskId))).toBe(false)
+      expect(existsSync(marker)).toBe(false)
       expect(evidenceEntries(harness.evidenceRoot)).toEqual([])
     } finally {
       await harness.cleanup()
     }
   })
 
-  test("#given a malformed verification catalogue #when verify runs #then it reports catalogue_invalid and executes nothing (P5)", async () => {
-    // P5: invalid catalogue. The file declares the marker command but breaks the schema, so
-    // the catalogue is rejected wholesale and the command never runs.
+  test("#given a malformed verification catalogue #when the child completes #then the gate blocks malformed and executes nothing (P5)", async () => {
+    // P5: invalid catalogue. The file declares the marker command but breaks the schema, so the
+    // catalogue is rejected wholesale and the completion gate blocks without executing it.
     const root = trackRoot("senpi-verify-it-p5root-")
     const marker = join(root, "marker.txt")
     const harness = makeHarness("invalid", marker)
     try {
-      const { surfaceIndex } = await harness.startChild({ category: "quick" })
-      const verify = requireVerifyTool(harness, surfaceIndex)
-      const result = await verify.execute()
-      expect(result.isError).toBe(true)
-      expect(result.details.error?.code).toBe("verification_catalogue_invalid")
-      expect(result.details.records).toBe(0)
+      const { taskId, surfaceIndex } = await harness.startChild({ category: "quick" })
+      expect(capturedToolNames(harness, surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
+      const terminal = await completeChild(harness, taskId, surfaceIndex)
+      expect(terminal.status).toBe("error")
+      expect(terminal.verification_status).toBe("blocked")
+      expect(terminal.error_message).toContain("verification_evidence_malformed")
       expect(existsSync(marker)).toBe(false)
     } finally {
       await harness.cleanup()
     }
   })
 
-  test("#given a cancelled child #when verify runs #then it refuses as unavailable and never reports passed (P6)", async () => {
-    // P6: cancellation. The wait subscribes before the cancel is triggered; afterwards the
-    // captured tool must fence on the terminal record instead of authoring any outcome.
+  test("#given a cancelled child #when its turn is stopped #then no capture runs and nothing is published as passed (P6)", async () => {
+    // P6: cancellation. The wait subscribes before the cancel is triggered; a cancelled run never
+    // reaches the completion gate, so the host capture must write no evidence and no verdict.
     const harness = makeHarness("valid")
     try {
       const { taskId, surfaceIndex } = await harness.startChild({ category: "quick" })
-      const verify = requireVerifyTool(harness, surfaceIndex)
+      expect(capturedToolNames(harness, surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
       const terminal = harness.manager.waitFor(taskId)
       await harness.manager.cancelTask(taskId)
       const cancelled = await terminal
       expect(cancelled.status).toBe("cancelled")
-      const result = await verify.execute()
-      expect(result.isError).toBe(true)
-      expect(result.details.error?.code).toBe("verification_unavailable")
-      expect(result.details.records).toBe(0)
-      expect(JSON.stringify(result.details)).not.toContain("passed")
+      expect(existsSync(join(harness.evidenceRoot, taskId))).toBe(false)
+      expect(evidenceEntries(harness.evidenceRoot)).toEqual([])
     } finally {
       await harness.cleanup()
     }
@@ -483,7 +510,7 @@ describe("worker verification through a real ordinary child", () => {
       isCancelled: () => false,
     })
     const outcome = await capture.capture({
-      binding: { runId: "verify-it-p7", sessionId: "verify-it-parent", epoch: 7 },
+      binding: { taskId: "verify-it-p7", sessionId: "verify-it-parent", epoch: 7 },
       changedFiles: ["src/work.ts"],
       available: [
         {
@@ -510,19 +537,17 @@ describe("worker verification through a real ordinary child", () => {
     })
   })
 
-  test("#given two children in one workspace #when each verify runs #then each refusal belongs to its own task (P8)", async () => {
-    // P8: concurrency. Both tools refuse without approval; after cancelling only the first
-    // child, its tool fences on its own terminal record while the second child's tool still
-    // refuses on its own live record, and neither run leaves an evidence directory behind.
+  test("#given two children in one workspace #when one is cancelled #then each lifecycle stays its own task (P8)", async () => {
+    // P8: concurrency. Cancelling the first child settles only its own record; the second keeps
+    // running and later completes on its own path. Neither child carries a verification tool, and
+    // an unapproved catalogue means neither host capture writes evidence.
     const harness = makeHarness("valid")
     try {
       const first = await harness.startChild({ category: "quick" })
       const second = await harness.startChild({ category: "quick" })
       expect(first.taskId).not.toBe(second.taskId)
-      const firstTool = requireVerifyTool(harness, first.surfaceIndex)
-      const secondTool = requireVerifyTool(harness, second.surfaceIndex)
-      expect((await firstTool.execute()).details.error?.code).toBe("verification_approval_required")
-      expect((await secondTool.execute()).details.error?.code).toBe("verification_approval_required")
+      expect(capturedToolNames(harness, first.surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
+      expect(capturedToolNames(harness, second.surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
 
       const terminal = harness.manager.waitFor(first.taskId)
       await harness.manager.cancelTask(first.taskId)
@@ -530,8 +555,9 @@ describe("worker verification through a real ordinary child", () => {
       expect(cancelled.status).toBe("cancelled")
       expect(harness.manager.get(second.taskId)?.status).toBe("running")
 
-      expect((await firstTool.execute()).details.error?.code).toBe("verification_unavailable")
-      expect((await secondTool.execute()).details.error?.code).toBe("verification_approval_required")
+      const completed = await completeChild(harness, second.taskId, second.surfaceIndex)
+      expect(completed.status).toBe("completed")
+      expect(completed.verification_status).toBe("unverified")
       expect(existsSync(join(harness.evidenceRoot, first.taskId))).toBe(false)
       expect(existsSync(join(harness.evidenceRoot, second.taskId))).toBe(false)
     } finally {
@@ -566,7 +592,7 @@ describe("worker verification through a real ordinary child", () => {
       isCancelled: () => false,
     })
     const outcome = await capture.capture({
-      binding: { runId: "verify-it-p9", sessionId: "verify-it-parent", epoch: 9 },
+      binding: { taskId: "verify-it-p9", sessionId: "verify-it-parent", epoch: 9 },
       changedFiles: ["src/work.ts"],
       available: [
         {
@@ -591,58 +617,49 @@ describe("worker verification through a real ordinary child", () => {
     expect(parsed?.status).toBe("passed")
   })
 
-  test("#given a curated read-only child #when the session is constructed #then it never receives verify while an ordinary child does", async () => {
-    // Security assertion: curated read-only children execute commands through a restricted
-    // broker, so the manager must not widen their contract with a command-executing tool.
-    const harness = makeHarness("valid")
+  test("#given a curated read-only child #when the session is constructed #then neither it nor an ordinary child receives verify", async () => {
+    // Security assertion: curated read-only children execute commands through a restricted broker,
+    // and ordinary children no longer own verification authority at all. Both surfaces must be
+    // tool-free; only the ordinary run's host capture may publish a verdict.
+    const root = trackRoot("senpi-verify-it-curatedroot-")
+    const marker = join(root, "marker.txt")
+    const harness = makeHarness("valid", marker)
     try {
+      approveMarkerCheck(harness)
       const curated = await harness.startChild({ subagent_type: "explore" })
       const ordinary = await harness.startChild({ category: "quick" })
-      const curatedNames = (capturedOptions(harness, curated.surfaceIndex).customTools ?? []).map((tool) => tool.name)
-      expect(curatedNames).not.toContain(VERIFY_TOOL_NAME)
-      const ordinaryNames = (capturedOptions(harness, ordinary.surfaceIndex).customTools ?? []).map((tool) => tool.name)
-      expect(ordinaryNames).toContain(VERIFY_TOOL_NAME)
+      expect(capturedToolNames(harness, curated.surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
+      expect(capturedToolNames(harness, ordinary.surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
+
+      const curatedTerminal = await completeChild(harness, curated.taskId, curated.surfaceIndex)
+      expect(curatedTerminal.status).toBe("completed")
+      expect(curatedTerminal.verification_status).toBe("unverified")
+
+      const ordinaryTerminal = await completeChild(harness, ordinary.taskId, ordinary.surfaceIndex)
+      expect(ordinaryTerminal.status).toBe("completed")
+      expect(ordinaryTerminal.verification_status).toBe("verified")
+      expect(existsSync(join(harness.evidenceRoot, curated.taskId))).toBe(false)
+      expect(existsSync(join(harness.evidenceRoot, ordinary.taskId))).toBe(true)
     } finally {
       await harness.cleanup()
     }
   })
 
-  test("#given an approval written after spawn #when the child verifies #then the run snapshot refuses and the command never runs (P10)", async () => {
-    // P10: the mounted tool cannot be self-approved mid-run. The child can write inside its own
-    // project tree, so it can write an approval record there; authority was read at spawn, before
-    // the child had a turn, and that snapshot is what the tool consults.
+  test("#given an approval written after spawn #when the child completes #then the run snapshot refuses and the command never runs (P10)", async () => {
+    // P10: the completion snapshot cannot be self-approved mid-run. The child can write inside its
+    // own project tree; authority was read at spawn, before the child had a turn, and that snapshot
+    // is what the host capture consults. The later approval must not make the run executed/verified.
     const root = trackRoot("senpi-verify-it-p10root-")
     const marker = join(root, "marker.txt")
     const harness = makeHarness("valid", marker)
     try {
       const { taskId, surfaceIndex } = await harness.startChild({ category: "quick" })
-      const verify = requireVerifyTool(harness, surfaceIndex)
-      const candidate = candidateForApproval({
-        projectRoot: harness.workspace,
-        workspaceId: ".",
-        changedFiles: [],
-        checkId: "marker-check",
-      })
-      if (candidate === null) throw new Error("verify-it: expected the declared candidate")
-      approveCandidate({
-        authority: harness.authority,
-        candidate: {
-          fingerprint: candidate.fingerprint,
-          checkId: candidate.checkId,
-          command: candidate.command,
-          cwd: candidate.cwd,
-          packageScope: candidate.packageScope,
-          timeoutMs: candidate.timeoutMs,
-        },
-        workspaceId: ".",
-        configVersion: VERIFICATION_CONFIG_VERSION,
-        approvedBy: "alcode:self-minted-by-the-child",
-      })
+      expect(capturedToolNames(harness, surfaceIndex)).not.toContain(VERIFY_TOOL_NAME)
+      approveMarkerCheck(harness, "alcode:self-minted-by-the-child")
 
-      const result = await verify.execute()
-      expect(result.isError).toBe(true)
-      expect(result.details.error?.code).toBe("verification_approval_required")
-      expect(result.details.records).toBe(0)
+      const terminal = await completeChild(harness, taskId, surfaceIndex)
+      expect(terminal.status).toBe("completed")
+      expect(terminal.verification_status).toBe("unverified")
       expect(existsSync(marker)).toBe(false)
       expect(existsSync(join(harness.evidenceRoot, taskId))).toBe(false)
     } finally {

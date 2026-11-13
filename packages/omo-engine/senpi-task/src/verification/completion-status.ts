@@ -21,7 +21,11 @@ const COMPLETION_BLOCK_CODES = [
 
 export type CompletionBlockCode = (typeof COMPLETION_BLOCK_CODES)[number];
 
-export type VerificationStatus = "verified" | "unverified" | "blocked";
+// The persisted vocabulary. The record parser validates against this list, so a new status must be
+// added here and understood by every consumer before it can appear on disk.
+export const VERIFICATION_STATUSES = ["verified", "unverified", "blocked"] as const;
+
+export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
 
 export type CompletionGateVerdict = {
   readonly verification: VerificationStatus;

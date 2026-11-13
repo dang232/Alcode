@@ -21,7 +21,7 @@ function source(overrides: Partial<WorkerContextSource> = {}): WorkerContextSour
 describe("worker verification context", () => {
   test("#given a running record with a persisted launch directory #when resolved #then identity and directory come from the record", () => {
     const context = resolveWorkerVerificationContext(source())
-    expect(context?.binding.runId).toBe("run-w")
+    expect(context?.binding.taskId).toBe("run-w")
     expect(context?.binding.sessionId).toBe("sess-parent")
     expect(context?.binding.epoch).toBe(2)
     expect(context?.workspaceDir).toBe("D:/elsewhere/worker-clone")
@@ -50,6 +50,7 @@ function tempStore(): OrdinaryEvidenceStore {
   const root = mkdtempSync(join(tmpdir(), "worker-context-"))
   const dir = (runId: string) => join(root, "verifications", runId)
   return {
+    rootDir: join(root, "verifications"),
     writeVerification(runId, _nodeId, checkId, _attempt, record) {
       mkdirSync(dir(runId), { recursive: true })
       const target = join(dir(runId), `run.${checkId}.1.json`)
@@ -84,9 +85,9 @@ describe("verify tool - unknown provenance", () => {
     })
     const result = await createVerificationWorkerTool({
       capture,
-      binding: () => ({ runId: "run-u", sessionId: "sess-u", epoch: 1 }),
+      binding: () => ({ taskId: "run-u", sessionId: "sess-u", epoch: 1 }),
       changedFiles: () => null,
-      available: () => [PASSING],
+      catalogue: () => ({ status: "configured", checks: [{ check: PASSING, provenance: { source: "manifest", location: "test", reason: "declared check" } }] }),
     }).execute()
     expect(result.isError).toBe(true)
     expect(result.details.error?.code).toBe("verification_provenance_unknown")

@@ -42,7 +42,7 @@ export type VerifyTool = {
 }
 
 type VerifyBinding = {
-  readonly runId: string
+  readonly taskId: string
   readonly sessionId: string
   readonly epoch: number
 }
