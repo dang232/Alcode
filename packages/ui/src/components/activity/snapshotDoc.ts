@@ -14,6 +14,9 @@ const nodeSchema = z.object({
   // with no child (and every legacy document) carries none; absent must stay
   // absent rather than being guessed.
   task_id: z.string().optional(),
+  // The DAG node that owns the child task. Optional for the same reason:
+  // a legacy document (and a task without a DAG owner) carries none.
+  node_id: z.string().optional(),
 });
 
 const edgeSchema = z.object({ from: z.string(), to: z.string() });
@@ -47,6 +50,8 @@ export type SnapshotNode = {
   verificationStatus?: VerificationStatus;
   /** Child task id that executed this node, when the writer recorded one. */
   taskId?: string;
+  /** DAG node id that owns the child task, when the writer recorded one. */
+  nodeId?: string;
 };
 
 export type SnapshotRun = {
@@ -94,6 +99,11 @@ export const parseSnapshotDoc = (raw: JsonValue): SnapshotDoc | null => {
         // attribution must stay absent rather than becoming an empty field.
         if (node.task_id !== undefined && node.task_id.length > 0) {
           parsed.taskId = node.task_id;
+        }
+        // Same rule for the owning DAG node id: present only when the wire
+        // carried one, so an absent attribution never becomes an empty field.
+        if (node.node_id !== undefined && node.node_id.length > 0) {
+          parsed.nodeId = node.node_id;
         }
         return parsed;
       }),

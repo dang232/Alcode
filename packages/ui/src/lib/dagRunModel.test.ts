@@ -3,6 +3,8 @@
 // calls, synthetic reports); no mocks, every node traces to a fixture row.
 import { describe, expect, test } from 'bun:test';
 
+import type { JsonValue } from '@alcode/sdk';
+
 import type { AssistantMessage, Message, Part, Session, SyntheticMessage, TextPart, ToolInput, ToolPart } from '@/lib/opencode/model';
 import { buildDagRunModel, dagRunModelToSnapshotDoc, dagRunSnapshotStatus, type DagRunModelInput } from './dagRunModel';
 import { parseSnapshotDoc } from '../../../extensions/dag-pane/panel/dag-view.ts';
@@ -386,5 +388,101 @@ describe('dag truthfulness regressions (audit-fixes-b)', () => {
     };
     const node = doc.dag.runs[0]?.nodes.find((n) => n.id === 'ses_thin');
     expect(node?.started_at).toBeNull();
+  });
+});
+
+describe('chat-path attribution from the task-record index', () => {
+  type WireNode = { id: string; task_id?: string; node_id?: string };
+  type WireRun = {
+    run_key: string;
+    nodes: WireNode[];
+    edges: { from: string; to: string }[];
+    waves: { index: number; node_ids: string[] }[];
+  };
+
+  const runOf = (doc: JsonValue): WireRun => {
+    // SAFETY: every doc in this block comes from dagRunModelToSnapshotDoc,
+    // which emits exactly one run carrying this envelope.
+    return (doc as { dag: { runs: [WireRun] } }).dag.runs[0];
+  };
+
+  const nodeOf = (doc: JsonValue, id: string): WireNode => {
+    const node = runOf(doc).nodes.find((candidate) => candidate.id === id);
+    if (!node) throw new Error(`fixture must serialize node ${id}`);
+    return node;
+  };
+
+  const twoChildModel = () => {
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent(), child('ses_a'), child('ses_b')],
+      messages: [assistantMessage('m2'), report('r1', 'ses_a', 'a'), report('r2', 'ses_b', 'b')],
+      parts: partsOf([['m2', [
+        toolCall('t1', 'm2', { description: 'A' }, 'completed', 'ses_a'),
+        toolCall('t2', 'm2', { description: 'B' }, 'completed', 'ses_b'),
+      ]]]),
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    return model;
+  };
+
+  test('a known child session carries its persisted task and node ids', () => {
+    const doc = dagRunModelToSnapshotDoc(twoChildModel(), {
+      ses_a: { taskId: 'st_a', nodeId: 'node_alpha' },
+    });
+
+    const node = nodeOf(doc, 'ses_a');
+    expect(node.task_id).toBe('st_a');
+    expect(node.node_id).toBe('node_alpha');
+  });
+
+  test('an unknown session keeps both fields absent, never empty strings', () => {
+    const doc = dagRunModelToSnapshotDoc(twoChildModel(), {
+      ses_a: { taskId: 'st_a', nodeId: 'node_alpha' },
+    });
+
+    const known = nodeOf(doc, 'ses_a');
+    const unknown = nodeOf(doc, 'ses_b');
+    expect(known.task_id).toBe('st_a');
+    expect(Object.hasOwn(unknown, 'task_id')).toBe(false);
+    expect(Object.hasOwn(unknown, 'node_id')).toBe(false);
+    expect(JSON.stringify(unknown)).not.toContain('task_id');
+  });
+
+  test('a record without a DAG owner contributes task_id but no node_id', () => {
+    const doc = dagRunModelToSnapshotDoc(twoChildModel(), { ses_b: { taskId: 'st_b' } });
+
+    const node = nodeOf(doc, 'ses_b');
+    expect(node.task_id).toBe('st_b');
+    expect(Object.hasOwn(node, 'node_id')).toBe(false);
+  });
+
+  test('an absent or empty index leaves the whole document byte-identical', () => {
+    const model = twoChildModel();
+    const baseline = JSON.stringify(dagRunModelToSnapshotDoc(model));
+
+    expect(JSON.stringify(dagRunModelToSnapshotDoc(model, null))).toBe(baseline);
+    expect(JSON.stringify(dagRunModelToSnapshotDoc(model, {}))).toBe(baseline);
+  });
+
+  test('a stale index naming no child of this run leaves the document untouched', () => {
+    const model = twoChildModel();
+    const baseline = JSON.stringify(dagRunModelToSnapshotDoc(model));
+
+    expect(JSON.stringify(dagRunModelToSnapshotDoc(model, {
+      ses_old: { taskId: 'st_old', nodeId: 'node_old' },
+    }))).toBe(baseline);
+  });
+
+  test('attribution adds node fields without changing ids, edges, or waves', () => {
+    const model = twoChildModel();
+    const baseline = runOf(dagRunModelToSnapshotDoc(model));
+    const attributed = runOf(dagRunModelToSnapshotDoc(model, {
+      ses_a: { taskId: 'st_a', nodeId: 'node_alpha' },
+    }));
+
+    expect(attributed.run_key).toBe(baseline.run_key);
+    expect(attributed.nodes.map((node) => node.id)).toEqual(baseline.nodes.map((node) => node.id));
+    expect(attributed.edges).toEqual(baseline.edges);
+    expect(attributed.waves).toEqual(baseline.waves);
   });
 });

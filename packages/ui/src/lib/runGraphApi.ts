@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { JsonValue } from '@alcode/sdk';
 
 import { runtimeFetch } from './runtime-fetch';
+import type { DagAttributionClaim, DagAttributionIndex } from './dagRunModel';
 import { parseSnapshotDoc, type SnapshotDoc } from '@/components/activity/snapshotDoc';
 
 const errorSchema = z.object({ error: z.string().min(1) });
@@ -120,6 +121,98 @@ export const parseSnapshotRepairIndex = (raw: JsonValue): SnapshotRepairIndex =>
   runs: indexRepairEntries(raw, 'dag', 'runs', 'run_id'),
   tasks: indexRepairEntries(raw, 'tasks', 'tasks', 'task_id'),
 });
+
+/** One child-session claim as the attribution route projects it from the task record. */
+const attributionClaimSchema = z.object({
+  taskId: z.string().min(1),
+  // Absent when the record carries no DAG owner; the parser never invents one.
+  nodeId: z.string().min(1).optional(),
+  runId: z.string().min(1).optional(),
+});
+
+const attributionIndexSchema = z.object({
+  byChildSessionId: z.record(z.string().min(1), attributionClaimSchema),
+});
+
+/**
+ * Outcome of reading the project's attribution index.
+ *
+ * `absent` (no task records yet) and `error` (the store could not be read) are
+ * distinct from an index: neither may become a fabricated claim, and the
+ * producer treats both as "no attribution for this document".
+ */
+export type DagAttributionRead =
+  | { kind: 'index'; index: DagAttributionIndex }
+  | { kind: 'absent'; reason: string }
+  | { kind: 'error'; reason: string };
+
+const readAttributionError = async (response: Response, fallback: string): Promise<string> => {
+  try {
+    const parsedError = errorSchema.safeParse(await response.json());
+    return parsedError.success ? parsedError.data.error : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+/**
+ * Read the attribution index for one project and keep only the child-session
+ * slice the chat-path producer consumes.
+ *
+ * The route answers 404 with an explicit code when the project has no task
+ * records; that is absence, not a failure. A failed or malformed read returns
+ * `error` so the caller can distinguish it from a clean empty index.
+ */
+export const fetchDagAttributionIndex = async (
+  directory: string | null | undefined,
+  options: { signal?: AbortSignal } = {},
+): Promise<DagAttributionRead> => {
+  const dir = directorySchema.safeParse(directory);
+  if (!dir.success) {
+    return { kind: 'absent', reason: 'Attribution state needs a project directory' };
+  }
+  const trimmed = dir.data;
+  let response: Response;
+  try {
+    response = await runtimeFetch('/api/run-graph/attribution', {
+      query: { directory: trimmed },
+      directory: trimmed,
+      cache: 'no-store',
+      signal: options.signal,
+    });
+  } catch (error) {
+    const reason = error instanceof Error && error.message.length > 0
+      ? error.message
+      : 'Failed to load attribution state';
+    return { kind: 'error', reason };
+  }
+  if (response.status === 404) {
+    return { kind: 'absent', reason: `No attribution state for directory ${trimmed}` };
+  }
+  if (!response.ok) {
+    return {
+      kind: 'error',
+      reason: await readAttributionError(response, `Failed to load attribution state (${response.status})`),
+    };
+  }
+  let payload: JsonValue;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'error', reason: 'Attribution state is malformed' };
+  }
+  const parsed = attributionIndexSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { kind: 'error', reason: 'Attribution state is malformed' };
+  }
+  const index: Record<string, DagAttributionClaim> = {};
+  for (const [childSessionId, claim] of Object.entries(parsed.data.byChildSessionId)) {
+    index[childSessionId] = claim.nodeId === undefined
+      ? { taskId: claim.taskId }
+      : { taskId: claim.taskId, nodeId: claim.nodeId };
+  }
+  return { kind: 'index', index };
+};
 
 /**
  * A 404 from the run-graph route: this conversation has no persisted

@@ -103,4 +103,70 @@ describe('snapshot envelope', () => {
     expect(parsed?.runs[0]?.nodes[1]?.taskId).toBeUndefined();
     expect(Object.hasOwn(parsed?.runs[0]?.nodes[1] ?? {}, 'taskId')).toBe(false);
   });
+
+  test('DAG node attribution round-trips, and a legacy doc without it is unchanged', () => {
+    const doc = (nodeId?: string) => {
+      const node = { id: 'n1', label: 'Build', state: 'completed', prompt: 'Go', depends_on: [] };
+      return {
+        sessionId: 'ses_1',
+        schemaVersion: 1,
+        dag: {
+          runs: [{
+            run_id: 'ses_1',
+            run_key: 'chat:ses_1',
+            name: 'Work',
+            status: 'completed',
+            nodes: [nodeId === undefined ? node : { ...node, node_id: nodeId }],
+            edges: [],
+            waves: [{ index: 0, node_ids: ['n1'] }],
+          }],
+        },
+      };
+    };
+
+    const withId = parseSnapshotDoc(doc('node_alpha'));
+    expect(withId?.runs[0]?.nodes[0]?.nodeId).toBe('node_alpha');
+
+    const legacy = parseSnapshotDoc(doc());
+    expect(legacy?.runs[0]?.nodes[0]?.nodeId).toBeUndefined();
+    expect(Object.hasOwn(legacy?.runs[0]?.nodes[0] ?? {}, 'nodeId')).toBe(false);
+    expect(legacy).toEqual({
+      sessionId: 'ses_1',
+      runs: [{
+        runId: 'ses_1',
+        runKey: 'chat:ses_1',
+        name: 'Work',
+        status: 'completed',
+        verificationStatus: undefined,
+        nodes: [{
+          id: 'n1',
+          label: 'Build',
+          state: 'completed',
+          prompt: 'Go',
+          dependsOn: [],
+          verificationStatus: undefined,
+        }],
+        edges: [],
+        waves: [{ index: 0, nodeIds: ['n1'] }],
+      }],
+    });
+  });
+
+  test('a non-string DAG node id makes the envelope unreadable, never a coerced string', () => {
+    const parsed = parseSnapshotDoc({
+      sessionId: 'ses_1',
+      schemaVersion: 1,
+      dag: {
+        runs: [{
+          run_id: 'ses_1',
+          run_key: 'chat:ses_1',
+          name: 'Work',
+          status: 'completed',
+          nodes: [{ id: 'n1', label: 'Build', state: 'completed', prompt: 'Go', depends_on: [], node_id: 7 }],
+          edges: [],
+        }],
+      },
+    });
+    expect(parsed).toBeNull();
+  });
 });
