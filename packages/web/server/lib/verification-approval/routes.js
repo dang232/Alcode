@@ -11,6 +11,18 @@ import { createVerificationApprovalRuntime } from "./host-action"
 /** @public Consumed by `run-graph/runtime.js` through the built verification bundle, not by a source import. */
 export { createRepairStateReader } from "./repair-state"
 
+// Same contract for the authoritative attribution index the run-graph runtime reads.
+/** @public Consumed by `run-graph/runtime.js` through the built verification bundle, not by a source import. */
+export { createAttributionStateReader } from "./attribution-state"
+
+// Delivery status and verification claim of one persisted task record.
+/** @public Consumed by `run-graph/runtime.js` through the built verification bundle, not by a source import. */
+export { createDeliveryStateReader } from "./delivery-state"
+
+// Re-derives delivery rows from the durable records after a replacement or an interrupted publish.
+/** @public Consumed by `run-graph/runtime.js` through the built verification bundle, not by a source import. */
+export { createSnapshotReconciler } from "./delivery-reconcile"
+
 const REVIEW_PATH = "/api/verification/approvals/review"
 const LIST_PATH = "/api/verification/approvals/candidates"
 const APPROVE_PATH = "/api/verification/approvals/approve"

@@ -4,11 +4,12 @@ import path from 'node:path';
 const RUNS_DIRNAME = 'dag-runs';
 const SNAPSHOT_SUFFIX = '.snapshot.json';
 
-// The repair projection is bundled with the verification host actions because
-// that is the one entry the Node server builds from engine TypeScript:
-// `build:verification` writes `server/dist/verification-approval.js`. Loading
-// the artifact (never the .ts source) keeps this module runnable under Node.
-const REPAIR_BUNDLE = '../../dist/verification-approval.js';
+// The repair and attribution projections are bundled with the verification host
+// actions because that is the one entry the Node server builds from engine
+// TypeScript: `build:verification` writes
+// `server/dist/verification-approval.js`. Loading the artifact (never the .ts
+// source) keeps this module runnable under Node.
+const VERIFICATION_BUNDLE = '../../dist/verification-approval.js';
 
 const asText = (value) => `${value ?? ''}`.trim();
 
@@ -35,7 +36,7 @@ let repairReaderPromise = null;
 
 const loadRepairReader = () => {
   if (repairReaderPromise === null) {
-    repairReaderPromise = import(REPAIR_BUNDLE)
+    repairReaderPromise = import(VERIFICATION_BUNDLE)
       .then((module) => {
         const factory = module.createRepairStateReader;
         if (!(factory instanceof Function)) {
@@ -48,6 +49,46 @@ const loadRepairReader = () => {
       }));
   }
   return repairReaderPromise;
+};
+
+// Same lazy, process-wide load as the repair reader: a stale artifact surfaces
+// as an explicit attribution error instead of reading as "no attribution".
+let attributionReaderPromise = null;
+
+const loadAttributionReader = () => {
+  if (attributionReaderPromise === null) {
+    attributionReaderPromise = import(VERIFICATION_BUNDLE)
+      .then((module) => {
+        const factory = module.createAttributionStateReader;
+        if (!(factory instanceof Function)) {
+          throw new Error('attribution state reader is missing from the verification bundle');
+        }
+        return factory();
+      })
+      .catch((error) => ({
+        error: `attribution state unavailable: ${messageOf(error, 'the verification bundle could not be loaded')}`,
+      }));
+  }
+  return attributionReaderPromise;
+};
+
+let deliveryReaderPromise = null;
+
+const loadDeliveryReader = () => {
+  if (deliveryReaderPromise === null) {
+    deliveryReaderPromise = import(VERIFICATION_BUNDLE)
+      .then((module) => {
+        const factory = module.createDeliveryStateReader;
+        if (!(factory instanceof Function)) {
+          throw new Error('delivery state reader is missing from the verification bundle');
+        }
+        return factory();
+      })
+      .catch((error) => ({
+        error: `delivery state unavailable: ${messageOf(error, 'the verification bundle could not be loaded')}`,
+      }));
+  }
+  return deliveryReaderPromise;
 };
 
 const readEntryRepair = async (readRepairState, directory, taskId) => {
@@ -100,15 +141,201 @@ const attachRepairState = async (document, { directory, readRepairState }) => {
   return next;
 };
 
+const isChatRun = (run) => {
+  const runKey = asString(run.run_key);
+  return runKey !== null && runKey.startsWith('chat:');
+};
+
+const nodeIdForTask = (byTaskId, taskId) => {
+  if (!isRecord(byTaskId)) return null;
+  const entry = byTaskId[taskId];
+  return isRecord(entry) ? asString(entry.nodeId) : null;
+};
+
+const childEntry = (byChildSessionId, childSessionId) => {
+  if (!isRecord(byChildSessionId)) return null;
+  const entry = byChildSessionId[childSessionId];
+  return isRecord(entry) ? entry : null;
+};
+
+/**
+ * Project the attribution index onto a snapshot document without rewriting it.
+ *
+ * - `tasks.tasks[].node_id` comes from the record indexed by that `task_id`.
+ * - A node in a chat run gets `task_id` (and `node_id` when the record carries
+ *   one) only when its id is a known `child_session_id`.
+ * - A collision is surfaced as `attributionCollisions`; the colliding session
+ *   is never enriched, so read order cannot pick a winner.
+ */
+const attachAttribution = (document, index) => {
+  if (!isRecord(document)) return document;
+  const byTaskId = index.byTaskId;
+  const byChildSessionId = index.byChildSessionId;
+  let next = document;
+
+  const taskEntries = isRecord(document.tasks) && Array.isArray(document.tasks.tasks) ? document.tasks.tasks : null;
+  if (taskEntries !== null) {
+    let tasksChanged = false;
+    const tasks = taskEntries.map((entry) => {
+      if (!isRecord(entry)) return entry;
+      const taskId = asString(entry.task_id);
+      if (taskId === null || taskId.length === 0) return entry;
+      const nodeId = nodeIdForTask(byTaskId, taskId);
+      if (nodeId === null || nodeId.length === 0) return entry;
+      tasksChanged = true;
+      return { ...entry, node_id: nodeId };
+    });
+    if (tasksChanged) next = { ...next, tasks: { ...document.tasks, tasks } };
+  }
+
+  const runEntries = isRecord(document.dag) && Array.isArray(document.dag.runs) ? document.dag.runs : null;
+  if (runEntries !== null) {
+    let runsChanged = false;
+    const runs = runEntries.map((run) => {
+      if (!isRecord(run) || !isChatRun(run) || !Array.isArray(run.nodes)) return run;
+      const nodes = run.nodes.map((node) => {
+        if (!isRecord(node)) return node;
+        const nodeId = asString(node.id);
+        if (nodeId === null || nodeId.length === 0) return node;
+        const entry = childEntry(byChildSessionId, nodeId);
+        if (entry === null) return node;
+        const taskId = asString(entry.taskId);
+        if (taskId === null || taskId.length === 0) return node;
+        const ownedNodeId = asString(entry.nodeId);
+        const enriched = { ...node, task_id: taskId };
+        if (ownedNodeId !== null && ownedNodeId.length > 0) enriched.node_id = ownedNodeId;
+        return enriched;
+      });
+      const changed = nodes.some((node, position) => node !== run.nodes[position]);
+      if (!changed) return run;
+      runsChanged = true;
+      return { ...run, nodes };
+    });
+    if (runsChanged) next = { ...next, dag: { ...document.dag, runs } };
+  }
+
+  if (Array.isArray(index.collisions) && index.collisions.length > 0) {
+    next = { ...next, attributionCollisions: index.collisions };
+  }
+  return next;
+};
+
+/**
+ * Read attribution state and attach it to the document.
+ *
+ * A reader failure is an explicit `attributionError` field: it must never be
+ * swallowed into a document that looks like "no attribution".
+ */
+const attachAttributionState = async (document, { directory, readAttributionState }) => {
+  if (!isRecord(document)) return document;
+  let index;
+  try {
+    index = await readAttributionState({ directory });
+  } catch (error) {
+    return { ...document, attributionError: `attribution state read failed: ${messageOf(error, 'read failed')}` };
+  }
+  if (!isRecord(index)) {
+    return { ...document, attributionError: 'attribution state reader returned an invalid result' };
+  }
+  const error = asString(index.error);
+  if (error !== null && error.length > 0) {
+    return { ...document, attributionError: error };
+  }
+  return attachAttribution(document, index);
+};
+
+const attachDeliveryToEntries = async (readDeliveryState, directory, entries) =>
+  Promise.all(
+    entries.map(async (entry) => {
+      if (!isRecord(entry)) return entry;
+      const taskId = asString(entry.task_id ?? entry.run_id);
+      if (taskId === null || taskId.length === 0) return entry;
+      if (isRecord(entry.delivery)) return entry;
+      let result;
+      try {
+        result = await readDeliveryState({ directory, taskId });
+      } catch (error) {
+        return { ...entry, deliveryError: `delivery state read failed for ${taskId}: ${messageOf(error, 'read failed')}` };
+      }
+      if (!isRecord(result)) return { ...entry, deliveryError: `delivery state reader returned an invalid result for ${taskId}` };
+      if (isRecord(result.delivery)) return { ...entry, delivery: result.delivery };
+      const error = asString(result.error);
+      if (error !== null && error.length > 0) return { ...entry, deliveryError: error };
+      return entry;
+    }),
+  );
+
+/**
+ * Attach the authoritative delivery status and verification claim of each named task record.
+ * Absence produces no field; a read failure produces `deliveryError`, never a silent "no delivery".
+ */
+const attachDeliveryState = async (document, { directory, readDeliveryState }) => {
+  if (!isRecord(document)) return document;
+  const runEntries = isRecord(document.dag) && Array.isArray(document.dag.runs) ? document.dag.runs : null;
+  const taskEntries = isRecord(document.tasks) && Array.isArray(document.tasks.tasks) ? document.tasks.tasks : null;
+  if (runEntries === null && taskEntries === null) return document;
+
+  const runs = runEntries === null ? null : await Promise.all(
+    runEntries.map(async (run) => {
+      if (!isRecord(run) || !Array.isArray(run.nodes)) return run;
+      const nodes = await attachDeliveryToEntries(readDeliveryState, directory, run.nodes);
+      const changed = nodes.some((node, position) => node !== run.nodes[position]);
+      return changed ? { ...run, nodes } : run;
+    }),
+  );
+  const tasks = taskEntries === null ? null : await attachDeliveryToEntries(readDeliveryState, directory, taskEntries);
+
+  let next = document;
+  if (runs !== null) next = { ...next, dag: { ...document.dag, runs } };
+  if (tasks !== null) next = { ...next, tasks: { ...document.tasks, tasks } };
+  return next;
+};
+
+let reconcilePromise = null;
+
+const loadReconciler = () => {
+  if (reconcilePromise === null) {
+    reconcilePromise = import(VERIFICATION_BUNDLE)
+      .then((module) => {
+        const factory = module.createSnapshotReconciler;
+        if (!(factory instanceof Function)) {
+          throw new Error('snapshot reconciler is missing from the verification bundle');
+        }
+        return factory();
+      })
+      .catch((error) => ({
+        error: `reconcile unavailable: ${messageOf(error, 'the verification bundle could not be loaded')}`,
+      }));
+  }
+  return reconcilePromise;
+};
+
 export const createRunGraphRuntime = (overrides = {}) => {
   const fs = overrides.fs ?? fsPromises;
   const joinPath = overrides.joinPath ?? path.join;
   const normalizePath = overrides.normalizePath ?? path.normalize;
   const injectedRepairReader = overrides.readRepairState;
+  const injectedAttributionReader = overrides.readAttributionState;
+  const injectedDeliveryReader = overrides.readDeliveryState;
+  const injectedReconciler = overrides.reconcileSnapshots;
 
   const readRepairState = async (input) => {
     if (injectedRepairReader !== undefined) return injectedRepairReader(input);
     const reader = await loadRepairReader();
+    if (reader instanceof Function) return reader(input);
+    return reader;
+  };
+
+  const readAttributionState = async (input) => {
+    if (injectedAttributionReader !== undefined) return injectedAttributionReader(input);
+    const reader = await loadAttributionReader();
+    if (reader instanceof Function) return reader(input);
+    return reader;
+  };
+
+  const readDeliveryState = async (input) => {
+    if (injectedDeliveryReader !== undefined) return injectedDeliveryReader(input);
+    const reader = await loadDeliveryReader();
     if (reader instanceof Function) return reader(input);
     return reader;
   };
@@ -156,8 +383,25 @@ export const createRunGraphRuntime = (overrides = {}) => {
       error.status = 500;
       throw error;
     }
-    return attachRepairState(document, { directory, readRepairState });
+    const withRepair = await attachRepairState(document, { directory, readRepairState });
+    const withAttribution = await attachAttributionState(withRepair, { directory, readAttributionState });
+    return attachDeliveryState(withAttribution, { directory, readDeliveryState });
   };
 
-  return { normalizeDirectory, readSnapshot };
+  const readAttribution = async (directory) => {
+    const result = await readAttributionState({ directory });
+    if (!isRecord(result)) {
+      return { error: 'attribution state reader returned an invalid result' };
+    }
+    return result;
+  };
+
+  const reconcileSnapshots = async (directory) => {
+    if (injectedReconciler !== undefined) return injectedReconciler({ directory });
+    const reconciler = await loadReconciler();
+    if (reconciler instanceof Function) return reconciler({ directory });
+    return reconciler;
+  };
+
+  return { normalizeDirectory, readSnapshot, readAttribution, reconcileSnapshots };
 };
