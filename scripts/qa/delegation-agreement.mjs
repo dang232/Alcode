@@ -1147,6 +1147,18 @@ try {
   }
 
   if (!result.ok) {
+    if (result.kind === "deadline_unavailable_at_manager_seam") {
+      evidence.run = {
+        kind: result.kind,
+        reason: result.reason,
+        runId: result.runId,
+        unresolved: result.unresolved,
+        outcomes: result.outcomes,
+      };
+      evidence.result = "deadline_unavailable";
+      say(`RESULT: FAIL (deadline unavailable at manager seam: ${oneLine(result.reason)})`);
+      finish(3);
+    }
     evidence.run = { rejection: result.rejection };
     evidence.result = "plan_rejected";
     say(`RESULT: FAIL (plan rejected: ${result.rejection.code} ${oneLine(result.rejection.message)})`);
@@ -1172,8 +1184,6 @@ try {
     status: record.status,
     terminal: isTerminalDagRunStatus(record.status),
     unresolved: result.unresolved,
-    deadlineExceeded: result.deadlineExceeded,
-    deadlineCancellation: result.deadlineCancellation,
     outcomes: result.outcomes,
     parentSessionId: PARENT_SESSION_ID,
     rootSessionId: ROOT_SESSION_ID,

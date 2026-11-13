@@ -504,8 +504,6 @@ const ROLES_WITH_VERIFY = [
 ];
 
 const COMPLETION_KEYS = [
-  "deadlineCancellation",
-  "deadlineExceeded",
   "ok",
   "outcomes",
   "runId",
@@ -525,7 +523,26 @@ function delegationRequest(workspaceDir, roles, deadlineMs) {
 }
 
 function completionOf(result) {
-  requireTrue(result.ok === true, `the run returned a plan rejection: ${result.rejection?.code ?? "unknown"}`);
+  requireTrue(
+    result.ok === true,
+    `the run returned ${result.kind ?? "a plan rejection"}: ${result.reason ?? result.rejection?.code ?? "unknown"}`,
+  );
+  return result;
+}
+
+function deadlineFailureOf(result) {
+  requireTrue(result.ok === false, "a deadline returned a success-shaped result");
+  requireTrue(
+    result.kind === "deadline_unavailable_at_manager_seam",
+    `deadline kind is ${result.kind ?? "missing"}`,
+  );
+  // The deadline result's reason is a non-empty string by contract; an absent one reports itself
+  // here instead of throwing on `.length`.
+  requireTrue((result.reason?.length ?? 0) > 0, "the deadline reason is empty");
+  requireTrue(result.unresolved === true, "a deadline result must be unresolved");
+  for (const forbidden of ["accepted", "approved", "success", "verified", "verdict"]) {
+    requireTrue(!(forbidden in result), `deadline result carried a forbidden "${forbidden}" key`);
+  }
   return result;
 }
 
@@ -753,20 +770,13 @@ async function controlChildTimeout() {
     path.join(workspace.root, "state-control-2"),
     new Map([[delegationNodeId("investigate"), { kind: "hang" }]]),
   );
-  const result = completionOf(
+  const result = deadlineFailureOf(
     await runEngineeringDelegation(
       { dagManager: runtime.dagManager, wait: runtime.wait },
       delegationRequest(workspace.workspace, ROLES_TWO, DEADLINE_MS),
     ),
   );
-  expectNoVerdict(result);
   requireTrue(runtime.runner.startedNodeIds.length >= 1, "no child started before the deadline elapsed");
-  requireTrue(result.deadlineExceeded === true, "deadlineExceeded is not true");
-  requireTrue(
-    result.deadlineCancellation === "unavailable_at_manager_seam",
-    `deadlineCancellation is ${result.deadlineCancellation}`,
-  );
-  requireTrue(result.unresolved === true, "a deadline result must be unresolved");
   const record = runtime.dagManager.record(result.runId, PARENT_SESSION_ID);
   requireTrue(!isTerminalDagStatus(record.status), `deadline status ${record.status} is terminal`);
   const gate = gateFor(result.runId, path.join(workspace.root, "evidence-control-2"));
@@ -775,7 +785,7 @@ async function controlChildTimeout() {
   await runtime.cancel(result.runId, "control-2 cleanup");
   await runtime.settle(result.runId);
   requireTrue(runtime.runner.liveTaskIds.size === 0, "a child kept running after the deadline cleanup cancel");
-  return `deadlineExceeded=true cancellation=unavailable_at_manager_seam status=${record.status} unresolved=true liveChildren=${liveBefore}->0 gate=${gate.verification}/${gate.code ?? "none"}`;
+  return `kind=${result.kind} status=${record.status} unresolved=true liveChildren=${liveBefore}->0 gate=${gate.verification}/${gate.code ?? "none"}`;
 }
 
 async function controlParentCancellation() {
@@ -1007,7 +1017,7 @@ const CONTROLS = [
   },
   {
     name: "child-timeout",
-    expected: "deadlineExceeded with unavailable_at_manager_seam or blocked, never verified",
+    expected: "typed deadline_unavailable_at_manager_seam failure, never completed or verified",
     run: controlChildTimeout,
   },
   {

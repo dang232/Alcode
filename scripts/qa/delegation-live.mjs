@@ -510,6 +510,11 @@ try {
   }
 
   if (!result.ok) {
+    if (result.kind === "deadline_unavailable_at_manager_seam") {
+      say(`RESULT: DEADLINE_UNAVAILABLE ${result.kind} ${oneLine(result.reason)}`);
+      flushOutput();
+      process.exit(1);
+    }
     say(`RESULT: PLAN_REJECTED ${result.rejection.code} ${oneLine(result.rejection.message)}`);
     flushOutput();
     process.exit(1);
@@ -556,8 +561,6 @@ try {
       status: record.status,
       terminal: isTerminalDagRunStatus(record.status),
       unresolved: result.unresolved,
-      deadlineExceeded: result.deadlineExceeded,
-      deadlineCancellation: result.deadlineCancellation,
       outcomes: result.outcomes,
     },
     nodes,

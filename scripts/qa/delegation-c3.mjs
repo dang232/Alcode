@@ -845,6 +845,18 @@ try {
   }
 
   if (!result.ok) {
+    if (result.kind === "deadline_unavailable_at_manager_seam") {
+      evidence.result = "deadline_unavailable";
+      evidence.run = {
+        kind: result.kind,
+        reason: result.reason,
+        runId: result.runId,
+        unresolved: result.unresolved,
+        outcomes: result.outcomes,
+      };
+      say(`RESULT: DEADLINE_UNAVAILABLE ${result.kind} ${oneLine(result.reason)}`);
+      finish(1);
+    }
     evidence.result = "plan_rejected";
     evidence.run = { rejection: result.rejection };
     say(`RESULT: PLAN_REJECTED ${result.rejection.code} ${oneLine(result.rejection.message)}`);
@@ -858,8 +870,6 @@ try {
     status: record.status,
     terminal: isTerminalDagRunStatus(record.status),
     unresolved: result.unresolved,
-    deadlineExceeded: result.deadlineExceeded,
-    deadlineCancellation: result.deadlineCancellation,
     outcomes: result.outcomes,
   };
   evidence.children = nodes;
