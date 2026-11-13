@@ -206,10 +206,19 @@ export const mergeRepairEntry = (
   return incoming.attemptId >= current.attemptId ? incoming : current;
 };
 
+export type DagDeliveryView = {
+  /** Execution outcome the API reports, independent of verification. */
+  readonly status: string | null;
+  /** `verified` | `unverified` | `blocked`; null when absent or unrecognised, never a success default. */
+  readonly verificationStatus: RepairVerificationStatus | null;
+};
+
 export type DagNodeView = {
   id: string;
   /** Child task record that executed this node; null when the wire carries none. */
   readonly taskId: string | null;
+  /** DAG node id that owns the child task; null when the wire carries none. */
+  readonly nodeId: string | null;
   label: string;
   state: string;
   attempt: number;
@@ -217,6 +226,8 @@ export type DagNodeView = {
   dependsOn: string[];
   startedAt: string | null;
   completedAt: string | null;
+  /** Delivery projection for this node; null when the wire carries none (legacy rows). */
+  readonly delivery: DagDeliveryView | null;
 };
 
 export type DagRunWave = {
@@ -241,6 +252,8 @@ export type DagRunView = {
 
 export type DagTaskView = {
   taskId: string;
+  /** DAG node id the task row belongs to; null when the wire carries none. */
+  readonly nodeId: string | null;
   status: string;
   name: string;
   summary: string;
@@ -271,6 +284,27 @@ const fail = (field: string): DagSnapshotOutcome => (
   { ok: false, error: { code: 'DAG_SNAPSHOT_MALFORMED', field } }
 );
 
+const readDelivery = (raw: JsonValue | undefined): DagDeliveryView | null => {
+  if (!isWireRecord(raw)) {
+    return null;
+  }
+  // The API projection attaches a `delivery` block; the stored document carries the
+  // same claim flat as `verification_status`. Accept both so the badge works on
+  // either surface, and never invent a value neither field states.
+  const block = isWireRecord(raw.delivery) ? raw.delivery : undefined;
+  const status = wireString(block?.status) ?? null;
+  const claim = wireString(block?.verificationStatus) ?? wireString(raw.verification_status);
+  if (block === undefined && claim === null) {
+    return null;
+  }
+  const verificationStatus =
+    claim === 'verified' || claim === 'unverified' || claim === 'blocked' ? claim : null;
+  return {
+    status: status !== null && status.length > 0 ? status : null,
+    verificationStatus,
+  };
+};
+
 const readNode = (raw: JsonValue | undefined): DagNodeView | null => {
   if (!isWireRecord(raw)) {
     return null;
@@ -281,12 +315,14 @@ const readNode = (raw: JsonValue | undefined): DagNodeView | null => {
   const prompt = wireString(raw.prompt);
   const dependsOn = wireStringArray(raw.depends_on);
   const rawTaskId = wireString(raw.task_id);
+  const rawNodeId = wireString(raw.node_id);
   if (id === null || label === null || state === null || prompt === null || dependsOn === null) {
     return null;
   }
   return {
     id,
     taskId: rawTaskId !== null && rawTaskId.length > 0 ? rawTaskId : null,
+    nodeId: rawNodeId !== null && rawNodeId.length > 0 ? rawNodeId : null,
     label,
     state,
     attempt: wireNumber(raw.attempt) ?? 0,
@@ -294,6 +330,7 @@ const readNode = (raw: JsonValue | undefined): DagNodeView | null => {
     dependsOn,
     startedAt: wireString(raw.started_at),
     completedAt: wireString(raw.completed_at),
+    delivery: readDelivery(raw),
   };
 };
 
@@ -391,8 +428,10 @@ const readTasks = (raw: JsonValue | undefined): DagTaskView[] | null => {
     if (taskId === null || status === null) {
       return null;
     }
+    const rawNodeId = wireString(entry.node_id);
     tasks.push({
       taskId,
+      nodeId: rawNodeId !== null && rawNodeId.length > 0 ? rawNodeId : null,
       status,
       name: wireString(entry.name) ?? taskId,
       summary: wireString(entry.task_summary) ?? '',

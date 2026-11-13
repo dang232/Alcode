@@ -23,9 +23,11 @@ import {
   defaultSnapshotPath,
 } from '../../../web/server/lib/opencode/omo-bridge-runtime.js';
 import { createCodeGraphRuntime } from '../../../web/server/lib/code-graph/runtime.js';
+import { createAttributionStateReader } from '../../../web/server/lib/verification-approval/attribution-state.js';
 import { ProjectKnowledgeStore, parseRecordFile } from '../../../omo-engine/memory-core/src/project-knowledge/record.ts';
 import { retrieveProjectKnowledge } from '../../../omo-engine/memory-core/src/project-knowledge/retrieve.ts';
 import { evaluateFreshness } from '../../../omo-engine/memory-core/src/project-knowledge/validator.ts';
+import { mutateRunSnapshot } from '../../../omo-engine/omo-opencode/src/cli/run/run-snapshot-store.ts';
 
 export const DAG_SERVICE_NAME = 'alcode-builtin-dag-pane';
 export const DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX = 'omo-dag-snapshots';
@@ -55,6 +57,14 @@ const asString = (value) => value?.trim?.() ?? '';
 // Plain-record test without a typeof test: only a real object passes, and
 // arrays never do (mirrors the panel parser's isWireRecord idiom).
 const isRecord = (value) => Object(value) === value && !Array.isArray(value);
+
+// The engine's task stream is the only document shape that carries a non-empty
+// `tasks.tasks` array. A synthetic steer record keeps `tasks: null` by design,
+// so this predicate is the whole authority test: it needs no new schema tag or
+// wire discriminator.
+const isEngineSnapshotDocument = (doc) => (
+  isRecord(doc) && isRecord(doc.tasks) && Array.isArray(doc.tasks.tasks) && doc.tasks.tasks.length > 0
+);
 
 const DAG_LOOP_RUNS_MAX = 50;
 const DAG_LOOP_PLAN_MAX_BYTES = 262_144;
@@ -157,11 +167,336 @@ const readPostedRunDoc = (doc) => {
   return { sessionId, status: run.status.trim(), updatedAt: asString(doc.updatedAt) || null };
 };
 
+// Posted attribution corroboration (HC8). A posted task_id/node_id is a claim
+// about the engine's persisted task records, never evidence: the attribution
+// index built by `createAttributionStateReader` is the only authority
+// (`child_session_id` maps to `task_id`; only a `dag` owner supplies
+// `nodeId`/`runId`). A claim no record supports is dropped from the persisted
+// run node or task row and named in the response. A document is never rejected
+// over an unverified id and an absent id is never invented. When the index
+// itself is absent or unreadable no claim can be verified, so every posted id
+// on both the node path and the tasks path is dropped with
+// `corroboration_unavailable` while the response says corroboration was
+// skipped.
+const ATTRIBUTION_ID_FIELDS = ['task_id', 'node_id'];
+const VERIFICATION_FIELD = 'verification_status';
+const VERIFICATION_STATUSES = ['verified', 'unverified', 'blocked'];
+
+// String-valued read without a typeof test: only a real string primitive
+// stringifies to itself, so numbers/objects/arrays read as absent.
+const asPostedString = (value) => (String(value) === value ? value : null);
+
+// Own-property lookup: a posted id such as `__proto__` or `constructor` must
+// never resolve through Object.prototype and corroborate itself.
+const ownAttributionEntry = (table, key) => (
+  isRecord(table) && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined
+);
+
+const postedIdClaim = (record, field) => {
+  const raw = record[field];
+  if (raw === undefined) return { present: false };
+  const text = asPostedString(raw);
+  if (text === null || text.trim().length === 0) return { present: true, invalid: true };
+  return { present: true, value: text.trim() };
+};
+
+// A verification claim is evidence only when the durable task record for the
+// same identity carries the same claim. The reader projects a completed record
+// with no claim as `unverified`, so a posted "verified" cannot borrow it.
+const postedVerificationClaim = (record) => {
+  const raw = record[VERIFICATION_FIELD];
+  if (raw === undefined) return { present: false };
+  const text = asPostedString(raw);
+  const value = text === null ? null : text.trim();
+  if (value === null || !VERIFICATION_STATUSES.includes(value)) return { present: true, invalid: true };
+  return { present: true, value };
+};
+
+const verificationDropReason = (claim, entry) => {
+  if (claim.invalid === true) return `${VERIFICATION_FIELD} must be one of ${VERIFICATION_STATUSES.join(', ')}`;
+  if (!isRecord(entry)) return `${VERIFICATION_FIELD} is not present in the attribution records`;
+  return `${VERIFICATION_FIELD} does not match the persisted task record`;
+};
+
+// Field-level corroboration for one node. Returns the node unchanged when it
+// carries no identity claim, otherwise a copy with unsupported fields removed.
+const corroborateNodeClaims = (node, index, nodeIndex, dropped) => {
+  const claims = ATTRIBUTION_ID_FIELDS
+    .map((field) => ({ field, ...postedIdClaim(node, field) }))
+    .filter((claim) => claim.present);
+  const verificationClaim = postedVerificationClaim(node);
+  if (claims.length === 0 && verificationClaim.present !== true) return node;
+  const rawNodeId = asPostedString(node.id);
+  const nodeId = rawNodeId === null ? null : rawNodeId.trim();
+  const childEntry = nodeId === null || nodeId.length === 0
+    ? undefined
+    : ownAttributionEntry(index.byChildSessionId, nodeId);
+  const taskClaim = claims.find((claim) => claim.field === 'task_id');
+  const taskEntry = taskClaim !== undefined && taskClaim.invalid !== true
+    ? ownAttributionEntry(index.byTaskId, taskClaim.value)
+    : undefined;
+  let changed = false;
+  const kept = { ...node };
+  const drop = (field, reason) => {
+    changed = true;
+    delete kept[field];
+    dropped.push({ node: nodeId, nodeIndex, field, reason });
+  };
+  for (const claim of claims) {
+    if (claim.invalid === true) {
+      drop(claim.field, `${claim.field} must be a non-empty string`);
+      continue;
+    }
+    if (claim.field === 'task_id') {
+      if (taskEntry === undefined) {
+        drop('task_id', 'task_id is not present in the attribution records');
+      } else if (isRecord(childEntry) && childEntry.taskId !== claim.value) {
+        drop('task_id', 'task_id does not match the task recorded for this child session');
+      }
+      continue;
+    }
+    if (isRecord(childEntry)) {
+      if (childEntry.nodeId !== claim.value) {
+        drop('node_id', 'node_id does not match the dag node recorded for this child session');
+      }
+      continue;
+    }
+    if (taskEntry !== undefined) {
+      if (taskEntry.nodeId !== claim.value) {
+        drop('node_id', 'node_id does not match the dag node recorded for this task');
+      }
+      continue;
+    }
+    const known = Array.isArray(index.entries)
+      && index.entries.some((entry) => isRecord(entry) && entry.nodeId === claim.value);
+    if (!known) drop('node_id', 'node_id is not present in the attribution records');
+  }
+  if (verificationClaim.present === true) {
+    // The claim belongs to a task, never to a node label: only a recorded task
+    // (by posted task_id or by the node's child session) may authorize it.
+    const entry = isRecord(taskEntry) ? taskEntry : childEntry;
+    if (verificationClaim.invalid !== true && isRecord(entry)
+      && entry.verificationStatus === verificationClaim.value) {
+      // Corroborated: keep the posted field as-is.
+    } else {
+      drop(VERIFICATION_FIELD, verificationDropReason(verificationClaim, entry));
+    }
+  }
+  return changed ? kept : node;
+};
+
+// Field-level corroboration for one posted task row. A tasks row carries no
+// child session id, so its task_id must exist in byTaskId and its node_id must
+// match that recorded task's dag node (or name a dag-owned node in entries).
+// Returns the row unchanged when it carries no identity claim, otherwise a
+// copy with unsupported fields removed.
+const corroborateTaskClaims = (task, index, taskIndex, dropped) => {
+  const claims = ATTRIBUTION_ID_FIELDS
+    .map((field) => ({ field, ...postedIdClaim(task, field) }))
+    .filter((claim) => claim.present);
+  const verificationClaim = postedVerificationClaim(task);
+  if (claims.length === 0 && verificationClaim.present !== true) return task;
+  const rawTaskId = asPostedString(task.task_id);
+  const taskRowId = rawTaskId === null ? null : rawTaskId.trim();
+  const taskClaim = claims.find((claim) => claim.field === 'task_id');
+  const taskEntry = taskClaim !== undefined && taskClaim.invalid !== true
+    ? ownAttributionEntry(index.byTaskId, taskClaim.value)
+    : undefined;
+  let changed = false;
+  const kept = { ...task };
+  const drop = (field, reason) => {
+    changed = true;
+    delete kept[field];
+    dropped.push({ task: taskRowId, taskIndex, field, reason });
+  };
+  for (const claim of claims) {
+    if (claim.invalid === true) {
+      drop(claim.field, `${claim.field} must be a non-empty string`);
+      continue;
+    }
+    if (claim.field === 'task_id') {
+      if (taskEntry === undefined) {
+        drop('task_id', 'task_id is not present in the attribution records');
+      }
+      continue;
+    }
+    if (taskEntry !== undefined) {
+      if (taskEntry.nodeId !== claim.value) {
+        drop('node_id', 'node_id does not match the dag node recorded for this task');
+      }
+      continue;
+    }
+    const known = Array.isArray(index.entries)
+      && index.entries.some((entry) => isRecord(entry) && entry.nodeId === claim.value);
+    if (!known) drop('node_id', 'node_id is not present in the attribution records');
+  }
+  if (verificationClaim.present === true) {
+    if (verificationClaim.invalid !== true && isRecord(taskEntry)
+      && taskEntry.verificationStatus === verificationClaim.value) {
+      // Corroborated: keep the posted field as-is.
+    } else {
+      drop(VERIFICATION_FIELD, verificationDropReason(verificationClaim, taskEntry));
+    }
+  }
+  return changed ? kept : task;
+};
+
+// Apply corroboration to every run node, copying only along changed paths so
+// an untouched document keeps its original object identity.
+const corroboratePostedRuns = (doc, index, dropped) => {
+  const runs = isRecord(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
+  if (runs === null) return doc;
+  let changed = false;
+  const nextRuns = runs.map((run) => {
+    if (!isRecord(run) || !Array.isArray(run.nodes)) return run;
+    let nodesChanged = false;
+    const nodes = run.nodes.map((node, nodeIndex) => {
+      if (!isRecord(node)) return node;
+      const before = dropped.length;
+      const next = corroborateNodeClaims(node, index, nodeIndex, dropped);
+      if (next !== node || dropped.length !== before) nodesChanged = true;
+      return next;
+    });
+    if (!nodesChanged) return run;
+    changed = true;
+    return { ...run, nodes };
+  });
+  return changed ? { ...doc, dag: { ...doc.dag, runs: nextRuns } } : doc;
+};
+
+// Apply the same rule to every posted task row, again copying only along
+// changed paths.
+const corroboratePostedTasks = (doc, index, dropped) => {
+  const tasks = isRecord(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
+  if (tasks === null) return doc;
+  let changed = false;
+  const nextTasks = tasks.map((task, taskIndex) => {
+    if (!isRecord(task)) return task;
+    const before = dropped.length;
+    const next = corroborateTaskClaims(task, index, taskIndex, dropped);
+    if (next !== task || dropped.length !== before) changed = true;
+    return next;
+  });
+  return changed ? { ...doc, tasks: { ...doc.tasks, tasks: nextTasks } } : doc;
+};
+
+// Both posted surfaces: run nodes and task rows.
+const corroboratePostedSnapshot = (doc, index, dropped) => (
+  corroboratePostedTasks(corroboratePostedRuns(doc, index, dropped), index, dropped)
+);
+
+// Without an authoritative index no posted identity can be verified. Drop
+// every claim the document carries on both surfaces and name each drop, so a
+// skipped response can never look like a clean pass while an unverified id
+// stays persisted.
+const dropUnverifiablePostedRuns = (doc, dropped) => {
+  const runs = isRecord(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
+  if (runs === null) return doc;
+  let changed = false;
+  const nextRuns = runs.map((run) => {
+    if (!isRecord(run) || !Array.isArray(run.nodes)) return run;
+    let nodesChanged = false;
+    const nodes = run.nodes.map((node, nodeIndex) => {
+      if (!isRecord(node)) return node;
+      const present = ATTRIBUTION_ID_FIELDS.filter((field) => node[field] !== undefined);
+      if (node[VERIFICATION_FIELD] !== undefined) present.push(VERIFICATION_FIELD);
+      if (present.length === 0) return node;
+      const rawNodeId = asPostedString(node.id);
+      const nodeId = rawNodeId === null ? null : rawNodeId.trim();
+      const next = { ...node };
+      for (const field of present) {
+        delete next[field];
+        dropped.push({ node: nodeId, nodeIndex, field, reason: 'corroboration_unavailable' });
+      }
+      nodesChanged = true;
+      return next;
+    });
+    if (!nodesChanged) return run;
+    changed = true;
+    return { ...run, nodes };
+  });
+  return changed ? { ...doc, dag: { ...doc.dag, runs: nextRuns } } : doc;
+};
+
+const dropUnverifiablePostedTasks = (doc, dropped) => {
+  const tasks = isRecord(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
+  if (tasks === null) return doc;
+  let changed = false;
+  const nextTasks = tasks.map((task, taskIndex) => {
+    if (!isRecord(task)) return task;
+    const present = ATTRIBUTION_ID_FIELDS.filter((field) => task[field] !== undefined);
+    if (task[VERIFICATION_FIELD] !== undefined) present.push(VERIFICATION_FIELD);
+    if (present.length === 0) return task;
+    const rawTaskId = asPostedString(task.task_id);
+    const taskRowId = rawTaskId === null ? null : rawTaskId.trim();
+    const next = { ...task };
+    for (const field of present) {
+      delete next[field];
+      dropped.push({ task: taskRowId, taskIndex, field, reason: 'corroboration_unavailable' });
+    }
+    changed = true;
+    return next;
+  });
+  return changed ? { ...doc, tasks: { ...doc.tasks, tasks: nextTasks } } : doc;
+};
+
+// Both posted surfaces: run nodes and task rows.
+const dropUnverifiablePostedIds = (doc, dropped) => (
+  dropUnverifiablePostedTasks(dropUnverifiablePostedRuns(doc, dropped), dropped)
+);
+
+// Resolve the index for one POST. `skipped` means no claim was judged: either
+// the records could not be read or the project has none, and a skipped result
+// must never read as a clean pass.
+const readPostedAttribution = (readAttributionState, directory) => {
+  let index;
+  try {
+    index = readAttributionState({ directory });
+  } catch (error) {
+    return { skipped: `attribution state read failed: ${asString(error?.message) || 'unknown error'}` };
+  }
+  if (!isRecord(index)) return { skipped: 'attribution state reader returned an invalid result' };
+  const error = asString(index.error);
+  if (error.length > 0) return { skipped: error };
+  if (index.absent === true) return { skipped: 'no attribution records exist for this project' };
+  return { index };
+};
+
 const writeFileAtomic = (fs, path, text) => {
   fs.mkdirSync(path.split('/').slice(0, -1).join('/'), { recursive: true });
   const temporaryPath = `${path}.tmp`;
   fs.writeFileSync(temporaryPath, text, 'utf8');
   fs.renameSync(temporaryPath, path);
+};
+
+const CHAT_RUN_SOURCE = 'chat';
+
+// The chat writer is one of several writers of this document, so it never rebuilds
+// the file: it replaces its own rows and keeps every other valid row (delivery,
+// loop, unknown future runs). Without this, posting a chat snapshot erases the
+// delivery rows another process projected from durable task records.
+const mergeChatSnapshot = (existingDoc, incoming, directory) => {
+  const incomingDoc = { ...incoming, directory };
+  const incomingRuns = Array.isArray(incomingDoc?.dag?.runs) ? incomingDoc.dag.runs : [];
+  const tagChat = (run) => (isRecord(run) ? { ...run, source: CHAT_RUN_SOURCE } : run);
+  if (existingDoc === null) {
+    return { doc: { ...incomingDoc, dag: { ...incomingDoc.dag, runs: incomingRuns.map(tagChat) } } };
+  }
+  // A row this writer does not own is never dropped — not even when a posted chat
+  // row reuses its id. Chat rows are replaced wholesale; a colliding chat claim
+  // loses to the surviving delivery row instead of erasing it.
+  const kept = existingDoc.dag.runs.filter((run) => isRecord(run) && run.source !== CHAT_RUN_SOURCE);
+  const keptIds = new Set(kept.map((run) => run.run_id));
+  const appended = incomingRuns
+    .map(tagChat)
+    .filter((run) => !isRecord(run) || !keptIds.has(run.run_id));
+  return {
+    doc: {
+      ...existingDoc,
+      ...incomingDoc,
+      dag: { ...existingDoc.dag, ...incomingDoc.dag, runs: [...kept, ...appended] },
+    },
+  };
 };
 
 const readFileOrNull = (fs, path) => {
@@ -641,6 +976,7 @@ export const createDagServiceHandlers = (dependencies = {}) => {
       resolveEngineEntry: () => entry ?? process.env.OMO_WRAPPER_PATH ?? null,
     }),
     codeGraphRuntime = null,
+    attributionStateReader = createAttributionStateReader(),
   } = dependencies;
 
   // Read-only code-graph runtime over the real engine bundle. The service
@@ -831,32 +1167,38 @@ export const createDagServiceHandlers = (dependencies = {}) => {
   const snapshotPathFor = (sessionId) => defaultSnapshotPath(snapshotDir, sessionId);
 
   const readSnapshot = (sessionId, directory) => {
-    let snapshotPath;
+    let tempPath;
     try {
-      snapshotPath = snapshotPathFor(sessionId);
+      tempPath = snapshotPathFor(sessionId);
     } catch (error) {
       return { status: 400, body: { ok: false, code: error.code ?? 'OMO_SESSION_ID_INVALID', message: error.message } };
     }
-    let text;
-    try {
-      text = fs.readFileSync(snapshotPath, 'utf8');
-    } catch {
-      text = null;
+    // Engine documents outrank the synthetic steer fallback wherever they
+    // live: temp engine, project engine, temp fallback, project document,
+    // then a malformed candidate. Both candidates are parsed before choosing,
+    // so a malformed temp write can never hide a valid project engine
+    // document. Age is not authority: an older engine document still wins.
+    const candidates = [{ text: readFileOrNull(fs, tempPath) }];
+    if (isSafeDirectory(directory ?? '')) {
+      candidates.push({ text: readFileOrNull(fs, projectLiveRunPath(directory, sessionId)) });
     }
-    // Temp-dir file first (existing steer/loop behavior unchanged); then the
-    // project-scoped live file when the caller names its directory.
-    if (text === null && isSafeDirectory(directory ?? '')) {
-      text = readFileOrNull(fs, projectLiveRunPath(directory, sessionId));
-      if (text !== null) snapshotPath = projectLiveRunPath(directory, sessionId);
+    const parsed = candidates.map(({ text }) => {
+      if (text === null) return { doc: null, malformed: false, present: false };
+      try {
+        return { doc: JSON.parse(text), malformed: false, present: true };
+      } catch {
+        return { doc: null, malformed: true, present: true };
+      }
+    });
+    const engine = parsed.find((candidate) => candidate.present && !candidate.malformed && isEngineSnapshotDocument(candidate.doc));
+    const document = engine ?? parsed.find((candidate) => candidate.present && !candidate.malformed);
+    if (document !== undefined) {
+      return { status: 200, body: document.doc };
     }
-    if (text === null) {
-      return { status: 404, body: { ok: false, code: 'OMO_DAG_SNAPSHOT_MISSING', sessionId } };
-    }
-    try {
-      return { status: 200, body: JSON.parse(text) };
-    } catch {
+    if (parsed.some((candidate) => candidate.malformed)) {
       return { status: 422, body: { ok: false, code: 'DAG_SNAPSHOT_MALFORMED', field: 'snapshot', sessionId } };
     }
+    return { status: 404, body: { ok: false, code: 'OMO_DAG_SNAPSHOT_MISSING', sessionId } };
   };
 
   // Project-scoped History for GET /history with a directory filter: the live
@@ -1128,16 +1470,35 @@ export const createDagServiceHandlers = (dependencies = {}) => {
         return { status: 400, body: { ok: false, code: 'OMO_DAG_CONVERSATION_MISMATCH', message: 'A run belongs to exactly one parent conversation.' } };
       }
       const livePath = projectLiveRunPath(directory, parsed.sessionId);
-      const stamped = { ...body.snapshot, directory: directory.trim() };
-      const serialized = `${JSON.stringify(stamped)}\n`;
-      if (readFileOrNull(fs, livePath) === serialized) {
-        return { status: 200, body: { ok: true, sessionId: parsed.sessionId, written: false, historyRecorded: false, reason: 'unchanged' } };
+      // Corroborate posted identity before anything is persisted: a claim the
+      // records do not confirm is dropped and reported, never written and
+      // never turned into a rejection of an otherwise valid doc. When the
+      // records are unavailable every posted id is unverifiable, so all are
+      // dropped rather than persisted on trust.
+      const attribution = readPostedAttribution(attributionStateReader, directory.trim());
+      const attributionDropped = [];
+      const snapshotDoc = attribution.index === undefined
+        ? dropUnverifiablePostedIds(body.snapshot, attributionDropped)
+        : corroboratePostedSnapshot(body.snapshot, attribution.index, attributionDropped);
+      const attributionReport = attribution.index === undefined
+        ? { attributionCorroboration: 'skipped', attributionSkippedReason: attribution.skipped, attributionDropped }
+        : { attributionCorroboration: 'applied', attributionDropped };
+      const published = mutateRunSnapshot({
+        path: livePath,
+        replaceMalformed: true,
+        updatedAt: isNonEmptyString(snapshotDoc?.updatedAt) ? snapshotDoc.updatedAt : new Date(now()).toISOString(),
+        mutate: ({ doc }) => {
+          const merged = mergeChatSnapshot(doc, snapshotDoc, directory.trim());
+          return { doc: merged.doc, value: merged.doc };
+        },
+      });
+      if (!published.written) {
+        if (published.reason === 'snapshot already current') {
+          return { status: 200, body: { ok: true, sessionId: parsed.sessionId, written: false, historyRecorded: false, reason: 'unchanged', ...attributionReport } };
+        }
+        return { status: 500, body: { ok: false, code: 'OMO_DAG_SNAPSHOT_WRITE_FAILED', message: String(published.reason).slice(0, 140) } };
       }
-      try {
-        writeFileAtomic(fs, livePath, serialized);
-      } catch (error) {
-        return { status: 500, body: { ok: false, code: 'OMO_DAG_SNAPSHOT_WRITE_FAILED', message: String(error?.message ?? error).slice(0, 140) } };
-      }
+      const serialized = `${JSON.stringify(published.value)}\n`;
       let historyRecorded = false;
       if (parsed.status === 'completed' || parsed.status === 'failed') {
         const historyDir = projectRunHistoryDir(directory, parsed.sessionId);
@@ -1161,7 +1522,7 @@ export const createDagServiceHandlers = (dependencies = {}) => {
           historyRecorded = false;
         }
       }
-      return { status: 200, body: { ok: true, sessionId: parsed.sessionId, written: true, historyRecorded } };
+      return { status: 200, body: { ok: true, sessionId: parsed.sessionId, written: true, historyRecorded, ...attributionReport } };
     }
     if (method === 'GET' && path === '/history') {
       const directory = isNonEmptyString(query?.directory) ? query.directory.trim() : null;
@@ -1219,13 +1580,25 @@ export const createDagServiceHandlers = (dependencies = {}) => {
         if (record?.cancel !== handle.cancel) return;
         const recordDirectory = record.directory ?? null;
         live.delete(sessionId.trim());
-        let existing;
-        try {
-          existing = fs.readFileSync(snapshotPathFor(sessionId.trim()), 'utf8');
-        } catch {
-          existing = null;
+        const tempSnapshotPath = snapshotPathFor(sessionId.trim());
+        if (readFileOrNull(fs, tempSnapshotPath) !== null) return;
+        // KEEP the synthetic writer, guarded (owner decision OQ-B): an engine
+        // document at either path owns the run, so a synthetic completion
+        // record is never written beside one. The engine document wins in the
+        // reader regardless; this guard keeps the fallback from competing
+        // with it at all.
+        if (isSafeDirectory(recordDirectory ?? '')) {
+          const projectText = readFileOrNull(fs, projectLiveRunPath(recordDirectory, sessionId.trim()));
+          if (projectText !== null) {
+            let projectDoc = null;
+            try {
+              projectDoc = JSON.parse(projectText);
+            } catch {
+              projectDoc = null;
+            }
+            if (isEngineSnapshotDocument(projectDoc)) return;
+          }
         }
-        if (existing !== null) return;
         const failed = completion?.exitCode !== 0 || completion?.result?.success === false;
         const state = failed ? 'failed' : 'completed';
         const doc = {
@@ -1259,7 +1632,7 @@ export const createDagServiceHandlers = (dependencies = {}) => {
           tasks: null,
         };
         try {
-          fs.writeFileSync(snapshotPathFor(sessionId.trim()), `${JSON.stringify(doc)}\n`, 'utf8');
+          fs.writeFileSync(tempSnapshotPath, `${JSON.stringify(doc)}\n`, 'utf8');
         } catch {
           // A missing directory must never fail the settle path.
         }

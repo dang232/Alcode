@@ -148,6 +148,78 @@ describe('node task attribution', () => {
   });
 });
 
+describe('node id attribution', () => {
+  const docWithNodeId = (nodeId?: string | number) => {
+    const node: WireRecord = {
+      id: 'a', label: 'a', state: 'running', attempt: 1, prompt: 'do a',
+      depends_on: [], started_at: null, completed_at: null,
+    };
+    if (nodeId !== undefined) node.node_id = nodeId;
+    return {
+      schemaVersion: 1,
+      sessionId: 'ses_a',
+      updatedAt: '2026-11-07T00:00:00.000Z',
+      dag: {
+        runs: [{
+          run_id: 'r1', run_key: 'k', name: 'n', status: 'running',
+          nodes: [node],
+          edges: [],
+        }],
+      },
+      tasks: null,
+    };
+  };
+
+  test('reads the owning DAG node id the wire node carries', () => {
+    const outcome = parseSnapshotDoc(docWithNodeId('node_alpha'));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0]?.nodes[0]?.nodeId).toBe('node_alpha');
+  });
+
+  test('an absent DAG node id stays null, never invented', () => {
+    const outcome = parseSnapshotDoc(docWithNodeId());
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0]?.nodes[0]?.nodeId).toBeNull();
+  });
+
+  test('a non-string DAG node id is unreadable, never coerced', () => {
+    const outcome = parseSnapshotDoc(docWithNodeId(7));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0]?.nodes[0]?.nodeId).toBeNull();
+  });
+});
+
+describe('task row node id attribution', () => {
+  const docWithTaskNodeId = (nodeId?: string) => {
+    const task: WireRecord = { task_id: 'st_a', status: 'running' };
+    if (nodeId !== undefined) task.node_id = nodeId;
+    return {
+      schemaVersion: 1,
+      sessionId: 'ses_a',
+      updatedAt: '2026-11-07T00:00:00.000Z',
+      dag: null,
+      tasks: { tasks: [task] },
+    };
+  };
+
+  test('reads the owning DAG node id a task row carries', () => {
+    const outcome = parseSnapshotDoc(docWithTaskNodeId('node_alpha'));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.tasks[0]?.nodeId).toBe('node_alpha');
+  });
+
+  test('a task row without a DAG node id stays null', () => {
+    const outcome = parseSnapshotDoc(docWithTaskNodeId());
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.tasks[0]?.nodeId).toBeNull();
+  });
+});
+
 describe('stringsFor', () => {
   test('covers every shipped locale with real text', () => {
     expect(DAG_PANE_LOCALES).toHaveLength(13);
@@ -427,5 +499,51 @@ describe('mergeRepairEntry epoch fencing', () => {
     const first = block(2, 'repairing', 10);
 
     expect(mergeRepairEntry(first, { ...first })).toEqual(first);
+  });
+});
+
+describe('delivery projection parsing', () => {
+  const withDelivery = (delivery: { status?: string; verificationStatus?: string } | null) => {
+    const doc = JSON.parse(JSON.stringify(snapshotDoc(fixture.sessionId)))
+    doc.dag.runs[0].nodes[0].delivery = delivery
+    return parseSnapshotDoc(doc)
+  };
+
+  test('#given a delivery block with verified #when parsed #then the node carries verified', () => {
+    const outcome = withDelivery({ status: 'completed', verificationStatus: 'verified' });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0].nodes[0].delivery).toEqual({ status: 'completed', verificationStatus: 'verified' });
+  });
+
+  test('#given an unrecognised verification claim #when parsed #then it is null, never a success default', () => {
+    const outcome = withDelivery({ status: 'completed', verificationStatus: 'certified' });
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0].nodes[0].delivery?.verificationStatus).toBeNull();
+  });
+
+  test('#given a legacy node with no delivery #when parsed #then delivery is null', () => {
+    const outcome = parseSnapshotDoc(snapshotDoc(fixture.sessionId));
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0].nodes[0].delivery).toBeNull();
+  });
+});
+
+describe('flat verification field fallback', () => {
+  test('#given the stored document shape with a flat verification_status #when parsed #then the badge reads it', () => {
+    const doc = JSON.parse(JSON.stringify(snapshotDoc(fixture.sessionId)))
+    doc.dag.runs[0].nodes[0].verification_status = 'blocked'
+    const outcome = parseSnapshotDoc(doc)
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0].nodes[0].delivery?.verificationStatus).toBe('blocked');
+  });
+
+  test('#given a flat claim outside the vocabulary #when parsed #then it is null, never verified', () => {
+    const doc = JSON.parse(JSON.stringify(snapshotDoc(fixture.sessionId)))
+    doc.dag.runs[0].nodes[0].verification_status = 'certified'
+    const outcome = parseSnapshotDoc(doc)
+    if (!outcome.ok) return;
+    expect(outcome.view.runs[0].nodes[0].delivery?.verificationStatus).toBeNull();
   });
 });
