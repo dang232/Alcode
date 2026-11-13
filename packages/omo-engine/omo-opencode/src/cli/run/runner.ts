@@ -23,6 +23,8 @@ import { selectWorkflow } from "./workflow-select"
 import { isGraphPreflightForcedOff, selectGraphContextLevel } from "./graph-policy"
 import { createGraphTelemetry } from "./graph-telemetry"
 import { analyzePostEdit } from "./post-edit-impact"
+import { createRunDeliveryRecorder, shouldRecordRunDelivery } from "./run-delivery-record"
+import type { RunDeliveryRecorder } from "./run-delivery-record"
 import { buildPromptInput, preparePlannerTurn } from "./plan-evidence"
 
 export { resolveRunAgent }
@@ -85,6 +87,8 @@ export async function run(options: RunOptions): Promise<number> {
       serverCleanup()
     }
 
+    let runDeliveryRecorder: RunDeliveryRecorder | null = null
+
     const restoreInput = suppressRunInput()
     const handleSigint = () => {
       console.log(pc.yellow("\nInterrupted. Shutting down..."))
@@ -139,6 +143,26 @@ export async function run(options: RunOptions): Promise<number> {
       const graphLevel = isGraphPreflightForcedOff(process.env) ? 0 as const : graphDecision.level
       if (options.verbose) {
         console.log(pc.dim(`Graph preflight: level ${graphLevel} \u2014 ${graphDecision.reasonCode} [${graphDecision.notes.join(", ") || "no notes"}]`))
+      }
+      if (shouldRecordRunDelivery(process.env)) {
+        runDeliveryRecorder = createRunDeliveryRecorder({ directory })
+        const deliveryModel =
+          resolvedModel === undefined
+            ? undefined
+            : { providerID: resolvedModel.providerID, modelID: resolvedModel.modelID }
+        const started = runDeliveryRecorder.start({
+          sessionId: sessionID,
+          directory,
+          agent: runnableAgent,
+          ...(deliveryModel === undefined ? {} : { model: deliveryModel }),
+          strategy: workflowDecision.strategy,
+          graphLevel,
+        })
+        if (options.verbose) {
+          console.log(pc.dim(started.written
+            ? `Delivery record: ${started.taskId}`
+            : `Delivery record skipped: ${started.reason}`))
+        }
       }
       // Telemetry is audit-only: it records the decision, never model or source text.
       // A run may point it at a JSONL file so a completed run can be inspected
@@ -265,12 +289,14 @@ export async function run(options: RunOptions): Promise<number> {
 
       // Post-edit impact runs against the generation THIS run started from, so a
       // stale snapshot is reported as stale instead of being presented as current.
+      let changedPaths: readonly string[] = []
       try {
         const baselineRevision = evidenceDiagnostics?.scope?.revision
         const postEdit = await analyzePostEdit({
           directory,
           ...(baselineRevision === undefined ? {} : { graphRevision: baselineRevision }),
         })
+        changedPaths = postEdit.changed.map((file) => file.path)
         graphTelemetry.record({
           type: "graph-post-edit",
           level: graphLevel,
@@ -304,6 +330,18 @@ export async function run(options: RunOptions): Promise<number> {
 
       const durationMs = Date.now() - startTime
 
+      if (runDeliveryRecorder !== null) {
+        const finished = await runDeliveryRecorder.finish({
+          sessionId: sessionID,
+          exitCode,
+          durationMs,
+          changedPaths,
+        })
+        if (options.verbose && !finished.written) {
+          console.log(pc.dim(`Delivery record not updated: ${finished.reason}`))
+        }
+      }
+
       if (options.onComplete) {
         await executeOnCompleteHook({
           command: options.onComplete,
@@ -326,6 +364,7 @@ export async function run(options: RunOptions): Promise<number> {
 
       return exitCode
     } catch (err) {
+      runDeliveryRecorder?.fail(err)
       cleanup()
       throw err
     } finally {
