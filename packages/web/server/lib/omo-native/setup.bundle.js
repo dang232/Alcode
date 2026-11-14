@@ -15072,6 +15072,7 @@ var _parse = (_Err) => {
   };
   return fn;
 };
+var parse = /* @__PURE__ */ _parse($ZodRealError);
 var _parseAsync = (_Err) => {
   const fn = async (schema, value, _ctx, params) => {
     const ctx = _ctx ? { ..._ctx, async: true } : { async: true };
@@ -15087,6 +15088,7 @@ var _parseAsync = (_Err) => {
   };
   return fn;
 };
+var parseAsync = /* @__PURE__ */ _parseAsync($ZodRealError);
 var _safeParse = (_Err) => (schema, value, _ctx) => {
   const ctx = _ctx ? { ..._ctx, async: false } : { async: false };
   const result = schema._zod.run({ value, issues: [] }, ctx);
@@ -16805,6 +16807,129 @@ function handleIntersectionResults(result, left, right) {
   result.value = merged.data;
   return result;
 }
+var $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
+  $ZodType.init(inst, def);
+  const items = def.items;
+  const memo = globalConfig.memoizer;
+  memo?.attach(inst);
+  inst._zod.parse = (payload, ctx) => {
+    const input = payload.value;
+    if (!Array.isArray(input)) {
+      payload.issues.push({
+        input,
+        inst,
+        expected: "tuple",
+        code: "invalid_type"
+      });
+      return payload;
+    }
+    payload.value = memo ? memo.alloc(inst, payload, [], ctx) : [];
+    const proms = [];
+    const optinStart = getTupleOptStart(items, "optin");
+    const optoutStart = getTupleOptStart(items, "optout");
+    if (!def.rest) {
+      if (input.length < optinStart) {
+        payload.issues.push({
+          code: "too_small",
+          minimum: optinStart,
+          inclusive: true,
+          input,
+          inst,
+          origin: "array"
+        });
+        return payload;
+      }
+      if (input.length > items.length) {
+        payload.issues.push({
+          code: "too_big",
+          maximum: items.length,
+          inclusive: true,
+          input,
+          inst,
+          origin: "array"
+        });
+      }
+    }
+    const itemResults = new Array(items.length);
+    const abortEarly = def.rest ? ctx?.abortEarly : undefined;
+    let itemAborted = false;
+    for (let i = 0;i < items.length; i++) {
+      const r = items[i]._zod.run({ value: input[i], issues: [] }, ctx);
+      if (r instanceof Promise) {
+        proms.push(r.then((rr) => {
+          itemResults[i] = rr;
+        }));
+      } else {
+        itemResults[i] = r;
+        if (abortEarly && !itemAborted && r.issues.length)
+          itemAborted = aborted(r);
+      }
+    }
+    if (def.rest && !itemAborted) {
+      let i = items.length - 1;
+      const rest = input.slice(items.length);
+      let seen = payload.issues.length;
+      for (const el of rest) {
+        if (abortEarly && payload.issues.length !== seen) {
+          if (aborted(payload, seen))
+            break;
+          seen = payload.issues.length;
+        }
+        i++;
+        const result = def.rest._zod.run({ value: el, issues: [] }, ctx);
+        if (result instanceof Promise) {
+          proms.push(result.then((r) => handleTupleResult(r, payload, i)));
+        } else {
+          handleTupleResult(result, payload, i);
+        }
+      }
+    }
+    if (proms.length) {
+      return Promise.all(proms).then(() => handleTupleResults(itemResults, payload, items, input, optoutStart));
+    }
+    return handleTupleResults(itemResults, payload, items, input, optoutStart);
+  };
+});
+function getTupleOptStart(items, key) {
+  for (let i = items.length - 1;i >= 0; i--) {
+    const omittable = key === "optin" ? items[i]._zod.optin !== undefined : items[i]._zod.optout === "optional";
+    if (!omittable)
+      return i + 1;
+  }
+  return 0;
+}
+function handleTupleResult(result, final, index) {
+  if (result.issues.length) {
+    final.issues.push(...prefixIssues(index, result.issues));
+  }
+  final.value[index] = result.value;
+}
+function handleTupleResults(itemResults, final, items, input, optoutStart) {
+  for (let i = 0;i < items.length; i++) {
+    const r = itemResults[i];
+    const isPresent = i < input.length;
+    if (!isPresent && i >= optoutStart && items[i]._zod.optin === "optional") {
+      final.value.length = i;
+      break;
+    }
+    if (r.issues.length) {
+      if (!isPresent && i >= optoutStart) {
+        final.value.length = i;
+        break;
+      }
+      final.issues.push(...prefixIssues(i, r.issues));
+    }
+    final.value[i] = r.value;
+  }
+  for (let i = final.value.length - 1;i >= input.length; i--) {
+    if (items[i]._zod.optout === "optional" && final.value[i] === undefined) {
+      final.value.length = i;
+    } else {
+      break;
+    }
+  }
+  return final;
+}
 var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
   $ZodType.init(inst, def);
   const memo = globalConfig.memoizer;
@@ -17231,6 +17356,83 @@ function handleReadonlyResult(payload) {
     payload.value = Object.freeze(payload.value);
   return payload;
 }
+var $ZodFunction = /* @__PURE__ */ $constructor("$ZodFunction", (inst, def) => {
+  $ZodType.init(inst, def);
+  Object.defineProperty(inst, "_def", { value: def });
+  inst._zod.def = def;
+  inst.implement = (func) => {
+    if (typeof func !== "function") {
+      throw new Error("implement() must be called with a function");
+    }
+    return Object.defineProperty(function(...args) {
+      const parsedArgs = inst._def.input ? parse(inst._def.input, args) : args;
+      const result = Reflect.apply(func, this, parsedArgs);
+      if (inst._def.output) {
+        return parse(inst._def.output, result);
+      }
+      return result;
+    }, "_zod", { value: inst._zod, enumerable: false });
+  };
+  inst.implementAsync = (func) => {
+    if (typeof func !== "function") {
+      throw new Error("implementAsync() must be called with a function");
+    }
+    return Object.defineProperty(async function(...args) {
+      const parsedArgs = inst._def.input ? await parseAsync(inst._def.input, args) : args;
+      const result = await Reflect.apply(func, this, parsedArgs);
+      if (inst._def.output) {
+        return await parseAsync(inst._def.output, result);
+      }
+      return result;
+    }, "_zod", { value: inst._zod, enumerable: false });
+  };
+  inst._zod.parse = (payload, _ctx) => {
+    if (typeof payload.value !== "function") {
+      payload.issues.push({
+        code: "invalid_type",
+        expected: "function",
+        input: payload.value,
+        inst
+      });
+      return payload;
+    }
+    const hasPromiseOutput = inst._def.output && inst._def.output._zod.def.type === "promise";
+    if (hasPromiseOutput) {
+      payload.value = inst.implementAsync(payload.value);
+    } else {
+      payload.value = inst.implement(payload.value);
+    }
+    return payload;
+  };
+  inst.input = (...args) => {
+    const F = inst.constructor;
+    if (Array.isArray(args[0])) {
+      return new F({
+        type: "function",
+        input: new $ZodTuple({
+          type: "tuple",
+          items: args[0],
+          rest: args[1]
+        }),
+        output: inst._def.output
+      });
+    }
+    return new F({
+      type: "function",
+      input: args[0],
+      output: inst._def.output
+    });
+  };
+  inst.output = (output) => {
+    const F = inst.constructor;
+    return new F({
+      type: "function",
+      input: inst._def.input,
+      output
+    });
+  };
+  return inst;
+});
 var $ZodCustom = /* @__PURE__ */ $constructor("$ZodCustom", (inst, def) => {
   $ZodCheck.init(inst, def);
   $ZodType.init(inst, def);
@@ -18918,6 +19120,9 @@ var literalProcessor = (schema, ctx, json, params) => {
 var customProcessor = (schema, ctx, json, params) => {
   handleUnrepresentable(schema, ctx, json, params, "Custom types cannot be represented in JSON Schema");
 };
+var functionProcessor = (schema, ctx, json, params) => {
+  handleUnrepresentable(schema, ctx, json, params, "Function types cannot be represented in JSON Schema");
+};
 var transformProcessor = (schema, ctx, json, params) => {
   handleUnrepresentable(schema, ctx, json, params, "Transforms cannot be represented in JSON Schema");
 };
@@ -19013,6 +19218,70 @@ var intersectionProcessor = (schema, ctx, json, params) => {
   ];
   json.allOf = allOf;
   ctx.intersections.push(allOf);
+};
+var tupleProcessor = (schema, ctx, _json, params) => {
+  const json = _json;
+  const def = schema._zod.def;
+  json.type = "array";
+  const prefixPath = ctx.target === "draft-2020-12" ? "prefixItems" : "items";
+  const restPath = ctx.target === "draft-2020-12" ? "items" : ctx.target === "openapi-3.0" ? "items" : "additionalItems";
+  const prefixItems = def.items.map((x, i) => processSchema(x, ctx, {
+    ...params,
+    path: [...params.path, prefixPath, i]
+  }));
+  const rest = def.rest ? processSchema(def.rest, ctx, {
+    ...params,
+    path: [...params.path, restPath, ...ctx.target === "openapi-3.0" ? [def.items.length] : []]
+  }) : null;
+  let minItems = def.items.length;
+  while (minItems > 0) {
+    const item = def.items[minItems - 1];
+    const optional = ctx.io === "input" ? inputOptin(item) !== undefined : item._zod.optout === "optional";
+    if (!optional)
+      break;
+    minItems--;
+  }
+  const maxItems = def.items.length;
+  const isClosed = !def.rest;
+  if (ctx.target === "draft-2020-12") {
+    json.prefixItems = prefixItems;
+    if (isClosed) {
+      json.items = false;
+    } else if (rest) {
+      json.items = rest;
+    }
+    if (minItems > 0)
+      json.minItems = minItems;
+    if (isClosed)
+      json.maxItems = maxItems;
+  } else if (ctx.target === "openapi-3.0") {
+    json.items = {
+      anyOf: prefixItems
+    };
+    if (rest) {
+      json.items.anyOf.push(rest);
+    }
+    if (minItems > 0)
+      json.minItems = minItems;
+    if (isClosed)
+      json.maxItems = maxItems;
+  } else {
+    json.items = prefixItems;
+    if (isClosed) {
+      json.additionalItems = false;
+    } else if (rest) {
+      json.additionalItems = rest;
+    }
+    if (minItems > 0)
+      json.minItems = minItems;
+    if (isClosed)
+      json.maxItems = maxItems;
+  }
+  const { minimum, maximum } = aggregateChecks(schema);
+  if (typeof minimum === "number")
+    json.minItems = minimum;
+  if (typeof maximum === "number")
+    json.maxItems = maximum;
 };
 function stringifyKeyNames(bySchema, json, visited) {
   if (json.$ref) {
@@ -19252,8 +19521,8 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, undefi
 });
 
 // ../../../../../node_modules/.bun/zod@4.6.7/node_modules/zod/v4/classic/parse.js
-var parse2 = /* @__PURE__ */ _parse(ZodRealError);
-var parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
+var parse3 = /* @__PURE__ */ _parse(ZodRealError);
+var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
 var safeParseAsync = /* @__PURE__ */ _safeParseAsync(ZodRealError);
 var encode = /* @__PURE__ */ _encode(ZodRealError);
@@ -19388,10 +19657,10 @@ var ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
     own(this, "~standard", value);
   },
   parse: function _parse(data, params) {
-    return parse2(this, data, params, { callee: _parse });
+    return parse3(this, data, params, { callee: _parse });
   },
   parseAsync: async function _parseAsync(data, params) {
-    return await parseAsync(this, data, params, { callee: _parseAsync });
+    return await parseAsync2(this, data, params, { callee: _parseAsync });
   },
   safeParse(data, params) {
     return safeParse(this, data, params);
@@ -19903,6 +20172,39 @@ function intersection(left, right) {
     right
   });
 }
+var ZodTuple = /* @__PURE__ */ $constructor("ZodTuple", (inst, def) => {
+  _ensureDefaultMemoizer();
+  $ZodTuple.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json, params) => tupleProcessor(inst, ctx, json, params);
+}, {
+  rest(rest) {
+    return this.clone({
+      ...this._zod.def,
+      rest
+    });
+  },
+  partial() {
+    const def = this._zod.def;
+    if (def.checks?.length)
+      throw new Error(".partial() cannot be used on tuple schemas containing refinements");
+    return this.clone({
+      ...def,
+      items: def.items.map((item) => new ZodOptional({ type: "optional", innerType: item }))
+    });
+  }
+});
+function tuple(items, _paramsOrRest, _params) {
+  const hasRest = _paramsOrRest instanceof $ZodType;
+  const params = hasRest ? _params : _paramsOrRest;
+  const rest = hasRest ? _paramsOrRest : null;
+  return new ZodTuple({
+    type: "tuple",
+    items,
+    rest,
+    ...normalizeParams(params)
+  });
+}
 var ZodRecord = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
   _ensureDefaultMemoizer();
   $ZodRecord.init(inst, def);
@@ -20156,6 +20458,18 @@ function readonly(innerType) {
   return new ZodReadonly({
     type: "readonly",
     innerType
+  });
+}
+var ZodFunction = /* @__PURE__ */ $constructor("ZodFunction", (inst, def) => {
+  $ZodFunction.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json, params) => functionProcessor(inst, ctx, json, params);
+});
+function _function(params) {
+  return new ZodFunction({
+    type: "function",
+    input: Array.isArray(params?.input) ? tuple(params?.input) : params?.input ?? array(unknown()),
+    output: params?.output ?? unknown()
   });
 }
 var ZodCustom = /* @__PURE__ */ $constructor("ZodCustom", (inst, def) => {
@@ -21814,7 +22128,7 @@ var ParseOptions;
     allowTrailingComma: false
   };
 })(ParseOptions || (ParseOptions = {}));
-function parse3(text, errors = [], options = ParseOptions.DEFAULT) {
+function parse4(text, errors = [], options = ParseOptions.DEFAULT) {
   let currentProperty = null;
   let currentParent = [];
   const previousParents = [];
@@ -22394,7 +22708,7 @@ var SyntaxKind;
   SyntaxKind[SyntaxKind["Unknown"] = 16] = "Unknown";
   SyntaxKind[SyntaxKind["EOF"] = 17] = "EOF";
 })(SyntaxKind || (SyntaxKind = {}));
-var parse4 = parse3;
+var parse5 = parse4;
 var ParseErrorCode;
 (function(ParseErrorCode) {
   ParseErrorCode[ParseErrorCode["InvalidSymbol"] = 1] = "InvalidSymbol";
@@ -22914,7 +23228,7 @@ function resolveOmoConfigView(options) {
 // ../../../../omo-engine/omo-config-core/src/loader/loader.ts
 function parseJsoncSafe(content) {
   const errors = [];
-  const data = parse4(content.charCodeAt(0) === 65279 ? content.slice(1) : content, errors, {
+  const data = parse5(content.charCodeAt(0) === 65279 ? content.slice(1) : content, errors, {
     allowTrailingComma: true,
     disallowComments: false
   });
@@ -26309,7 +26623,7 @@ function stripBom2(content) {
 }
 function parseJsoncSafe2(content) {
   const errors = [];
-  const data = parse4(stripBom2(content), errors, {
+  const data = parse5(stripBom2(content), errors, {
     allowTrailingComma: true,
     disallowComments: false
   });
@@ -47744,6 +48058,11 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     return result;
   };
   let buildSeq = 0;
+  const adoptPublishedSeq = (seq) => {
+    const published = Number(seq);
+    if (Number.isFinite(published) && published > buildSeq)
+      buildSeq = published;
+  };
   const MAX_CACHED_QUERIES = 200;
   const snapshots = new Map;
   const completeSnapshots = new Map;
@@ -47791,10 +48110,12 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
       return false;
     if (env.CODEGRAPH_NO_DAEMON === "1" || env.CODEGRAPH_SYNC_DISABLED === "1")
       return false;
-    if (runtimeOptions.watcherEnabled === true)
-      return true;
-    const flag = env.ALCODE_CODE_GRAPH_WATCHER ?? env.CODEGRAPH_WATCHER_ENABLED ?? null;
-    return flag === "1" || flag === "true";
+    const raw = env.ALCODE_CODE_GRAPH_WATCHER ?? env.CODEGRAPH_WATCHER_ENABLED ?? null;
+    if (raw !== null && raw !== undefined && String(raw).trim() !== "") {
+      const text = String(raw).trim().toLowerCase();
+      return text === "1" || text === "true" || text === "yes" || text === "on";
+    }
+    return runtimeOptions.watcherEnabled === true;
   };
   const watcherDebounceMs = (() => {
     const env = readWatcherEnv();
@@ -49091,8 +49412,10 @@ ${sizeLine}`), binding: "content", dirtyLines: [] };
       emitProgress(requestedKey, { state: "discovering", storeReadFailed: error instanceof Error ? error.message : String(error) });
       return shareWalk ? { miss: true, walk } : null;
     }
-    if (read.status !== "hit")
+    if (read.status !== "hit") {
+      adoptPublishedSeq(read.manifest?.buildSeq);
       return shareWalk ? { miss: true, walk } : null;
+    }
     const built = assembleEntry({
       snapshot: read.snapshot,
       scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey },
@@ -49686,6 +50009,11 @@ ${sizeLine}`), binding: "content", dirtyLines: [] };
       freshness: entry.freshness,
       observedAtMs: entry.observedAtMs,
       staleAfterMs: entry.staleAfterMs,
+      watcher: {
+        enabled: isWatcherEnabled(),
+        watchedScopes: watchers.size,
+        debounceMs: watcherDebounceMs
+      },
       generation: entry.buildSeq,
       indexTruncated: entry.indexTruncated === true,
       truncationReason: entry.truncationReason ?? null,
@@ -50345,7 +50673,12 @@ ${sizeLine}`), binding: "content", dirtyLines: [] };
     awaitIndex,
     seedSnapshot,
     closeWatchers,
-    watcherState
+    watcherState,
+    close: () => {
+      try {
+        closeWatchers();
+      } catch {}
+    }
   };
 };
 
@@ -51249,6 +51582,604 @@ ${renderExploreText(explore)}`;
 function createCodeGraphTools(deps = {}) {
   return {
     [CODE_GRAPH_NAME]: createCodeGraphTool(deps)
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/delegation/host-capabilities.ts
+var HOST_CAPABILITY_VERSION = 1;
+var CapabilitySchema = object({
+  version: literal(HOST_CAPABILITY_VERSION),
+  allowedAgents: array(string2()).optional(),
+  childSessions: object({ createAndStart: _function() }).optional(),
+  tasks: object({ start: _function() }).optional()
+});
+var capabilitiesOf = (source) => {
+  if (source === undefined)
+    return { version: HOST_CAPABILITY_VERSION };
+  const parsed = CapabilitySchema.safeParse(source);
+  return parsed.success ? source : { version: HOST_CAPABILITY_VERSION };
+};
+var callerFromContext = (context) => {
+  if (context === undefined)
+    throw delegationError("UNAUTHENTICATED", "no host context was supplied");
+  if (context.authenticated !== true)
+    throw delegationError("UNAUTHENTICATED", "the host did not authenticate this call");
+  const sessionID = context.sessionID;
+  if (sessionID.length === 0 || sessionID === "unknown") {
+    throw delegationError("UNAUTHENTICATED", "the host supplied no usable session identity");
+  }
+  return {
+    sessionID,
+    messageID: context.messageID,
+    agent: context.agent,
+    directory: context.directory,
+    worktree: context.worktree
+  };
+};
+
+class DelegationError extends Error {
+  code;
+  constructor(code, message) {
+    super(`${code}: ${message}`);
+    this.name = "DelegationError";
+    this.code = code;
+  }
+}
+var delegationError = (code, message) => new DelegationError(code, message);
+
+// ../../../../omo-engine/omo-opencode/src/tools/delegation/delegation-tools.ts
+var TASK_TOOL_NAME = "task";
+var CALL_OMO_AGENT_TOOL_NAME = "call_omo_agent";
+var MAX_PROMPT_CHARS = 200000;
+var TaskArgs = object({
+  description: string2().trim().min(1).max(200),
+  prompt: string2().trim().min(1).max(MAX_PROMPT_CHARS),
+  agent: string2().trim().min(1).optional(),
+  category: string2().trim().min(1).optional(),
+  background: boolean2().optional()
+});
+var CallAgentArgs = object({
+  description: string2().trim().min(1).max(200),
+  prompt: string2().trim().min(1).max(MAX_PROMPT_CHARS),
+  agent: string2().trim().min(1).optional()
+});
+var FORBIDDEN_ARGUMENTS = [
+  "sessionID",
+  "sessionId",
+  "parentID",
+  "parentSessionId",
+  "parentSessionID",
+  "directory",
+  "worktree",
+  "projectId",
+  "projectID"
+];
+var rejectIdentityArguments = (raw) => {
+  for (const field of FORBIDDEN_ARGUMENTS) {
+    if (raw[field] !== undefined) {
+      throw delegationError("INVALID_ARGUMENT", `${field} is host-derived and may not be supplied by a tool call`);
+    }
+  }
+};
+var requireAgentAuthorized = (capabilities, agent, what) => {
+  if (agent === undefined)
+    return;
+  const allowed = capabilities.allowedAgents;
+  if (allowed === undefined) {
+    throw delegationError("FORBIDDEN", `${what} may not select an agent: this host publishes no authorized agent set`);
+  }
+  if (!allowed.includes(agent)) {
+    throw delegationError("FORBIDDEN", `${what} may not select agent ${agent}: it is not in the host-authorized set`);
+  }
+};
+var requireHostParent = (handle, caller) => {
+  if (handle.parentSessionID !== caller.sessionID) {
+    throw delegationError("PARENT_ATTRIBUTION_MISMATCH", `the host attributed this result to ${handle.parentSessionID}, not to the calling session`);
+  }
+  if (handle.childSessionID !== undefined && handle.childSessionID === caller.sessionID) {
+    throw delegationError("PARENT_ATTRIBUTION_MISMATCH", "the host returned the calling session as the child");
+  }
+};
+var parse6 = (schema, raw, what) => {
+  const result = schema.safeParse(raw);
+  if (!result.success) {
+    const first = result.error.issues[0];
+    const where = first === undefined ? "unexpected shape" : `${first.path.join(".") || "value"} ${first.message}`;
+    throw delegationError("INVALID_ARGUMENT", `${what} arguments are invalid: ${where}`);
+  }
+  return result.data;
+};
+var TASK_DESCRIPTION = "Launch a host-owned task through the canonical task manager. Requires host-authenticated context; the caller session is derived by the host, never from arguments.";
+var CALL_AGENT_DESCRIPTION = "Delegate bounded work to a named helper agent in a genuine native child session. The parent session is derived from host context; the result reports the real child identity and whether its first prompt was submitted.";
+var buildTaskRequest = (args) => {
+  const request = {
+    description: args.description,
+    prompt: args.prompt
+  };
+  if (args.agent !== undefined)
+    request.agent = args.agent;
+  if (args.category !== undefined)
+    request.category = args.category;
+  if (args.background !== undefined)
+    request.background = args.background;
+  return request;
+};
+var buildChildRequest = (args) => {
+  const request = { title: args.description, prompt: args.prompt };
+  if (args.agent !== undefined)
+    request.agent = args.agent;
+  return request;
+};
+var taskResult = (handle) => JSON.stringify({
+  taskID: handle.taskID,
+  parentSessionID: handle.parentSessionID,
+  state: handle.state,
+  capabilityVersion: handle.capabilityVersion
+});
+var childResult = (handle) => JSON.stringify({
+  childSessionID: handle.childSessionID,
+  parentSessionID: handle.parentSessionID,
+  started: handle.started,
+  capabilityVersion: handle.capabilityVersion
+});
+var createDelegationTools = (deps) => {
+  const capabilities = capabilitiesOf(deps.capabilities);
+  const task = {
+    description: TASK_DESCRIPTION,
+    args: {
+      properties: {
+        description: { type: "string", description: "Short label for the task." },
+        prompt: { type: "string", description: "Instructions for the task." },
+        agent: { type: "string", description: "Agent the host authorizes for this task." },
+        category: { type: "string", description: "Category the host routes the task through." },
+        background: { type: "boolean", description: "Return as soon as the host accepts the task." }
+      },
+      required: ["description", "prompt"]
+    },
+    execute: async (rawArgs, context) => {
+      const caller = callerFromContext(context);
+      if (context?.aborted() === true) {
+        throw delegationError("CANCELLED", "the caller was already aborted; no task was started");
+      }
+      rejectIdentityArguments(rawArgs);
+      const args = parse6(TaskArgs, rawArgs, "task");
+      requireAgentAuthorized(capabilities, args.agent, "task");
+      const tasks = capabilities.tasks;
+      if (tasks === undefined) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no task capability (host.tasks.start is missing), so no task was created");
+      }
+      const handle = await tasks.start(buildTaskRequest(args), caller);
+      requireHostParent(handle, caller);
+      return taskResult(handle);
+    }
+  };
+  const callOmoAgent = {
+    description: CALL_AGENT_DESCRIPTION,
+    args: {
+      properties: {
+        description: { type: "string", description: "Title for the child session." },
+        prompt: { type: "string", description: "Instructions for the child agent." },
+        agent: { type: "string", description: "Agent the host authorizes for the child." }
+      },
+      required: ["description", "prompt"]
+    },
+    execute: async (rawArgs, context) => {
+      const caller = callerFromContext(context);
+      if (context?.aborted() === true) {
+        throw delegationError("CANCELLED", "the caller was already aborted; no child session was created");
+      }
+      rejectIdentityArguments(rawArgs);
+      const args = parse6(CallAgentArgs, rawArgs, "call_omo_agent");
+      requireAgentAuthorized(capabilities, args.agent, "call_omo_agent");
+      const childSessions = capabilities.childSessions;
+      if (childSessions === undefined) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no child-session capability (session.create/session.prompt are missing), so no child was created");
+      }
+      const handle = await childSessions.createAndStart(buildChildRequest(args), caller);
+      requireHostParent(handle, caller);
+      return childResult(handle);
+    }
+  };
+  return { task, callOmoAgent };
+};
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/bash.ts
+import { spawn as spawn3 } from "node:child_process";
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/containment.ts
+import { existsSync as existsSync15, realpathSync as realpathSync5 } from "node:fs";
+import { dirname as dirname6, isAbsolute as isAbsolute3, relative as relative3, resolve as resolve7, sep } from "node:path";
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/errors.ts
+class WorkspaceToolError extends Error {
+  code;
+  path;
+  constructor(message, code, path) {
+    super(message);
+    this.name = "WorkspaceToolError";
+    this.code = code;
+    this.path = path;
+  }
+}
+function workspacePathRefused(path, reason) {
+  throw new WorkspaceToolError(`Refused '${path}': ${reason}.`, "PATH_OUTSIDE_WORKSPACE", path);
+}
+function workspaceInputRefused(path, reason) {
+  throw new WorkspaceToolError(`Invalid arguments for '${path}': ${reason}.`, "INVALID_INPUT", path);
+}
+function workspaceNotFound(path) {
+  throw new WorkspaceToolError(`Not found in the workspace: '${path}'.`, "NOT_FOUND", path);
+}
+function workspaceNotAFile(path) {
+  throw new WorkspaceToolError(`'${path}' is a directory, not a file.`, "NOT_A_FILE", path);
+}
+function workspaceTooLarge(path, bytes, limit) {
+  throw new WorkspaceToolError(`'${path}' is ${bytes} bytes; read at most ${limit} bytes by requesting a smaller range.`, "TOO_LARGE", path);
+}
+function workspaceBinary(path) {
+  throw new WorkspaceToolError(`'${path}' is not text; this tool returns text only.`, "BINARY_CONTENT", path);
+}
+function workspaceIoFailed(path, reason) {
+  throw new WorkspaceToolError(`Could not read '${path}': ${reason}.`, "IO_FAILED", path);
+}
+function workspaceUnauthenticated(tool) {
+  throw new WorkspaceToolError(`The host supplied no authenticated session for '${tool}'; refusing to act on an unidentified caller.`, "UNAUTHENTICATED", tool);
+}
+function workspaceApprovalDenied(tool, reason) {
+  throw new WorkspaceToolError(`The host did not approve '${tool}': ${reason}.`, "APPROVAL_DENIED", tool);
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/containment.ts
+var isInside = (root, target) => {
+  const rel = relative3(root, target);
+  if (rel.length === 0)
+    return true;
+  if (isAbsolute3(rel))
+    return false;
+  return rel !== ".." && !rel.startsWith(`..${sep}`);
+};
+var realOrNull = (path) => {
+  try {
+    return realpathSync5(path);
+  } catch {
+    return null;
+  }
+};
+function resolveInsideWorkspace(root, candidate) {
+  const trimmed = candidate.trim();
+  if (trimmed.length === 0)
+    workspacePathRefused(candidate, "a path is required");
+  if (trimmed.includes("\x00"))
+    workspacePathRefused(candidate, "a path may not contain NUL");
+  const rootLexical = resolve7(root);
+  const targetLexical = isAbsolute3(trimmed) ? resolve7(trimmed) : resolve7(rootLexical, trimmed);
+  if (!isInside(rootLexical, targetLexical)) {
+    workspacePathRefused(candidate, "the path leaves the workspace");
+  }
+  const rootReal = realOrNull(rootLexical) ?? rootLexical;
+  const targetReal = realOrNull(targetLexical);
+  if (targetReal !== null && !isInside(rootReal, targetReal)) {
+    workspacePathRefused(candidate, "the path resolves outside the workspace through a link");
+  }
+  return targetLexical;
+}
+var deepestExisting = (path) => {
+  let probe = path;
+  while (!existsSync15(probe)) {
+    const parent = dirname6(probe);
+    if (parent === probe)
+      return probe;
+    probe = parent;
+  }
+  return probe;
+};
+function resolveForWrite(root, candidate) {
+  const target = resolveInsideWorkspace(root, candidate);
+  const rootReal = realOrNull(resolve7(root)) ?? resolve7(root);
+  const ancestor = deepestExisting(dirname6(target));
+  const ancestorReal = realOrNull(ancestor) ?? ancestor;
+  if (!isInside(rootReal, ancestorReal)) {
+    workspacePathRefused(candidate, "the path would be created outside the workspace through a link");
+  }
+  return target;
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/bash.ts
+var BASH_TOOL_NAME = "bash";
+var DEFAULT_TIMEOUT_MS = 120000;
+var MAX_TIMEOUT_MS = 600000;
+var OUTPUT_LIMIT_BYTES = 64 * 1024;
+var BASH_DESCRIPTION = "Run a shell command with the project workspace as its working directory. Returns the exit code with bounded stdout and stderr; a non-zero exit is reported as a failure.";
+var BashArgs = object({
+  command: string2().trim().min(1),
+  cwd: string2().trim().min(1).optional(),
+  timeoutMs: number2().int().min(1).max(MAX_TIMEOUT_MS).optional()
+});
+var capture = () => {
+  const chunks = [];
+  let bytes = 0;
+  let truncated = false;
+  return {
+    push: (chunk) => {
+      bytes += chunk.length;
+      if (bytes <= OUTPUT_LIMIT_BYTES)
+        chunks.push(chunk);
+      else
+        truncated = true;
+    },
+    result: () => ({
+      text: Buffer.concat(chunks).toString("utf8"),
+      truncated,
+      bytes
+    })
+  };
+};
+var killTree = async (pid, platform) => {
+  if (pid === undefined)
+    return;
+  if (platform === "win32") {
+    await new Promise((resolve) => {
+      const killer = spawn3("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+      const done = setTimeout(() => resolve(), 5000);
+      killer.on("close", () => {
+        clearTimeout(done);
+        resolve();
+      });
+      killer.on("error", () => {
+        clearTimeout(done);
+        resolve();
+      });
+    });
+    return;
+  }
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      return;
+    }
+  }
+};
+function createWorkspaceBashTool(options) {
+  return {
+    description: BASH_DESCRIPTION,
+    args: {
+      properties: {
+        command: { type: "string", description: "Command line to run through the platform shell." },
+        cwd: { type: "string", description: "Working directory inside the workspace; defaults to the project root." },
+        timeoutMs: { type: "number", description: `Deadline in milliseconds, 1-${MAX_TIMEOUT_MS}.` }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      if (context?.authenticated !== true)
+        workspaceUnauthenticated(BASH_TOOL_NAME);
+      const parsed = BashArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        const named = object({ command: string2() }).safeParse(toolArgs);
+        workspaceInputRefused(named.success ? named.data.command : "", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const cwd = resolveInsideWorkspace(options.directory, parsed.data.cwd ?? ".");
+      const timeoutMs = parsed.data.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      let approval = "not offered by this runtime";
+      if (context?.ask !== undefined) {
+        try {
+          await context.ask({ permission: BASH_TOOL_NAME, patterns: [parsed.data.command], metadata: { cwd, sessionID: context.sessionID } });
+          approval = "granted by host";
+        } catch (error) {
+          workspaceApprovalDenied(BASH_TOOL_NAME, error instanceof Error ? error.message : String(error));
+        }
+      }
+      const platform = process.platform;
+      const argv = platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", parsed.data.command] : ["/bin/bash", "-lc", parsed.data.command];
+      const stdout = capture();
+      const stderr = capture();
+      const child = spawn3(argv[0], argv.slice(1), {
+        cwd,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: platform !== "win32"
+      });
+      child.stdout?.on("data", (chunk) => stdout.push(chunk));
+      child.stderr?.on("data", (chunk) => stderr.push(chunk));
+      const outcome = await new Promise((resolve) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled)
+            return;
+          settled = true;
+          killTree(child.pid, platform).then(() => resolve({ kind: "timeout", code: null, signal: null }));
+        }, timeoutMs);
+        child.on("error", (error) => {
+          if (settled)
+            return;
+          settled = true;
+          clearTimeout(timer);
+          resolve({ kind: "error", code: null, signal: null, message: error.message });
+        });
+        child.on("close", (code, signal) => {
+          if (settled)
+            return;
+          settled = true;
+          clearTimeout(timer);
+          resolve({ kind: "exit", code, signal });
+        });
+      });
+      const out = stdout.result();
+      const err = stderr.result();
+      const header = outcome.kind === "timeout" ? `timed out after ${timeoutMs}ms` : outcome.kind === "error" ? `could not start: ${outcome.message ?? "unknown error"}` : `exit ${outcome.code ?? "none"}${outcome.signal === null ? "" : ` (signal ${outcome.signal})`}`;
+      const parts = [header, `approval: ${approval}`];
+      parts.push(`stdout${out.truncated ? ` (truncated at ${OUTPUT_LIMIT_BYTES}B of ${out.bytes}B)` : ""}:`);
+      parts.push(out.text.length > 0 ? out.text.replace(/\s+$/, "") : "(empty)");
+      if (err.text.length > 0 || err.truncated) {
+        parts.push(`stderr${err.truncated ? ` (truncated at ${OUTPUT_LIMIT_BYTES}B of ${err.bytes}B)` : ""}:`);
+        parts.push(err.text.replace(/\s+$/, ""));
+      }
+      return parts.join(`
+`);
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/read.ts
+import { readFileSync as readFileSync8, statSync as statSync4 } from "node:fs";
+var READ_TOOL_NAME = "read";
+var MAX_BYTES = 512 * 1024;
+var HARD_MAX_BYTES = 8 * 1024 * 1024;
+var MAX_LINES = 5000;
+var BINARY_PROBE_BYTES = 8192;
+var READ_DESCRIPTION = "Read a UTF-8 text file from the project workspace. Returns the requested line range and states which lines were returned.";
+var ReadArgs = object({
+  path: string2().trim().min(1),
+  offset: number2().int().min(0).optional(),
+  limit: number2().int().min(1).max(MAX_LINES).optional()
+});
+var looksBinary = (buffer) => {
+  const probe = buffer.subarray(0, Math.min(buffer.length, BINARY_PROBE_BYTES));
+  return probe.includes(0);
+};
+function createWorkspaceReadTool(options) {
+  return {
+    description: READ_DESCRIPTION,
+    args: {
+      properties: {
+        path: { type: "string", description: "File to read, relative to the project workspace." },
+        offset: { type: "number", description: "Zero-based line to start at; defaults to the first line." },
+        limit: { type: "number", description: `Maximum lines to return, 1-${MAX_LINES}.` }
+      }
+    },
+    execute: async (toolArgs) => {
+      const parsed = ReadArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        const named = object({ path: string2() }).safeParse(toolArgs);
+        workspaceInputRefused(named.success ? named.data.path : "", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const requested = parsed.data.path;
+      const target = resolveInsideWorkspace(options.directory, requested);
+      let stat;
+      try {
+        stat = statSync4(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        if (code === "ENOENT" || code === "ENOTDIR")
+          workspaceNotFound(requested);
+        workspaceIoFailed(requested, code.length > 0 ? code : "stat failed");
+      }
+      if (stat.isDirectory())
+        workspaceNotAFile(requested);
+      const size = stat.size;
+      const offset = parsed.data.offset ?? 0;
+      const limit = parsed.data.limit ?? MAX_LINES;
+      if (size > HARD_MAX_BYTES)
+        workspaceTooLarge(requested, size, HARD_MAX_BYTES);
+      if (parsed.data.offset === undefined && parsed.data.limit === undefined && size > MAX_BYTES) {
+        workspaceTooLarge(requested, size, MAX_BYTES);
+      }
+      let buffer;
+      try {
+        buffer = readFileSync8(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        workspaceIoFailed(requested, code.length > 0 ? code : "read failed");
+      }
+      if (looksBinary(buffer))
+        workspaceBinary(requested);
+      const lines = buffer.toString("utf8").split(`
+`);
+      const bodyLines = lines.length > 0 && lines[lines.length - 1] === "" ? lines.slice(0, -1) : lines;
+      if (offset > bodyLines.length) {
+        workspaceInputRefused(requested, `offset ${offset} is past the last line (${bodyLines.length})`);
+      }
+      const from = offset;
+      const slice = bodyLines.slice(from, from + limit);
+      const lastLine = from + slice.length;
+      const header = `lines ${from + 1}-${lastLine} of ${bodyLines.length}`;
+      const joined = slice.join(`
+`);
+      const capped = Buffer.from(joined, "utf8").subarray(0, MAX_BYTES).toString("utf8");
+      return `${header}
+${capped}`;
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/write.ts
+import { createHash as createHash7 } from "node:crypto";
+import { existsSync as existsSync16, mkdirSync as mkdirSync3, readFileSync as readFileSync9, renameSync as renameSync2, statSync as statSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname7, join as join11 } from "node:path";
+var WRITE_TOOL_NAME = "write";
+var MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+var WRITE_DESCRIPTION = "Write a UTF-8 text file inside the project workspace. Refuses paths that leave the workspace and, when expectedDigest is given, refuses to overwrite different content.";
+var WriteArgs = object({
+  path: string2().trim().min(1),
+  content: string2(),
+  expectedDigest: string2().trim().regex(/^[0-9a-f]{64}$/).optional()
+});
+var digestOf = (buffer) => createHash7("sha256").update(buffer).digest("hex");
+var staleContent = (path, expected, actual) => {
+  throw new WorkspaceToolError(`'${path}' changed since it was read: expected sha256 ${expected}, found ${actual}. Re-read the file and retry.`, "INVALID_INPUT", path);
+};
+function createWorkspaceWriteTool(options) {
+  return {
+    description: WRITE_DESCRIPTION,
+    args: {
+      properties: {
+        path: { type: "string", description: "File to write, relative to the project workspace." },
+        content: { type: "string", description: "Full UTF-8 content to write." },
+        expectedDigest: {
+          type: "string",
+          description: "Optional sha256 of the current content; the write is refused when the file differs."
+        }
+      }
+    },
+    execute: async (toolArgs) => {
+      const parsed = WriteArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        const named = object({ path: string2() }).safeParse(toolArgs);
+        workspaceInputRefused(named.success ? named.data.path : "", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const requested = parsed.data.path;
+      const bytes = Buffer.from(parsed.data.content, "utf8");
+      if (bytes.length > MAX_CONTENT_BYTES) {
+        workspaceInputRefused(requested, `content is ${bytes.length} bytes; the limit is ${MAX_CONTENT_BYTES}`);
+      }
+      const target = resolveForWrite(options.directory, requested);
+      const existed = existsSync16(target);
+      let previous = null;
+      if (existed) {
+        if (statSync5(target).isDirectory()) {
+          throw new WorkspaceToolError(`'${requested}' is a directory.`, "NOT_A_FILE", requested);
+        }
+        try {
+          previous = digestOf(readFileSync9(target));
+        } catch (error) {
+          const code = error instanceof Error && "code" in error ? String(error.code) : "";
+          workspaceIoFailed(requested, code.length > 0 ? code : "read failed");
+        }
+      }
+      const expected = parsed.data.expectedDigest;
+      if (expected !== undefined) {
+        if (previous === null)
+          staleContent(requested, expected, "(file did not exist)");
+        if (previous !== expected)
+          staleContent(requested, expected, previous);
+      }
+      const next = digestOf(bytes);
+      if (previous === next) {
+        return `unchanged ${requested} (sha256 ${next}, ${bytes.length} bytes)`;
+      }
+      try {
+        mkdirSync3(dirname7(target), { recursive: true });
+        const temp = join11(dirname7(target), `.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`);
+        writeFileSync3(temp, bytes);
+        renameSync2(temp, target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        workspaceIoFailed(requested, code.length > 0 ? code : "write failed");
+      }
+      return `${existed ? "updated" : "created"} ${requested} (sha256 ${next}, ${bytes.length} bytes)`;
+    }
   };
 }
 
@@ -55709,8 +56640,180 @@ async function createTools(ctx, pluginConfig, managers) {
       filteredTools[name] = tool;
     }
   }
+  const workspaceTools = {
+    [READ_TOOL_NAME]: createWorkspaceReadTool({ directory: ctx.directory }),
+    [WRITE_TOOL_NAME]: createWorkspaceWriteTool({ directory: ctx.directory }),
+    [BASH_TOOL_NAME]: createWorkspaceBashTool({ directory: ctx.directory })
+  };
+  for (const [name, tool] of Object.entries(workspaceTools)) {
+    if (registry[name] !== undefined) {
+      filteredTools[name] = tool;
+    }
+  }
+  const delegation = createDelegationTools({ directory: ctx.directory, capabilities: ctx.hostCapabilities });
+  const delegationTools = {
+    [TASK_TOOL_NAME]: delegation.task,
+    [CALL_OMO_AGENT_TOOL_NAME]: delegation.callOmoAgent
+  };
+  for (const [name, tool] of Object.entries(delegationTools)) {
+    if (registry[name] !== undefined) {
+      filteredTools[name] = tool;
+    }
+  }
   return { filteredTools, mergedSkills, availableSkills };
 }
+
+// ../../../../omo-engine/omo-opencode/src/tools/delegation/host-provider.ts
+var requireAgent = (allowedAgents, agent) => {
+  if (agent === undefined)
+    return;
+  if (allowedAgents === undefined) {
+    throw delegationError("FORBIDDEN", "this host publishes no authorized agent set, so a delegated agent may not be selected");
+  }
+  if (!allowedAgents.includes(agent)) {
+    throw delegationError("FORBIDDEN", `agent ${agent} is not in the host-authorized set`);
+  }
+};
+var createChildSessions = (runtime) => ({
+  version: HOST_CAPABILITY_VERSION,
+  createAndStart: async (request, caller) => {
+    const { createSession, startSession } = runtime;
+    if (createSession === undefined || startSession === undefined) {
+      throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no session operations");
+    }
+    requireAgent(runtime.allowedAgents, request.agent);
+    const created = await createSession({ parentID: caller.sessionID, title: request.title, directory: caller.directory });
+    if (created.error !== undefined) {
+      throw delegationError("SESSION_CREATE_FAILED", created.error);
+    }
+    const childSessionID = created.sessionID;
+    if (childSessionID === undefined || childSessionID.length === 0) {
+      throw delegationError("SESSION_CREATE_FAILED", "the host returned no session identity");
+    }
+    if (created.parentID !== undefined && created.parentID !== caller.sessionID) {
+      throw delegationError("PARENT_ATTRIBUTION_MISMATCH", `the host created ${childSessionID} under ${created.parentID}, not the calling session`);
+    }
+    const start = { sessionID: childSessionID, prompt: request.prompt, directory: caller.directory };
+    if (request.agent !== undefined)
+      start.agent = request.agent;
+    const started = await startSession(start);
+    if (started.outcome === "refused") {
+      throw delegationError("PROMPT_SUBMIT_FAILED", `session ${childSessionID} exists but its first prompt was refused: ${started.error ?? "no reason given by the host"}`);
+    }
+    if (started.outcome !== "accepted") {
+      throw delegationError("CHILD_STATUS_UNKNOWN", `session ${childSessionID} exists; whether its first prompt reached the host is unproven, so no completion is claimed`);
+    }
+    return { childSessionID, parentSessionID: caller.sessionID, started: true, capabilityVersion: HOST_CAPABILITY_VERSION };
+  }
+});
+var createTasks = (manager) => ({
+  version: HOST_CAPABILITY_VERSION,
+  start: async (request, caller) => {
+    if (!_function().safeParse(manager.start).success) {
+      throw delegationError("CAPABILITY_UNAVAILABLE", "this host's task seam exposes no start operation");
+    }
+    const started = await manager.start({ ...request, parentSessionID: caller.sessionID });
+    if (started.taskID.length === 0) {
+      throw delegationError("INTERNAL", "the canonical task manager returned no task identity");
+    }
+    return {
+      taskID: started.taskID,
+      parentSessionID: caller.sessionID,
+      state: started.state,
+      capabilityVersion: HOST_CAPABILITY_VERSION
+    };
+  }
+});
+var createHostCapabilities = (runtime) => {
+  const capabilities = { version: HOST_CAPABILITY_VERSION };
+  if (runtime.createSession !== undefined && runtime.startSession !== undefined) {
+    capabilities.childSessions = createChildSessions(runtime);
+  }
+  if (runtime.allowedAgents !== undefined)
+    capabilities.allowedAgents = runtime.allowedAgents;
+  if (runtime.taskManager !== undefined)
+    capabilities.tasks = createTasks(runtime.taskManager);
+  return capabilities;
+};
+
+// ../../../../omo-engine/omo-opencode/src/tools/delegation/capability-descriptor.ts
+var OutcomeSchema = _enum(["accepted", "refused", "unknown"]);
+var HostCapabilityOptions = object({
+  hostCapabilities: object({
+    version: literal(1),
+    url: string2().url().refine((value) => value.startsWith("http://") || value.startsWith("https://"), {
+      message: "the host capability url must be http or https"
+    }),
+    token: string2().min(1),
+    allowedAgents: array(string2()).optional()
+  })
+});
+var CreateResponse = object({ sessionID: string2().min(1), parentID: string2().optional() });
+var StartResponse = object({ outcome: OutcomeSchema, error: string2().optional() });
+var TaskResponse = object({ taskID: string2().min(1), state: _enum(["accepted", "running", "completed", "failed", "cancelled", "unknown"]) });
+var TIMEOUT_MS = 30000;
+var post = async (descriptor, path, bodyJson) => {
+  try {
+    const response = await fetch(`${descriptor.url}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${descriptor.token}` },
+      body: bodyJson,
+      redirect: "error",
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    });
+    if (!response.ok)
+      return { ok: false, error: `host capability endpoint returned ${response.status}` };
+    return { ok: true, payload: AnyPayload.parse(await response.json()) };
+  } catch (cause) {
+    return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
+  }
+};
+var AnyPayload = union([record(string2(), unknown()), array(unknown())]);
+var readCapabilityDescriptor = (options) => {
+  const parsed = HostCapabilityOptions.safeParse(options);
+  return parsed.success ? parsed.data.hostCapabilities : undefined;
+};
+var createOperationsFromDescriptor = (descriptor) => {
+  const operations = {
+    createSession: async (input) => {
+      const sent = await post(descriptor, "/capability/session", JSON.stringify({ parentID: input.parentID, title: input.title, directory: input.directory }));
+      if (!sent.ok)
+        return { error: sent.error };
+      const parsed = CreateResponse.safeParse(sent.payload);
+      if (!parsed.success)
+        return { error: "the host returned no usable session identity" };
+      return parsed.data.parentID === undefined ? { sessionID: parsed.data.sessionID } : { sessionID: parsed.data.sessionID, parentID: parsed.data.parentID };
+    },
+    startSession: async (input) => {
+      const body = { sessionID: input.sessionID, prompt: input.prompt, directory: input.directory };
+      if (input.agent !== undefined)
+        body.agent = input.agent;
+      const sent = await post(descriptor, "/capability/session/start", JSON.stringify(body));
+      if (!sent.ok)
+        return { outcome: "unknown", error: sent.error };
+      const parsed = StartResponse.safeParse(sent.payload);
+      if (!parsed.success)
+        return { outcome: "unknown", error: "the host returned an unusable start outcome" };
+      return parsed.data.error === undefined ? { outcome: parsed.data.outcome } : { outcome: parsed.data.outcome, error: parsed.data.error };
+    }
+  };
+  if (descriptor.allowedAgents !== undefined)
+    operations.allowedAgents = descriptor.allowedAgents;
+  return operations;
+};
+var createTaskOperationsFromDescriptor = (descriptor) => ({
+  taskManager: {
+    start: async (request) => {
+      const sent = await post(descriptor, "/capability/task", JSON.stringify(request));
+      if (!sent.ok)
+        throw new Error(`TASK_MANAGER_UNAVAILABLE: ${sent.error}`);
+      const parsed = TaskResponse.safeParse(sent.payload);
+      if (!parsed.success)
+        throw new Error("INTERNAL: the host returned no usable task identity");
+      return parsed.data;
+    }
+  }
+});
 
 // ../../../../omo-engine/omo-opencode/src/plugin-dispose.ts
 var createPluginDispose = (parts) => {
@@ -55927,9 +57030,9 @@ ${notes.join(`
 import * as fs5 from "node:fs";
 import * as path7 from "node:path";
 // ../../../../omo-engine/omo-opencode/src/shared/opencode-config-dir.ts
-import { existsSync as existsSync15, realpathSync as realpathSync5 } from "node:fs";
+import { existsSync as existsSync17, realpathSync as realpathSync6 } from "node:fs";
 import { homedir as homedir5 } from "node:os";
-import { join as join11, posix as posix2, resolve as resolve7, win32 } from "node:path";
+import { join as join12, posix as posix2, resolve as resolve8, win32 } from "node:path";
 var TAURI_APP_IDENTIFIER = "ai.opencode.desktop";
 var TAURI_APP_IDENTIFIER_DEV = "ai.opencode.desktop.dev";
 function isDevBuild(version) {
@@ -55941,15 +57044,15 @@ function getTauriConfigDir(identifier) {
   const platform = process.platform;
   switch (platform) {
     case "darwin":
-      return join11(homedir5(), "Library", "Application Support", identifier);
+      return join12(homedir5(), "Library", "Application Support", identifier);
     case "win32": {
-      const appData = process.env.APPDATA || join11(homedir5(), "AppData", "Roaming");
+      const appData = process.env.APPDATA || join12(homedir5(), "AppData", "Roaming");
       return win32.join(appData, identifier);
     }
     case "linux":
     default: {
-      const xdgConfig = process.env.XDG_CONFIG_HOME || join11(homedir5(), ".config");
-      return join11(xdgConfig, identifier);
+      const xdgConfig = process.env.XDG_CONFIG_HOME || join12(homedir5(), ".config");
+      return join12(xdgConfig, identifier);
     }
   }
 }
@@ -55957,11 +57060,11 @@ function resolveConfigPath(pathValue) {
   if (isWslEnvironment() && pathValue.startsWith("/")) {
     return posix2.normalize(pathValue);
   }
-  const resolvedPath = resolve7(pathValue);
-  if (!existsSync15(resolvedPath))
+  const resolvedPath = resolve8(pathValue);
+  if (!existsSync17(resolvedPath))
     return resolvedPath;
   try {
-    return realpathSync5(resolvedPath);
+    return realpathSync6(resolvedPath);
   } catch (error) {
     if (error instanceof Error) {
       return resolvedPath;
@@ -55992,8 +57095,8 @@ function getWslLinuxHomeDir(windowsConfigRoot) {
 function getCliDefaultConfigDir() {
   const envXdgConfig = process.env.XDG_CONFIG_HOME?.trim();
   const shouldIgnoreWindowsXdg = envXdgConfig !== undefined && envXdgConfig.length > 0 && isWslEnvironment() && isWindowsUserConfigRoot(envXdgConfig);
-  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join11(homedir5(), ".config");
-  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join11(xdgConfig, "opencode");
+  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join12(homedir5(), ".config");
+  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join12(xdgConfig, "opencode");
   return resolveConfigPath(configDir);
 }
 function getCliCustomConfigDir() {
@@ -56026,9 +57129,9 @@ function getOpenCodeConfigDir(options) {
   const tauriDir = process.platform === "win32" ? win32.isAbsolute(tauriDirBase) ? win32.normalize(tauriDirBase) : win32.resolve(tauriDirBase) : resolveConfigPath(tauriDirBase);
   if (checkExisting) {
     const legacyDir = getCliConfigDir();
-    const legacyConfig = join11(legacyDir, "opencode.json");
-    const legacyConfigC = join11(legacyDir, "opencode.jsonc");
-    if (existsSync15(legacyConfig) || existsSync15(legacyConfigC)) {
+    const legacyConfig = join12(legacyDir, "opencode.json");
+    const legacyConfigC = join12(legacyDir, "opencode.jsonc");
+    if (existsSync17(legacyConfig) || existsSync17(legacyConfigC)) {
       return legacyDir;
     }
   }
@@ -56038,9 +57141,9 @@ function getOpenCodeConfigPaths(options) {
   const configDir = getOpenCodeConfigDir(options);
   return {
     configDir,
-    configJson: join11(configDir, "opencode.json"),
-    configJsonc: join11(configDir, "opencode.jsonc"),
-    packageJson: join11(configDir, "package.json")
+    configJson: join12(configDir, "opencode.json"),
+    configJsonc: join12(configDir, "opencode.jsonc"),
+    packageJson: join12(configDir, "package.json")
   };
 }
 
@@ -56165,8 +57268,8 @@ Multiple ${PLUGIN_NAME} instances can inject internal prompts into the same live
 }
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
-import { existsSync as existsSync17, readFileSync as readFileSync9 } from "node:fs";
-import { join as join13 } from "node:path";
+import { existsSync as existsSync19, readFileSync as readFileSync11 } from "node:fs";
+import { join as join14 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/plugin-entry-shape.ts
 function isPluginTupleEntry(entry) {
@@ -56182,18 +57285,18 @@ function withPluginEntryName(entry, name) {
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
 function getOpenCodeConfigPath(overrideConfigDir) {
   if (overrideConfigDir) {
-    const jsonPath = join13(overrideConfigDir, "opencode.json");
-    const jsoncPath = join13(overrideConfigDir, "opencode.jsonc");
-    if (existsSync17(jsoncPath))
+    const jsonPath = join14(overrideConfigDir, "opencode.json");
+    const jsoncPath = join14(overrideConfigDir, "opencode.jsonc");
+    if (existsSync19(jsoncPath))
       return jsoncPath;
-    if (existsSync17(jsonPath))
+    if (existsSync19(jsonPath))
       return jsonPath;
     return null;
   }
   const { configJsonc, configJson } = getOpenCodeConfigPaths({ binary: "opencode", version: null });
-  if (existsSync17(configJsonc))
+  if (existsSync19(configJsonc))
     return configJsonc;
-  if (existsSync17(configJson))
+  if (existsSync19(configJson))
     return configJson;
   return null;
 }
@@ -56211,7 +57314,7 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
     return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath: null };
   }
   try {
-    const content = readFileSync9(configPath, "utf-8");
+    const content = readFileSync11(configPath, "utf-8");
     const parseResult = parseJsoncSafe2(content);
     if (!parseResult.data) {
       return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath };
@@ -56233,49 +57336,49 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
-import { existsSync as existsSync20, readdirSync as readdirSync8 } from "node:fs";
-import { join as join15 } from "node:path";
+import { existsSync as existsSync22, readdirSync as readdirSync8 } from "node:fs";
+import { join as join16 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-workspace-migration.ts
-import { copyFileSync, existsSync as existsSync18, lstatSync as lstatSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync7 } from "node:fs";
-import { dirname as dirname6, join as join14, relative as relative3 } from "node:path";
+import { copyFileSync, existsSync as existsSync20, lstatSync as lstatSync3, mkdirSync as mkdirSync4, readdirSync as readdirSync7 } from "node:fs";
+import { dirname as dirname8, join as join15, relative as relative4 } from "node:path";
 var LEGACY_WORKSPACE_DIR = ".sisyphus";
 var WORKSPACE_DIR = ".omo";
 function copyMissingEntries(legacyPath, targetPath, targetRoot, skipped) {
   const legacyStat = lstatSync3(legacyPath);
   if (legacyStat.isSymbolicLink()) {
-    skipped.push(join14(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join15(WORKSPACE_DIR, relative4(targetRoot, targetPath)));
     return false;
   }
-  if (existsSync18(targetPath)) {
+  if (existsSync20(targetPath)) {
     if (legacyStat.isDirectory() && lstatSync3(targetPath).isDirectory()) {
       let copiedChild = false;
       for (const entry of readdirSync7(legacyPath)) {
-        copiedChild = copyMissingEntries(join14(legacyPath, entry), join14(targetPath, entry), targetRoot, skipped) || copiedChild;
+        copiedChild = copyMissingEntries(join15(legacyPath, entry), join15(targetPath, entry), targetRoot, skipped) || copiedChild;
       }
       return copiedChild;
     }
-    skipped.push(join14(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join15(WORKSPACE_DIR, relative4(targetRoot, targetPath)));
     return false;
   }
   if (legacyStat.isDirectory()) {
-    mkdirSync3(targetPath, { recursive: true });
+    mkdirSync4(targetPath, { recursive: true });
     let copiedChild = false;
     for (const entry of readdirSync7(legacyPath)) {
-      copiedChild = copyMissingEntries(join14(legacyPath, entry), join14(targetPath, entry), targetRoot, skipped) || copiedChild;
+      copiedChild = copyMissingEntries(join15(legacyPath, entry), join15(targetPath, entry), targetRoot, skipped) || copiedChild;
     }
     return copiedChild;
   }
-  mkdirSync3(dirname6(targetPath), { recursive: true });
+  mkdirSync4(dirname8(targetPath), { recursive: true });
   copyFileSync(legacyPath, targetPath);
   return true;
 }
 function migrateLegacyWorkspaceDirectory(directory) {
-  const legacyDirectory = join14(directory, LEGACY_WORKSPACE_DIR);
-  if (!existsSync18(legacyDirectory)) {
+  const legacyDirectory = join15(directory, LEGACY_WORKSPACE_DIR);
+  if (!existsSync20(legacyDirectory)) {
     return { migrated: false, skipped: [] };
   }
-  const targetDirectory = join14(directory, WORKSPACE_DIR);
+  const targetDirectory = join15(directory, WORKSPACE_DIR);
   const skipped = [];
   try {
     const migrated = copyMissingEntries(legacyDirectory, targetDirectory, targetDirectory, skipped);
@@ -56381,6 +57484,34 @@ function migrateLegacyPluginEntry(configPath) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
+function resolveV2Capabilities(ctx) {
+  if (ctx.hostCapabilities !== undefined)
+    return ctx.hostCapabilities;
+  const runtime = {};
+  if (ctx.delegation !== undefined) {
+    runtime.createSession = ctx.delegation.createSession;
+    runtime.startSession = ctx.delegation.startSession;
+    if (ctx.delegation.allowedAgents !== undefined)
+      runtime.allowedAgents = ctx.delegation.allowedAgents;
+  }
+  if (ctx.tasks !== undefined)
+    runtime.taskManager = ctx.tasks;
+  const descriptor = readCapabilityDescriptor(ctx.options);
+  if (descriptor !== undefined) {
+    const operations = createOperationsFromDescriptor(descriptor);
+    if (runtime.createSession === undefined) {
+      runtime.createSession = operations.createSession;
+      runtime.startSession = operations.startSession;
+    }
+    if (runtime.allowedAgents === undefined && operations.allowedAgents !== undefined)
+      runtime.allowedAgents = operations.allowedAgents;
+    if (runtime.taskManager === undefined)
+      runtime.taskManager = createTaskOperationsFromDescriptor(descriptor).taskManager;
+  }
+  if (runtime.createSession === undefined && runtime.taskManager === undefined)
+    return;
+  return createHostCapabilities(runtime);
+}
 function isRecord15(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -56415,8 +57546,8 @@ function planArtifactTouched(directory) {
   try {
     if (!directory)
       return false;
-    const plansDir = join15(directory, ".omo", "plans");
-    if (!existsSync20(plansDir))
+    const plansDir = join16(directory, ".omo", "plans");
+    if (!existsSync22(plansDir))
       return false;
     return readdirSync8(plansDir).some((entry) => entry.endsWith(".md"));
   } catch {
@@ -56558,7 +57689,7 @@ function createPluginSetup() {
     }
     const pluginConfig = loadPluginConfig(directory, { directory });
     const managers = createManagers({ directory, pluginConfig });
-    const createdTools = await createTools({ directory, pluginConfig }, pluginConfig, managers);
+    const createdTools = await createTools({ directory, pluginConfig, hostCapabilities: resolveV2Capabilities(ctx) }, pluginConfig, managers);
     const disabled = new Set(pluginConfig.disabled_hooks ?? []);
     const hooks = createHooks({ directory, pluginConfig }, {
       isHookEnabled: (name) => !disabled.has(name),
@@ -56589,12 +57720,28 @@ function createPluginSetup() {
               description: tool.description,
               input: toJsonSchemaInput(tool.args),
               execute: async (rawArgs, toolContext) => {
+                const hostSession = textOf(toolContext["sessionID"]);
+                const authenticated = hostSession.length > 0 && hostSession !== "unknown";
+                const ask = toolContext["ask"];
+                const callDirectory = textOf(toolContext["directory"]);
+                const callWorktree = textOf(toolContext["worktree"]);
                 const outcome = await tool.execute(toJsonObject(rawArgs), {
-                  sessionID: textOf(toolContext["sessionID"]) || "unknown",
+                  sessionID: hostSession,
                   messageID: textOf(toolContext["messageID"]),
                   agent: textOf(toolContext["agent"]),
-                  directory,
-                  worktree,
+                  directory: callDirectory.length > 0 ? callDirectory : directory,
+                  worktree: callWorktree.length > 0 ? callWorktree : worktree,
+                  authenticated,
+                  ...typeof ask === "function" ? {
+                    ask: async (input) => {
+                      await ask.call(toolContext, {
+                        permission: input.permission,
+                        patterns: [...input.patterns],
+                        always: [...input.always ?? []],
+                        metadata: { ...input.metadata ?? {} }
+                      });
+                    }
+                  } : {},
                   aborted: () => {
                     const signal = toolContext["signal"];
                     return typeof AbortSignal !== "undefined" && signal instanceof AbortSignal && signal.aborted;
