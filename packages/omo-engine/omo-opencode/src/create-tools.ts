@@ -13,6 +13,10 @@ import type { OhMyOpenCodeConfig } from "./config/schema/oh-my-opencode-config";
 import { buildToolRegistry } from "./plugin/tool-registry";
 import { getAgentToolRestrictions } from "./shared/agent-tool-restrictions";
 import { createCodeGraphTools } from "./tools/code-graph/index.ts";
+import { createDelegationTools, CALL_OMO_AGENT_TOOL_NAME, TASK_TOOL_NAME } from "./tools/delegation/delegation-tools.ts";
+import { createWorkspaceBashTool, BASH_TOOL_NAME } from "./tools/workspace/bash.ts";
+import { createWorkspaceReadTool, READ_TOOL_NAME } from "./tools/workspace/read.ts";
+import { createWorkspaceWriteTool, WRITE_TOOL_NAME } from "./tools/workspace/write.ts";
 import { createUlwTools } from "./tools/ulw/index.ts";
 
 // Candidate locations for the shared skills loader barrel. Tried in order;
@@ -173,6 +177,33 @@ export async function createTools(
   // real engine-backed execute. A dropped name stays dropped.
   const codeGraphTools = createCodeGraphTools({ directory: ctx.directory });
   for (const [name, tool] of Object.entries(codeGraphTools)) {
+    if (registry[name] !== undefined) {
+      filteredTools[name] = tool;
+    }
+  }
+
+  // Native workspace tools follow the same registry gate: the catalog decides
+  // whether an agent may see the name, the implementation decides what it does.
+  const workspaceTools: Record<string, ReturnType<typeof createWorkspaceReadTool> | ReturnType<typeof createWorkspaceWriteTool> | ReturnType<typeof createWorkspaceBashTool>> = {
+    [READ_TOOL_NAME]: createWorkspaceReadTool({ directory: ctx.directory }),
+    [WRITE_TOOL_NAME]: createWorkspaceWriteTool({ directory: ctx.directory }),
+    [BASH_TOOL_NAME]: createWorkspaceBashTool({ directory: ctx.directory }),
+  };
+  for (const [name, tool] of Object.entries(workspaceTools)) {
+    if (registry[name] !== undefined) {
+      filteredTools[name] = tool;
+    }
+  }
+
+  // Delegation tools own request authority only; the host owns orchestration.
+  // The catalog may list the name either way; the capability decides whether the
+  // tool can act, and a host that supplies none leaves it refusing.
+  const delegation = createDelegationTools({ directory: ctx.directory, capabilities: ctx.hostCapabilities });
+  const delegationTools: Record<string, ReturnType<typeof createDelegationTools>["task"]> = {
+    [TASK_TOOL_NAME]: delegation.task,
+    [CALL_OMO_AGENT_TOOL_NAME]: delegation.callOmoAgent,
+  };
+  for (const [name, tool] of Object.entries(delegationTools)) {
     if (registry[name] !== undefined) {
       filteredTools[name] = tool;
     }

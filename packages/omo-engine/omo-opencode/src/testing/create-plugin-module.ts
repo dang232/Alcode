@@ -29,6 +29,8 @@ import { validatePluginConfig as defaultValidatePluginConfig } from "../config/v
 import { loadPluginConfig as defaultLoadPluginConfig } from "../plugin-config";
 import { createPluginDispose as defaultCreatePluginDispose } from "../plugin-dispose";
 import { createPluginInterface as defaultCreatePluginInterface } from "../plugin-interface";
+import { createHostCapabilities } from "../tools/delegation/host-provider.ts";
+import { promptAsyncInDirectory } from "../shared/session-route.ts";
 import type {
   OmoChatHeadersOutput,
   OmoChatParamsOutput,
@@ -262,13 +264,15 @@ function adaptTool(directory: string, worktree: string, entry: OmoToolDefinition
     description: entry.description,
     args: {},
     execute: async (rawArgs: unknown, context: ToolContext) => {
+      const hostSession = context.sessionID;
       const outcome = await entry.execute(toJsonObject(rawArgs), {
-        sessionID: context.sessionID,
+        sessionID: hostSession,
         messageID: context.messageID,
         agent: context.agent,
-        directory,
+        directory: context.directory.length > 0 ? context.directory : directory,
         worktree,
         aborted: () => context.abort.aborted,
+        authenticated: hostSession.length > 0 && hostSession !== "unknown",
       });
       if (typeof outcome === "string") return outcome;
       return {
@@ -514,11 +518,52 @@ export function createPluginModule(overrides: Partial<PluginModuleDeps> = {}): P
       bundledAgents,
     });
 
+    // The host client is the only object in this process that can create a real
+    // child session, so the capability is built here, from it, and never
+    // synthesized downstream. Without a client the tools report it unavailable.
+    const hostCapabilities =
+      input.client === undefined
+        ? undefined
+        : createHostCapabilities({
+            createSession: async (request) => {
+              const created = await input.client.session.create({
+                body: { parentID: request.parentID, title: request.title },
+                query: { directory: request.directory },
+              });
+              if (created.error !== undefined) return { error: String(created.error) };
+              const sessionID = created.data?.id;
+              const createdParentID = created.data?.parentID;
+              if (sessionID === undefined) return {};
+              return createdParentID === undefined ? { sessionID } : { sessionID, parentID: createdParentID };
+            },
+            startSession: async (request) => {
+              try {
+                await promptAsyncInDirectory(
+                  input.client,
+                  {
+                    path: { id: request.sessionID },
+                    body: {
+                      parts: [{ type: "text", text: request.prompt }],
+                      ...(request.agent === undefined ? {} : { agent: request.agent }),
+                    },
+                  },
+                  request.directory,
+                );
+                return { outcome: "accepted" };
+              } catch (cause) {
+                // A thrown dispatch cannot prove the prompt never reached the
+                // host, so the honest outcome is unknown, not refused.
+                return { outcome: "unknown", error: cause instanceof Error ? cause.message : String(cause) };
+              }
+            },
+          });
+
     const ctx: OmoPluginContext = {
       directory: input.directory,
       pluginConfig,
       // Presence marker: surface adapters attach lazily downstream.
       client: input.client ? {} : undefined,
+      ...(hostCapabilities === undefined ? {} : { hostCapabilities }),
     };
 
     const managers = deps.createManagers(ctx);

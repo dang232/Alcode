@@ -21,6 +21,7 @@
 import type { OhMyOpenCodeConfig } from "./config/schema/oh-my-opencode-config";
 import type { AvailableSkill } from "./agents/dynamic-agent-prompt-types";
 import type { HookName } from "./config/schema/hooks";
+import type { OmoHostCapabilities } from "./tools/delegation/host-capabilities.ts";
 
 /** Stable alias so lanes reference hook names through this contract file. */
 export type OmoHookName = HookName;
@@ -77,6 +78,8 @@ export interface OmoPluginContext {
   readonly directory: string;
   readonly pluginConfig: OhMyOpenCodeConfig;
   readonly client?: OmoPluginClient;
+  /** Host-supplied delegation capabilities; absent means the tools report them unavailable. */
+  readonly hostCapabilities?: OmoHostCapabilities;
 }
 
 /* ------------------------------------------------------------------ */
@@ -278,6 +281,18 @@ export interface OmoToolContext {
   readonly directory: string;
   readonly worktree: string;
   readonly aborted: () => boolean;
+  /** True only when the host supplied a real session identity; false means fail closed. */
+  // Scope: `authenticated` gates command execution, not filesystem access. read/write
+  // rely on path containment and size bounds instead, so a caller that cannot run a
+  // command may still read or write inside the workspace.
+  readonly authenticated: boolean;
+  /** The host's own approval round-trip. Absent when the runtime has no approval surface. */
+  readonly ask?: (input: {
+    readonly permission: string;
+    readonly patterns: readonly string[];
+    readonly always?: readonly string[];
+    readonly metadata?: Readonly<Record<string, string>>;
+  }) => Promise<void>;
 }
 
 interface OmoToolAttachment {
