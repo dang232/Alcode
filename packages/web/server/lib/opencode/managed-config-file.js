@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { buildNativeAgentConfigMap, getNativeAgentModelGaps, NATIVE_AGENT_MODEL_CHAINS, OMO_NATIVE_AGENT_CONFIG } from '../agents/omo-native-catalog.bundle.js';
 import { isRecord, toMcpEntity } from './config-v2.js';
 import { appendManagedMcpServer, appendManagedPlugin, mergeManagedAgents } from './managed-plugin-config.js';
+import { descriptorForDirectory } from '../capability-api/runtime.js';
 
 export const MANAGED_CONFIG_FILE_NAME = 'opencode.managed.json';
 
@@ -258,7 +259,7 @@ export const createManagedConfigRuntime = ({
     }
     let content = env.OPENCODE_CONFIG_CONTENT;
     for (const directory of [...DISABLED_BUILTIN_PLUGINS, ...directories]) {
-      content = appendManagedPlugin(content, directory, 'managed plugin');
+      content = appendManagedPlugin(content, directory, 'managed plugin', descriptorForDirectory(directory));
     }
     content = appendManagedMcpServer(content, ULW_MCP_SERVER_NAME, resolveUlwMcpEntry(), 'managed MCP server');
     content = mergeManagedAgents(content, { ...(await resolveNativeAgentMap()), ...(await readUserAgentMap()) }, 'managed agents');

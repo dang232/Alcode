@@ -40,6 +40,10 @@ import { createTrackedItemReaders } from '../tracked-items/readers.js';
 import { createTrackedItemsPersistence } from '../tracked-items/persistence.js';
 import { registerTrackedItemsRoutes } from '../tracked-items/routes.js';
 import { registerAlcodeSessionRoutes } from '../alcode-sessions/routes.js';
+import { createOpenCodeClient } from '../alcode-sessions/opencode-client.js';
+import { registerCapabilityRoutes } from '../capability-api/index.js';
+import { createTaskHostProxy } from '../capability-api/task-proxy.js';
+import { resolveCapabilityToken } from '../capability-api/runtime.js';
 import { registerAlcodeControlRoutes } from '../alcode-control/routes.js';
 import { registerMarkdownImageGrantRoutes } from '../markdown-image-grants/routes.js';
 import { registerSkillRoutes } from './skill-routes.js';
@@ -348,6 +352,23 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     });
 
     registerAlcodeControlRoutes(app, { controlService: alcodeControlService });
+
+    registerCapabilityRoutes(app, {
+      // The surface and the published descriptor appear together: without a
+      // configured capability URL the plugin receives no descriptor, so there is
+      // nothing for an unauthenticated probe to reach.
+      token: process.env.ALCODE_CAPABILITY_URL ? resolveCapabilityToken() : undefined,
+      // The canonical manager lives in the dedicated task host; the route proxies
+      // to it, and stays on the truthful 503 when no host is configured.
+      ...(process.env.ALCODE_TASK_HOST_URL
+        ? { taskStarter: createTaskHostProxy({ url: process.env.ALCODE_TASK_HOST_URL, token: resolveCapabilityToken() }) }
+        : {}),
+      createClient: ({ directory }) => createOpenCodeClient({
+        baseUrl: buildOpenCodeUrl(),
+        headers: getOpenCodeAuthHeaders(),
+        directory,
+      }),
+    });
 
     registerMarkdownImageGrantRoutes(app, {
       fsPromises,
