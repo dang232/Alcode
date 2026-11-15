@@ -29,6 +29,19 @@ const realOrNull = (path: string): string | null => {
 }
 
 /**
+ * The workspace a single call operates in: the host's per-invocation directory when it
+ * supplied one, otherwise the directory captured when the tool registry was built.
+ *
+ * Containment stays free of the plugin types on purpose — a structural field expresses
+ * the precedence, and every workspace tool goes through this one rule so the three of
+ * them cannot drift apart.
+ */
+export const workspaceRootFor = (fallback: string, context: { readonly directory?: string } | undefined): string => {
+  const perCall = context?.directory
+  return perCall !== undefined && perCall.trim().length > 0 ? perCall : fallback
+}
+
+/**
  * Returns the absolute path of `candidate` when it lies inside `root`, and throws
  * a `WorkspaceToolError` otherwise. The lexical check runs first so a traversal
  * is refused without touching the disk; the physical check then resolves links

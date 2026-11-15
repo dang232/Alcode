@@ -9,7 +9,7 @@ import { WRITE_TOOL_NAME, createWorkspaceWriteTool } from "./write.ts"
 
 const roots: string[] = []
 
-function workspace(): { root: string; outside: string } {
+function workspace() {
   const base = mkdtempSync(join(tmpdir(), "omo-workspace-write-"))
   roots.push(base)
   const root = join(base, "project")
@@ -20,12 +20,15 @@ function workspace(): { root: string; outside: string } {
   return { root, outside }
 }
 
-const write = async (root: string, args: Record<string, unknown>): Promise<string> => {
+type WriteArgs = { path: string; content: string; expectedDigest?: string };
+
+const write = async (root: string, args: WriteArgs): Promise<string> => {
   const tool = createWorkspaceWriteTool({ directory: root })
+  // SAFETY: WriteArgs is the subset of tool arguments this helper passes; the tool validates them.
   return (await tool.execute(args as never)) as string
 }
 
-const refusalOf = async (root: string, args: Record<string, unknown>): Promise<WorkspaceToolError> => {
+const refusalOf = async (root: string, args: WriteArgs): Promise<WorkspaceToolError> => {
   try {
     await write(root, args)
   } catch (error) {
@@ -90,5 +93,19 @@ describe("native write tool", () => {
     const { root } = workspace()
     expect((await refusalOf(root, { path: "big.txt", content: "x".repeat(2 * 1024 * 1024 + 1) })).code).toBe("INVALID_INPUT")
     expect((await refusalOf(root, { path: "", content: "x" })).code).toBe("INVALID_INPUT")
+  })
+})
+
+describe("per-invocation workspace", () => {
+  it("writes into the caller's directory, not the load-time one", async () => {
+    const { root } = workspace()
+    const caller = mkdtempSync(join(tmpdir(), "omo-workspace-write-caller-"))
+    roots.push(caller)
+    const tool = createWorkspaceWriteTool({ directory: root })
+    // SAFETY: the harness calls execute with the tool's own argument shape plus a host context.
+    const result = (await tool.execute({ path: "note.txt", content: "caller\n" } as never, { directory: caller } as never)) as string
+    expect(result).toContain("created note.txt")
+    expect(readFileSync(join(caller, "note.txt"), "utf8")).toBe("caller\n")
+    expect(existsSync(join(root, "note.txt"))).toBe(false)
   })
 })

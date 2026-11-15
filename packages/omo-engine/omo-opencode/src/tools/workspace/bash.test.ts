@@ -141,3 +141,17 @@ describe("native bash tool", () => {
     expect((await refusalOf(root, { command: echo, timeoutMs: 600_001 })).code).toBe("INVALID_INPUT")
   })
 })
+
+describe("per-invocation workspace", () => {
+  it("runs in the caller's directory instead of the load-time one", async () => {
+    workspace()
+    const base = mkdtempSync(join(tmpdir(), "omo-workspace-bash-caller-"))
+    roots.push(base)
+    const caller = join(base, "caller-workspace")
+    mkdirSync(caller, { recursive: true })
+    const tool = createWorkspaceBashTool({ directory: join(base, "load-time-workspace") })
+    mkdirSync(join(base, "load-time-workspace"), { recursive: true })
+    const result = (await tool.execute({ command: listing } as never, { authenticated: true, sessionID: "ses_caller_0001", directory: caller } as never)) as string
+    expect(result).toContain("caller-workspace")
+  })
+})

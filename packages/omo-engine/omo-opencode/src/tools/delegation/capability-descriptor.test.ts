@@ -5,6 +5,7 @@ import {
   createOperationsFromDescriptor,
   createTaskOperationsFromDescriptor,
   readCapabilityDescriptor,
+  readCapabilityDescriptorFromEnv,
 } from "./capability-descriptor.ts"
 
 interface Recorded {
@@ -120,5 +121,25 @@ describe("host capability over the injected endpoint", () => {
   it("reports an unreachable host as a failed session, never as a child", async () => {
     const capabilities = createHostCapabilities(createOperationsFromDescriptor({ version: 1, url: "http://127.0.0.1:1", token: "t" }))
     await expect(capabilities.childSessions!.createAndStart({ title: "c", prompt: "p" }, caller)).rejects.toThrow(/SESSION_CREATE_FAILED/)
+  })
+})
+
+describe("descriptor from the host environment", () => {
+  it("reads the descriptor the host publishes as environment", () => {
+    const descriptor = readCapabilityDescriptorFromEnv({
+      OMO_CAPABILITY_URL: "http://127.0.0.1:57123",
+      OMO_CAPABILITY_TOKEN: "token-value",
+      OMO_CAPABILITY_ALLOWED_AGENTS: "explore, librarian",
+    })
+
+    expect(descriptor?.url).toBe("http://127.0.0.1:57123")
+    expect(descriptor?.token).toBe("token-value")
+    expect(descriptor?.allowedAgents).toEqual(["explore", "librarian"])
+  })
+
+  it("publishes nothing when either half is absent or the url is not http", () => {
+    expect(readCapabilityDescriptorFromEnv({ OMO_CAPABILITY_URL: "http://127.0.0.1:1" })).toBeUndefined()
+    expect(readCapabilityDescriptorFromEnv({ OMO_CAPABILITY_TOKEN: "t" })).toBeUndefined()
+    expect(readCapabilityDescriptorFromEnv({ OMO_CAPABILITY_URL: "ftp://host", OMO_CAPABILITY_TOKEN: "t" })).toBeUndefined()
   })
 })

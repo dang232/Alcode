@@ -8,7 +8,7 @@ import { READ_TOOL_NAME, createWorkspaceReadTool } from "./read.ts"
 
 const roots: string[] = []
 
-function workspace(): { root: string; outside: string } {
+function workspace() {
   const base = mkdtempSync(join(tmpdir(), "omo-workspace-read-"))
   roots.push(base)
   const root = join(base, "project")
@@ -20,12 +20,15 @@ function workspace(): { root: string; outside: string } {
   return { root, outside }
 }
 
-const read = async (root: string, args: Record<string, unknown>): Promise<string> => {
+type ReadArgs = { path: string; offset?: number; limit?: number };
+
+const read = async (root: string, args: ReadArgs): Promise<string> => {
   const tool = createWorkspaceReadTool({ directory: root })
+  // SAFETY: ReadArgs is the subset of tool arguments this helper passes; the tool validates them.
   return (await tool.execute(args as never)) as string
 }
 
-const refusalOf = async (root: string, args: Record<string, unknown>): Promise<WorkspaceToolError> => {
+const refusalOf = async (root: string, args: ReadArgs): Promise<WorkspaceToolError> => {
   try {
     await read(root, args)
   } catch (error) {
@@ -112,5 +115,33 @@ describe("native read tool", () => {
     const { root } = workspace()
     expect((await refusalOf(root, { path: "notes.txt", limit: 0 })).code).toBe("INVALID_INPUT")
     expect((await refusalOf(root, { path: "" })).code).toBe("INVALID_INPUT")
+  })
+})
+
+describe("per-invocation workspace", () => {
+  it("reads from the caller's directory instead of the load-time one", async () => {
+    const { root } = workspace()
+    const caller = mkdtempSync(join(tmpdir(), "omo-workspace-read-caller-"))
+    roots.push(caller)
+    writeFileSync(join(caller, "notes.txt"), "caller\n", "utf8")
+    const tool = createWorkspaceReadTool({ directory: root })
+    // SAFETY: the harness calls execute with the tool's own argument shape plus a host context.
+    const result = (await tool.execute({ path: "notes.txt" } as never, { directory: caller } as never)) as string
+    expect(result).toContain("caller")
+  })
+
+  it("keeps containment measured against the caller's directory", async () => {
+    const { root, outside } = workspace()
+    const tool = createWorkspaceReadTool({ directory: root })
+    let error: unknown
+    try {
+      // SAFETY: same harness call shape as above; the refusal is the assertion.
+      await tool.execute({ path: join(outside, "secret.txt") } as never, { directory: root } as never)
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toBeInstanceOf(WorkspaceToolError)
+    // SAFETY: the assertion above proves this is a WorkspaceToolError before the code is read.
+    expect((error as WorkspaceToolError).code).toBe("PATH_OUTSIDE_WORKSPACE")
   })
 })

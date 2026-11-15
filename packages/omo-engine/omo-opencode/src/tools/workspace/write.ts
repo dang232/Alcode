@@ -14,8 +14,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSyn
 import { dirname, join } from "node:path"
 import { z } from "zod"
 
-import type { OmoJsonObject, OmoToolDefinition } from "../../plugin-types.ts"
-import { resolveForWrite } from "./containment.ts"
+import type { OmoJsonObject, OmoToolContext, OmoToolDefinition } from "../../plugin-types.ts"
+import { resolveForWrite, workspaceRootFor } from "./containment.ts"
 import { WorkspaceToolError, workspaceInputRefused, workspaceIoFailed } from "./errors.ts"
 
 export const WRITE_TOOL_NAME = "write"
@@ -54,7 +54,7 @@ export function createWorkspaceWriteTool(options: { readonly directory: string }
         },
       },
     },
-    execute: async (toolArgs: OmoJsonObject) => {
+    execute: async (toolArgs: OmoJsonObject, context?: OmoToolContext) => {
       const parsed = WriteArgs.safeParse(toolArgs)
       if (!parsed.success) {
         const named = z.object({ path: z.string() }).safeParse(toolArgs)
@@ -66,7 +66,7 @@ export function createWorkspaceWriteTool(options: { readonly directory: string }
         workspaceInputRefused(requested, `content is ${bytes.length} bytes; the limit is ${MAX_CONTENT_BYTES}`)
       }
 
-      const target = resolveForWrite(options.directory, requested)
+      const target = resolveForWrite(workspaceRootFor(options.directory, context), requested)
       const existed = existsSync(target)
       let previous: string | null = null
       if (existed) {

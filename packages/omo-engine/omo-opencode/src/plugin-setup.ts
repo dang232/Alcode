@@ -33,7 +33,7 @@ import { loadPluginConfig } from "./plugin-config";
 import type { OmoHostCapabilities } from "./tools/delegation/host-capabilities.ts";
 import type { OmoJsonValue } from "./plugin-types.ts";
 import { createHostCapabilities, type OmoDelegationOperations, type OmoDelegationRuntimeDraft, type OmoTaskManagerSeam } from "./tools/delegation/host-provider.ts";
-import { createOperationsFromDescriptor, createTaskOperationsFromDescriptor, readCapabilityDescriptor } from "./tools/delegation/capability-descriptor.ts";
+import { createOperationsFromDescriptor, createTaskOperationsFromDescriptor, readCapabilityDescriptor, readCapabilityDescriptorFromEnv } from "./tools/delegation/capability-descriptor.ts";
 import { createPluginDispose } from "./plugin-dispose";
 import { createPluginInterface } from "./plugin-interface";
 import { applyCommandConfig } from "./plugin-handlers/command-config-handler";
@@ -170,8 +170,9 @@ function resolveV2Capabilities(ctx: V2SetupContext): OmoHostCapabilities | undef
   }
   if (ctx.tasks !== undefined) runtime.taskManager = ctx.tasks;
   // The engine carries the host-issued descriptor as plugin options; it names a
-  // narrow token-authenticated endpoint, never an SDK client.
-  const descriptor = readCapabilityDescriptor(ctx.options);
+  // narrow token-authenticated endpoint, never an SDK client. A managed OpenCode child cannot carry options at all
+  // (OpenCode skips a tuple entry as malformed), so the same host publishes them as environment too.
+  const descriptor = readCapabilityDescriptor(ctx.options) ?? readCapabilityDescriptorFromEnv(process.env);
   if (descriptor !== undefined) {
     const operations = createOperationsFromDescriptor(descriptor);
     if (runtime.createSession === undefined) {

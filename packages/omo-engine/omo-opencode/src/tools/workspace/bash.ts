@@ -18,7 +18,7 @@ import { spawn } from "node:child_process"
 import { z } from "zod"
 
 import type { OmoJsonObject, OmoToolContext, OmoToolDefinition } from "../../plugin-types.ts"
-import { resolveInsideWorkspace } from "./containment.ts"
+import { resolveInsideWorkspace, workspaceRootFor } from "./containment.ts"
 import { workspaceApprovalDenied, workspaceInputRefused, workspaceUnauthenticated } from "./errors.ts"
 
 export const BASH_TOOL_NAME = "bash"
@@ -38,7 +38,7 @@ const BashArgs = z.object({
 
 type StreamCapture = { readonly text: string; readonly truncated: boolean; readonly bytes: number }
 
-const capture = (): { push: (chunk: Buffer) => void; result: () => StreamCapture } => {
+const capture = () => {
   const chunks: Buffer[] = []
   let bytes = 0
   let truncated = false
@@ -48,7 +48,7 @@ const capture = (): { push: (chunk: Buffer) => void; result: () => StreamCapture
       if (bytes <= OUTPUT_LIMIT_BYTES) chunks.push(chunk)
       else truncated = true
     },
-    result: () => ({
+    result: (): StreamCapture => ({
       text: Buffer.concat(chunks).toString("utf8"),
       truncated,
       bytes,
@@ -101,7 +101,7 @@ export function createWorkspaceBashTool(options: { readonly directory: string })
         const named = z.object({ command: z.string() }).safeParse(toolArgs)
         workspaceInputRefused(named.success ? named.data.command : "", parsed.error.issues[0]?.message ?? "invalid arguments")
       }
-      const cwd = resolveInsideWorkspace(options.directory, parsed.data.cwd ?? ".")
+      const cwd = resolveInsideWorkspace(workspaceRootFor(options.directory, context), parsed.data.cwd ?? ".")
       const timeoutMs = parsed.data.timeoutMs ?? DEFAULT_TIMEOUT_MS
       // The host owns the veto: when it offers an approval surface, the command does
       // not start until that surface allows it. No surface means no approval, and the

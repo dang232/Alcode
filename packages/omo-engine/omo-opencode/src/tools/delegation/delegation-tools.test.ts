@@ -231,3 +231,47 @@ describe("call_omo_agent tool", () => {
     await expect(execute(tools(failing).callOmoAgent, { description: "d", prompt: "p" }, context())).rejects.toThrow(/PROMPT_SUBMIT_FAILED/)
   })
 })
+
+describe("authority parity between task and call_omo_agent", () => {
+  const toolsUnderTest = (built) => [
+    ["task", built.task, { description: "d", prompt: "p" }],
+    ["call_omo_agent", built.callOmoAgent, { description: "d", prompt: "p", agent: undefined }],
+  ];
+
+  // Every field a model could use to claim an identity, a workspace or a project scope. Both tools
+  // must refuse all of them, for the same reason, before the host is asked to do anything.
+  const smuggled = [
+    "sessionID",
+    "sessionId",
+    "parentID",
+    "parentSessionId",
+    "parentSessionID",
+    "directory",
+    "worktree",
+    "projectId",
+    "projectID",
+  ];
+
+  for (const field of smuggled) {
+    it(`refuses a smuggled ${field} on both tools and never reaches the host`, async () => {
+      const host = recordingHost({ allowedAgents: [] });
+      const built = tools(host.capabilities);
+      for (const [name, tool, base] of toolsUnderTest(built)) {
+        await expect(execute(tool, { ...base, [field]: "attacker-value" }, context())).rejects.toThrow(
+          new RegExp(`INVALID_ARGUMENT: ${field} is host-derived`),
+        );
+      }
+      expect(host.taskRequests).toHaveLength(0);
+      expect(host.childRequests).toHaveLength(0);
+    });
+  }
+
+  it("starts both tools from the host-derived caller, never from the arguments", async () => {
+    const host = recordingHost({ allowedAgents: ["explore"] });
+    const built = tools(host.capabilities);
+    await execute(built.task, { description: "d", prompt: "p", agent: "explore" }, context());
+    await execute(built.callOmoAgent, { description: "d", prompt: "p", agent: "explore" }, context());
+
+    expect(host.parents).toEqual(["ses_host_0001", "ses_host_0001"]);
+  });
+})

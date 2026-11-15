@@ -64,6 +64,25 @@ export const readCapabilityDescriptor = (options: OmoJsonValue | undefined): Omo
   return parsed.success ? parsed.data.hostCapabilities : undefined
 }
 
+/**
+ * The same descriptor, published by the host that launches this plugin as environment instead of plugin options.
+ * OpenCode 2.x accepts only string plugin entries, and skips a `[directory, options]` tuple as malformed in both the
+ * config file and the inline config, so the environment is the channel that survives config normalization.
+ */
+export const readCapabilityDescriptorFromEnv = (
+  env: Readonly<Record<string, string | undefined>>,
+): OmoCapabilityDescriptor | undefined => {
+  const url = env.OMO_CAPABILITY_URL
+  const token = env.OMO_CAPABILITY_TOKEN
+  if (url === undefined || token === undefined) return undefined
+  const allowed = env.OMO_CAPABILITY_ALLOWED_AGENTS
+  if (allowed === undefined || allowed.trim().length === 0) {
+    return readCapabilityDescriptor({ hostCapabilities: { version: 1, url, token } })
+  }
+  const allowedAgents = allowed.split(',').map((name) => name.trim()).filter((name) => name.length > 0)
+  return readCapabilityDescriptor({ hostCapabilities: { version: 1, url, token, allowedAgents } })
+}
+
 interface OperationsDraft {
   createSession: (input: OmoCreateSessionInput) => Promise<OmoCreateSessionResult>
   startSession: (input: OmoStartSessionInput) => Promise<OmoStartSessionResult>

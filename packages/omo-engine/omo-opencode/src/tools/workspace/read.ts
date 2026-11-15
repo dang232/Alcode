@@ -10,8 +10,8 @@
 import { readFileSync, statSync } from "node:fs"
 import { z } from "zod"
 
-import type { OmoJsonObject, OmoToolDefinition } from "../../plugin-types.ts"
-import { resolveInsideWorkspace } from "./containment.ts"
+import type { OmoJsonObject, OmoToolContext, OmoToolDefinition } from "../../plugin-types.ts"
+import { resolveInsideWorkspace, workspaceRootFor } from "./containment.ts"
 import {
   workspaceBinary,
   workspaceInputRefused,
@@ -52,14 +52,14 @@ export function createWorkspaceReadTool(options: { readonly directory: string })
         limit: { type: "number", description: `Maximum lines to return, 1-${MAX_LINES}.` },
       },
     },
-    execute: async (toolArgs: OmoJsonObject) => {
+    execute: async (toolArgs: OmoJsonObject, context?: OmoToolContext) => {
       const parsed = ReadArgs.safeParse(toolArgs)
       if (!parsed.success) {
         const named = z.object({ path: z.string() }).safeParse(toolArgs)
         workspaceInputRefused(named.success ? named.data.path : "", parsed.error.issues[0]?.message ?? "invalid arguments")
       }
       const requested = parsed.data.path
-      const target = resolveInsideWorkspace(options.directory, requested)
+      const target = resolveInsideWorkspace(workspaceRootFor(options.directory, context), requested)
 
       let stat: { isDirectory: () => boolean; size: number }
       try {
