@@ -34,7 +34,7 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })));
 });
 
-const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, versions, listUserCustomAgents, listConnectedProviders, readUserAgentModels, storeDataDir } = {}) => {
+const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, versions, listUserCustomAgents, listConnectedProviders, readUserAgentModels, storeDataDir, capabilityBaseUrl, omoNativeRuntime } = {}) => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'alcode-managed-config-'));
   temporaryDirectories.push(dataDir);
   const agentToolRuntime = {
@@ -63,6 +63,8 @@ const createHarness = async ({ settings = {}, env = {}, memoryAvailable = true, 
   // Test-only seam, attached only when a test opts in: the default keeps
   // unit tests without a home directory hermetic.
   if (storeDataDir !== undefined) dependencies.dataDir = storeDataDir;
+  if (capabilityBaseUrl !== undefined) dependencies.capabilityBaseUrl = capabilityBaseUrl;
+  if (omoNativeRuntime !== undefined) dependencies.omoNativeRuntime = omoNativeRuntime;
   if (listUserCustomAgents !== undefined) dependencies.listUserCustomAgents = listUserCustomAgents;
   if (listConnectedProviders !== undefined) dependencies.listConnectedProviders = listConnectedProviders;
   if (readUserAgentModels !== undefined) dependencies.readUserAgentModels = readUserAgentModels;
@@ -573,3 +575,62 @@ describe('managed OpenCode config file', () => {
     expect(agent.explore).toBeUndefined();
   });
 });
+
+describe('capability descriptor in the child config', () => {
+  it('publishes the descriptor as environment and keeps the file free of tuples', async () => {
+    const nativeDirectory = path.join(os.tmpdir(), 'alcode-native-env', 'omo-native', 'omo-native');
+    const { runtime, readConfigFile } = await createHarness({
+      settings: {},
+      capabilityBaseUrl: 'http://127.0.0.1:57123',
+      omoNativeRuntime: {
+        pluginDirectory: nativeDirectory,
+        materializePlugin: vi.fn(async () => {
+          await fs.mkdir(nativeDirectory, { recursive: true });
+          return nativeDirectory;
+        }),
+      },
+    });
+
+    const childEnv = await runtime.buildManagedChildEnv();
+    const filePlugins = (await readConfigFile()).plugins ?? [];
+
+    // OpenCode skips a tuple entry as malformed in every config channel, so the file stays bare and the plugin reads
+    // the same descriptor from its environment instead.
+    expect(filePlugins.some((value) => Array.isArray(value))).toBe(false);
+    expect(childEnv.OPENCODE_CONFIG).toBeDefined();
+    expect(childEnv.OPENCODE_CONFIG_CONTENT).toBeUndefined();
+    expect(childEnv.OMO_CAPABILITY_URL).toBe('http://127.0.0.1:57123');
+    expect(typeof childEnv.OMO_CAPABILITY_TOKEN).toBe('string');
+  });
+});
+
+describe('allowlist publication', () => {
+  it('publishes one allowlist to both consumers from a single source', async () => {
+    const nativeDirectory = path.join(os.tmpdir(), 'alcode-native-agents', 'omo-native', 'omo-native');
+    const { runtime } = await createHarness({
+      settings: {},
+      env: { OMO_CAPABILITY_ALLOWED_AGENTS: 'explore, librarian' },
+      capabilityBaseUrl: 'http://127.0.0.1:57123',
+      omoNativeRuntime: {
+        pluginDirectory: nativeDirectory,
+        materializePlugin: vi.fn(async () => {
+          await fs.mkdir(nativeDirectory, { recursive: true });
+          return nativeDirectory;
+        }),
+      },
+    });
+
+    const childEnv = await runtime.buildManagedChildEnv()
+
+    expect(childEnv.OMO_CAPABILITY_ALLOWED_AGENTS).toBe('explore, librarian')
+    expect(childEnv.OMO_CAPABILITY_AGENTS).toBe('explore, librarian')
+  })
+
+  it('publishes neither when no allowlist is configured', async () => {
+    const nativeDirectory = path.join(os.tmpdir(), 'alcode-native-noagents', 'omo-native', 'omo-native');
+    const { runtime } = await createHarness({ settings: {}, capabilityBaseUrl: 'http://127.0.0.1:57123', omoNativeRuntime: { pluginDirectory: nativeDirectory, materializePlugin: vi.fn(async () => nativeDirectory) } })
+    const childEnv = await runtime.buildManagedChildEnv()
+    expect(childEnv.OMO_CAPABILITY_ALLOWED_AGENTS).toBeUndefined()
+    expect(childEnv.OMO_CAPABILITY_AGENTS).toBeUndefined()
+  })
+})

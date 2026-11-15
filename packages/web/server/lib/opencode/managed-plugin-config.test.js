@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { appendManagedPlugin } from './managed-plugin-config.js';
+import { configureCapabilityBaseUrl, descriptorForDirectory } from '../capability-api/runtime.js';
+
+const NATIVE_PLUGIN_DIRECTORY = '/data/plugins/omo-native/omo-native';
 
 const DIRECTORY = '/data/plugins/alcode-agent-tool';
 const DESCRIPTOR = {
@@ -96,5 +99,40 @@ describe('appendManagedPlugin', () => {
     expect(() => merge('{"plugin": 5}')).toThrow(
       'OPENCODE_CONFIG_CONTENT plugin must be an array before Alcode can inject its managed plugin',
     );
+  });
+});
+
+describe('capability descriptor wired into the managed plugin tuple', () => {
+  const ENTRY_OPTIONS = (plugins) => plugins.find((value) => Array.isArray(value) && value[0] === DIRECTORY)[1];
+
+  it('passes the base the caller knows into the tuple without any global setup', () => {
+    const descriptor = descriptorForDirectory(NATIVE_PLUGIN_DIRECTORY, {}, 'http://127.0.0.1:57123');
+    const options = ENTRY_OPTIONS(pluginsOf('', descriptor));
+
+    expect(options.hostCapabilities.url).toBe('http://127.0.0.1:57123');
+    expect(typeof options.hostCapabilities.token).toBe('string');
+  });
+
+  it('still honours the configured base when no explicit one is passed', () => {
+    configureCapabilityBaseUrl('http://127.0.0.1:57124');
+    try {
+      const options = ENTRY_OPTIONS(pluginsOf('', descriptorForDirectory(NATIVE_PLUGIN_DIRECTORY)));
+      expect(options.hostCapabilities.url).toBe('http://127.0.0.1:57124');
+    } finally {
+      configureCapabilityBaseUrl(null);
+    }
+  });
+
+  it('lets an explicit deployment url win over both', () => {
+    const descriptor = descriptorForDirectory(NATIVE_PLUGIN_DIRECTORY, { ALCODE_CAPABILITY_URL: 'https://fronted.example', ALCODE_CAPABILITY_TOKEN: 't' }, 'http://127.0.0.1:57123');
+    const options = ENTRY_OPTIONS(pluginsOf('', descriptor));
+
+    expect(options.hostCapabilities.url).toBe('https://fronted.example');
+    expect(options.hostCapabilities.token).toBe('t');
+  });
+
+  it('leaves the tuple without options when no capability base is known', () => {
+    configureCapabilityBaseUrl(null);
+    expect(descriptorForDirectory(NATIVE_PLUGIN_DIRECTORY)).toBeNull();
   });
 });
