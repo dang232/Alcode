@@ -24,10 +24,10 @@
 // plan or a state - an invented fact is worse than an absent one.
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
+import { loadOmoConfig } from "../../../../omo-engine/omo-config-core/src/index.ts"
 import { createRepairAttemptStore } from "../../../../omo-engine/senpi-task/src/repair/store"
-import { resolveProjectStateDirectory } from "../../../../omo-engine/senpi-task/src/store/project-state-directory"
+import { resolveStateDir } from "../../../../omo-engine/senpi-task/src/store/state-dir"
 
-const REPAIR_STATE_DIRECTORY = "senpi-task"
 const VERIFICATION_STATUSES = ["verified", "unverified", "blocked"]
 const CHANGED_FILES_PREFIX = "changedFiles: "
 const RERUN_PREFIX = "rerun "
@@ -178,8 +178,18 @@ function projectRepair(attempt, taskId, verificationStatus) {
  * - `{ error }` - the store/record could not be read (never "no repair")
  */
 export function createRepairStateReader(options = {}) {
-  const stateDirOf =
-    options.stateDirOf ?? ((directory) => resolveProjectStateDirectory(directory, REPAIR_STATE_DIRECTORY))
+  const stateDirOf = options.stateDirOf ?? ((directory) => {
+    // Repair attempts live beside the task records, so this reader must resolve the
+    // store exactly as the engine writes it: `task.state_dir` when the project configures
+    // one, else the project's default directory. Resolving the default alone would report
+    // a configured project's repairs as absent while its records are read fine elsewhere.
+    const configured = loadOmoConfig({ cwd: directory }).config.task?.state_dir
+    return resolveStateDir(
+      configured === undefined
+        ? { project_dir: directory }
+        : { project_dir: directory, task: { state_dir: configured } },
+    )
+  })
   return (input = {}) => {
     const directory = asString(input.directory)
     const taskId = input.taskId

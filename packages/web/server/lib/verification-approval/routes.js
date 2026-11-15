@@ -11,6 +11,10 @@ import { createVerificationApprovalRuntime } from "./host-action"
 /** @public Consumed by `run-graph/runtime.js` through the built verification bundle, not by a source import. */
 export { createRepairStateReader } from "./repair-state"
 
+// Canonical task records as graph rows, with the engine's store resolution bound in.
+/** @public Consumed by `run-graph/runtime.js` through the built verification bundle, not by a source import. */
+export { createRecordTaskReaderForProject } from "./record-tasks-reader"
+
 // Same contract for the authoritative attribution index the run-graph runtime reads.
 /** @public Consumed by `run-graph/runtime.js` through the built verification bundle, not by a source import. */
 export { createAttributionStateReader } from "./attribution-state"
