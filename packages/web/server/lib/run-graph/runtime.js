@@ -1,6 +1,10 @@
 import { promises as fsPromises } from 'node:fs';
 import path from 'node:path';
 
+import { mergeRecordTasks, rowsForConversation } from './record-tasks.js';
+
+let recordReaderPromise = null;
+
 const RUNS_DIRNAME = 'dag-runs';
 const SNAPSHOT_SUFFIX = '.snapshot.json';
 
@@ -54,6 +58,24 @@ const loadRepairReader = () => {
 // Same lazy, process-wide load as the repair reader: a stale artifact surfaces
 // as an explicit attribution error instead of reading as "no attribution".
 let attributionReaderPromise = null;
+
+const loadRecordReader = () => {
+  if (recordReaderPromise === null) {
+    recordReaderPromise = import(VERIFICATION_BUNDLE)
+      .then((module) => {
+        const factory = module.createRecordTaskReaderForProject;
+        if (!(factory instanceof Function)) {
+          throw new Error("verification bundle exposes no record task reader");
+        }
+        return factory();
+      })
+      .catch((error) => {
+        recordReaderPromise = null;
+        throw error;
+      });
+  }
+  return recordReaderPromise;
+};
 
 const loadAttributionReader = () => {
   if (attributionReaderPromise === null) {
@@ -318,6 +340,7 @@ export const createRunGraphRuntime = (overrides = {}) => {
   const injectedAttributionReader = overrides.readAttributionState;
   const injectedDeliveryReader = overrides.readDeliveryState;
   const injectedReconciler = overrides.reconcileSnapshots;
+  const injectedRecordReader = overrides.readRecordTasks;
 
   const readRepairState = async (input) => {
     if (injectedRepairReader !== undefined) return injectedRepairReader(input);
@@ -373,7 +396,22 @@ export const createRunGraphRuntime = (overrides = {}) => {
     try {
       raw = await fs.readFile(normalized, 'utf8');
     } catch {
-      return { error: `no run snapshot for conversation: ${id}`, status: 404 };
+      // A project whose only task came through the capability path has records and no snapshot.
+      // Answer the rows it really has instead of hiding them behind a 404; with no records the
+      // 404 stays, because a conversation that never ran has no graph.
+      const reader = injectedRecordReader ?? (await loadRecordReader());
+      const records = reader({ directory });
+      const all = records?.error === undefined && Array.isArray(records?.tasks) ? records.tasks : [];
+      // Only this conversation's tasks: the record reader has no session filter, so the unfiltered list would answer
+      // every conversation in the project with the same rows and a parent they do not have.
+      const rows = rowsForConversation(all, id);
+      if (rows.length === 0) return { error: `no run snapshot for conversation: ${id}`, status: 404 };
+      return {
+        schemaVersion: 1,
+        sessionId: id,
+        tasks: { parent_session_id: id, tasks: rows },
+        dag: { parent_session_id: id, runs: [] },
+      };
     }
     let document = null;
     try {
@@ -385,7 +423,11 @@ export const createRunGraphRuntime = (overrides = {}) => {
     }
     const withRepair = await attachRepairState(document, { directory, readRepairState });
     const withAttribution = await attachAttributionState(withRepair, { directory, readAttributionState });
-    return attachDeliveryState(withAttribution, { directory, readDeliveryState });
+    const withDelivery = await attachDeliveryState(withAttribution, { directory, readDeliveryState });
+    const recordReader = injectedRecordReader ?? (await loadRecordReader());
+    const records = recordReader({ directory });
+    if (records?.error !== undefined || !Array.isArray(records?.tasks)) return withDelivery;
+    return mergeRecordTasks(withDelivery, rowsForConversation(records.tasks, id));
   };
 
   const readAttribution = async (directory) => {
