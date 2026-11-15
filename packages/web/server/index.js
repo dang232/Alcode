@@ -128,6 +128,7 @@ import { ensureChatsDir, migrateLegacyUserDirs } from './lib/data-dir-migration.
 import { createProjectContextRuntime } from './lib/project-context/runtime.js';
 import { createAgentMemoryRuntime } from './lib/agent-memory/runtime.js';
 import { createCodeGraphHost } from './lib/code-graph/host.js';
+import { resolvePluginDir, createTaskHostSupervisor } from './lib/task-host/supervisor.js';
 import { createAgentMemoryActions } from './lib/agent-memory/actions.js';
 import { createMemoryProjectResolver } from './lib/agent-memory/project-resolution.js';
 import { isAgentMemoryFeatureAvailable } from './lib/agent-memory/feature-flag.js';
@@ -159,6 +160,7 @@ import { createDevServerScanner } from './lib/dev-servers/routes.js';
 import { createDevTunnelRuntime } from './lib/dev-tunnel/runtime.js';
 import { registerBrowserControlRoutes } from './lib/browser-control/routes.js';
 import { createManagedConfigRuntime } from './lib/opencode/managed-config-file.js';
+import { configureCapabilityBaseUrl } from './lib/capability-api/runtime.js';
 import { prepareInstanceDir } from './lib/opencode/instance-dir.js';
 import { createAlcodeSessionService } from './lib/alcode-sessions/routes.js';
 import { createSessionMetadataStore, createOpenCodeSessionMetadata } from './lib/alcode-sessions/session-metadata-store.js';
@@ -682,11 +684,76 @@ const agentMemoryRuntime = createAgentMemoryRuntime({
 // ALCODE_CODE_GRAPH_WATCHER=0 / CODEGRAPH_NO_WATCHER=1 kill switches - so a
 // host or an operator can turn watching off and keep the revision-gate path.
 const codeGraphRuntime = createCodeGraphHost({ storeDir: path.join(ALCODE_DATA_DIR, 'code-graph-store'), watcherEnabled: true });
+// One supervised Senpi task host per backend process. Off unless a plugin directory is
+// configured, because the plugin tree is what carries the capability extension entry.
+const taskHostSupervisor = createTaskHostSupervisor({
+  pluginDir: resolvePluginDir(),
+  stateDir: path.join(ALCODE_DATA_DIR, 'task-host'),
+  // Scoped to the app's active project, so records land in the store that project's DAG reads.
+  // An explicit override exists for tests and for a headless run; the request-scoped resolver cannot
+  // be used here because it needs an Express request.
+  resolveProjectDir: async () => {
+    const override = process.env.ALCODE_TASK_HOST_PROJECT_DIR;
+    if (typeof override === 'string' && override.trim().length > 0) return override;
+    try {
+      const settings = await readSettingsFromDiskMigrated();
+      const projects = Array.isArray(settings?.projects) ? settings.projects : [];
+      const active = projects.find((project) => project.id === settings?.activeProjectId) ?? projects[0];
+      return typeof active?.path === 'string' && active.path.length > 0 ? active.path : process.cwd();
+    } catch {
+      return process.cwd();
+    }
+  },
+  exists: (target) => fs.existsSync(target),
+  // Failures here are invisible without a logger: the supervisor's default is silent, which is how a host that never
+  // mounted its capability listener left no trace in the app's own dev log.
+  logger: { info: (message) => console.log(message), warn: (message) => console.warn(message) },
+  // The host's own stderr is where a crash says why. It is discarded by default (noise) and kept on request, because a
+  // host that accepts a task and exits used to leave nothing behind but "unreachable".
+  run: (argv, env, options) => new Promise((resolve) => {
+    const child = spawn(argv[0], argv.slice(1), { windowsHide: true, ...(env === undefined ? {} : { env }), ...(options?.cwd === undefined ? {} : { cwd: options.cwd }) });
+    let stdout = '';
+    if (process.env.ALCODE_TASK_HOST_DEBUG === '1') {
+      const engineStderr = path.join(ALCODE_DATA_DIR, 'task-host', 'engine-stderr.log');
+      child.stderr?.on('data', (chunk) => {
+        try {
+          fs.appendFileSync(engineStderr, String(chunk));
+        } catch {}
+      });
+    }
+    child.stdout?.on('data', (chunk) => { stdout += String(chunk); });
+    // stderr carries the CLI's reason (exit 2 = unusable spec); dropping it turned a diagnosis into a guess.
+    child.stderr?.on('data', (chunk) => { stdout += String(chunk); });
+    child.on('error', () => resolve({ code: 127, stdout }));
+    child.on('close', (code) => resolve({ code: code ?? 1, stdout }));
+  }),
+  probe: async (url) => {
+    try {
+      return (await fetch(url, { signal: AbortSignal.timeout(2000) })).status === 200;
+    } catch {
+      return false;
+    }
+  },
+  logger: console,
+});
 // The indexer is a separate process holding the graph; an app exit must not
 // leave it behind on a machine the person is about to power down.
 process.once('exit', () => {
   void codeGraphRuntime.stop({ kill: true });
 });
+// The supervised task host is a separate process: an app exit must drain it, not orphan it.
+process.once('exit', () => {
+  void taskHostSupervisor.stop();
+});
+if (resolvePluginDir()) {
+  // Deferred one turn so module initialisation finishes before settings are read, and contained so a
+  // host that cannot start never crashes the server that supervises it.
+  setTimeout(() => {
+    void taskHostSupervisor.ensure().catch((error) => {
+      console.warn('[task-host] start failed:', error instanceof Error ? error.message : error);
+    });
+  }, 0);
+}
 
 /**
  * One switch for everything memory-related. It gates the tool, these routes,
@@ -1425,6 +1492,41 @@ const clientPairingRuntime = createClientPairingRuntime({
 });
 const featureRoutesRuntime = createFeatureRoutesRuntime({
   clientReloadDelayMs: CLIENT_RELOAD_DELAY_MS,
+  resolveTaskHost: () => {
+    const url = taskHostSupervisor.url();
+    const token = taskHostSupervisor.token();
+    // Returning undefined here loses the host's lifecycle: the route could not tell "starting" from "refused" and fell
+    // back to the caller's own session id, which the host has never seen. The state goes out even without a URL.
+    const readiness = url === undefined || token === undefined;
+    // The host's own root session rides along: the gateway records work under it instead of a caller id the host
+    // has never seen.
+    const sessionId = taskHostSupervisor.sessionId();
+    const state = taskHostSupervisor.state();
+    // The snapshot must carry the liveness check itself: a caller cannot reach the supervisor through it, and a
+    // missing hook reads as "this host is fine" instead of "nobody checked".
+    const ensureLive = () => taskHostSupervisor.ensureLive();
+    const waitReady = () => taskHostSupervisor.waitReady();
+    // The host refuses a task that names no category, agent or model, and a gateway caller rarely names one. The
+    // product's own configured model is the answer; `provider/model` is the form the host accepts.
+    const defaultModel = async () => {
+      // The host's agent dir is what the session actually runs with; app settings are only a fallback, and on this
+      // install they carry no model at all.
+      const fromHost = taskHostSupervisor.defaultModel();
+      if (fromHost !== undefined) return fromHost;
+      try {
+        const settings = await readSettingsFromDiskMigrated();
+        const model = typeof settings?.defaultModel === 'string' ? settings.defaultModel.trim() : '';
+        if (model.length === 0) return undefined;
+        if (model.includes('/')) return model;
+        const provider = typeof settings?.defaultProvider === 'string' ? settings.defaultProvider.trim() : '';
+        return provider.length === 0 ? model : `${provider}/${model}`;
+      } catch {
+        return undefined;
+      }
+    };
+    if (readiness) return { state, ensureLive, waitReady, defaultModel };
+    return sessionId === undefined ? { url, token, state, ensureLive, waitReady, defaultModel } : { url, token, sessionId, state, ensureLive, waitReady, defaultModel };
+  },
 });
 const bootstrapRuntime = createBootstrapRuntime({
   createUiAuth,
@@ -1974,6 +2076,7 @@ const waitForPortRelease = (...args) => openCodeLifecycleRuntime.waitForPortRele
 
 const setupProxy = (...args) => serverUtilsRuntime.setupProxy(...args);
 const gracefulShutdownRuntime = createGracefulShutdownRuntime({
+  getTaskHostSupervisor: () => taskHostSupervisor,
   process,
   shutdownTimeoutMs: SHUTDOWN_TIMEOUT,
   getExitOnShutdown: () => exitOnShutdown,
@@ -2039,6 +2142,9 @@ async function main(options = {}) {
   // where proxy variables often live, after this module first loaded.
   applyOutboundProxyFromEnv();
   const port = Number.isFinite(options.port) && options.port >= 0 ? Math.trunc(options.port) : DEFAULT_PORT;
+  // The capability endpoints the managed plugin calls are this server's own; publish them so the plugin receives a
+  // host capability descriptor and `task` stops refusing with CAPABILITY_UNAVAILABLE. Explicit configuration wins.
+  configureCapabilityBaseUrl(`http://127.0.0.1:${port}`);
   const host = typeof options.host === 'string' && options.host.length > 0 ? options.host : undefined;
   const effectiveBindHost = host
     || (typeof process.env.ALCODE_HOST === 'string' && process.env.ALCODE_HOST.trim().length > 0
@@ -2073,6 +2179,7 @@ async function main(options = {}) {
     instanceDir,
     dataDir: ALCODE_DATA_DIR,
     env: process.env,
+    capabilityBaseUrl: `http://127.0.0.1:${port}`,
     agentToolRuntime,
     omoNativeRuntime,
     readSettings: () => readSettingsFromDiskMigrated(),
