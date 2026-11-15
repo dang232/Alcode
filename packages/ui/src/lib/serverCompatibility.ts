@@ -1,12 +1,21 @@
 import { z } from 'zod';
 import { runtimeFetch } from './runtime-fetch';
 
-const versionResponse = z.object({ openchamberVersion: z.string() });
+const versionResponse = z.object({
+  /**
+   * The OpenCode version the server actually manages. This is the number the 2.x route guard is
+   * about: `describeOpenCodeCompatibility` reports it with `minimumVersion` (2.0.20).
+   */
+  compatibility: z.object({ version: z.string().nullable() }).optional(),
+  /** The product's own version. Kept only as the fallback for servers that predate `compatibility`. */
+  openchamberVersion: z.string().optional(),
+});
 
 /**
- * The OpenChamber version the connected server reports, over whatever
- * transport the app uses for it (direct, tunnel, relay). `null` when the
- * server does not say, which is not evidence of an old server.
+ * The OpenCode version the connected server manages, over whatever transport the app uses
+ * (direct, tunnel, relay). Servers that do not report `compatibility` fall back to their product
+ * version, which is what the guard compared before the server started reporting OpenCode.
+ * `null` when the server says nothing, which is not evidence of an old server.
  */
 export const fetchConnectedServerVersion = async (
   signal: AbortSignal,
@@ -19,7 +28,13 @@ export const fetchConnectedServerVersion = async (
   });
   if (!response.ok) return null;
   const parsed = versionResponse.safeParse(await response.json().catch(() => null));
-  return parsed.success ? parsed.data.openchamberVersion.trim() || null : null;
+  if (!parsed.success) return null;
+  // OpenCode first: the product's own version says nothing about which routes the server serves.
+  if (parsed.data.compatibility !== undefined) {
+    return parsed.data.compatibility.version?.trim() || null;
+  }
+  const product = parsed.data.openchamberVersion?.trim();
+  return product ? product : null;
 };
 
 /**

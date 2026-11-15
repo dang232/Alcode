@@ -32,3 +32,47 @@ describe('fetchConnectedServerVersion', () => {
     expect(await fetchConnectedServerVersion(signal, answer(200, JSON.stringify({ status: 'ok' })))).toBeNull();
   });
 });
+
+describe('fetchConnectedServerVersion picks the number the guard is about', () => {
+  const versionBody = (body: unknown) => async () => new Response(JSON.stringify(body), { status: 200 });
+
+  test('reads the OpenCode version the server reports, not the product version', async () => {
+    const version = await fetchConnectedServerVersion(
+      new AbortController().signal,
+      versionBody({ alcodeVersion: '0.2.3', openchamberVersion: '0.2.3', compatibility: { version: '2.1.4', minimumVersion: '2.0.20' } }),
+    );
+
+    expect(version).toBe('2.1.4');
+    if (version === null) throw new Error('expected the OpenCode version');
+    expect(isServerBeforeOpenCode2(version)).toBe(false);
+  });
+
+  test('still flags a server whose OpenCode really is 1.x', async () => {
+    const version = await fetchConnectedServerVersion(
+      new AbortController().signal,
+      versionBody({ openchamberVersion: '0.2.3', compatibility: { version: '1.24.2' } }),
+    );
+
+    expect(version).toBe('1.24.2');
+    if (version === null) throw new Error('expected the OpenCode version');
+    expect(isServerBeforeOpenCode2(version)).toBe(true);
+  });
+
+  test('says nothing when the server reports compatibility without a version', async () => {
+    const version = await fetchConnectedServerVersion(
+      new AbortController().signal,
+      versionBody({ openchamberVersion: '0.2.3', compatibility: { version: null } }),
+    );
+
+    expect(version).toBeNull();
+  });
+
+  test('falls back to the product version for servers that predate the compatibility block', async () => {
+    const version = await fetchConnectedServerVersion(
+      new AbortController().signal,
+      versionBody({ openchamberVersion: '2.3.0' }),
+    );
+
+    expect(version).toBe('2.3.0');
+  });
+});
