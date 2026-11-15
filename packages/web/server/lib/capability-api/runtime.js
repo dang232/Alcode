@@ -15,6 +15,16 @@ import { randomBytes } from 'node:crypto';
 import { asNonEmptyString } from '../shared/guards.js';
 
 let generatedToken = null;
+let configuredBaseUrl = null;
+
+/**
+ * The capability endpoints live on the Alcode server that launches the managed plugin, so the base URL is that
+ * server's own loopback address. Configuring it here keeps the descriptor intact while the port is decided at listen
+ * time; an explicit ALCODE_CAPABILITY_URL still wins, because a deployment may front the server itself.
+ */
+export const configureCapabilityBaseUrl = (url) => {
+  configuredBaseUrl = asNonEmptyString(url);
+};
 
 export const resolveCapabilityToken = (env = process.env) => {
   const provided = asNonEmptyString(env.ALCODE_CAPABILITY_TOKEN);
@@ -32,13 +42,16 @@ export const buildCapabilityDescriptor = ({ url, token } = {}) => {
 };
 
 export const resolveCapabilityDescriptor = (env = process.env) =>
-  buildCapabilityDescriptor({ url: env.ALCODE_CAPABILITY_URL, token: resolveCapabilityToken(env) });
+  buildCapabilityDescriptor({ url: env.ALCODE_CAPABILITY_URL ?? configuredBaseUrl, token: resolveCapabilityToken(env) });
 
 const NATIVE_PLUGIN_SUFFIX = /(^|[\\/])omo-native[\\/]omo-native$/;
 
 /** The plugin options for one managed plugin directory; only the native plugin gets them. */
-export const descriptorForDirectory = (directory, env = process.env) => {
+export const descriptorForDirectory = (directory, env = process.env, baseUrl = null) => {
   const candidate = asNonEmptyString(directory);
   if (!candidate || !NATIVE_PLUGIN_SUFFIX.test(candidate)) return null;
-  return resolveCapabilityDescriptor(env);
+  return buildCapabilityDescriptor({
+    url: asNonEmptyString(env.ALCODE_CAPABILITY_URL) ?? asNonEmptyString(baseUrl) ?? configuredBaseUrl,
+    token: resolveCapabilityToken(env),
+  });
 };

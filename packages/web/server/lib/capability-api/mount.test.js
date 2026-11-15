@@ -84,3 +84,26 @@ describe('capability mount', () => {
     expect(await authorized.json()).toEqual({ sessionID: 'ses_new', parentID: 'ses_parent' });
   });
 });
+
+describe('capability token resolver', () => {
+  const authorizerOf = (resolveToken) =>
+    createCapabilityAuthorizer({ token: resolveToken, createClient: makeClient([{ id: 'ses_parent' }]) });
+
+  it('refuses every call until the resolver produces a secret, then accepts that secret', async () => {
+    let secret;
+    const authorize = authorizerOf(() => secret);
+
+    expect(await authorize({ token: 'anything', parentID: 'ses_parent' })).toBe(false)
+
+    secret = 'host-minted-secret';
+    expect(await authorize({ token: 'host-minted-secret', parentID: 'ses_parent' })).toBe(true)
+    expect(await authorize({ token: 'anything', parentID: 'ses_parent' })).toBe(false)
+  })
+
+  it('mounts the surface for a resolver even when no secret exists yet', () => {
+    const app = express();
+    const mounted = registerCapabilityRoutes(app, { token: () => undefined, createClient: makeClient([]) });
+
+    expect(mounted).toBe(true)
+  })
+})

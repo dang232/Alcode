@@ -10,7 +10,7 @@
 
 import { asNonEmptyString } from '../shared/guards.js';
 
-export const TASK_MANAGER_UNAVAILABLE_CODE = 'TASK_MANAGER_UNAVAILABLE';
+const TASK_MANAGER_UNAVAILABLE_CODE = 'TASK_MANAGER_UNAVAILABLE';
 
 const unavailable = (reason) => {
   const error = new Error(`${TASK_MANAGER_UNAVAILABLE_CODE}: ${reason}`);

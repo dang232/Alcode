@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCapabilityDescriptor, descriptorForDirectory, resolveCapabilityDescriptor, resolveCapabilityToken } from './runtime.js';
+import { buildCapabilityDescriptor, configureCapabilityBaseUrl, descriptorForDirectory, resolveCapabilityDescriptor, resolveCapabilityToken } from './runtime.js';
 
 describe('capability token', () => {
   it('uses the configured token when one is supplied', () => {
@@ -57,5 +57,34 @@ describe('descriptor targeting', () => {
     expect(descriptorForDirectory('/data/plugins/alcode-agent-tool', env)).toBeNull();
     expect(descriptorForDirectory('/data/omo-native', env)).toBeNull();
     expect(descriptorForDirectory(undefined, env)).toBeNull();
+  });
+});
+
+describe('configured capability base', () => {
+  it('publishes the descriptor from the configured base when the environment names none', () => {
+    configureCapabilityBaseUrl('http://127.0.0.1:57123');
+    try {
+      const descriptor = resolveCapabilityDescriptor({});
+      expect(descriptor.hostCapabilities.url).toBe('http://127.0.0.1:57123');
+      expect(typeof descriptor.hostCapabilities.token).toBe('string');
+    } finally {
+      configureCapabilityBaseUrl(null);
+    }
+  });
+
+  it('lets explicit configuration win over the configured base', () => {
+    configureCapabilityBaseUrl('http://127.0.0.1:57123');
+    try {
+      const descriptor = resolveCapabilityDescriptor({ ALCODE_CAPABILITY_URL: 'https://fronted.example', ALCODE_CAPABILITY_TOKEN: 't' });
+      expect(descriptor.hostCapabilities.url).toBe('https://fronted.example');
+      expect(descriptor.hostCapabilities.token).toBe('t');
+    } finally {
+      configureCapabilityBaseUrl(null);
+    }
+  });
+
+  it('publishes nothing when neither is set', () => {
+    configureCapabilityBaseUrl(null);
+    expect(resolveCapabilityDescriptor({})).toBeNull();
   });
 });

@@ -19,14 +19,22 @@ const sameSecret = (presented, configured) => {
   return timingSafeEqual(left, right);
 };
 
-export const createCapabilityAuthorizer = ({ token, createClient } = {}) => {
-  const configured = asNonEmptyString(token);
-  if (!configured) return async () => false;
+export const createCapabilityAuthorizer = ({ token, createClient, boundParent } = {}) => {
+  // A resolver lets a supervised host that becomes ready after boot mint its own secret; a string
+  // stays the operator-configured case. Both go through the same constant-time comparison.
+  const configuredOf = typeof token === 'function' ? token : () => token;
+  if (typeof token !== 'function' && !asNonEmptyString(token)) return async () => false;
   return async ({ token: presented, parentID, sessionID, directory } = {}) => {
+    const configured = asNonEmptyString(configuredOf());
+    if (!configured) return false;
     const candidate = asNonEmptyString(presented);
     if (!candidate || !sameSecret(candidate, configured)) return false;
     const named = asNonEmptyString(parentID) ?? asNonEmptyString(sessionID);
     if (!named) return false;
+    // The supervisor's own host session is authority this server can verify without the client: it opened the session
+    // and it is the parent every gateway task is recorded under.
+    const bound = typeof boundParent === 'function' ? asNonEmptyString(boundParent()) : asNonEmptyString(boundParent);
+    if (bound && named === bound) return true;
     if (createClient === undefined) return false;
     try {
       const client = await createClient({ directory: asNonEmptyString(directory) ?? undefined });
