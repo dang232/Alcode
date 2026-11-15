@@ -65,8 +65,10 @@ describe('task host proxy', () => {
   });
 
   it('refuses a host error status and a body without a task id', async () => {
+    // A host that answers with its own error code is reported as such: the caller must be able to tell a refusal from
+    // an outage. A 200 body that carries no task id is still an unavailable manager.
     const failing = failingHost(500);
-    await expect(createTaskHostProxy({ url: failing.url, token: 't' })(BODY)).rejects.toThrow(/TASK_MANAGER_UNAVAILABLE/);
+    await expect(createTaskHostProxy({ url: failing.url, token: 't' })(BODY)).rejects.toThrow(/TASK_HOST_500/);
     const empty = jsonHost({ state: 'accepted' });
     await expect(createTaskHostProxy({ url: empty.url, token: 't' })(BODY)).rejects.toThrow(/TASK_MANAGER_UNAVAILABLE/);
   });
@@ -91,3 +93,21 @@ describe('task host proxy', () => {
     });
   });
 });
+describe('host-bound parent', () => {
+  it('uses the supervisor session as the parent and keeps the caller id out of it', async () => {
+    const seen = [];
+    const fetchImpl = async (url, init) => { seen.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({ taskID: 'task_1', state: 'accepted' }) }; };
+    const starter = createTaskHostProxy({ url: 'http://127.0.0.1:1', token: 'host-secret', parentSessionID: 'ses_host_root', fetchImpl });
+    await starter({ description: 'd', prompt: 'p', parentSessionID: 'ses_caller_unknown' });
+    expect(seen[0].parentSessionID).toBe('ses_host_root');
+  });
+
+  it('keeps the caller parent when the supervisor bound none', async () => {
+    const seen = [];
+    const fetchImpl = async (url, init) => { seen.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({ taskID: 'task_1', state: 'accepted' }) }; };
+    const starter = createTaskHostProxy({ url: 'http://127.0.0.1:1', token: 'host-secret', fetchImpl });
+    await starter({ description: 'd', prompt: 'p', parentSessionID: 'ses_caller' });
+    expect(seen[0].parentSessionID).toBe('ses_caller');
+  });
+});
+

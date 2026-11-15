@@ -168,3 +168,306 @@ describe('task capability', () => {
     }
   });
 });
+
+describe('agent allowlist', () => {
+  it('refuses an agent outside the allowlist on both dispatch routes', async () => {
+    const own = await startServer({
+      authorize: async () => true,
+      allowedAgents: ['explore'],
+      createClient: () => ({ session: { promptAsync: async () => ({}) } }),
+      taskStarter: async () => ({ taskID: 'st_1', state: 'accepted' }),
+    });
+    try {
+      const started = await post(own.base, '/session/start', { sessionID: 'ses_1', prompt: 'p', directory: '/w', agent: 'sisyphus' });
+      const task = await post(own.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_1', agent: 'sisyphus' });
+
+      expect(started.status).toBe(403);
+      expect((await started.json()).error).toBe('AGENT_NOT_ALLOWED');
+      expect(task.status).toBe(403);
+      expect((await task.json()).error).toBe('AGENT_NOT_ALLOWED');
+    } finally {
+      await own.stop();
+    }
+  });
+
+  it('still accepts an allowlisted agent', async () => {
+    const own = await startServer({
+      authorize: async () => true,
+      allowedAgents: ['explore'],
+      createClient: () => ({ session: { promptAsync: async () => ({}) } }),
+    });
+    try {
+      const started = await post(own.base, '/session/start', { sessionID: 'ses_1', prompt: 'p', directory: '/w', agent: 'explore' });
+      expect(started.status).toBe(200);
+    } finally {
+      await own.stop();
+    }
+  });
+});
+
+describe('task start while the host is still starting', () => {
+  it('answers a retryable 503 naming the lifecycle instead of a 403 refusal', async () => {
+    let started = false
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      hostState: () => 'starting',
+      taskStarter: async () => {
+        started = true
+        throw new Error('must not run')
+      },
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_unknown', directory: '/workspace' })
+      expect(response.status).toBe(503)
+      const body = await response.json()
+      expect(body.reason).toBe('host-starting')
+      // The point of the fix: nothing is authorized against a parent that does not exist yet.
+      expect(started).toBe(false)
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
+describe('task start when the host lost its listener', () => {
+  it('answers 503 host-unreachable instead of handing the task to a dead URL', async () => {
+    let started = false
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      boundParent: () => 'ses_host',
+      hostState: () => 'ready',
+      ensureHostLive: async () => false,
+      taskStarter: async () => {
+        started = true
+        throw new Error('must not run')
+      },
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace' })
+      expect(response.status).toBe(503)
+      expect((await response.json()).reason).toBe('host-unreachable')
+      expect(started).toBe(false)
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('supplies the configured model when the caller names no target', async () => {
+    const seen = []
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      boundParent: () => 'ses_host',
+      hostState: () => 'ready',
+      authorize: async () => true,
+      resolveDefaultModel: async () => 'local-8317/al-1.4',
+      taskStarter: async (request) => {
+        seen.push(request)
+        return { taskID: 'st_default', state: 'running' }
+      },
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace' })
+      expect(response.status).toBe(200)
+      // Without this the host answers TASK_START_REFUSED: "requires a category, subagent_type, or model".
+      expect(seen[0].model).toBe('local-8317/al-1.4')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('leaves an explicitly targeted task alone', async () => {
+    const seen = []
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      boundParent: () => 'ses_host',
+      hostState: () => 'ready',
+      authorize: async () => true,
+      resolveDefaultModel: async () => 'local-8317/al-1.4',
+      taskStarter: async (request) => {
+        seen.push(request)
+        return { taskID: 'st_explicit', state: 'running' }
+      },
+    })
+    try {
+      await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace', model: 'other/model' })
+      await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace', subagent_type: 'explore' })
+      expect(seen[0].model).toBe('other/model')
+      expect(seen[1].model).toBeUndefined()
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('never authorizes a rebinding host with the stale caller parent', async () => {
+    const seen = []
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      // The relaunched host reports ready a moment before its session is bound: exactly the window in which the
+      // caller's own (stale) parent session id was used and the request refused.
+      boundParent: () => undefined,
+      hostState: () => 'ready',
+      authorize: async () => false,
+      taskStarter: async (request) => {
+        seen.push(request)
+        return { taskID: 'st_stale', state: 'running' }
+      },
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_stale_from_previous_host', directory: '/workspace' })
+      expect(response.status).toBe(503)
+      expect((await response.json()).reason).toBe('host-rebinding')
+      expect(seen).toHaveLength(0)
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('waits for its own host instead of handing the caller a 503', async () => {
+    const seen = []
+    let waited = 0
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      boundParent: () => 'ses_host',
+      // The host reports starting when the task arrives; the gateway waits and then serves it.
+      hostState: () => 'starting',
+      waitReady: async () => {
+        waited += 1
+        return true
+      },
+      authorize: async () => true,
+      taskStarter: async (request) => {
+        seen.push(request)
+        return { taskID: 'st_waited', state: 'running' }
+      },
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace' })
+      expect(response.status).toBe(200)
+      expect((await response.json()).taskID).toBe('st_waited')
+      expect(waited).toBe(1)
+      expect(seen[0].model).toBeUndefined()
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('answers 503 only after the wait for its host runs out, and says so', async () => {
+    const warnings = []
+    const original = console.warn
+    console.warn = (message, meta) => warnings.push({ message, meta })
+    let started = false
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      hostState: () => 'starting',
+      waitReady: async () => false,
+      authorize: async () => true,
+      taskStarter: async () => {
+        started = true
+        throw new Error('must not run')
+      },
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace' })
+      expect(response.status).toBe(503)
+      expect((await response.json()).reason).toBe('host-starting')
+      expect(started).toBe(false)
+      expect(warnings.some((entry) => entry.message === '[capability] task deferred')).toBe(true)
+    } finally {
+      console.warn = original
+      await server.stop()
+    }
+  })
+
+  it('answers a rebinding host with a retryable 503, not a refusal', async () => {
+    let started = false
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      boundParent: () => undefined,
+      hostState: () => 'ready',
+      authorize: async () => false,
+      taskStarter: async () => {
+        started = true
+        throw new Error('must not run')
+      },
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_caller', directory: '/workspace' })
+      expect(response.status).toBe(503)
+      expect((await response.json()).reason).toBe('host-rebinding')
+      expect(started).toBe(false)
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('proceeds when the host reports no lifecycle at all', async () => {
+    // asNonEmptyString answers null, not undefined: a "no lifecycle" answer must not be read as "not ready".
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      boundParent: () => 'ses_host',
+      hostState: () => undefined,
+      ensureHostLive: async () => undefined,
+      authorize: async () => true,
+      taskStarter: async () => ({ taskID: 'st_nolifecycle', state: 'running' }),
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace' })
+      expect(response.status).toBe(200)
+      expect((await response.json()).taskID).toBe('st_nolifecycle')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('does not block a task when no liveness hook is wired', async () => {
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      boundParent: () => 'ses_host',
+      hostState: () => 'ready',
+      ensureHostLive: async () => undefined,
+      authorize: async () => true,
+      taskStarter: async () => ({ taskID: 'st_unchecked', state: 'running' }),
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace' })
+      expect(response.status).toBe(200)
+      expect((await response.json()).taskID).toBe('st_unchecked')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('starts the task when the host proves it is live', async () => {
+    let recovered = 0
+    const server = await startServer({
+      token: TOKEN,
+      createClient: clientFactory([]),
+      boundParent: () => 'ses_host',
+      hostState: () => 'ready',
+      ensureHostLive: async () => {
+        recovered += 1
+        return true
+      },
+      authorize: async () => true,
+      taskStarter: async () => ({ taskID: 'st_live', state: 'running' }),
+    })
+    try {
+      const response = await post(server.base, '/task', { description: 'd', prompt: 'p', parentSessionID: 'ses_host', directory: '/workspace' })
+      expect(response.status).toBe(200)
+      expect((await response.json()).taskID).toBe('st_live')
+      expect(recovered).toBe(1)
+    } finally {
+      await server.stop()
+    }
+  })
+})
