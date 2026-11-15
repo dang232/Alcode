@@ -51845,6 +51845,10 @@ var realOrNull = (path) => {
     return null;
   }
 };
+var workspaceRootFor = (fallback, context) => {
+  const perCall = context?.directory;
+  return perCall !== undefined && perCall.trim().length > 0 ? perCall : fallback;
+};
 function resolveInsideWorkspace(root, candidate) {
   const trimmed = candidate.trim();
   if (trimmed.length === 0)
@@ -51960,7 +51964,7 @@ function createWorkspaceBashTool(options) {
         const named = object({ command: string2() }).safeParse(toolArgs);
         workspaceInputRefused(named.success ? named.data.command : "", parsed.error.issues[0]?.message ?? "invalid arguments");
       }
-      const cwd = resolveInsideWorkspace(options.directory, parsed.data.cwd ?? ".");
+      const cwd = resolveInsideWorkspace(workspaceRootFor(options.directory, context), parsed.data.cwd ?? ".");
       const timeoutMs = parsed.data.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       let approval = "not offered by this runtime";
       if (context?.ask !== undefined) {
@@ -52049,14 +52053,14 @@ function createWorkspaceReadTool(options) {
         limit: { type: "number", description: `Maximum lines to return, 1-${MAX_LINES}.` }
       }
     },
-    execute: async (toolArgs) => {
+    execute: async (toolArgs, context) => {
       const parsed = ReadArgs.safeParse(toolArgs);
       if (!parsed.success) {
         const named = object({ path: string2() }).safeParse(toolArgs);
         workspaceInputRefused(named.success ? named.data.path : "", parsed.error.issues[0]?.message ?? "invalid arguments");
       }
       const requested = parsed.data.path;
-      const target = resolveInsideWorkspace(options.directory, requested);
+      const target = resolveInsideWorkspace(workspaceRootFor(options.directory, context), requested);
       let stat;
       try {
         stat = statSync4(target);
@@ -52133,7 +52137,7 @@ function createWorkspaceWriteTool(options) {
         }
       }
     },
-    execute: async (toolArgs) => {
+    execute: async (toolArgs, context) => {
       const parsed = WriteArgs.safeParse(toolArgs);
       if (!parsed.success) {
         const named = object({ path: string2() }).safeParse(toolArgs);
@@ -52144,7 +52148,7 @@ function createWorkspaceWriteTool(options) {
       if (bytes.length > MAX_CONTENT_BYTES) {
         workspaceInputRefused(requested, `content is ${bytes.length} bytes; the limit is ${MAX_CONTENT_BYTES}`);
       }
-      const target = resolveForWrite(options.directory, requested);
+      const target = resolveForWrite(workspaceRootFor(options.directory, context), requested);
       const existed = existsSync16(target);
       let previous = null;
       if (existed) {
@@ -56773,6 +56777,18 @@ var readCapabilityDescriptor = (options) => {
   const parsed = HostCapabilityOptions.safeParse(options);
   return parsed.success ? parsed.data.hostCapabilities : undefined;
 };
+var readCapabilityDescriptorFromEnv = (env) => {
+  const url = env.OMO_CAPABILITY_URL;
+  const token = env.OMO_CAPABILITY_TOKEN;
+  if (url === undefined || token === undefined)
+    return;
+  const allowed = env.OMO_CAPABILITY_ALLOWED_AGENTS;
+  if (allowed === undefined || allowed.trim().length === 0) {
+    return readCapabilityDescriptor({ hostCapabilities: { version: 1, url, token } });
+  }
+  const allowedAgents = allowed.split(",").map((name) => name.trim()).filter((name) => name.length > 0);
+  return readCapabilityDescriptor({ hostCapabilities: { version: 1, url, token, allowedAgents } });
+};
 var createOperationsFromDescriptor = (descriptor) => {
   const operations = {
     createSession: async (input) => {
@@ -57496,7 +57512,7 @@ function resolveV2Capabilities(ctx) {
   }
   if (ctx.tasks !== undefined)
     runtime.taskManager = ctx.tasks;
-  const descriptor = readCapabilityDescriptor(ctx.options);
+  const descriptor = readCapabilityDescriptor(ctx.options) ?? readCapabilityDescriptorFromEnv(process.env);
   if (descriptor !== undefined) {
     const operations = createOperationsFromDescriptor(descriptor);
     if (runtime.createSession === undefined) {
