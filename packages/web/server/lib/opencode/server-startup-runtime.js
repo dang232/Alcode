@@ -15,9 +15,6 @@ export const createServerStartupRuntime = (dependencies) => {
     getSignalsAttached,
     setSignalsAttached,
     syncToHmrState,
-    TUNNEL_MODE_QUICK,
-    TUNNEL_MODE_MANAGED_LOCAL,
-    TUNNEL_MODE_MANAGED_REMOTE,
   } = dependencies;
 
   const resolveBindHost = (host) =>
@@ -66,20 +63,7 @@ export const createServerStartupRuntime = (dependencies) => {
             });
           }
 
-          const displayHost = (bindHost === '0.0.0.0' || bindHost === '::' || bindHost === '[::]')
-            ? 'localhost'
-            : (bindHost.includes(':') ? `[${bindHost}]` : bindHost);
-          console.log(`Alcode server listening on ${bindHost}:${activePort}`);
-          console.log(`Health check: http://${displayHost}:${activePort}/health`);
-          console.log(`Web interface: http://${displayHost}:${activePort}`);
-
           if (startupTunnelRequest) {
-            const startupModeLabel = startupTunnelRequest.mode === TUNNEL_MODE_QUICK
-              ? 'Quick Tunnel'
-              : (startupTunnelRequest.mode === TUNNEL_MODE_MANAGED_LOCAL
-                ? 'Managed Local Tunnel'
-                : (startupTunnelRequest.mode === TUNNEL_MODE_MANAGED_REMOTE ? 'Managed Remote Tunnel' : 'Tunnel'));
-            console.log(`\nInitializing ${startupModeLabel} for provider '${startupTunnelRequest.provider}'...`);
             try {
               const { publicUrl, mode } = await startTunnelWithNormalizedRequest({
                 provider: startupTunnelRequest.provider,
@@ -105,16 +89,12 @@ export const createServerStartupRuntime = (dependencies) => {
                 const connectUrl = `${publicUrl.replace(/\/$/, '')}/connect?t=${encodeURIComponent(bootstrapToken.token)}`;
                 if (onTunnelReady) {
                   onTunnelReady(publicUrl, connectUrl);
-                } else {
-                  console.log(`\n🌐 Tunnel URL: ${connectUrl}`);
-                  console.log('🔑 One-time connect link (expires after first use)\n');
                 }
               } else if (onTunnelReady) {
                 onTunnelReady(publicUrl, null);
               }
             } catch (error) {
               console.error(`Failed to start tunnel: ${error.message}`);
-              console.log('Continuing without tunnel...');
             }
           }
 

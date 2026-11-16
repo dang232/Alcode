@@ -8,7 +8,6 @@ import { getRuntimeKey, subscribeRuntimeEndpointChanged } from '@/lib/runtime-sw
 import { updateDesktopSettings } from '@/lib/persistence';
 import { getChatsRoot, resolveChatsRootDirectory } from '@/lib/chatDirectories';
 import { useFileSearchStore } from '@/stores/useFileSearchStore';
-import { streamDebugEnabled } from '@/stores/utils/streamDebug';
 import { getDeferredSafeStorage } from './utils/safeStorage';
 
 interface DirectoryStore {
@@ -285,10 +284,6 @@ export const useDirectoryStore = create<DirectoryStore>()(
         void options;
         const homeDir = cachedHomeDirectory || get().homeDirectory || safeStorage.getItem('homeDirectory');
         const resolvedPath = resolveDirectoryPath(path, homeDir);
-        if (streamDebugEnabled()) {
-          console.log('[DirectoryStore] setDirectory called with path:', resolvedPath);
-        }
-
         opencodeClient.setDirectory(resolvedPath);
         invalidateFileSearchCache();
 

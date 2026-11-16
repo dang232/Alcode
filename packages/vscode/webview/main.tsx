@@ -67,17 +67,6 @@ window.__ALCODE_VSCODE_SHIKI_THEMES__ ??= window.__OPENCHAMBER_VSCODE_SHIKI_THEM
 window.__ALCODE_HOME__ ??= window.__OPENCHAMBER_HOME__;
 window.__ALCODE_VSCODE_WINDOW_FOCUSED__ ??= window.__OPENCHAMBER_VSCODE_WINDOW_FOCUSED__;
 
-console.log('[Alcode] VS Code webview starting...');
-console.log('[Alcode] VS Code webview build:', __ALCODE_WEBVIEW_BUILD_TIME__);
-console.log('[Alcode] Config:', window.__VSCODE_CONFIG__);
-try {
-  if (window.localStorage.getItem('alcode_stream_debug') === '1') {
-    console.log('[Alcode] Debug: alcode_stream_debug=1');
-  }
-} catch {
-  // ignore
-}
-
 window.__ALCODE_RUNTIME_APIS__ = createVSCodeAPIs();
 
 const bootstrapLocale = readStoredLocaleForBootstrap();

@@ -125,23 +125,13 @@ class BrowserVoiceService {
    * Resume listening after being paused
    */
   resumeListening(): void {
-    console.log('[BrowserVoiceService] resumeListening called:', {
-      conversationMode: this.conversationMode,
-      hasCallback: !!this.onResultCallback,
-      isSpeaking: this.isSpeaking,
-      currentLang: this.currentLang
-    });
-    
     if (this.conversationMode && this.onResultCallback && !this.isSpeaking) {
       // Use sync version for resume (should already have permission)
       try {
-        console.log('[BrowserVoiceService] Resuming listening...');
         this.startListeningSync(this.currentLang, this.onResultCallback, this.onErrorCallback || undefined);
       } catch (err) {
         console.error('[BrowserVoiceService] Failed to resume listening:', err);
       }
-    } else {
-      console.log('[BrowserVoiceService] Not resuming - conditions not met');
     }
   }
 
@@ -230,21 +220,11 @@ class BrowserVoiceService {
 
     // Set up event handlers
     this.recognition.onstart = () => {
-      console.log('[BrowserVoiceService] Recognition started');
       this.isListening = true;
       this.restartOnEnd = true;
     };
 
-    this.recognition.onaudiostart = () => {
-      console.log('[BrowserVoiceService] Audio recording started');
-    };
-    
-    this.recognition.onsoundstart = () => {
-      console.log('[BrowserVoiceService] Sound detected');
-    };
-
     this.recognition.onresult = (event: SpeechRecognitionEvent) => {
-      console.log('[BrowserVoiceService] Got result:', event.results.length, 'results');
       let finalTranscript = '';
       let interimTranscript = '';
 
@@ -257,17 +237,13 @@ class BrowserVoiceService {
         }
       }
 
-      console.log('[BrowserVoiceService] Transcripts - interim:', interimTranscript, 'final:', finalTranscript);
-
       // Send interim results
       if (interimTranscript) {
-        console.log('[BrowserVoiceService] Calling onResultCallback with interim');
         this.onResultCallback?.(interimTranscript, false);
       }
 
       // Send final results
       if (finalTranscript) {
-        console.log('[BrowserVoiceService] Calling onResultCallback with final');
         this.onResultCallback?.(finalTranscript, true);
       }
     };
@@ -408,11 +384,9 @@ class BrowserVoiceService {
         unlockUtterance.volume = 0;
         window.speechSynthesis.speak(unlockUtterance);
         window.speechSynthesis.cancel(); // Cancel immediately
-        console.log('[BrowserVoiceService] Speech synthesis unlocked for mobile');
       }
 
       this.audioUnlockRequired = false;
-      console.log('[BrowserVoiceService] Audio unlocked successfully');
       return true;
     } catch (err) {
       console.error('[BrowserVoiceService] Failed to unlock audio:', err);
@@ -465,18 +439,14 @@ class BrowserVoiceService {
     
     if (options?.voiceName) {
       selectedVoice = voices.find(v => v.name === options.voiceName) || null;
-      if (selectedVoice) {
-        console.log(`[BrowserVoiceService] Using selected voice: ${selectedVoice.name} (${selectedVoice.lang})`);
-      } else {
+      if (!selectedVoice) {
         console.warn(`[BrowserVoiceService] Selected voice "${options.voiceName}" not found, falling back to language match`);
       }
     }
     
     if (!selectedVoice) {
       selectedVoice = this.findBestVoice(voices, lang);
-      if (selectedVoice) {
-        console.log(`[BrowserVoiceService] Using language-matched voice: ${selectedVoice.name} (${selectedVoice.lang})`);
-      } else {
+      if (!selectedVoice) {
         console.warn(`[BrowserVoiceService] No voice found for language: ${lang}, using default`);
       }
     }
@@ -485,20 +455,16 @@ class BrowserVoiceService {
       utterance.voice = selectedVoice;
     }
 
-    console.log(`[BrowserVoiceService] Speaking text (${text.length} chars) in ${lang}`);
-
     return new Promise((resolve, reject) => {
       let hasStarted = false;
 
       utterance.onstart = () => {
         hasStarted = true;
-        console.log('[BrowserVoiceService] Speech started');
         resolve();
       };
 
       utterance.onend = () => {
         this.isSpeaking = false;
-        console.log('[BrowserVoiceService] Speech ended');
         onEnd?.();
       };
 

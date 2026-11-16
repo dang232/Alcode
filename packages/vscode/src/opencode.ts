@@ -821,8 +821,7 @@ export function createOpenCodeManager(context: vscode.ExtensionContext): OpenCod
     if (!reapedOrphansOnce) {
       reapedOrphansOnce = true;
       try {
-        const { reaped } = await reapOrphanedProcesses({ log: (msg) => console.log(msg) });
-        if (reaped > 0) console.log(`[opencode] startup reaped ${reaped} orphaned process(es)`);
+        await reapOrphanedProcesses();
       } catch (error) {
         console.warn('[opencode] orphan reap failed:', error instanceof Error ? error.message : error);
       }

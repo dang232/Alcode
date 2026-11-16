@@ -58,18 +58,7 @@ export const createOpenCodeWatcherRuntime = (deps) => {
         }
         emitTranslated(payload, event.spaceId ?? null);
       }, { spaces: true });
-      unsubscribeStatus = globalEventHub.subscribeStatus((status) => {
-        if (signal.aborted) {
-          return;
-        }
-        if (status.type === 'connect') {
-          console.log('[PushWatcher] connected');
-          return;
-        }
-        if (status.type === 'error' || status.type === 'initial-error') {
-          console.warn('[PushWatcher] disconnected', status.error?.error?.message ?? status.error?.message ?? status.error);
-        }
-      });
+      unsubscribeStatus = globalEventHub.subscribeStatus(() => {});
       globalEventHub.start();
       return;
     }
@@ -81,9 +70,6 @@ export const createOpenCodeWatcherRuntime = (deps) => {
       fetchImpl,
       stallTimeoutMs: upstreamStallTimeoutMs,
       reconnectDelayMs: upstreamReconnectDelayMs,
-      onConnect() {
-        console.log('[PushWatcher] connected');
-      },
       onEvent(event) {
         const payload = unwrapGlobalEventPayload(event.payload);
         if (!payload || typeof payload !== 'object') {
@@ -91,12 +77,7 @@ export const createOpenCodeWatcherRuntime = (deps) => {
         }
         emitTranslated(payload);
       },
-      onError(error) {
-        if (signal.aborted) {
-          return;
-        }
-        console.warn('[PushWatcher] disconnected', error?.error?.message ?? error?.message ?? error);
-      },
+      onError() {},
     });
 
     void reader.start();

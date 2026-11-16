@@ -390,8 +390,6 @@ export const useCommandsStore = create<CommandsStore>()(
         createCommand: async (config: CommandConfig, requestedDirectory?: string | null) => {
           const generation = commandsGeneration;
           try {
-            console.log('[CommandsStore] Creating command:', config.name);
-
             const commandConfig: Record<string, unknown> = {
               template: config.template || '',
             };
@@ -420,8 +418,6 @@ export const useCommandsStore = create<CommandsStore>()(
               const message = payload?.error || 'Failed to create command';
               throw new Error(message);
             }
-
-            console.log('[CommandsStore] Command created successfully');
 
             invalidateCommandsLoadCache(directory);
 
@@ -454,8 +450,6 @@ export const useCommandsStore = create<CommandsStore>()(
         updateCommand: async (name: string, config: Partial<CommandConfig>, requestedDirectory?: string | null) => {
           const generation = commandsGeneration;
           try {
-            console.log('[CommandsStore] Updating command:', name);
-
             const commandConfig: Record<string, unknown> = {};
 
             if (config.description !== undefined) commandConfig.description = config.description;
@@ -482,8 +476,6 @@ export const useCommandsStore = create<CommandsStore>()(
               const message = payload?.error || 'Failed to update command';
               throw new Error(message);
             }
-
-            console.log('[CommandsStore] Command updated successfully');
 
             invalidateCommandsLoadCache(directory);
 
@@ -531,8 +523,6 @@ export const useCommandsStore = create<CommandsStore>()(
               const message = payload?.error || 'Failed to delete command';
               throw new Error(message);
             }
-
-            console.log('[CommandsStore] Command deleted successfully');
 
             invalidateCommandsLoadCache(directory);
 

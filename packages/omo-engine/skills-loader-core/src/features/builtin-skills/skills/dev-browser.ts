@@ -82,7 +82,6 @@ const page = await client.page("example", { viewport: { width: 1920, height: 108
 await page.goto("https://example.com");
 await waitForPageLoad(page);
 
-console.log({ title: await page.title(), url: page.url() });
 await client.disconnect();
 EOF
 \`\`\`
@@ -99,7 +98,6 @@ const page = await client.page("example", { viewport: { width: 1920, height: 108
 await page.goto("https://example.com");
 await waitForPageLoad(page);
 
-console.log({ title: await page.title(), url: page.url() });
 await client.disconnect();
 "@ | npx tsx --input-type=module
 \`\`\`
@@ -195,7 +193,6 @@ Use \`getAISnapshot()\` to discover page elements. Returns YAML-formatted access
 
 \`\`\`typescript
 const snapshot = await client.getAISnapshot("hackernews");
-console.log(snapshot); // Find the ref you need
 
 const element = await client.selectSnapshotRef("hackernews", "e2");
 await element.click();
@@ -213,11 +210,6 @@ const client = await connect();
 const page = await client.page("hackernews");
 
 await page.screenshot({ path: "tmp/debug.png" });
-console.log({
-  url: page.url(),
-  title: await page.title(),
-  bodyText: await page.textContent("body").then((t) => t?.slice(0, 200)),
-});
 
 await client.disconnect();
 EOF
