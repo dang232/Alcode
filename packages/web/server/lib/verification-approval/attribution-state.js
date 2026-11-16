@@ -73,6 +73,8 @@ const attributionOf = (record) => {
   return {
     taskId,
     childSessionId,
+    parentSessionId: asId(record.parent_session_id),
+    rootSessionId: asId(record.root_session_id),
     nodeId: dagOwned ? asId(owner.nodeId) : null,
     runId: dagOwned ? asId(owner.runId) : null,
     verificationStatus: verificationOf(record),
@@ -91,6 +93,10 @@ const entryOf = (attribution) => {
 const byTaskOf = (attribution) => {
   const value = { taskId: attribution.taskId }
   if (attribution.childSessionId !== null) value.childSessionId = attribution.childSessionId
+  // Session identity travels with the entry so a writer can prove the task belongs to the conversation it is writing,
+  // instead of accepting "this task id exists somewhere in the project" as membership.
+  if (attribution.parentSessionId !== null) value.parentSessionId = attribution.parentSessionId
+  if (attribution.rootSessionId !== null) value.rootSessionId = attribution.rootSessionId
   if (attribution.nodeId !== null) value.nodeId = attribution.nodeId
   if (attribution.runId !== null) value.runId = attribution.runId
   if (attribution.verificationStatus !== null) value.verificationStatus = attribution.verificationStatus

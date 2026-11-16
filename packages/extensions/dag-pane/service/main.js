@@ -14263,7 +14263,7 @@ import { Buffer as Buffer3 } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { tmpdir as osTmpdir, homedir as osHomedir } from "node:os";
 import { join as joinPath2 } from "node:path";
-import nodeFs from "node:fs";
+import nodeFs2 from "node:fs";
 import { promises as nodeFsPromises } from "node:fs";
 import nodePath from "node:path";
 
@@ -27372,6 +27372,8 @@ var attributionOf = (record) => {
   return {
     taskId,
     childSessionId,
+    parentSessionId: asId(record.parent_session_id),
+    rootSessionId: asId(record.root_session_id),
     nodeId: dagOwned ? asId(owner.nodeId) : null,
     runId: dagOwned ? asId(owner.runId) : null,
     verificationStatus: verificationOf(record)
@@ -27393,6 +27395,10 @@ var byTaskOf = (attribution) => {
   const value = { taskId: attribution.taskId };
   if (attribution.childSessionId !== null)
     value.childSessionId = attribution.childSessionId;
+  if (attribution.parentSessionId !== null)
+    value.parentSessionId = attribution.parentSessionId;
+  if (attribution.rootSessionId !== null)
+    value.rootSessionId = attribution.rootSessionId;
   if (attribution.nodeId !== null)
     value.nodeId = attribution.nodeId;
   if (attribution.runId !== null)
@@ -27509,6 +27515,921 @@ function createAttributionStateReader(options = {}) {
   };
 }
 
+// ../../../web/server/lib/verification-approval/repair-state.js
+import { readdirSync as readdirSync5, readFileSync as readFileSync4, statSync as statSync2 } from "node:fs";
+import { join as join6 } from "node:path";
+
+// ../../../omo-engine/senpi-task/src/repair/store.ts
+import { mkdirSync, readdirSync as readdirSync4, readFileSync as readFileSync3, renameSync, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join5 } from "node:path";
+
+// ../../../omo-engine/senpi-task/src/repair/state.ts
+var REPAIR_STATES = [
+  "diagnosing",
+  "repair_planned",
+  "repairing",
+  "reverifying",
+  "repaired",
+  "repair_failed",
+  "repair_cancelled"
+];
+
+// ../../../omo-engine/senpi-task/src/repair/attempt.ts
+function assertSafeSegment(value, name) {
+  if (value.length === 0 || value.includes("/") || value.includes("\\") || value === "." || value === "..") {
+    throw new Error(`invalid ${name} for repair attempt identity: ${JSON.stringify(value)}`);
+  }
+}
+function deriveRepairAttemptId(taskId, runEpoch, attemptNumber) {
+  assertSafeSegment(taskId, "taskId");
+  if (!Number.isSafeInteger(runEpoch) || runEpoch < 0) {
+    throw new Error(`invalid runEpoch for repair attempt identity: ${JSON.stringify(runEpoch)}`);
+  }
+  if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
+    throw new Error(`invalid attemptNumber for repair attempt identity: ${JSON.stringify(attemptNumber)}`);
+  }
+  return `${taskId}.e${runEpoch}.r${attemptNumber}`;
+}
+function parseRepairAttemptId(attemptId) {
+  const match = /^(.*)\.e(\d+)\.r(\d+)$/.exec(attemptId);
+  if (match === null)
+    return null;
+  const taskId = match[1] ?? "";
+  const runEpoch = Number(match[2]);
+  const attemptNumber = Number(match[3]);
+  if (taskId.length === 0 || !Number.isSafeInteger(runEpoch) || !Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
+    return null;
+  }
+  try {
+    const canonical = deriveRepairAttemptId(taskId, runEpoch, attemptNumber);
+    if (canonical !== attemptId)
+      return null;
+  } catch {
+    return null;
+  }
+  return { taskId, runEpoch, attemptNumber };
+}
+
+// ../../../omo-engine/senpi-task/src/repair/store.ts
+var REPAIR_STORE_BOUNDS = {
+  maxCheckIds: 200,
+  maxEvidenceIds: 200,
+  maxPlanSteps: 100,
+  maxPlanStepLength: 2048,
+  maxTextLength: 8192
+};
+function assertSafeSegment2(value, name) {
+  if (value.length === 0 || value.includes("/") || value.includes("\\") || value === "." || value === "..") {
+    throw new Error(`invalid ${name} for repair attempt storage: ${JSON.stringify(value)}`);
+  }
+}
+function truncateText(value, max) {
+  return value.length > max ? value.slice(0, max) : value;
+}
+function boundRepairAttemptForStore(attempt) {
+  let boundedOutcome;
+  if (attempt.outcome !== undefined) {
+    boundedOutcome = {
+      result: attempt.outcome.result,
+      recordedAt: attempt.outcome.recordedAt
+    };
+    if (attempt.outcome.reason !== undefined) {
+      boundedOutcome = {
+        ...boundedOutcome,
+        reason: truncateText(attempt.outcome.reason, REPAIR_STORE_BOUNDS.maxTextLength)
+      };
+    }
+    if (attempt.outcome.detail !== undefined) {
+      boundedOutcome = {
+        ...boundedOutcome,
+        detail: truncateText(attempt.outcome.detail, REPAIR_STORE_BOUNDS.maxTextLength)
+      };
+    }
+  }
+  return {
+    ...attempt,
+    failedCheckIds: attempt.failedCheckIds.slice(0, REPAIR_STORE_BOUNDS.maxCheckIds),
+    failedEvidenceIds: attempt.failedEvidenceIds.slice(0, REPAIR_STORE_BOUNDS.maxEvidenceIds),
+    plan: attempt.plan === undefined ? undefined : {
+      summary: truncateText(attempt.plan.summary, REPAIR_STORE_BOUNDS.maxTextLength),
+      steps: attempt.plan.steps.slice(0, REPAIR_STORE_BOUNDS.maxPlanSteps).map((step) => truncateText(step, REPAIR_STORE_BOUNDS.maxPlanStepLength)),
+      createdAt: attempt.plan.createdAt
+    },
+    outcome: boundedOutcome
+  };
+}
+function isCandidateString(value) {
+  return value !== undefined && value === String(value);
+}
+function isRepairState(value) {
+  return isCandidateString(value) && REPAIR_STATES.includes(value);
+}
+function isRepairAttemptRecord(value) {
+  if (value === null || value === undefined || value.constructor !== Object)
+    return false;
+  if (!isCandidateString(value.attemptId))
+    return false;
+  if (!isCandidateString(value.taskId))
+    return false;
+  if (!Number.isSafeInteger(value.runEpoch))
+    return false;
+  if (!Number.isSafeInteger(value.attemptNumber))
+    return false;
+  if (!isCandidateString(value.workspaceId))
+    return false;
+  if (!isRepairState(value.state))
+    return false;
+  if (!Array.isArray(value.failedCheckIds) || !value.failedCheckIds.every((id) => isCandidateString(id))) {
+    return false;
+  }
+  if (!Array.isArray(value.failedEvidenceIds) || !value.failedEvidenceIds.every((id) => isCandidateString(id))) {
+    return false;
+  }
+  if (!isCandidateString(value.diagnosisRevision))
+    return false;
+  if (!Number.isFinite(value.createdAt) || !Number.isFinite(value.updatedAt))
+    return false;
+  const parsed = parseRepairAttemptId(value.attemptId);
+  if (parsed === null)
+    return false;
+  if (parsed.taskId !== value.taskId || parsed.runEpoch !== value.runEpoch)
+    return false;
+  return true;
+}
+function attemptFilePath(root, taskId, attemptId) {
+  return join5(root, taskId, `${attemptId}.json`);
+}
+function readTaskAttempts(root, taskId) {
+  let entries;
+  try {
+    entries = readdirSync4(join5(root, taskId));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return [];
+    throw error;
+  }
+  const attempts = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".json"))
+      continue;
+    let raw;
+    try {
+      raw = readFileSync3(join5(root, taskId, entry), "utf8");
+    } catch {
+      continue;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (isRepairAttemptRecord(parsed))
+      attempts.push(parsed);
+  }
+  attempts.sort((a, b) => a.runEpoch - b.runEpoch || a.attemptNumber - b.attemptNumber);
+  return attempts;
+}
+function createRepairAttemptStore(options) {
+  const root = options.root;
+  return {
+    root,
+    save(attempt) {
+      assertSafeSegment2(attempt.taskId, "taskId");
+      assertSafeSegment2(attempt.attemptId, "attemptId");
+      const parsed = parseRepairAttemptId(attempt.attemptId);
+      if (parsed === null || parsed.taskId !== attempt.taskId || parsed.runEpoch !== attempt.runEpoch || parsed.attemptNumber !== attempt.attemptNumber) {
+        throw new Error(`repair attempt identity mismatch: ${JSON.stringify(attempt.attemptId)} is not the canonical id for this task, epoch, and attempt number`);
+      }
+      for (const sibling of readTaskAttempts(root, attempt.taskId)) {
+        if (sibling.attemptId === attempt.attemptId)
+          continue;
+        if (sibling.runEpoch > attempt.runEpoch || sibling.runEpoch === attempt.runEpoch && sibling.attemptNumber > attempt.attemptNumber) {
+          throw new Error(`stale repair attempt write: ${attempt.attemptId} is older than persisted ${sibling.attemptId}`);
+        }
+      }
+      const target = attemptFilePath(root, attempt.taskId, attempt.attemptId);
+      let stored = null;
+      try {
+        const raw = readFileSync3(target, "utf8");
+        const value = JSON.parse(raw);
+        if (!isRepairAttemptRecord(value)) {
+          throw new Error(`malformed repair attempt record for ${attempt.attemptId}`);
+        }
+        stored = value;
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+          stored = null;
+        } else {
+          throw error;
+        }
+      }
+      if (stored !== null) {
+        if (stored.taskId !== attempt.taskId || stored.runEpoch !== attempt.runEpoch || stored.attemptNumber !== attempt.attemptNumber) {
+          throw new Error(`repair attempt identity mismatch: stored file for ${attempt.attemptId} belongs to another attempt`);
+        }
+        if (stored.updatedAt > attempt.updatedAt) {
+          throw new Error(`stale repair attempt write: stored ${attempt.attemptId} is newer than the incoming copy`);
+        }
+      }
+      const bounded = boundRepairAttemptForStore(attempt);
+      mkdirSync(join5(root, attempt.taskId), { recursive: true });
+      const temp = `${target}.${process.pid}.tmp`;
+      try {
+        writeFileSync2(temp, JSON.stringify(bounded, null, 2));
+        renameSync(temp, target);
+      } catch (error) {
+        try {
+          unlinkSync(temp);
+        } catch {}
+        throw new Error(`failed to persist repair attempt ${attempt.attemptId}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return target;
+    },
+    load(attemptId) {
+      assertSafeSegment2(attemptId, "attemptId");
+      const parsed = parseRepairAttemptId(attemptId);
+      if (parsed === null)
+        return null;
+      assertSafeSegment2(parsed.taskId, "taskId");
+      let raw;
+      try {
+        raw = readFileSync3(attemptFilePath(root, parsed.taskId, attemptId), "utf8");
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT")
+          return null;
+        throw error;
+      }
+      const value = JSON.parse(raw);
+      if (!isRepairAttemptRecord(value)) {
+        throw new Error(`malformed repair attempt record for ${attemptId}`);
+      }
+      if (value.attemptId !== attemptId) {
+        throw new Error(`repair attempt identity mismatch: stored file for ${attemptId} belongs to another attempt`);
+      }
+      return value;
+    },
+    list(taskId) {
+      assertSafeSegment2(taskId, "taskId");
+      return readTaskAttempts(root, taskId);
+    }
+  };
+}
+
+// ../../../web/server/lib/verification-approval/repair-state.js
+var VERIFICATION_STATUSES2 = ["verified", "unverified", "blocked"];
+var CHANGED_FILES_PREFIX = "changedFiles: ";
+var RERUN_PREFIX = "rerun ";
+var asString2 = (value) => String(value) === value ? value : null;
+var isRecord14 = (value) => value instanceof Object && !Array.isArray(value);
+var isSafeTaskId = (value) => {
+  const text = asString2(value);
+  return text !== null && text.length > 0 && !/[\\/]/.test(text) && text !== "." && text !== "..";
+};
+var messageOf2 = (error, fallback) => {
+  const text = error instanceof Error ? asString2(error.message) : null;
+  return text !== null && text.length > 0 ? text : fallback;
+};
+var readFailureCode2 = (error) => error instanceof Error && ("code" in error) ? error.code : undefined;
+function inspectRepairDirectory(stateDir, taskId) {
+  const root = join6(stateDir, "repairs");
+  let rootStat;
+  try {
+    rootStat = statSync2(root);
+  } catch (error) {
+    if (readFailureCode2(error) === "ENOENT")
+      return { absent: true };
+    return { error: `repair attempt store unreadable for ${taskId}: ${messageOf2(error, "stat failed")}` };
+  }
+  if (!rootStat.isDirectory()) {
+    return { error: `repair attempt store unreadable for ${taskId}: repairs is not a directory` };
+  }
+  const taskDir = join6(root, taskId);
+  let taskStat;
+  try {
+    taskStat = statSync2(taskDir);
+  } catch (error) {
+    if (readFailureCode2(error) === "ENOENT")
+      return { absent: true };
+    return { error: `repair attempt store unreadable for ${taskId}: ${messageOf2(error, "stat failed")}` };
+  }
+  if (!taskStat.isDirectory()) {
+    return { error: `repair attempt store unreadable for ${taskId}: the task entry is not a directory` };
+  }
+  let entries;
+  try {
+    entries = readdirSync5(taskDir);
+  } catch (error) {
+    return { error: `repair attempt store unreadable for ${taskId}: ${messageOf2(error, "list failed")}` };
+  }
+  return { records: entries.filter((entry) => entry.endsWith(".json")).length };
+}
+function readTaskRecord(stateDir, taskId) {
+  const path = join6(stateDir, "tasks", `${taskId}.json`);
+  let raw;
+  try {
+    raw = readFileSync4(path, "utf8");
+  } catch (error) {
+    if (readFailureCode2(error) === "ENOENT") {
+      return { error: `repair state: task record missing for ${taskId}` };
+    }
+    return { error: `repair state: task record unreadable for ${taskId}: ${messageOf2(error, "read failed")}` };
+  }
+  let record;
+  try {
+    record = JSON.parse(raw);
+  } catch {
+    return { error: `repair state: task record malformed for ${taskId}` };
+  }
+  if (!isRecord14(record) || !isRecord14(record.notification)) {
+    return { error: `repair state: task record has no run epoch for ${taskId}` };
+  }
+  const epoch = record.notification.run_epoch;
+  if (!Number.isSafeInteger(epoch) || epoch < 0) {
+    return { error: `repair state: task record has no valid run epoch for ${taskId}` };
+  }
+  const claim = asString2(record.verification_status);
+  return {
+    epoch,
+    verificationStatus: claim !== null && VERIFICATION_STATUSES2.includes(claim) ? claim : null
+  };
+}
+function rerunChecksOf(attempt) {
+  if (!isRecord14(attempt.plan) || !Array.isArray(attempt.plan.steps))
+    return [];
+  const checks = [];
+  for (const step of attempt.plan.steps) {
+    const text = asString2(step);
+    if (text === null || !text.startsWith(RERUN_PREFIX))
+      continue;
+    const checkId = text.slice(RERUN_PREFIX.length).trim();
+    if (checkId.length > 0 && !checks.includes(checkId))
+      checks.push(checkId);
+  }
+  return checks;
+}
+function changedFilesOf(attempt) {
+  if (!isRecord14(attempt.outcome))
+    return [];
+  const detail = asString2(attempt.outcome.detail);
+  if (detail === null || !detail.startsWith(CHANGED_FILES_PREFIX))
+    return [];
+  const files = [];
+  for (const entry of detail.slice(CHANGED_FILES_PREFIX.length).split(",")) {
+    const file = entry.trim();
+    if (file.length > 0 && !files.includes(file))
+      files.push(file);
+  }
+  return files;
+}
+function projectRepair(attempt, taskId, verificationStatus) {
+  return {
+    attemptId: attempt.attemptId,
+    taskId,
+    epoch: attempt.runEpoch,
+    state: attempt.state,
+    failedChecks: Array.isArray(attempt.failedCheckIds) ? [...attempt.failedCheckIds] : [],
+    rerunChecks: rerunChecksOf(attempt),
+    changedFiles: changedFilesOf(attempt),
+    verificationStatus,
+    hostFacts: [],
+    modelHypotheses: [],
+    updatedAt: attempt.updatedAt
+  };
+}
+function createRepairStateReader(options = {}) {
+  const stateDirOf = options.stateDirOf ?? ((directory) => {
+    const configured = loadOmoConfig({ cwd: directory }).config.task?.state_dir;
+    return resolveStateDir(configured === undefined ? { project_dir: directory } : { project_dir: directory, task: { state_dir: configured } });
+  });
+  return (input = {}) => {
+    const directory = asString2(input.directory);
+    const taskId = input.taskId;
+    if (directory === null || directory.trim().length === 0 || !isSafeTaskId(taskId)) {
+      return { error: "repair state: a project directory and a task id are required" };
+    }
+    let stateDir;
+    try {
+      stateDir = stateDirOf(directory);
+    } catch (error) {
+      return { error: `repair state unavailable: ${messageOf2(error, "state directory resolution failed")}` };
+    }
+    let inspected;
+    try {
+      inspected = inspectRepairDirectory(stateDir, taskId);
+    } catch (error) {
+      return { error: `repair attempt store unreadable for ${taskId}: ${messageOf2(error, "inspect failed")}` };
+    }
+    if (inspected.error !== undefined)
+      return { error: inspected.error };
+    if (inspected.absent === true)
+      return {};
+    let attempts;
+    try {
+      attempts = createRepairAttemptStore({ root: join6(stateDir, "repairs") }).list(taskId);
+    } catch (error) {
+      return { error: `repair attempt store unreadable for ${taskId}: ${messageOf2(error, "list failed")}` };
+    }
+    if (attempts.length !== inspected.records) {
+      const skipped = inspected.records - attempts.length;
+      return { error: `repair attempt store has ${skipped} unreadable record(s) for ${taskId}` };
+    }
+    if (attempts.length === 0)
+      return {};
+    const record = readTaskRecord(stateDir, taskId);
+    if (record.error !== undefined)
+      return { error: record.error };
+    const current = attempts.filter((attempt) => attempt.runEpoch === record.epoch);
+    if (current.length === 0)
+      return {};
+    const attempt = current[current.length - 1];
+    return { repair: projectRepair(attempt, taskId, record.verificationStatus) };
+  };
+}
+
+// ../../../web/server/lib/run-graph/record-tasks.js
+import * as nodeFs from "node:fs";
+import { join as join7 } from "node:path";
+var SUPPORTED_SCHEMA_VERSION = 1;
+var DEFAULT_RECORD_LIMIT = 2000;
+var MAX_RECORD_BYTES = 4 * 1024 * 1024;
+var LIFECYCLE = new Set(["pending", "running", "completed", "error", "cancelled", "interrupted", "lost"]);
+var VERIFICATION = new Set(["verified", "unverified", "blocked"]);
+var RECORD_FILE = /^[A-Za-z0-9_.-]+\.json$/;
+var asString3 = (value) => {
+  try {
+    return String(value) === value ? value : null;
+  } catch {
+    return null;
+  }
+};
+var asNumber = (value) => Number.isFinite(value) ? value : null;
+var isObject2 = (value) => Object.prototype.toString.call(value) === "[object Object]";
+var messageOf3 = (error) => error instanceof Error ? error.message : String(error);
+var emptyDiagnostics = () => ({
+  scanned: 0,
+  accepted: 0,
+  skipped: 0,
+  limitReached: false,
+  malformed: [],
+  unsupported: [],
+  identityMismatch: [],
+  duplicates: [],
+  symlinked: [],
+  unreadable: [],
+  unknownVerification: [],
+  unattributed: []
+});
+var RECORD_AUTHORITATIVE = [
+  "status",
+  "parent_session_id",
+  "root_session_id",
+  "child_session_id",
+  "depth",
+  "execution_mode",
+  "background_mode",
+  "model",
+  "error_message",
+  "failure_kind",
+  "failure_reason",
+  "verification_status",
+  "verification_source",
+  "started_at",
+  "terminal_at",
+  "updated_at",
+  "duration_ms"
+];
+var millisBetween = (from, to) => {
+  const start = asString3(from);
+  const end = asString3(to);
+  if (start === null || end === null)
+    return null;
+  const a = Date.parse(start);
+  const b = Date.parse(end);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a)
+    return null;
+  return b - a;
+};
+var rowOf = (record) => {
+  if (!isObject2(record))
+    return null;
+  const taskId = asString3(record.task_id);
+  if (taskId === null || taskId.length === 0)
+    return null;
+  const row = { task_id: taskId, status: asString3(record.status) ?? "unknown" };
+  const put = (key, value) => {
+    const text = asString3(value);
+    if (text !== null && text.length > 0)
+      row[key] = text;
+  };
+  put("name", record.name);
+  put("task_summary", record.task_summary);
+  put("root_session_id", record.root_session_id);
+  put("parent_session_id", record.parent_session_id);
+  put("child_session_id", record.child_session_id);
+  const depth = asNumber(record.depth);
+  if (depth !== null)
+    row.depth = depth;
+  put("execution_mode", record.execution_mode);
+  put("background_mode", record.background_mode);
+  put("model", asString3(record.effective_model) ?? asString3(record.resolved_model) ?? asString3(record.model));
+  put("error_message", record.error_message);
+  put("failure_kind", record.failure_kind);
+  put("failure_reason", record.failure_reason);
+  const declared = asString3(record.verification_status);
+  row.verification_status = declared === null ? "unverified" : VERIFICATION.has(declared) ? declared : "unknown";
+  row.verification_source = declared === null ? "absent" : "record";
+  put("created_at", record.created_at);
+  put("started_at", record.started_at);
+  put("terminal_at", record.terminal_at);
+  put("updated_at", record.updated_at);
+  const runStats = isObject2(record.run_stats) ? record.run_stats : null;
+  const runtimeMs = runStats === null ? null : asNumber(runStats.runtime_ms);
+  const duration = millisBetween(record.started_at, record.terminal_at);
+  if (duration !== null)
+    row.duration_ms = duration;
+  else if (runtimeMs !== null)
+    row.duration_ms = runtimeMs;
+  if (runStats !== null) {
+    const stats = {};
+    const turns = asNumber(runStats.turns);
+    const calls = asNumber(runStats.tool_calls);
+    if (turns !== null)
+      stats.turns = turns;
+    if (calls !== null)
+      stats.tool_calls = calls;
+    if (runtimeMs !== null)
+      stats.runtime_ms = runtimeMs;
+    if (Object.keys(stats).length > 0)
+      row.run_stats = stats;
+  }
+  return row;
+};
+var classify = (value) => {
+  if (!isObject2(value))
+    return { kind: "malformed", reason: "not a JSON object" };
+  const taskId = asString3(value.task_id);
+  if (taskId === null || taskId.trim().length === 0)
+    return { kind: "malformed", reason: "no task_id" };
+  const declared = value.schema_version;
+  if (declared !== undefined) {
+    if (!Number.isInteger(declared) || declared < 1) {
+      return { kind: "malformed", reason: "schema_version is not a positive integer" };
+    }
+    if (declared > SUPPORTED_SCHEMA_VERSION) {
+      return { kind: "unsupported", reason: `schema_version ${declared} is newer than ${SUPPORTED_SCHEMA_VERSION}` };
+    }
+  }
+  const status = asString3(value.status);
+  if (status === null)
+    return { kind: "malformed", reason: "no status" };
+  if (!LIFECYCLE.has(status))
+    return { kind: "unsupported", reason: `unknown status "${status}"` };
+  return { kind: "accepted", taskId, status };
+};
+var CACHE_LIMIT = 8;
+var recordCache = new Map;
+var statOf = (fsImpl, path) => {
+  try {
+    return fsImpl.lstatSync(path);
+  } catch {
+    return null;
+  }
+};
+var statKeyOf = (stat) => {
+  if (stat === null)
+    return "missing";
+  const size = asNumber(stat.size) ?? -1;
+  const mtime = asNumber(stat.mtimeMs) ?? -1;
+  const ctime = asNumber(stat.ctimeMs) ?? -1;
+  return `${size}:${mtime}:${ctime}`;
+};
+var parseOne = (fsImpl, path, stat) => {
+  if (stat === null)
+    return { kind: "unreadable", reason: "record could not be inspected" };
+  if (stat.isSymbolicLink?.() === true)
+    return { kind: "symlinked", reason: "record file is a symbolic link" };
+  const size = asNumber(stat.size);
+  if (size !== null && size > MAX_RECORD_BYTES) {
+    return { kind: "unreadable", reason: `record is ${size} bytes, above ${MAX_RECORD_BYTES}` };
+  }
+  try {
+    return { kind: "parsed", value: JSON.parse(fsImpl.readFileSync(path, "utf8")) };
+  } catch (error) {
+    return error instanceof SyntaxError ? { kind: "malformed", reason: `invalid JSON: ${messageOf3(error)}` } : { kind: "unreadable", reason: messageOf3(error) };
+  }
+};
+var createRecordTaskReader = (options = {}) => {
+  const stateDirOf = options.stateDirOf;
+  const fsImpl = options.fs === undefined ? nodeFs : { ...nodeFs, ...options.fs };
+  const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : DEFAULT_RECORD_LIMIT;
+  const cacheStore = options.cacheStore ?? recordCache;
+  const cacheEnabled = options.cache !== false;
+  return (input = {}) => {
+    const directory = asString3(input?.directory);
+    if (directory === null || directory.trim().length === 0) {
+      return { error: "record tasks: a project directory is required" };
+    }
+    let stateDir;
+    try {
+      stateDir = stateDirOf(directory);
+    } catch (error) {
+      return { error: `record tasks unavailable: ${messageOf3(error)}` };
+    }
+    if (asString3(stateDir) === null || String(stateDir).trim().length === 0) {
+      return { error: "record tasks unavailable: the store resolver answered no directory" };
+    }
+    const tasksDir = join7(stateDir, "tasks");
+    const tasksDirEntry = statOf(fsImpl, tasksDir);
+    if (tasksDirEntry !== null && tasksDirEntry.isSymbolicLink?.() === true) {
+      return { error: "record tasks unreadable: the store's tasks directory is a symbolic link" };
+    }
+    let names;
+    try {
+      names = fsImpl.readdirSync(tasksDir);
+    } catch (error) {
+      if (error?.code === "ENOENT")
+        return { tasks: [], absent: true, diagnostics: emptyDiagnostics() };
+      return { error: `record tasks unreadable: ${messageOf3(error)}` };
+    }
+    const all = names.map(String).filter((name) => RECORD_FILE.test(name)).sort();
+    const files = all.length > limit ? all.slice(all.length - limit) : all;
+    const diagnostics = emptyDiagnostics();
+    diagnostics.scanned = all.length;
+    diagnostics.limitReached = files.length < all.length;
+    const stats = new Map;
+    for (const name of files)
+      stats.set(name, statOf(fsImpl, join7(tasksDir, name)));
+    const cacheKey = `${stateDir}::${limit}`;
+    const cached = cacheEnabled ? cacheStore.get(cacheKey) : undefined;
+    const previous = cached instanceof Map ? cached : new Map;
+    const parsed = new Map;
+    for (const name of files) {
+      const stat = stats.get(name) ?? null;
+      const key = statKeyOf(stat);
+      const known = previous.get(name);
+      if (known !== undefined && known.key === key && known.entry.kind === "parsed") {
+        parsed.set(name, known.entry);
+        continue;
+      }
+      parsed.set(name, parseOne(fsImpl, join7(tasksDir, name), stat));
+    }
+    if (cacheEnabled) {
+      const entries = new Map;
+      for (const name of files) {
+        const entry = parsed.get(name);
+        if (entry.kind !== "parsed")
+          continue;
+        entries.set(name, { key: statKeyOf(stats.get(name) ?? null), entry });
+      }
+      cacheStore.delete(cacheKey);
+      cacheStore.set(cacheKey, entries);
+      while (cacheStore.size > CACHE_LIMIT) {
+        const oldest = cacheStore.keys().next();
+        if (oldest.done === true)
+          break;
+        cacheStore.delete(oldest.value);
+      }
+    }
+    const rows = [];
+    const claimed = new Map;
+    const report = (bucket, name, reason) => {
+      diagnostics.skipped += 1;
+      diagnostics[bucket].push({ file: name, reason });
+    };
+    const accepted = [];
+    for (const name of files) {
+      const entry = parsed.get(name);
+      if (entry === undefined) {
+        report("unreadable", name, "record vanished between listing and read");
+        continue;
+      }
+      if (entry.kind === "symlinked" || entry.kind === "unreadable" || entry.kind === "malformed") {
+        report(entry.kind, name, entry.reason);
+        continue;
+      }
+      const verdict = classify(entry.value);
+      if (verdict.kind !== "accepted") {
+        report(verdict.kind, name, verdict.reason);
+        continue;
+      }
+      accepted.push({ name, verdict, value: entry.value });
+    }
+    for (const claim of accepted) {
+      const holders = claimed.get(claim.verdict.taskId);
+      if (holders === undefined)
+        claimed.set(claim.verdict.taskId, [claim]);
+      else
+        holders.push(claim);
+    }
+    for (const [taskId, holders] of claimed) {
+      const canonical = holders.find((claim) => claim.name === `${taskId}.json`);
+      if (holders.length > 1 && canonical !== undefined) {
+        for (const other of holders) {
+          if (other === canonical)
+            continue;
+          diagnostics.duplicates.push({ task_id: taskId, first: other.name, second: canonical.name });
+          diagnostics.skipped += 1;
+        }
+      }
+      for (const claim of holders) {
+        if (claim !== canonical) {
+          diagnostics.identityMismatch.push({ file: claim.name, reason: `file name does not match task_id "${taskId}"` });
+          diagnostics.skipped += 1;
+        }
+      }
+      if (canonical === undefined)
+        continue;
+      const row = rowOf(canonical.value);
+      if (row === null) {
+        report("malformed", canonical.name, "record has no usable identity");
+        continue;
+      }
+      const declared = asString3(canonical.value?.verification_status);
+      if (declared !== null && !VERIFICATION.has(declared)) {
+        diagnostics.unknownVerification.push({ task_id: taskId, value: declared });
+      }
+      const placed = asString3(canonical.value?.parent_session_id) ?? asString3(canonical.value?.root_session_id) ?? asString3(canonical.value?.child_session_id);
+      if (placed === null || placed.length === 0)
+        diagnostics.unattributed.push({ task_id: taskId });
+      rows.push(row);
+      diagnostics.accepted += 1;
+    }
+    rows.sort((left, right) => {
+      const a = asString3(left.created_at) ?? "";
+      const b = asString3(right.created_at) ?? "";
+      if (a !== b)
+        return a < b ? -1 : 1;
+      return left.task_id < right.task_id ? -1 : left.task_id > right.task_id ? 1 : 0;
+    });
+    return { tasks: rows, absent: false, diagnostics };
+  };
+};
+var rowsForConversation = (rows, sessionId) => {
+  const wanted = asString3(sessionId);
+  if (wanted === null || !Array.isArray(rows))
+    return [];
+  const linksTo = (row) => asString3(row?.parent_session_id) === wanted || asString3(row?.root_session_id) === wanted || asString3(row?.child_session_id) === wanted;
+  return rows.filter(linksTo);
+};
+var CONTRACT_FIELDS = [
+  "status",
+  "root_session_id",
+  "name",
+  "task_summary",
+  "parent_session_id",
+  "child_session_id",
+  "depth",
+  "execution_mode",
+  "background_mode",
+  "model",
+  "error_message",
+  "failure_kind",
+  "failure_reason",
+  "verification_status",
+  "started_at",
+  "terminal_at",
+  "updated_at",
+  "duration_ms"
+];
+var provenanceOf = (mergedTask, recordRow) => {
+  const sources = {};
+  for (const field of CONTRACT_FIELDS) {
+    const mergedValue = mergedTask === undefined ? undefined : mergedTask[field];
+    if (mergedValue === undefined) {
+      sources[field] = "absent";
+      continue;
+    }
+    if (recordRow !== undefined && recordRow[field] === mergedValue)
+      sources[field] = "record";
+    else
+      sources[field] = "snapshot";
+  }
+  return sources;
+};
+var reconcileNodeClaims = (document, rowById) => {
+  const dag = isObject2(document.dag) ? document.dag : null;
+  const runs = dag !== null && Array.isArray(dag.runs) ? dag.runs : null;
+  if (runs === null)
+    return { document, changed: false };
+  let changed = false;
+  const nextRuns = runs.map((run) => {
+    if (!isObject2(run) || !Array.isArray(run.nodes))
+      return run;
+    let runChanged = false;
+    const nodes = run.nodes.map((node) => {
+      if (!isObject2(node))
+        return node;
+      const taskId = asString3(node.task_id);
+      if (taskId === null)
+        return node;
+      const row = rowById.get(taskId);
+      if (row === undefined)
+        return node;
+      const claim = asString3(row.verification_status);
+      if (claim === null || node.verification_status === claim)
+        return node;
+      runChanged = true;
+      return { ...node, verification_status: claim, verification_source: "record" };
+    });
+    if (!runChanged)
+      return run;
+    changed = true;
+    return { ...run, nodes };
+  });
+  return { document: changed ? { ...document, dag: { ...dag, runs: nextRuns } } : document, changed };
+};
+var mergeRecordTasks = (document, rows, diagnostics) => {
+  const withDiagnostics = (value) => {
+    if (diagnostics === undefined)
+      return value;
+    if (!isObject2(value) || Array.isArray(value))
+      return value;
+    const container = isObject2(value.tasks) ? value.tasks : {};
+    return { ...value, tasks: { ...container, diagnostics } };
+  };
+  if (!isObject2(document) || Array.isArray(document))
+    return document;
+  if (!Array.isArray(rows) || rows.length === 0)
+    return withDiagnostics(document);
+  const container = isObject2(document.tasks) ? document.tasks : {};
+  const existing = Array.isArray(container.tasks) ? container.tasks : [];
+  const rowById = new Map;
+  for (const row of rows) {
+    const id = asString3(row?.task_id);
+    if (id !== null)
+      rowById.set(id, row);
+  }
+  let changed = false;
+  const mergedTasks = existing.map((task) => {
+    const id = asString3(task?.task_id);
+    if (id === null || !isObject2(task))
+      return task;
+    const row = rowById.get(id);
+    if (row === undefined)
+      return task;
+    const merged = { ...task };
+    let mergedChanged = false;
+    for (const field of RECORD_AUTHORITATIVE) {
+      const value = row[field];
+      if (value === undefined)
+        continue;
+      if (merged[field] === value)
+        continue;
+      merged[field] = value;
+      mergedChanged = true;
+    }
+    if (!mergedChanged)
+      return task;
+    changed = true;
+    return merged;
+  });
+  const present = new Set;
+  for (const task of existing) {
+    const id = asString3(task?.task_id);
+    if (id !== null)
+      present.add(id);
+  }
+  for (const row of rows) {
+    const id = asString3(row?.task_id);
+    if (id === null || present.has(id))
+      continue;
+    present.add(id);
+    mergedTasks.push(row);
+    changed = true;
+  }
+  let withTasks = document;
+  if (changed) {
+    const provenance = Object.assign({}, isObject2(container.provenance) ? container.provenance : null);
+    for (const task of mergedTasks) {
+      const id = asString3(task?.task_id);
+      if (id === null)
+        continue;
+      provenance[id] = provenanceOf(task, rowById.get(id));
+    }
+    withTasks = { ...document, tasks: { ...container, tasks: mergedTasks, provenance } };
+  }
+  const reconciled = reconcileNodeClaims(withTasks, rowById);
+  if (!changed && !reconciled.changed)
+    return withDiagnostics(document);
+  return withDiagnostics(reconciled.document);
+};
+
+// ../../../web/server/lib/verification-approval/record-tasks-reader.js
+var createRecordTaskReaderForProject = (options = {}) => {
+  const settings = {
+    stateDirOf: (directory) => {
+      const configured = loadOmoConfig({ cwd: directory }).config.task?.state_dir;
+      return resolveStateDir(configured === undefined ? { project_dir: directory } : { project_dir: directory, task: { state_dir: configured } });
+    }
+  };
+  if (options.limit !== undefined)
+    settings.limit = options.limit;
+  if (options.cacheStore !== undefined)
+    settings.cacheStore = options.cacheStore;
+  return createRecordTaskReader(settings);
+};
+
 // ../../../omo-engine/memory-core/src/project-knowledge/record.ts
 import { createHash as createHash5 } from "node:crypto";
 
@@ -27602,13 +28523,13 @@ var {
   fsyncSync,
   linkSync,
   lstatSync: lstatSync3,
-  mkdirSync,
-  readFileSync: readFileSync3,
-  readdirSync: readdirSync4,
+  mkdirSync: mkdirSync2,
+  readFileSync: readFileSync5,
+  readdirSync: readdirSync6,
   realpathSync: realpathSync3,
-  statSync: statSync3,
-  unlinkSync,
-  writeFileSync: writeFileSync2,
+  statSync: statSync4,
+  unlinkSync: unlinkSync2,
+  writeFileSync: writeFileSync3,
   writeSync: writeSync2
 } = sync;
 
@@ -29408,8 +30329,8 @@ function evaluateFreshness(record, headRevision, nowMs) {
 }
 
 // ../../../omo-engine/omo-opencode/src/cli/run/run-snapshot-store.ts
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync6, renameSync as renameSync2, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join5 } from "node:path";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync8, renameSync as renameSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join8 } from "node:path";
 
 // ../../../../node_modules/.bun/typebox@1.3.34/node_modules/typebox/build/system/memory/metrics.mjs
 var Metrics = {
@@ -35380,19 +36301,19 @@ import { randomUUID } from "node:crypto";
 import {
   closeSync as closeSync3,
   linkSync as linkSync2,
-  mkdirSync as mkdirSync2,
+  mkdirSync as mkdirSync3,
   openSync as openSync3,
-  readFileSync as readFileSync5,
-  renameSync,
+  readFileSync as readFileSync7,
+  renameSync as renameSync2,
   rmSync,
-  statSync as statSync4,
+  statSync as statSync5,
   utimesSync,
   writeSync as writeSync3
 } from "node:fs";
 import { dirname as dirname3 } from "node:path";
 
 // ../../../omo-engine/senpi-task/src/store/lock-owner.ts
-import { readFileSync as readFileSync4 } from "node:fs";
+import { readFileSync as readFileSync6 } from "node:fs";
 import { createRequire as createRequire2 } from "node:module";
 import { hostname as hostname2 } from "node:os";
 
@@ -35491,7 +36412,7 @@ function readProcessStartIdentity(pid) {
 }
 function readLinuxStartIdentity(pid) {
   try {
-    const stat = readFileSync4(`/proc/${pid}/stat`, "utf8");
+    const stat = readFileSync6(`/proc/${pid}/stat`, "utf8");
     const fields = stat.slice(stat.lastIndexOf(")") + 2).trim().split(/\s+/);
     const startTicks = fields[19];
     return startTicks === undefined ? null : `linux-proc-start-ticks:${startTicks}`;
@@ -35573,7 +36494,7 @@ var DELETE_PENDING = "delete-pending";
 var sleeper = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
 function withTaskRecordLock(recordPath, operation, options = {}) {
   const lockPath = `${recordPath}.lock`;
-  mkdirSync2(dirname3(lockPath), { recursive: true });
+  mkdirSync3(dirname3(lockPath), { recursive: true });
   const token = acquireLock(lockPath, options.holderWaitMs ?? LOCK_HOLDER_WAIT_MS);
   try {
     return operation();
@@ -35681,7 +36602,7 @@ function reclaimAbandonedRecoveryLock(recoveryPath) {
     return false;
   const tombstone = `${recoveryPath}.reaping-${randomUUID()}`;
   try {
-    renameSync(recoveryPath, tombstone);
+    renameSync2(recoveryPath, tombstone);
   } catch (error) {
     if (hasCode(error, "ENOENT"))
       return true;
@@ -35704,8 +36625,8 @@ function reclaimAbandonedRecoveryLock(recoveryPath) {
 }
 function readLockIdentity(lockPath) {
   try {
-    const stat = statSync4(lockPath);
-    return { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs, body: readFileSync5(lockPath, "utf8") };
+    const stat = statSync5(lockPath);
+    return { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs, body: readFileSync7(lockPath, "utf8") };
   } catch (error) {
     if (hasCode(error, "ENOENT"))
       return;
@@ -35716,7 +36637,7 @@ function readLockIdentity(lockPath) {
 }
 function lockNameOccupied(lockPath) {
   try {
-    statSync4(lockPath);
+    statSync5(lockPath);
     return true;
   } catch (error) {
     return isWindowsSharingError(error);
@@ -35731,7 +36652,7 @@ function releaseLock(lockPath, token) {
 }
 function readToken(lockPath) {
   try {
-    return readFileSync5(lockPath, "utf8").split(`
+    return readFileSync7(lockPath, "utf8").split(`
 `)[2];
   } catch (error) {
     if (hasCode(error, "ENOENT"))
@@ -35789,7 +36710,7 @@ var decodeJson = (raw) => {
     return null;
   }
 };
-var readFailureCode2 = (error) => {
+var readFailureCode3 = (error) => {
   if (!("code" in error))
     return;
   const code = error.code;
@@ -35801,7 +36722,7 @@ function readRunSnapshot(path, readFile) {
     raw = readFile(path);
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
-    const code = readFailureCode2(error);
+    const code = readFailureCode3(error);
     if (code === "ENOENT" || code === "ENOTDIR")
       return { doc: null };
     return { doc: null, reason: `existing snapshot is unreadable (${String(code ?? "read failed")})`, kind: "unreadable" };
@@ -35823,10 +36744,10 @@ function publishSnapshot(path, doc) {
   const serialized = `${JSON.stringify(doc, null, 1)}
 `;
   try {
-    mkdirSync3(join5(path, ".."), { recursive: true });
+    mkdirSync4(join8(path, ".."), { recursive: true });
     const temp = `${path}.${process.pid.toString(36)}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`;
-    writeFileSync3(temp, serialized, "utf8");
-    renameSync2(temp, path);
+    writeFileSync4(temp, serialized, "utf8");
+    renameSync3(temp, path);
     return { written: true, path, value: doc };
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
@@ -35834,7 +36755,7 @@ function publishSnapshot(path, doc) {
   }
 }
 function mutateRunSnapshot(input) {
-  const readFile = input.readFile ?? ((path) => readFileSync6(path, "utf8"));
+  const readFile = input.readFile ?? ((path) => readFileSync8(path, "utf8"));
   const attemptLimit = input.attemptLimit ?? 3;
   const attemptOnce = () => {
     const existing = readRunSnapshot(input.path, readFile);
@@ -35888,25 +36809,27 @@ var DAG_DEBUG_MAX_LEDGER_BYTES = 1048576;
 var DAG_DEBUG_HOOK_PATTERN = "(?:ultrawork|ulw)";
 var defaultServiceSnapshotDir = (tmpdir = osTmpdir, join = joinPath2) => join(tmpdir(), DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX);
 var isNonEmptyString2 = (value) => (value?.trim?.() ?? "").length > 0;
-var asString2 = (value) => value?.trim?.() ?? "";
-var isRecord14 = (value) => Object(value) === value && !Array.isArray(value);
-var isEngineSnapshotDocument = (doc) => isRecord14(doc) && isRecord14(doc.tasks) && Array.isArray(doc.tasks.tasks) && doc.tasks.tasks.length > 0;
+var asString4 = (value) => value?.trim?.() ?? "";
+var isRecord15 = (value) => Object(value) === value && !Array.isArray(value);
+var isEngineSnapshotDocument = (doc) => isRecord15(doc) && isRecord15(doc.tasks) && Array.isArray(doc.tasks.tasks) && doc.tasks.tasks.length > 0;
 var DAG_LOOP_RUNS_MAX = 50;
 var DAG_LOOP_PLAN_MAX_BYTES = 262144;
 var isSafeSessionId = (value) => {
-  const text = asString2(value);
+  const text = asString4(value);
   return text.length > 0 && !/[\\/]/.test(text) && !text.includes("..");
 };
 var DAG_RUNS_DIRNAME = "dag-runs";
 var DAG_RUN_HISTORY_DIRNAME = "history";
 var DAG_RUN_HISTORY_MAX = 20;
 var isSafeDirectory = (value) => {
-  const text = asString2(value);
+  const text = asString4(value);
   if (text.length === 0)
     return false;
   if (text.split(/[\\/]+/).includes(".."))
     return false;
-  return text.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(text) || text.startsWith("\\\\");
+  if (text.startsWith("\\\\") || text.startsWith("//") || text.startsWith("\\\\."))
+    return false;
+  return text.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(text);
 };
 var RATIONALE_GIT_TIMEOUT_MS = 15000;
 var gitHeadText = (directory, args) => {
@@ -35947,28 +36870,46 @@ var projectRunsDir = (directory) => `${directory.trim().replace(/[/\\]+$/, "")}/
 var projectLiveRunPath = (directory, sessionId) => `${projectRunsDir(directory)}/${sessionId}.snapshot.json`;
 var projectRunHistoryDir = (directory, sessionId) => `${projectRunsDir(directory)}/${DAG_RUN_HISTORY_DIRNAME}/${sessionId}`;
 var readPostedRunDoc = (doc) => {
-  if (!isRecord14(doc))
+  if (!isRecord15(doc))
     return null;
   if (doc.schemaVersion !== 1)
     return null;
-  const sessionId = asString2(doc.sessionId);
+  const sessionId = asString4(doc.sessionId);
   if (!isSafeSessionId(sessionId))
     return null;
-  const dag = isRecord14(doc.dag) ? doc.dag : null;
+  const dag = isRecord15(doc.dag) ? doc.dag : null;
   if (!dag || !Array.isArray(dag.runs) || dag.runs.length === 0)
     return null;
-  const run = isRecord14(dag.runs[0]) ? dag.runs[0] : null;
+  const run = isRecord15(dag.runs[0]) ? dag.runs[0] : null;
   if (!run)
     return null;
   if (!isNonEmptyString2(run.run_id) || !isNonEmptyString2(run.run_key) || !isNonEmptyString2(run.name) || !isNonEmptyString2(run.status))
     return null;
-  return { sessionId, status: run.status.trim(), updatedAt: asString2(doc.updatedAt) || null };
+  return { sessionId, status: run.status.trim(), updatedAt: asString4(doc.updatedAt) || null };
 };
 var ATTRIBUTION_ID_FIELDS = ["task_id", "node_id"];
 var VERIFICATION_FIELD = "verification_status";
-var VERIFICATION_STATUSES2 = ["verified", "unverified", "blocked"];
+var VERIFICATION_STATUSES3 = ["verified", "unverified", "blocked"];
 var asPostedString = (value) => String(value) === value ? value : null;
-var ownAttributionEntry = (table, key) => isRecord14(table) && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+var ownAttributionEntry = (table, key) => isRecord15(table) && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+var taskEntryFor = (index, taskId, conversationId, nodeSessionId) => {
+  const entry = ownAttributionEntry(index.byTaskId, taskId);
+  if (!isRecord15(entry))
+    return { kind: "absent" };
+  const wanted = asString4(conversationId);
+  if (wanted.length === 0)
+    return { kind: "entry", entry };
+  const named = [entry.parentSessionId, entry.rootSessionId].filter((value) => asString4(value).length > 0);
+  const child = asString4(entry.childSessionId);
+  const rendered = asString4(nodeSessionId);
+  if (named.includes(wanted))
+    return { kind: "entry", entry };
+  if (child.length > 0 && rendered.length > 0 && child === rendered)
+    return { kind: "entry", entry };
+  if (named.length === 0 && child.length === 0)
+    return { kind: "unattributed", entry };
+  return { kind: "mismatch", entry };
+};
 var postedIdClaim = (record, field) => {
   const raw = record[field];
   if (raw === undefined)
@@ -35984,18 +36925,18 @@ var postedVerificationClaim = (record) => {
     return { present: false };
   const text = asPostedString(raw);
   const value = text === null ? null : text.trim();
-  if (value === null || !VERIFICATION_STATUSES2.includes(value))
+  if (value === null || !VERIFICATION_STATUSES3.includes(value))
     return { present: true, invalid: true };
   return { present: true, value };
 };
 var verificationDropReason = (claim, entry) => {
   if (claim.invalid === true)
-    return `${VERIFICATION_FIELD} must be one of ${VERIFICATION_STATUSES2.join(", ")}`;
-  if (!isRecord14(entry))
+    return `${VERIFICATION_FIELD} must be one of ${VERIFICATION_STATUSES3.join(", ")}`;
+  if (!isRecord15(entry))
     return `${VERIFICATION_FIELD} is not present in the attribution records`;
   return `${VERIFICATION_FIELD} does not match the persisted task record`;
 };
-var corroborateNodeClaims = (node, index, nodeIndex, dropped) => {
+var corroborateNodeClaims = (node, index, nodeIndex, dropped, conversationId) => {
   const claims = ATTRIBUTION_ID_FIELDS.map((field) => ({ field, ...postedIdClaim(node, field) })).filter((claim) => claim.present);
   const verificationClaim = postedVerificationClaim(node);
   if (claims.length === 0 && verificationClaim.present !== true)
@@ -36004,7 +36945,8 @@ var corroborateNodeClaims = (node, index, nodeIndex, dropped) => {
   const nodeId = rawNodeId === null ? null : rawNodeId.trim();
   const childEntry = nodeId === null || nodeId.length === 0 ? undefined : ownAttributionEntry(index.byChildSessionId, nodeId);
   const taskClaim = claims.find((claim) => claim.field === "task_id");
-  const taskEntry = taskClaim !== undefined && taskClaim.invalid !== true ? ownAttributionEntry(index.byTaskId, taskClaim.value) : undefined;
+  const nodeTask = taskClaim !== undefined && taskClaim.invalid !== true ? taskEntryFor(index, taskClaim.value, conversationId, nodeId) : { kind: "absent" };
+  const taskEntry = nodeTask.kind === "entry" ? nodeTask.entry : undefined;
   let changed = false;
   const kept = { ...node };
   const drop = (field, reason) => {
@@ -36019,13 +36961,13 @@ var corroborateNodeClaims = (node, index, nodeIndex, dropped) => {
     }
     if (claim.field === "task_id") {
       if (taskEntry === undefined) {
-        drop("task_id", "task_id is not present in the attribution records");
-      } else if (isRecord14(childEntry) && childEntry.taskId !== claim.value) {
+        drop("task_id", nodeTask.kind === "absent" ? "task_id is not present in the attribution records" : "task_id is not attributed to this conversation");
+      } else if (isRecord15(childEntry) && childEntry.taskId !== claim.value) {
         drop("task_id", "task_id does not match the task recorded for this child session");
       }
       continue;
     }
-    if (isRecord14(childEntry)) {
+    if (isRecord15(childEntry)) {
       if (childEntry.nodeId !== claim.value) {
         drop("node_id", "node_id does not match the dag node recorded for this child session");
       }
@@ -36037,19 +36979,19 @@ var corroborateNodeClaims = (node, index, nodeIndex, dropped) => {
       }
       continue;
     }
-    const known = Array.isArray(index.entries) && index.entries.some((entry) => isRecord14(entry) && entry.nodeId === claim.value);
+    const known = Array.isArray(index.entries) && index.entries.some((entry) => isRecord15(entry) && entry.nodeId === claim.value);
     if (!known)
       drop("node_id", "node_id is not present in the attribution records");
   }
   if (verificationClaim.present === true) {
-    const entry = isRecord14(taskEntry) ? taskEntry : childEntry;
-    if (verificationClaim.invalid !== true && isRecord14(entry) && entry.verificationStatus === verificationClaim.value) {} else {
+    const entry = isRecord15(taskEntry) ? taskEntry : childEntry;
+    if (verificationClaim.invalid !== true && isRecord15(entry) && entry.verificationStatus === verificationClaim.value) {} else {
       drop(VERIFICATION_FIELD, verificationDropReason(verificationClaim, entry));
     }
   }
   return changed ? kept : node;
 };
-var corroborateTaskClaims = (task, index, taskIndex, dropped) => {
+var corroborateTaskClaims = (task, index, taskIndex, dropped, conversationId) => {
   const claims = ATTRIBUTION_ID_FIELDS.map((field) => ({ field, ...postedIdClaim(task, field) })).filter((claim) => claim.present);
   const verificationClaim = postedVerificationClaim(task);
   if (claims.length === 0 && verificationClaim.present !== true)
@@ -36057,7 +36999,8 @@ var corroborateTaskClaims = (task, index, taskIndex, dropped) => {
   const rawTaskId = asPostedString(task.task_id);
   const taskRowId = rawTaskId === null ? null : rawTaskId.trim();
   const taskClaim = claims.find((claim) => claim.field === "task_id");
-  const taskEntry = taskClaim !== undefined && taskClaim.invalid !== true ? ownAttributionEntry(index.byTaskId, taskClaim.value) : undefined;
+  const rowTask = taskClaim !== undefined && taskClaim.invalid !== true ? taskEntryFor(index, taskClaim.value, conversationId) : { kind: "absent" };
+  const taskEntry = rowTask.kind === "entry" ? rowTask.entry : undefined;
   let changed = false;
   const kept = { ...task };
   const drop = (field, reason) => {
@@ -36072,7 +37015,7 @@ var corroborateTaskClaims = (task, index, taskIndex, dropped) => {
     }
     if (claim.field === "task_id") {
       if (taskEntry === undefined) {
-        drop("task_id", "task_id is not present in the attribution records");
+        drop("task_id", rowTask.kind === "absent" ? "task_id is not present in the attribution records" : "task_id is not attributed to this conversation");
       }
       continue;
     }
@@ -36082,31 +37025,31 @@ var corroborateTaskClaims = (task, index, taskIndex, dropped) => {
       }
       continue;
     }
-    const known = Array.isArray(index.entries) && index.entries.some((entry) => isRecord14(entry) && entry.nodeId === claim.value);
+    const known = Array.isArray(index.entries) && index.entries.some((entry) => isRecord15(entry) && entry.nodeId === claim.value);
     if (!known)
       drop("node_id", "node_id is not present in the attribution records");
   }
   if (verificationClaim.present === true) {
-    if (verificationClaim.invalid !== true && isRecord14(taskEntry) && taskEntry.verificationStatus === verificationClaim.value) {} else {
+    if (verificationClaim.invalid !== true && isRecord15(taskEntry) && taskEntry.verificationStatus === verificationClaim.value) {} else {
       drop(VERIFICATION_FIELD, verificationDropReason(verificationClaim, taskEntry));
     }
   }
   return changed ? kept : task;
 };
-var corroboratePostedRuns = (doc, index, dropped) => {
-  const runs = isRecord14(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
+var corroboratePostedRuns = (doc, index, dropped, conversationId) => {
+  const runs = isRecord15(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
   if (runs === null)
     return doc;
   let changed = false;
   const nextRuns = runs.map((run) => {
-    if (!isRecord14(run) || !Array.isArray(run.nodes))
+    if (!isRecord15(run) || !Array.isArray(run.nodes))
       return run;
     let nodesChanged = false;
     const nodes = run.nodes.map((node, nodeIndex) => {
-      if (!isRecord14(node))
+      if (!isRecord15(node))
         return node;
       const before = dropped.length;
-      const next = corroborateNodeClaims(node, index, nodeIndex, dropped);
+      const next = corroborateNodeClaims(node, index, nodeIndex, dropped, conversationId);
       if (next !== node || dropped.length !== before)
         nodesChanged = true;
       return next;
@@ -36118,34 +37061,34 @@ var corroboratePostedRuns = (doc, index, dropped) => {
   });
   return changed ? { ...doc, dag: { ...doc.dag, runs: nextRuns } } : doc;
 };
-var corroboratePostedTasks = (doc, index, dropped) => {
-  const tasks = isRecord14(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
+var corroboratePostedTasks = (doc, index, dropped, conversationId) => {
+  const tasks = isRecord15(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
   if (tasks === null)
     return doc;
   let changed = false;
   const nextTasks = tasks.map((task, taskIndex) => {
-    if (!isRecord14(task))
+    if (!isRecord15(task))
       return task;
     const before = dropped.length;
-    const next = corroborateTaskClaims(task, index, taskIndex, dropped);
+    const next = corroborateTaskClaims(task, index, taskIndex, dropped, conversationId);
     if (next !== task || dropped.length !== before)
       changed = true;
     return next;
   });
   return changed ? { ...doc, tasks: { ...doc.tasks, tasks: nextTasks } } : doc;
 };
-var corroboratePostedSnapshot = (doc, index, dropped) => corroboratePostedTasks(corroboratePostedRuns(doc, index, dropped), index, dropped);
+var corroboratePostedSnapshot = (doc, index, dropped, conversationId) => corroboratePostedTasks(corroboratePostedRuns(doc, index, dropped, conversationId), index, dropped, conversationId);
 var dropUnverifiablePostedRuns = (doc, dropped) => {
-  const runs = isRecord14(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
+  const runs = isRecord15(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
   if (runs === null)
     return doc;
   let changed = false;
   const nextRuns = runs.map((run) => {
-    if (!isRecord14(run) || !Array.isArray(run.nodes))
+    if (!isRecord15(run) || !Array.isArray(run.nodes))
       return run;
     let nodesChanged = false;
     const nodes = run.nodes.map((node, nodeIndex) => {
-      if (!isRecord14(node))
+      if (!isRecord15(node))
         return node;
       const present = ATTRIBUTION_ID_FIELDS.filter((field) => node[field] !== undefined);
       if (node[VERIFICATION_FIELD] !== undefined)
@@ -36170,12 +37113,12 @@ var dropUnverifiablePostedRuns = (doc, dropped) => {
   return changed ? { ...doc, dag: { ...doc.dag, runs: nextRuns } } : doc;
 };
 var dropUnverifiablePostedTasks = (doc, dropped) => {
-  const tasks = isRecord14(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
+  const tasks = isRecord15(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
   if (tasks === null)
     return doc;
   let changed = false;
   const nextTasks = tasks.map((task, taskIndex) => {
-    if (!isRecord14(task))
+    if (!isRecord15(task))
       return task;
     const present = ATTRIBUTION_ID_FIELDS.filter((field) => task[field] !== undefined);
     if (task[VERIFICATION_FIELD] !== undefined)
@@ -36200,11 +37143,11 @@ var readPostedAttribution = (readAttributionState, directory) => {
   try {
     index = readAttributionState({ directory });
   } catch (error) {
-    return { skipped: `attribution state read failed: ${asString2(error?.message) || "unknown error"}` };
+    return { skipped: `attribution state read failed: ${asString4(error?.message) || "unknown error"}` };
   }
-  if (!isRecord14(index))
+  if (!isRecord15(index))
     return { skipped: "attribution state reader returned an invalid result" };
-  const error = asString2(index.error);
+  const error = asString4(index.error);
   if (error.length > 0)
     return { skipped: error };
   if (index.absent === true)
@@ -36221,13 +37164,13 @@ var CHAT_RUN_SOURCE = "chat";
 var mergeChatSnapshot = (existingDoc, incoming, directory) => {
   const incomingDoc = { ...incoming, directory };
   const incomingRuns = Array.isArray(incomingDoc?.dag?.runs) ? incomingDoc.dag.runs : [];
-  const tagChat = (run) => isRecord14(run) ? { ...run, source: CHAT_RUN_SOURCE } : run;
+  const tagChat = (run) => isRecord15(run) ? { ...run, source: CHAT_RUN_SOURCE } : run;
   if (existingDoc === null) {
     return { doc: { ...incomingDoc, dag: { ...incomingDoc.dag, runs: incomingRuns.map(tagChat) } } };
   }
-  const kept = existingDoc.dag.runs.filter((run) => isRecord14(run) && run.source !== CHAT_RUN_SOURCE);
+  const kept = existingDoc.dag.runs.filter((run) => isRecord15(run) && run.source !== CHAT_RUN_SOURCE);
   const keptIds = new Set(kept.map((run) => run.run_id));
-  const appended = incomingRuns.map(tagChat).filter((run) => !isRecord14(run) || !keptIds.has(run.run_id));
+  const appended = incomingRuns.map(tagChat).filter((run) => !isRecord15(run) || !keptIds.has(run.run_id));
   return {
     doc: {
       ...existingDoc,
@@ -36351,7 +37294,7 @@ var readLoopPlan = (fs, directory, sessionId) => {
     if (!stat.isFile() || stat.size > DAG_LOOP_PLAN_MAX_BYTES)
       return null;
     const parsed = JSON.parse(fs.readFileSync(planPath, "utf8"));
-    if (!isRecord14(parsed))
+    if (!isRecord15(parsed))
       return null;
     return parsed;
   } catch {
@@ -36407,7 +37350,7 @@ var readLoopGoalsPlan = (fs, directory, sessionId) => {
     } catch {
       continue;
     }
-    if (!isRecord14(parsed) || !Array.isArray(parsed.goals))
+    if (!isRecord15(parsed) || !Array.isArray(parsed.goals))
       continue;
     return parsed;
   }
@@ -36433,15 +37376,15 @@ var readLoopWorkerEntries = (fs, directory, sessionId) => {
     } catch {
       continue;
     }
-    if (!isRecord14(parsed))
+    if (!isRecord15(parsed))
       continue;
-    const kind = asString2(parsed.kind);
+    const kind = asString4(parsed.kind);
     if (!DAG_LOOP_WORKER_KINDS.includes(kind))
       continue;
-    const goalId = asString2(parsed.goalId);
+    const goalId = asString4(parsed.goalId);
     if (goalId === "")
       continue;
-    entries.push({ kind, goalId, at: asString2(parsed.at), message: asString2(parsed.message) });
+    entries.push({ kind, goalId, at: asString4(parsed.at), message: asString4(parsed.message) });
   }
   return entries;
 };
@@ -36506,25 +37449,25 @@ var projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
   const failedEvent = events.includes("failed") || events.includes("error") || events.includes("goal_failed") || events.includes("final_review_failed") || events.includes("criterion_failed") || events.includes("child_failed");
   const status = planComplete || completedEvent ? "completed" : failedEvent ? "failed" : events.length > 0 || state.plan || state.goals ? "running" : "pending";
   const goalsPlanForTitle = readLoopGoalsPlan(fs, directory, sessionId);
-  const goalsBriefTitle = Array.isArray(goalsPlanForTitle?.goals) ? asString2(goalsPlanForTitle.brief).split(`
+  const goalsBriefTitle = Array.isArray(goalsPlanForTitle?.goals) ? asString4(goalsPlanForTitle.brief).split(`
 `)[0] : "";
-  const title = (asString2(plan?.title) || asString2(plan?.goal).split(`
+  const title = (asString4(plan?.title) || asString4(plan?.goal).split(`
 `)[0] || goalsBriefTitle || sessionId).slice(0, 120);
   const goalsPlan = readLoopGoalsPlan(fs, directory, sessionId);
-  const goalRecords = Array.isArray(goalsPlan?.goals) ? goalsPlan.goals.filter(isRecord14) : [];
+  const goalRecords = Array.isArray(goalsPlan?.goals) ? goalsPlan.goals.filter(isRecord15) : [];
   if (goalRecords.length > 0) {
     const childNodes = goalRecords.map((goal, index) => {
-      const id = asString2(goal.id) || `goal-${index + 1}`;
-      const label = (asString2(goal.title) || id).slice(0, 80);
+      const id = asString4(goal.id) || `goal-${index + 1}`;
+      const label = (asString4(goal.title) || id).slice(0, 80);
       return {
         id,
         label,
-        state: loopNodeStateForGoal(asString2(goal.status)),
+        state: loopNodeStateForGoal(asString4(goal.status)),
         attempt: Number.isInteger(goal.attempt) && goal.attempt > 0 ? goal.attempt : 1,
-        prompt: (asString2(goal.objective) || label).slice(0, 512),
+        prompt: (asString4(goal.objective) || label).slice(0, 512),
         depends_on: ["parent"],
-        started_at: asString2(goal.startedAt) || null,
-        completed_at: asString2(goal.completedAt) || null
+        started_at: asString4(goal.startedAt) || null,
+        completed_at: asString4(goal.completedAt) || null
       };
     });
     const goalIds = childNodes.map((node) => node.id);
@@ -36536,7 +37479,7 @@ var projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
         workersByGoal.set(goalId, []);
       workersByGoal.get(goalId).push(worker.id);
     }
-    const aggregateDone = isRecord14(goalsPlan?.aggregateCompletion) && goalsPlan.aggregateCompletion.status === "complete";
+    const aggregateDone = isRecord15(goalsPlan?.aggregateCompletion) && goalsPlan.aggregateCompletion.status === "complete";
     const allChildrenComplete = childNodes.every((node) => node.state === "completed");
     const anyChildFailed = childNodes.some((node) => node.state === "failed");
     const anyChildRunning = childNodes.some((node) => node.state === "running");
@@ -36648,7 +37591,7 @@ var projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
 };
 var createDagServiceHandlers = (dependencies = {}) => {
   const {
-    fs = nodeFs,
+    fs = nodeFs2,
     snapshotDir = defaultServiceSnapshotDir(),
     now = Date.now,
     createBridge = (entry) => createOmoBridgeRuntime({
@@ -36657,7 +37600,9 @@ var createDagServiceHandlers = (dependencies = {}) => {
       resolveEngineEntry: () => entry ?? process.env.OMO_WRAPPER_PATH ?? null
     }),
     codeGraphRuntime = null,
-    attributionStateReader = createAttributionStateReader()
+    attributionStateReader = createAttributionStateReader(),
+    repairStateReader = createRepairStateReader(),
+    recordTaskReader = null
   } = dependencies;
   const codeGraphStoreDir = process.env.ALCODE_DATA_DIR !== undefined && process.env.ALCODE_DATA_DIR.length > 0 ? joinPath2(nodePath.resolve(process.env.ALCODE_DATA_DIR), "code-graph-store") : joinPath2(osHomedir(), ".config", "alcode", "code-graph-store");
   const codeGraph = codeGraphRuntime ?? createCodeGraphRuntime({ fsPromises: nodeFsPromises, path: nodePath }, { blockOnRead: true, storeDir: codeGraphStoreDir });
@@ -36668,7 +37613,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
   let lastRoute = null;
   const routeBySession = new Map;
   const recordRouteBySession = (report) => {
-    const id = asString2(report?.sessionId);
+    const id = asString4(report?.sessionId);
     if (!isSafeSessionId(id))
       return;
     if (!routeBySession.has(id) && routeBySession.size >= DAG_LOOP_RUNS_MAX) {
@@ -36687,7 +37632,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
       runs.push({
         sessionId,
         source: "loop",
-        decision: asString2(route?.decision) || null,
+        decision: asString4(route?.decision) || null,
         plan: state.plan,
         goals: state.goals,
         ledger: state.ledger,
@@ -36709,7 +37654,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
         goals: false,
         ledger: false,
         events: 0,
-        updatedAt: asString2(route?.at) || null
+        updatedAt: asString4(route?.at) || null
       });
     }
     return runs.slice(0, DAG_LOOP_RUNS_MAX);
@@ -36734,14 +37679,14 @@ var createDagServiceHandlers = (dependencies = {}) => {
       }
       const runs = Array.isArray(doc?.dag?.runs) ? doc.dag.runs : [];
       const run = runs[0] ?? null;
-      if (!isRecord14(run)) {
+      if (!isRecord15(run)) {
         skipped += 1;
         continue;
       }
-      const status = asString2(run.status);
+      const status = asString4(run.status);
       if (status !== "completed" && status !== "failed")
         continue;
-      const docDirectory = asString2(doc?.directory);
+      const docDirectory = asString4(doc?.directory);
       if (trimmedDirectory !== null && docDirectory !== null && docDirectory !== trimmedDirectory)
         continue;
       if (trimmedDirectory !== null && docDirectory === null)
@@ -36749,26 +37694,26 @@ var createDagServiceHandlers = (dependencies = {}) => {
       entries.push({
         sessionId,
         source: "snapshot",
-        label: (asString2(run.name) || sessionId).slice(0, 80),
+        label: (asString4(run.name) || sessionId).slice(0, 80),
         status,
-        updatedAt: asString2(doc?.updatedAt) || mtimeOf(fs, path)
+        updatedAt: asString4(doc?.updatedAt) || mtimeOf(fs, path)
       });
     }
     if (trimmedDirectory !== null) {
       for (const sessionId of listLoopSessionIds(fs, trimmedDirectory)) {
         const projected = projectLoopSnapshot(fs, trimmedDirectory, sessionId, false);
         const run = projected?.dag?.runs?.[0] ?? null;
-        if (!isRecord14(run))
+        if (!isRecord15(run))
           continue;
-        const status = asString2(run.status);
+        const status = asString4(run.status);
         if (status !== "completed" && status !== "failed")
           continue;
         entries.push({
           sessionId,
           source: "loop",
-          label: (asString2(run.name) || sessionId).slice(0, 80),
+          label: (asString4(run.name) || sessionId).slice(0, 80),
           status,
-          updatedAt: asString2(projected.updatedAt) || null
+          updatedAt: asString4(projected.updatedAt) || null
         });
       }
     }
@@ -36799,16 +37744,106 @@ var createDagServiceHandlers = (dependencies = {}) => {
     return { status: 500, body: { ok: false, code, message: error?.message ?? "The DAG service failed." } };
   };
   const snapshotPathFor = (sessionId) => defaultSnapshotPath(snapshotDir, sessionId);
+  let recordReaderCache = null;
+  const recordTaskReaderForHandlers = () => {
+    if (recordTaskReader !== null)
+      return recordTaskReader;
+    if (recordReaderCache === null)
+      recordReaderCache = createRecordTaskReaderForProject();
+    return recordReaderCache;
+  };
+  const recordRowsFor = (directory, sessionId) => {
+    if (!isSafeDirectory(directory ?? ""))
+      return { rows: [], diagnostics: undefined };
+    try {
+      const read = recordTaskReaderForHandlers();
+      const result = read({ directory });
+      if (result.error !== undefined)
+        return { rows: [], error: result.error };
+      if (!Array.isArray(result.tasks))
+        return { rows: [], error: "The canonical task reader returned an invalid result." };
+      return { rows: rowsForConversation(result.tasks, sessionId), diagnostics: result.diagnostics };
+    } catch (error) {
+      return { rows: [], error: error?.message ?? "The canonical task store could not be read." };
+    }
+  };
+  const withRecordTasks = (document, sessionId, directory) => {
+    const records = recordRowsFor(directory, sessionId);
+    const merged = records.rows.length > 0 ? mergeRecordTasks(document, records.rows, records.diagnostics) : document;
+    const described = records.error === undefined ? merged : (() => {
+      const container = isRecord15(merged) ? merged : {};
+      const tasks = isRecord15(container.tasks) ? { ...container.tasks } : {};
+      tasks.recordError = records.error;
+      return { ...container, tasks };
+    })();
+    return attachRepairToTasks(described, directory);
+  };
+  const attachRepairToTasks = (document, directory) => {
+    if (!isRecord15(document) || !isSafeDirectory(directory ?? ""))
+      return document;
+    const container = isRecord15(document.tasks) ? document.tasks : null;
+    const rows = container !== null && Array.isArray(container.tasks) ? container.tasks : null;
+    if (rows === null)
+      return document;
+    let changed = false;
+    const next = rows.map((row) => {
+      if (!isRecord15(row) || isRecord15(row.repair))
+        return row;
+      const taskId = asString4(row.task_id);
+      if (taskId.length === 0)
+        return row;
+      let result;
+      try {
+        result = repairStateReader({ directory, taskId });
+      } catch {
+        return row;
+      }
+      if (!isRecord15(result) || !isRecord15(result.repair))
+        return row;
+      changed = true;
+      return { ...row, repair: result.repair };
+    });
+    return changed ? { ...document, tasks: { ...container, tasks: next } } : document;
+  };
+  const recordOnlyDocument = (sessionId, directory) => {
+    const records = recordRowsFor(directory, sessionId);
+    if (records.error !== undefined) {
+      return { status: 500, body: { ok: false, code: "DAG_TASK_STORE_UNREADABLE", message: records.error, sessionId } };
+    }
+    if (records.rows.length === 0) {
+      if (records.diagnostics?.limitReached === true) {
+        return { status: 503, body: { ok: false, code: "DAG_TASK_STORE_TRUNCATED", message: "The canonical task store was read only up to its limit, so this conversation was not checked.", sessionId } };
+      }
+      return null;
+    }
+    return {
+      status: 200,
+      body: attachRepairToTasks(mergeRecordTasks({ schemaVersion: 1, sessionId, tasks: { parent_session_id: sessionId, tasks: records.rows }, dag: { parent_session_id: sessionId, runs: [] } }, [], records.diagnostics), directory)
+    };
+  };
   const readSnapshot = (sessionId, directory) => {
+    const scoped = isSafeDirectory(directory ?? "");
+    const withScope = (result) => {
+      if (scoped || result.status !== 200 || !isRecord15(result.body))
+        return result;
+      const tasks = isRecord15(result.body.tasks) ? result.body.tasks : {};
+      return { ...result, body: { ...result.body, tasks: { ...tasks, recordUnscoped: true } } };
+    };
     let tempPath;
     try {
       tempPath = snapshotPathFor(sessionId);
     } catch (error) {
       return { status: 400, body: { ok: false, code: error.code ?? "OMO_SESSION_ID_INVALID", message: error.message } };
     }
-    const candidates = [{ text: readFileOrNull(fs, tempPath) }];
+    const candidates = [];
     if (isSafeDirectory(directory ?? "")) {
-      candidates.push({ text: readFileOrNull(fs, projectLiveRunPath(directory, sessionId)) });
+      const projectPath = projectLiveRunPath(directory, sessionId);
+      candidates.push({ text: readFileOrNull(fs, projectPath), path: projectPath });
+    }
+    candidates.push({ text: readFileOrNull(fs, tempPath), path: tempPath });
+    const unreadable = candidates.some(({ text, path: candidatePath }) => text === null && fs.existsSync(candidatePath));
+    if (unreadable) {
+      return { status: 500, body: { ok: false, code: "DAG_SNAPSHOT_UNREADABLE", field: "snapshot", sessionId } };
     }
     const parsed = candidates.map(({ text }) => {
       if (text === null)
@@ -36822,11 +37857,14 @@ var createDagServiceHandlers = (dependencies = {}) => {
     const engine = parsed.find((candidate) => candidate.present && !candidate.malformed && isEngineSnapshotDocument(candidate.doc));
     const document = engine ?? parsed.find((candidate) => candidate.present && !candidate.malformed);
     if (document !== undefined) {
-      return { status: 200, body: document.doc };
+      return withScope({ status: 200, body: withRecordTasks(document.doc, sessionId, directory) });
     }
     if (parsed.some((candidate) => candidate.malformed)) {
       return { status: 422, body: { ok: false, code: "DAG_SNAPSHOT_MALFORMED", field: "snapshot", sessionId } };
     }
+    const fromRecords = recordOnlyDocument(sessionId, directory);
+    if (fromRecords !== null)
+      return withScope(fromRecords);
     return { status: 404, body: { ok: false, code: "OMO_DAG_SNAPSHOT_MISSING", sessionId } };
   };
   const projectHistoryFor = (directory) => {
@@ -36861,7 +37899,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
       entries.push({
         sessionId,
         source: "project",
-        label: (asString2(doc?.dag?.runs?.[0]?.name) || sessionId).slice(0, 80),
+        label: (asString4(doc?.dag?.runs?.[0]?.name) || sessionId).slice(0, 80),
         status: parsed.status,
         updatedAt: parsed.updatedAt
       });
@@ -36906,7 +37944,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
         entries.push({
           sessionId,
           source: "project-history",
-          label: (asString2(doc?.dag?.runs?.[0]?.name) || sessionId).slice(0, 80),
+          label: (asString4(doc?.dag?.runs?.[0]?.name) || sessionId).slice(0, 80),
           status: parsed.status,
           updatedAt: parsed.updatedAt
         });
@@ -37029,7 +38067,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
           body: {
             schemaVersion: 1,
             sessionId: trimmedSession,
-            updatedAt: asString2(route?.at) || new Date(now()).toISOString(),
+            updatedAt: asString4(route?.at) || new Date(now()).toISOString(),
             dag: {
               runs: [{
                 run_id: trimmedSession,
@@ -37039,10 +38077,10 @@ var createDagServiceHandlers = (dependencies = {}) => {
                 counts: { pending: 1, running: 0, completed: 0 },
                 nodes: [{
                   id: "step-1",
-                  label: (asString2(route?.arguments) || asString2(liveLabel) || trimmedSession).slice(0, 64),
+                  label: (asString4(route?.arguments) || asString4(liveLabel) || trimmedSession).slice(0, 64),
                   state: "pending",
                   attempt: 1,
-                  prompt: asString2(route?.sample) || asString2(liveLabel) || trimmedSession,
+                  prompt: asString4(route?.sample) || asString4(liveLabel) || trimmedSession,
                   depends_on: [],
                   started_at: null,
                   completed_at: null
@@ -37081,13 +38119,13 @@ var createDagServiceHandlers = (dependencies = {}) => {
       if (!parsed) {
         return { status: 400, body: { ok: false, code: "OMO_DAG_SNAPSHOT_INVALID", message: "snapshot must carry schemaVersion 1, a sessionId, and a non-empty dag.runs record." } };
       }
-      if (parsed.sessionId !== asString2(conversationId).trim()) {
+      if (parsed.sessionId !== asString4(conversationId).trim()) {
         return { status: 400, body: { ok: false, code: "OMO_DAG_CONVERSATION_MISMATCH", message: "A run belongs to exactly one parent conversation." } };
       }
       const livePath = projectLiveRunPath(directory, parsed.sessionId);
       const attribution = readPostedAttribution(attributionStateReader, directory.trim());
       const attributionDropped = [];
-      const snapshotDoc = attribution.index === undefined ? dropUnverifiablePostedIds(body.snapshot, attributionDropped) : corroboratePostedSnapshot(body.snapshot, attribution.index, attributionDropped);
+      const snapshotDoc = attribution.index === undefined ? dropUnverifiablePostedIds(body.snapshot, attributionDropped) : corroboratePostedSnapshot(body.snapshot, attribution.index, attributionDropped, parsed.sessionId);
       const attributionReport = attribution.index === undefined ? { attributionCorroboration: "skipped", attributionSkippedReason: attribution.skipped, attributionDropped } : { attributionCorroboration: "applied", attributionDropped };
       const published = mutateRunSnapshot({
         path: livePath,
@@ -37298,10 +38336,10 @@ var createDagServiceHandlers = (dependencies = {}) => {
       }
     }
     if (method === "GET" && path === "/rationale") {
-      const rationaleDirectory = asString2(query?.directory);
-      const rationaleProjectId = asString2(query?.projectId);
-      const rationaleQuery = asString2(query?.q);
-      const rationaleScopes = asString2(query?.scopes).split(",").map((scope) => scope.trim()).filter((scope) => scope.length > 0);
+      const rationaleDirectory = asString4(query?.directory);
+      const rationaleProjectId = asString4(query?.projectId);
+      const rationaleQuery = asString4(query?.q);
+      const rationaleScopes = asString4(query?.scopes).split(",").map((scope) => scope.trim()).filter((scope) => scope.length > 0);
       if (rationaleDirectory === "") {
         return { status: 200, body: { projectId: rationaleProjectId || null, revision: null, ranked: [], purgedSecretIds: [] } };
       }
@@ -37365,7 +38403,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
       }
     }
     if (method === "GET" && path === "/rationale/projects") {
-      const projectsDirectory = asString2(query?.directory);
+      const projectsDirectory = asString4(query?.directory);
       if (projectsDirectory === "") {
         return { status: 200, body: { revision: null, projectIds: [] } };
       }

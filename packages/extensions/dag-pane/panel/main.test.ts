@@ -207,6 +207,29 @@ describe('task row node attribution', () => {
       expect(nodePart).not.toContain(task.taskId);
     }
   });
+
+  test('#given a completed task that was never verified #when parsed and rendered #then the row shows status and unverified as two separate texts', () => {
+    const outcome = parseSnapshotDoc(taskDoc([
+      { task_id: 'st_child04', status: 'completed', verification_status: 'unverified', name: 'build' },
+    ]));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const task = outcome.view.tasks[0];
+    expect(task).toBeDefined();
+    if (task === undefined) return;
+    const parts = panel.formatTaskRowTexts(task);
+    expect(parts.find((part) => part.className === 'dag-task-status')?.text).toBe('completed');
+    expect(parts.find((part) => part.className === 'dag-task-verification')?.text).toBe('unverified');
+  });
+
+  test('#given a task with no verification claim #when rendered #then no verification text is invented', () => {
+    const outcome = parseSnapshotDoc(taskDoc([{ task_id: 'st_child05', status: 'running' }]));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const task = outcome.view.tasks[0];
+    if (task === undefined) return;
+    expect(panel.formatTaskRowTexts(task).some((part) => part.className === 'dag-task-verification')).toBe(false);
+  });
 });
 
 describe('details auto-selection honesty', () => {

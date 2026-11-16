@@ -261,6 +261,8 @@ export type DagTaskView = {
   repair?: DagRepairView;
   /** The attempt store could not be read; never render this as "no repair". */
   repairError?: string;
+  /** The stored verification claim, kept apart from the lifecycle status. Null when the wire states none. */
+  readonly verificationStatus: 'verified' | 'unverified' | 'blocked' | null;
 };
 
 export type DagSnapshotView = {
@@ -268,6 +270,8 @@ export type DagSnapshotView = {
   updatedAt: string;
   runs: DagRunView[];
   tasks: DagTaskView[];
+  /** True when the service had no project directory, so it could not look for canonical records at all. */
+  recordUnscoped: boolean;
 };
 
 export type DagSnapshotError = {
@@ -435,6 +439,7 @@ const readTasks = (raw: JsonValue | undefined): DagTaskView[] | null => {
       status,
       name: wireString(entry.name) ?? taskId,
       summary: wireString(entry.task_summary) ?? '',
+      verificationStatus: readDelivery(entry)?.verificationStatus ?? null,
       ...readRepairEntry(entry, taskId),
     });
   }
@@ -447,6 +452,10 @@ const readTasks = (raw: JsonValue | undefined): DagTaskView[] | null => {
  * Anything else that breaks the wire shape is malformed with the field
  * named, so the panel can render an error card instead of blank output.
  */
+const recordUnscopedOf = (raw: JsonValue | undefined): boolean => (
+  isWireRecord(raw) && isWireRecord(raw.tasks) && raw.tasks.recordUnscoped === true
+);
+
 export const parseSnapshotDoc = (raw: JsonValue | undefined): DagSnapshotOutcome => {
   if (!isWireRecord(raw)) {
     return fail('snapshot');
@@ -475,13 +484,13 @@ export const parseSnapshotDoc = (raw: JsonValue | undefined): DagSnapshotOutcome
     if (!tasks) {
       return fail('tasks');
     }
-    return { ok: true, view: { sessionId, updatedAt, runs, tasks } };
+    return { ok: true, view: { sessionId, updatedAt, runs, tasks, recordUnscoped: recordUnscopedOf(raw) } };
   }
   const tasks = readTasks(raw.tasks);
   if (!tasks) {
     return fail('tasks');
   }
-  return { ok: true, view: { sessionId, updatedAt, runs: [], tasks } };
+  return { ok: true, view: { sessionId, updatedAt, runs: [], tasks, recordUnscoped: recordUnscopedOf(raw) } };
 };
 
 // Per-session selection: the host chat session owns the view (one session,

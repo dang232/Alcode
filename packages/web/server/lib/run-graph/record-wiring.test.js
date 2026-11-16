@@ -101,7 +101,7 @@ describe("a project with records and no snapshot", () => {
 
     const result = await runtime.readSnapshot(directory, "ses_1")
 
-    expect(result).toEqual({ error: "no run snapshot for conversation: ses_1", status: 404 })
+    expect(result).toMatchObject({ error: "no run snapshot for conversation: ses_1", status: 404, code: "DAG_SNAPSHOT_MISSING" })
   })
 })
 

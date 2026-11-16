@@ -19,7 +19,14 @@ const asText = (value) => `${value ?? ''}`.trim();
 
 // String-valued read without a typeof test: only a real string primitive
 // stringifies to itself, so numbers/objects/arrays all read as absent.
-const asString = (value) => (String(value) === value ? value : null);
+const asString = (value) => {
+  // A document field is untrusted input: coercion must degrade, never throw and hide the whole graph.
+  try {
+    return String(value) === value ? value : null;
+  } catch {
+    return null;
+  }
+};
 
 const isRecord = (value) => value instanceof Object && !Array.isArray(value);
 
@@ -332,6 +339,33 @@ const loadReconciler = () => {
   return reconcilePromise;
 };
 
+/**
+ * Say out loud where the record side of a document came from.
+ *
+ * A graph built without its canonical records is a partial graph, and a partial graph that looks complete is worse than
+ * an explicit failure: `recordError` marks a store that could not be read and `recordAbsent` marks one that does not
+ * exist yet, so the panel can distinguish "no tasks" from "nobody could look".
+ */
+const INVALID_RECORD_RESULT = 'record task reader returned an invalid result';
+
+// A reader that answers neither rows nor an explicit error is unusable, not empty: coercing it to "no rows" would
+// present a broken reader as a conversation that never ran.
+const normalizeRecordResult = (result) => {
+  if (!isRecord(result)) return { error: INVALID_RECORD_RESULT };
+  if (result.error !== undefined) return result;
+  if (!Array.isArray(result.tasks)) return { error: INVALID_RECORD_RESULT };
+  return result;
+};
+
+const describeRecordSource = (document, records) => {
+  if (!isRecord(document)) return document;
+  const container = isRecord(document.tasks) ? document.tasks : {};
+  const error = asString(records?.error);
+  if (error !== null && error.length > 0) return { ...document, tasks: { ...container, recordError: error } };
+  if (records?.absent === true) return { ...document, tasks: { ...container, recordAbsent: true } };
+  return document;
+};
+
 export const createRunGraphRuntime = (overrides = {}) => {
   const fs = overrides.fs ?? fsPromises;
   const joinPath = overrides.joinPath ?? path.join;
@@ -363,20 +397,27 @@ export const createRunGraphRuntime = (overrides = {}) => {
     return reader;
   };
 
+// A UNC path or a device path makes the filesystem dial a host the caller named: refusing it before any call stops a
+// request from becoming an outbound SMB/WebDAV connection that authenticates with the user's own credentials.
+const isNetworkOrDevicePath = (text) => text.startsWith('\\\\') || text.startsWith('//') || text.startsWith('\\\\.');
+
   const normalizeDirectory = async (directory) => {
     const trimmed = asText(directory);
     if (!trimmed) {
-      return { error: 'directory is required' };
+      return { error: 'directory is required', code: 'DAG_DIRECTORY_REQUIRED' };
+    }
+    if (isNetworkOrDevicePath(trimmed)) {
+      return { error: 'directory must be a local path', status: 400, code: 'DAG_DIRECTORY_UNSUPPORTED' };
     }
     const normalized = normalizePath(trimmed);
     let stat = null;
     try {
       stat = await fs.stat(normalized);
     } catch {
-      return { error: `directory not found: ${trimmed}`, status: 404 };
+      return { error: `directory not found: ${trimmed}`, status: 404, code: 'DAG_DIRECTORY_NOT_FOUND' };
     }
     if (!stat.isDirectory()) {
-      return { error: `not a directory: ${trimmed}`, status: 404 };
+      return { error: `not a directory: ${trimmed}`, status: 404, code: 'DAG_DIRECTORY_NOT_FOUND' };
     }
     return { directory: normalized };
   };
@@ -384,50 +425,68 @@ export const createRunGraphRuntime = (overrides = {}) => {
   const readSnapshot = async (directory, conversationId) => {
     const id = asText(conversationId);
     if (!isSafeConversationId(id)) {
-      return { error: 'conversationId is required', status: 400 };
+      return { error: 'conversationId is required', status: 400, code: 'DAG_CONVERSATION_ID_INVALID' };
     }
     const filePath = joinPath(directory, '.omo', RUNS_DIRNAME, `${id}${SNAPSHOT_SUFFIX}`);
     const normalized = normalizePath(filePath);
     const root = normalizePath(joinPath(directory, '.omo', RUNS_DIRNAME));
     if (normalized !== joinPath(root, `${id}${SNAPSHOT_SUFFIX}`)) {
-      return { error: 'conversationId is required', status: 400 };
+      return { error: 'conversationId is required', status: 400, code: 'DAG_CONVERSATION_ID_INVALID' };
     }
     let raw = null;
     try {
       raw = await fs.readFile(normalized, 'utf8');
-    } catch {
+    } catch (caught) {
+      // Only a missing file means "this conversation has no snapshot". Any other read failure leaves the topology
+      // unknown, and answering it as an empty DAG would claim the run had no nodes.
+      if (caught?.code !== 'ENOENT') {
+        return { error: `run snapshot is unreadable: ${id}`, status: 500, code: 'DAG_SNAPSHOT_UNREADABLE' };
+      }
       // A project whose only task came through the capability path has records and no snapshot.
       // Answer the rows it really has instead of hiding them behind a 404; with no records the
       // 404 stays, because a conversation that never ran has no graph.
       const reader = injectedRecordReader ?? (await loadRecordReader());
-      const records = reader({ directory });
+      const records = normalizeRecordResult(reader({ directory }));
+      // With no snapshot at all, an unreadable store is not "no such conversation": answering 404 here would claim the
+      // project never ran this turn while the truth is that nobody could look.
+      if (records?.error !== undefined) return { error: records.error, status: 500, code: 'DAG_TASK_STORE_UNREADABLE' };
       const all = records?.error === undefined && Array.isArray(records?.tasks) ? records.tasks : [];
       // Only this conversation's tasks: the record reader has no session filter, so the unfiltered list would answer
       // every conversation in the project with the same rows and a parent they do not have.
       const rows = rowsForConversation(all, id);
-      if (rows.length === 0) return { error: `no run snapshot for conversation: ${id}`, status: 404 };
-      return {
-        schemaVersion: 1,
-        sessionId: id,
-        tasks: { parent_session_id: id, tasks: rows },
-        dag: { parent_session_id: id, runs: [] },
-      };
+      if (rows.length === 0) {
+        // A bounded read that never reached this conversation cannot answer "no such conversation": say the store was
+        // truncated instead of inventing an absence.
+        if (records?.diagnostics?.limitReached === true) {
+          return { error: `task store truncated before conversation ${id} could be checked`, status: 503, code: 'DAG_TASK_STORE_TRUNCATED' };
+        }
+        return { error: `no run snapshot for conversation: ${id}`, status: 404, code: 'DAG_SNAPSHOT_MISSING' };
+      }
+      const document = mergeRecordTasks({ schemaVersion: 1, sessionId: id, tasks: { parent_session_id: id, tasks: rows }, dag: { parent_session_id: id, runs: [] } }, [], records?.diagnostics);
+      // Record-only tasks are still tasks: they get the same repair, attribution and delivery projection a
+      // snapshot row gets, because those stores are keyed by task id and know nothing about snapshots.
+      const described = describeRecordSource(document, records);
+      const withRepair = await attachRepairState(described, { directory, readRepairState });
+      const withAttribution = await attachAttributionState(withRepair, { directory, readAttributionState });
+      return attachDeliveryState(withAttribution, { directory, readDeliveryState });
     }
     let document = null;
     try {
       document = JSON.parse(raw);
     } catch {
-      const error = new Error(`run snapshot is malformed: ${id}`);
-      error.status = 500;
-      throw error;
+      // A malformed snapshot is a bad document, not a server fault: the pane and the route both answer 422 with the same
+      // machine code, so one client can treat the two surfaces alike.
+      return { error: `run snapshot is malformed: ${id}`, status: 422, code: 'DAG_SNAPSHOT_MALFORMED' };
     }
-    const withRepair = await attachRepairState(document, { directory, readRepairState });
-    const withAttribution = await attachAttributionState(withRepair, { directory, readAttributionState });
-    const withDelivery = await attachDeliveryState(withAttribution, { directory, readDeliveryState });
     const recordReader = injectedRecordReader ?? (await loadRecordReader());
-    const records = recordReader({ directory });
-    if (records?.error !== undefined || !Array.isArray(records?.tasks)) return withDelivery;
-    return mergeRecordTasks(withDelivery, rowsForConversation(records.tasks, id));
+    const records = normalizeRecordResult(recordReader({ directory }));
+    const rows = records?.error === undefined && Array.isArray(records?.tasks) ? rowsForConversation(records.tasks, id) : [];
+    // Merge first, enrich second: the record adds rows the snapshot never had, and the repair, attribution and delivery
+    // stores are keyed by task id, so projection has to run over the merged list or a record-only task arrives bare.
+    const merged = rows.length === 0 ? describeRecordSource(document, records) : describeRecordSource(mergeRecordTasks(document, rows, records.diagnostics), records);
+    const withRepair = await attachRepairState(merged, { directory, readRepairState });
+    const withAttribution = await attachAttributionState(withRepair, { directory, readAttributionState });
+    return attachDeliveryState(withAttribution, { directory, readDeliveryState });
   };
 
   const readAttribution = async (directory) => {

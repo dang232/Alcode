@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { parseSnapshotDoc } from './snapshotDoc';
 
-describe('snapshot envelope', () => {
-  test('off-shape input answers null, never a partial run', () => {
+describe('snapshot envelope', () => {  test('off-shape input answers null, never a partial run', () => {
     expect(parseSnapshotDoc(null)).toBeNull();
     expect(parseSnapshotDoc({ nope: true })).toBeNull();
     expect(parseSnapshotDoc({ sessionId: 'ses_1', schemaVersion: 2, dag: { runs: [] } })).toBeNull();
@@ -168,5 +167,51 @@ describe('snapshot envelope', () => {
       },
     });
     expect(parsed).toBeNull();
+  });
+});
+
+describe('canonical task rows in the snapshot envelope', () => {
+  test('a record-only answer keeps its row and says the read was partial', () => {
+    const doc = parseSnapshotDoc({
+      sessionId: 'ses_1',
+      schemaVersion: 1,
+      dag: { runs: [] },
+      tasks: {
+        tasks: [{ task_id: 'st_record', status: 'completed', verification_status: 'unverified', name: 'build' }],
+        diagnostics: { scanned: 5000, accepted: 1, skipped: 0, limitReached: true },
+      },
+    });
+    expect(doc).not.toBeNull();
+    expect(doc?.tasks).toEqual([{ taskId: 'st_record', status: 'completed', name: 'build', verificationStatus: 'unverified' }]);
+    expect(doc?.truncated).toBe(true);
+  });
+
+  test('an unreadable store is carried as an error, never as no tasks', () => {
+    const doc = parseSnapshotDoc({
+      sessionId: 'ses_1',
+      schemaVersion: 1,
+      dag: { runs: [] },
+      tasks: { tasks: [], recordError: 'record tasks unreadable: EACCES' },
+    });
+    expect(doc?.recordError).toBe('record tasks unreadable: EACCES');
+    expect(doc?.tasks).toEqual([]);
+  });
+
+  test('a store that does not exist yet is its own flag', () => {
+    const doc = parseSnapshotDoc({ sessionId: 'ses_1', schemaVersion: 1, dag: { runs: [] }, tasks: { tasks: [], recordAbsent: true } });
+    expect(doc?.recordAbsent).toBe(true);
+  });
+
+  test('a legacy document gains no tasks key at all', () => {
+    const doc = parseSnapshotDoc({
+      sessionId: 'ses_1',
+      schemaVersion: 1,
+      dag: { runs: [{ run_id: 'r1', run_key: 'k', name: 'n', status: 'completed', nodes: [] }] },
+    });
+    expect(Object.keys(doc ?? {})).toEqual(['sessionId', 'runs']);
+  });
+
+  test('a malformed task row makes the envelope unreadable, never partially accepted', () => {
+    expect(parseSnapshotDoc({ sessionId: 'ses_1', schemaVersion: 1, dag: { runs: [] }, tasks: { tasks: [{ status: 'completed' }] } })).toBeNull();
   });
 });

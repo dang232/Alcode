@@ -41,15 +41,17 @@ export const registerRunGraphRoutes = (app, dependencies = {}) => {
   const runGraphRuntime = dependencies.runGraphRuntime ?? createRunGraphRuntime();
 
   app.get('/api/run-graph/snapshot', async (req, res) => {
-    const { directory, error, status } = await runGraphRuntime.normalizeDirectory(req.query.directory);
+    const { directory, error, status, code } = await runGraphRuntime.normalizeDirectory(req.query.directory);
     if (error) {
-      res.status(status ?? 400).json({ error });
+      res.status(status ?? 400).json(code === undefined ? { error } : { error, code });
       return undefined;
     }
     try {
       const result = await runGraphRuntime.readSnapshot(directory, req.query.conversationId);
       if (result && result.error) {
-        return res.status(result.status ?? 404).json({ error: `${result.error}` });
+        // The machine code travels with the human text so a client can branch on the reason instead of the wording.
+        const body = result.code === undefined ? { error: `${result.error}` } : { error: `${result.error}`, code: result.code };
+        return res.status(result.status ?? 404).json(body);
       }
       return res.json(result);
     } catch (caught) {

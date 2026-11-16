@@ -20,6 +20,9 @@ export type DagPaneStrings = {
   details: string;
   emptyTitle: string;
   emptyBody: string;
+  /** Shown instead of the empty state when the pane has no project directory, so it cannot look for tasks. */
+  unscopedTitle?: string;
+  unscopedBody?: string;
   errorTitle: string;
   offlineTitle: string;
   offlineBody: string;
@@ -81,6 +84,8 @@ const en: DagPaneStrings = {
   details: 'Details',
   emptyTitle: 'No runs yet',
   emptyBody: 'Steer the session to start its first run, or refresh after the engine reports.',
+  unscopedTitle: 'No project bound',
+  unscopedBody: 'Open a session inside a project: without a project directory this pane cannot look for tasks.',
   errorTitle: 'Snapshot unreadable',
   offlineTitle: 'Engine disconnected',
   offlineBody: 'Close the pane and reopen it after the engine is back.',

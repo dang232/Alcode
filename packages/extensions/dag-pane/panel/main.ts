@@ -157,6 +157,11 @@ export const formatTaskRowTexts = (task: DagTaskView): TaskRowText[] => [
   { className: 'dag-task-id', text: `task_id ${task.taskId}` },
   { className: 'dag-task-node', text: task.nodeId === null ? '\u2014' : `node ${task.nodeId}` },
   { className: 'dag-task-status', text: task.status },
+  // Verification is a second dimension, never folded into the lifecycle text above: a completed task that was never
+  // verified must read as unverified beside its status, not as a success.
+  ...(task.verificationStatus === null
+    ? []
+    : [{ className: 'dag-task-verification', text: task.verificationStatus }]),
 ];
 
 const el = (tag: string, className: string): HTMLElement => {
@@ -594,6 +599,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   // Session-scoped task rows carried beside the runs. Their node attribution
   // is a served field (DagTaskView.nodeId), parsed and rendered as-is.
   let currentTasks: DagTaskView[] = [];
+  let currentUnscoped = false;
   // Render-on-change: the 4s poll calls paintContent every tick, so identical
   // frames must skip the teardown/rebuild (layout thrash reads as stutter).
   // The key covers both inputs of the painted output: run data and selection.
@@ -658,8 +664,8 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     content.append(section);
   };
 
-  const paintContent = (runs: DagRunView[], tasks: DagTaskView[]): void => {
-    const sectionKey = `runs:${JSON.stringify(runs)}|tasks:${JSON.stringify(tasks)}|selected:${selectedNodeId ?? ''}`;
+  const paintContent = (runs: DagRunView[], tasks: DagTaskView[], unscoped = false): void => {
+    const sectionKey = `runs:${JSON.stringify(runs)}|tasks:${JSON.stringify(tasks)}|selected:${selectedNodeId ?? ''}|unscoped:${unscoped}`;
     if (sectionKey === lastSectionKey) {
       return;
     }
@@ -672,7 +678,11 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     if (runs.length === 0) {
       lastFitExtents = null;
       if (tasks.length === 0) {
-        sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
+        // Without a project directory the pane never asked for canonical records: say that, instead of claiming the
+        // session ran nothing.
+        const title = unscoped ? strings.unscopedTitle ?? 'No project bound' : strings.emptyTitle;
+        const body = unscoped ? strings.unscopedBody ?? 'Open a session inside a project: without a project directory this pane cannot look for tasks.' : strings.emptyBody;
+        sectionHandles.push(mountEmpty(content, { title, body }));
         return;
       }
     }
@@ -707,7 +717,8 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   // Paint one run list with the live indicator derived from its states.
   // In Code view the same tick re-renders the Code root from cache (no
   // refetch: the Code loaders fire only on directory/label change or retry).
-  const paintRunList = (runs: DagRunView[], tasks: DagTaskView[]): void => {
+  const paintRunList = (runs: DagRunView[], tasks: DagTaskView[], unscoped = false): void => {
+    currentUnscoped = unscoped;
     headerLive = runs.some((run) => run.status === 'running' || run.status === 'pending');
     paintFollowHeader();
     currentTasks = tasks;
@@ -721,7 +732,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       paintActivityRoot();
       return;
     }
-    paintContent(runs, tasks);
+    paintContent(runs, tasks, unscoped);
   };
 
   const refreshRuns = async (gen: number): Promise<void> => {
@@ -776,7 +787,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       const outcome = parseSnapshotDoc(runModelDoc);
       if (!current()) return;
       if (outcome.ok) {
-        paintRunList(outcome.view.runs, outcome.view.tasks);
+        paintRunList(outcome.view.runs, outcome.view.tasks, outcome.view.recordUnscoped);
         return;
       }
       // A malformed host doc is a loud error card, never a silent fallback
@@ -860,7 +871,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       }));
       return;
     }
-    paintRunList(outcome.view.runs, outcome.view.tasks);
+    paintRunList(outcome.view.runs, outcome.view.tasks, outcome.view.recordUnscoped);
   };
 
   // Code view: one content area shared with the Run view, switched by the
@@ -929,7 +940,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       paintActivityRoot();
       return;
     }
-    paintContent(currentRuns, currentTasks);
+    paintContent(currentRuns, currentTasks, currentUnscoped);
   };
 
   const switchView = (next: 'run' | 'activity' | 'code'): void => {

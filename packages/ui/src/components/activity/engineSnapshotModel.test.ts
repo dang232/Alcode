@@ -122,3 +122,64 @@ describe('engine snapshot view', () => {
     expect(row?.repairError).toContain('unreadable');
   });
 });
+
+
+describe('a conversation that exists only as canonical task records', () => {
+  const recordsOnly = (tasks: SnapshotDoc['tasks']): SnapshotDoc => ({ sessionId: 'ses_record01', runs: [], tasks });
+
+  test('renders each record as a node keyed by its own task id', () => {
+    const view = engineSnapshotToView({
+      conversationId: 'ses_record01',
+      doc: recordsOnly([
+        { taskId: 'st_01a1dd99', status: 'completed', name: 'st_01a1dd99', verificationStatus: 'unverified' },
+        { taskId: 'st_other', status: 'error', name: 'build' },
+      ]),
+    });
+
+    expect(view?.rows.map((row) => row.id)).toEqual(['st_01a1dd99', 'st_other']);
+    expect(view?.graph.nodes.map((node) => node.id)).toEqual(['st_01a1dd99', 'st_other']);
+    expect(view?.graph.edges).toEqual([]);
+    expect(view?.rows[0].verificationStatus).toBe('unverified');
+  });
+
+  test('calls a failed record failed, never unknown', () => {
+    const view = engineSnapshotToView({ conversationId: 'ses_record01', doc: recordsOnly([{ taskId: 'st_1', status: 'error' }]) });
+
+    expect(view?.rows[0].state).toBe('failed');
+  });
+
+  test('keeps a cancelled record cancelled and a completed one completed', () => {
+    const view = engineSnapshotToView({
+      conversationId: 'ses_record01',
+      doc: recordsOnly([{ taskId: 'st_1', status: 'cancelled' }, { taskId: 'st_2', status: 'completed' }]),
+    });
+
+    expect(view?.rows.map((row) => row.state)).toEqual(['cancelled', 'completed']);
+  });
+
+  test('answers null when neither a run nor a record exists', () => {
+    expect(engineSnapshotToView({ conversationId: 'ses_record01', doc: recordsOnly([]) })).toBeNull();
+    expect(engineSnapshotToView({ conversationId: 'ses_record01', doc: { sessionId: 'ses_record01', runs: [] } })).toBeNull();
+  });
+
+  test('carries the repair projection of a record-only task', () => {
+    const view = engineSnapshotToView({
+      conversationId: 'ses_record01',
+      doc: recordsOnly([{ taskId: 'st_1', status: 'completed' }]),
+      repairIndex: {
+        tasks: {
+          st_1: {
+            repair: {
+              attemptId: 'a1', taskId: 'st_1', epoch: 0, state: 'repaired',
+              failedChecks: [], rerunChecks: [], changedFiles: [], verificationStatus: 'verified',
+              hostFacts: [], modelHypotheses: [], updatedAt: 0,
+            },
+          },
+        },
+        runs: {},
+      },
+    });
+
+    expect(view?.rows[0].repair).toBeDefined();
+  });
+});

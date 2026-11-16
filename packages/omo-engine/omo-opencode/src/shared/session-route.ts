@@ -1,6 +1,4 @@
 import type { PluginInput } from "@opencode-ai/plugin"
-import {
-} from "./model-suggestion-retry"
 import { dispatchInternalPrompt, isInternalPromptDispatchAccepted } from "./prompt-async-gate"
 import { isAmbiguousPostDispatchPromptFailure } from "./prompt-failure-classifier"
 

@@ -218,6 +218,40 @@ describe('task row node id attribution', () => {
     if (!outcome.ok) return;
     expect(outcome.view.tasks[0]?.nodeId).toBeNull();
   });
+
+  test('a task row carries its stored verification claim beside its lifecycle status', () => {
+    const outcome = parseSnapshotDoc({
+      schemaVersion: 1,
+      sessionId: 'ses_a',
+      updatedAt: '2026-11-15T00:00:00.000Z',
+      dag: null,
+      tasks: { tasks: [{ task_id: 'st_a', status: 'completed', verification_status: 'unverified' }] },
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.tasks[0]?.status).toBe('completed');
+    expect(outcome.view.tasks[0]?.verificationStatus).toBe('unverified');
+  });
+
+  test('a task row with no verification claim stays null, never a success default', () => {
+    const outcome = parseSnapshotDoc(docWithTaskNodeId());
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.tasks[0]?.verificationStatus).toBeNull();
+  });
+
+  test('a task row with an unknown verification claim stays null, never verified', () => {
+    const outcome = parseSnapshotDoc({
+      schemaVersion: 1,
+      sessionId: 'ses_a',
+      updatedAt: '2026-11-15T00:00:00.000Z',
+      dag: null,
+      tasks: { tasks: [{ task_id: 'st_a', status: 'completed', verification_status: 'probably' }] },
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.tasks[0]?.verificationStatus).toBeNull();
+  });
 });
 
 describe('stringsFor', () => {
@@ -545,5 +579,23 @@ describe('flat verification field fallback', () => {
     const outcome = parseSnapshotDoc(doc)
     if (!outcome.ok) return;
     expect(outcome.view.runs[0].nodes[0].delivery?.verificationStatus).toBeNull();
+  });
+});
+
+describe('a pane with no project scope', () => {
+  const doc = (tasks) => ({ schemaVersion: 1, sessionId: 'ses_a', updatedAt: '2026-11-15T00:00:00.000Z', dag: null, tasks });
+
+  test('carries the unscoped flag so the empty state can explain itself', () => {
+    const outcome = parseSnapshotDoc(doc({ tasks: [], recordUnscoped: true }));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.recordUnscoped).toBe(true);
+  });
+
+  test('a scoped answer never claims to be unscoped', () => {
+    const outcome = parseSnapshotDoc(doc({ tasks: [] }));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.view.recordUnscoped).toBe(false);
   });
 });
