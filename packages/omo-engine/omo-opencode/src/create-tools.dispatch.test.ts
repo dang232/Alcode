@@ -56,4 +56,26 @@ describe("native tool dispatch", () => {
     const tools = await dispatched()
     expect(tools.not_a_tool).toBeUndefined()
   })
+
+  it("gives grep, edit and glob their real argument schemas instead of an empty one", async () => {
+    const tools = await dispatched()
+    expect(Object.keys(tools.grep?.args.properties ?? {})).toEqual(["pattern", "path", "literal", "maxResults"])
+    expect(Object.keys(tools.edit?.args.properties ?? {})).toEqual(["path", "oldText", "newText", "expectedDigest"])
+    expect(Object.keys(tools.glob?.args.properties ?? {})).toEqual(["pattern", "path", "maxResults"])
+  })
+
+  it("dispatches grep, edit and glob to real implementations", async () => {
+    const tools = await dispatched()
+    const found = String(await tools.grep?.execute({ pattern: "proof" }))
+    expect(found).toContain("note.txt:1: dispatch proof")
+    expect(found).not.toContain("tool unavailable")
+    const receipt = String(
+      await tools.edit?.execute({ path: "note.txt", oldText: "dispatch proof", newText: "dispatch proven" }),
+    )
+    expect(receipt).toContain("updated note.txt")
+    expect(receipt).not.toContain("tool unavailable")
+    const listed = String(await tools.glob?.execute({ pattern: "**/*.txt" }))
+    expect(listed).toContain("note.txt")
+    expect(listed).not.toContain("tool unavailable")
+  })
 })
