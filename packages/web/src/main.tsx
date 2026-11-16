@@ -4,7 +4,6 @@ import { registerSW } from 'virtual:pwa-register';
 import type { RuntimeAPIs } from '@alcode/ui/lib/api/types';
 import { resolveHostedSurface, watchHostedSurfaceViewport, type HostedSurface } from '@alcode/ui/lib/runtimeSurface';
 import '@alcode/ui/index.css';
-import '@alcode/ui/styles/fonts';
 import '@alcode/ui/styles/katex-css';
 
 declare global {
