@@ -640,8 +640,3 @@ The scroll offset is restored in the scroller's callback ref, at the moment it
 attaches, and read through `useUIStore.getState()` rather than a subscription —
 subscribing would fight the user mid-scroll. Writes are coalesced to one per
 animation frame.
-
-## Not implemented yet
-
-- Test/build/dev-server status and LSP diagnostics — a separate track. Note
-  that `state.lsp` already exists in the sync state.

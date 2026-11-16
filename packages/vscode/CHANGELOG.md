@@ -646,7 +646,7 @@
 
 ### New
 
-- **Settings/Integrations:** a new Integrations page lists the Claude Code, Command Code and Cursor plugins with install, update, setup and remove actions. Discord and Telegram are marked coming soon.
+- **Settings/Integrations:** a new Integrations page lists the Claude Code, Command Code and Cursor plugins with install, update, setup and remove actions.
 - Usage: Command Code plan limits appear in the Usage page and the work status panel.
 
 ### Improvements
