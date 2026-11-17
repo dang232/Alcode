@@ -21,7 +21,12 @@ const DEFAULT_MAX_RESULTS = 100
 const HARD_MAX_RESULTS = 500
 const MAX_FILES_SCANNED = 5000
 
-const SKIPPED_DIRECTORIES = new Set(["node_modules", ".git", ".hg", ".svn", "dist", "build", "coverage", "vendor", ".next", "out"])
+const SKIPPED_DIRECTORIES = new Set([
+  "node_modules", ".git", ".hg", ".svn", "dist", "build", "coverage", "vendor", ".next", "out",
+  // Heavy local stores that hold neither sources nor build output: descending
+  // them spends the scan budget on data no glob caller is looking for.
+  ".algraph", ".audit-r1.12", ".create-pr-proof", ".exe",
+])
 
 const GLOB_DESCRIPTION =
   "Find files by name pattern inside the project workspace. Supports * , ? and ** segments; returns paths relative to the search scope."
@@ -76,39 +81,47 @@ type Collected = {
   fileCapReached: boolean
 }
 
-const walk = (absolute: string, state: Collected, matches: (relativePath: string) => boolean, limit: number): void => {
-  let entries: Dirent[]
-  try {
-    entries = readdirSync(absolute, { withFileTypes: true })
-  } catch (error) {
-    const code = error instanceof Error && "code" in error ? String(error.code) : ""
-    workspaceIoFailed(relative(state.root, absolute) || ".", code.length > 0 ? code : "read failed")
-  }
-  const names = entries.map((entry) => entry.name).sort()
-  for (const name of names) {
+const walk = (target: string, state: Collected, matches: (relativePath: string) => boolean, limit: number): void => {
+  // Breadth-first so the scan cap can never hide a shallow match: the sorted
+  // depth-first descent spent the whole budget inside alphabetically early
+  // directories and answered 0 paths for `package.json` at the workspace root.
+  const queue: string[] = [target]
+  while (queue.length > 0) {
     if (state.paths.length >= limit || state.files >= MAX_FILES_SCANNED) return
-    if (SKIPPED_DIRECTORIES.has(name)) continue
-    const child = join(absolute, name)
-    let link: ReturnType<typeof lstatSync>
+    const absolute = queue.shift() as string
+    let entries: Dirent[]
     try {
-      link = lstatSync(child)
-    } catch {
-      continue
+      entries = readdirSync(absolute, { withFileTypes: true })
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : ""
+      workspaceIoFailed(relative(state.root, absolute) || ".", code.length > 0 ? code : "read failed")
     }
-    if (link.isSymbolicLink()) {
-      state.skippedLinks += 1
-      continue
+    const names = entries.map((entry) => entry.name).sort()
+    for (const name of names) {
+      if (state.paths.length >= limit || state.files >= MAX_FILES_SCANNED) return
+      if (SKIPPED_DIRECTORIES.has(name)) continue
+      const child = join(absolute, name)
+      let link: ReturnType<typeof lstatSync>
+      try {
+        link = lstatSync(child)
+      } catch {
+        continue
+      }
+      if (link.isSymbolicLink()) {
+        state.skippedLinks += 1
+        continue
+      }
+      if (link.isDirectory()) {
+        queue.push(child)
+        continue
+      }
+      if (!link.isFile()) continue
+      state.files += 1
+      // Matched and reported against the search scope, not the workspace root, so
+      // `path: "nested"` with `*.txt` answers nested/alpha.txt and not nothing.
+      const display = relative(state.scope, child).split(sep).join("/")
+      if (matches(display)) state.paths.push(display)
     }
-    if (link.isDirectory()) {
-      walk(child, state, matches, limit)
-      continue
-    }
-    if (!link.isFile()) continue
-    state.files += 1
-    // Matched and reported against the search scope, not the workspace root, so
-    // `path: "nested"` with `*.txt` answers nested/alpha.txt and not nothing.
-    const display = relative(state.scope, child).split(sep).join("/")
-    if (matches(display)) state.paths.push(display)
   }
 }
 

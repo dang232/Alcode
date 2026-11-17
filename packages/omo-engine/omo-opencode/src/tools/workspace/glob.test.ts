@@ -111,4 +111,20 @@ describe("native glob tool", () => {
     const error = await refusalOf(root, { pattern: "*.txt", path: "nope" })
     expect(error.code).toBe("NOT_FOUND")
   })
+
+  it("reaches a shallow match before descending a directory that sorts first", async () => {
+    const { root } = workspace()
+    writeFileSync(join(root, "zzz.md"), "x", "utf8")
+    mkdirSync(join(root, "aaa"), { recursive: true })
+    writeFileSync(join(root, "aaa", "inner.md"), "x", "utf8")
+
+    const listed = await glob(root, { pattern: "**/*.md" })
+    const order = listed.split("\n").filter((line) => line.endsWith(".md"))
+
+    // Depth-first descent would walk aaa/ entirely before zzz.md; breadth-first
+    // keeps the shallow file first, which is what makes a capped root scan
+    // answer instead of returning nothing.
+    expect(order.indexOf("zzz.md")).toBeGreaterThan(-1)
+    expect(order.indexOf("zzz.md")).toBeLessThan(order.indexOf("aaa/inner.md"))
+  })
 })
