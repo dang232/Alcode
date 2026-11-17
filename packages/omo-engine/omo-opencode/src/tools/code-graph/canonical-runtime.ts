@@ -50,11 +50,15 @@ export interface CanonicalSummary {
   readonly entryCount: number
   readonly entryCap: number
   readonly indexState: string | null
+  /** The runtime's recorded build failure text, the only place a cause is stated. */
+  readonly indexStateError: string | null
 }
 
 /** Options the tool passes to the canonical readIndex call. */
 interface CanonicalReadOptions {
   readonly block?: boolean
+  /** Explicit refresh: the runtime's escape hatch that retries a failed build now. */
+  readonly refresh?: boolean
 }
 
 /** Query shapes the tool sends; every field is optional because kinds differ. */
@@ -178,6 +182,7 @@ const toCanonicalSummary = (raw: OmoJsonValue): CanonicalSummary | null => {
     entryCount: countOrZero(wire["entryCount"]),
     entryCap: countOrZero(wire["entryCap"]),
     indexState: indexState === null ? null : stringOrNull(indexState["state"]),
+    indexStateError: indexState === null ? null : stringOrNull(indexState["error"]),
   }
 }
 
