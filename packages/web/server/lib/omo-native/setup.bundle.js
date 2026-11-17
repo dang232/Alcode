@@ -42768,7 +42768,7 @@ function buildAgentContext(input) {
   const queryServable = input.status?.queryServable ?? source !== undefined;
   const reasons = input.status?.reasons ?? (source === undefined ? ["no-envelope"] : []);
   let unavailable;
-  if (source === undefined) {
+  if (source === undefined && input.op !== "status") {
     unavailable = {
       code: "GRAPH_UNAVAILABLE",
       message: reasons.length > 0 ? `no query envelope provided (${reasons.join("; ")})` : "no query envelope provided"
@@ -47056,7 +47056,8 @@ var CodeGraphArgsSchema = object({
   to: string2().trim().min(1).optional(),
   depth: number2().int().min(1).max(3).optional(),
   limit: number2().int().min(1).max(50).optional(),
-  maxBytes: number2().int().min(512).max(16384).optional()
+  maxBytes: number2().int().min(512).max(16384).optional(),
+  refresh: boolean2().optional()
 });
 
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/canonical-runtime.ts
@@ -50734,7 +50735,8 @@ var toCanonicalSummary = (raw) => {
     edgeCount: countOrZero(wire["edgeCount"]),
     entryCount: countOrZero(wire["entryCount"]),
     entryCap: countOrZero(wire["entryCap"]),
-    indexState: indexState === null ? null : stringOrNull(indexState["state"])
+    indexState: indexState === null ? null : stringOrNull(indexState["state"]),
+    indexStateError: indexState === null ? null : stringOrNull(indexState["error"])
   };
 };
 var toCanonicalAnswer = (raw) => {
@@ -50897,6 +50899,23 @@ function mergedImpactEnvelope(summary, directory, paths, parts) {
     ...completenessExtraOf(complete)
   };
 }
+var INDEX_RECOVERY = "recovery: rerun this op with refresh:true after clearing the named cause; the panel's Refresh retries the same build";
+var indexStateReasons = (summary) => {
+  const reasons = [];
+  if (summary.indexState !== null)
+    reasons.push(`index-state:${summary.indexState}`);
+  if (summary.indexStateError !== null)
+    reasons.push(`index-error:${summary.indexStateError}`);
+  if (summary.indexState === "failed" || summary.indexStateError !== null)
+    reasons.push(INDEX_RECOVERY);
+  return reasons;
+};
+var thrownFailureReasons = (failure) => [
+  "index-failed",
+  `index-error:${failure.message}`,
+  INDEX_RECOVERY
+];
+var asError = (caught) => caught instanceof Error ? caught : new Error(String(caught));
 function inferSubjectKind(subject) {
   if (subject.includes("@") || subject.startsWith("fn:") || subject.startsWith("file:"))
     return "symbol";
@@ -51298,16 +51317,23 @@ function createCodeGraphTool(deps = {}) {
           description: "Graph operation: status, context, search, trace, impact, tests, or explore.",
           allowedValues: ["status", "context", "search", "trace", "impact", "tests", "explore"]
         },
-        subject: { type: "string", description: "Symbol id, file path, or search text; required except for status." },
+        subject: {
+          type: "string",
+          description: "Symbol id, file path, or search text; required except for status and subjectKind: changes."
+        },
         subjectKind: {
           type: "string",
-          description: "How to read subject; inferred when omitted.",
+          description: "How to read subject; inferred when omitted. 'changes' answers the working-tree view for context/impact and needs no subject.",
           allowedValues: ["file", "symbol", "changes", "query"]
         },
         to: { type: "string", description: "Destination symbol id for trace." },
         depth: { type: "number", description: "Traversal depth, 1-3; defaults to 2." },
         limit: { type: "number", description: "Result cap, 1-50; defaults to 20." },
-        maxBytes: { type: "number", description: "Rendered budget, 512-16384; defaults to 8192." }
+        maxBytes: { type: "number", description: "Rendered budget, 512-16384; defaults to 8192." },
+        refresh: {
+          type: "boolean",
+          description: "Retry the index build now instead of serving the last generation; recovery for a failed build."
+        }
       },
       required: ["op"]
     },
@@ -51315,7 +51341,7 @@ function createCodeGraphTool(deps = {}) {
       const directory = resolveDirectory(deps, context);
       const parsed = CodeGraphArgsSchema.safeParse(toolArgs);
       if (!parsed.success) {
-        refuseArgs("", "code_graph needs op status|context|search|trace|impact|tests|explore, optional subject/subjectKind/to, depth 1-3, limit 1-50, maxBytes 512-16384.");
+        refuseArgs("", "code_graph needs op status|context|search|trace|impact|tests|explore, optional subject/subjectKind/to, depth 1-3, limit 1-50, maxBytes 512-16384, refresh.");
       }
       const args = parsed.data;
       const op = args.op;
@@ -51324,8 +51350,8 @@ function createCodeGraphTool(deps = {}) {
       if (op === "status") {
         let summary;
         try {
-          summary = await runtime.readIndex(directory);
-        } catch {
+          summary = await runtime.readIndex(directory, { refresh: args.refresh === true });
+        } catch (error) {
           return stringifyEnvelope(buildAgentContext({
             op,
             level: 0,
@@ -51345,7 +51371,12 @@ function createCodeGraphTool(deps = {}) {
               entryCap: 0,
               indexState: null
             }, directory),
-            status: { freshness: "unindexed", coverage: "unindexed", queryServable: false, reasons: ["index-failed"] },
+            status: {
+              freshness: "unindexed",
+              coverage: "unindexed",
+              queryServable: false,
+              reasons: thrownFailureReasons(asError(error))
+            },
             maxBytes
           }));
         }
@@ -51354,7 +51385,7 @@ function createCodeGraphTool(deps = {}) {
         const reasons = [
           `generation:${summary.generation ?? "none"}`,
           `freshness:${summary.freshness}`,
-          ...summary.indexState !== null ? [`index-state:${summary.indexState}`] : [],
+          ...indexStateReasons(summary),
           ...servable ? [`nodes:${summary.nodeCount}`, `edges:${summary.edgeCount}`] : [],
           ...summary.indexTruncated ? ["index-truncated"] : []
         ];
@@ -51375,9 +51406,10 @@ function createCodeGraphTool(deps = {}) {
         return stringifyEnvelope(envelope);
       }
       const subject = args.subject;
-      const changesMode = op === "impact" && (args.subjectKind === "changes" || inferSubjectKind(subject ?? "") === "changes");
+      const changesCapable = op === "context" || op === "impact";
+      const changesMode = changesCapable && args.subjectKind === "changes";
       if (subject === undefined && !changesMode) {
-        refuseArgs("", `code_graph op '${op}' needs a subject string.`);
+        refuseArgs("", changesCapable ? `code_graph op '${op}' needs a subject string, or subjectKind: changes for the working-tree view.` : `code_graph op '${op}' needs a subject string.`);
       }
       if (op === "explore" && args.subjectKind === "changes") {
         refuseArgs("", "code_graph op 'explore' needs a subject symbol, name, or file path.");
@@ -51413,9 +51445,9 @@ function createCodeGraphTool(deps = {}) {
       }));
       let summary;
       try {
-        summary = await runtime.readIndex(directory, { block: true });
-      } catch {
-        return unavailable(["index-failed"]);
+        summary = await runtime.readIndex(directory, { block: true, refresh: args.refresh === true });
+      } catch (error) {
+        return unavailable(thrownFailureReasons(asError(error)));
       }
       if (!summary.ready) {
         return stringifyEnvelope(buildAgentContext({
@@ -51428,10 +51460,7 @@ function createCodeGraphTool(deps = {}) {
             coverage: summary.generation !== null ? "partial" : "unindexed",
             ...summaryStatusExtrasOf(summary.generation, summary.revision),
             queryServable: false,
-            reasons: [
-              `generation:${summary.generation ?? "none"}`,
-              ...summary.indexState !== null ? [`index-state:${summary.indexState}`] : []
-            ]
+            reasons: [`generation:${summary.generation ?? "none"}`, ...indexStateReasons(summary)]
           },
           maxBytes
         }));
@@ -51459,14 +51488,34 @@ function createCodeGraphTool(deps = {}) {
       };
       const limit = args.limit;
       const depth = args.depth;
+      const impactSubjectsForFile = async (rel) => {
+        const view = track(await runtime.query(directory, { kind: "file", file: rel, limit }));
+        const symbols = view.envelope.items.map((item) => item.id).filter((id) => !id.startsWith("file:"));
+        const subjects = symbols.length > 0 ? symbols : [`file:${rel}`];
+        const parts = [];
+        for (const symbol of subjects) {
+          parts.push(track(await runtime.query(directory, { kind: "impact", symbol, limit, depth })));
+        }
+        return parts;
+      };
+      const changesView = async () => {
+        const changed = await collectChangedPaths(directory);
+        const parts = [];
+        for (const file of changed) {
+          parts.push(...await impactSubjectsForFile(normalizeRel(file)));
+        }
+        return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] };
+      };
       const runOp = async () => {
+        if (changesMode)
+          return changesView();
         if (op === "search") {
           const answer = track(await runtime.query(directory, { kind: "search", query: subjectText, limit }));
           return { envelope: answer.envelope, extraUnresolved: [] };
         }
         if (op === "context") {
           const kind = args.subjectKind ?? inferSubjectKind(subjectText);
-          if (kind === "file" || kind === "changes" || kind === "query") {
+          if (kind === "file" || kind === "query") {
             const answer = track(await runtime.query(directory, { kind: "search", query: subjectText, limit }));
             return { envelope: answer.envelope, extraUnresolved: [] };
           }
@@ -51484,26 +51533,8 @@ function createCodeGraphTool(deps = {}) {
           return { envelope: answer.envelope, extraUnresolved: [] };
         }
         if (op === "impact") {
-          const impactSubjectsForFile = async (rel) => {
-            const view = track(await runtime.query(directory, { kind: "file", file: rel, limit }));
-            const symbols = view.envelope.items.map((item) => item.id).filter((id) => !id.startsWith("file:"));
-            const subjects = symbols.length > 0 ? symbols : [`file:${rel}`];
-            const parts = [];
-            for (const symbol of subjects) {
-              parts.push(track(await runtime.query(directory, { kind: "impact", symbol, limit, depth })));
-            }
-            return parts;
-          };
-          if (changesMode) {
-            const changed = await collectChangedPaths(directory);
-            const parts = [];
-            for (const file of changed) {
-              parts.push(...await impactSubjectsForFile(normalizeRel(file)));
-            }
-            return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] };
-          }
           const kind = args.subjectKind ?? inferSubjectKind(subjectText);
-          if (kind === "file" || kind === "changes") {
+          if (kind === "file") {
             const rel = normalizeRel(subjectText);
             const parts = await impactSubjectsForFile(rel);
             return { envelope: mergedImpactEnvelope(summary, directory, [subjectText], parts), extraUnresolved: [] };
@@ -51519,23 +51550,32 @@ function createCodeGraphTool(deps = {}) {
         const answer = track(await runtime.query(directory, { kind: "tests", target: resolved, limit }));
         return { envelope: answer.envelope, extraUnresolved: [] };
       };
+      const attemptOp = async () => {
+        try {
+          return { answer: await runOp(), failure: [] };
+        } catch (error) {
+          return { answer: null, failure: thrownFailureReasons(asError(error)) };
+        }
+      };
       let pin = summary.generation;
-      let built = await runOp().catch(() => null);
-      if (built === null)
-        return unavailable(["index-failed"]);
+      let attempt = await attemptOp();
+      if (attempt.answer === null)
+        return unavailable(attempt.failure);
+      let built = attempt.answer;
       let restarted = false;
       if (pin !== null && generations.some((generation) => generation !== null && generation !== pin)) {
         restarted = true;
         generations.length = 0;
         try {
           summary = await runtime.readIndex(directory, { block: true });
-        } catch {
-          return unavailable(["index-failed"]);
+        } catch (error) {
+          return unavailable(thrownFailureReasons(asError(error)));
         }
         pin = summary.generation;
-        built = await runOp().catch(() => null);
-        if (built === null)
-          return unavailable(["index-failed"]);
+        attempt = await attemptOp();
+        if (attempt.answer === null)
+          return unavailable(attempt.failure);
+        built = attempt.answer;
       }
       const staleCarrier = staleCarrierOf(built.envelope);
       const envelope = buildAgentContext({
@@ -52601,8 +52641,67 @@ function gateCheckpoint(store, runId, scope = { kind: "run" }) {
   return { runId, checkedGoalIds, missingGoalIds: missing };
 }
 
-// ../../../../omo-engine/omo-opencode/src/tools/ulw/store-instance.ts
+// ../../../../omo-engine/omo-opencode/src/ulw/plan-store.ts
 import nodeFs from "node:fs";
+import { join as join15 } from "node:path";
+var UlwLoopPlanFile = object({
+  brief: string2().optional(),
+  goals: array(object({ id: string2().trim().min(1) })).min(1)
+});
+function normalizeSessionId(value) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0)
+    return null;
+  const segments = trimmed.split(/[\\/]+/).filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+  const candidate = (segments.length > 0 ? segments.join("-") : trimmed).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^\.+/, "").replace(/^[.-]+|[.-]+$/g, "");
+  return candidate.length > 0 ? candidate : null;
+}
+function readUlwLoopPlan(directory, runRef) {
+  const sessionId = normalizeSessionId(runRef);
+  if (sessionId === null)
+    return;
+  const planPath = join15(directory, ".omo", "ulw-loop", sessionId, "goals.json");
+  let raw;
+  try {
+    raw = nodeFs.readFileSync(planPath, "utf8");
+  } catch {
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  const plan = UlwLoopPlanFile.safeParse(parsed);
+  if (!plan.success)
+    return;
+  const brief = plan.data.brief?.trim() || `ULW plan ${sessionId}`;
+  return { sessionId, brief, goalIds: plan.data.goals.map((goal) => goal.id) };
+}
+function adoptUlwLoopPlanRun(store, directory, runRef) {
+  const plan = readUlwLoopPlan(directory, runRef);
+  if (plan === undefined)
+    return;
+  if (store.getRun(plan.sessionId) !== undefined)
+    return plan.sessionId;
+  store.createRun({ id: plan.sessionId, brief: plan.brief, sessionScope: plan.sessionId });
+  return plan.sessionId;
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/ulw/run-ref.ts
+function resolveExistingRunRef(store, runRef) {
+  return store.resolveRunId(runRef) ?? runRef;
+}
+function resolveDispatchRunRef(store, directory, runRef) {
+  const resolved = store.resolveRunId(runRef);
+  if (resolved !== undefined)
+    return resolved;
+  return adoptUlwLoopPlanRun(store, directory, runRef) ?? runRef;
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/ulw/store-instance.ts
+import nodeFs2 from "node:fs";
 
 // ../../../../omo-engine/omo-opencode/src/ulw/persistence.ts
 var STATUS_PRIORITY = ["active", "complete", "blocked", "failed"];
@@ -52937,6 +53036,18 @@ class UlwStore {
   runIdForSubmission(submissionId) {
     return this.submissionClaims.get(submissionId);
   }
+  resolveRunId(runRef) {
+    const ref = runRef.trim();
+    if (ref.length === 0)
+      return;
+    if (this.runs.has(ref))
+      return ref;
+    const claimed = this.submissionClaims.get(ref);
+    if (claimed !== undefined && this.runs.has(claimed))
+      return claimed;
+    const scoped = [...this.runs.values()].filter((state) => state.record.sessionScope === ref);
+    return scoped.length === 1 ? scoped[0].record.id : undefined;
+  }
   openRun(input) {
     const submissionId = input.submissionId?.trim();
     if (submissionId === undefined || submissionId.length === 0) {
@@ -53050,23 +53161,45 @@ class UlwStore {
   recordChildResult(runId, goalId, input) {
     const state = this.requireActiveState(runId);
     const goal = requireText(goalId, "goalId", runId);
-    if (!state.roster.has(goal)) {
-      throw goalNotDispatchedError(runId, goal);
-    }
     const childSessionId = requireText(input.childSessionId, "childSessionId", runId);
-    const dispatched = state.roster.get(goal) ?? [];
-    if (!dispatched.includes(childSessionId)) {
+    const resolvedGoal = this.receiptGoalId(state, goal, childSessionId);
+    if (resolvedGoal === undefined) {
+      if (!this.hasDispatchForGoal(state, goal)) {
+        throw goalNotDispatchedError(runId, goal);
+      }
       throw goalSessionMismatchError(runId, goal, childSessionId);
     }
     const receipt = finishReceipt({
-      goalId: goal,
+      goalId: resolvedGoal,
       childSessionId,
       status: input.status ?? "completed",
       recordedAt: isoNow(input.now ?? this.now)
     }, input.resultRef?.trim() || undefined, input.reason?.trim() || undefined);
-    state.receipts.set(goal, receipt);
+    state.receipts.set(resolvedGoal, receipt);
     this.save();
     return receipt;
+  }
+  receiptGoalId(state, goalId, childSessionId) {
+    const exact = state.roster.get(goalId);
+    if (exact !== undefined)
+      return exact.includes(childSessionId) ? goalId : undefined;
+    const aliases = this.rosterGoalIds(state, goalId);
+    if (aliases.length > 0) {
+      return aliases.find((candidate) => (state.roster.get(candidate) ?? []).includes(childSessionId));
+    }
+    const workerGoals = [...state.roster.entries()].filter(([, workers]) => workers.includes(childSessionId)).map(([candidate]) => candidate);
+    return workerGoals.length === 1 ? workerGoals[0] : undefined;
+  }
+  rosterGoalIds(state, goalId) {
+    if (state.roster.has(goalId))
+      return [goalId];
+    return [...state.roster.keys()].filter((candidate) => this.isGoalAlias(candidate, goalId));
+  }
+  hasDispatchForGoal(state, goalId) {
+    return this.rosterGoalIds(state, goalId).length > 0;
+  }
+  isGoalAlias(left, right) {
+    return left.startsWith(`${right}-`) || right.startsWith(`${left}-`);
   }
   receiptFor(runId, goalId) {
     return this.requireState(runId).receipts.get(goalId);
@@ -53080,7 +53213,7 @@ class UlwStore {
   }
   missingReceipts(runId, goalIds) {
     const state = this.requireState(runId);
-    const candidates = goalIds === undefined ? [...state.roster.keys()] : goalIds.filter((goalId) => state.roster.has(goalId));
+    const candidates = goalIds === undefined ? [...state.roster.keys()] : [...new Set(goalIds.flatMap((goalId) => this.rosterGoalIds(state, goalId)))];
     return candidates.filter((goalId) => !state.receipts.has(goalId)).sort();
   }
   snapshotState() {
@@ -53202,7 +53335,7 @@ var shared;
 function getUlwStore() {
   if (shared === undefined) {
     const filePath = process.env[ULW_STORE_FILE_ENV]?.trim();
-    shared = filePath !== undefined && filePath.length > 0 ? new UlwStore({ persistence: new FileUlwPersistence({ fs: nodeFs, filePath }) }) : new UlwStore;
+    shared = filePath !== undefined && filePath.length > 0 ? new UlwStore({ persistence: new FileUlwPersistence({ fs: nodeFs2, filePath }) }) : new UlwStore;
   }
   return shared;
 }
@@ -53228,12 +53361,12 @@ function createUlwCheckpointTool(deps = {}) {
       },
       required: ["runId"]
     },
-    execute: async (toolArgs) => {
+    execute: async (toolArgs, context) => {
       const parsed = UlwCheckpointArgs.safeParse(toolArgs);
       if (!parsed.success)
         refuseArgs(runIdOf(toolArgs), "ULW runId must be a non-empty string.");
       const goalIds = parsed.data.goalIds;
-      const result = gateCheckpoint(store, parsed.data.runId, goalIds === undefined ? { kind: "run" } : { kind: "goals", goalIds: [...goalIds] });
+      const result = gateCheckpoint(store, resolveExistingRunRef(store, parsed.data.runId), goalIds === undefined ? { kind: "run" } : { kind: "goals", goalIds: [...goalIds] });
       return JSON.stringify(result);
     }
   };
@@ -53261,14 +53394,15 @@ function createUlwCompleteTool(deps = {}) {
       },
       required: ["runId", "status"]
     },
-    execute: async (toolArgs) => {
+    execute: async (toolArgs, context) => {
       const parsed = UlwCompleteArgs.safeParse(toolArgs);
       if (!parsed.success)
         refuseArgs(runIdOf(toolArgs), "ULW runId must be non-empty and status one of complete, failed, blocked.");
+      const runId = resolveExistingRunRef(store, parsed.data.runId);
       if (parsed.data.status === "complete") {
-        gateCheckpoint(store, parsed.data.runId);
+        gateCheckpoint(store, runId);
       }
-      return JSON.stringify(store.setRunStatus(parsed.data.runId, parsed.data.status));
+      return JSON.stringify(store.setRunStatus(runId, parsed.data.status));
     }
   };
 }
@@ -56588,7 +56722,7 @@ function buildMemberPrompt(spec, member) {
 
 // ../../../../omo-engine/omo-opencode/src/tools/ulw/dispatch.ts
 var ULW_DISPATCH_NAME = "ulw_dispatch";
-var ULW_DISPATCH_DESCRIPTION = "Dispatch ULW goals: record worker sessions, or spawn them through the team pool.";
+var ULW_DISPATCH_DESCRIPTION = "Dispatch ULW goals: record worker sessions, or spawn them through the team pool. A create-goals session id resolves to the plan under .omo/ulw-loop/<sessionId>/.";
 var DEFAULT_POOL_BOUNDS = {
   maxParallelMembers: 4,
   maxWallClockMinutes: 120
@@ -56682,9 +56816,10 @@ function createUlwDispatchTool(deps = {}) {
         if (!parsed.success) {
           refuseArgs(runIdOf(toolArgs), "ULW goalId and workerSessionId must be non-empty strings.");
         }
-        const workers = store.dispatchGoal(parsed.data.runId, parsed.data.goalId, parsed.data.workerSessionId);
+        const runId = resolveDispatchRunRef(store, context.directory, parsed.data.runId);
+        const workers = store.dispatchGoal(runId, parsed.data.goalId, parsed.data.workerSessionId);
         return JSON.stringify({
-          runId: parsed.data.runId,
+          runId,
           goalId: parsed.data.goalId,
           workerSessionId: parsed.data.workerSessionId,
           workers
@@ -56694,7 +56829,7 @@ function createUlwDispatchTool(deps = {}) {
       if (!parsed.success) {
         refuseArgs(runIdOf(toolArgs), "ULW goals must be a non-empty array of { goalId, workerSessionId?, prompt?, agent? }.");
       }
-      const runId = parsed.data.runId;
+      const runId = resolveDispatchRunRef(store, context.directory, parsed.data.runId);
       const used = new Set;
       const entries = parsed.data.goals.map((goal) => {
         const memberName = memberNameFor(goal.goalId, used);
@@ -56820,7 +56955,7 @@ function createUlwEvidenceTool(deps = {}) {
       },
       required: ["runId", "goalId", "childSessionId"]
     },
-    execute: async (toolArgs) => {
+    execute: async (toolArgs, context) => {
       const parsed = UlwEvidenceArgs.safeParse(toolArgs);
       if (!parsed.success) {
         refuseArgs(runIdOf(toolArgs), "ULW runId, goalId, and childSessionId must be non-empty strings.");
@@ -56831,7 +56966,8 @@ function createUlwEvidenceTool(deps = {}) {
         resultRef: parsed.data.resultRef,
         reason: parsed.data.reason
       };
-      return JSON.stringify(store.recordChildResult(parsed.data.runId, parsed.data.goalId, input));
+      const runId = resolveExistingRunRef(store, parsed.data.runId);
+      return JSON.stringify(store.recordChildResult(runId, parsed.data.goalId, input));
     }
   };
 }
@@ -56901,7 +57037,8 @@ function createUlwStatusTool(deps = {}) {
       if (!parsed.success)
         refuseArgs(runIdOf(toolArgs), "ULW runId must be a non-empty string when provided.");
       const submissionId = parsed.data.submissionId;
-      const runId = submissionId === undefined ? parsed.data.runId : store.runIdForSubmission(submissionId);
+      const requestedRunId = submissionId === undefined ? parsed.data.runId : store.runIdForSubmission(submissionId);
+      const runId = requestedRunId === undefined ? undefined : resolveExistingRunRef(store, requestedRunId);
       if (runId === undefined) {
         if (submissionId === undefined) {
           return JSON.stringify({ runs: store.listRuns() });
@@ -57439,7 +57576,7 @@ import * as path7 from "node:path";
 // ../../../../omo-engine/omo-opencode/src/shared/opencode-config-dir.ts
 import { existsSync as existsSync17, realpathSync as realpathSync6 } from "node:fs";
 import { homedir as homedir5 } from "node:os";
-import { join as join15, posix as posix2, resolve as resolve8, win32 } from "node:path";
+import { join as join16, posix as posix2, resolve as resolve8, win32 } from "node:path";
 var TAURI_APP_IDENTIFIER = "ai.opencode.desktop";
 var TAURI_APP_IDENTIFIER_DEV = "ai.opencode.desktop.dev";
 function isDevBuild(version) {
@@ -57451,15 +57588,15 @@ function getTauriConfigDir(identifier) {
   const platform = process.platform;
   switch (platform) {
     case "darwin":
-      return join15(homedir5(), "Library", "Application Support", identifier);
+      return join16(homedir5(), "Library", "Application Support", identifier);
     case "win32": {
-      const appData = process.env.APPDATA || join15(homedir5(), "AppData", "Roaming");
+      const appData = process.env.APPDATA || join16(homedir5(), "AppData", "Roaming");
       return win32.join(appData, identifier);
     }
     case "linux":
     default: {
-      const xdgConfig = process.env.XDG_CONFIG_HOME || join15(homedir5(), ".config");
-      return join15(xdgConfig, identifier);
+      const xdgConfig = process.env.XDG_CONFIG_HOME || join16(homedir5(), ".config");
+      return join16(xdgConfig, identifier);
     }
   }
 }
@@ -57502,8 +57639,8 @@ function getWslLinuxHomeDir(windowsConfigRoot) {
 function getCliDefaultConfigDir() {
   const envXdgConfig = process.env.XDG_CONFIG_HOME?.trim();
   const shouldIgnoreWindowsXdg = envXdgConfig !== undefined && envXdgConfig.length > 0 && isWslEnvironment() && isWindowsUserConfigRoot(envXdgConfig);
-  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join15(homedir5(), ".config");
-  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join15(xdgConfig, "opencode");
+  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join16(homedir5(), ".config");
+  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join16(xdgConfig, "opencode");
   return resolveConfigPath(configDir);
 }
 function getCliCustomConfigDir() {
@@ -57536,8 +57673,8 @@ function getOpenCodeConfigDir(options) {
   const tauriDir = process.platform === "win32" ? win32.isAbsolute(tauriDirBase) ? win32.normalize(tauriDirBase) : win32.resolve(tauriDirBase) : resolveConfigPath(tauriDirBase);
   if (checkExisting) {
     const legacyDir = getCliConfigDir();
-    const legacyConfig = join15(legacyDir, "opencode.json");
-    const legacyConfigC = join15(legacyDir, "opencode.jsonc");
+    const legacyConfig = join16(legacyDir, "opencode.json");
+    const legacyConfigC = join16(legacyDir, "opencode.jsonc");
     if (existsSync17(legacyConfig) || existsSync17(legacyConfigC)) {
       return legacyDir;
     }
@@ -57548,9 +57685,9 @@ function getOpenCodeConfigPaths(options) {
   const configDir = getOpenCodeConfigDir(options);
   return {
     configDir,
-    configJson: join15(configDir, "opencode.json"),
-    configJsonc: join15(configDir, "opencode.jsonc"),
-    packageJson: join15(configDir, "package.json")
+    configJson: join16(configDir, "opencode.json"),
+    configJsonc: join16(configDir, "opencode.jsonc"),
+    packageJson: join16(configDir, "package.json")
   };
 }
 
@@ -57676,7 +57813,7 @@ Multiple ${PLUGIN_NAME} instances can inject internal prompts into the same live
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
 import { existsSync as existsSync19, readFileSync as readFileSync13 } from "node:fs";
-import { join as join17 } from "node:path";
+import { join as join18 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/plugin-entry-shape.ts
 function isPluginTupleEntry(entry) {
@@ -57692,8 +57829,8 @@ function withPluginEntryName(entry, name) {
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
 function getOpenCodeConfigPath(overrideConfigDir) {
   if (overrideConfigDir) {
-    const jsonPath = join17(overrideConfigDir, "opencode.json");
-    const jsoncPath = join17(overrideConfigDir, "opencode.jsonc");
+    const jsonPath = join18(overrideConfigDir, "opencode.json");
+    const jsoncPath = join18(overrideConfigDir, "opencode.jsonc");
     if (existsSync19(jsoncPath))
       return jsoncPath;
     if (existsSync19(jsonPath))
@@ -57744,35 +57881,35 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
 import { existsSync as existsSync22, readdirSync as readdirSync10 } from "node:fs";
-import { join as join19 } from "node:path";
+import { join as join20 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-workspace-migration.ts
 import { copyFileSync, existsSync as existsSync20, lstatSync as lstatSync5, mkdirSync as mkdirSync5, readdirSync as readdirSync9 } from "node:fs";
-import { dirname as dirname9, join as join18, relative as relative6 } from "node:path";
+import { dirname as dirname9, join as join19, relative as relative6 } from "node:path";
 var LEGACY_WORKSPACE_DIR = ".sisyphus";
 var WORKSPACE_DIR = ".omo";
 function copyMissingEntries(legacyPath, targetPath, targetRoot, skipped) {
   const legacyStat = lstatSync5(legacyPath);
   if (legacyStat.isSymbolicLink()) {
-    skipped.push(join18(WORKSPACE_DIR, relative6(targetRoot, targetPath)));
+    skipped.push(join19(WORKSPACE_DIR, relative6(targetRoot, targetPath)));
     return false;
   }
   if (existsSync20(targetPath)) {
     if (legacyStat.isDirectory() && lstatSync5(targetPath).isDirectory()) {
       let copiedChild = false;
       for (const entry of readdirSync9(legacyPath)) {
-        copiedChild = copyMissingEntries(join18(legacyPath, entry), join18(targetPath, entry), targetRoot, skipped) || copiedChild;
+        copiedChild = copyMissingEntries(join19(legacyPath, entry), join19(targetPath, entry), targetRoot, skipped) || copiedChild;
       }
       return copiedChild;
     }
-    skipped.push(join18(WORKSPACE_DIR, relative6(targetRoot, targetPath)));
+    skipped.push(join19(WORKSPACE_DIR, relative6(targetRoot, targetPath)));
     return false;
   }
   if (legacyStat.isDirectory()) {
     mkdirSync5(targetPath, { recursive: true });
     let copiedChild = false;
     for (const entry of readdirSync9(legacyPath)) {
-      copiedChild = copyMissingEntries(join18(legacyPath, entry), join18(targetPath, entry), targetRoot, skipped) || copiedChild;
+      copiedChild = copyMissingEntries(join19(legacyPath, entry), join19(targetPath, entry), targetRoot, skipped) || copiedChild;
     }
     return copiedChild;
   }
@@ -57781,11 +57918,11 @@ function copyMissingEntries(legacyPath, targetPath, targetRoot, skipped) {
   return true;
 }
 function migrateLegacyWorkspaceDirectory(directory) {
-  const legacyDirectory = join18(directory, LEGACY_WORKSPACE_DIR);
+  const legacyDirectory = join19(directory, LEGACY_WORKSPACE_DIR);
   if (!existsSync20(legacyDirectory)) {
     return { migrated: false, skipped: [] };
   }
-  const targetDirectory = join18(directory, WORKSPACE_DIR);
+  const targetDirectory = join19(directory, WORKSPACE_DIR);
   const skipped = [];
   try {
     const migrated = copyMissingEntries(legacyDirectory, targetDirectory, targetDirectory, skipped);
@@ -57953,7 +58090,7 @@ function planArtifactTouched(directory) {
   try {
     if (!directory)
       return false;
-    const plansDir = join19(directory, ".omo", "plans");
+    const plansDir = join20(directory, ".omo", "plans");
     if (!existsSync22(plansDir))
       return false;
     return readdirSync10(plansDir).some((entry) => entry.endsWith(".md"));
