@@ -10,10 +10,11 @@
 
 import { z } from "zod"
 
-import type { OmoJsonObject, OmoToolDefinition } from "../../plugin-types.ts"
+import type { OmoJsonObject, OmoToolContext, OmoToolDefinition } from "../../plugin-types.ts"
 import { gateCheckpoint } from "../../ulw/checkpoint.ts"
 import { UlwStore } from "../../ulw/store.ts"
 import { NonEmptyText, refuseArgs, runIdOf } from "./args.ts"
+import { resolveExistingRunRef } from "./run-ref.ts"
 import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_CHECKPOINT_NAME = "ulw_checkpoint"
@@ -43,13 +44,13 @@ export function createUlwCheckpointTool(deps: UlwCheckpointDeps = {}): OmoToolDe
       },
       required: ["runId"],
     },
-    execute: async (toolArgs: OmoJsonObject) => {
+    execute: async (toolArgs: OmoJsonObject, context: OmoToolContext) => {
       const parsed = UlwCheckpointArgs.safeParse(toolArgs)
       if (!parsed.success) refuseArgs(runIdOf(toolArgs), "ULW runId must be a non-empty string.")
       const goalIds = parsed.data.goalIds
       const result = gateCheckpoint(
         store,
-        parsed.data.runId,
+        resolveExistingRunRef(store, parsed.data.runId),
         goalIds === undefined ? { kind: "run" } : { kind: "goals", goalIds: [...goalIds] },
       )
       return JSON.stringify(result)

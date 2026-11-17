@@ -235,4 +235,51 @@ describe("native ulw child-result receipts", () => {
     expect(store.missingReceipts(RUN_ID, ["G001"])).toEqual([])
     expect(store.missingReceipts(RUN_ID, ["G002", "never-dispatched"])).toEqual(["G002"])
   })
+
+  test("#given a dispatched plan goal #when the receipt names its short id #then the receipt settles the canonical dispatch", () => {
+    // given
+    const store = storeFor()
+    activeRun(store)
+    store.dispatchGoal(RUN_ID, "G001-receipt-bridge-smoke", "ses_worker_a")
+
+    // when
+    const beforeReceipt = store.missingReceipts(RUN_ID, ["G001"])
+    const receipt = store.recordChildResult(RUN_ID, "G001", {
+      childSessionId: "ses_worker_a",
+      resultRef: "a0/report.md",
+    })
+
+    // then
+    expect(beforeReceipt).toEqual(["G001-receipt-bridge-smoke"])
+    expect(receipt.goalId).toBe("G001-receipt-bridge-smoke")
+    expect(store.receiptFor(RUN_ID, "G001-receipt-bridge-smoke")).toEqual(receipt)
+    expect(store.missingReceipts(RUN_ID, ["G001"])).toEqual([])
+    expect(store.missingReceipts(RUN_ID)).toEqual([])
+  })
+
+  test("#given a dispatch to one worker #when the receipt omits the goal id #then the worker session names the goal", () => {
+    // given
+    const store = storeFor()
+    activeRun(store)
+    store.dispatchGoal(RUN_ID, "G001-receipt-bridge-smoke", "ses_worker_a")
+
+    // when
+    const receipt = store.recordChildResult(RUN_ID, "other-goal", { childSessionId: "ses_worker_a" })
+
+    // then
+    expect(receipt.goalId).toBe("G001-receipt-bridge-smoke")
+    expect(store.missingReceipts(RUN_ID)).toEqual([])
+  })
+
+  test("#given two runs with one scope #when resolving a session scope #then the ambiguous reference stays unresolved", () => {
+    // given
+    const store = storeFor()
+    store.createRun({ id: "run-a", brief: "A", sessionScope: "ses_shared" })
+    store.createRun({ id: "run-b", brief: "B", sessionScope: "ses_shared" })
+
+    // when / then
+    expect(store.resolveRunId("run-a")).toBe("run-a")
+    expect(store.resolveRunId("ses_shared")).toBeUndefined()
+    expect(store.resolveRunId("ghost")).toBeUndefined()
+  })
 })

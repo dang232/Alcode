@@ -10,7 +10,9 @@
  * Shape summary:
  * - run record: id, brief, session scope, status lifecycle.
  * - dispatch roster: goal id -> worker session ids that were dispatched.
- * - child-result receipts: keyed by goal id, one receipt per dispatched goal.
+ * - child-result receipts: keyed by the rostered goal id, one receipt per
+ *   dispatched goal. A receipt may name that goal by a unique id alias or
+ *   by the worker session, but it is always stored under the roster key.
  * - checkpoint gating (see `./checkpoint.ts`) refuses any goal whose
  *   dispatch has no matching receipt.
  */
@@ -55,9 +57,10 @@ export type UlwDispatchRoster = Readonly<Record<string, readonly string[]>>
 type UlwChildResultStatus = "completed" | "failed"
 
 /**
- * Receipt proving a dispatched child's result was collected. Keyed by goal
- * id in the store, so at most one receipt exists per goal: the latest
- * recording wins.
+ * Receipt proving a dispatched child's result was collected. Keyed by the
+ * rostered goal id in the store, so at most one receipt exists per goal:
+ * the latest recording wins. The `goalId` is the canonical roster id even
+ * when the caller supplied a shorter plan/native alias.
  */
 export type UlwChildResultReceipt = {
   readonly goalId: string

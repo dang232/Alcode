@@ -9,9 +9,10 @@
 
 import { z } from "zod"
 
-import type { OmoJsonObject, OmoToolDefinition } from "../../plugin-types.ts"
+import type { OmoJsonObject, OmoToolContext, OmoToolDefinition } from "../../plugin-types.ts"
 import { UlwStore } from "../../ulw/store.ts"
 import { NonEmptyText, refuseArgs, runIdOf } from "./args.ts"
+import { resolveExistingRunRef } from "./run-ref.ts"
 import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_EVIDENCE_NAME = "ulw_evidence"
@@ -50,7 +51,7 @@ export function createUlwEvidenceTool(deps: UlwEvidenceDeps = {}): OmoToolDefini
       },
       required: ["runId", "goalId", "childSessionId"],
     },
-    execute: async (toolArgs: OmoJsonObject) => {
+    execute: async (toolArgs: OmoJsonObject, context: OmoToolContext) => {
       const parsed = UlwEvidenceArgs.safeParse(toolArgs)
       if (!parsed.success) {
         refuseArgs(runIdOf(toolArgs), "ULW runId, goalId, and childSessionId must be non-empty strings.")
@@ -61,7 +62,8 @@ export function createUlwEvidenceTool(deps: UlwEvidenceDeps = {}): OmoToolDefini
         resultRef: parsed.data.resultRef,
         reason: parsed.data.reason,
       }
-      return JSON.stringify(store.recordChildResult(parsed.data.runId, parsed.data.goalId, input))
+      const runId = resolveExistingRunRef(store, parsed.data.runId)
+      return JSON.stringify(store.recordChildResult(runId, parsed.data.goalId, input))
     },
   }
 }

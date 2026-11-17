@@ -11,10 +11,11 @@
 
 import { z } from "zod"
 
-import type { OmoJsonObject, OmoToolDefinition } from "../../plugin-types.ts"
+import type { OmoJsonObject, OmoToolContext, OmoToolDefinition } from "../../plugin-types.ts"
 import { gateCheckpoint } from "../../ulw/checkpoint.ts"
 import { UlwStore } from "../../ulw/store.ts"
 import { NonEmptyText, refuseArgs, runIdOf } from "./args.ts"
+import { resolveExistingRunRef } from "./run-ref.ts"
 import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_COMPLETE_NAME = "ulw_complete"
@@ -45,13 +46,14 @@ export function createUlwCompleteTool(deps: UlwCompleteDeps = {}): OmoToolDefini
       },
       required: ["runId", "status"],
     },
-    execute: async (toolArgs: OmoJsonObject) => {
+    execute: async (toolArgs: OmoJsonObject, context: OmoToolContext) => {
       const parsed = UlwCompleteArgs.safeParse(toolArgs)
       if (!parsed.success) refuseArgs(runIdOf(toolArgs), "ULW runId must be non-empty and status one of complete, failed, blocked.")
+      const runId = resolveExistingRunRef(store, parsed.data.runId)
       if (parsed.data.status === "complete") {
-        gateCheckpoint(store, parsed.data.runId)
+        gateCheckpoint(store, runId)
       }
-      return JSON.stringify(store.setRunStatus(parsed.data.runId, parsed.data.status))
+      return JSON.stringify(store.setRunStatus(runId, parsed.data.status))
     },
   }
 }
