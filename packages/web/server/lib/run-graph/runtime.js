@@ -1,7 +1,7 @@
 import { promises as fsPromises } from 'node:fs';
 import path from 'node:path';
 
-import { mergeRecordTasks, rowsForConversation } from './record-tasks.js';
+import { mergeRecordTasks, reconcileRecordClaims, rowsForConversation } from './record-tasks.js';
 
 let recordReaderPromise = null;
 
@@ -155,7 +155,9 @@ const attachToEntries = async (readRepairState, directory, entries, idField) =>
  * attempt adds nothing; an unreadable store adds `repairError` instead of
  * silently looking like "no repair".
  */
-const attachRepairState = async (document, { directory, readRepairState }) => {
+// Exported so the DAG pane service can run the same projection the HTTP route runs: two copies of this chain
+// drifted once already, and the service silently served less than the route.
+export const attachRepairState = async (document, { directory, readRepairState }) => {
   if (!isRecord(document)) return document;
   const runEntries = isRecord(document.dag) && Array.isArray(document.dag.runs) ? document.dag.runs : null;
   const taskEntries = isRecord(document.tasks) && Array.isArray(document.tasks.tasks) ? document.tasks.tasks : null;
@@ -255,7 +257,7 @@ const attachAttribution = (document, index) => {
  * A reader failure is an explicit `attributionError` field: it must never be
  * swallowed into a document that looks like "no attribution".
  */
-const attachAttributionState = async (document, { directory, readAttributionState }) => {
+export const attachAttributionState = async (document, { directory, readAttributionState }) => {
   if (!isRecord(document)) return document;
   let index;
   try {
@@ -298,7 +300,7 @@ const attachDeliveryToEntries = async (readDeliveryState, directory, entries) =>
  * Attach the authoritative delivery status and verification claim of each named task record.
  * Absence produces no field; a read failure produces `deliveryError`, never a silent "no delivery".
  */
-const attachDeliveryState = async (document, { directory, readDeliveryState }) => {
+export const attachDeliveryState = async (document, { directory, readDeliveryState }) => {
   if (!isRecord(document)) return document;
   const runEntries = isRecord(document.dag) && Array.isArray(document.dag.runs) ? document.dag.runs : null;
   const taskEntries = isRecord(document.tasks) && Array.isArray(document.tasks.tasks) ? document.tasks.tasks : null;
@@ -360,9 +362,13 @@ const normalizeRecordResult = (result) => {
 const describeRecordSource = (document, records) => {
   if (!isRecord(document)) return document;
   const container = isRecord(document.tasks) ? document.tasks : {};
+  // Both clients require a `tasks` array. A flags-only container is unparseable, and an unparseable 200
+  // body is discarded whole, so a failed side store would erase a complete snapshot's runs. Keep the
+  // array present and put the partiality beside it.
+  const base = Array.isArray(container.tasks) ? container : { ...container, tasks: [] };
   const error = asString(records?.error);
-  if (error !== null && error.length > 0) return { ...document, tasks: { ...container, recordError: error } };
-  if (records?.absent === true) return { ...document, tasks: { ...container, recordAbsent: true } };
+  if (error !== null && error.length > 0) return { ...document, tasks: { ...base, recordError: error } };
+  if (records?.absent === true) return { ...document, tasks: { ...base, recordAbsent: true } };
   return document;
 };
 
@@ -468,7 +474,9 @@ const isNetworkOrDevicePath = (text) => text.startsWith('\\\\') || text.startsWi
       const described = describeRecordSource(document, records);
       const withRepair = await attachRepairState(described, { directory, readRepairState });
       const withAttribution = await attachAttributionState(withRepair, { directory, readAttributionState });
-      return attachDeliveryState(withAttribution, { directory, readDeliveryState });
+      // Attribution attaches the task id a chat node lacked when it was written, so the claim it carries can only be
+      // corrected after this point.
+      return attachDeliveryState(reconcileRecordClaims(withAttribution, rows), { directory, readDeliveryState });
     }
     let document = null;
     try {
@@ -486,7 +494,10 @@ const isNetworkOrDevicePath = (text) => text.startsWith('\\\\') || text.startsWi
     const merged = rows.length === 0 ? describeRecordSource(document, records) : describeRecordSource(mergeRecordTasks(document, rows, records.diagnostics), records);
     const withRepair = await attachRepairState(merged, { directory, readRepairState });
     const withAttribution = await attachAttributionState(withRepair, { directory, readAttributionState });
-    return attachDeliveryState(withAttribution, { directory, readDeliveryState });
+    // A chat node is written before its child finishes, so it usually carries no task_id when the merge runs; attribution
+    // attaches it here. Without this second pass the node keeps the snapshot's claim (often "verified") while its own
+    // task row says otherwise, which is the inference this feature must never make.
+    return attachDeliveryState(reconcileRecordClaims(withAttribution, rows), { directory, readDeliveryState });
   };
 
   const readAttribution = async (directory) => {

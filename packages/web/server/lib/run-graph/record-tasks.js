@@ -457,6 +457,25 @@ const reconcileNodeClaims = (document, rowById) => {
   return { document: changed ? { ...document, dag: { ...dag, runs: nextRuns } } : document, changed }
 }
 
+/**
+ * Correct node verification claims from the record rows, keyed on the task id a node carries *now*.
+ *
+ * The chat path writes a node before its child finishes, so the attribution index it had at write time
+ * often named no task and the node carried no `task_id`. Merging therefore corrected nothing for those
+ * nodes. Attribution runs afterwards and attaches the id, which left a node saying "verified" from the
+ * snapshot while its own task row said "unverified". Callers replay this after attribution so the label
+ * a user reads always comes from the record.
+ */
+export const reconcileRecordClaims = (document, rows) => {
+  if (!isObject(document) || !Array.isArray(rows) || rows.length === 0) return document
+  const rowById = new Map()
+  for (const row of rows) {
+    const id = asString(row?.task_id)
+    if (id !== null) rowById.set(id, row)
+  }
+  return reconcileNodeClaims(document, rowById).document
+}
+
 export const mergeRecordTasks = (document, rows, diagnostics) => {
   const withDiagnostics = (value) => {
     if (diagnostics === undefined) return value

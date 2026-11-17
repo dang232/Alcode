@@ -185,6 +185,22 @@ describe("schema and version policy", () => {
     expect(result.diagnostics.unsupported[0].reason).toBe('unknown status "teleported"')
   })
 
+  it("rejects a record with no task_id at all and keeps the good ones", () => {
+    const { read } = readerOver({
+      "st_2.json": record("st_2", "completed"),
+      "nameless.json": JSON.stringify({ status: "completed" }),
+    })
+
+    const result = read({ directory: "project" })
+
+    // An identity the store does not name is malformed, never a row with an
+    // invented id, and the neighbouring good record still answers.
+    expect(result.tasks.map((task) => task.task_id)).toEqual(["st_2"])
+    expect(result.diagnostics.malformed[0].file).toBe("nameless.json")
+    expect(result.diagnostics.malformed[0].reason).toBe("no task_id")
+    expect(result.error).toBeUndefined()
+  })
+
   it("keeps the good records when one file is not JSON at all", () => {
     const { read } = readerOver({
       "st_1.json": "{ this is not json",
@@ -315,6 +331,37 @@ describe("verification stays independent from lifecycle", () => {
 })
 
 describe("identity and timings are copied verbatim", () => {
+  it("keeps four generated identities verbatim and derives one stable graph key", () => {
+    // Values are generated rather than written as literals so a collapsed field
+    // cannot pass by coincidence, and distinct per field so a swap is visible.
+    const generated = (label, index) => `id-${label}-${(index * 7919 + 104729).toString(36)}`
+    const taskId = generated("task", 1)
+    const parentId = generated("parent", 2)
+    const rootId = generated("root", 3)
+    const childId = generated("child", 4)
+    const { read } = readerOver({
+      [`${taskId}.json`]: record(taskId, "running", {
+        parent_session_id: parentId,
+        root_session_id: rootId,
+        child_session_id: childId,
+      }),
+    })
+
+    const first = read({ directory: "project" }).tasks[0]
+    const second = read({ directory: "project" }).tasks[0]
+
+    expect(first).toMatchObject({
+      task_id: taskId,
+      parent_session_id: parentId,
+      root_session_id: rootId,
+      child_session_id: childId,
+    })
+    // Four values that never collapse into each other.
+    expect(new Set([first.task_id, first.parent_session_id, first.root_session_id, first.child_session_id]).size).toBe(4)
+    // Deterministic: the same input twice produces the same row, key included.
+    expect(second).toEqual(first)
+  })
+
   it("keeps task, parent, root and child identities separate", () => {
     const { read } = readerOver({
       "st_1.json": record("st_1", "running", {

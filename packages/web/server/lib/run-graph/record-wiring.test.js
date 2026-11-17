@@ -177,4 +177,74 @@ describe("conversation membership", () => {
 
     expect(document.tasks.tasks.map((task) => task.task_id).sort()).toEqual(["t_child", "t_parent", "t_root"])
   })
+  it("corrects a node's stale verified claim after attribution attaches the task id", async () => {
+    // The shape the review found: a chat node written before its child finished, so it carries the
+    // snapshot's optimistic "verified" and no task_id. Attribution supplies the id afterwards; the claim
+    // must then come from the record, never from the snapshot.
+    const directory = project({
+      schemaVersion: 1,
+      sessionId: "ses_1",
+      dag: { runs: [{ run_id: "ses_1", run_key: "chat:ses_1", name: "run", status: "completed", nodes: [
+        { id: "childA", label: "child", state: "completed", prompt: "p", depends_on: [], verification_status: "verified" },
+      ] }] },
+      tasks: { tasks: [] },
+    })
+    const runtime = createRunGraphRuntime({
+      readRepairState: () => ({}),
+      readAttributionState: () => ({ absent: false, entries: [], byChildSessionId: { childA: { taskId: "st_a" } }, byTaskId: {}, collisions: [] }),
+      readDeliveryState: (input) => input,
+      readRecordTasks: () => ({
+        tasks: [{ task_id: "st_a", status: "completed", parent_session_id: "ses_1", child_session_id: "childA", verification_status: "unverified" }],
+        absent: false,
+      }),
+    })
+
+    const document = await runtime.readSnapshot(directory, "ses_1")
+
+    const node = document.dag.runs[0].nodes[0]
+    expect(node.task_id).toBe("st_a")
+    expect(node.verification_status).toBe("unverified")
+    expect(document.tasks.tasks[0].verification_status).toBe("unverified")
+  })
+  it("keeps the run graph parseable when the record store cannot be read", async () => {
+    // The shape the review found: a snapshot document whose container is null, plus a failed store read.
+    // Keeping only a flag would leave the container without an array, and both clients reject a document
+    // whose `tasks` has no list - erasing a complete graph over a side store failure.
+    const directory = project({
+      schemaVersion: 1,
+      sessionId: "ses_1",
+      dag: { runs: [{ run_id: "ses_1", run_key: "chat:ses_1", name: "run", status: "running", nodes: [] }] },
+      tasks: null,
+    })
+    const runtime = createRunGraphRuntime({
+      ...emptyDecorators,
+      readRecordTasks: () => ({ error: "record tasks unreadable: EACCES" }),
+    })
+
+    const document = await runtime.readSnapshot(directory, "ses_1")
+
+    expect(Array.isArray(document.tasks.tasks)).toBe(true)
+    expect(document.tasks.tasks).toEqual([])
+    expect(document.tasks.recordError).toBe("record tasks unreadable: EACCES")
+    expect(document.dag.runs).toHaveLength(1)
+  })
+
+  it("keeps the run graph parseable when no record store exists yet", async () => {
+    const directory = project({
+      schemaVersion: 1,
+      sessionId: "ses_1",
+      dag: { runs: [{ run_id: "ses_1", run_key: "chat:ses_1", name: "run", status: "running", nodes: [] }] },
+      tasks: null,
+    })
+    const runtime = createRunGraphRuntime({
+      ...emptyDecorators,
+      readRecordTasks: () => ({ tasks: [], absent: true }),
+    })
+
+    const document = await runtime.readSnapshot(directory, "ses_1")
+
+    expect(document.tasks.tasks).toEqual([])
+    expect(document.tasks.recordAbsent).toBe(true)
+    expect(document.dag.runs).toHaveLength(1)
+  })
 })
