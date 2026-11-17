@@ -26,7 +26,9 @@ import { createCodeGraphRuntime } from '../../../web/server/lib/code-graph/runti
 import { createAttributionStateReader } from '../../../web/server/lib/verification-approval/attribution-state.js';
 import { createRepairStateReader } from '../../../web/server/lib/verification-approval/repair-state.js';
 import { createRecordTaskReaderForProject } from '../../../web/server/lib/verification-approval/record-tasks-reader.js';
-import { mergeRecordTasks, rowsForConversation } from '../../../web/server/lib/run-graph/record-tasks.js';
+import { attachAttributionState, attachDeliveryState, attachRepairState } from '../../../web/server/lib/run-graph/runtime.js';
+import { createDeliveryStateReader } from '../../../web/server/lib/verification-approval/delivery-state.js';
+import { mergeRecordTasks, reconcileRecordClaims, rowsForConversation } from '../../../web/server/lib/run-graph/record-tasks.js';
 import { ProjectKnowledgeStore, parseRecordFile } from '../../../omo-engine/memory-core/src/project-knowledge/record.ts';
 import { retrieveProjectKnowledge } from '../../../omo-engine/memory-core/src/project-knowledge/retrieve.ts';
 import { evaluateFreshness } from '../../../omo-engine/memory-core/src/project-knowledge/validator.ts';
@@ -1014,6 +1016,7 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     codeGraphRuntime = null,
     attributionStateReader = createAttributionStateReader(),
     repairStateReader = createRepairStateReader(),
+    deliveryStateReader = createDeliveryStateReader(),
     recordTaskReader = null,
   } = dependencies;
 
@@ -1193,7 +1196,7 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     if (code === 'OMO_ENGINE_ABSENT') {
       return { status: 503, body: { ok: false, code, message: error.message } };
     }
-    if (code === 'OMO_INVOKE_ARGS_INVALID' || code === 'OMO_SESSION_ID_INVALID' || code === 'OMO_SNAPSHOT_DIR_INVALID') {
+    if (code === 'OMO_INVOKE_ARGS_INVALID' || code === 'DAG_CONVERSATION_ID_INVALID' || code === 'DAG_DIRECTORY_UNSUPPORTED') {
       return { status: 400, body: { ok: false, code, message: error.message } };
     }
     if (code === 'OMO_PROVIDER_NOT_SIGNED_IN') {
@@ -1227,45 +1230,35 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     }
   };
 
-  const withRecordTasks = (document, sessionId, directory) => {
-    const records = recordRowsFor(directory, sessionId);
+  // The route and this service must project the same document. They used to be two hand-written chains, and the
+  // service's copy fell behind: it merged rows and attached repair, never attribution or delivery, so a node the
+  // route could attribute and date arrived here bare. This now calls the route's own steps in the route's order.
+  const projectRecordDocument = async (document, records, directory) => {
     const merged = records.rows.length > 0 ? mergeRecordTasks(document, records.rows, records.diagnostics) : document;
     const described = records.error === undefined ? merged : (() => {
       const container = isRecord(merged) ? merged : {};
+      // The panel parser needs a list. A container carrying only the flag is unparseable, which would replace a
+      // complete run graph with an error card because a side store failed.
       const tasks = isRecord(container.tasks) ? { ...container.tasks } : {};
+      if (!Array.isArray(tasks.tasks)) tasks.tasks = [];
       tasks.recordError = records.error;
       return { ...container, tasks };
     })();
-    return attachRepairToTasks(described, directory);
+    if (!isSafeDirectory(directory ?? '')) return described;
+    const repaired = await attachRepairState(described, { directory, readRepairState: repairStateReader });
+    const attributed = await attachAttributionState(repaired, { directory, readAttributionState: attributionStateReader });
+    const delivered = await attachDeliveryState(attributed, { directory, readDeliveryState: deliveryStateReader });
+    // Attribution attaches a chat node's task id after the merge, so the claim it carries can only be corrected here.
+    return reconcileRecordClaims(delivered, records.rows);
   };
 
-  // The panel's repair rows come from this field, so a task the record layer contributed has to carry it here too: the
-  // HTTP surface attaches repair after the merge, and a divergence would show a repaired task over HTTP and a bare one
-  // in the pane.
-  const attachRepairToTasks = (document, directory) => {
-    if (!isRecord(document) || !isSafeDirectory(directory ?? '')) return document;
-    const container = isRecord(document.tasks) ? document.tasks : null;
-    const rows = container !== null && Array.isArray(container.tasks) ? container.tasks : null;
-    if (rows === null) return document;
-    let changed = false;
-    const next = rows.map((row) => {
-      if (!isRecord(row) || isRecord(row.repair)) return row;
-      const taskId = asString(row.task_id);
-      if (taskId.length === 0) return row;
-      let result;
-      try {
-        result = repairStateReader({ directory, taskId });
-      } catch {
-        return row;
-      }
-      if (!isRecord(result) || !isRecord(result.repair)) return row;
-      changed = true;
-      return { ...row, repair: result.repair };
-    });
-    return changed ? { ...document, tasks: { ...container, tasks: next } } : document;
-  };
+  // The route and this service must project the same document. They used to be two hand-written chains, and the
+  // service's copy fell behind: it merged rows and attached repair, never attribution or delivery, so a node the
+  // route could attribute and date arrived here bare.
+  const withRecordTasks = async (document, sessionId, directory) =>
+    projectRecordDocument(document, recordRowsFor(directory, sessionId), directory);
 
-  const recordOnlyDocument = (sessionId, directory) => {
+  const recordOnlyDocument = async (sessionId, directory) => {
     const records = recordRowsFor(directory, sessionId);
     if (records.error !== undefined) {
       return { status: 500, body: { ok: false, code: 'DAG_TASK_STORE_UNREADABLE', message: records.error, sessionId } };
@@ -1276,25 +1269,19 @@ export const createDagServiceHandlers = (dependencies = {}) => {
       }
       return null;
     }
-    return {
-      status: 200,
-      body: attachRepairToTasks(
-        mergeRecordTasks(
-          { schemaVersion: 1, sessionId, tasks: { parent_session_id: sessionId, tasks: records.rows }, dag: { parent_session_id: sessionId, runs: [] } },
-          [],
-          records.diagnostics,
-        ),
-        directory,
-      ),
-    };
+    const base = { schemaVersion: 1, sessionId, tasks: { parent_session_id: sessionId, tasks: records.rows }, dag: { parent_session_id: sessionId, runs: [] } };
+    return { status: 200, body: await projectRecordDocument(base, records, directory) };
   };
 
-  const readSnapshot = (sessionId, directory) => {
+  const readSnapshot = async (sessionId, directory) => {
     // A pane with no project bound cannot resolve a task store, and guessing one would read another project's work.
     // Say so in the payload instead of answering an empty graph that looks like "this conversation ran nothing".
     const scoped = isSafeDirectory(directory ?? '');
     const withScope = (result) => {
-      if (scoped || result.status !== 200 || !isRecord(result.body)) return result;
+      // The no-project case answers 404 when this conversation has no snapshot at all, which is exactly the case the
+      // flag exists for; restricting it to 200 made the state unreachable.
+      const carriesBody = result.status === 200 || result.status === 404;
+      if (scoped || !carriesBody || !isRecord(result.body)) return result;
       const tasks = isRecord(result.body.tasks) ? result.body.tasks : {};
       return { ...result, body: { ...result.body, tasks: { ...tasks, recordUnscoped: true } } };
     };
@@ -1302,7 +1289,7 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     try {
       tempPath = snapshotPathFor(sessionId);
     } catch (error) {
-      return { status: 400, body: { ok: false, code: error.code ?? 'OMO_SESSION_ID_INVALID', message: error.message } };
+      return { status: 400, body: { ok: false, code: error.code ?? 'DAG_CONVERSATION_ID_INVALID', message: error.message } };
     }
     // Engine documents outrank the synthetic steer fallback wherever they
     // live: temp engine, project engine, temp fallback, project document,
@@ -1334,14 +1321,16 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     const engine = parsed.find((candidate) => candidate.present && !candidate.malformed && isEngineSnapshotDocument(candidate.doc));
     const document = engine ?? parsed.find((candidate) => candidate.present && !candidate.malformed);
     if (document !== undefined) {
-      return withScope({ status: 200, body: withRecordTasks(document.doc, sessionId, directory) });
+      return withScope({ status: 200, body: await withRecordTasks(document.doc, sessionId, directory) });
     }
     if (parsed.some((candidate) => candidate.malformed)) {
       return { status: 422, body: { ok: false, code: 'DAG_SNAPSHOT_MALFORMED', field: 'snapshot', sessionId } };
     }
-    const fromRecords = recordOnlyDocument(sessionId, directory);
+    const fromRecords = await recordOnlyDocument(sessionId, directory);
     if (fromRecords !== null) return withScope(fromRecords);
-    return { status: 404, body: { ok: false, code: 'OMO_DAG_SNAPSHOT_MISSING', sessionId } };
+    // The scope flag rides this answer too: with no snapshot file and no project there is no other carrier, and
+    // the pane needs it to say why it cannot look rather than claiming the conversation ran nothing.
+    return withScope({ status: 404, body: { ok: false, code: 'DAG_SNAPSHOT_MISSING', sessionId } });
   };
 
   // Project-scoped History for GET /history with a directory filter: the live
@@ -1477,11 +1466,11 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     if (method === 'GET' && path === '/debug') {
       const sessionId = query?.sessionId;
       if (!isNonEmptyString(sessionId)) {
-        return { status: 400, body: { ok: false, code: 'OMO_DAG_SESSION_REQUIRED', message: 'Pass ?sessionId=<run session>.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_CONVERSATION_ID_INVALID', message: 'Pass ?sessionId=<run session>.' } };
       }
       const trimmedSession = sessionId.trim();
       if (trimmedSession.includes('/') || trimmedSession.includes('\\') || trimmedSession.includes('..')) {
-        return { status: 400, body: { ok: false, code: 'OMO_SESSION_ID_INVALID', message: 'Session ids stay inside one directory.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_CONVERSATION_ID_INVALID', message: 'Session ids stay inside one directory.' } };
       }
       const hookSample = lastRoute?.sample
         ?? (typeof query?.sample === 'string' ? query.sample.slice(0, DAG_DEBUG_SAMPLE_MAX) : '');
@@ -1525,11 +1514,11 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     if (method === 'GET' && path === '/loop') {
       const sessionId = query?.sessionId;
       if (!isNonEmptyString(sessionId)) {
-        return { status: 400, body: { ok: false, code: 'OMO_DAG_SESSION_REQUIRED', message: 'Pass ?sessionId=<run session>.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_CONVERSATION_ID_INVALID', message: 'Pass ?sessionId=<run session>.' } };
       }
       const trimmedSession = sessionId.trim();
       if (!isSafeSessionId(trimmedSession)) {
-        return { status: 400, body: { ok: false, code: 'OMO_SESSION_ID_INVALID', message: 'Session ids stay inside one directory.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_CONVERSATION_ID_INVALID', message: 'Session ids stay inside one directory.' } };
       }
       const directory = isNonEmptyString(query?.directory) ? query.directory : '';
       if (isNonEmptyString(directory)) {
@@ -1583,13 +1572,13 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     if (method === 'GET' && path === '/snapshot') {
       const sessionId = query?.sessionId;
       if (!isNonEmptyString(sessionId)) {
-        return { status: 400, body: { ok: false, code: 'OMO_DAG_SESSION_REQUIRED', message: 'Pass ?sessionId=<run session>.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_CONVERSATION_ID_INVALID', message: 'Pass ?sessionId=<run session>.' } };
       }
       const directory = isNonEmptyString(query?.directory) ? query.directory.trim() : null;
       if (directory !== null && !isSafeDirectory(directory)) {
-        return { status: 400, body: { ok: false, code: 'OMO_INVOKE_ARGS_INVALID', message: 'directory must be an absolute path without .. segments when given.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_DIRECTORY_UNSUPPORTED', message: 'directory must be an absolute path without .. segments when given.' } };
       }
-      return readSnapshot(sessionId.trim(), directory);
+      return await readSnapshot(sessionId.trim(), directory);
     }
     // Durable chat-run record: the host posts the run model it built from
     // engine session data, and the service persists it project-scoped. A run
@@ -1600,10 +1589,10 @@ export const createDagServiceHandlers = (dependencies = {}) => {
       const directory = body?.directory;
       const conversationId = body?.conversationId;
       if (!isSafeDirectory(directory ?? '')) {
-        return { status: 400, body: { ok: false, code: 'OMO_INVOKE_ARGS_INVALID', message: 'directory must be an absolute project path without .. segments.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_DIRECTORY_UNSUPPORTED', message: 'directory must be an absolute project path without .. segments.' } };
       }
       if (!isSafeSessionId(conversationId ?? '')) {
-        return { status: 400, body: { ok: false, code: 'OMO_DAG_SESSION_REQUIRED', message: 'Pass conversationId=<parent conversation>.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_CONVERSATION_ID_INVALID', message: 'Pass conversationId=<parent conversation>.' } };
       }
       const parsed = readPostedRunDoc(body?.snapshot);
       if (!parsed) {
@@ -1679,20 +1668,20 @@ export const createDagServiceHandlers = (dependencies = {}) => {
         return { status: 400, body: { ok: false, code: 'OMO_DAG_MESSAGE_REQUIRED', message: 'Steering needs a non-empty message.' } };
       }
       if (!isNonEmptyString(sessionId)) {
-        return { status: 400, body: { ok: false, code: 'OMO_DAG_SESSION_REQUIRED', message: 'Steering attaches to a live session: pass sessionId.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_CONVERSATION_ID_INVALID', message: 'Steering attaches to a live session: pass sessionId.' } };
       }
       let snapshotPath;
       try {
         snapshotPath = snapshotPathFor(sessionId.trim());
       } catch (error) {
-        return { status: 400, body: { ok: false, code: error.code ?? 'OMO_SESSION_ID_INVALID', message: error.message } };
+        return { status: 400, body: { ok: false, code: error.code ?? 'DAG_CONVERSATION_ID_INVALID', message: error.message } };
       }
       const model = isNonEmptyString(body?.model) ? body.model.trim() : undefined;
       const agent = isNonEmptyString(body?.agent) ? body.agent.trim() : undefined;
       // Project scope for the History filter. Optional; a wrong-typed value
       // is rejected so a caller cannot silently mis-scope its own record.
       if (body?.directory !== undefined && !isNonEmptyString(body.directory)) {
-        return { status: 400, body: { ok: false, code: 'OMO_INVOKE_ARGS_INVALID', message: 'directory must be a non-empty string when given.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_DIRECTORY_UNSUPPORTED', message: 'directory must be a non-empty string when given.' } };
       }
       const steerDirectory = isNonEmptyString(body?.directory) ? body.directory.trim() : null;
       const bridge = createBridge(entry);
@@ -1792,7 +1781,7 @@ export const createDagServiceHandlers = (dependencies = {}) => {
     if (method === 'POST' && path === '/cancel') {
       const sessionId = body?.sessionId;
       if (!isNonEmptyString(sessionId)) {
-        return { status: 400, body: { ok: false, code: 'OMO_DAG_SESSION_REQUIRED', message: 'Cancel targets a live session: pass sessionId.' } };
+        return { status: 400, body: { ok: false, code: 'DAG_CONVERSATION_ID_INVALID', message: 'Cancel targets a live session: pass sessionId.' } };
       }
       const running = live.get(sessionId.trim());
       if (!running) {

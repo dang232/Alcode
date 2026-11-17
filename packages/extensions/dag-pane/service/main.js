@@ -27947,6 +27947,10 @@ function createRepairStateReader(options = {}) {
   };
 }
 
+// ../../../web/server/lib/verification-approval/record-tasks-reader.js
+import { homedir as homedir2 } from "node:os";
+import { isAbsolute, join as join8, relative, resolve as resolve4 } from "node:path";
+
 // ../../../web/server/lib/run-graph/record-tasks.js
 import * as nodeFs from "node:fs";
 import { join as join7 } from "node:path";
@@ -28339,6 +28343,17 @@ var reconcileNodeClaims = (document, rowById) => {
   });
   return { document: changed ? { ...document, dag: { ...dag, runs: nextRuns } } : document, changed };
 };
+var reconcileRecordClaims = (document, rows) => {
+  if (!isObject2(document) || !Array.isArray(rows) || rows.length === 0)
+    return document;
+  const rowById = new Map;
+  for (const row of rows) {
+    const id = asString3(row?.task_id);
+    if (id !== null)
+      rowById.set(id, row);
+  }
+  return reconcileNodeClaims(document, rowById).document;
+};
 var mergeRecordTasks = (document, rows, diagnostics) => {
   const withDiagnostics = (value) => {
     if (diagnostics === undefined)
@@ -28416,11 +28431,31 @@ var mergeRecordTasks = (document, rows, diagnostics) => {
 };
 
 // ../../../web/server/lib/verification-approval/record-tasks-reader.js
+var AGENT_DIR_ENV_NAMES2 = ["OMO_CODING_AGENT_DIR", "SENPI_CODING_AGENT_DIR", "PI_CODING_AGENT_DIR"];
+var agentRoot = () => {
+  for (const name of AGENT_DIR_ENV_NAMES2) {
+    const configured = process.env[name]?.trim();
+    if (configured !== undefined && configured.length > 0)
+      return resolve4(configured);
+  }
+  return join8(process.env.HOME ?? process.env.USERPROFILE ?? homedir2(), ".omo", "agent");
+};
+var isInside = (child, parent) => {
+  const relativePath = relative(parent, child);
+  return relativePath === "" || !relativePath.startsWith("..") && !isAbsolute(relativePath);
+};
 var createRecordTaskReaderForProject = (options = {}) => {
   const settings = {
     stateDirOf: (directory) => {
+      const fallback = resolveStateDir({ project_dir: directory });
       const configured = loadOmoConfig({ cwd: directory }).config.task?.state_dir;
-      return resolveStateDir(configured === undefined ? { project_dir: directory } : { project_dir: directory, task: { state_dir: configured } });
+      if (configured === undefined || configured.trim().length === 0)
+        return fallback;
+      const projectRoot = resolve4(directory);
+      const resolved = isAbsolute(configured) ? resolve4(configured) : resolve4(projectRoot, configured);
+      if (isInside(resolved, projectRoot) || isInside(resolved, agentRoot()))
+        return resolved;
+      throw new Error(`task.state_dir is outside the project and the agent dir: ${resolved}`);
     }
   };
   if (options.limit !== undefined)
@@ -28429,6 +28464,280 @@ var createRecordTaskReaderForProject = (options = {}) => {
     settings.cacheStore = options.cacheStore;
   return createRecordTaskReader(settings);
 };
+
+// ../../../web/server/lib/run-graph/runtime.js
+var asString4 = (value) => {
+  try {
+    return String(value) === value ? value : null;
+  } catch {
+    return null;
+  }
+};
+var isRecord15 = (value) => value instanceof Object && !Array.isArray(value);
+var messageOf4 = (error, fallback) => {
+  const text = error instanceof Error ? asString4(error.message) : null;
+  return text !== null && text.length > 0 ? text : fallback;
+};
+var readEntryRepair = async (readRepairState, directory, taskId) => {
+  try {
+    const result = await readRepairState({ directory, taskId });
+    if (!isRecord15(result)) {
+      return { error: `repair state reader returned an invalid result for ${taskId}` };
+    }
+    if (isRecord15(result.repair))
+      return { repair: result.repair };
+    const error = asString4(result.error);
+    return error !== null && error.length > 0 ? { error } : {};
+  } catch (error) {
+    return { error: `repair state read failed for ${taskId}: ${messageOf4(error, "read failed")}` };
+  }
+};
+var attachToEntries = async (readRepairState, directory, entries, idField) => Promise.all(entries.map(async (entry) => {
+  if (!isRecord15(entry))
+    return entry;
+  const taskId = asString4(entry[idField]);
+  if (taskId === null || taskId.length === 0)
+    return entry;
+  const outcome = await readEntryRepair(readRepairState, directory, taskId);
+  if (outcome.repair !== undefined)
+    return { ...entry, repair: outcome.repair };
+  if (outcome.error !== undefined)
+    return { ...entry, repairError: outcome.error };
+  return entry;
+}));
+var attachRepairState = async (document, { directory, readRepairState }) => {
+  if (!isRecord15(document))
+    return document;
+  const runEntries = isRecord15(document.dag) && Array.isArray(document.dag.runs) ? document.dag.runs : null;
+  const taskEntries = isRecord15(document.tasks) && Array.isArray(document.tasks.tasks) ? document.tasks.tasks : null;
+  if (runEntries === null && taskEntries === null)
+    return document;
+  const [runs, tasks] = await Promise.all([
+    runEntries === null ? null : attachToEntries(readRepairState, directory, runEntries, "run_id"),
+    taskEntries === null ? null : attachToEntries(readRepairState, directory, taskEntries, "task_id")
+  ]);
+  let next = document;
+  if (runs !== null)
+    next = { ...next, dag: { ...document.dag, runs } };
+  if (tasks !== null)
+    next = { ...next, tasks: { ...document.tasks, tasks } };
+  return next;
+};
+var isChatRun = (run) => {
+  const runKey = asString4(run.run_key);
+  return runKey !== null && runKey.startsWith("chat:");
+};
+var nodeIdForTask = (byTaskId, taskId) => {
+  if (!isRecord15(byTaskId))
+    return null;
+  const entry = byTaskId[taskId];
+  return isRecord15(entry) ? asString4(entry.nodeId) : null;
+};
+var childEntry = (byChildSessionId, childSessionId) => {
+  if (!isRecord15(byChildSessionId))
+    return null;
+  const entry = byChildSessionId[childSessionId];
+  return isRecord15(entry) ? entry : null;
+};
+var attachAttribution = (document, index) => {
+  if (!isRecord15(document))
+    return document;
+  const byTaskId = index.byTaskId;
+  const byChildSessionId = index.byChildSessionId;
+  let next = document;
+  const taskEntries = isRecord15(document.tasks) && Array.isArray(document.tasks.tasks) ? document.tasks.tasks : null;
+  if (taskEntries !== null) {
+    let tasksChanged = false;
+    const tasks = taskEntries.map((entry) => {
+      if (!isRecord15(entry))
+        return entry;
+      const taskId = asString4(entry.task_id);
+      if (taskId === null || taskId.length === 0)
+        return entry;
+      const nodeId = nodeIdForTask(byTaskId, taskId);
+      if (nodeId === null || nodeId.length === 0)
+        return entry;
+      tasksChanged = true;
+      return { ...entry, node_id: nodeId };
+    });
+    if (tasksChanged)
+      next = { ...next, tasks: { ...document.tasks, tasks } };
+  }
+  const runEntries = isRecord15(document.dag) && Array.isArray(document.dag.runs) ? document.dag.runs : null;
+  if (runEntries !== null) {
+    let runsChanged = false;
+    const runs = runEntries.map((run) => {
+      if (!isRecord15(run) || !isChatRun(run) || !Array.isArray(run.nodes))
+        return run;
+      const nodes = run.nodes.map((node) => {
+        if (!isRecord15(node))
+          return node;
+        const nodeId = asString4(node.id);
+        if (nodeId === null || nodeId.length === 0)
+          return node;
+        const entry = childEntry(byChildSessionId, nodeId);
+        if (entry === null)
+          return node;
+        const taskId = asString4(entry.taskId);
+        if (taskId === null || taskId.length === 0)
+          return node;
+        const ownedNodeId = asString4(entry.nodeId);
+        const enriched = { ...node, task_id: taskId };
+        if (ownedNodeId !== null && ownedNodeId.length > 0)
+          enriched.node_id = ownedNodeId;
+        return enriched;
+      });
+      const changed = nodes.some((node, position) => node !== run.nodes[position]);
+      if (!changed)
+        return run;
+      runsChanged = true;
+      return { ...run, nodes };
+    });
+    if (runsChanged)
+      next = { ...next, dag: { ...document.dag, runs } };
+  }
+  if (Array.isArray(index.collisions) && index.collisions.length > 0) {
+    next = { ...next, attributionCollisions: index.collisions };
+  }
+  return next;
+};
+var attachAttributionState = async (document, { directory, readAttributionState }) => {
+  if (!isRecord15(document))
+    return document;
+  let index;
+  try {
+    index = await readAttributionState({ directory });
+  } catch (error) {
+    return { ...document, attributionError: `attribution state read failed: ${messageOf4(error, "read failed")}` };
+  }
+  if (!isRecord15(index)) {
+    return { ...document, attributionError: "attribution state reader returned an invalid result" };
+  }
+  const error = asString4(index.error);
+  if (error !== null && error.length > 0) {
+    return { ...document, attributionError: error };
+  }
+  return attachAttribution(document, index);
+};
+var attachDeliveryToEntries = async (readDeliveryState, directory, entries) => Promise.all(entries.map(async (entry) => {
+  if (!isRecord15(entry))
+    return entry;
+  const taskId = asString4(entry.task_id ?? entry.run_id);
+  if (taskId === null || taskId.length === 0)
+    return entry;
+  if (isRecord15(entry.delivery))
+    return entry;
+  let result;
+  try {
+    result = await readDeliveryState({ directory, taskId });
+  } catch (error) {
+    return { ...entry, deliveryError: `delivery state read failed for ${taskId}: ${messageOf4(error, "read failed")}` };
+  }
+  if (!isRecord15(result))
+    return { ...entry, deliveryError: `delivery state reader returned an invalid result for ${taskId}` };
+  if (isRecord15(result.delivery))
+    return { ...entry, delivery: result.delivery };
+  const error = asString4(result.error);
+  if (error !== null && error.length > 0)
+    return { ...entry, deliveryError: error };
+  return entry;
+}));
+var attachDeliveryState = async (document, { directory, readDeliveryState }) => {
+  if (!isRecord15(document))
+    return document;
+  const runEntries = isRecord15(document.dag) && Array.isArray(document.dag.runs) ? document.dag.runs : null;
+  const taskEntries = isRecord15(document.tasks) && Array.isArray(document.tasks.tasks) ? document.tasks.tasks : null;
+  if (runEntries === null && taskEntries === null)
+    return document;
+  const runs = runEntries === null ? null : await Promise.all(runEntries.map(async (run) => {
+    if (!isRecord15(run) || !Array.isArray(run.nodes))
+      return run;
+    const nodes = await attachDeliveryToEntries(readDeliveryState, directory, run.nodes);
+    const changed = nodes.some((node, position) => node !== run.nodes[position]);
+    return changed ? { ...run, nodes } : run;
+  }));
+  const tasks = taskEntries === null ? null : await attachDeliveryToEntries(readDeliveryState, directory, taskEntries);
+  let next = document;
+  if (runs !== null)
+    next = { ...next, dag: { ...document.dag, runs } };
+  if (tasks !== null)
+    next = { ...next, tasks: { ...document.tasks, tasks } };
+  return next;
+};
+
+// ../../../web/server/lib/verification-approval/delivery-state.js
+import { readFileSync as readFileSync5 } from "node:fs";
+import { join as join9 } from "node:path";
+var VERIFICATION_STATUSES3 = ["verified", "unverified", "blocked"];
+var asString5 = (value) => String(value) === value ? value : null;
+var asId2 = (value) => {
+  const text = asString5(value);
+  return text !== null && text.length > 0 ? text : null;
+};
+var isRecord16 = (value) => value instanceof Object && !Array.isArray(value);
+var messageOf5 = (error, fallback) => {
+  const text = error instanceof Error ? asString5(error.message) : null;
+  return text !== null && text.length > 0 ? text : fallback;
+};
+var readFailureCode3 = (error) => error instanceof Error && ("code" in error) ? error.code : undefined;
+var isSafeTaskId2 = (value) => value.length > 0 && !/[\\/]/.test(value) && value !== "." && value !== "..";
+var defaultStateDirOf = (directory) => {
+  const configured = loadOmoConfig({ cwd: directory }).config.task?.state_dir;
+  return resolveStateDir(configured === undefined ? { project_dir: directory } : { project_dir: directory, task: { state_dir: configured } });
+};
+function createDeliveryStateReader(options = {}) {
+  const stateDirOf = options.stateDirOf ?? defaultStateDirOf;
+  const readFile = options.readFile ?? readFileSync5;
+  return (input = {}) => {
+    const directory = asString5(input.directory);
+    const taskId = asId2(input.taskId);
+    if (directory === null || directory.trim().length === 0 || taskId === null) {
+      return { error: "delivery state: a project directory and a task id are required" };
+    }
+    if (!isSafeTaskId2(taskId)) {
+      return { error: "delivery state: the task id is not a safe file segment" };
+    }
+    let stateDir;
+    try {
+      stateDir = stateDirOf(directory);
+    } catch (error) {
+      return { error: `delivery state unavailable: ${messageOf5(error, "state directory resolution failed")}` };
+    }
+    let raw;
+    try {
+      raw = readFile(join9(stateDir, "tasks", `${taskId}.json`), "utf8");
+    } catch (error) {
+      const code = readFailureCode3(error);
+      if (code === "ENOENT" || code === "ENOTDIR")
+        return { absent: true };
+      return { error: `delivery state: record unreadable for ${taskId}: ${messageOf5(error, "read failed")}` };
+    }
+    let record;
+    try {
+      record = JSON.parse(raw);
+    } catch {
+      return { error: `delivery state: record malformed for ${taskId}` };
+    }
+    if (!isRecord16(record)) {
+      return { error: `delivery state: record malformed for ${taskId}` };
+    }
+    const status = asString5(record.status);
+    if (status === null || status.length === 0) {
+      return { error: `delivery state: record ${taskId} carries no status` };
+    }
+    const claim = asString5(record.verification_status);
+    const verificationStatus = claim !== null && VERIFICATION_STATUSES3.includes(claim) ? claim : null;
+    return {
+      delivery: {
+        taskId,
+        status,
+        verificationStatus,
+        childSessionId: asString5(record.child_session_id),
+        updatedAt: asString5(record.updated_at)
+      }
+    };
+  };
+}
 
 // ../../../omo-engine/memory-core/src/project-knowledge/record.ts
 import { createHash as createHash5 } from "node:crypto";
@@ -28524,7 +28833,7 @@ var {
   linkSync,
   lstatSync: lstatSync3,
   mkdirSync: mkdirSync2,
-  readFileSync: readFileSync5,
+  readFileSync: readFileSync6,
   readdirSync: readdirSync6,
   realpathSync: realpathSync3,
   statSync: statSync4,
@@ -30329,8 +30638,8 @@ function evaluateFreshness(record, headRevision, nowMs) {
 }
 
 // ../../../omo-engine/omo-opencode/src/cli/run/run-snapshot-store.ts
-import { mkdirSync as mkdirSync4, readFileSync as readFileSync8, renameSync as renameSync3, writeFileSync as writeFileSync4 } from "node:fs";
-import { join as join8 } from "node:path";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync9, renameSync as renameSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join10 } from "node:path";
 
 // ../../../../node_modules/.bun/typebox@1.3.34/node_modules/typebox/build/system/memory/metrics.mjs
 var Metrics = {
@@ -36303,7 +36612,7 @@ import {
   linkSync as linkSync2,
   mkdirSync as mkdirSync3,
   openSync as openSync3,
-  readFileSync as readFileSync7,
+  readFileSync as readFileSync8,
   renameSync as renameSync2,
   rmSync,
   statSync as statSync5,
@@ -36313,7 +36622,7 @@ import {
 import { dirname as dirname3 } from "node:path";
 
 // ../../../omo-engine/senpi-task/src/store/lock-owner.ts
-import { readFileSync as readFileSync6 } from "node:fs";
+import { readFileSync as readFileSync7 } from "node:fs";
 import { createRequire as createRequire2 } from "node:module";
 import { hostname as hostname2 } from "node:os";
 
@@ -36412,7 +36721,7 @@ function readProcessStartIdentity(pid) {
 }
 function readLinuxStartIdentity(pid) {
   try {
-    const stat = readFileSync6(`/proc/${pid}/stat`, "utf8");
+    const stat = readFileSync7(`/proc/${pid}/stat`, "utf8");
     const fields = stat.slice(stat.lastIndexOf(")") + 2).trim().split(/\s+/);
     const startTicks = fields[19];
     return startTicks === undefined ? null : `linux-proc-start-ticks:${startTicks}`;
@@ -36626,7 +36935,7 @@ function reclaimAbandonedRecoveryLock(recoveryPath) {
 function readLockIdentity(lockPath) {
   try {
     const stat = statSync5(lockPath);
-    return { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs, body: readFileSync7(lockPath, "utf8") };
+    return { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs, body: readFileSync8(lockPath, "utf8") };
   } catch (error) {
     if (hasCode(error, "ENOENT"))
       return;
@@ -36652,7 +36961,7 @@ function releaseLock(lockPath, token) {
 }
 function readToken(lockPath) {
   try {
-    return readFileSync7(lockPath, "utf8").split(`
+    return readFileSync8(lockPath, "utf8").split(`
 `)[2];
   } catch (error) {
     if (hasCode(error, "ENOENT"))
@@ -36710,7 +37019,7 @@ var decodeJson = (raw) => {
     return null;
   }
 };
-var readFailureCode3 = (error) => {
+var readFailureCode4 = (error) => {
   if (!("code" in error))
     return;
   const code = error.code;
@@ -36722,7 +37031,7 @@ function readRunSnapshot(path, readFile) {
     raw = readFile(path);
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
-    const code = readFailureCode3(error);
+    const code = readFailureCode4(error);
     if (code === "ENOENT" || code === "ENOTDIR")
       return { doc: null };
     return { doc: null, reason: `existing snapshot is unreadable (${String(code ?? "read failed")})`, kind: "unreadable" };
@@ -36744,7 +37053,7 @@ function publishSnapshot(path, doc) {
   const serialized = `${JSON.stringify(doc, null, 1)}
 `;
   try {
-    mkdirSync4(join8(path, ".."), { recursive: true });
+    mkdirSync4(join10(path, ".."), { recursive: true });
     const temp = `${path}.${process.pid.toString(36)}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`;
     writeFileSync4(temp, serialized, "utf8");
     renameSync3(temp, path);
@@ -36755,7 +37064,7 @@ function publishSnapshot(path, doc) {
   }
 }
 function mutateRunSnapshot(input) {
-  const readFile = input.readFile ?? ((path) => readFileSync8(path, "utf8"));
+  const readFile = input.readFile ?? ((path) => readFileSync9(path, "utf8"));
   const attemptLimit = input.attemptLimit ?? 3;
   const attemptOnce = () => {
     const existing = readRunSnapshot(input.path, readFile);
@@ -36809,20 +37118,20 @@ var DAG_DEBUG_MAX_LEDGER_BYTES = 1048576;
 var DAG_DEBUG_HOOK_PATTERN = "(?:ultrawork|ulw)";
 var defaultServiceSnapshotDir = (tmpdir = osTmpdir, join = joinPath2) => join(tmpdir(), DAG_SERVICE_DEFAULT_SNAPSHOT_PREFIX);
 var isNonEmptyString2 = (value) => (value?.trim?.() ?? "").length > 0;
-var asString4 = (value) => value?.trim?.() ?? "";
-var isRecord15 = (value) => Object(value) === value && !Array.isArray(value);
-var isEngineSnapshotDocument = (doc) => isRecord15(doc) && isRecord15(doc.tasks) && Array.isArray(doc.tasks.tasks) && doc.tasks.tasks.length > 0;
+var asString6 = (value) => value?.trim?.() ?? "";
+var isRecord17 = (value) => Object(value) === value && !Array.isArray(value);
+var isEngineSnapshotDocument = (doc) => isRecord17(doc) && isRecord17(doc.tasks) && Array.isArray(doc.tasks.tasks) && doc.tasks.tasks.length > 0;
 var DAG_LOOP_RUNS_MAX = 50;
 var DAG_LOOP_PLAN_MAX_BYTES = 262144;
 var isSafeSessionId = (value) => {
-  const text = asString4(value);
+  const text = asString6(value);
   return text.length > 0 && !/[\\/]/.test(text) && !text.includes("..");
 };
 var DAG_RUNS_DIRNAME = "dag-runs";
 var DAG_RUN_HISTORY_DIRNAME = "history";
 var DAG_RUN_HISTORY_MAX = 20;
 var isSafeDirectory = (value) => {
-  const text = asString4(value);
+  const text = asString6(value);
   if (text.length === 0)
     return false;
   if (text.split(/[\\/]+/).includes(".."))
@@ -36870,38 +37179,38 @@ var projectRunsDir = (directory) => `${directory.trim().replace(/[/\\]+$/, "")}/
 var projectLiveRunPath = (directory, sessionId) => `${projectRunsDir(directory)}/${sessionId}.snapshot.json`;
 var projectRunHistoryDir = (directory, sessionId) => `${projectRunsDir(directory)}/${DAG_RUN_HISTORY_DIRNAME}/${sessionId}`;
 var readPostedRunDoc = (doc) => {
-  if (!isRecord15(doc))
+  if (!isRecord17(doc))
     return null;
   if (doc.schemaVersion !== 1)
     return null;
-  const sessionId = asString4(doc.sessionId);
+  const sessionId = asString6(doc.sessionId);
   if (!isSafeSessionId(sessionId))
     return null;
-  const dag = isRecord15(doc.dag) ? doc.dag : null;
+  const dag = isRecord17(doc.dag) ? doc.dag : null;
   if (!dag || !Array.isArray(dag.runs) || dag.runs.length === 0)
     return null;
-  const run = isRecord15(dag.runs[0]) ? dag.runs[0] : null;
+  const run = isRecord17(dag.runs[0]) ? dag.runs[0] : null;
   if (!run)
     return null;
   if (!isNonEmptyString2(run.run_id) || !isNonEmptyString2(run.run_key) || !isNonEmptyString2(run.name) || !isNonEmptyString2(run.status))
     return null;
-  return { sessionId, status: run.status.trim(), updatedAt: asString4(doc.updatedAt) || null };
+  return { sessionId, status: run.status.trim(), updatedAt: asString6(doc.updatedAt) || null };
 };
 var ATTRIBUTION_ID_FIELDS = ["task_id", "node_id"];
 var VERIFICATION_FIELD = "verification_status";
-var VERIFICATION_STATUSES3 = ["verified", "unverified", "blocked"];
+var VERIFICATION_STATUSES4 = ["verified", "unverified", "blocked"];
 var asPostedString = (value) => String(value) === value ? value : null;
-var ownAttributionEntry = (table, key) => isRecord15(table) && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+var ownAttributionEntry = (table, key) => isRecord17(table) && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
 var taskEntryFor = (index, taskId, conversationId, nodeSessionId) => {
   const entry = ownAttributionEntry(index.byTaskId, taskId);
-  if (!isRecord15(entry))
+  if (!isRecord17(entry))
     return { kind: "absent" };
-  const wanted = asString4(conversationId);
+  const wanted = asString6(conversationId);
   if (wanted.length === 0)
     return { kind: "entry", entry };
-  const named = [entry.parentSessionId, entry.rootSessionId].filter((value) => asString4(value).length > 0);
-  const child = asString4(entry.childSessionId);
-  const rendered = asString4(nodeSessionId);
+  const named = [entry.parentSessionId, entry.rootSessionId].filter((value) => asString6(value).length > 0);
+  const child = asString6(entry.childSessionId);
+  const rendered = asString6(nodeSessionId);
   if (named.includes(wanted))
     return { kind: "entry", entry };
   if (child.length > 0 && rendered.length > 0 && child === rendered)
@@ -36925,14 +37234,14 @@ var postedVerificationClaim = (record) => {
     return { present: false };
   const text = asPostedString(raw);
   const value = text === null ? null : text.trim();
-  if (value === null || !VERIFICATION_STATUSES3.includes(value))
+  if (value === null || !VERIFICATION_STATUSES4.includes(value))
     return { present: true, invalid: true };
   return { present: true, value };
 };
 var verificationDropReason = (claim, entry) => {
   if (claim.invalid === true)
-    return `${VERIFICATION_FIELD} must be one of ${VERIFICATION_STATUSES3.join(", ")}`;
-  if (!isRecord15(entry))
+    return `${VERIFICATION_FIELD} must be one of ${VERIFICATION_STATUSES4.join(", ")}`;
+  if (!isRecord17(entry))
     return `${VERIFICATION_FIELD} is not present in the attribution records`;
   return `${VERIFICATION_FIELD} does not match the persisted task record`;
 };
@@ -36962,12 +37271,12 @@ var corroborateNodeClaims = (node, index, nodeIndex, dropped, conversationId) =>
     if (claim.field === "task_id") {
       if (taskEntry === undefined) {
         drop("task_id", nodeTask.kind === "absent" ? "task_id is not present in the attribution records" : "task_id is not attributed to this conversation");
-      } else if (isRecord15(childEntry) && childEntry.taskId !== claim.value) {
+      } else if (isRecord17(childEntry) && childEntry.taskId !== claim.value) {
         drop("task_id", "task_id does not match the task recorded for this child session");
       }
       continue;
     }
-    if (isRecord15(childEntry)) {
+    if (isRecord17(childEntry)) {
       if (childEntry.nodeId !== claim.value) {
         drop("node_id", "node_id does not match the dag node recorded for this child session");
       }
@@ -36979,13 +37288,13 @@ var corroborateNodeClaims = (node, index, nodeIndex, dropped, conversationId) =>
       }
       continue;
     }
-    const known = Array.isArray(index.entries) && index.entries.some((entry) => isRecord15(entry) && entry.nodeId === claim.value);
+    const known = Array.isArray(index.entries) && index.entries.some((entry) => isRecord17(entry) && entry.nodeId === claim.value);
     if (!known)
       drop("node_id", "node_id is not present in the attribution records");
   }
   if (verificationClaim.present === true) {
-    const entry = isRecord15(taskEntry) ? taskEntry : childEntry;
-    if (verificationClaim.invalid !== true && isRecord15(entry) && entry.verificationStatus === verificationClaim.value) {} else {
+    const entry = isRecord17(taskEntry) ? taskEntry : childEntry;
+    if (verificationClaim.invalid !== true && isRecord17(entry) && entry.verificationStatus === verificationClaim.value) {} else {
       drop(VERIFICATION_FIELD, verificationDropReason(verificationClaim, entry));
     }
   }
@@ -37025,28 +37334,28 @@ var corroborateTaskClaims = (task, index, taskIndex, dropped, conversationId) =>
       }
       continue;
     }
-    const known = Array.isArray(index.entries) && index.entries.some((entry) => isRecord15(entry) && entry.nodeId === claim.value);
+    const known = Array.isArray(index.entries) && index.entries.some((entry) => isRecord17(entry) && entry.nodeId === claim.value);
     if (!known)
       drop("node_id", "node_id is not present in the attribution records");
   }
   if (verificationClaim.present === true) {
-    if (verificationClaim.invalid !== true && isRecord15(taskEntry) && taskEntry.verificationStatus === verificationClaim.value) {} else {
+    if (verificationClaim.invalid !== true && isRecord17(taskEntry) && taskEntry.verificationStatus === verificationClaim.value) {} else {
       drop(VERIFICATION_FIELD, verificationDropReason(verificationClaim, taskEntry));
     }
   }
   return changed ? kept : task;
 };
 var corroboratePostedRuns = (doc, index, dropped, conversationId) => {
-  const runs = isRecord15(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
+  const runs = isRecord17(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
   if (runs === null)
     return doc;
   let changed = false;
   const nextRuns = runs.map((run) => {
-    if (!isRecord15(run) || !Array.isArray(run.nodes))
+    if (!isRecord17(run) || !Array.isArray(run.nodes))
       return run;
     let nodesChanged = false;
     const nodes = run.nodes.map((node, nodeIndex) => {
-      if (!isRecord15(node))
+      if (!isRecord17(node))
         return node;
       const before = dropped.length;
       const next = corroborateNodeClaims(node, index, nodeIndex, dropped, conversationId);
@@ -37062,12 +37371,12 @@ var corroboratePostedRuns = (doc, index, dropped, conversationId) => {
   return changed ? { ...doc, dag: { ...doc.dag, runs: nextRuns } } : doc;
 };
 var corroboratePostedTasks = (doc, index, dropped, conversationId) => {
-  const tasks = isRecord15(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
+  const tasks = isRecord17(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
   if (tasks === null)
     return doc;
   let changed = false;
   const nextTasks = tasks.map((task, taskIndex) => {
-    if (!isRecord15(task))
+    if (!isRecord17(task))
       return task;
     const before = dropped.length;
     const next = corroborateTaskClaims(task, index, taskIndex, dropped, conversationId);
@@ -37079,16 +37388,16 @@ var corroboratePostedTasks = (doc, index, dropped, conversationId) => {
 };
 var corroboratePostedSnapshot = (doc, index, dropped, conversationId) => corroboratePostedTasks(corroboratePostedRuns(doc, index, dropped, conversationId), index, dropped, conversationId);
 var dropUnverifiablePostedRuns = (doc, dropped) => {
-  const runs = isRecord15(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
+  const runs = isRecord17(doc.dag) && Array.isArray(doc.dag.runs) ? doc.dag.runs : null;
   if (runs === null)
     return doc;
   let changed = false;
   const nextRuns = runs.map((run) => {
-    if (!isRecord15(run) || !Array.isArray(run.nodes))
+    if (!isRecord17(run) || !Array.isArray(run.nodes))
       return run;
     let nodesChanged = false;
     const nodes = run.nodes.map((node, nodeIndex) => {
-      if (!isRecord15(node))
+      if (!isRecord17(node))
         return node;
       const present = ATTRIBUTION_ID_FIELDS.filter((field) => node[field] !== undefined);
       if (node[VERIFICATION_FIELD] !== undefined)
@@ -37113,12 +37422,12 @@ var dropUnverifiablePostedRuns = (doc, dropped) => {
   return changed ? { ...doc, dag: { ...doc.dag, runs: nextRuns } } : doc;
 };
 var dropUnverifiablePostedTasks = (doc, dropped) => {
-  const tasks = isRecord15(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
+  const tasks = isRecord17(doc.tasks) && Array.isArray(doc.tasks.tasks) ? doc.tasks.tasks : null;
   if (tasks === null)
     return doc;
   let changed = false;
   const nextTasks = tasks.map((task, taskIndex) => {
-    if (!isRecord15(task))
+    if (!isRecord17(task))
       return task;
     const present = ATTRIBUTION_ID_FIELDS.filter((field) => task[field] !== undefined);
     if (task[VERIFICATION_FIELD] !== undefined)
@@ -37143,11 +37452,11 @@ var readPostedAttribution = (readAttributionState, directory) => {
   try {
     index = readAttributionState({ directory });
   } catch (error) {
-    return { skipped: `attribution state read failed: ${asString4(error?.message) || "unknown error"}` };
+    return { skipped: `attribution state read failed: ${asString6(error?.message) || "unknown error"}` };
   }
-  if (!isRecord15(index))
+  if (!isRecord17(index))
     return { skipped: "attribution state reader returned an invalid result" };
-  const error = asString4(index.error);
+  const error = asString6(index.error);
   if (error.length > 0)
     return { skipped: error };
   if (index.absent === true)
@@ -37164,13 +37473,13 @@ var CHAT_RUN_SOURCE = "chat";
 var mergeChatSnapshot = (existingDoc, incoming, directory) => {
   const incomingDoc = { ...incoming, directory };
   const incomingRuns = Array.isArray(incomingDoc?.dag?.runs) ? incomingDoc.dag.runs : [];
-  const tagChat = (run) => isRecord15(run) ? { ...run, source: CHAT_RUN_SOURCE } : run;
+  const tagChat = (run) => isRecord17(run) ? { ...run, source: CHAT_RUN_SOURCE } : run;
   if (existingDoc === null) {
     return { doc: { ...incomingDoc, dag: { ...incomingDoc.dag, runs: incomingRuns.map(tagChat) } } };
   }
-  const kept = existingDoc.dag.runs.filter((run) => isRecord15(run) && run.source !== CHAT_RUN_SOURCE);
+  const kept = existingDoc.dag.runs.filter((run) => isRecord17(run) && run.source !== CHAT_RUN_SOURCE);
   const keptIds = new Set(kept.map((run) => run.run_id));
-  const appended = incomingRuns.map(tagChat).filter((run) => !isRecord15(run) || !keptIds.has(run.run_id));
+  const appended = incomingRuns.map(tagChat).filter((run) => !isRecord17(run) || !keptIds.has(run.run_id));
   return {
     doc: {
       ...existingDoc,
@@ -37294,7 +37603,7 @@ var readLoopPlan = (fs, directory, sessionId) => {
     if (!stat.isFile() || stat.size > DAG_LOOP_PLAN_MAX_BYTES)
       return null;
     const parsed = JSON.parse(fs.readFileSync(planPath, "utf8"));
-    if (!isRecord15(parsed))
+    if (!isRecord17(parsed))
       return null;
     return parsed;
   } catch {
@@ -37350,7 +37659,7 @@ var readLoopGoalsPlan = (fs, directory, sessionId) => {
     } catch {
       continue;
     }
-    if (!isRecord15(parsed) || !Array.isArray(parsed.goals))
+    if (!isRecord17(parsed) || !Array.isArray(parsed.goals))
       continue;
     return parsed;
   }
@@ -37376,15 +37685,15 @@ var readLoopWorkerEntries = (fs, directory, sessionId) => {
     } catch {
       continue;
     }
-    if (!isRecord15(parsed))
+    if (!isRecord17(parsed))
       continue;
-    const kind = asString4(parsed.kind);
+    const kind = asString6(parsed.kind);
     if (!DAG_LOOP_WORKER_KINDS.includes(kind))
       continue;
-    const goalId = asString4(parsed.goalId);
+    const goalId = asString6(parsed.goalId);
     if (goalId === "")
       continue;
-    entries.push({ kind, goalId, at: asString4(parsed.at), message: asString4(parsed.message) });
+    entries.push({ kind, goalId, at: asString6(parsed.at), message: asString6(parsed.message) });
   }
   return entries;
 };
@@ -37449,25 +37758,25 @@ var projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
   const failedEvent = events.includes("failed") || events.includes("error") || events.includes("goal_failed") || events.includes("final_review_failed") || events.includes("criterion_failed") || events.includes("child_failed");
   const status = planComplete || completedEvent ? "completed" : failedEvent ? "failed" : events.length > 0 || state.plan || state.goals ? "running" : "pending";
   const goalsPlanForTitle = readLoopGoalsPlan(fs, directory, sessionId);
-  const goalsBriefTitle = Array.isArray(goalsPlanForTitle?.goals) ? asString4(goalsPlanForTitle.brief).split(`
+  const goalsBriefTitle = Array.isArray(goalsPlanForTitle?.goals) ? asString6(goalsPlanForTitle.brief).split(`
 `)[0] : "";
-  const title = (asString4(plan?.title) || asString4(plan?.goal).split(`
+  const title = (asString6(plan?.title) || asString6(plan?.goal).split(`
 `)[0] || goalsBriefTitle || sessionId).slice(0, 120);
   const goalsPlan = readLoopGoalsPlan(fs, directory, sessionId);
-  const goalRecords = Array.isArray(goalsPlan?.goals) ? goalsPlan.goals.filter(isRecord15) : [];
+  const goalRecords = Array.isArray(goalsPlan?.goals) ? goalsPlan.goals.filter(isRecord17) : [];
   if (goalRecords.length > 0) {
     const childNodes = goalRecords.map((goal, index) => {
-      const id = asString4(goal.id) || `goal-${index + 1}`;
-      const label = (asString4(goal.title) || id).slice(0, 80);
+      const id = asString6(goal.id) || `goal-${index + 1}`;
+      const label = (asString6(goal.title) || id).slice(0, 80);
       return {
         id,
         label,
-        state: loopNodeStateForGoal(asString4(goal.status)),
+        state: loopNodeStateForGoal(asString6(goal.status)),
         attempt: Number.isInteger(goal.attempt) && goal.attempt > 0 ? goal.attempt : 1,
-        prompt: (asString4(goal.objective) || label).slice(0, 512),
+        prompt: (asString6(goal.objective) || label).slice(0, 512),
         depends_on: ["parent"],
-        started_at: asString4(goal.startedAt) || null,
-        completed_at: asString4(goal.completedAt) || null
+        started_at: asString6(goal.startedAt) || null,
+        completed_at: asString6(goal.completedAt) || null
       };
     });
     const goalIds = childNodes.map((node) => node.id);
@@ -37479,7 +37788,7 @@ var projectLoopSnapshot = (fs, directory, sessionId, isLiveRun = false) => {
         workersByGoal.set(goalId, []);
       workersByGoal.get(goalId).push(worker.id);
     }
-    const aggregateDone = isRecord15(goalsPlan?.aggregateCompletion) && goalsPlan.aggregateCompletion.status === "complete";
+    const aggregateDone = isRecord17(goalsPlan?.aggregateCompletion) && goalsPlan.aggregateCompletion.status === "complete";
     const allChildrenComplete = childNodes.every((node) => node.state === "completed");
     const anyChildFailed = childNodes.some((node) => node.state === "failed");
     const anyChildRunning = childNodes.some((node) => node.state === "running");
@@ -37602,6 +37911,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
     codeGraphRuntime = null,
     attributionStateReader = createAttributionStateReader(),
     repairStateReader = createRepairStateReader(),
+    deliveryStateReader = createDeliveryStateReader(),
     recordTaskReader = null
   } = dependencies;
   const codeGraphStoreDir = process.env.ALCODE_DATA_DIR !== undefined && process.env.ALCODE_DATA_DIR.length > 0 ? joinPath2(nodePath.resolve(process.env.ALCODE_DATA_DIR), "code-graph-store") : joinPath2(osHomedir(), ".config", "alcode", "code-graph-store");
@@ -37613,7 +37923,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
   let lastRoute = null;
   const routeBySession = new Map;
   const recordRouteBySession = (report) => {
-    const id = asString4(report?.sessionId);
+    const id = asString6(report?.sessionId);
     if (!isSafeSessionId(id))
       return;
     if (!routeBySession.has(id) && routeBySession.size >= DAG_LOOP_RUNS_MAX) {
@@ -37632,7 +37942,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
       runs.push({
         sessionId,
         source: "loop",
-        decision: asString4(route?.decision) || null,
+        decision: asString6(route?.decision) || null,
         plan: state.plan,
         goals: state.goals,
         ledger: state.ledger,
@@ -37654,7 +37964,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
         goals: false,
         ledger: false,
         events: 0,
-        updatedAt: asString4(route?.at) || null
+        updatedAt: asString6(route?.at) || null
       });
     }
     return runs.slice(0, DAG_LOOP_RUNS_MAX);
@@ -37679,14 +37989,14 @@ var createDagServiceHandlers = (dependencies = {}) => {
       }
       const runs = Array.isArray(doc?.dag?.runs) ? doc.dag.runs : [];
       const run = runs[0] ?? null;
-      if (!isRecord15(run)) {
+      if (!isRecord17(run)) {
         skipped += 1;
         continue;
       }
-      const status = asString4(run.status);
+      const status = asString6(run.status);
       if (status !== "completed" && status !== "failed")
         continue;
-      const docDirectory = asString4(doc?.directory);
+      const docDirectory = asString6(doc?.directory);
       if (trimmedDirectory !== null && docDirectory !== null && docDirectory !== trimmedDirectory)
         continue;
       if (trimmedDirectory !== null && docDirectory === null)
@@ -37694,26 +38004,26 @@ var createDagServiceHandlers = (dependencies = {}) => {
       entries.push({
         sessionId,
         source: "snapshot",
-        label: (asString4(run.name) || sessionId).slice(0, 80),
+        label: (asString6(run.name) || sessionId).slice(0, 80),
         status,
-        updatedAt: asString4(doc?.updatedAt) || mtimeOf(fs, path)
+        updatedAt: asString6(doc?.updatedAt) || mtimeOf(fs, path)
       });
     }
     if (trimmedDirectory !== null) {
       for (const sessionId of listLoopSessionIds(fs, trimmedDirectory)) {
         const projected = projectLoopSnapshot(fs, trimmedDirectory, sessionId, false);
         const run = projected?.dag?.runs?.[0] ?? null;
-        if (!isRecord15(run))
+        if (!isRecord17(run))
           continue;
-        const status = asString4(run.status);
+        const status = asString6(run.status);
         if (status !== "completed" && status !== "failed")
           continue;
         entries.push({
           sessionId,
           source: "loop",
-          label: (asString4(run.name) || sessionId).slice(0, 80),
+          label: (asString6(run.name) || sessionId).slice(0, 80),
           status,
-          updatedAt: asString4(projected.updatedAt) || null
+          updatedAt: asString6(projected.updatedAt) || null
         });
       }
     }
@@ -37735,7 +38045,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
     if (code === "OMO_ENGINE_ABSENT") {
       return { status: 503, body: { ok: false, code, message: error.message } };
     }
-    if (code === "OMO_INVOKE_ARGS_INVALID" || code === "OMO_SESSION_ID_INVALID" || code === "OMO_SNAPSHOT_DIR_INVALID") {
+    if (code === "OMO_INVOKE_ARGS_INVALID" || code === "DAG_CONVERSATION_ID_INVALID" || code === "DAG_DIRECTORY_UNSUPPORTED") {
       return { status: 400, body: { ok: false, code, message: error.message } };
     }
     if (code === "OMO_PROVIDER_NOT_SIGNED_IN") {
@@ -37767,45 +38077,25 @@ var createDagServiceHandlers = (dependencies = {}) => {
       return { rows: [], error: error?.message ?? "The canonical task store could not be read." };
     }
   };
-  const withRecordTasks = (document, sessionId, directory) => {
-    const records = recordRowsFor(directory, sessionId);
+  const projectRecordDocument = async (document, records, directory) => {
     const merged = records.rows.length > 0 ? mergeRecordTasks(document, records.rows, records.diagnostics) : document;
     const described = records.error === undefined ? merged : (() => {
-      const container = isRecord15(merged) ? merged : {};
-      const tasks = isRecord15(container.tasks) ? { ...container.tasks } : {};
+      const container = isRecord17(merged) ? merged : {};
+      const tasks = isRecord17(container.tasks) ? { ...container.tasks } : {};
+      if (!Array.isArray(tasks.tasks))
+        tasks.tasks = [];
       tasks.recordError = records.error;
       return { ...container, tasks };
     })();
-    return attachRepairToTasks(described, directory);
+    if (!isSafeDirectory(directory ?? ""))
+      return described;
+    const repaired = await attachRepairState(described, { directory, readRepairState: repairStateReader });
+    const attributed = await attachAttributionState(repaired, { directory, readAttributionState: attributionStateReader });
+    const delivered = await attachDeliveryState(attributed, { directory, readDeliveryState: deliveryStateReader });
+    return reconcileRecordClaims(delivered, records.rows);
   };
-  const attachRepairToTasks = (document, directory) => {
-    if (!isRecord15(document) || !isSafeDirectory(directory ?? ""))
-      return document;
-    const container = isRecord15(document.tasks) ? document.tasks : null;
-    const rows = container !== null && Array.isArray(container.tasks) ? container.tasks : null;
-    if (rows === null)
-      return document;
-    let changed = false;
-    const next = rows.map((row) => {
-      if (!isRecord15(row) || isRecord15(row.repair))
-        return row;
-      const taskId = asString4(row.task_id);
-      if (taskId.length === 0)
-        return row;
-      let result;
-      try {
-        result = repairStateReader({ directory, taskId });
-      } catch {
-        return row;
-      }
-      if (!isRecord15(result) || !isRecord15(result.repair))
-        return row;
-      changed = true;
-      return { ...row, repair: result.repair };
-    });
-    return changed ? { ...document, tasks: { ...container, tasks: next } } : document;
-  };
-  const recordOnlyDocument = (sessionId, directory) => {
+  const withRecordTasks = async (document, sessionId, directory) => projectRecordDocument(document, recordRowsFor(directory, sessionId), directory);
+  const recordOnlyDocument = async (sessionId, directory) => {
     const records = recordRowsFor(directory, sessionId);
     if (records.error !== undefined) {
       return { status: 500, body: { ok: false, code: "DAG_TASK_STORE_UNREADABLE", message: records.error, sessionId } };
@@ -37816,24 +38106,23 @@ var createDagServiceHandlers = (dependencies = {}) => {
       }
       return null;
     }
-    return {
-      status: 200,
-      body: attachRepairToTasks(mergeRecordTasks({ schemaVersion: 1, sessionId, tasks: { parent_session_id: sessionId, tasks: records.rows }, dag: { parent_session_id: sessionId, runs: [] } }, [], records.diagnostics), directory)
-    };
+    const base = { schemaVersion: 1, sessionId, tasks: { parent_session_id: sessionId, tasks: records.rows }, dag: { parent_session_id: sessionId, runs: [] } };
+    return { status: 200, body: await projectRecordDocument(base, records, directory) };
   };
-  const readSnapshot = (sessionId, directory) => {
+  const readSnapshot = async (sessionId, directory) => {
     const scoped = isSafeDirectory(directory ?? "");
     const withScope = (result) => {
-      if (scoped || result.status !== 200 || !isRecord15(result.body))
+      const carriesBody = result.status === 200 || result.status === 404;
+      if (scoped || !carriesBody || !isRecord17(result.body))
         return result;
-      const tasks = isRecord15(result.body.tasks) ? result.body.tasks : {};
+      const tasks = isRecord17(result.body.tasks) ? result.body.tasks : {};
       return { ...result, body: { ...result.body, tasks: { ...tasks, recordUnscoped: true } } };
     };
     let tempPath;
     try {
       tempPath = snapshotPathFor(sessionId);
     } catch (error) {
-      return { status: 400, body: { ok: false, code: error.code ?? "OMO_SESSION_ID_INVALID", message: error.message } };
+      return { status: 400, body: { ok: false, code: error.code ?? "DAG_CONVERSATION_ID_INVALID", message: error.message } };
     }
     const candidates = [];
     if (isSafeDirectory(directory ?? "")) {
@@ -37857,15 +38146,15 @@ var createDagServiceHandlers = (dependencies = {}) => {
     const engine = parsed.find((candidate) => candidate.present && !candidate.malformed && isEngineSnapshotDocument(candidate.doc));
     const document = engine ?? parsed.find((candidate) => candidate.present && !candidate.malformed);
     if (document !== undefined) {
-      return withScope({ status: 200, body: withRecordTasks(document.doc, sessionId, directory) });
+      return withScope({ status: 200, body: await withRecordTasks(document.doc, sessionId, directory) });
     }
     if (parsed.some((candidate) => candidate.malformed)) {
       return { status: 422, body: { ok: false, code: "DAG_SNAPSHOT_MALFORMED", field: "snapshot", sessionId } };
     }
-    const fromRecords = recordOnlyDocument(sessionId, directory);
+    const fromRecords = await recordOnlyDocument(sessionId, directory);
     if (fromRecords !== null)
       return withScope(fromRecords);
-    return { status: 404, body: { ok: false, code: "OMO_DAG_SNAPSHOT_MISSING", sessionId } };
+    return withScope({ status: 404, body: { ok: false, code: "DAG_SNAPSHOT_MISSING", sessionId } });
   };
   const projectHistoryFor = (directory) => {
     const entries = [];
@@ -37899,7 +38188,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
       entries.push({
         sessionId,
         source: "project",
-        label: (asString4(doc?.dag?.runs?.[0]?.name) || sessionId).slice(0, 80),
+        label: (asString6(doc?.dag?.runs?.[0]?.name) || sessionId).slice(0, 80),
         status: parsed.status,
         updatedAt: parsed.updatedAt
       });
@@ -37944,7 +38233,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
         entries.push({
           sessionId,
           source: "project-history",
-          label: (asString4(doc?.dag?.runs?.[0]?.name) || sessionId).slice(0, 80),
+          label: (asString6(doc?.dag?.runs?.[0]?.name) || sessionId).slice(0, 80),
           status: parsed.status,
           updatedAt: parsed.updatedAt
         });
@@ -37999,11 +38288,11 @@ var createDagServiceHandlers = (dependencies = {}) => {
     if (method === "GET" && path === "/debug") {
       const sessionId = query?.sessionId;
       if (!isNonEmptyString2(sessionId)) {
-        return { status: 400, body: { ok: false, code: "OMO_DAG_SESSION_REQUIRED", message: "Pass ?sessionId=<run session>." } };
+        return { status: 400, body: { ok: false, code: "DAG_CONVERSATION_ID_INVALID", message: "Pass ?sessionId=<run session>." } };
       }
       const trimmedSession = sessionId.trim();
       if (trimmedSession.includes("/") || trimmedSession.includes("\\") || trimmedSession.includes("..")) {
-        return { status: 400, body: { ok: false, code: "OMO_SESSION_ID_INVALID", message: "Session ids stay inside one directory." } };
+        return { status: 400, body: { ok: false, code: "DAG_CONVERSATION_ID_INVALID", message: "Session ids stay inside one directory." } };
       }
       const hookSample = lastRoute?.sample ?? (typeof query?.sample === "string" ? query.sample.slice(0, DAG_DEBUG_SAMPLE_MAX) : "");
       let hookHit = false;
@@ -38046,11 +38335,11 @@ var createDagServiceHandlers = (dependencies = {}) => {
     if (method === "GET" && path === "/loop") {
       const sessionId = query?.sessionId;
       if (!isNonEmptyString2(sessionId)) {
-        return { status: 400, body: { ok: false, code: "OMO_DAG_SESSION_REQUIRED", message: "Pass ?sessionId=<run session>." } };
+        return { status: 400, body: { ok: false, code: "DAG_CONVERSATION_ID_INVALID", message: "Pass ?sessionId=<run session>." } };
       }
       const trimmedSession = sessionId.trim();
       if (!isSafeSessionId(trimmedSession)) {
-        return { status: 400, body: { ok: false, code: "OMO_SESSION_ID_INVALID", message: "Session ids stay inside one directory." } };
+        return { status: 400, body: { ok: false, code: "DAG_CONVERSATION_ID_INVALID", message: "Session ids stay inside one directory." } };
       }
       const directory = isNonEmptyString2(query?.directory) ? query.directory : "";
       if (isNonEmptyString2(directory)) {
@@ -38067,7 +38356,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
           body: {
             schemaVersion: 1,
             sessionId: trimmedSession,
-            updatedAt: asString4(route?.at) || new Date(now()).toISOString(),
+            updatedAt: asString6(route?.at) || new Date(now()).toISOString(),
             dag: {
               runs: [{
                 run_id: trimmedSession,
@@ -38077,10 +38366,10 @@ var createDagServiceHandlers = (dependencies = {}) => {
                 counts: { pending: 1, running: 0, completed: 0 },
                 nodes: [{
                   id: "step-1",
-                  label: (asString4(route?.arguments) || asString4(liveLabel) || trimmedSession).slice(0, 64),
+                  label: (asString6(route?.arguments) || asString6(liveLabel) || trimmedSession).slice(0, 64),
                   state: "pending",
                   attempt: 1,
-                  prompt: asString4(route?.sample) || asString4(liveLabel) || trimmedSession,
+                  prompt: asString6(route?.sample) || asString6(liveLabel) || trimmedSession,
                   depends_on: [],
                   started_at: null,
                   completed_at: null
@@ -38098,28 +38387,28 @@ var createDagServiceHandlers = (dependencies = {}) => {
     if (method === "GET" && path === "/snapshot") {
       const sessionId = query?.sessionId;
       if (!isNonEmptyString2(sessionId)) {
-        return { status: 400, body: { ok: false, code: "OMO_DAG_SESSION_REQUIRED", message: "Pass ?sessionId=<run session>." } };
+        return { status: 400, body: { ok: false, code: "DAG_CONVERSATION_ID_INVALID", message: "Pass ?sessionId=<run session>." } };
       }
       const directory = isNonEmptyString2(query?.directory) ? query.directory.trim() : null;
       if (directory !== null && !isSafeDirectory(directory)) {
-        return { status: 400, body: { ok: false, code: "OMO_INVOKE_ARGS_INVALID", message: "directory must be an absolute path without .. segments when given." } };
+        return { status: 400, body: { ok: false, code: "DAG_DIRECTORY_UNSUPPORTED", message: "directory must be an absolute path without .. segments when given." } };
       }
-      return readSnapshot(sessionId.trim(), directory);
+      return await readSnapshot(sessionId.trim(), directory);
     }
     if (method === "POST" && path === "/snapshot") {
       const directory = body?.directory;
       const conversationId = body?.conversationId;
       if (!isSafeDirectory(directory ?? "")) {
-        return { status: 400, body: { ok: false, code: "OMO_INVOKE_ARGS_INVALID", message: "directory must be an absolute project path without .. segments." } };
+        return { status: 400, body: { ok: false, code: "DAG_DIRECTORY_UNSUPPORTED", message: "directory must be an absolute project path without .. segments." } };
       }
       if (!isSafeSessionId(conversationId ?? "")) {
-        return { status: 400, body: { ok: false, code: "OMO_DAG_SESSION_REQUIRED", message: "Pass conversationId=<parent conversation>." } };
+        return { status: 400, body: { ok: false, code: "DAG_CONVERSATION_ID_INVALID", message: "Pass conversationId=<parent conversation>." } };
       }
       const parsed = readPostedRunDoc(body?.snapshot);
       if (!parsed) {
         return { status: 400, body: { ok: false, code: "OMO_DAG_SNAPSHOT_INVALID", message: "snapshot must carry schemaVersion 1, a sessionId, and a non-empty dag.runs record." } };
       }
-      if (parsed.sessionId !== asString4(conversationId).trim()) {
+      if (parsed.sessionId !== asString6(conversationId).trim()) {
         return { status: 400, body: { ok: false, code: "OMO_DAG_CONVERSATION_MISMATCH", message: "A run belongs to exactly one parent conversation." } };
       }
       const livePath = projectLiveRunPath(directory, parsed.sessionId);
@@ -38177,18 +38466,18 @@ var createDagServiceHandlers = (dependencies = {}) => {
         return { status: 400, body: { ok: false, code: "OMO_DAG_MESSAGE_REQUIRED", message: "Steering needs a non-empty message." } };
       }
       if (!isNonEmptyString2(sessionId)) {
-        return { status: 400, body: { ok: false, code: "OMO_DAG_SESSION_REQUIRED", message: "Steering attaches to a live session: pass sessionId." } };
+        return { status: 400, body: { ok: false, code: "DAG_CONVERSATION_ID_INVALID", message: "Steering attaches to a live session: pass sessionId." } };
       }
       let snapshotPath;
       try {
         snapshotPath = snapshotPathFor(sessionId.trim());
       } catch (error) {
-        return { status: 400, body: { ok: false, code: error.code ?? "OMO_SESSION_ID_INVALID", message: error.message } };
+        return { status: 400, body: { ok: false, code: error.code ?? "DAG_CONVERSATION_ID_INVALID", message: error.message } };
       }
       const model = isNonEmptyString2(body?.model) ? body.model.trim() : undefined;
       const agent = isNonEmptyString2(body?.agent) ? body.agent.trim() : undefined;
       if (body?.directory !== undefined && !isNonEmptyString2(body.directory)) {
-        return { status: 400, body: { ok: false, code: "OMO_INVOKE_ARGS_INVALID", message: "directory must be a non-empty string when given." } };
+        return { status: 400, body: { ok: false, code: "DAG_DIRECTORY_UNSUPPORTED", message: "directory must be a non-empty string when given." } };
       }
       const steerDirectory = isNonEmptyString2(body?.directory) ? body.directory.trim() : null;
       const bridge = createBridge(entry);
@@ -38280,7 +38569,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
     if (method === "POST" && path === "/cancel") {
       const sessionId = body?.sessionId;
       if (!isNonEmptyString2(sessionId)) {
-        return { status: 400, body: { ok: false, code: "OMO_DAG_SESSION_REQUIRED", message: "Cancel targets a live session: pass sessionId." } };
+        return { status: 400, body: { ok: false, code: "DAG_CONVERSATION_ID_INVALID", message: "Cancel targets a live session: pass sessionId." } };
       }
       const running = live.get(sessionId.trim());
       if (!running) {
@@ -38336,10 +38625,10 @@ var createDagServiceHandlers = (dependencies = {}) => {
       }
     }
     if (method === "GET" && path === "/rationale") {
-      const rationaleDirectory = asString4(query?.directory);
-      const rationaleProjectId = asString4(query?.projectId);
-      const rationaleQuery = asString4(query?.q);
-      const rationaleScopes = asString4(query?.scopes).split(",").map((scope) => scope.trim()).filter((scope) => scope.length > 0);
+      const rationaleDirectory = asString6(query?.directory);
+      const rationaleProjectId = asString6(query?.projectId);
+      const rationaleQuery = asString6(query?.q);
+      const rationaleScopes = asString6(query?.scopes).split(",").map((scope) => scope.trim()).filter((scope) => scope.length > 0);
       if (rationaleDirectory === "") {
         return { status: 200, body: { projectId: rationaleProjectId || null, revision: null, ranked: [], purgedSecretIds: [] } };
       }
@@ -38403,7 +38692,7 @@ var createDagServiceHandlers = (dependencies = {}) => {
       }
     }
     if (method === "GET" && path === "/rationale/projects") {
-      const projectsDirectory = asString4(query?.directory);
+      const projectsDirectory = asString6(query?.directory);
       if (projectsDirectory === "") {
         return { status: 200, body: { revision: null, projectIds: [] } };
       }

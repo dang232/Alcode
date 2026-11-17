@@ -172,13 +172,13 @@ describe('dag service handlers', () => {
     expect(read).toEqual({ status: 200, body: { ...doc, tasks: { recordUnscoped: true } } });
     const missing = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_nope' } });
     expect(missing.status).toBe(404);
-    expect(missing.body.code).toBe('OMO_DAG_SNAPSHOT_MISSING');
+    expect(missing.body.code).toBe('DAG_SNAPSHOT_MISSING');
     const malformed = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_bad' } });
     expect(malformed.status).toBe(422);
     expect(malformed.body.code).toBe('DAG_SNAPSHOT_MALFORMED');
     const noSession = await handleRequest({ method: 'GET', path: '/snapshot', query: {} });
     expect(noSession.status).toBe(400);
-    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    expect(noSession.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
   });
 
   test('says the record side was not checked when the pane has no project directory', async () => {
@@ -197,6 +197,40 @@ describe('dag service handlers', () => {
     expect(answer.status).toBe(200);
     expect(answer.body.tasks.recordUnscoped).toBe(true);
     expect(consulted).toBe(false);
+  });
+
+  test('a conversation with no snapshot at all still says the read was unscoped', async () => {
+    // This is the exact case the flag was written for: no project bound, no persisted snapshot. The answer is a
+    // 404, and restricting the flag to 200 made the state unreachable, so the pane painted a plain empty graph.
+    const dir = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({ tasks: [], absent: true }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_unscoped_missing' } });
+
+    expect(answer.status).toBe(404);
+    expect(answer.body.code).toBe('DAG_SNAPSHOT_MISSING');
+    expect(answer.body.tasks.recordUnscoped).toBe(true);
+  });
+
+  test('a scoped conversation with no snapshot claims nothing about scope', async () => {
+    const dir = makeSnapshotDir();
+    const project = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({ tasks: [], absent: true }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_scoped_missing', directory: project } });
+
+    expect(answer.status).toBe(404);
+    expect(answer.body.tasks?.recordUnscoped).toBeUndefined();
   });
 
   test('does not claim an unscoped read when a directory was supplied', async () => {
@@ -236,6 +270,42 @@ describe('dag service handlers', () => {
     expect(answer.status).toBe(200);
     expect(answer.body.tasks.tasks.map((task) => task.task_id)).toEqual(['task_snapshot', 'st_record']);
     expect(answer.body.tasks.tasks[1].verification_status).toBe('unverified');
+  });
+
+  test('a chat node is attributed and dated the same way the route does it', async () => {
+    // The service used to merge records and attach repair only: it never ran attribution or delivery, so a node the
+    // HTTP route could point at its task and name its verdict arrived here bare.
+    const dir = makeSnapshotDir();
+    const projectDir = makeSnapshotDir();
+    const doc = {
+      schemaVersion: 1,
+      sessionId: 'ses_parity',
+      dag: { runs: [{ run_id: 'ses_parity', run_key: 'chat:ses_parity', name: 'run', status: 'completed', nodes: [
+        { id: 'ses_child', label: 'child', state: 'completed', prompt: 'p', depends_on: [] },
+      ] }] },
+      tasks: { tasks: [] },
+    };
+    nodeFs.writeFileSync(join(dir, 'ses_parity.snapshot.json'), JSON.stringify(doc), 'utf8');
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({
+        tasks: [{ task_id: 'st_parity', status: 'completed', parent_session_id: 'ses_parity', child_session_id: 'ses_child', verification_status: 'unverified' }],
+        diagnostics: { scanned: 1, accepted: 1, skipped: 0, limitReached: false },
+      }),
+      attributionStateReader: () => ({ absent: false, entries: [], byChildSessionId: { ses_child: { taskId: 'st_parity' } }, byTaskId: {}, collisions: [] }),
+      deliveryStateReader: ({ taskId }) => ({ delivery: { taskId, status: 'completed', verificationStatus: 'unverified' } }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_parity', directory: projectDir } });
+
+    expect(answer.status).toBe(200);
+    const node = answer.body.dag.runs[0].nodes[0];
+    expect(node.task_id).toBe('st_parity');
+    expect(node.delivery.verificationStatus).toBe('unverified');
+    // The record's claim is the row's, and the node agrees with it.
+    expect(answer.body.tasks.tasks[0].verification_status).toBe('unverified');
   });
 
   test('snapshot answers a conversation that exists only as canonical records', async () => {
@@ -305,7 +375,7 @@ describe('dag service handlers', () => {
     const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_live01', directory: projectDir } });
 
     expect(answer.status).toBe(404);
-    expect(answer.body.code).toBe('OMO_DAG_SNAPSHOT_MISSING');
+    expect(answer.body.code).toBe('DAG_SNAPSHOT_MISSING');
   });
 
   test('snapshot reports an unreadable task store instead of claiming no run', async () => {
@@ -330,7 +400,7 @@ describe('dag service handlers', () => {
     expect(emptyMessage.status).toBe(400);
     const noSession = await handleRequest({ method: 'POST', path: '/steer', body: { message: 'Go' } });
     expect(noSession.status).toBe(400);
-    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    expect(noSession.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
   });
 
   test('steer forwards model and agent, unsigned provider answers 409', async () => {
@@ -580,10 +650,10 @@ describe('dag service handlers', () => {
     const { handleRequest } = handlersWith(dir, absentBridge);
     const noSession = await handleRequest({ method: 'GET', path: '/debug', query: {} });
     expect(noSession.status).toBe(400);
-    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    expect(noSession.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
     const escape = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: '../x', directory: tmpdir() } });
     expect(escape.status).toBe(400);
-    expect(escape.body.code).toBe('OMO_SESSION_ID_INVALID');
+    expect(escape.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
     const malformed = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: 'ses_bad' } });
     expect(malformed.status).toBe(200);
     expect(malformed.body.snapshot).toMatchObject({ exists: true, sessionMatch: false });
@@ -682,10 +752,10 @@ describe('dag service handlers', () => {
     expect(missing.body.code).toBe('OMO_DAG_NO_LOOP');
     const noSession = await handleRequest({ method: 'GET', path: '/loop', query: { directory: repo } });
     expect(noSession.status).toBe(400);
-    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    expect(noSession.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
     const escape = await handleRequest({ method: 'GET', path: '/loop', query: { sessionId: '../x', directory: repo } });
     expect(escape.status).toBe(400);
-    expect(escape.body.code).toBe('OMO_SESSION_ID_INVALID');
+    expect(escape.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
   });
 
   test('loop projects dispatched workers under their goal', async () => {
@@ -940,7 +1010,7 @@ describe('dag service handlers', () => {
       body: { message: 'Bad scope', sessionId: 'ses_bad_scope', directory: '  ' },
     });
     expect(bad.status).toBe(400);
-    expect(bad.body.code).toBe('OMO_INVOKE_ARGS_INVALID');
+    expect(bad.body.code).toBe('DAG_DIRECTORY_UNSUPPORTED');
   });
 
   test('history includes terminal loop rows for the filtered directory', async () => {
