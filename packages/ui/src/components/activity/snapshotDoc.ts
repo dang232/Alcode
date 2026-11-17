@@ -17,6 +17,13 @@ const nodeSchema = z.object({
   // The DAG node that owns the child task. Optional for the same reason:
   // a legacy document (and a task without a DAG owner) carries none.
   node_id: z.string().optional(),
+  // The projection's authoritative per-node block. Without it the only claim that reaches this parser is the
+  // flat `verification_status` a snapshot happened to write, so a node whose record says Verified or Blocked
+  // rendered as Unverified - a claim the data never made.
+  delivery: z
+    .object({ status: z.string().optional(), verificationStatus: z.string().optional() })
+    .passthrough()
+    .optional(),
 });
 
 const edgeSchema = z.object({ from: z.string(), to: z.string() });
@@ -55,7 +62,9 @@ const docSchema = z.object({
   // would make a record-only answer parse as a complete, empty snapshot.
   tasks: z
     .object({
-      tasks: z.array(taskSchema),
+      // A container that reports a failed or absent read carries flags but no list; requiring the array
+      // rejected the whole document, so a side-store failure erased a complete run graph.
+      tasks: z.array(taskSchema).optional(),
       recordError: z.string().optional(),
       recordAbsent: z.boolean().optional(),
       diagnostics: z.object({ limitReached: z.boolean().optional() }).passthrough().optional(),
@@ -148,7 +157,10 @@ export const parseSnapshotDoc = (raw: JsonValue): SnapshotDoc | null => {
         state: node.state,
         prompt: node.prompt,
         dependsOn: [...node.depends_on],
-        verificationStatus: parseVerificationStatus(node.verification_status),
+        // Same precedence the DAG pane reads: the projection's delivery claim names the verdict, and the flat
+        // field is the older carrier. Neither present means no claim, which stays undefined.
+        verificationStatus:
+          parseVerificationStatus(node.delivery?.verificationStatus) ?? parseVerificationStatus(node.verification_status),
       };
       // Present only when the wire carried a real child task id: an absent
       // attribution must stay absent rather than becoming an empty field.

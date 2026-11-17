@@ -360,6 +360,52 @@ describe('dag truthfulness regressions (audit-fixes-b)', () => {
     expect(model.state).toBe('failed');
   });
 
+  test('an interrupted parent is cancelled, never completed', () => {
+    // The ladder used to end in an unconditional completed, so an interrupted run persisted as a green run and the
+    // next read showed it that way. Cancelled is a lifecycle answer of its own, not a success.
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent({ outcome: 'interrupted' }), child('ses_a')],
+      messages: [assistantMessage('m2'), stateReport('r1', 'ses_a', 'done', 'completed')],
+      parts: partsOf([['m2', [toolCall('t1', 'm2', { description: 'A' }, 'completed', 'ses_a')]]]),
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    expect(model.children[0]?.state).toBe('completed');
+    expect(model.state).toBe('cancelled');
+    const doc = dagRunModelToSnapshotDoc(model);
+    expect(dagRunSnapshotStatus(doc)).toBe('cancelled');
+  });
+
+  test('a parent whose every child was cancelled is cancelled', () => {
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent(), child('ses_a'), child('ses_b')],
+      messages: [
+        assistantMessage('m2'),
+        stateReport('r1', 'ses_a', 'stopped', 'cancelled'),
+        stateReport('r2', 'ses_b', 'stopped', 'cancelled'),
+      ],
+      parts: partsOf([['m2', [
+        toolCall('t1', 'm2', { description: 'A' }, 'completed', 'ses_a'),
+        toolCall('t2', 'm2', { description: 'B' }, 'completed', 'ses_b'),
+      ]]]),
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    expect(model.counts.cancelled).toBe(2);
+    expect(model.state).toBe('cancelled');
+  });
+
+  test('a cancelled run still renders a lifecycle the pane can paint', () => {
+    const model = buildDagRunModel(inputOf({
+      sessions: [parent({ outcome: 'interrupted' }), child('ses_a')],
+      messages: [assistantMessage('m2'), stateReport('r1', 'ses_a', 'done', 'completed')],
+      parts: partsOf([['m2', [toolCall('t1', 'm2', { description: 'A' }, 'completed', 'ses_a')]]]),
+    }));
+    if (model === null) throw new Error('fixture must build a run');
+    const outcome = parseSnapshotDoc(dagRunModelToSnapshotDoc(model));
+    if (!outcome.ok) throw new Error(`doc must parse: ${outcome.error.field}`);
+    expect(outcome.view.runs[0]?.status).toBe('cancelled');
+    expect(outcome.view.tasks).toEqual([]);
+  });
+
   test('an explicit succeeded outcome keeps the parent completed even when every child failed', () => {
     const model = buildDagRunModel(inputOf({
       sessions: [parent({ outcome: 'succeeded' }), child('ses_a')],

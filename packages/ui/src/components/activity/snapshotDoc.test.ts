@@ -215,3 +215,63 @@ describe('canonical task rows in the snapshot envelope', () => {
     expect(parseSnapshotDoc({ sessionId: 'ses_1', schemaVersion: 1, dag: { runs: [] }, tasks: { tasks: [{ status: 'completed' }] } })).toBeNull();
   });
 });
+
+describe('partiality and delivery on the React parser', () => {
+  const base = (extra: Record<string, unknown>) => ({
+    sessionId: 'ses_1',
+    schemaVersion: 1,
+    dag: { runs: [{ run_id: 'ses_1', run_key: 'chat:ses_1', name: 'Work', status: 'running', nodes: [] }] },
+    ...extra,
+  });
+
+  test('a flags-only task container parses instead of nulling the document', () => {
+    // The service sends the flag beside the list it could not fill; without an array the old schema rejected
+    // the whole document, so a side-store failure erased a complete graph.
+    const doc = parseSnapshotDoc(base({ tasks: { recordError: 'record tasks unreadable: EACCES' } }));
+    expect(doc).not.toBeNull();
+    expect(doc?.runs).toHaveLength(1);
+    expect(doc?.tasks).toEqual([]);
+    expect(doc?.recordError).toBe('record tasks unreadable: EACCES');
+  });
+
+  test('a node claim carried only by the delivery block still reaches the row', () => {
+    const doc = parseSnapshotDoc({
+      sessionId: 'ses_1',
+      schemaVersion: 1,
+      dag: {
+        runs: [{
+          run_id: 'ses_1', run_key: 'chat:ses_1', name: 'Work', status: 'completed',
+          nodes: [{
+            id: 'ses_child', label: 'child', state: 'completed', prompt: 'p', depends_on: [],
+            delivery: { status: 'completed', verificationStatus: 'verified' },
+          }],
+        }],
+      },
+    });
+    // Without the delivery field the row fell back to "unverified", a verdict the record never gave.
+    expect(doc?.runs[0]?.nodes[0]?.verificationStatus).toBe('verified');
+  });
+
+  test('the delivery claim outranks a stale flat claim', () => {
+    const doc = parseSnapshotDoc({
+      sessionId: 'ses_1',
+      schemaVersion: 1,
+      dag: {
+        runs: [{
+          run_id: 'ses_1', run_key: 'chat:ses_1', name: 'Work', status: 'completed',
+          nodes: [{
+            id: 'ses_child', label: 'child', state: 'completed', prompt: 'p', depends_on: [],
+            verification_status: 'verified',
+            delivery: { verificationStatus: 'unverified' },
+          }],
+        }],
+      },
+    });
+    expect(doc?.runs[0]?.nodes[0]?.verificationStatus).toBe('unverified');
+  });
+
+  test('a node with no claim from either carrier stays undefined', () => {
+    const doc = parseSnapshotDoc(base({}));
+    expect(doc?.runs[0]?.nodes).toEqual([]);
+  });
+});

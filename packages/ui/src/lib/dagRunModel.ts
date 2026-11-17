@@ -16,7 +16,7 @@ import type { JsonValue } from '@alcode/sdk';
 import type { Message, Part, Session, SessionStatus } from '@/lib/opencode/model';
 
 export type DagChildState = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type DagParentState = 'running' | 'completed' | 'failed';
+export type DagParentState = 'running' | 'completed' | 'failed' | 'cancelled';
 
 // Narrowing follows the panel's isWireRecord idiom (no typeof operators on
 // the value itself): only a real record passes, arrays never do.
@@ -221,10 +221,15 @@ export const buildDagRunModel = (input: DagRunModelInput): DagRunModel | null =>
   const parentBusy = isBusyStatus(statuses, parent.id);
   const anyRunning = children.some((child) => child.state === 'running' || child.state === 'pending');
   const allFailed = children.length > 0 && children.every((child) => child.state === 'failed');
+  const allCancelled = children.length > 0 && children.every((child) => child.state === 'cancelled');
   let state: DagParentState;
+  // A run that did not succeed is never reported as completed: the ladder used to end in an unconditional
+  // `completed`, so an interrupted parent and an all-cancelled child set both persisted as a green run.
   if (parent.outcome === 'failed') state = 'failed';
   else if (anyRunning || parentBusy) state = 'running';
+  else if (parent.outcome === 'interrupted') state = 'cancelled';
   else if (allFailed && parent.outcome !== 'succeeded') state = 'failed';
+  else if (allCancelled) state = 'cancelled';
   else state = 'completed';
 
   const userText = firstUserText(messages, parts);

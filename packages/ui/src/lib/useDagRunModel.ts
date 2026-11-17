@@ -62,7 +62,7 @@ export const useDagRunModel = (
 };
 
 const isTerminalRunState = (state: DagParentState | null | undefined): boolean =>
-  state === 'completed' || state === 'failed';
+  state === 'completed' || state === 'failed' || state === 'cancelled';
 
 /**
  * The project's attribution index for the current conversation, or null when
