@@ -1350,7 +1350,6 @@ export const TunnelSettings: React.FC = () => {
                         <ProviderOptionLabel provider="cloudflare" />
                       </SelectItem>
                     )}
-                  <SelectItem value="__more-soon" disabled>{t('settings.alcode.tunnel.option.moreProvidersSoon')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
