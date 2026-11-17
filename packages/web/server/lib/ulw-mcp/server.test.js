@@ -89,23 +89,102 @@ describe('ulw-mcp argument forwarding', () => {
     const argv = await stubArgvFor('create-goals', {
       brief: 'harden the loop',
       taskKind: 'survey',
-      retryFailed: false,
-      count: 3,
-      filter: { status: 'pending' },
+      force: true,
     });
 
     expect(argv).toEqual([
       '--json',
       '--brief', 'harden the loop',
       '--task-kind', 'survey',
-      '--count', '3',
-      '--filter', '{"status":"pending"}',
+      '--force',
     ]);
   });
 
+  it('stringifies an object payload onto its own flag', async () => {
+    const argv = await stubArgvFor('checkpoint', { codexGoalJson: { status: 'pending' } });
+
+    expect(argv).toEqual(['--json', '--codex-goal-json', '{"status":"pending"}']);
+  });
+
   it('forwards no session scope the caller did not pass', async () => {
-    const argv = await stubArgvFor('dispatch', { brief: 'unscoped' });
+    const argv = await stubArgvFor('dispatch', { goalId: ['goal-a'] });
 
     expect(argv).not.toContain('--session-id');
+  });
+});
+
+describe('ulw-mcp tool contracts', () => {
+  const request = async (message) => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'alcode-ulw-mcp-'));
+    temporaryDirectories.push(directory);
+    const stubPath = await writeStubCli(directory);
+    const child = spawn(process.execPath, [serverPath], {
+      env: { ...process.env, OMO_ULW_LOOP_CLI: stubPath },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const answer = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { child.kill(); reject(new Error('MCP reply timed out')); }, 15000);
+      timer.unref?.();
+      let pending = '';
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (chunk) => {
+        pending += String(chunk);
+        let index;
+        while ((index = pending.indexOf('\n')) >= 0) {
+          const line = pending.slice(0, index).trim();
+          pending = pending.slice(index + 1);
+          if (!line) continue;
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed?.id === 1) { clearTimeout(timer); child.kill(); resolve(parsed); }
+          } catch {
+            // Not our answer yet.
+          }
+        }
+      });
+    });
+    child.stdin.write(`${JSON.stringify(message)}\n`);
+    return answer;
+  };
+
+  const callToolVia = (name, args) => request({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+
+  it('publishes the arguments each tool actually reads', async () => {
+    const response = await request({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+    const tools = response.result.tools;
+    const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+    const createGoals = byName.get('create-goals').inputSchema;
+    expect(Object.keys(createGoals.properties)).toContain('brief');
+    expect(Object.keys(createGoals.properties)).toContain('sessionId');
+    expect(createGoals.additionalProperties).toBe(false);
+
+    const childResult = byName.get('record-child-result').inputSchema;
+    expect(childResult.required).toEqual(['goalId', 'childId', 'resultRef']);
+
+    const steer = byName.get('revise-goals').inputSchema;
+    expect(Object.keys(steer.properties)).toContain('kind');
+    expect(Object.keys(steer.properties)).toContain('sessionId');
+
+    expect(byName.get('inspect').inputSchema.properties).toHaveProperty('sessionId');
+  });
+
+  it('refuses an argument the tool does not declare instead of forwarding it', async () => {
+    const response = await callToolVia('create-goals', { runId: 'r-1', goals: [{ title: 't1' }] });
+
+    expect(response?.result?.isError).toBe(true);
+    const text = response.result.content[0].text;
+    expect(text).toContain('Unknown argument(s) for create-goals');
+    expect(text).toContain('runId');
+    expect(text).toContain('Allowed:');
+  });
+
+  it('refuses a call that omits a required argument', async () => {
+    const response = await callToolVia('record-child-result', { goalId: 'goal-a', childId: 'child-a' });
+
+    expect(response?.result?.isError).toBe(true);
+    expect(response.result.content[0].text).toContain('Missing required argument(s) for record-child-result');
+    expect(response.result.content[0].text).toContain('resultRef');
   });
 });
