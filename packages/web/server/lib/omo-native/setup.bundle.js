@@ -52026,13 +52026,395 @@ function createWorkspaceBashTool(options) {
   };
 }
 
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/edit.ts
+import { createHash as createHash7 } from "node:crypto";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync8, renameSync as renameSync2, statSync as statSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname7, join as join11 } from "node:path";
+var EDIT_TOOL_NAME = "edit";
+var MAX_EDIT_BYTES = 512 * 1024;
+var BINARY_PROBE_BYTES = 8192;
+var EDIT_DESCRIPTION = "Replace one exact text span inside a project file. The old text must occur exactly once; ambiguous or missing anchors are refused.";
+var EditArgs = object({
+  path: string2().trim().min(1),
+  oldText: string2().min(1),
+  newText: string2(),
+  expectedDigest: string2().trim().regex(/^[0-9a-f]{64}$/).optional()
+});
+var digestOf = (buffer) => createHash7("sha256").update(buffer).digest("hex");
+var staleContent = (path, expected, actual) => {
+  throw new WorkspaceToolError(`'${path}' changed since it was read: expected sha256 ${expected}, found ${actual}. Re-read the file and retry.`, "INVALID_INPUT", path);
+};
+var occurrencesOf = (content, anchor) => {
+  let count = 0;
+  let from = 0;
+  while (true) {
+    const at = content.indexOf(anchor, from);
+    if (at === -1)
+      return count;
+    count += 1;
+    from = at + anchor.length;
+  }
+};
+function createWorkspaceEditTool(options) {
+  return {
+    description: EDIT_DESCRIPTION,
+    args: {
+      properties: {
+        path: { type: "string", description: "File to edit, relative to the project workspace." },
+        oldText: { type: "string", description: "Exact text to replace; it must occur exactly once in the file." },
+        newText: { type: "string", description: "Replacement text (may be empty to delete the span)." },
+        expectedDigest: {
+          type: "string",
+          description: "Optional sha256 of the current content; the edit is refused when the file differs."
+        }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      const parsed = EditArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        const named = object({ path: string2() }).safeParse(toolArgs);
+        workspaceInputRefused(named.success ? named.data.path : "", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const requested = parsed.data.path;
+      const target = resolveForWrite(workspaceRootFor(options.directory, context), requested);
+      let stat;
+      try {
+        stat = statSync4(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        if (code === "ENOENT" || code === "ENOTDIR")
+          workspaceNotFound(requested);
+        workspaceIoFailed(requested, code.length > 0 ? code : "stat failed");
+      }
+      if (stat.isDirectory()) {
+        throw new WorkspaceToolError(`'${requested}' is a directory.`, "NOT_A_FILE", requested);
+      }
+      if (stat.size > MAX_EDIT_BYTES)
+        workspaceTooLarge(requested, stat.size, MAX_EDIT_BYTES);
+      let buffer;
+      try {
+        buffer = readFileSync8(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        workspaceIoFailed(requested, code.length > 0 ? code : "read failed");
+      }
+      if (buffer.subarray(0, Math.min(buffer.length, BINARY_PROBE_BYTES)).includes(0))
+        workspaceBinary(requested);
+      const content = buffer.toString("utf8");
+      const expected = parsed.data.expectedDigest;
+      if (expected !== undefined && digestOf(buffer) !== expected) {
+        staleContent(requested, expected, digestOf(buffer));
+      }
+      const hits = occurrencesOf(content, parsed.data.oldText);
+      if (hits === 0) {
+        workspaceInputRefused(requested, "the old text does not occur in the file");
+      }
+      if (hits > 1) {
+        workspaceInputRefused(requested, `the old text occurs ${hits} times; it must occur exactly once`);
+      }
+      const next = Buffer.from(content.replace(parsed.data.oldText, parsed.data.newText), "utf8");
+      try {
+        mkdirSync3(dirname7(target), { recursive: true });
+        const temp = join11(dirname7(target), `.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`);
+        writeFileSync3(temp, next);
+        renameSync2(temp, target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        workspaceIoFailed(requested, code.length > 0 ? code : "write failed");
+      }
+      return `updated ${requested} (sha256 ${digestOf(next)}, ${next.length} bytes)`;
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/glob.ts
+import { lstatSync as lstatSync3, readdirSync as readdirSync7 } from "node:fs";
+import { join as join12, relative as relative4, sep as sep2 } from "node:path";
+var GLOB_TOOL_NAME = "glob";
+var DEFAULT_MAX_RESULTS = 100;
+var HARD_MAX_RESULTS = 500;
+var MAX_FILES_SCANNED = 5000;
+var SKIPPED_DIRECTORIES2 = new Set(["node_modules", ".git", ".hg", ".svn", "dist", "build", "coverage", "vendor", ".next", "out"]);
+var GLOB_DESCRIPTION = "Find files by name pattern inside the project workspace. Supports * , ? and ** segments; returns paths relative to the search scope.";
+var GlobArgs = object({
+  pattern: string2().trim().min(1),
+  path: string2().trim().min(1).optional(),
+  maxResults: number2().int().min(1).max(HARD_MAX_RESULTS).optional()
+});
+var segmentToRegExp = (segment) => {
+  const source = segment.split("*").map((part) => part.split("?").map(escapeRegExp2).join("[^/\\\\]")).join("[^/\\\\]*");
+  return new RegExp(`^${source}$`);
+};
+function escapeRegExp2(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+var compileGlob = (pattern) => {
+  const normalized = pattern.split(sep2).join("/").replace(/^\/+/, "");
+  if (normalized.length === 0 || normalized.includes("\x00")) {
+    workspaceInputRefused(pattern, "the pattern must name something to match");
+  }
+  const segments = normalized.split("/");
+  const parts = segments.map((segment) => segment === "**" ? null : segmentToRegExp(segment));
+  return (candidate) => {
+    const pieces = candidate.split("/");
+    const match = (patternIndex, pieceIndex) => {
+      if (patternIndex === parts.length)
+        return pieceIndex === pieces.length;
+      if (parts[patternIndex] === null) {
+        for (let skip = pieceIndex;skip <= pieces.length; skip += 1) {
+          if (match(patternIndex + 1, skip))
+            return true;
+        }
+        return false;
+      }
+      if (pieceIndex >= pieces.length)
+        return false;
+      const test = parts[patternIndex];
+      if (test === null || !test.test(pieces[pieceIndex]))
+        return false;
+      return match(patternIndex + 1, pieceIndex + 1);
+    };
+    return match(0, 0);
+  };
+};
+var walk = (absolute, state, matches, limit) => {
+  let entries;
+  try {
+    entries = readdirSync7(absolute, { withFileTypes: true });
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "";
+    workspaceIoFailed(relative4(state.root, absolute) || ".", code.length > 0 ? code : "read failed");
+  }
+  const names = entries.map((entry) => entry.name).sort();
+  for (const name of names) {
+    if (state.paths.length >= limit || state.files >= MAX_FILES_SCANNED)
+      return;
+    if (SKIPPED_DIRECTORIES2.has(name))
+      continue;
+    const child = join12(absolute, name);
+    let link;
+    try {
+      link = lstatSync3(child);
+    } catch {
+      continue;
+    }
+    if (link.isSymbolicLink()) {
+      state.skippedLinks += 1;
+      continue;
+    }
+    if (link.isDirectory()) {
+      walk(child, state, matches, limit);
+      continue;
+    }
+    if (!link.isFile())
+      continue;
+    state.files += 1;
+    const display = relative4(state.root, child).split(sep2).join("/");
+    if (matches(display))
+      state.paths.push(display);
+  }
+};
+function createWorkspaceGlobTool(options) {
+  return {
+    description: GLOB_DESCRIPTION,
+    args: {
+      properties: {
+        pattern: { type: "string", description: "File name pattern with * , ? and ** segments, relative to the search scope." },
+        path: { type: "string", description: "Directory to search, relative to the project workspace; defaults to the root." },
+        maxResults: { type: "number", description: `Maximum paths to return, 1-${HARD_MAX_RESULTS}.` }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      const parsed = GlobArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        workspaceInputRefused("", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const limit = parsed.data.maxResults ?? DEFAULT_MAX_RESULTS;
+      const matches = compileGlob(parsed.data.pattern);
+      const root = workspaceRootFor(options.directory, context);
+      const target = resolveInsideWorkspace(root, parsed.data.path ?? ".");
+      const canonicalRoot = resolveInsideWorkspace(root, ".");
+      const state = { root: canonicalRoot, paths: [], files: 0, skippedLinks: 0, fileCapReached: false };
+      let targetStat;
+      try {
+        targetStat = lstatSync3(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        if (code === "ENOENT" || code === "ENOTDIR")
+          workspaceNotFound(parsed.data.path ?? ".");
+        workspaceIoFailed(parsed.data.path ?? ".", code.length > 0 ? code : "stat failed");
+      }
+      if (!targetStat.isDirectory()) {
+        workspaceInputRefused(parsed.data.path ?? ".", "the search scope must be a directory");
+      }
+      walk(target, state, matches, limit);
+      if (state.files >= MAX_FILES_SCANNED)
+        state.fileCapReached = true;
+      const header = `${state.paths.length} path(s)` + (state.skippedLinks > 0 ? `, ${state.skippedLinks} link(s) skipped` : "") + (state.fileCapReached ? `, stopped at the ${MAX_FILES_SCANNED}-file scan cap` : "");
+      return `${header}
+${state.paths.join(`
+`)}`;
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/grep.ts
+import { lstatSync as lstatSync4, readdirSync as readdirSync8, readFileSync as readFileSync9, statSync as statSync5 } from "node:fs";
+import { join as join13, relative as relative5 } from "node:path";
+var GREP_TOOL_NAME = "grep";
+var DEFAULT_MAX_RESULTS2 = 100;
+var HARD_MAX_RESULTS2 = 500;
+var MAX_FILE_BYTES = 512 * 1024;
+var MAX_FILES_SCANNED2 = 5000;
+var MAX_LINE_CHARS = 1000;
+var BINARY_PROBE_BYTES2 = 8192;
+var OUTPUT_LIMIT_BYTES2 = 64 * 1024;
+var SKIPPED_DIRECTORIES3 = new Set(["node_modules", ".git", ".hg", ".svn", "dist", "build", "coverage", "vendor", ".next", "out"]);
+var GREP_DESCRIPTION = "Search file contents for a text pattern inside the project workspace. Returns path:line matches with a header stating the bounds.";
+var GrepArgs = object({
+  pattern: string2().trim().min(1),
+  path: string2().trim().min(1).optional(),
+  literal: boolean2().optional(),
+  maxResults: number2().int().min(1).max(HARD_MAX_RESULTS2).optional()
+});
+var escapeRegExp3 = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var toPattern = (pattern, literal) => {
+  try {
+    return new RegExp(literal ? escapeRegExp3(pattern) : pattern, "m");
+  } catch {
+    workspaceInputRefused(pattern, "the pattern is not a valid regular expression");
+  }
+};
+var isBinary = (buffer) => buffer.subarray(0, Math.min(buffer.length, BINARY_PROBE_BYTES2)).includes(0);
+var scanFile = (absolute, display, pattern, limit, state) => {
+  let stat;
+  try {
+    stat = statSync5(absolute);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "";
+    workspaceIoFailed(display, code.length > 0 ? code : "stat failed");
+  }
+  if (stat.size > MAX_FILE_BYTES) {
+    state.skippedFiles += 1;
+    return;
+  }
+  let buffer;
+  try {
+    buffer = readFileSync9(absolute);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "";
+    workspaceIoFailed(display, code.length > 0 ? code : "read failed");
+  }
+  if (isBinary(buffer)) {
+    state.skippedFiles += 1;
+    return;
+  }
+  state.files += 1;
+  const lines = buffer.toString("utf8").split(`
+`);
+  for (let index = 0;index < lines.length; index += 1) {
+    if (state.matches.length >= limit)
+      return;
+    pattern.lastIndex = 0;
+    if (!pattern.test(lines[index]))
+      continue;
+    const text = lines[index].length > MAX_LINE_CHARS ? `${lines[index].slice(0, MAX_LINE_CHARS)}…` : lines[index];
+    state.matches.push(`${display}:${index + 1}: ${text}`);
+  }
+};
+var walk2 = (absolute, state, pattern, limit) => {
+  let entries;
+  try {
+    entries = readdirSync8(absolute, { withFileTypes: true });
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "";
+    workspaceIoFailed(relative5(state.root, absolute) || ".", code.length > 0 ? code : "read failed");
+  }
+  const names = entries.map((entry) => entry.name).sort();
+  for (const name of names) {
+    if (state.matches.length >= limit || state.files >= MAX_FILES_SCANNED2)
+      return;
+    if (SKIPPED_DIRECTORIES3.has(name))
+      continue;
+    const child = join13(absolute, name);
+    let link;
+    try {
+      link = lstatSync4(child);
+    } catch {
+      continue;
+    }
+    if (link.isSymbolicLink() || !link.isDirectory() && !link.isFile()) {
+      if (link.isSymbolicLink())
+        state.skippedLinks += 1;
+      continue;
+    }
+    if (link.isDirectory()) {
+      walk2(child, state, pattern, limit);
+      continue;
+    }
+    if (link.isFile()) {
+      scanFile(child, relative5(state.root, child), pattern, limit, state);
+    }
+  }
+};
+function createWorkspaceGrepTool(options) {
+  return {
+    description: GREP_DESCRIPTION,
+    args: {
+      properties: {
+        pattern: { type: "string", description: "Regular expression matched per line (or a literal string when literal is true)." },
+        path: { type: "string", description: "File or directory to search, relative to the project workspace; defaults to the root." },
+        literal: { type: "boolean", description: "Match the pattern literally instead of as a regular expression." },
+        maxResults: { type: "number", description: `Maximum matches to return, 1-${HARD_MAX_RESULTS2}.` }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      const parsed = GrepArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        workspaceInputRefused("", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const limit = parsed.data.maxResults ?? DEFAULT_MAX_RESULTS2;
+      const pattern = toPattern(parsed.data.pattern, parsed.data.literal ?? false);
+      const scope = parsed.data.path ?? ".";
+      const root = workspaceRootFor(options.directory, context);
+      const target = resolveInsideWorkspace(root, scope);
+      let targetStat;
+      try {
+        targetStat = statSync5(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        if (code === "ENOENT" || code === "ENOTDIR")
+          workspaceNotFound(scope);
+        workspaceIoFailed(scope, code.length > 0 ? code : "stat failed");
+      }
+      const canonicalRoot = resolveInsideWorkspace(root, ".");
+      const state = { root: canonicalRoot, matches: [], files: 0, skippedFiles: 0, skippedLinks: 0, fileCapReached: false };
+      if (targetStat.isDirectory()) {
+        walk2(target, state, pattern, limit);
+      } else if (targetStat.isFile()) {
+        scanFile(target, scope, pattern, limit, state);
+      } else {
+        workspaceBinary(scope);
+      }
+      if (state.files >= MAX_FILES_SCANNED2 && state.matches.length >= limit)
+        state.fileCapReached = true;
+      const header = `${state.matches.length} match(es) in ${state.files} file(s)` + (state.skippedFiles > 0 ? `, ${state.skippedFiles} file(s) skipped` : "") + (state.skippedLinks > 0 ? `, ${state.skippedLinks} link(s) skipped` : "") + (state.fileCapReached ? `, stopped at the ${MAX_FILES_SCANNED2}-file scan cap` : "");
+      const joined = state.matches.join(`
+`);
+      const capped = Buffer.from(joined, "utf8").subarray(0, OUTPUT_LIMIT_BYTES2).toString("utf8");
+      return `${header}
+${capped}`;
+    }
+  };
+}
+
 // ../../../../omo-engine/omo-opencode/src/tools/workspace/read.ts
-import { readFileSync as readFileSync8, statSync as statSync4 } from "node:fs";
+import { readFileSync as readFileSync10, statSync as statSync6 } from "node:fs";
 var READ_TOOL_NAME = "read";
 var MAX_BYTES = 512 * 1024;
 var HARD_MAX_BYTES = 8 * 1024 * 1024;
 var MAX_LINES = 5000;
-var BINARY_PROBE_BYTES = 8192;
+var BINARY_PROBE_BYTES3 = 8192;
 var READ_DESCRIPTION = "Read a UTF-8 text file from the project workspace. Returns the requested line range and states which lines were returned.";
 var ReadArgs = object({
   path: string2().trim().min(1),
@@ -52040,7 +52422,7 @@ var ReadArgs = object({
   limit: number2().int().min(1).max(MAX_LINES).optional()
 });
 var looksBinary = (buffer) => {
-  const probe = buffer.subarray(0, Math.min(buffer.length, BINARY_PROBE_BYTES));
+  const probe = buffer.subarray(0, Math.min(buffer.length, BINARY_PROBE_BYTES3));
   return probe.includes(0);
 };
 function createWorkspaceReadTool(options) {
@@ -52063,7 +52445,7 @@ function createWorkspaceReadTool(options) {
       const target = resolveInsideWorkspace(workspaceRootFor(options.directory, context), requested);
       let stat;
       try {
-        stat = statSync4(target);
+        stat = statSync6(target);
       } catch (error) {
         const code = error instanceof Error && "code" in error ? String(error.code) : "";
         if (code === "ENOENT" || code === "ENOTDIR")
@@ -52082,7 +52464,7 @@ function createWorkspaceReadTool(options) {
       }
       let buffer;
       try {
-        buffer = readFileSync8(target);
+        buffer = readFileSync10(target);
       } catch (error) {
         const code = error instanceof Error && "code" in error ? String(error.code) : "";
         workspaceIoFailed(requested, code.length > 0 ? code : "read failed");
@@ -52109,9 +52491,9 @@ ${capped}`;
 }
 
 // ../../../../omo-engine/omo-opencode/src/tools/workspace/write.ts
-import { createHash as createHash7 } from "node:crypto";
-import { existsSync as existsSync16, mkdirSync as mkdirSync3, readFileSync as readFileSync9, renameSync as renameSync2, statSync as statSync5, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname as dirname7, join as join11 } from "node:path";
+import { createHash as createHash8 } from "node:crypto";
+import { existsSync as existsSync16, mkdirSync as mkdirSync4, readFileSync as readFileSync11, renameSync as renameSync3, statSync as statSync7, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname8, join as join14 } from "node:path";
 var WRITE_TOOL_NAME = "write";
 var MAX_CONTENT_BYTES = 2 * 1024 * 1024;
 var WRITE_DESCRIPTION = "Write a UTF-8 text file inside the project workspace. Refuses paths that leave the workspace and, when expectedDigest is given, refuses to overwrite different content.";
@@ -52120,8 +52502,8 @@ var WriteArgs = object({
   content: string2(),
   expectedDigest: string2().trim().regex(/^[0-9a-f]{64}$/).optional()
 });
-var digestOf = (buffer) => createHash7("sha256").update(buffer).digest("hex");
-var staleContent = (path, expected, actual) => {
+var digestOf2 = (buffer) => createHash8("sha256").update(buffer).digest("hex");
+var staleContent2 = (path, expected, actual) => {
   throw new WorkspaceToolError(`'${path}' changed since it was read: expected sha256 ${expected}, found ${actual}. Re-read the file and retry.`, "INVALID_INPUT", path);
 };
 function createWorkspaceWriteTool(options) {
@@ -52152,11 +52534,11 @@ function createWorkspaceWriteTool(options) {
       const existed = existsSync16(target);
       let previous = null;
       if (existed) {
-        if (statSync5(target).isDirectory()) {
+        if (statSync7(target).isDirectory()) {
           throw new WorkspaceToolError(`'${requested}' is a directory.`, "NOT_A_FILE", requested);
         }
         try {
-          previous = digestOf(readFileSync9(target));
+          previous = digestOf2(readFileSync11(target));
         } catch (error) {
           const code = error instanceof Error && "code" in error ? String(error.code) : "";
           workspaceIoFailed(requested, code.length > 0 ? code : "read failed");
@@ -52165,19 +52547,19 @@ function createWorkspaceWriteTool(options) {
       const expected = parsed.data.expectedDigest;
       if (expected !== undefined) {
         if (previous === null)
-          staleContent(requested, expected, "(file did not exist)");
+          staleContent2(requested, expected, "(file did not exist)");
         if (previous !== expected)
-          staleContent(requested, expected, previous);
+          staleContent2(requested, expected, previous);
       }
-      const next = digestOf(bytes);
+      const next = digestOf2(bytes);
       if (previous === next) {
         return `unchanged ${requested} (sha256 ${next}, ${bytes.length} bytes)`;
       }
       try {
-        mkdirSync3(dirname7(target), { recursive: true });
-        const temp = join11(dirname7(target), `.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`);
-        writeFileSync3(temp, bytes);
-        renameSync2(temp, target);
+        mkdirSync4(dirname8(target), { recursive: true });
+        const temp = join14(dirname8(target), `.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`);
+        writeFileSync4(temp, bytes);
+        renameSync3(temp, target);
       } catch (error) {
         const code = error instanceof Error && "code" in error ? String(error.code) : "";
         workspaceIoFailed(requested, code.length > 0 ? code : "write failed");
@@ -56625,45 +57007,33 @@ async function createTools(ctx, pluginConfig, managers) {
     getRestrictions: (agentName) => getAgentToolRestrictions(agentName)
   });
   const filteredTools = {};
-  for (const [name, entry] of Object.entries(registry)) {
-    filteredTools[name] = {
-      description: entry.description,
-      args: { properties: {} },
-      execute: async () => "tool unavailable in this context"
-    };
-  }
+  const install = (name, tool) => {
+    if (registry[name] !== undefined)
+      filteredTools[name] = tool;
+  };
   const ulwTools = createUlwTools();
-  for (const [name, tool] of Object.entries(ulwTools)) {
-    if (registry[name] !== undefined) {
-      filteredTools[name] = tool;
-    }
-  }
+  for (const [name, tool] of Object.entries(ulwTools))
+    install(name, tool);
   const codeGraphTools = createCodeGraphTools({ directory: ctx.directory });
-  for (const [name, tool] of Object.entries(codeGraphTools)) {
-    if (registry[name] !== undefined) {
-      filteredTools[name] = tool;
-    }
-  }
+  for (const [name, tool] of Object.entries(codeGraphTools))
+    install(name, tool);
   const workspaceTools = {
     [READ_TOOL_NAME]: createWorkspaceReadTool({ directory: ctx.directory }),
     [WRITE_TOOL_NAME]: createWorkspaceWriteTool({ directory: ctx.directory }),
-    [BASH_TOOL_NAME]: createWorkspaceBashTool({ directory: ctx.directory })
+    [BASH_TOOL_NAME]: createWorkspaceBashTool({ directory: ctx.directory }),
+    [GREP_TOOL_NAME]: createWorkspaceGrepTool({ directory: ctx.directory }),
+    [EDIT_TOOL_NAME]: createWorkspaceEditTool({ directory: ctx.directory }),
+    [GLOB_TOOL_NAME]: createWorkspaceGlobTool({ directory: ctx.directory })
   };
-  for (const [name, tool] of Object.entries(workspaceTools)) {
-    if (registry[name] !== undefined) {
-      filteredTools[name] = tool;
-    }
-  }
   const delegation = createDelegationTools({ directory: ctx.directory, capabilities: ctx.hostCapabilities });
   const delegationTools = {
     [TASK_TOOL_NAME]: delegation.task,
     [CALL_OMO_AGENT_TOOL_NAME]: delegation.callOmoAgent
   };
-  for (const [name, tool] of Object.entries(delegationTools)) {
-    if (registry[name] !== undefined) {
-      filteredTools[name] = tool;
-    }
-  }
+  for (const [name, tool] of Object.entries(workspaceTools))
+    install(name, tool);
+  for (const [name, tool] of Object.entries(delegationTools))
+    install(name, tool);
   return { filteredTools, mergedSkills, availableSkills };
 }
 
@@ -57048,7 +57418,7 @@ import * as path7 from "node:path";
 // ../../../../omo-engine/omo-opencode/src/shared/opencode-config-dir.ts
 import { existsSync as existsSync17, realpathSync as realpathSync6 } from "node:fs";
 import { homedir as homedir5 } from "node:os";
-import { join as join12, posix as posix2, resolve as resolve8, win32 } from "node:path";
+import { join as join15, posix as posix2, resolve as resolve8, win32 } from "node:path";
 var TAURI_APP_IDENTIFIER = "ai.opencode.desktop";
 var TAURI_APP_IDENTIFIER_DEV = "ai.opencode.desktop.dev";
 function isDevBuild(version) {
@@ -57060,15 +57430,15 @@ function getTauriConfigDir(identifier) {
   const platform = process.platform;
   switch (platform) {
     case "darwin":
-      return join12(homedir5(), "Library", "Application Support", identifier);
+      return join15(homedir5(), "Library", "Application Support", identifier);
     case "win32": {
-      const appData = process.env.APPDATA || join12(homedir5(), "AppData", "Roaming");
+      const appData = process.env.APPDATA || join15(homedir5(), "AppData", "Roaming");
       return win32.join(appData, identifier);
     }
     case "linux":
     default: {
-      const xdgConfig = process.env.XDG_CONFIG_HOME || join12(homedir5(), ".config");
-      return join12(xdgConfig, identifier);
+      const xdgConfig = process.env.XDG_CONFIG_HOME || join15(homedir5(), ".config");
+      return join15(xdgConfig, identifier);
     }
   }
 }
@@ -57111,8 +57481,8 @@ function getWslLinuxHomeDir(windowsConfigRoot) {
 function getCliDefaultConfigDir() {
   const envXdgConfig = process.env.XDG_CONFIG_HOME?.trim();
   const shouldIgnoreWindowsXdg = envXdgConfig !== undefined && envXdgConfig.length > 0 && isWslEnvironment() && isWindowsUserConfigRoot(envXdgConfig);
-  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join12(homedir5(), ".config");
-  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join12(xdgConfig, "opencode");
+  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join15(homedir5(), ".config");
+  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join15(xdgConfig, "opencode");
   return resolveConfigPath(configDir);
 }
 function getCliCustomConfigDir() {
@@ -57145,8 +57515,8 @@ function getOpenCodeConfigDir(options) {
   const tauriDir = process.platform === "win32" ? win32.isAbsolute(tauriDirBase) ? win32.normalize(tauriDirBase) : win32.resolve(tauriDirBase) : resolveConfigPath(tauriDirBase);
   if (checkExisting) {
     const legacyDir = getCliConfigDir();
-    const legacyConfig = join12(legacyDir, "opencode.json");
-    const legacyConfigC = join12(legacyDir, "opencode.jsonc");
+    const legacyConfig = join15(legacyDir, "opencode.json");
+    const legacyConfigC = join15(legacyDir, "opencode.jsonc");
     if (existsSync17(legacyConfig) || existsSync17(legacyConfigC)) {
       return legacyDir;
     }
@@ -57157,9 +57527,9 @@ function getOpenCodeConfigPaths(options) {
   const configDir = getOpenCodeConfigDir(options);
   return {
     configDir,
-    configJson: join12(configDir, "opencode.json"),
-    configJsonc: join12(configDir, "opencode.jsonc"),
-    packageJson: join12(configDir, "package.json")
+    configJson: join15(configDir, "opencode.json"),
+    configJsonc: join15(configDir, "opencode.jsonc"),
+    packageJson: join15(configDir, "package.json")
   };
 }
 
@@ -57284,8 +57654,8 @@ Multiple ${PLUGIN_NAME} instances can inject internal prompts into the same live
 }
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
-import { existsSync as existsSync19, readFileSync as readFileSync11 } from "node:fs";
-import { join as join14 } from "node:path";
+import { existsSync as existsSync19, readFileSync as readFileSync13 } from "node:fs";
+import { join as join17 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/plugin-entry-shape.ts
 function isPluginTupleEntry(entry) {
@@ -57301,8 +57671,8 @@ function withPluginEntryName(entry, name) {
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
 function getOpenCodeConfigPath(overrideConfigDir) {
   if (overrideConfigDir) {
-    const jsonPath = join14(overrideConfigDir, "opencode.json");
-    const jsoncPath = join14(overrideConfigDir, "opencode.jsonc");
+    const jsonPath = join17(overrideConfigDir, "opencode.json");
+    const jsoncPath = join17(overrideConfigDir, "opencode.jsonc");
     if (existsSync19(jsoncPath))
       return jsoncPath;
     if (existsSync19(jsonPath))
@@ -57330,7 +57700,7 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
     return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath: null };
   }
   try {
-    const content = readFileSync11(configPath, "utf-8");
+    const content = readFileSync13(configPath, "utf-8");
     const parseResult = parseJsoncSafe2(content);
     if (!parseResult.data) {
       return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath };
@@ -57352,49 +57722,49 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
-import { existsSync as existsSync22, readdirSync as readdirSync8 } from "node:fs";
-import { join as join16 } from "node:path";
+import { existsSync as existsSync22, readdirSync as readdirSync10 } from "node:fs";
+import { join as join19 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-workspace-migration.ts
-import { copyFileSync, existsSync as existsSync20, lstatSync as lstatSync3, mkdirSync as mkdirSync4, readdirSync as readdirSync7 } from "node:fs";
-import { dirname as dirname8, join as join15, relative as relative4 } from "node:path";
+import { copyFileSync, existsSync as existsSync20, lstatSync as lstatSync5, mkdirSync as mkdirSync5, readdirSync as readdirSync9 } from "node:fs";
+import { dirname as dirname9, join as join18, relative as relative6 } from "node:path";
 var LEGACY_WORKSPACE_DIR = ".sisyphus";
 var WORKSPACE_DIR = ".omo";
 function copyMissingEntries(legacyPath, targetPath, targetRoot, skipped) {
-  const legacyStat = lstatSync3(legacyPath);
+  const legacyStat = lstatSync5(legacyPath);
   if (legacyStat.isSymbolicLink()) {
-    skipped.push(join15(WORKSPACE_DIR, relative4(targetRoot, targetPath)));
+    skipped.push(join18(WORKSPACE_DIR, relative6(targetRoot, targetPath)));
     return false;
   }
   if (existsSync20(targetPath)) {
-    if (legacyStat.isDirectory() && lstatSync3(targetPath).isDirectory()) {
+    if (legacyStat.isDirectory() && lstatSync5(targetPath).isDirectory()) {
       let copiedChild = false;
-      for (const entry of readdirSync7(legacyPath)) {
-        copiedChild = copyMissingEntries(join15(legacyPath, entry), join15(targetPath, entry), targetRoot, skipped) || copiedChild;
+      for (const entry of readdirSync9(legacyPath)) {
+        copiedChild = copyMissingEntries(join18(legacyPath, entry), join18(targetPath, entry), targetRoot, skipped) || copiedChild;
       }
       return copiedChild;
     }
-    skipped.push(join15(WORKSPACE_DIR, relative4(targetRoot, targetPath)));
+    skipped.push(join18(WORKSPACE_DIR, relative6(targetRoot, targetPath)));
     return false;
   }
   if (legacyStat.isDirectory()) {
-    mkdirSync4(targetPath, { recursive: true });
+    mkdirSync5(targetPath, { recursive: true });
     let copiedChild = false;
-    for (const entry of readdirSync7(legacyPath)) {
-      copiedChild = copyMissingEntries(join15(legacyPath, entry), join15(targetPath, entry), targetRoot, skipped) || copiedChild;
+    for (const entry of readdirSync9(legacyPath)) {
+      copiedChild = copyMissingEntries(join18(legacyPath, entry), join18(targetPath, entry), targetRoot, skipped) || copiedChild;
     }
     return copiedChild;
   }
-  mkdirSync4(dirname8(targetPath), { recursive: true });
+  mkdirSync5(dirname9(targetPath), { recursive: true });
   copyFileSync(legacyPath, targetPath);
   return true;
 }
 function migrateLegacyWorkspaceDirectory(directory) {
-  const legacyDirectory = join15(directory, LEGACY_WORKSPACE_DIR);
+  const legacyDirectory = join18(directory, LEGACY_WORKSPACE_DIR);
   if (!existsSync20(legacyDirectory)) {
     return { migrated: false, skipped: [] };
   }
-  const targetDirectory = join15(directory, WORKSPACE_DIR);
+  const targetDirectory = join18(directory, WORKSPACE_DIR);
   const skipped = [];
   try {
     const migrated = copyMissingEntries(legacyDirectory, targetDirectory, targetDirectory, skipped);
@@ -57562,10 +57932,10 @@ function planArtifactTouched(directory) {
   try {
     if (!directory)
       return false;
-    const plansDir = join16(directory, ".omo", "plans");
+    const plansDir = join19(directory, ".omo", "plans");
     if (!existsSync22(plansDir))
       return false;
-    return readdirSync8(plansDir).some((entry) => entry.endsWith(".md"));
+    return readdirSync10(plansDir).some((entry) => entry.endsWith(".md"));
   } catch {
     return false;
   }
