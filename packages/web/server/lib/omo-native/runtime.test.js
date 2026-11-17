@@ -1,13 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { createOmoNativeRuntime } from './runtime.js';
 
+const temporaryDirectories = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 describe('createOmoNativeRuntime', () => {
   it('materializes a loadable plugin directory and returns it', async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omo-native-'));
+    temporaryDirectories.push(dataDir);
     const runtime = createOmoNativeRuntime({ fsPromises: fs.promises, path, dataDir });
 
     const directory = await runtime.materializePlugin();
@@ -30,5 +39,23 @@ describe('createOmoNativeRuntime', () => {
     const before = fs.readFileSync(path.join(directory, 'index.js'), 'utf8');
     await expect(runtime.materializePlugin()).resolves.toBe(directory);
     expect(fs.readFileSync(path.join(directory, 'index.js'), 'utf8')).toBe(before);
+  });
+
+  it('refreshes a stale materialized copy instead of serving the old tool table', async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omo-native-'));
+    temporaryDirectories.push(dataDir);
+    const runtime = createOmoNativeRuntime({ fsPromises: fs.promises, path, dataDir });
+    const directory = await runtime.materializePlugin();
+    const indexPath = path.join(directory, 'index.js');
+    const shipped = fs.readFileSync(indexPath, 'utf8');
+
+    // A copy left behind by an older build is exactly how the app kept
+    // answering "tool unavailable" after the source fix shipped.
+    fs.writeFileSync(indexPath, 'export default { id: "omo-native", setup: async () => {} };\n');
+    expect(fs.readFileSync(indexPath, 'utf8')).not.toBe(shipped);
+
+    await runtime.materializePlugin();
+
+    expect(fs.readFileSync(indexPath, 'utf8')).toBe(shipped);
   });
 });
