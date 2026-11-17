@@ -192,6 +192,65 @@ describe('task row node attribution', () => {
     expect(rendered).toBe(`node ${task.nodeId}`);
   });
 
+  test('#given a record with every field #when parsed and rendered #then each value has its own cell', () => {
+    const outcome = parseSnapshotDoc({
+      schemaVersion: 1,
+      sessionId: 'ses_full',
+      updatedAt: '2026-11-17T00:00:00.000Z',
+      dag: null,
+      tasks: { tasks: [{
+        task_id: 'st_full',
+        status: 'error',
+        error_message: 'child exited 1',
+        failure_kind: 'runner_crash',
+        failure_reason: 'spawn failed',
+        duration_ms: 1500,
+        model: 'al-1.4',
+        execution_mode: 'background',
+        background_mode: 'detached',
+        run_stats: { attempts: 2, note: 'retried' },
+      }] },
+    });
+    if (!outcome.ok) throw new Error('doc must parse');
+    const parts = panel.formatTaskRowTexts(outcome.view.tasks[0]);
+    const cell = (className: string) => parts.find((part) => part.className === className)?.text;
+    expect(cell('dag-task-error')).toBe('child exited 1');
+    expect(cell('dag-task-failure')).toBe('runner_crash: spawn failed');
+    expect(cell('dag-task-duration')).toBe('1.5s');
+    expect(cell('dag-task-model')).toBe('al-1.4');
+    expect(cell('dag-task-mode')).toBe('background/detached');
+    expect(cell('dag-task-stats')).toBe('attempts=2 note=retried');
+    expect(cell('dag-task-status')).toBe('error');
+  });
+
+  test('#given a record with none of those fields #when parsed #then no cell is invented', () => {
+    const outcome = parseSnapshotDoc({
+      schemaVersion: 1, sessionId: 'ses_bare', updatedAt: '2026-11-17T00:00:00.000Z', dag: null,
+      tasks: { tasks: [{ task_id: 'st_bare', status: 'completed' }] },
+    });
+    if (!outcome.ok) throw new Error('doc must parse');
+    const classes = panel.formatTaskRowTexts(outcome.view.tasks[0]).map((part) => part.className);
+    for (const absent of ['dag-task-error', 'dag-task-failure', 'dag-task-duration', 'dag-task-model', 'dag-task-mode', 'dag-task-stats']) {
+      expect(classes).not.toContain(absent);
+    }
+  });
+
+  test('#given a record that failed with a reason #when parsed and rendered #then the reason is its own cell', () => {
+    // The store sends error_message; before this the pane parsed and dropped it, so a failed task read as "error"
+    // with no cause even though the record had one.
+    const outcome = parseSnapshotDoc({
+      schemaVersion: 1,
+      sessionId: 'ses_reason',
+      updatedAt: '2026-11-17T00:00:00.000Z',
+      dag: null,
+      tasks: { tasks: [{ task_id: 'st_reason', status: 'error', error_message: 'child exited 1' }] },
+    });
+    if (!outcome.ok) throw new Error('doc must parse');
+    const parts = panel.formatTaskRowTexts(outcome.view.tasks[0]);
+    expect(parts.find((part) => part.className === 'dag-task-error')?.text).toBe('child exited 1');
+    expect(parts.find((part) => part.className === 'dag-task-status')?.text).toBe('error');
+  });
+
   test('#given served task rows with no node_id or an empty one #when parsed and rendered #then the node cell is an explicit em dash, never a fabricated id', () => {
     const outcome = parseSnapshotDoc(taskDoc([
       { task_id: 'st_child02', status: 'running', name: 'test' },

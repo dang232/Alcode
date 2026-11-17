@@ -599,3 +599,58 @@ describe('a pane with no project scope', () => {
     expect(outcome.view.recordUnscoped).toBe(false);
   });
 });
+
+describe('a partial record read', () => {
+  const pod = (tasks: unknown): WireRecord => ({
+    schemaVersion: 1,
+    sessionId: 'ses_partial',
+    updatedAt: '2026-11-17T00:00:00.000Z',
+    dag: { runs: [{ run_id: 'ses_partial', run_key: 'chat:ses_partial', name: 'run', status: 'running', nodes: [] }] },
+    tasks,
+  });
+
+  test('parses a flags-only container instead of discarding the whole graph', () => {
+    // The service sends recordError beside a list it could not fill; without an array there is no list,
+    // and a parser that rejects the document paints an error card over a complete run graph.
+    const outcome = parseSnapshotDoc(pod({ recordError: 'record tasks unreadable: EACCES' }));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) {
+      return;
+    }
+    expect(outcome.view.runs).toHaveLength(1);
+    expect(outcome.view.tasks).toEqual([]);
+    expect(outcome.view.record.error).toBe('record tasks unreadable: EACCES');
+    expect(outcome.view.record.absent).toBe(false);
+    expect(outcome.view.record.truncated).toBe(false);
+  });
+
+  test('carries absence and truncation without inventing either', () => {
+    const absent = parseSnapshotDoc(pod({ recordAbsent: true }));
+    expect(absent.ok).toBe(true);
+    if (!absent.ok) {
+      return;
+    }
+    expect(absent.view.record).toEqual({ error: null, absent: true, truncated: false });
+
+    const truncated = parseSnapshotDoc(pod({ tasks: [], diagnostics: { limitReached: true } }));
+    expect(truncated.ok).toBe(true);
+    if (!truncated.ok) {
+      return;
+    }
+    expect(truncated.view.record).toEqual({ error: null, absent: false, truncated: true });
+  });
+
+  test('a complete read reports no notice', () => {
+    const outcome = parseSnapshotDoc(pod({ tasks: [] }));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) {
+      return;
+    }
+    expect(outcome.view.record).toEqual({ error: null, absent: false, truncated: false });
+  });
+
+  test('a container that is neither a list nor flags is still malformed', () => {
+    const outcome = parseSnapshotDoc(pod({ tasks: 'nope' }));
+    expect(outcome.ok).toBe(false);
+  });
+});

@@ -53,6 +53,13 @@ const task = (overrides: Partial<DagTaskView> = {}): DagTaskView => ({
   status: 'error',
   name: 'a',
   summary: '',
+  errorMessage: null,
+  failureKind: null,
+  failureReason: null,
+  durationMs: null,
+  model: null,
+  executionMode: null,
+  runStats: null,
   ...overrides,
 });
 

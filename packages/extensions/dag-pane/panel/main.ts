@@ -19,7 +19,7 @@ import { mountEmpty } from '@alcode/sdk/ui';
 import { mountSpinner } from '@alcode/sdk/ui';
 import { mountTextField } from '@alcode/sdk/ui';
 
-import { isWireRecord, keepStoredRunModel, mergeRunModelPost, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave, type DagTaskView } from './dag-view.ts';
+import { isWireRecord, keepStoredRunModel, mergeRunModelPost, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave, type DagTaskView, type DagRecordNotice } from './dag-view.ts';
 import { buildFileQuery, buildSearchQuery, buildSymbolQueries, buildCodeGraphModel, classifyCodeItemId, codeGraphLayoutSpec, formatFreshnessChip, resolveCodeIndexStatus, resolveCodeQueryStatus, taskToCodeSource } from './code-view.ts';
 import { buildRationaleProjectsQuery, buildRationaleQuery, formatRationaleProvenance, rationaleBadgesFor, resolveRationaleStatus, shouldRenderRationale } from './rationale-view.ts';
 import { buildActivityTimeline, formatClock, formatDuration, rowNodeId, type ActivityRow } from './activity-view.ts';
@@ -162,6 +162,30 @@ export const formatTaskRowTexts = (task: DagTaskView): TaskRowText[] => [
   ...(task.verificationStatus === null
     ? []
     : [{ className: 'dag-task-verification', text: task.verificationStatus }]),
+  // The record's failure text is the only place the reason exists. Dropping it made a failed row read as "failed"
+  // with no cause even though the store had one.
+  ...(task.errorMessage === null
+    ? []
+    : [{ className: 'dag-task-error', text: task.errorMessage }]),
+  // The failure class and the free-text reason are separate facts; a row can carry one without the other.
+  ...(task.failureKind === null && task.failureReason === null
+    ? []
+    : [{
+      className: 'dag-task-failure',
+      text: [task.failureKind, task.failureReason].filter((part): part is string => part !== null).join(': '),
+    }]),
+  ...(task.durationMs === null
+    ? []
+    : [{ className: 'dag-task-duration', text: formatDuration(task.durationMs) }]),
+  ...(task.model === null
+    ? []
+    : [{ className: 'dag-task-model', text: task.model }]),
+  ...(task.executionMode === null
+    ? []
+    : [{ className: 'dag-task-mode', text: task.executionMode }]),
+  ...(task.runStats === null
+    ? []
+    : [{ className: 'dag-task-stats', text: task.runStats }]),
 ];
 
 const el = (tag: string, className: string): HTMLElement => {
@@ -600,6 +624,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   // is a served field (DagTaskView.nodeId), parsed and rendered as-is.
   let currentTasks: DagTaskView[] = [];
   let currentUnscoped = false;
+  // What the last painted snapshot declared about the record store: painted as a notice so a partial
+  // task list is never read as the whole store.
+  let currentRecord: DagRecordNotice = { error: null, absent: false, truncated: false };
   // Render-on-change: the 4s poll calls paintContent every tick, so identical
   // frames must skip the teardown/rebuild (layout thrash reads as stutter).
   // The key covers both inputs of the painted output: run data and selection.
@@ -664,8 +691,31 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     content.append(section);
   };
 
+  // A partial record read is a fact about the task list, not a failure of the graph. Name the missing part
+  // above the tasks it affects, so a short list is never painted as the whole store.
+  const paintRecordNotice = (record: DagRecordNotice): void => {
+    const lines: string[] = [];
+    if (record.error !== null) {
+      lines.push(`Canonical task records could not be read (${record.error}). Tasks below are the snapshot's own.`);
+    } else if (record.absent) {
+      lines.push("No canonical task record store exists for this project yet. Tasks below are the snapshot's own.");
+    }
+    if (record.truncated) {
+      lines.push('The record store is larger than one bounded read; tasks past the limit are not shown.');
+    }
+    if (lines.length === 0) {
+      return;
+    }
+    const notice = el('div', 'dag-record-notice');
+    notice.setAttribute('role', 'note');
+    for (const line of lines) {
+      notice.append(text('p', 'dag-record-notice-line', line));
+    }
+    content.append(notice);
+  };
+
   const paintContent = (runs: DagRunView[], tasks: DagTaskView[], unscoped = false): void => {
-    const sectionKey = `runs:${JSON.stringify(runs)}|tasks:${JSON.stringify(tasks)}|selected:${selectedNodeId ?? ''}|unscoped:${unscoped}`;
+    const sectionKey = `runs:${JSON.stringify(runs)}|tasks:${JSON.stringify(tasks)}|selected:${selectedNodeId ?? ''}|unscoped:${unscoped}|record:${currentRecord.error ?? ''}:${currentRecord.absent}:${currentRecord.truncated}`;
     if (sectionKey === lastSectionKey) {
       return;
     }
@@ -675,6 +725,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     worldEls = [];
     lastGraphSizes = [];
     currentRuns = runs;
+    paintRecordNotice(currentRecord);
     if (runs.length === 0) {
       lastFitExtents = null;
       if (tasks.length === 0) {
@@ -717,8 +768,11 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   // Paint one run list with the live indicator derived from its states.
   // In Code view the same tick re-renders the Code root from cache (no
   // refetch: the Code loaders fire only on directory/label change or retry).
-  const paintRunList = (runs: DagRunView[], tasks: DagTaskView[], unscoped = false): void => {
+  const paintRunList = (runs: DagRunView[], tasks: DagTaskView[], unscoped = false, record: DagRecordNotice | null = null): void => {
     currentUnscoped = unscoped;
+    if (record !== null) {
+      currentRecord = record;
+    }
     headerLive = runs.some((run) => run.status === 'running' || run.status === 'pending');
     paintFollowHeader();
     currentTasks = tasks;
@@ -787,7 +841,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       const outcome = parseSnapshotDoc(runModelDoc);
       if (!current()) return;
       if (outcome.ok) {
-        paintRunList(outcome.view.runs, outcome.view.tasks, outcome.view.recordUnscoped);
+        paintRunList(outcome.view.runs, outcome.view.tasks, outcome.view.recordUnscoped, outcome.view.record);
         return;
       }
       // A malformed host doc is a loud error card, never a silent fallback
@@ -798,7 +852,11 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       sectionHandles.push(mountBanner(content, {
         tone: 'error',
         title: strings.errorTitle,
-        body: outcome.error.field,
+        // A service error names its own reason. The parser's field only ever said where the envelope check
+        // failed, so every 5xx painted the literal word "schemaVersion".
+        body: isWireRecord(answer.body)
+          ? (wireString(answer.body.message) ?? wireString(answer.body.error) ?? wireString(answer.body.code) ?? outcome.error.field)
+          : outcome.error.field,
         action: { label: strings.retry, onClick: () => void refresh() },
       }));
       return;
@@ -854,6 +912,16 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       headerLive = false;
       paintFollowHeader();
       clearSection();
+      // Without a project the service cannot look for canonical records. Say that instead of claiming the
+      // conversation ran nothing; the flag rides the 404 body because there is no snapshot to carry it.
+      const unscopedNoProject = isWireRecord(answer.body) && isWireRecord(answer.body.tasks) && answer.body.tasks.recordUnscoped === true;
+      if (unscopedNoProject) {
+        sectionHandles.push(mountEmpty(content, {
+          title: strings.unscopedTitle ?? 'No project bound',
+          body: strings.unscopedBody ?? 'Open a session inside a project: without a project directory this pane cannot look for tasks.',
+        }));
+        return;
+      }
       sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
       return;
     }
@@ -866,12 +934,16 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       sectionHandles.push(mountBanner(content, {
         tone: 'error',
         title: strings.errorTitle,
-        body: outcome.error.field,
+        // A service error names its own reason. The parser's field only ever said where the envelope check
+        // failed, so every 5xx painted the literal word "schemaVersion".
+        body: isWireRecord(answer.body)
+          ? (wireString(answer.body.message) ?? wireString(answer.body.error) ?? wireString(answer.body.code) ?? outcome.error.field)
+          : outcome.error.field,
         action: { label: strings.retry, onClick: () => void refresh() },
       }));
       return;
     }
-    paintRunList(outcome.view.runs, outcome.view.tasks, outcome.view.recordUnscoped);
+    paintRunList(outcome.view.runs, outcome.view.tasks, outcome.view.recordUnscoped, outcome.view.record);
   };
 
   // Code view: one content area shared with the Run view, switched by the

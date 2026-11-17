@@ -257,6 +257,20 @@ export type DagTaskView = {
   status: string;
   name: string;
   summary: string;
+  /** The failure the record named, when it named one. Never invented for a task that did not fail. */
+  readonly errorMessage: string | null;
+  /** The record's failure class, kept apart from the free-text reason. */
+  readonly failureKind: string | null;
+  /** The record's free-text failure reason. */
+  readonly failureReason: string | null;
+  /** Wall-clock duration the record measured, in milliseconds. Null when the record carries none. */
+  readonly durationMs: number | null;
+  /** The model the record names for this task. */
+  readonly model: string | null;
+  /** Foreground/background execution mode the record names. */
+  readonly executionMode: string | null;
+  /** Run counters as `key=value` pairs, in the record's own order. Null when it carries none. */
+  readonly runStats: string | null;
   /** Current-epoch repair attempt; absent when the record carries none. */
   repair?: DagRepairView;
   /** The attempt store could not be read; never render this as "no repair". */
@@ -272,6 +286,21 @@ export type DagSnapshotView = {
   tasks: DagTaskView[];
   /** True when the service had no project directory, so it could not look for canonical records at all. */
   recordUnscoped: boolean;
+  /**
+   * What the canonical record store contributed. A read failure or a bounding limit means the task list is
+   * only part of that store, so the pane has to say so instead of painting it as the whole truth.
+   */
+  record: DagRecordNotice;
+};
+
+/** Why the task list below is not the whole store, if it is not. `null`/false means the read was complete. */
+export type DagRecordNotice = {
+  /** The store could not be read; the rows painted are the snapshot's own. */
+  error: string | null;
+  /** No store existed for this project. Absence is a fact, not an empty task list. */
+  absent: boolean;
+  /** The bounded read stopped before the whole store was seen. */
+  truncated: boolean;
 };
 
 export type DagSnapshotError = {
@@ -415,11 +444,45 @@ const readRun = (raw: JsonValue | undefined): DagRunView | null => {
   };
 };
 
+/**
+ * Run counters as `key=value` pairs, in the record's own order.
+ * Only string and number values are printed: anything else is named by its absence rather than stringified
+ * into a shape the record never had.
+ */
+const readRunStats = (raw: JsonValue | undefined): string | null => {
+  if (!isWireRecord(raw)) {
+    return null;
+  }
+  const parts: string[] = [];
+  for (const key of Object.keys(raw)) {
+    const value = raw[key];
+    const text = wireString(value);
+    if (text !== null && text.length > 0) {
+      parts.push(`${key}=${text}`);
+      continue;
+    }
+    const count = wireNumber(value);
+    if (count !== null) {
+      parts.push(`${key}=${count}`);
+    }
+  }
+  return parts.length === 0 ? null : parts.join(' ');
+};
+
 const readTasks = (raw: JsonValue | undefined): DagTaskView[] | null => {
   if (raw === null || raw === undefined) {
     return [];
   }
-  if (!isWireRecord(raw) || !Array.isArray(raw.tasks)) {
+  if (!isWireRecord(raw)) {
+    return null;
+  }
+  // A container that names a failed or absent record read carries flags but no list. That is a partial
+  // answer, not a malformed document: rejecting it would discard a complete `dag` and paint an error
+  // card over a graph the service did return.
+  if (raw.tasks === undefined || raw.tasks === null) {
+    return [];
+  }
+  if (!Array.isArray(raw.tasks)) {
     return null;
   }
   const tasks: DagTaskView[] = [];
@@ -433,12 +496,32 @@ const readTasks = (raw: JsonValue | undefined): DagTaskView[] | null => {
       return null;
     }
     const rawNodeId = wireString(entry.node_id);
+    const rawError = wireString(entry.error_message);
+    const rawFailureKind = wireString(entry.failure_kind);
+    const rawFailureReason = wireString(entry.failure_reason);
+    const rawDuration = wireNumber(entry.duration_ms);
+    const rawModel = wireString(entry.model);
+    const rawMode = wireString(entry.execution_mode);
+    const rawBackground = wireString(entry.background_mode);
+    const stats = readRunStats(entry.run_stats);
+    const mode = rawMode === null || rawMode.length === 0
+      ? null
+      : (rawBackground !== null && rawBackground.length > 0 ? `${rawMode}/${rawBackground}` : rawMode);
     tasks.push({
       taskId,
       nodeId: rawNodeId !== null && rawNodeId.length > 0 ? rawNodeId : null,
       status,
       name: wireString(entry.name) ?? taskId,
       summary: wireString(entry.task_summary) ?? '',
+      // The record's own words. A row that failed without saying why reads as unknown, not as "no error".
+      errorMessage: rawError !== null && rawError.length > 0 ? rawError : null,
+      failureKind: rawFailureKind !== null && rawFailureKind.length > 0 ? rawFailureKind : null,
+      failureReason: rawFailureReason !== null && rawFailureReason.length > 0 ? rawFailureReason : null,
+      // The record's own measurement; a negative or non-finite number is not a duration.
+      durationMs: rawDuration !== null && Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : null,
+      model: rawModel !== null && rawModel.length > 0 ? rawModel : null,
+      executionMode: mode,
+      runStats: stats,
       verificationStatus: readDelivery(entry)?.verificationStatus ?? null,
       ...readRepairEntry(entry, taskId),
     });
@@ -455,6 +538,18 @@ const readTasks = (raw: JsonValue | undefined): DagTaskView[] | null => {
 const recordUnscopedOf = (raw: JsonValue | undefined): boolean => (
   isWireRecord(raw) && isWireRecord(raw.tasks) && raw.tasks.recordUnscoped === true
 );
+
+/** Read the partiality the service declared about the record store. Never invent one it did not send. */
+const readRecordNotice = (raw: JsonValue | undefined): DagRecordNotice => {
+  const container = isWireRecord(raw) && isWireRecord(raw.tasks) ? raw.tasks : undefined;
+  const error = wireString(container?.recordError);
+  const diagnostics = isWireRecord(container?.diagnostics) ? container.diagnostics : undefined;
+  return {
+    error: error !== null && error.length > 0 ? error : null,
+    absent: container?.recordAbsent === true,
+    truncated: diagnostics?.limitReached === true,
+  };
+};
 
 export const parseSnapshotDoc = (raw: JsonValue | undefined): DagSnapshotOutcome => {
   if (!isWireRecord(raw)) {
@@ -484,13 +579,13 @@ export const parseSnapshotDoc = (raw: JsonValue | undefined): DagSnapshotOutcome
     if (!tasks) {
       return fail('tasks');
     }
-    return { ok: true, view: { sessionId, updatedAt, runs, tasks, recordUnscoped: recordUnscopedOf(raw) } };
+    return { ok: true, view: { sessionId, updatedAt, runs, tasks, recordUnscoped: recordUnscopedOf(raw), record: readRecordNotice(raw) } };
   }
   const tasks = readTasks(raw.tasks);
   if (!tasks) {
     return fail('tasks');
   }
-  return { ok: true, view: { sessionId, updatedAt, runs: [], tasks, recordUnscoped: recordUnscopedOf(raw) } };
+  return { ok: true, view: { sessionId, updatedAt, runs: [], tasks, recordUnscoped: recordUnscopedOf(raw), record: readRecordNotice(raw) } };
 };
 
 // Per-session selection: the host chat session owns the view (one session,
