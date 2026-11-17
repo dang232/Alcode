@@ -69,6 +69,7 @@ const compileGlob = (pattern: string): ((relativePath: string) => boolean) => {
 
 type Collected = {
   readonly root: string
+  readonly scope: string
   paths: string[]
   files: number
   skippedLinks: number
@@ -104,7 +105,9 @@ const walk = (absolute: string, state: Collected, matches: (relativePath: string
     }
     if (!link.isFile()) continue
     state.files += 1
-    const display = relative(state.root, child).split(sep).join("/")
+    // Matched and reported against the search scope, not the workspace root, so
+    // `path: "nested"` with `*.txt` answers nested/alpha.txt and not nothing.
+    const display = relative(state.scope, child).split(sep).join("/")
     if (matches(display)) state.paths.push(display)
   }
 }
@@ -129,7 +132,7 @@ export function createWorkspaceGlobTool(options: { readonly directory: string })
       const root = workspaceRootFor(options.directory, context)
       const target = resolveInsideWorkspace(root, parsed.data.path ?? ".")
       const canonicalRoot = resolveInsideWorkspace(root, ".")
-      const state: Collected = { root: canonicalRoot, paths: [], files: 0, skippedLinks: 0, fileCapReached: false }
+      const state: Collected = { root: canonicalRoot, scope: target, paths: [], files: 0, skippedLinks: 0, fileCapReached: false }
       let targetStat: { isDirectory: () => boolean }
       try {
         targetStat = lstatSync(target)

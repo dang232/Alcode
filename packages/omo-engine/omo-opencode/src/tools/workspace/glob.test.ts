@@ -68,6 +68,18 @@ describe("native glob tool", () => {
     expect(recursive).toContain(join("src", "nested", "deep.ts").split("\\").join("/"))
   })
 
+  it("matches against the search scope, not the workspace root", async () => {
+    const { root } = workspace()
+    const scoped = await glob(root, { pattern: "*.ts", path: "src" })
+    expect(scoped).toContain("1 path(s)")
+    expect(scoped).toContain("code.ts")
+    expect(scoped).not.toContain("notes.txt")
+
+    const deep = await glob(root, { pattern: "*.ts", path: "src/nested" })
+    expect(deep).toContain("1 path(s)")
+    expect(deep).toContain("deep.ts")
+  })
+
   it("never leaves the workspace", async () => {
     const { root } = workspace()
     const result = await glob(root, { pattern: "**/*.txt" })
