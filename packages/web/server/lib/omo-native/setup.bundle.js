@@ -52134,7 +52134,22 @@ var GLOB_TOOL_NAME = "glob";
 var DEFAULT_MAX_RESULTS = 100;
 var HARD_MAX_RESULTS = 500;
 var MAX_FILES_SCANNED = 5000;
-var SKIPPED_DIRECTORIES2 = new Set(["node_modules", ".git", ".hg", ".svn", "dist", "build", "coverage", "vendor", ".next", "out"]);
+var SKIPPED_DIRECTORIES2 = new Set([
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  "dist",
+  "build",
+  "coverage",
+  "vendor",
+  ".next",
+  "out",
+  ".algraph",
+  ".audit-r1.12",
+  ".create-pr-proof",
+  ".exe"
+]);
 var GLOB_DESCRIPTION = "Find files by name pattern inside the project workspace. Supports * , ? and ** segments; returns paths relative to the search scope.";
 var GlobArgs = object({
   pattern: string2().trim().min(1),
@@ -52177,41 +52192,47 @@ var compileGlob = (pattern) => {
     return match(0, 0);
   };
 };
-var walk = (absolute, state, matches, limit) => {
-  let entries;
-  try {
-    entries = readdirSync7(absolute, { withFileTypes: true });
-  } catch (error) {
-    const code = error instanceof Error && "code" in error ? String(error.code) : "";
-    workspaceIoFailed(relative4(state.root, absolute) || ".", code.length > 0 ? code : "read failed");
-  }
-  const names = entries.map((entry) => entry.name).sort();
-  for (const name of names) {
+var walk = (target, state, matches, limit) => {
+  const queue = [target];
+  while (queue.length > 0) {
     if (state.paths.length >= limit || state.files >= MAX_FILES_SCANNED)
       return;
-    if (SKIPPED_DIRECTORIES2.has(name))
-      continue;
-    const child = join12(absolute, name);
-    let link;
+    const absolute = queue.shift();
+    let entries;
     try {
-      link = lstatSync3(child);
-    } catch {
-      continue;
+      entries = readdirSync7(absolute, { withFileTypes: true });
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : "";
+      workspaceIoFailed(relative4(state.root, absolute) || ".", code.length > 0 ? code : "read failed");
     }
-    if (link.isSymbolicLink()) {
-      state.skippedLinks += 1;
-      continue;
+    const names = entries.map((entry) => entry.name).sort();
+    for (const name of names) {
+      if (state.paths.length >= limit || state.files >= MAX_FILES_SCANNED)
+        return;
+      if (SKIPPED_DIRECTORIES2.has(name))
+        continue;
+      const child = join12(absolute, name);
+      let link;
+      try {
+        link = lstatSync3(child);
+      } catch {
+        continue;
+      }
+      if (link.isSymbolicLink()) {
+        state.skippedLinks += 1;
+        continue;
+      }
+      if (link.isDirectory()) {
+        queue.push(child);
+        continue;
+      }
+      if (!link.isFile())
+        continue;
+      state.files += 1;
+      const display = relative4(state.scope, child).split(sep2).join("/");
+      if (matches(display))
+        state.paths.push(display);
     }
-    if (link.isDirectory()) {
-      walk(child, state, matches, limit);
-      continue;
-    }
-    if (!link.isFile())
-      continue;
-    state.files += 1;
-    const display = relative4(state.root, child).split(sep2).join("/");
-    if (matches(display))
-      state.paths.push(display);
   }
 };
 function createWorkspaceGlobTool(options) {
@@ -52234,7 +52255,7 @@ function createWorkspaceGlobTool(options) {
       const root = workspaceRootFor(options.directory, context);
       const target = resolveInsideWorkspace(root, parsed.data.path ?? ".");
       const canonicalRoot = resolveInsideWorkspace(root, ".");
-      const state = { root: canonicalRoot, paths: [], files: 0, skippedLinks: 0, fileCapReached: false };
+      const state = { root: canonicalRoot, scope: target, paths: [], files: 0, skippedLinks: 0, fileCapReached: false };
       let targetStat;
       try {
         targetStat = lstatSync3(target);
