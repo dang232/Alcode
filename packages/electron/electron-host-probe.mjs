@@ -7,6 +7,9 @@ const versionEnvelope = z.object({
   // Arrays historically classify as incompatible rather than wrong-service.
   compatibility: z.union([z.looseObject({}), z.array(z.unknown())]),
   openchamberVersion: optionalIdentity,
+  // Alcode reports its own line here. Its server is 0.x, so the pre-2 rule
+  // below only applies to servers that do not identify as Alcode.
+  alcodeVersion: optionalIdentity,
 });
 
 const buildProbeUrl = (url, pathname) => {
@@ -32,11 +35,14 @@ const classifyVersionPayload = (payload) => {
   if (!parsed.success) {
     return 'wrong-service';
   }
-  const { compatibility, openchamberVersion } = parsed.data;
+  const { compatibility, openchamberVersion, alcodeVersion } = parsed.data;
   if (!Array.isArray(compatibility.capabilities) || !compatibility.capabilities.includes('api.runtime-url.v1')) {
     return 'incompatible';
   }
-  if (isServerBeforeOpenCode2(openchamberVersion)) {
+  // Alcode's own line is 0.x and states its contract in `compatibility`, so the
+  // OpenChamber major-version rule must not run against it: doing so labelled a
+  // current local server 0.3.x as incompatible.
+  if (alcodeVersion === '' && isServerBeforeOpenCode2(openchamberVersion)) {
     return 'incompatible';
   }
   if (compatibility.apiVersion !== 1 || compatibility.minClientApiVersion > 1) {

@@ -103,6 +103,7 @@ for (const [name, versionResponse, expected] of [
   ['array compatibility', response(200, { status: 'ok', compatibility: [] }), 'incompatible'],
   ['missing capability', response(200, { ...compatibleVersion, compatibility: { ...compatibleVersion.compatibility, capabilities: [] } }), 'incompatible'],
   ['server before OpenCode 2', response(200, { ...compatibleVersion, openchamberVersion: '1.24.2' }), 'incompatible'],
+  ['alcode 0.x line is current', response(200, { status: 'ok', alcodeVersion: '0.3.3', openchamberVersion: '0.3.3', compatibility: compatibleVersion.compatibility }), 'ok'],
   ['server without a readable version', response(200, { ...compatibleVersion, openchamberVersion: 'unknown' }), 'ok'],
   ['server without a version field', response(200, { status: 'ok', compatibility: compatibleVersion.compatibility }), 'ok'],
   ['newer API', response(200, { ...compatibleVersion, compatibility: { ...compatibleVersion.compatibility, apiVersion: 2 } }), 'update-recommended'],
