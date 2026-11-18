@@ -52,6 +52,11 @@ jobs:
           node-version: '24'
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      # The run-graph runtime loads the verification host actions from this build
+      # artifact in production. Building it here keeps the tests on the same path
+      # the shipped server uses, instead of the source fallback kept for local runs.
+      - name: Build the verification bundle
+        run: bun run --cwd packages/web build:verification
       - name: Tests
         run: bun run test
       - name: Electron Linux packaging unit tests
