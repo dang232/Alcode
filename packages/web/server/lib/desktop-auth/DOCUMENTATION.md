@@ -72,8 +72,15 @@ Completion requires proving the service pair: servers with the shared
 `ALCORE_JWT_SECRET`/`JWT_SECRET` verify locally; servers without one
 (packaged desktop) confirm the pair live against the service itself
 (`GET /auth/me` introspection) and issue through
-`uiAuthController.handleServiceVerifiedSessionCreate`. An unreachable or
-unconfirming service fails closed — never a session.
+`uiAuthController.handleServiceVerifiedSessionCreate`. When that
+introspection does not answer 200 — the auth-service route is absent or
+refuses a user token — the same bearer is checked against the platform
+(`GET /v1/models`, `models:read`; origin from `platformBase`, default
+`https://alcore.io.vn`). A 200 there proves the gateway verified the
+token's signature, issuer, expiry and scope, so the session is keyed by
+the subject that token carries and the fallback logs one line; no email
+is invented. When neither check answers 200 the login fails closed and
+never mints a session.
 
 Keychain capture (project-ide task 39): after a 200 issuance the proven
 pair (access JWT + rotating refresh token) is stored in the shared
@@ -89,9 +96,9 @@ Issuance, cookies, validation, and rate limits are untouched.
 ## Public exports (desktop-auth.js)
 
 - `createDesktopAuthRuntime({ uiAuthController, alcoreSecret,
-  alcorePreviousSecret, alcoreIssuer, authServiceBase, serviceFetch, now,
-  userTokenStore })` (null disables capture; production passes the shared
-  keychain singleton):
+  alcorePreviousSecret, alcoreIssuer, authServiceBase, platformBase,
+  serviceFetch, now, userTokenStore })` (null disables capture; production
+  passes the shared keychain singleton):
   `{ registerRoutes, serviceBase }` plus `_pendingGoogle`/`_sweepGoogle` test
   seams. `serviceBase` derives from the Alcore issuer origin (default
   `https://auth.alcore.io.vn`); `serviceFetch` defaults to global fetch and is

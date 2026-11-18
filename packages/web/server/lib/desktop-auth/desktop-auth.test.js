@@ -686,6 +686,97 @@ describe('desktop google loopback', () => {
     expect(h.seenVerified).toEqual([{ sub: 'user-9', sid: 'sess-9' }]);
   });
 
+  test('completes when the service refuses the pair but the platform confirms it', async () => {
+    const payload = Buffer.from(JSON.stringify({ sub: 'user-9', sid: 'sess-9' })).toString('base64url');
+    const token = `header.${payload}.sig`;
+    const h = createHarness({
+      alcoreSecret: '',
+      serviceImpl: async (url, init) => {
+        if (url === 'https://auth.alcore.io.vn/auth/google/config') {
+          return h.serviceJson(200, { clientId: 'google-client-123' });
+        }
+        if (url === 'https://auth.alcore.io.vn/auth/google/desktop-code') {
+          return h.serviceJson(200, { access_token: token });
+        }
+        if (url === 'https://auth.alcore.io.vn/auth/me') {
+          return h.serviceJson(401, { error: 'unauthorized' });
+        }
+        if (url === 'https://alcore.io.vn/v1/models') {
+          expect(init.headers.Authorization).toBe(`Bearer ${token}`);
+          return h.serviceJson(200, { object: 'list', data: [] });
+        }
+        throw new Error(`unexpected service call ${url}`);
+      },
+    });
+    const { requestId } = await startOk(h);
+    const landed = await h.call('GET', '/auth/desktop-google/callback', {
+      query: { state: requestId, code: 'loopback-code' },
+    });
+    expect(landed.res.statusCode).toBe(200);
+    const done = await h.call('POST', '/api/auth/desktop/google-complete', { body: { requestId } });
+    expect(done.res.statusCode).toBe(200);
+    expect(done.res.body).toMatchObject({ authenticated: true });
+    expect(h.seenVerified).toEqual([{ sub: 'user-9', sid: 'sess-9' }]);
+    expect(h.serviceCalls.map((call) => call.url)).toContain('https://alcore.io.vn/v1/models');
+  });
+
+  test('fails closed when neither the service nor the platform confirms the pair', async () => {
+    const payload = Buffer.from(JSON.stringify({ sub: 'user-9', sid: 'sess-9' })).toString('base64url');
+    const token = `header.${payload}.sig`;
+    const h = createHarness({
+      alcoreSecret: '',
+      serviceImpl: async (url) => {
+        if (url === 'https://auth.alcore.io.vn/auth/google/config') {
+          return h.serviceJson(200, { clientId: 'google-client-123' });
+        }
+        if (url === 'https://auth.alcore.io.vn/auth/google/desktop-code') {
+          return h.serviceJson(200, { access_token: token });
+        }
+        if (url === 'https://auth.alcore.io.vn/auth/me' || url === 'https://alcore.io.vn/v1/models') {
+          return h.serviceJson(401, { error: 'unauthorized' });
+        }
+        throw new Error(`unexpected service call ${url}`);
+      },
+    });
+    const { requestId } = await startOk(h);
+    await h.call('GET', '/auth/desktop-google/callback', { query: { state: requestId, code: 'loopback-code' } });
+    const done = await h.call('POST', '/api/auth/desktop/google-complete', { body: { requestId } });
+    expect(done.res.statusCode).toBe(502);
+    expect(done.res.body).toEqual({ error: 'unavailable' });
+    expect(h.seenVerified).toHaveLength(0);
+  });
+
+  test('presents the captured user token to the platform and keys the session by it', async () => {
+    const sessionPayload = Buffer.from(JSON.stringify({ sub: 'user-9', sid: 'sess-9' })).toString('base64url');
+    const sessionToken = `header.${sessionPayload}.sig`;
+    const userPayload = Buffer.from(JSON.stringify({ sub: 'user-9' })).toString('base64url');
+    const userToken = `header.${userPayload}.sig`;
+    const h = createHarness({
+      alcoreSecret: '',
+      serviceImpl: async (url, init) => {
+        if (url === 'https://auth.alcore.io.vn/auth/google/config') {
+          return h.serviceJson(200, { clientId: 'google-client-123' });
+        }
+        if (url === 'https://auth.alcore.io.vn/auth/google/desktop-code') {
+          return h.serviceJson(200, { access_token: sessionToken, user_token: { access_token: userToken } });
+        }
+        if (url === 'https://auth.alcore.io.vn/auth/me') {
+          return h.serviceJson(401, { error: 'unauthorized' });
+        }
+        if (url === 'https://alcore.io.vn/v1/models') {
+          expect(init.headers.Authorization).toBe(`Bearer ${userToken}`);
+          return h.serviceJson(200, { object: 'list', data: [] });
+        }
+        throw new Error(`unexpected service call ${url}`);
+      },
+    });
+    const { requestId } = await startOk(h);
+    await h.call('GET', '/auth/desktop-google/callback', { query: { state: requestId, code: 'loopback-code' } });
+    const done = await h.call('POST', '/api/auth/desktop/google-complete', { body: { requestId } });
+    expect(done.res.statusCode).toBe(200);
+    expect(h.seenVerified).toEqual([{ sub: 'user-9', sid: 'sess-9' }]);
+  });
+
   test('rejects malformed complete bodies', async () => {
     const h = createHarness({ serviceImpl: async () => h.serviceJson(200, SERVICE_PAIR) });
     for (const body of [{}, { requestId: 'short' }]) {

@@ -62,6 +62,24 @@ const resolveServiceBase = (explicit) => {
   return defaultServiceBase();
 };
 
+// Platform (TokenPanel) origin used by the packaged-desktop pair check.
+// The auth-service owns identity, but a packaged build holds no shared
+// secret and `/auth/me` is not the only live proof of a user pair: the
+// platform verifies the very same user JWT on `/v1/models` (models:read).
+// That is a weaker identity than introspection, so it is only ever a
+// fallback and the subject still comes from the platform-verified token.
+const defaultPlatformBase = () => 'https://alcore.io.vn';
+
+const resolvePlatformBase = (explicit) => {
+  const direct = z.string().min(1).optional().safeParse(explicit).data?.trim();
+  if (!direct) return defaultPlatformBase();
+  try {
+    return new URL(direct).origin;
+  } catch {
+    return defaultPlatformBase();
+  }
+};
+
 const emailSchema = z.string().trim().toLowerCase().min(3).max(254);
 const passwordSchema = z.string().min(1).max(512);
 const codeSchema = z.string().trim().min(1).max(64);
@@ -237,6 +255,9 @@ export const createDesktopAuthRuntime = ({
   alcoreSecret,
   alcorePreviousSecret,
   authServiceBase,
+  // Optional platform override for the pair fallback below; production
+  // leaves it unset and the default origin applies.
+  platformBase,
   serviceFetch = (...args) => fetch(...args),
   now = () => Date.now(),
   // Shared keychain store (production wiring passes the singleton; tests
@@ -255,6 +276,7 @@ export const createDesktopAuthRuntime = ({
   onTokenPersistFailure = null,
 } = {}) => {
   const serviceBase = resolveServiceBase(authServiceBase);
+  const platformBaseUrl = resolvePlatformBase(platformBase);
   const pendingGoogle = new Map();
   let googleClientCache = null;
 
@@ -427,7 +449,7 @@ export const createDesktopAuthRuntime = ({
     if (uiAuthController.handleServiceVerifiedSessionCreate === undefined) {
       return res.status(503).json({ error: 'alcore_not_configured' });
     }
-    const confirmed = await introspectServicePair(token);
+    const confirmed = await introspectServicePair(token, captureToken === '' ? token : captureToken);
     if (!confirmed || confirmed.sid === '') {
       return res.status(502).json({ error: 'unavailable' });
     }
@@ -457,7 +479,7 @@ export const createDesktopAuthRuntime = ({
   // from the service's 200, not from local parsing. The account email rides
   // along the same way when the user view carries one (best-effort profile
   // enrichment, never a gate).
-  const introspectServicePair = async (token) => {
+  const introspectAuthMe = async (token) => {
     try {
       const response = await serviceFetch(`${serviceBase}/auth/me`, {
         method: 'GET',
@@ -474,6 +496,37 @@ export const createDesktopAuthRuntime = ({
       return null;
     }
   };
+
+  // Fallback proof of a live pair: the platform verifies the user-scoped JWT
+  // it mints scopes for (`models:read` on GET /v1/models). The session token
+  // is refused by user-scoped reads (missing_scope), so the captured
+  // user_access_token is presented whenever the pair carried one. A 200 means
+  // the token passed the gateway's signature/issuer/expiry check, so its `sub`
+  // is the platform-verified subject — the same "keying only" use the local
+  // HMAC path already sanctions, with trust coming from the 200. No email is
+  // invented: the profile stays whatever the login itself carried. Anything
+  // other than 200, or a token with no readable subject, fails closed.
+  const introspectPlatformPair = async (sessionToken, platformToken) => {
+    const sub = decodeAccessTokenSub(platformToken);
+    if (sub === '') return null;
+    try {
+      const response = await serviceFetch(`${platformBaseUrl}/v1/models`, {
+        method: 'GET',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${platformToken}` },
+        signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
+      });
+      if (response.status !== 200) return null;
+      console.warn('[desktop-auth] pair confirmed by the platform, not /auth/me: subject bind only');
+      return { sub, sid: decodeAccessTokenSid(sessionToken), email: '' };
+    } catch {
+      return null;
+    }
+  };
+
+  // GET /auth/me introspection, with the platform check as the fallback for
+  // builds that cannot reach or be answered by the auth service.
+  const introspectServicePair = async (token, platformToken = token) =>
+    (await introspectAuthMe(token)) ?? (await introspectPlatformPair(token, platformToken));
 
   // Unverified subject decode for keychain keying only (see
   // captureUserTokens): trust comes from issuance, never this parse.
