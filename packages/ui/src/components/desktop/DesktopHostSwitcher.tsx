@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui';
 import { isElectronShell, isDesktopShell } from '@/lib/desktop';
+import { classifyServerUrl, instanceModeLabelKey } from '@/lib/instanceMode';
 import { Icon } from "@/components/icon/Icon";
 import { Spinner } from "@/components/ui/spinner";
 import { useUIStore } from '@/stores/useUIStore';
@@ -341,6 +342,13 @@ export function DesktopHostSwitcherDialog({
     setSettingsDialogOpen(true);
     onOpenChange(false);
   }, [onOpenChange, setSettingsDialogOpen, setSettingsPage]);
+
+  // Tells the user which of the three self-hosted modes the address they typed
+  // belongs to, and names the reason before it reaches the host list.
+  const editUrlCheck = React.useMemo(() => {
+    const raw = editUrl.trim();
+    return raw === '' ? null : classifyServerUrl(raw);
+  }, [editUrl]);
 
   const refresh = React.useCallback(async () => {
     if (!isDesktopShell()) return;
@@ -1126,18 +1134,36 @@ export function DesktopHostSwitcherDialog({
                 disabled={isSaving}
               />
             </div>
+            {editUrlCheck !== null && (
+              <div
+                className={cn(
+                  'mt-2 typography-meta',
+                  editUrlCheck.ok ? 'text-muted-foreground' : 'text-status-error',
+                )}
+              >
+                {editUrlCheck.ok
+                  ? t(instanceModeLabelKey(editUrlCheck.mode))
+                  : t('instanceMode.error.invalid')}
+              </div>
+            )}
           </div>
         )}
 
         <div className="flex-shrink-0 border-t border-[var(--interactive-border)]">
-          <button
-            type="button"
-            className="w-full flex items-center gap-2 px-2 py-2 text-start text-muted-foreground hover:text-foreground hover:bg-interactive-hover/30 transition-colors"
-            onClick={openRemoteInstancesSettings}
-          >
-            <Icon name="add" className="h-4 w-4" />
-            <span className="typography-ui-label">{t('desktopHostSwitcher.actions.addInstance')}</span>
-          </button>
+          {(['local', 'lan', 'vps'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className="w-full flex items-start gap-2 px-2 py-2 text-start text-muted-foreground hover:text-foreground hover:bg-interactive-hover/30 transition-colors"
+              onClick={openRemoteInstancesSettings}
+            >
+              <Icon name={mode === 'local' ? 'computer' : mode === 'lan' ? 'global' : 'cloud'} className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="flex flex-col">
+                <span className="typography-ui-label">{t(instanceModeLabelKey(mode))}</span>
+                <span className="typography-meta text-muted-foreground">{t('instanceMode.hint')}</span>
+              </span>
+            </button>
+          ))}
         </div>
 
         {error && (

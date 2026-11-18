@@ -3951,4 +3951,9 @@ export const dict: Record<I18nKey, string> = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': '이 작업은 이미 실행 중입니다',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': '이 작업은 이미 대기열에 있으며 자리가 나면 실행됩니다',
   'chat.modelControls.agentFavoriteAdd': '즐겨찾기에 추가. 즐겨찾기가 있으면 Tab은 그 안에서만 전환합니다',
+  'instanceMode.local': "이 컴퓨터",
+  'instanceMode.lan': "내 LAN 서버",
+  'instanceMode.vps': "내 VPS",
+  'instanceMode.hint': "해당 서버의 주소와 출력된 클라이언트 토큰을 붙여넣으세요.",
+  'instanceMode.error.invalid': "이 주소는 서버로 사용할 수 없습니다",
 };

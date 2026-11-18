@@ -3950,4 +3950,9 @@ export const dict: Record<I18nKey, string> = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': 'Bu görevin bir çalıştırması zaten sürüyor',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': 'Bu görev zaten kuyrukta bekliyor; yer açılınca çalışacak',
   'chat.modelControls.agentFavoriteAdd': 'Favorilere ekle. Favori varsa Tab yalnızca onlar arasında geçiş yapar',
+  'instanceMode.local': "Bu bilgisayar",
+  'instanceMode.lan': "Yerel ağ sunucum",
+  'instanceMode.vps': "VPS sunucum",
+  'instanceMode.hint': "O sunucunun adresini ve gösterdiği istemci jetonunu yapıştırın.",
+  'instanceMode.error.invalid': "Bu adres sunucu olarak kullanılamaz",
 };

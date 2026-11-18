@@ -3976,4 +3976,9 @@ export const dict = {
   'diffView.whitespace.shown': 'שינויי רווחים מוצגים',
   'session.newWorktree.trust.skip': 'דילוג',
   'chat.revertPopover.toast.restoreFailed': 'לא ניתן היה לשחזר את ההודעות שבוטלו',
+  'instanceMode.local': "המחשב הזה",
+  'instanceMode.lan': "השרת שלי ברשת המקומית",
+  'instanceMode.vps': "ה-VPS שלי",
+  'instanceMode.hint': "הדבק את כתובת השרת ואת אסימון הלקוח שהוא מציג.",
+  'instanceMode.error.invalid': "לא ניתן להשתמש בכתובת הזו כשרת",
 };

@@ -3976,4 +3976,9 @@ export const dict = {
   'diffView.whitespace.shown': 'تغييرات المسافات ظاهرة',
   'session.newWorktree.trust.skip': 'تخطٍّ',
   'chat.revertPopover.toast.restoreFailed': 'تعذّرت استعادة الرسائل المتراجع عنها',
+  'instanceMode.local': "هذا الحاسوب",
+  'instanceMode.lan': "خادمي في الشبكة المحلية",
+  'instanceMode.vps': "خادم VPS الخاص بي",
+  'instanceMode.hint': "الصق عنوان ذلك الخادم ورمز العميل الذي يعرضه.",
+  'instanceMode.error.invalid': "لا يمكن استخدام هذا العنوان كخادم",
 };

@@ -3952,4 +3952,9 @@ export const dict: Record<I18nKey, string> = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': 'Ця задача вже виконується',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': 'Ця задача вже чекає в черзі й запуститься, щойно звільниться місце',
   'chat.modelControls.agentFavoriteAdd': 'Додати в обрані. Коли є обрані, Tab перемикає лише між ними',
+  'instanceMode.local': "Цей комп'ютер",
+  'instanceMode.lan': "Мій сервер у локальній мережі",
+  'instanceMode.vps': "Мій VPS",
+  'instanceMode.hint': "Вставте адресу цього сервера та показаний ним клієнтський токен.",
+  'instanceMode.error.invalid': "Цю адресу не можна використовувати як сервер",
 };

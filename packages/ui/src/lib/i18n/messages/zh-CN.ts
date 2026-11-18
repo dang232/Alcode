@@ -3952,4 +3952,9 @@ export const dict: Record<I18nKey, string> = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': '此任务已有一次运行在进行中',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': '此任务已在队列中等待，有空位时就会运行',
   'chat.modelControls.agentFavoriteAdd': '加入收藏。有收藏时，Tab 只在收藏之间切换',
+  'instanceMode.local': "这台电脑",
+  'instanceMode.lan': "我的局域网服务器",
+  'instanceMode.vps': "我的 VPS",
+  'instanceMode.hint': "粘贴该服务器的地址和它显示的客户端令牌。",
+  'instanceMode.error.invalid': "该地址不能用作服务器",
 };

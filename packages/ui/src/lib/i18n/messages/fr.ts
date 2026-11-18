@@ -3950,4 +3950,9 @@ export const dict = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': 'Cette tâche a déjà une exécution en cours',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': 'Cette tâche attend déjà dans la file et s’exécutera dès qu’une place se libère',
   'chat.modelControls.agentFavoriteAdd': 'Ajouter aux favoris. Avec des favoris, Tab ne passe que par eux',
+  'instanceMode.local': "Cet ordinateur",
+  'instanceMode.lan': "Mon serveur local",
+  'instanceMode.vps': "Mon VPS",
+  'instanceMode.hint': "Collez l’adresse de ce serveur et le jeton client qu’il affiche.",
+  'instanceMode.error.invalid': "Cette adresse ne peut pas servir de serveur",
 } as const;

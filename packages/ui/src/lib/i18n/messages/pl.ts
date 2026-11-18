@@ -3956,4 +3956,9 @@ export const dict: Record<I18nKey, string> = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': 'To zadanie już trwa',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': 'To zadanie już czeka w kolejce i uruchomi się, gdy zwolni się miejsce',
   'chat.modelControls.agentFavoriteAdd': 'Dodaj do ulubionych. Gdy są ulubione, Tab przełącza tylko między nimi',
+  'instanceMode.local': "Ten komputer",
+  'instanceMode.lan': "Mój serwer w sieci lokalnej",
+  'instanceMode.vps': "Mój VPS",
+  'instanceMode.hint': "Wklej adres tego serwera i token klienta, który wyświetla.",
+  'instanceMode.error.invalid': "Ten adres nie może służyć jako serwer",
 } as const;

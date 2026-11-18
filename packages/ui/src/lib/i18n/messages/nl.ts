@@ -3951,4 +3951,9 @@ export const dict = {
   'sessions.scheduledTasks.dialog.toast.alreadyRunning': 'Deze taak heeft al een run bezig',
   'sessions.scheduledTasks.dialog.toast.alreadyQueued': 'Deze taak staat al in de wachtrij en draait zodra er plek vrijkomt',
   'chat.modelControls.agentFavoriteAdd': 'Toevoegen aan favorieten. Met favorieten wisselt Tab alleen daartussen',
+  'instanceMode.local': "Deze computer",
+  'instanceMode.lan': "Mijn LAN-server",
+  'instanceMode.vps': "Mijn VPS",
+  'instanceMode.hint': "Plak het adres van die server en het clienttoken dat hij toont.",
+  'instanceMode.error.invalid': "Dat adres kan niet als server dienen",
 } as const;
