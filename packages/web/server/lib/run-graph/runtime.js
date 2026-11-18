@@ -10,10 +10,21 @@ const SNAPSHOT_SUFFIX = '.snapshot.json';
 
 // The repair and attribution projections are bundled with the verification host
 // actions because that is the one entry the Node server builds from engine
-// TypeScript: `build:verification` writes
-// `server/dist/verification-approval.js`. Loading the artifact (never the .ts
-// source) keeps this module runnable under Node.
-const VERIFICATION_BUNDLE = '../../dist/verification-approval.js';
+// TypeScript: `build:verification` writes `server/dist/verification-approval.js`.
+// The artifact is what production loads. A test run or a fresh clone has no
+// artifact yet, so a missing build falls back to the TypeScript source, which
+// loads under bun and vitest; without the fallback every route that projects a
+// repair or delivery record answered 500 in CI for want of a build step.
+const VERIFICATION_BUNDLE_URL = new URL('../../dist/verification-approval.js', import.meta.url);
+const VERIFICATION_SOURCE_URL = new URL('../verification-approval/routes.js', import.meta.url);
+
+const importVerification = async () => {
+  try {
+    return await import(VERIFICATION_BUNDLE_URL.href);
+  } catch {
+    return await import(VERIFICATION_SOURCE_URL.href);
+  }
+};
 
 const asText = (value) => `${value ?? ''}`.trim();
 
@@ -47,7 +58,7 @@ let repairReaderPromise = null;
 
 const loadRepairReader = () => {
   if (repairReaderPromise === null) {
-    repairReaderPromise = import(VERIFICATION_BUNDLE)
+    repairReaderPromise = importVerification()
       .then((module) => {
         const factory = module.createRepairStateReader;
         if (!(factory instanceof Function)) {
@@ -68,7 +79,7 @@ let attributionReaderPromise = null;
 
 const loadRecordReader = () => {
   if (recordReaderPromise === null) {
-    recordReaderPromise = import(VERIFICATION_BUNDLE)
+    recordReaderPromise = importVerification()
       .then((module) => {
         const factory = module.createRecordTaskReaderForProject;
         if (!(factory instanceof Function)) {
@@ -86,7 +97,7 @@ const loadRecordReader = () => {
 
 const loadAttributionReader = () => {
   if (attributionReaderPromise === null) {
-    attributionReaderPromise = import(VERIFICATION_BUNDLE)
+    attributionReaderPromise = importVerification()
       .then((module) => {
         const factory = module.createAttributionStateReader;
         if (!(factory instanceof Function)) {
@@ -105,7 +116,7 @@ let deliveryReaderPromise = null;
 
 const loadDeliveryReader = () => {
   if (deliveryReaderPromise === null) {
-    deliveryReaderPromise = import(VERIFICATION_BUNDLE)
+    deliveryReaderPromise = importVerification()
       .then((module) => {
         const factory = module.createDeliveryStateReader;
         if (!(factory instanceof Function)) {
@@ -326,7 +337,7 @@ let reconcilePromise = null;
 
 const loadReconciler = () => {
   if (reconcilePromise === null) {
-    reconcilePromise = import(VERIFICATION_BUNDLE)
+    reconcilePromise = importVerification()
       .then((module) => {
         const factory = module.createSnapshotReconciler;
         if (!(factory instanceof Function)) {
