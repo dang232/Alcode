@@ -21,7 +21,7 @@ const ExecuteToolCallRows: React.FC<ExecuteToolCallRowsProps> = ({ calls }) => {
     if (calls.length === 0) return null;
 
     return (
-        <div className="flex flex-col gap-0.5 pl-5" data-testid="execute-tool-calls">
+        <div className="flex flex-col gap-0.5 ps-5" data-testid="execute-tool-calls">
             {calls.map((call, index) => {
                 const failed = isFailedCall(call);
                 return (
