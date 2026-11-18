@@ -65,6 +65,16 @@ const USER_TOKEN_FILE_MODE = 0o600;
 const USER_TOKEN_REFRESH_PATH = '/auth/token/refresh';
 const USER_TOKEN_SERVICE_TIMEOUT_MS = 15_000;
 const USER_TOKEN_KEYRING_SERVICE = 'alcode-user-tokens';
+// Refresh is serialized across every process that shares this store (a dev
+// build and a packaged build, or two windows): the auth service mints
+// single-use refresh tokens and treats a rotated-out one as theft, so two
+// holders presenting at once would end the family for both. The lock is a file
+// beside the token index; a lock older than the TTL is abandoned by definition,
+// because one refresh never legitimately outlives the service timeout.
+const USER_TOKEN_LOCK_FILE_NAME = 'user-tokens.refresh.lock';
+const USER_TOKEN_LOCK_TTL_MS = 60_000;
+const USER_TOKEN_LOCK_WAIT_MS = 15_000;
+const USER_TOKEN_LOCK_POLL_MS = 50;
 // Index marker in the JSON file for secrets that rest in the OS keyring:
 // the file carries subjects and timestamps, never secret material.
 const USER_TOKEN_KEYRING_MARKER = 'keyring';
@@ -423,18 +433,85 @@ export const createUserTokenStore = ({
     persistEntries();
   };
 
-  const get = async (sub) => {
-    const id = subSchema.safeParse(sub).data;
-    if (id === undefined) return null;
-    const held = live.get(id);
-    if (held) return { accessToken: held.accessToken, refreshToken: held.refreshToken, updatedAt: held.updatedAt };
+  // One refresh at a time across processes, and the pair is read only after the
+  // lock is held. Two Alcode processes share this store, and the auth service
+  // treats a rotated-out token as theft, so an unserialized pair would end the
+  // session for both. A lock older than the TTL is abandoned by definition: one
+  // refresh never legitimately outlives the service timeout.
+  const lockPath = path.join(path.dirname(cipherPath), USER_TOKEN_LOCK_FILE_NAME);
+
+  const lockIsStale = () => {
+    try {
+      const stamp = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+      const at = Number(stamp?.at);
+      return !Number.isFinite(at) || Date.now() - at > USER_TOKEN_LOCK_TTL_MS;
+    } catch {
+      // Half-written or unreadable: the holder is gone or never started.
+      return true;
+    }
+  };
+
+  const takeLock = (takeoversLeft) => {
+    if (!fs.existsSync(lockPath)) {
+      try {
+        fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, at: Date.now() }), { flag: 'wx', mode: 0o600 });
+        return true;
+      } catch {
+        // Another process created it between the check and the write.
+        return false;
+      }
+    }
+    if (takeoversLeft <= 0 || !lockIsStale()) return false;
+    try {
+      fs.unlinkSync(lockPath);
+    } catch {
+      return false;
+    }
+    return takeLock(takeoversLeft - 1);
+  };
+
+  // Resolves the held path, or null when this process must go ahead unlocked:
+  // the memory tier has no shared durable state, a read-only directory cannot
+  // hold a lock, and a holder that never releases must not wedge every login.
+  const acquireRefreshLock = async () => {
     if (tier === 'memory') return null;
+    const deadline = Date.now() + USER_TOKEN_LOCK_WAIT_MS;
+    while (!takeLock(1)) {
+      if (Date.now() >= deadline) return null;
+      await new Promise((resolve) => { setTimeout(resolve, USER_TOKEN_LOCK_POLL_MS); });
+    }
+    return lockPath;
+  };
+
+  const releaseRefreshLock = (held) => {
+    if (held === null) return;
+    try {
+      fs.unlinkSync(held);
+    } catch {
+      // Already released, or taken over after the TTL: nothing to clean up.
+    }
+  };
+
+  // The durable copy, read past the in-memory working set. Only the refresh
+  // path needs it: two Alcode processes (a dev build and a packaged build, or
+  // two windows) share this file and the keyring, and either of them can
+  // rotate the pair while the other is still holding the old one.
+  const readDurable = (id) => {
+    if (tier === 'memory') return live.get(id) ?? null;
     const entry = readJsonEntries(cipherPath)[id];
     if (!entry) return null;
     const decrypted = tier === 'keychain' ? decryptKeychainEntry(id, entry) : decryptFileEntry(entry);
     if (!decrypted) return null;
     live.set(id, decrypted);
-    return { accessToken: decrypted.accessToken, refreshToken: decrypted.refreshToken, updatedAt: decrypted.updatedAt };
+    return decrypted;
+  };
+
+  const get = async (sub) => {
+    const id = subSchema.safeParse(sub).data;
+    if (id === undefined) return null;
+    const held = live.get(id) ?? readDurable(id);
+    if (held === null) return null;
+    return { accessToken: held.accessToken, refreshToken: held.refreshToken, updatedAt: held.updatedAt };
   };
 
   const clear = async (sub) => {
@@ -487,6 +564,51 @@ export const createUserTokenStore = ({
   // callers may serve stale cache; the stored pair is kept), or
   // `USER_TOKEN_REFRESH_REJECTED` (refresh refused — the session is dead;
   // the stored pair is cleared).
+  // One presentation of a refresh token. `allowAdopt` distinguishes the call
+  // the API makes from its single retry, so a refusing service can never turn
+  // this into a loop.
+  const presentRefresh = async (id, presentedToken, allowAdopt) => {
+    const base = resolveRefreshBase();
+    let response;
+    try {
+      response = await serviceFetch(`${base}${USER_TOKEN_REFRESH_PATH}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ refresh_token: presentedToken }),
+        signal: AbortSignal.timeout(USER_TOKEN_SERVICE_TIMEOUT_MS),
+      });
+    } catch {
+      throw new UserTokenStoreError('USER_TOKEN_REFRESH_TRANSIENT', 'User-token refresh is unavailable.');
+    }
+    if (response.status === 429 || response.status >= 500) {
+      throw new UserTokenStoreError('USER_TOKEN_REFRESH_TRANSIENT', 'User-token refresh is unavailable.');
+    }
+    const answer = response.status === 200
+      ? refreshAnswerSchema.safeParse(await response.json().catch(() => null))
+      : null;
+    if (answer !== null && answer.success) {
+      await set(id, {
+        accessToken: answer.data.access_token,
+        refreshToken: answer.data.refresh_token ?? presentedToken,
+      });
+      return answer.data.access_token;
+    }
+    // Refused or unreadable. That alone is not proof the session is dead: the
+    // auth service mints SINGLE-USE refresh tokens and revokes the whole
+    // family when a rotated-out token is presented, so another holder of this
+    // store may simply have rotated the pair while this one was paying. Adopt
+    // the durable pair and retry exactly once. Clearing here would delete the
+    // only valid copy every holder has left.
+    if (allowAdopt) {
+      const fresher = readDurable(id);
+      if (fresher !== null && fresher.refreshToken !== '' && fresher.refreshToken !== presentedToken) {
+        return presentRefresh(id, fresher.refreshToken, false);
+      }
+    }
+    await clear(id);
+    throw new UserTokenStoreError('USER_TOKEN_REFRESH_REJECTED', 'User-token refresh was refused.');
+  };
+
   const refreshAccessToken = (sub) => {
     const id = subSchema.safeParse(sub).data;
     if (id === undefined) {
@@ -495,39 +617,18 @@ export const createUserTokenStore = ({
     const running = inFlightRefreshes.get(id);
     if (running) return running;
     const task = (async () => {
-      const held = await get(id);
-      if (!held || held.refreshToken === '') {
-        throw new UserTokenStoreError('USER_TOKEN_NO_REFRESH', 'No user-token pair to refresh.');
-      }
-      const base = resolveRefreshBase();
-      let response;
+      const lock = await acquireRefreshLock();
       try {
-        response = await serviceFetch(`${base}${USER_TOKEN_REFRESH_PATH}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ refresh_token: held.refreshToken }),
-          signal: AbortSignal.timeout(USER_TOKEN_SERVICE_TIMEOUT_MS),
-        });
-      } catch {
-        throw new UserTokenStoreError('USER_TOKEN_REFRESH_TRANSIENT', 'User-token refresh is unavailable.');
+        // Read through, then fall back to the working set only when the durable
+        // write itself failed: presenting a superseded token reads as reuse.
+        const held = readDurable(id) ?? live.get(id) ?? null;
+        if (held === null || held.refreshToken === '') {
+          throw new UserTokenStoreError('USER_TOKEN_NO_REFRESH', 'No user-token pair to refresh.');
+        }
+        return await presentRefresh(id, held.refreshToken, true);
+      } finally {
+        releaseRefreshLock(lock);
       }
-      if (response.status === 429 || response.status >= 500) {
-        throw new UserTokenStoreError('USER_TOKEN_REFRESH_TRANSIENT', 'User-token refresh is unavailable.');
-      }
-      if (response.status !== 200) {
-        await clear(id);
-        throw new UserTokenStoreError('USER_TOKEN_REFRESH_REJECTED', 'User-token refresh was refused.');
-      }
-      const answer = refreshAnswerSchema.safeParse(await response.json().catch(() => null));
-      if (!answer.success) {
-        await clear(id);
-        throw new UserTokenStoreError('USER_TOKEN_REFRESH_REJECTED', 'User-token refresh was refused.');
-      }
-      await set(id, {
-        accessToken: answer.data.access_token,
-        refreshToken: answer.data.refresh_token ?? held.refreshToken,
-      });
-      return answer.data.access_token;
     })();
     inFlightRefreshes.set(id, task);
     const settle = () => {

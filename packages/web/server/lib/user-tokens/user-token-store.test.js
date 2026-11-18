@@ -339,6 +339,161 @@ describe('user-token credential store tiers', () => {
     });
   });
 
+  test('a pair rotated by another holder is adopted instead of replayed', async () => {
+    // Two holders over ONE durable store: the dev and packaged builds share
+    // <dataDir>/user-tokens.json and the keyring service in production.
+    const dir = tempDir();
+    const keychain = fakeKeychain();
+    const presented = [];
+    // The auth service's real refresh contract: single-use opaque token,
+    // rotation on every success, and reuse of a rotated-out token revokes the
+    // whole family (I:/migration/auth-service/src/routes/auth.ts:561-616).
+    const vault = { token: 'refresh-1', rotatedOut: new Set(), revoked: false };
+    const serviceFetch = async (url, init) => {
+      const token = JSON.parse(init.body).refresh_token;
+      presented.push(token);
+      if (vault.revoked) return jsonResponse(401, { error: 'invalid_grant' });
+      if (token === vault.token) {
+        const next = `refresh-${presented.length + 1}`;
+        vault.rotatedOut.add(token);
+        vault.token = next;
+        return jsonResponse(200, { access_token: `access-${next}`, refresh_token: next });
+      }
+      if (vault.rotatedOut.has(token)) {
+        vault.revoked = true;
+        return jsonResponse(401, { error: 'invalid_grant' });
+      }
+      return jsonResponse(401, { error: 'invalid_grant' });
+    };
+    const holder = () => createUserTokenStore({ keychain, dataDir: dir, serviceBase: 'https://auth.test', serviceFetch });
+    const first = holder();
+    const second = holder();
+
+    await first.set('user-1', { accessToken: 'access-1', refreshToken: 'refresh-1' });
+    expect((await second.get('user-1')).refreshToken).toBe('refresh-1');
+
+    await first.refreshAccessToken('user-1');
+    // The second holder still caches refresh-1 from before the rotation. A
+    // stale presentation is what revokes the family, so it must read through.
+    expect(await second.refreshAccessToken('user-1')).toBe('access-refresh-3');
+
+    expect(vault.revoked).toBe(false);
+    expect(presented).toEqual(['refresh-1', 'refresh-2']);
+    expect((await second.get('user-1')).refreshToken).toBe('refresh-3');
+  });
+
+  test('a rotation that lands mid-flight is adopted with exactly one retry', async () => {
+    const dir = tempDir();
+    const keychain = fakeKeychain();
+    const presented = [];
+    let rivalWritten = false;
+    const serviceFetch = async (url, init) => {
+      const token = JSON.parse(init.body).refresh_token;
+      presented.push(token);
+      if (!rivalWritten) {
+        rivalWritten = true;
+        // Another holder completed its rotation while this POST was on the wire.
+        const rival = createUserTokenStore({
+          keychain,
+          dataDir: dir,
+          serviceBase: 'https://auth.test',
+          serviceFetch: async () => jsonResponse(200, { access_token: 'access-rival', refresh_token: 'refresh-rival' }),
+        });
+        await rival.set('user-1', { accessToken: 'access-rival', refreshToken: 'refresh-rival' });
+        return jsonResponse(401, { error: 'invalid_grant' });
+      }
+      return jsonResponse(200, { access_token: 'access-' + token, refresh_token: token + '-next' });
+    };
+    const store = createUserTokenStore({ keychain, dataDir: dir, serviceBase: 'https://auth.test', serviceFetch });
+    await store.set('user-1', { accessToken: 'access-1', refreshToken: 'refresh-1' });
+
+    expect(await store.refreshAccessToken('user-1')).toBe('access-refresh-rival');
+    expect(presented).toEqual(['refresh-1', 'refresh-rival']);
+    expect((await store.get('user-1')).refreshToken).toBe('refresh-rival-next');
+  });
+
+  test('a refusal for the durable token still clears the pair and never retries', async () => {
+    const presented = [];
+    const store = createUserTokenStore({
+      tier: 'memory',
+      serviceBase: 'https://auth.test',
+      serviceFetch: async (url, init) => {
+        presented.push(JSON.parse(init.body).refresh_token);
+        return jsonResponse(401, { error: 'invalid_grant' });
+      },
+    });
+    await store.set('user-1', { accessToken: 'access-1', refreshToken: 'refresh-1' });
+
+    await expect(store.refreshAccessToken('user-1')).rejects.toMatchObject({ code: 'USER_TOKEN_REFRESH_REJECTED' });
+    expect(presented).toEqual(['refresh-1']);
+    expect(await store.get('user-1')).toBeNull();
+  });
+
+  test('two holders serialize through the refresh lock and never present a spent token', async () => {
+    const dir = tempDir();
+    const keychain = fakeKeychain();
+    const presented = [];
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    let firstCall = true;
+    const serviceFetch = async (url, init) => {
+      const token = JSON.parse(init.body).refresh_token;
+      presented.push(token);
+      if (firstCall) {
+        firstCall = false;
+        await gate;
+      }
+      return jsonResponse(200, { access_token: 'access-' + token, refresh_token: token + '-next' });
+    };
+    const holder = () => createUserTokenStore({ keychain, dataDir: dir, serviceBase: 'https://auth.test', serviceFetch });
+    const first = holder();
+    const second = holder();
+    await first.set('user-1', { accessToken: 'access-0', refreshToken: 'refresh-1' });
+
+    const firstRun = first.refreshAccessToken('user-1');
+    const secondRun = second.refreshAccessToken('user-1');
+    queueMicrotask(() => { release(); });
+    const [firstAccess, secondAccess] = await Promise.all([firstRun, secondRun]);
+
+    expect(firstAccess).toBe('access-refresh-1');
+    expect(secondAccess).toBe('access-refresh-1-next');
+    expect(presented).toEqual(['refresh-1', 'refresh-1-next']);
+    expect(fs.existsSync(path.join(dir, 'user-tokens.refresh.lock'))).toBe(false);
+    expect((await second.get('user-1')).refreshToken).toBe('refresh-1-next-next');
+  });
+
+  test('a lock older than its TTL is taken over instead of blocking the refresh', async () => {
+    const dir = tempDir();
+    const lockPath = path.join(dir, 'user-tokens.refresh.lock');
+    const store = createUserTokenStore({
+      keychain: fakeKeychain(),
+      dataDir: dir,
+      serviceBase: 'https://auth.test',
+      serviceFetch: async () => jsonResponse(200, { access_token: 'access-x', refresh_token: 'refresh-x' }),
+    });
+    await store.set('user-1', { accessToken: 'access-0', refreshToken: 'refresh-1' });
+    // A holder that was killed mid-refresh leaves this behind.
+    fs.writeFileSync(lockPath, JSON.stringify({ pid: 999999, at: Date.now() - 120_000 }));
+
+    expect(await store.refreshAccessToken('user-1')).toBe('access-x');
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  test('the lock is released when the refresh fails', async () => {
+    const dir = tempDir();
+    const lockPath = path.join(dir, 'user-tokens.refresh.lock');
+    const store = createUserTokenStore({
+      keychain: fakeKeychain(),
+      dataDir: dir,
+      serviceBase: 'https://auth.test',
+      serviceFetch: async () => { throw new Error('auth service unreachable'); },
+    });
+    await store.set('user-1', { accessToken: 'access-0', refreshToken: 'refresh-1' });
+
+    await expect(store.refreshAccessToken('user-1')).rejects.toMatchObject({ code: 'USER_TOKEN_REFRESH_TRANSIENT' });
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
   test('refresh keeps the old refresh value when the service omits rotation', async () => {
     const store = createUserTokenStore({
       tier: 'memory',

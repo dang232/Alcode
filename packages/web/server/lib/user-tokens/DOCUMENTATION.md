@@ -49,19 +49,37 @@ the working set and loses the rotation on restart.
   caller performs the upstream POST; every concurrent caller for the
   same subject awaits that same promise and resolves with the same
   rotated access token. Subjects never share a flight.
+- Cross-process lock: a refresh first takes
+  `<dataDir>/user-tokens.refresh.lock` (exclusive create holding `{pid, at}`),
+  reads the durable entry only after holding it, and removes it in a `finally`.
+  Two processes sharing the store (a dev build and a packaged build, or two
+  windows) therefore never present the same single-use token. A lock older than
+  60 s is taken over, and a wait longer than 15 s proceeds unlocked: a wedged
+  holder must never block a login. The `memory` tier takes no lock.
 - One-retry rule: the in-flight entry is removed when the promise
   settles (success or failure), so a later call starts a fresh POST. A
   retry after a settled success sends the ROTATED refresh token, never
   the consumed one — a second POST cannot replay a spent token.
-- Refused refresh (`USER_TOKEN_REFRESH_REJECTED`: non-200 outside the
-  transient set, or a malformed answer) clears the pair and throws the
-  session-expired error; concurrent waiters reject with that same error.
-  Transient failure (`USER_TOKEN_REFRESH_TRANSIENT`: unreachable
-  service, 429, 5xx) keeps the stored pair and throws the transient
-  error, so callers may serve stale cache and retry.
+- Read-through presentation: every refresh reads the durable entry first and
+  presents THAT refresh token, not a copy cached in this process. The auth
+  service mints single-use refresh tokens and revokes the whole token family
+  when a rotated-out one is presented, so a stale presentation does not merely
+  fail — it ends the session for every holder at once.
+- Refused refresh (`USER_TOKEN_REFRESH_REJECTED`) is decided in two steps: when
+  the service refuses and the durable entry now carries a DIFFERENT refresh
+  token, another holder rotated the pair — adopt that pair and retry exactly
+  once. Only a refusal for the token the durable entry still holds clears the
+  pair and throws the session-expired error; concurrent waiters reject with
+  that same error. Transient failure (`USER_TOKEN_REFRESH_TRANSIENT`:
+  unreachable service, 429, 5xx) keeps the stored pair and throws the
+  transient error, so callers may serve stale cache and retry.
 
 ## Invariants
 
+- One pair, many holders: a dev build and a packaged build (or two windows)
+  share `<dataDir>/user-tokens.json` and the keyring service, so the pair is
+  shared mutable state. Reads answer from the durable entry first, and a
+  refresh never trusts the in-memory working set over the file.
 - The tier is fixed at creation; per-operation failures (locked keychain,
   missing keyring entry, failing disk) degrade to the memory working set
   for that operation and never change the tier.
