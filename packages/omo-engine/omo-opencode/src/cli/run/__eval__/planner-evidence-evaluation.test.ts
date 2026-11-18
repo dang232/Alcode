@@ -175,7 +175,7 @@ describe("planner evidence evaluation", () => {
     const rows: { task: string; baseline: Metrics; informed: Metrics; status: string; bytes: number; ms: number }[] = []
     for (const task of TASKS) {
       const knowledge = task.stale === true ? [stale] : task.constraint === undefined ? [] : [verified]
-      const evidence = await buildPlannerEvidence({ message: task.message, directory, knowledge })
+      const evidence = await buildPlannerEvidence({ message: task.message, directory, knowledge, projectId: "alcode-1234abcd" })
       const { baseline, informed } = arms(task, directory, evidence)
       rows.push({
         task: task.id,

@@ -1,3 +1,2 @@
-import {
-} from "node:fs"
+export * from "../../../utils/src/write-file-atomically.ts"
 

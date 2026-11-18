@@ -1,7 +1,11 @@
 import React from 'react';
 
+import { Icon } from '@/components/icon/Icon';
+import type { IconName } from '@/components/icon/icons';
+import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
-import type { ExplanationCard, InspectorEvent, InspectorSummary } from './activityModel';
+import type { ExplanationCard, InspectorEvent, InspectorSummary, RepairView } from './activityModel';
+import type { VerificationStatus } from './verificationStatus';
 
 const formatTime = (at: number | null): string => {
   if (at === null || !Number.isFinite(at)) return '';
@@ -19,7 +23,68 @@ type Props = {
   files: string[];
   onOpenFile: (file: string) => void;
   card: ExplanationCard | null;
+  /** Current-epoch repair attempt for the selected record, when one exists. */
+  repair?: RepairView | null;
+  /** Repair state was unreadable; never rendered as "no repair". */
+  repairError?: string | null;
 };
+
+const REPAIR_STATE_ICON = {
+  diagnosing: 'question',
+  repair_planned: 'file-edit',
+  repairing: 'play',
+  reverifying: 'history',
+  repaired: 'check',
+  repair_failed: 'close-circle',
+  repair_cancelled: 'close',
+} satisfies Record<RepairView['state'], IconName>;
+
+const repairStateTone = (state: RepairView['state']): string => {
+  switch (state) {
+    case 'repair_failed': return 'text-[var(--status-error)]';
+    case 'repair_cancelled': return 'text-[var(--text-tertiary)]';
+    // Repaired says the attempt finished its repair, never that the gate
+    // verified the workspace, so it stays neutral instead of taking a
+    // success colour.
+    default: return 'text-[var(--text-secondary)]';
+  }
+};
+
+const verificationTone = (status: VerificationStatus | null): string => {
+  switch (status) {
+    case 'verified': return 'text-[var(--status-success)]';
+    case 'blocked': return 'text-[var(--status-error)]';
+    default: return 'text-[var(--text-secondary)]';
+  }
+};
+
+const verificationIcon = (status: VerificationStatus | null): IconName => {
+  switch (status) {
+    case 'verified': return 'check';
+    case 'blocked': return 'error-warning';
+    default: return 'question';
+  }
+};
+
+const RepairChecks: React.FC<{ label: string; empty: string; items: string[]; icon: IconName }> = ({
+  label, empty, items, icon,
+}) => (
+  <div>
+    <p className="typography-micro flex items-center gap-1 text-[var(--text-tertiary)]">
+      <Icon name={icon} className="h-3 w-3 shrink-0" />
+      {label}
+    </p>
+    {items.length === 0 ? (
+      <p className="typography-ui text-[var(--text-tertiary)]">{empty}</p>
+    ) : (
+      <ul className="mt-1 flex flex-col gap-0.5">
+        {items.map((item) => (
+          <li key={item} className="typography-ui break-all text-[var(--text-secondary)]">{item}</li>
+        ))}
+      </ul>
+    )}
+  </div>
+);
 
 const NEXT_KEY = {
   settled: 'activity.inspector.next.settled',
@@ -34,13 +99,131 @@ const NEXT_KEY = {
  * with their timestamp and source receipt id; summaries are split from tool
  * logs so the model's own words never mix with verification evidence.
  */
-export const TaskInspector: React.FC<Props> = ({ selectedLabel, events, summaries, files, onOpenFile, card }) => {
+export const TaskInspector: React.FC<Props> = ({ selectedLabel, events, summaries, files, onOpenFile, card, repair, repairError }) => {
   const { t } = useI18n();
   if (!selectedLabel) {
     return <p className="typography-ui text-[var(--text-tertiary)]">{t('activity.inspector.hint')}</p>;
   }
   return (
     <div className="flex flex-col gap-4">
+      {repairError && (
+        <p role="status" className="typography-ui rounded-md bg-[var(--status-warning-background)] p-2 text-[var(--status-warning)]">
+          {t('activity.repair.error')}
+        </p>
+      )}
+      {repair && (
+        <section aria-label={t('activity.repair.label')} data-repair-section="" data-repair-attempt={repair.attemptId}>
+          <h3 className="typography-micro mb-1 font-medium uppercase text-[var(--text-tertiary)]">
+            {t('activity.repair.label')}
+          </h3>
+          <p className="typography-micro text-[var(--text-tertiary)]">
+            {t('activity.repair.attempt', { attemptId: repair.attemptId, epoch: repair.epoch })}
+          </p>
+          <ol aria-label={t('activity.repair.lifecycle')} className="mt-2 flex flex-col gap-1">
+            {repair.lifecycle.map((step) => (
+              <li
+                key={step.state}
+                data-repair-row={step.state}
+                data-repair-current={step.current ? 'true' : undefined}
+                className="flex items-center gap-2"
+              >
+                <Icon
+                  name={REPAIR_STATE_ICON[step.state]}
+                  className={cn('h-3.5 w-3.5 shrink-0', repairStateTone(step.state))}
+                />
+                <span className={cn(
+                  'typography-ui break-words',
+                  step.current ? 'font-medium text-[var(--text-primary)]' : 'text-[var(--text-secondary)]',
+                )}>
+                  {t(`activity.repair.state.${step.state}`)}
+                </span>
+                {step.current && (
+                  <span className="typography-micro rounded px-1 text-[var(--text-tertiary)]">
+                    {t('activity.repair.current')}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+          <div
+            className="mt-3 flex flex-wrap items-baseline gap-2"
+            data-repair-verification={repair.verificationStatus ?? 'unverified'}
+          >
+            <span className="typography-micro uppercase text-[var(--text-tertiary)]">
+              {t('activity.repair.verification')}
+            </span>
+            <span className={cn('typography-ui inline-flex items-center gap-1 font-medium', verificationTone(repair.verificationStatus))}>
+              <Icon name={verificationIcon(repair.verificationStatus)} className="h-3.5 w-3.5 shrink-0" />
+              {t(`activity.verification.${repair.verificationStatus ?? 'unverified'}`)}
+            </span>
+          </div>
+          <p className="typography-micro mt-1 text-[var(--text-tertiary)]">
+            {t('activity.repair.verificationNote')}
+          </p>
+          <div className="mt-3 flex flex-col gap-3">
+            <RepairChecks
+              label={t('activity.repair.failedChecks')}
+              empty={t('activity.repair.noneRecorded')}
+              items={repair.failedChecks}
+              icon="error-warning"
+            />
+            <RepairChecks
+              label={t('activity.repair.rerunChecks')}
+              empty={t('activity.repair.noneRecorded')}
+              items={repair.rerunChecks}
+              icon="history"
+            />
+            {repair.changedFiles.length > 0 && (
+              <div>
+                <p className="typography-micro text-[var(--text-tertiary)]">{t('activity.repair.changedFiles')}</p>
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  {repair.changedFiles.map((file) => (
+                    <li key={file}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenFile(file)}
+                        className="typography-micro oc-surface-code rounded px-1.5 py-0.5 break-all hover:bg-interactive-hover"
+                      >
+                        {file}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div data-repair-source="host">
+              <p className="typography-micro flex items-center gap-1 text-[var(--text-tertiary)]">
+                <Icon name="check" className="h-3 w-3 shrink-0" />
+                {t('activity.repair.hostFacts')}
+              </p>
+              {repair.hostFacts.length === 0 ? (
+                <p className="typography-ui text-[var(--text-tertiary)]">{t('activity.repair.noFacts')}</p>
+              ) : (
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  {repair.hostFacts.map((fact) => (
+                    <li key={fact} className="typography-ui break-words text-[var(--text-secondary)]">{fact}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div data-repair-source="model">
+              <p className="typography-micro flex items-center gap-1 text-[var(--text-tertiary)]">
+                <Icon name="lightbulb" className="h-3 w-3 shrink-0 text-[var(--status-info)]" />
+                {t('activity.repair.modelHypotheses')}
+              </p>
+              {repair.modelHypotheses.length === 0 ? (
+                <p className="typography-ui text-[var(--text-tertiary)]">{t('activity.repair.noHypotheses')}</p>
+              ) : (
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  {repair.modelHypotheses.map((hypothesis) => (
+                    <li key={hypothesis} className="typography-ui break-words italic text-[var(--text-secondary)]">{hypothesis}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
       {card && (
         <section aria-label={t('activity.inspector.explanation')}>
           <h3 className="typography-micro mb-1 font-medium uppercase text-[var(--text-tertiary)]">

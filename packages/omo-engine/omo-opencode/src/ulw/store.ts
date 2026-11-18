@@ -2,9 +2,10 @@
  * Native ULW run/roster/receipt store.
  *
  * Single-writer rule: this in-memory store is written only by native tools.
- * It holds no file handles and never touches `<repoRoot>/.omo/ulw-loop`
- * (brief.md, goals.json, ledger.jsonl): those files stay CLI-written and
- * are treated as read-only from here.
+ * It holds no file handles. The CLI-owned files under
+ * `<repoRoot>/.omo/ulw-loop` (brief.md, goals.json, ledger.jsonl) stay
+ * CLI-written; `./plan-store.ts` reads one plan only to adopt its run id,
+ * and nothing in this module writes them.
  *
  * Durability (see `./persistence.ts`): with a `persistence` adapter the
  * store loads one versioned JSON snapshot at construction and saves
@@ -107,6 +108,11 @@ function requireText(value: string, field: string, runId: string): string {
  * In-memory native ULW store: run records, per-run dispatch rosters, and
  * per-goal child-result receipts. One instance owns its runs; runs are
  * isolated by id so one failed goal never blocks an unrelated run.
+ *
+ * Callers may name a run by its id, an accepted submission id, or the
+ * session scope that opened it. A receipt may name a rostered goal by its
+ * exact id, by an unambiguous plan/native id alias, or by the worker
+ * session it was dispatched to, so dispatch and receipt agree on a key.
  */
 export class UlwStore {
   private readonly runs = new Map<string, UlwRunState>()
@@ -168,6 +174,22 @@ export class UlwStore {
   /** The run id an accepted submission resolved to, or `undefined` when unknown. Never throws. */
   runIdForSubmission(submissionId: string): string | undefined {
     return this.submissionClaims.get(submissionId)
+  }
+
+  /**
+   * Resolves a caller-held run reference: an exact run id, an accepted
+   * submission id, or the single run whose session scope matches. An
+   * ambiguous scope resolves to nothing so the caller must pass the run id.
+   * Never throws.
+   */
+  resolveRunId(runRef: string): string | undefined {
+    const ref = runRef.trim()
+    if (ref.length === 0) return undefined
+    if (this.runs.has(ref)) return ref
+    const claimed = this.submissionClaims.get(ref)
+    if (claimed !== undefined && this.runs.has(claimed)) return claimed
+    const scoped = [...this.runs.values()].filter((state) => state.record.sessionScope === ref)
+    return scoped.length === 1 ? scoped[0].record.id : undefined
   }
 
   /**
@@ -321,11 +343,14 @@ export class UlwStore {
   }
 
   /**
-   * Records a dispatched child's result under its goal id. The latest
-   * recording wins. Throws `GOAL_NOT_DISPATCHED` when the goal was never
-   * dispatched, and `GOAL_SESSION_MISMATCH` when the reporting session is
-   * not one of the goal's dispatched workers: a receipt must always settle
-   * a real dispatch, never a stranger session.
+   * Records a dispatched child's result under the rostered goal it settles.
+   * The latest recording wins. The caller may name the goal by its exact
+   * roster id, by a unique plan/native id alias (`G001` for
+   * `G001-receipt-bridge`), or by the worker session when that session was
+   * dispatched to exactly one goal. Throws `GOAL_NOT_DISPATCHED` when no
+   * dispatch matches, and `GOAL_SESSION_MISMATCH` when a named goal exists
+   * but the reporting session is not one of its dispatched workers: a
+   * receipt must always settle a real dispatch, never a stranger session.
    */
   recordChildResult(
     runId: string,
@@ -334,17 +359,17 @@ export class UlwStore {
   ): UlwChildResultReceipt {
     const state = this.requireActiveState(runId)
     const goal = requireText(goalId, "goalId", runId)
-    if (!state.roster.has(goal)) {
-      throw goalNotDispatchedError(runId, goal)
-    }
     const childSessionId = requireText(input.childSessionId, "childSessionId", runId)
-    const dispatched = state.roster.get(goal) ?? []
-    if (!dispatched.includes(childSessionId)) {
+    const resolvedGoal = this.receiptGoalId(state, goal, childSessionId)
+    if (resolvedGoal === undefined) {
+      if (!this.hasDispatchForGoal(state, goal)) {
+        throw goalNotDispatchedError(runId, goal)
+      }
       throw goalSessionMismatchError(runId, goal, childSessionId)
     }
     const receipt = finishReceipt(
       {
-        goalId: goal,
+        goalId: resolvedGoal,
         childSessionId,
         status: input.status ?? "completed",
         recordedAt: isoNow(input.now ?? this.now),
@@ -352,9 +377,44 @@ export class UlwStore {
       input.resultRef?.trim() || undefined,
       input.reason?.trim() || undefined,
     )
-    state.receipts.set(goal, receipt)
+    state.receipts.set(resolvedGoal, receipt)
     this.save()
     return receipt
+  }
+
+  /**
+   * The rostered goal a receipt names. Exact id wins. An exact id with a
+   * different worker stays a mismatch instead of being redirected. When no
+   * exact id exists, a plan/native id alias is tried, then the worker
+   * session itself when exactly one goal was dispatched to it.
+   */
+  private receiptGoalId(state: UlwRunState, goalId: string, childSessionId: string): string | undefined {
+    const exact = state.roster.get(goalId)
+    if (exact !== undefined) return exact.includes(childSessionId) ? goalId : undefined
+    const aliases = this.rosterGoalIds(state, goalId)
+    if (aliases.length > 0) {
+      return aliases.find((candidate) => (state.roster.get(candidate) ?? []).includes(childSessionId))
+    }
+    const workerGoals = [...state.roster.entries()]
+      .filter(([, workers]) => workers.includes(childSessionId))
+      .map(([candidate]) => candidate)
+    return workerGoals.length === 1 ? workerGoals[0] : undefined
+  }
+
+  /** Every rostered goal the supplied id names, exactly or by alias. */
+  private rosterGoalIds(state: UlwRunState, goalId: string): readonly string[] {
+    if (state.roster.has(goalId)) return [goalId]
+    return [...state.roster.keys()].filter((candidate) => this.isGoalAlias(candidate, goalId))
+  }
+
+  /** Whether the supplied goal id names any rostered goal, exactly or by alias. */
+  private hasDispatchForGoal(state: UlwRunState, goalId: string): boolean {
+    return this.rosterGoalIds(state, goalId).length > 0
+  }
+
+  /** `G001` aliases `G001-receipt-bridge-smoke`; the longer id keeps the dispatch key. */
+  private isGoalAlias(left: string, right: string): boolean {
+    return left.startsWith(`${right}-`) || right.startsWith(`${left}-`)
   }
 
   /** Returns the receipt for a goal, or `undefined` when none was recorded. */
@@ -374,12 +434,15 @@ export class UlwStore {
   /**
    * Dispatched goal ids with no recorded child result, sorted for a stable
    * refusal message. When `goalIds` is given, only those goals are checked;
-   * undispatched ids in the filter are ignored (nothing is pending for them).
+   * an alias in the filter resolves to its rostered goal, and undispatched
+   * ids stay ignored (nothing is pending for them).
    */
   missingReceipts(runId: string, goalIds?: readonly string[]): UlwMissingReceipts {
     const state = this.requireState(runId)
     const candidates =
-      goalIds === undefined ? [...state.roster.keys()] : goalIds.filter((goalId) => state.roster.has(goalId))
+      goalIds === undefined
+        ? [...state.roster.keys()]
+        : [...new Set(goalIds.flatMap((goalId) => this.rosterGoalIds(state, goalId)))]
     return candidates.filter((goalId) => !state.receipts.has(goalId)).sort()
   }
 

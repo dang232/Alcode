@@ -96,8 +96,9 @@ OpenCode lists sessions by exact directory, so step 4 asks both the worktree
 root and the member's folder for other active chats.
 
 A failed step stops cleanup for that member only and leaves its worktree in
-place; the result reports it. The project root is never removed. Snapshot refs
-stay until someone deletes them; cleaning them up is not implemented.
+place; the result reports it. The project root is never removed. No code path
+deletes a snapshot ref, so `refs/alcode/runs/<group>/<session>` entries persist
+in the repository until deleted manually.
 
 ## Fusion
 

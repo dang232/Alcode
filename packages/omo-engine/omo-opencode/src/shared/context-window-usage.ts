@@ -1,7 +1,5 @@
 import {
 } from "./context-limit-resolver"
-import type {
-} from "./dynamic-truncator-types"
 
 // Hard ceiling on how long `session.messages()` is allowed to block inside
 // `fetchContextWindowUsage`. Without it, a stuck OpenCode RPC (observed when

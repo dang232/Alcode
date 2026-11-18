@@ -168,16 +168,230 @@ describe('dag service handlers', () => {
     nodeFs.writeFileSync(join(dir, 'ses_bad.snapshot.json'), 'not json{', 'utf8');
     const { handleRequest } = handlersWith(dir, absentBridge);
     const read = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_live01' } });
-    expect(read).toEqual({ status: 200, body: doc });
+    // No directory means no project scope: the document still serves, and says it could not look for records.
+    expect(read).toEqual({ status: 200, body: { ...doc, tasks: { recordUnscoped: true } } });
     const missing = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_nope' } });
     expect(missing.status).toBe(404);
-    expect(missing.body.code).toBe('OMO_DAG_SNAPSHOT_MISSING');
+    expect(missing.body.code).toBe('DAG_SNAPSHOT_MISSING');
     const malformed = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_bad' } });
     expect(malformed.status).toBe(422);
     expect(malformed.body.code).toBe('DAG_SNAPSHOT_MALFORMED');
     const noSession = await handleRequest({ method: 'GET', path: '/snapshot', query: {} });
     expect(noSession.status).toBe(400);
-    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    expect(noSession.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
+  });
+
+  test('says the record side was not checked when the pane has no project directory', async () => {
+    const dir = makeSnapshotDir();
+    nodeFs.writeFileSync(join(dir, 'ses_scope1.snapshot.json'), JSON.stringify({ schemaVersion: 1, sessionId: 'ses_scope1', dag: null, tasks: null }), 'utf8');
+    let consulted = false;
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => { consulted = true; return { tasks: [], absent: true }; },
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_scope1' } });
+
+    expect(answer.status).toBe(200);
+    expect(answer.body.tasks.recordUnscoped).toBe(true);
+    expect(consulted).toBe(false);
+  });
+
+  test('a conversation with no snapshot at all still says the read was unscoped', async () => {
+    // This is the exact case the flag was written for: no project bound, no persisted snapshot. The answer is a
+    // 404, and restricting the flag to 200 made the state unreachable, so the pane painted a plain empty graph.
+    const dir = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({ tasks: [], absent: true }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_unscoped_missing' } });
+
+    expect(answer.status).toBe(404);
+    expect(answer.body.code).toBe('DAG_SNAPSHOT_MISSING');
+    expect(answer.body.tasks.recordUnscoped).toBe(true);
+  });
+
+  test('a scoped conversation with no snapshot claims nothing about scope', async () => {
+    const dir = makeSnapshotDir();
+    const project = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({ tasks: [], absent: true }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_scoped_missing', directory: project } });
+
+    expect(answer.status).toBe(404);
+    expect(answer.body.tasks?.recordUnscoped).toBeUndefined();
+  });
+
+  test('does not claim an unscoped read when a directory was supplied', async () => {
+    const dir = makeSnapshotDir();
+    const project = makeSnapshotDir();
+    nodeFs.writeFileSync(join(dir, 'ses_scope2.snapshot.json'), JSON.stringify({ schemaVersion: 1, sessionId: 'ses_scope2', dag: null, tasks: null }), 'utf8');
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({ tasks: [], absent: true }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_scope2', directory: project } });
+
+    expect(answer.status).toBe(200);
+    expect(answer.body.tasks?.recordUnscoped).toBeUndefined();
+  });
+
+  test('snapshot merges the canonical task records into the document it serves', async () => {
+    const dir = makeSnapshotDir();
+    const doc = { schemaVersion: 1, sessionId: 'ses_live01', dag: null, tasks: { tasks: [{ task_id: 'task_snapshot' }] } };
+    nodeFs.writeFileSync(join(dir, 'ses_live01.snapshot.json'), JSON.stringify(doc), 'utf8');
+    const projectDir = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({
+        tasks: [{ task_id: 'st_record', status: 'completed', parent_session_id: 'ses_live01', verification_status: 'unverified' }],
+        diagnostics: { scanned: 1, accepted: 1, skipped: 0, limitReached: false },
+      }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_live01', directory: projectDir } });
+
+    expect(answer.status).toBe(200);
+    expect(answer.body.tasks.tasks.map((task) => task.task_id)).toEqual(['task_snapshot', 'st_record']);
+    expect(answer.body.tasks.tasks[1].verification_status).toBe('unverified');
+  });
+
+  test('a chat node is attributed and dated the same way the route does it', async () => {
+    // The service used to merge records and attach repair only: it never ran attribution or delivery, so a node the
+    // HTTP route could point at its task and name its verdict arrived here bare.
+    const dir = makeSnapshotDir();
+    const projectDir = makeSnapshotDir();
+    const doc = {
+      schemaVersion: 1,
+      sessionId: 'ses_parity',
+      dag: { runs: [{ run_id: 'ses_parity', run_key: 'chat:ses_parity', name: 'run', status: 'completed', nodes: [
+        { id: 'ses_child', label: 'child', state: 'completed', prompt: 'p', depends_on: [] },
+      ] }] },
+      tasks: { tasks: [] },
+    };
+    nodeFs.writeFileSync(join(dir, 'ses_parity.snapshot.json'), JSON.stringify(doc), 'utf8');
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({
+        tasks: [{ task_id: 'st_parity', status: 'completed', parent_session_id: 'ses_parity', child_session_id: 'ses_child', verification_status: 'unverified' }],
+        diagnostics: { scanned: 1, accepted: 1, skipped: 0, limitReached: false },
+      }),
+      attributionStateReader: () => ({ absent: false, entries: [], byChildSessionId: { ses_child: { taskId: 'st_parity' } }, byTaskId: {}, collisions: [] }),
+      deliveryStateReader: ({ taskId }) => ({ delivery: { taskId, status: 'completed', verificationStatus: 'unverified' } }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_parity', directory: projectDir } });
+
+    expect(answer.status).toBe(200);
+    const node = answer.body.dag.runs[0].nodes[0];
+    expect(node.task_id).toBe('st_parity');
+    expect(node.delivery.verificationStatus).toBe('unverified');
+    // The record's claim is the row's, and the node agrees with it.
+    expect(answer.body.tasks.tasks[0].verification_status).toBe('unverified');
+  });
+
+  test('snapshot answers a conversation that exists only as canonical records', async () => {
+    const dir = makeSnapshotDir();
+    const projectDir = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({
+        tasks: [{ task_id: 'st_record_only', status: 'running', parent_session_id: 'ses_live01' }],
+        diagnostics: { scanned: 1, accepted: 1, skipped: 0, limitReached: false },
+      }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_live01', directory: projectDir } });
+
+    expect(answer.status).toBe(200);
+    expect(answer.body.sessionId).toBe('ses_live01');
+    expect(answer.body.tasks.tasks).toEqual([{ task_id: 'st_record_only', status: 'running', parent_session_id: 'ses_live01' }]);
+    expect(answer.body.dag.runs).toEqual([]);
+  });
+
+  test('snapshot attaches the repair attempt to a record-only task', async () => {
+    const dir = makeSnapshotDir();
+    const projectDir = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({ tasks: [{ task_id: 'st_repair', status: 'error', parent_session_id: 'ses_live01' }], diagnostics: { scanned: 1, accepted: 1, skipped: 0, limitReached: false } }),
+      repairStateReader: ({ taskId }) => (taskId === 'st_repair' ? { repair: { attemptId: 'a1', taskId, state: 'repaired' } } : {}),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_live01', directory: projectDir } });
+
+    expect(answer.status).toBe(200);
+    expect(answer.body.tasks.tasks[0].repair).toMatchObject({ attemptId: 'a1', state: 'repaired' });
+    expect(answer.body.tasks.tasks[0].status).toBe('error');
+  });
+
+  test('snapshot never consults the record store for a UNC directory', async () => {
+    const dir = makeSnapshotDir();
+    let consulted = false;
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => { consulted = true; return { tasks: [], absent: true }; },
+    });
+
+    await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_live01', directory: '\\\\attacker.example\\share' } });
+
+    expect(consulted).toBe(false);
+  });
+
+  test('snapshot keeps the 404 when the store holds nothing for this conversation', async () => {
+    const dir = makeSnapshotDir();
+    const projectDir = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({ tasks: [], absent: true }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_live01', directory: projectDir } });
+
+    expect(answer.status).toBe(404);
+    expect(answer.body.code).toBe('DAG_SNAPSHOT_MISSING');
+  });
+
+  test('snapshot reports an unreadable task store instead of claiming no run', async () => {
+    const dir = makeSnapshotDir();
+    const projectDir = makeSnapshotDir();
+    const { handleRequest } = createDagServiceHandlers({
+      fs: nodeFs,
+      snapshotDir: dir,
+      createBridge: absentBridge,
+      recordTaskReader: () => ({ error: 'record tasks unreadable: EACCES' }),
+    });
+
+    const answer = await handleRequest({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_live01', directory: projectDir } });
+
+    expect(answer.status).toBe(500);
+    expect(answer.body.code).toBe('DAG_TASK_STORE_UNREADABLE');
   });
 
   test('steer validates input before spawning', async () => {
@@ -186,7 +400,7 @@ describe('dag service handlers', () => {
     expect(emptyMessage.status).toBe(400);
     const noSession = await handleRequest({ method: 'POST', path: '/steer', body: { message: 'Go' } });
     expect(noSession.status).toBe(400);
-    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    expect(noSession.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
   });
 
   test('steer forwards model and agent, unsigned provider answers 409', async () => {
@@ -436,10 +650,10 @@ describe('dag service handlers', () => {
     const { handleRequest } = handlersWith(dir, absentBridge);
     const noSession = await handleRequest({ method: 'GET', path: '/debug', query: {} });
     expect(noSession.status).toBe(400);
-    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    expect(noSession.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
     const escape = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: '../x', directory: tmpdir() } });
     expect(escape.status).toBe(400);
-    expect(escape.body.code).toBe('OMO_SESSION_ID_INVALID');
+    expect(escape.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
     const malformed = await handleRequest({ method: 'GET', path: '/debug', query: { sessionId: 'ses_bad' } });
     expect(malformed.status).toBe(200);
     expect(malformed.body.snapshot).toMatchObject({ exists: true, sessionMatch: false });
@@ -538,10 +752,10 @@ describe('dag service handlers', () => {
     expect(missing.body.code).toBe('OMO_DAG_NO_LOOP');
     const noSession = await handleRequest({ method: 'GET', path: '/loop', query: { directory: repo } });
     expect(noSession.status).toBe(400);
-    expect(noSession.body.code).toBe('OMO_DAG_SESSION_REQUIRED');
+    expect(noSession.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
     const escape = await handleRequest({ method: 'GET', path: '/loop', query: { sessionId: '../x', directory: repo } });
     expect(escape.status).toBe(400);
-    expect(escape.body.code).toBe('OMO_SESSION_ID_INVALID');
+    expect(escape.body.code).toBe('DAG_CONVERSATION_ID_INVALID');
   });
 
   test('loop projects dispatched workers under their goal', async () => {
@@ -796,7 +1010,7 @@ describe('dag service handlers', () => {
       body: { message: 'Bad scope', sessionId: 'ses_bad_scope', directory: '  ' },
     });
     expect(bad.status).toBe(400);
-    expect(bad.body.code).toBe('OMO_INVOKE_ARGS_INVALID');
+    expect(bad.body.code).toBe('DAG_DIRECTORY_UNSUPPORTED');
   });
 
   test('history includes terminal loop rows for the filtered directory', async () => {
@@ -829,6 +1043,182 @@ describe('dag service handlers', () => {
     const answer = await handleRequest({ method: 'GET', path: '/nope' });
     expect(answer.status).toBe(404);
     expect(answer.body.code).toBe('OMO_DAG_UNKNOWN_PATH');
+  });
+});
+
+// C4 authority (p26 todo 4): an engine document always outranks the synthetic
+// steer fallback. Only the engine owns `tasks.tasks`; the synthetic document
+// keeps `tasks: null`, so a document with a non-empty tasks array is engine
+// evidence regardless of which path holds it or how new the fallback is.
+describe('engine-document authority over the synthetic steer fallback', () => {
+  const engineDoc = (sessionId, updatedAt, taskId = 'tsk_engine01') => ({
+    schemaVersion: 1,
+    sessionId,
+    updatedAt,
+    dag: {
+      runs: [{
+        run_id: sessionId,
+        run_key: `engine:${sessionId}`,
+        name: 'Engine run',
+        status: 'completed',
+        counts: { pending: 0, running: 0, completed: 1 },
+        nodes: [{
+          id: taskId, label: 'Engine child', state: 'completed', attempt: 1, prompt: 'Engine child',
+          depends_on: [], started_at: null, completed_at: updatedAt,
+        }],
+        edges: [],
+        waves: [{ index: 0, node_ids: [taskId] }],
+      }],
+    },
+    tasks: { tasks: [{ task_id: taskId, status: 'completed' }] },
+  });
+  const syntheticDoc = (sessionId, updatedAt) => ({
+    schemaVersion: 1,
+    sessionId,
+    updatedAt,
+    directory: null,
+    dag: {
+      runs: [{
+        run_id: sessionId,
+        run_key: `steer:${sessionId}`,
+        name: sessionId,
+        status: 'completed',
+        counts: { pending: 0, running: 0, completed: 1 },
+        nodes: [{
+          id: 'step-1', label: 'Steer', state: 'completed', attempt: 1, prompt: 'Steer',
+          depends_on: [], started_at: null, completed_at: updatedAt,
+        }],
+        edges: [],
+        waves: [{ index: 0, node_ids: ['step-1'] }],
+      }],
+    },
+    tasks: null,
+  });
+  const tempPath = (snapshotDir, sessionId) => join(snapshotDir, `${sessionId}.snapshot.json`);
+  const projectRunsDir = (project) => join(project, '.omo', 'dag-runs');
+  const writeJson = (dir, sessionId, doc) => {
+    nodeFs.mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${sessionId}.snapshot.json`);
+    nodeFs.writeFileSync(file, JSON.stringify(doc), 'utf8');
+    return file;
+  };
+  const makeProject = () => {
+    const project = nodeFs.mkdtempSync(join(tmpdir(), 'dag-engine-'));
+    scratchDirs.push(project);
+    return project;
+  };
+  // A bridge whose wait() resolves only when the test says so, so the settle
+  // path is observed at a deterministic point instead of on a timer.
+  const controlledBridge = () => {
+    let settle;
+    const wait = new Promise((resolve) => { settle = resolve; });
+    return {
+      bridge: {
+        probe: async () => ({ available: true, compatible: true, code: 'OMO_PROBE_OK' }),
+        invoke: () => ({
+          entry: 'stub-controlled',
+          argv: ['run'],
+          writer: null,
+          wait: () => wait,
+          cancel: () => ({}),
+        }),
+      },
+      settle: () => settle({ exitCode: 0, signal: null, result: null }),
+      settled: wait,
+    };
+  };
+
+  test('a project engine document beats a newer synthetic temp document', async () => {
+    const snapshotDir = makeSnapshotDir();
+    const project = makeProject();
+    const engine = engineDoc('ses_authority', '2026-10-01T00:00:00.000Z');
+    writeJson(projectRunsDir(project), 'ses_authority', engine);
+    const synthetic = syntheticDoc('ses_authority', '2026-11-08T12:00:00.000Z');
+    const tempFile = writeJson(snapshotDir, 'ses_authority', synthetic);
+    nodeFs.utimesSync(tempFile, new Date('2026-11-08T12:00:00.000Z'), new Date('2026-11-08T12:00:00.000Z'));
+    const { handleRequest } = handlersWith(snapshotDir, absentBridge);
+    const answer = await handleRequest({
+      method: 'GET', path: '/snapshot', query: { sessionId: 'ses_authority', directory: project },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body.dag.runs[0].run_key).toBe('engine:ses_authority');
+    expect(answer.body.tasks.tasks).toHaveLength(1);
+  });
+
+  test('a project engine document is served when the temp path is absent', async () => {
+    const snapshotDir = makeSnapshotDir();
+    const project = makeProject();
+    const engine = engineDoc('ses_engine_only', '2026-10-01T00:00:00.000Z');
+    writeJson(projectRunsDir(project), 'ses_engine_only', engine);
+    const { handleRequest } = handlersWith(snapshotDir, absentBridge);
+    const answer = await handleRequest({
+      method: 'GET', path: '/snapshot', query: { sessionId: 'ses_engine_only', directory: project },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body).toEqual(engine);
+  });
+
+  test('a synthetic steer document is still served when no engine document exists', async () => {
+    const snapshotDir = makeSnapshotDir();
+    const project = makeProject();
+    const synthetic = syntheticDoc('ses_steer_only', '2026-11-08T12:00:00.000Z');
+    writeJson(snapshotDir, 'ses_steer_only', synthetic);
+    const { handleRequest } = handlersWith(snapshotDir, absentBridge);
+    const answer = await handleRequest({
+      method: 'GET', path: '/snapshot', query: { sessionId: 'ses_steer_only', directory: project },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body).toEqual(synthetic);
+    expect(answer.body.tasks).toBeNull();
+    expect(answer.body.dag.runs[0].run_key).toBe('steer:ses_steer_only');
+  });
+
+  test('a malformed temp candidate never masks a valid project engine document', async () => {
+    const snapshotDir = makeSnapshotDir();
+    const project = makeProject();
+    const engine = engineDoc('ses_malformed_temp', '2026-10-01T00:00:00.000Z');
+    writeJson(projectRunsDir(project), 'ses_malformed_temp', engine);
+    nodeFs.writeFileSync(tempPath(snapshotDir, 'ses_malformed_temp'), 'not json{', 'utf8');
+    const { handleRequest } = handlersWith(snapshotDir, absentBridge);
+    const answer = await handleRequest({
+      method: 'GET', path: '/snapshot', query: { sessionId: 'ses_malformed_temp', directory: project },
+    });
+    expect(answer.status).toBe(200);
+    expect(answer.body.tasks.tasks).toHaveLength(1);
+    expect(answer.body.dag.runs[0].run_key).toBe('engine:ses_malformed_temp');
+  });
+
+  test('settleSteer writes no synthetic document when an engine document exists at either path', async () => {
+    // Engine at the temp path: the existing bytes must survive untouched.
+    const snapshotDir = makeSnapshotDir();
+    const projectA = makeProject();
+    const tempEngine = `${JSON.stringify(engineDoc('ses_guard_temp', '2026-10-01T00:00:00.000Z'))}`;
+    nodeFs.writeFileSync(tempPath(snapshotDir, 'ses_guard_temp'), tempEngine, 'utf8');
+    const runA = controlledBridge();
+    const handlersA = handlersWith(snapshotDir, () => runA.bridge);
+    const steeredA = await handlersA.handleRequest({
+      method: 'POST', path: '/steer',
+      body: { message: 'Go', sessionId: 'ses_guard_temp', directory: projectA },
+    });
+    expect(steeredA.status).toBe(200);
+    runA.settle();
+    await runA.settled;
+    expect(nodeFs.readFileSync(tempPath(snapshotDir, 'ses_guard_temp'), 'utf8')).toBe(tempEngine);
+
+    // Engine at the project path, no temp candidate: the settle path must not
+    // create the synthetic fallback beside it.
+    const projectB = makeProject();
+    writeJson(projectRunsDir(projectB), 'ses_guard_project', engineDoc('ses_guard_project', '2026-10-01T00:00:00.000Z'));
+    const runB = controlledBridge();
+    const handlersB = handlersWith(snapshotDir, () => runB.bridge);
+    const steeredB = await handlersB.handleRequest({
+      method: 'POST', path: '/steer',
+      body: { message: 'Go', sessionId: 'ses_guard_project', directory: projectB },
+    });
+    expect(steeredB.status).toBe(200);
+    runB.settle();
+    await runB.settled;
+    expect(nodeFs.existsSync(tempPath(snapshotDir, 'ses_guard_project'))).toBe(false);
   });
 });
 
@@ -1005,6 +1395,521 @@ describe('project-scoped chat-run persistence', () => {
     }
     const parsed = parseSnapshotDoc(live.body);
     expect(parsed.ok).toBe(true);
+  });
+});
+
+// HC8: a posted task_id/node_id is a claim, and only the project's persisted
+// task records may corroborate it. These tests drive the real
+// createAttributionStateReader over real temp project records; none of it is
+// stubbed, so a fabricated id that survives would be a genuine leak.
+describe('posted attribution corroboration', () => {
+  const dagRecord = (taskId, childSessionId, nodeId, runId = 'run-1', parentSessionId = 'ses_attr_A') => ({
+    task_id: taskId,
+    child_session_id: childSessionId,
+    // A real record always names the conversation that started it; membership is now part of corroboration.
+    parent_session_id: parentSessionId,
+    root_session_id: parentSessionId,
+    owner: { kind: 'dag', runId, nodeId },
+  });
+  const writeTaskRecord = (project, record) => {
+    const tasks = join(project, '.omo', 'senpi-task', 'tasks');
+    nodeFs.mkdirSync(tasks, { recursive: true });
+    nodeFs.writeFileSync(join(tasks, `${record.task_id}.json`), JSON.stringify(record), 'utf8');
+  };
+  const node = (id, extra = {}) => ({
+    id,
+    label: id,
+    state: 'completed',
+    attempt: 1,
+    prompt: id,
+    depends_on: [],
+    started_at: null,
+    completed_at: null,
+    ...extra,
+  });
+  const docWithNodes = (sessionId, nodes) => ({
+    schemaVersion: 1,
+    sessionId,
+    updatedAt: '2026-11-08T10:00:00.000Z',
+    dag: {
+      runs: [{
+        run_id: sessionId,
+        run_key: `chat:${sessionId}`,
+        name: `Conv ${sessionId}`,
+        status: 'completed',
+        counts: { pending: 0, running: 0, completed: nodes.length },
+        nodes,
+        edges: [],
+        waves: [{ index: 0, node_ids: nodes.map((entry) => entry.id) }],
+      }],
+    },
+    tasks: null,
+  });
+  const docWithTasks = (sessionId, tasks) => ({
+    ...docWithNodes(sessionId, [node('parent')]),
+    tasks: { tasks },
+  });
+  const newProject = () => {
+    const dir = nodeFs.mkdtempSync(join(tmpdir(), 'dag-attr-'));
+    scratchDirs.push(dir);
+    return dir;
+  };
+  const persistedNode = (project, sessionId, nodeId) => {
+    const raw = nodeFs.readFileSync(join(project, '.omo', 'dag-runs', `${sessionId}.snapshot.json`), 'utf8');
+    return JSON.parse(raw).dag.runs[0].nodes.find((entry) => entry.id === nodeId);
+  };
+  const persistedTasks = (project, sessionId) => {
+    const raw = nodeFs.readFileSync(join(project, '.omo', 'dag-runs', `${sessionId}.snapshot.json`), 'utf8');
+    return JSON.parse(raw).tasks.tasks;
+  };
+
+  test('keeps a corroborated id and drops a fabricated pair before persisting', async () => {
+    const project = newProject();
+    writeTaskRecord(project, dagRecord('task_real_1', 'ses_kid_real', 'node_real_1', 'run-1', 'ses_attr_A'));
+    const sessionId = 'ses_attr_A';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithNodes(sessionId, [
+          node('parent'),
+          node('ses_kid_real', { task_id: 'task_real_1', node_id: 'node_real_1' }),
+          node('ses_kid_fake', { task_id: 'task_fake', node_id: 'node_fake' }),
+          node('synthesis'),
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.written).toBe(true);
+    expect(post.body.attributionCorroboration).toBe('applied');
+    expect(post.body.attributionDropped).toEqual([
+      { node: 'ses_kid_fake', nodeIndex: 2, field: 'task_id', reason: 'task_id is not present in the attribution records' },
+      { node: 'ses_kid_fake', nodeIndex: 2, field: 'node_id', reason: 'node_id is not present in the attribution records' },
+    ]);
+    const real = persistedNode(project, sessionId, 'ses_kid_real');
+    expect(real.task_id).toBe('task_real_1');
+    expect(real.node_id).toBe('node_real_1');
+    const fake = persistedNode(project, sessionId, 'ses_kid_fake');
+    expect('task_id' in fake).toBe(false);
+    expect('node_id' in fake).toBe(false);
+    expect('task_id' in persistedNode(project, sessionId, 'parent')).toBe(false);
+    expect('node_id' in persistedNode(project, sessionId, 'synthesis')).toBe(false);
+    const read = await request({ method: 'GET', path: '/snapshot', query: { sessionId, directory: project } });
+    expect(read.status).toBe(200);
+    const served = read.body.dag.runs[0].nodes.find((entry) => entry.id === 'ses_kid_fake');
+    expect('task_id' in served).toBe(false);
+    expect('node_id' in served).toBe(false);
+  });
+
+  test('drops malformed and prototype-named ids instead of persisting them', async () => {
+    const project = newProject();
+    writeTaskRecord(project, dagRecord('task_real_1', 'ses_kid_real', 'node_real_1', 'run-1', 'ses_attr_B'));
+    const sessionId = 'ses_attr_B';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithNodes(sessionId, [
+          node('ses_kid_real', { task_id: 42, node_id: { nested: true } }),
+          node('ses_kid_proto', { task_id: '__proto__', node_id: 'constructor' }),
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.written).toBe(true);
+    expect(post.body.attributionCorroboration).toBe('applied');
+    expect(post.body.attributionDropped.map((entry) => [entry.node, entry.field]))
+      .toEqual([
+        ['ses_kid_real', 'task_id'],
+        ['ses_kid_real', 'node_id'],
+        ['ses_kid_proto', 'task_id'],
+        ['ses_kid_proto', 'node_id'],
+      ]);
+    for (const entry of post.body.attributionDropped) {
+      expect(entry.reason.length).toBeGreaterThan(0);
+    }
+    expect(post.body.attributionDropped[0].reason).toBe('task_id must be a non-empty string');
+    const malformed = persistedNode(project, sessionId, 'ses_kid_real');
+    expect('task_id' in malformed).toBe(false);
+    expect('node_id' in malformed).toBe(false);
+    const proto = persistedNode(project, sessionId, 'ses_kid_proto');
+    expect('task_id' in proto).toBe(false);
+    expect('node_id' in proto).toBe(false);
+  });
+
+  test('an absent index drops every unverifiable id and reports the skip', async () => {
+    const project = newProject();
+    const sessionId = 'ses_attr_C';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithNodes(sessionId, [
+          node('ses_kid_unrecorded', { task_id: 'task_unrecorded', node_id: 'node_unrecorded' }),
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.written).toBe(true);
+    expect(post.body.attributionCorroboration).toBe('skipped');
+    expect(post.body.attributionSkippedReason).toBe('no attribution records exist for this project');
+    expect(post.body.attributionDropped).toEqual([
+      { node: 'ses_kid_unrecorded', nodeIndex: 0, field: 'task_id', reason: 'corroboration_unavailable' },
+      { node: 'ses_kid_unrecorded', nodeIndex: 0, field: 'node_id', reason: 'corroboration_unavailable' },
+    ]);
+    const dropped = persistedNode(project, sessionId, 'ses_kid_unrecorded');
+    expect('task_id' in dropped).toBe(false);
+    expect('node_id' in dropped).toBe(false);
+  });
+
+  test('malformed and prototype-named ids are dropped when corroboration is skipped', async () => {
+    const project = newProject();
+    const sessionId = 'ses_attr_C2';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithNodes(sessionId, [
+          node('ses_kid_proto_skipped', { task_id: '__proto__', node_id: 'constructor' }),
+          node('ses_kid_bad_skipped', { task_id: 42, node_id: { nested: true } }),
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.attributionCorroboration).toBe('skipped');
+    expect(post.body.attributionDropped.map((entry) => [entry.node, entry.field, entry.reason])).toEqual([
+      ['ses_kid_proto_skipped', 'task_id', 'corroboration_unavailable'],
+      ['ses_kid_proto_skipped', 'node_id', 'corroboration_unavailable'],
+      ['ses_kid_bad_skipped', 'task_id', 'corroboration_unavailable'],
+      ['ses_kid_bad_skipped', 'node_id', 'corroboration_unavailable'],
+    ]);
+    const proto = persistedNode(project, sessionId, 'ses_kid_proto_skipped');
+    expect('task_id' in proto).toBe(false);
+    expect('node_id' in proto).toBe(false);
+    const malformed = persistedNode(project, sessionId, 'ses_kid_bad_skipped');
+    expect('task_id' in malformed).toBe(false);
+    expect('node_id' in malformed).toBe(false);
+  });
+
+  test('an unreadable index drops every unverifiable id and never pretends corroboration passed', async () => {
+    const project = newProject();
+    nodeFs.mkdirSync(join(project, '.omo', 'senpi-task', 'tasks'), { recursive: true });
+    nodeFs.writeFileSync(join(project, '.omo', 'senpi-task', 'tasks', 'broken.json'), 'not json{', 'utf8');
+    const sessionId = 'ses_attr_D';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithNodes(sessionId, [
+          node('ses_kid_any', { task_id: 'task_any', node_id: 'node_any' }),
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.attributionCorroboration).toBe('skipped');
+    expect(post.body.attributionSkippedReason).toContain('malformed');
+    expect(post.body.attributionDropped).toEqual([
+      { node: 'ses_kid_any', nodeIndex: 0, field: 'task_id', reason: 'corroboration_unavailable' },
+      { node: 'ses_kid_any', nodeIndex: 0, field: 'node_id', reason: 'corroboration_unavailable' },
+    ]);
+    const dropped = persistedNode(project, sessionId, 'ses_kid_any');
+    expect('task_id' in dropped).toBe(false);
+    expect('node_id' in dropped).toBe(false);
+  });
+
+  test('a repost that writes nothing still reports the fabricated id it dropped', async () => {
+    const project = newProject();
+    writeTaskRecord(project, dagRecord('task_real_1', 'ses_kid_real', 'node_real_1', 'run-1', 'ses_attr_E'));
+    const sessionId = 'ses_attr_E';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const body = {
+      directory: project,
+      conversationId: sessionId,
+      snapshot: docWithNodes(sessionId, [node('ses_kid_fake', { task_id: 'task_fake', node_id: 'node_fake' })]),
+    };
+    const first = await request({ method: 'POST', path: '/snapshot', body });
+    expect(first.body.written).toBe(true);
+    expect(first.body.attributionDropped.length).toBe(2);
+    const second = await request({ method: 'POST', path: '/snapshot', body });
+    expect(second.status).toBe(200);
+    expect(second.body.written).toBe(false);
+    expect(second.body.reason).toBe('unchanged');
+    expect(second.body.attributionCorroboration).toBe('applied');
+    expect(second.body.attributionDropped.length).toBe(2);
+    const fake = persistedNode(project, sessionId, 'ses_kid_fake');
+    expect('task_id' in fake).toBe(false);
+    expect('node_id' in fake).toBe(false);
+  });
+
+  test('a real id claimed for the wrong child session is dropped', async () => {
+    const project = newProject();
+    writeTaskRecord(project, dagRecord('task_real_1', 'ses_kid_real', 'node_real_1', 'run-1', 'ses_attr_F'));
+    writeTaskRecord(project, dagRecord('task_other_1', 'ses_kid_other', 'node_other_1', 'run-1', 'ses_attr_F'));
+    const sessionId = 'ses_attr_F';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithNodes(sessionId, [
+          node('ses_kid_real', { task_id: 'task_other_1', node_id: 'node_other_1' }),
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.written).toBe(true);
+    expect(post.body.attributionDropped.map((entry) => entry.field)).toEqual(['task_id', 'node_id']);
+    const keptNode = persistedNode(project, sessionId, 'ses_kid_real');
+    expect('task_id' in keptNode).toBe(false);
+    expect('node_id' in keptNode).toBe(false);
+  });
+
+  test('an absent index drops every unverifiable tasks-row id and reports it', async () => {
+    const project = newProject();
+    const sessionId = 'ses_attr_T1';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithTasks(sessionId, [
+          { task_id: 'st_fake', node_id: 'node_fake', status: 'completed', name: 'fake' },
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.written).toBe(true);
+    expect(post.body.attributionCorroboration).toBe('skipped');
+    expect(post.body.attributionSkippedReason).toBe('no attribution records exist for this project');
+    expect(post.body.attributionDropped).toEqual([
+      { task: 'st_fake', taskIndex: 0, field: 'task_id', reason: 'corroboration_unavailable' },
+      { task: 'st_fake', taskIndex: 0, field: 'node_id', reason: 'corroboration_unavailable' },
+    ]);
+    const persisted = persistedTasks(project, sessionId)[0];
+    expect('task_id' in persisted).toBe(false);
+    expect('node_id' in persisted).toBe(false);
+    expect(persisted.status).toBe('completed');
+    const read = await request({ method: 'GET', path: '/snapshot', query: { sessionId, directory: project } });
+    expect(read.status).toBe(200);
+    const served = read.body.tasks.tasks[0];
+    expect('task_id' in served).toBe(false);
+    expect('node_id' in served).toBe(false);
+  });
+
+  test('a real index keeps a corroborated tasks-row id and drops the fabricated row beside it', async () => {
+    const project = newProject();
+    writeTaskRecord(project, dagRecord('task_real_t', 'ses_kid_t', 'node_real_t', 'run-1', 'ses_attr_T2'));
+    const sessionId = 'ses_attr_T2';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithTasks(sessionId, [
+          { task_id: 'task_real_t', node_id: 'node_real_t', status: 'running', name: 'real' },
+          { task_id: 'st_fake', node_id: 'node_fake', status: 'running', name: 'fake' },
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.written).toBe(true);
+    expect(post.body.attributionCorroboration).toBe('applied');
+    expect(post.body.attributionDropped).toEqual([
+      { task: 'st_fake', taskIndex: 1, field: 'task_id', reason: 'task_id is not present in the attribution records' },
+      { task: 'st_fake', taskIndex: 1, field: 'node_id', reason: 'node_id is not present in the attribution records' },
+    ]);
+    const [real, fake] = persistedTasks(project, sessionId);
+    expect(real.task_id).toBe('task_real_t');
+    expect(real.node_id).toBe('node_real_t');
+    expect(real.name).toBe('real');
+    expect('task_id' in fake).toBe(false);
+    expect('node_id' in fake).toBe(false);
+  });
+
+  const claimedRecord = (taskId, childSessionId, nodeId, status, verificationStatus, parentSessionId = 'ses_attr_A') => ({
+    ...dagRecord(taskId, childSessionId, nodeId, 'run-1', parentSessionId),
+    status,
+    ...(verificationStatus === undefined ? {} : { verification_status: verificationStatus }),
+  });
+
+  test('keeps a posted verification claim only when the durable record carries the same claim', async () => {
+    const project = newProject();
+    writeTaskRecord(project, claimedRecord('task_verified', 'ses_verified', 'node_verified', 'completed', 'verified', 'ses_attr_V1'));
+    const sessionId = 'ses_attr_V1';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithTasks(sessionId, [
+          { task_id: 'task_verified', node_id: 'node_verified', status: 'completed', name: 'verified', verification_status: 'verified' },
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.attributionDropped).toEqual([]);
+    expect(persistedTasks(project, sessionId)[0].verification_status).toBe('verified');
+    const read = await request({ method: 'GET', path: '/snapshot', query: { sessionId, directory: project } });
+    expect(read.body.tasks.tasks[0].verification_status).toBe('verified');
+  });
+
+  test('rejects a posted task that belongs to another conversation', async () => {
+    const project = newProject();
+    writeTaskRecord(project, dagRecord('task_foreign', 'ses_foreign_kid', 'node_foreign', 'run-1', 'ses_other_convo'));
+    const sessionId = 'ses_attr_X1';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithTasks(sessionId, [
+          { task_id: 'task_foreign', node_id: 'node_foreign', status: 'running', name: 'foreign' },
+        ]),
+      },
+    });
+
+    expect(post.status).toBe(200);
+    expect(post.body.attributionDropped.map((entry) => [entry.field, entry.reason])).toEqual([
+      ['task_id', 'task_id is not attributed to this conversation'],
+    ]);
+    const persisted = persistedTasks(project, sessionId)[0];
+    expect('task_id' in persisted).toBe(false);
+  });
+
+  test('a project document outranks the shared temp document for the same session', async () => {
+    const project = newProject();
+    const dir = makeSnapshotDir();
+    nodeFs.writeFileSync(join(dir, 'ses_rank01.snapshot.json'), JSON.stringify({ schemaVersion: 1, sessionId: 'ses_rank01', updatedAt: '2026-11-15T00:00:00.000Z', dag: { runs: [] }, tasks: { tasks: [{ task_id: 'task_temp' }] } }), 'utf8');
+    const projectRuns = join(project, '.omo', 'dag-runs');
+    nodeFs.mkdirSync(projectRuns, { recursive: true });
+    nodeFs.writeFileSync(join(projectRuns, 'ses_rank01.snapshot.json'), JSON.stringify({ schemaVersion: 1, sessionId: 'ses_rank01', updatedAt: '2026-11-15T00:00:00.000Z', dag: { runs: [] }, tasks: { tasks: [{ task_id: 'task_project' }] } }), 'utf8');
+    const request = handlersWith(dir, absentBridge).handleRequest;
+
+    const answer = await request({ method: 'GET', path: '/snapshot', query: { sessionId: 'ses_rank01', directory: project } });
+
+    expect(answer.status).toBe(200);
+    expect(answer.body.tasks.tasks.map((task) => task.task_id)).toEqual(['task_project']);
+  });
+
+  test('a blocked record can never be posted or served as verified', async () => {
+    const project = newProject();
+    writeTaskRecord(project, claimedRecord('task_blocked', 'ses_blocked', 'node_blocked', 'error', 'blocked', 'ses_attr_V2'));
+    const sessionId = 'ses_attr_V2';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithTasks(sessionId, [
+          { task_id: 'task_blocked', node_id: 'node_blocked', status: 'error', name: 'blocked', verification_status: 'verified' },
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.written).toBe(true);
+    expect(post.body.attributionDropped.map((entry) => [entry.field, entry.reason])).toEqual([
+      ['verification_status', 'verification_status does not match the persisted task record'],
+    ]);
+    const persisted = persistedTasks(project, sessionId)[0];
+    expect('verification_status' in persisted).toBe(false);
+    const read = await request({ method: 'GET', path: '/snapshot', query: { sessionId, directory: project } });
+    const served = read.body.tasks.tasks[0];
+    // The posted "verified" was dropped; what the row serves is the record's own claim, which is "blocked".
+    expect(served.verification_status).toBe('blocked');
+    expect(JSON.stringify(read.body)).not.toContain('"verification_status":"verified"');
+  });
+
+  test('a completed record with no claim rejects a posted verified claim and accepts the fail-closed unverified projection', async () => {
+    const project = newProject();
+    writeTaskRecord(project, claimedRecord('task_unclaimed', 'ses_unclaimed', 'node_unclaimed', 'completed', undefined, 'ses_attr_V3'));
+    const sessionId = 'ses_attr_V3';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const forged = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithTasks(sessionId, [
+          { task_id: 'task_unclaimed', node_id: 'node_unclaimed', status: 'completed', name: 'unclaimed', verification_status: 'verified' },
+        ]),
+      },
+    });
+    expect(forged.body.attributionDropped.map((entry) => entry.field)).toEqual(['verification_status']);
+    expect('verification_status' in persistedTasks(project, sessionId)[0]).toBe(false);
+    const truthful = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithTasks(sessionId, [
+          { task_id: 'task_unclaimed', node_id: 'node_unclaimed', status: 'completed', name: 'unclaimed', verification_status: 'unverified' },
+        ]),
+      },
+    });
+    expect(truthful.body.attributionDropped).toEqual([]);
+    expect(persistedTasks(project, sessionId)[0].verification_status).toBe('unverified');
+  });
+
+  test('a run node cannot borrow a verification claim from another task or a bare node id', async () => {
+    const project = newProject();
+    writeTaskRecord(project, claimedRecord('task_verified', 'ses_verified', 'node_verified', 'completed', 'verified', 'ses_attr_V4'));
+    const sessionId = 'ses_attr_V4';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithNodes(sessionId, [
+          node('ses_verified', { task_id: 'task_verified', node_id: 'node_verified', verification_status: 'verified' }),
+          node('ses_unrecorded', { verification_status: 'verified' }),
+        ]),
+      },
+    });
+    expect(post.status).toBe(200);
+    expect(post.body.attributionDropped.map((entry) => [entry.node, entry.field])).toEqual([
+      ['ses_unrecorded', 'verification_status'],
+    ]);
+    expect(persistedNode(project, sessionId, 'ses_verified').verification_status).toBe('verified');
+    expect('verification_status' in persistedNode(project, sessionId, 'ses_unrecorded')).toBe(false);
+  });
+
+  test('when corroboration is skipped a posted verification claim is dropped like every unverifiable identity', async () => {
+    const project = newProject();
+    const sessionId = 'ses_attr_V5';
+    const request = handlersWith(makeSnapshotDir(), absentBridge).handleRequest;
+    const post = await request({
+      method: 'POST', path: '/snapshot',
+      body: {
+        directory: project,
+        conversationId: sessionId,
+        snapshot: docWithTasks(sessionId, [
+          { task_id: 'st_fake', node_id: 'node_fake', status: 'completed', name: 'fake', verification_status: 'verified' },
+        ]),
+      },
+    });
+    expect(post.body.attributionCorroboration).toBe('skipped');
+    expect(post.body.attributionDropped.map((entry) => entry.field)).toEqual([
+      'task_id', 'node_id', 'verification_status',
+    ]);
+    expect('verification_status' in persistedTasks(project, sessionId)[0]).toBe(false);
   });
 });
 

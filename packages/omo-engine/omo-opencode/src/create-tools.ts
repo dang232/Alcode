@@ -13,6 +13,13 @@ import type { OhMyOpenCodeConfig } from "./config/schema/oh-my-opencode-config";
 import { buildToolRegistry } from "./plugin/tool-registry";
 import { getAgentToolRestrictions } from "./shared/agent-tool-restrictions";
 import { createCodeGraphTools } from "./tools/code-graph/index.ts";
+import { createDelegationTools, CALL_OMO_AGENT_TOOL_NAME, TASK_TOOL_NAME } from "./tools/delegation/delegation-tools.ts";
+import { createWorkspaceBashTool, BASH_TOOL_NAME } from "./tools/workspace/bash.ts";
+import { createWorkspaceEditTool, EDIT_TOOL_NAME } from "./tools/workspace/edit.ts";
+import { createWorkspaceGlobTool, GLOB_TOOL_NAME } from "./tools/workspace/glob.ts";
+import { createWorkspaceGrepTool, GREP_TOOL_NAME } from "./tools/workspace/grep.ts";
+import { createWorkspaceReadTool, READ_TOOL_NAME } from "./tools/workspace/read.ts";
+import { createWorkspaceWriteTool, WRITE_TOOL_NAME } from "./tools/workspace/write.ts";
 import { createUlwTools } from "./tools/ulw/index.ts";
 
 // Candidate locations for the shared skills loader barrel. Tried in order;
@@ -150,33 +157,45 @@ export async function createTools(
       getAgentToolRestrictions(agentName),
   });
 
+  // Every advertised name carries a real implementation: a name the model can call must be a name that executes.
+  // Unknown names stay absent from the map rather than becoming stubs, so the model reaches for tools that exist
+  // instead of failing against ones that only look like they do.
   const filteredTools: OmoCreatedTools["filteredTools"] = {};
-  for (const [name, entry] of Object.entries(registry)) {
-    filteredTools[name] = {
-      description: entry.description,
-      args: { properties: {} },
-      execute: async () => "tool unavailable in this context",
-    };
-  }
+  const install = (name: string, tool: OmoCreatedTools["filteredTools"][string]): void => {
+    if (registry[name] !== undefined) filteredTools[name] = tool;
+  };
 
   // Native ULW tools keep their registry names and gating (user disables,
   // per-agent denies, and the size cap all applied above) but run the real
   // store-backed executes. A name the registry dropped stays dropped.
   const ulwTools = createUlwTools();
-  for (const [name, tool] of Object.entries(ulwTools)) {
-    if (registry[name] !== undefined) {
-      filteredTools[name] = tool;
-    }
-  }
+  for (const [name, tool] of Object.entries(ulwTools)) install(name, tool);
 
   // The native code-graph tool follows the same merge: registry-gated name,
   // real engine-backed execute. A dropped name stays dropped.
   const codeGraphTools = createCodeGraphTools({ directory: ctx.directory });
-  for (const [name, tool] of Object.entries(codeGraphTools)) {
-    if (registry[name] !== undefined) {
-      filteredTools[name] = tool;
-    }
-  }
+  for (const [name, tool] of Object.entries(codeGraphTools)) install(name, tool);
+
+  // Native workspace tools follow the same registry gate: the catalog decides
+  // whether an agent may see the name, the implementation decides what it does.
+  const workspaceTools: Record<string, ReturnType<typeof createWorkspaceReadTool> | ReturnType<typeof createWorkspaceWriteTool> | ReturnType<typeof createWorkspaceBashTool> | ReturnType<typeof createWorkspaceGrepTool> | ReturnType<typeof createWorkspaceEditTool> | ReturnType<typeof createWorkspaceGlobTool>> = {
+    [READ_TOOL_NAME]: createWorkspaceReadTool({ directory: ctx.directory }),
+    [WRITE_TOOL_NAME]: createWorkspaceWriteTool({ directory: ctx.directory }),
+    [BASH_TOOL_NAME]: createWorkspaceBashTool({ directory: ctx.directory }),
+    [GREP_TOOL_NAME]: createWorkspaceGrepTool({ directory: ctx.directory }),
+    [EDIT_TOOL_NAME]: createWorkspaceEditTool({ directory: ctx.directory }),
+    [GLOB_TOOL_NAME]: createWorkspaceGlobTool({ directory: ctx.directory }),
+  };
+  // Delegation tools own request authority only; the host owns orchestration.
+  // The catalog may list the name either way; the capability decides whether the
+  // tool can act, and a host that supplies none leaves it refusing.
+  const delegation = createDelegationTools({ directory: ctx.directory, capabilities: ctx.hostCapabilities });
+  const delegationTools: Record<string, ReturnType<typeof createDelegationTools>["task"]> = {
+    [TASK_TOOL_NAME]: delegation.task,
+    [CALL_OMO_AGENT_TOOL_NAME]: delegation.callOmoAgent,
+  };
+  for (const [name, tool] of Object.entries(workspaceTools)) install(name, tool);
+  for (const [name, tool] of Object.entries(delegationTools)) install(name, tool);
 
   return { filteredTools, mergedSkills, availableSkills };
 }

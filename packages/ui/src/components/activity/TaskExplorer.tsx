@@ -58,9 +58,11 @@ const TaskRow: React.FC<{ row: ActivityTreeRow; selected: boolean; onSelect: (id
         {icon && <Icon name={icon} className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
         <span className="min-w-0 flex-1">
           <span className="typography-ui block truncate font-medium">{row.label}</span>
-          <span className="typography-micro block truncate opacity-80">
+          <span className="typography-micro block truncate opacity-80" data-repair-state={row.repair?.state}>
             {row.agent ? `${row.agent} · ` : ''}
             {t(`activity.graph.state.${row.state}`)}
+            {row.state === 'completed' ? ` · ${t(`activity.verification.${row.verificationStatus ?? 'unverified'}`)}` : null}
+            {row.repair ? ` · ${t('activity.repair.label')} ${t(`activity.repair.state.${row.repair.state}`)}` : ''}
             {row.progress ? ` · ${row.progress.settled}/${row.progress.total}` : ''}
           </span>
         </span>

@@ -11,8 +11,6 @@ export async function checkCompletionConditions(ctx: RunContext): Promise<boolea
     const continuationState = await getContinuationState(ctx.directory, ctx.sessionID, ctx.client)
 
     if (continuationState.hasActiveHookMarker) {
-      const reason = continuationState.activeHookMarkerReason ?? "continuation hook is active"
-      logWaiting(ctx, reason)
       return false
     }
 
@@ -21,7 +19,6 @@ export async function checkCompletionConditions(ctx: RunContext): Promise<boolea
     }
 
     if (continuationState.hasActiveBackgroundTaskMarker) {
-      logWaiting(ctx, continuationState.activeHookMarkerReason ?? "background tasks are active")
       return false
     }
 
@@ -45,12 +42,10 @@ function areContinuationHooksIdle(
   continuationState: ContinuationState
 ): boolean {
   if (continuationState.hasActiveBoulder) {
-    logWaiting(ctx, "boulder continuation is active")
     return false
   }
 
   if (continuationState.hasActiveRalphLoop) {
-    logWaiting(ctx, "ralph-loop continuation is active")
     return false
   }
 
@@ -69,7 +64,6 @@ async function areAllTodosComplete(ctx: RunContext): Promise<boolean> {
   )
 
   if (incompleteTodos.length > 0) {
-    logWaiting(ctx, `${incompleteTodos.length} todos remaining`)
     return false
   }
 
@@ -104,7 +98,6 @@ async function areAllDescendantsIdle(
   for (const child of children) {
     const status = allStatuses[child.id]
     if (status && status.type !== "idle") {
-      logWaiting(ctx, `session ${child.id.slice(0, 8)}... is ${status.type}`)
       return false
     }
 
@@ -119,12 +112,4 @@ async function areAllDescendantsIdle(
   }
 
   return true
-}
-
-function logWaiting(ctx: RunContext, message: string): void {
-  if (!ctx.verbose) {
-    return
-  }
-
-  console.log(pc.dim(`  Waiting: ${message}`))
 }

@@ -55,4 +55,20 @@ describe("TaskToolParams", () => {
     expect(keys.indexOf("task_summary")).toBe(keys.indexOf("prompt") + 1)
     expect(itemSchema.properties.task_summary).toMatchObject({ maxLength: TASK_SUMMARY_MAX_LENGTH })
   })
+
+  test("#given the schema #when delegation is inspected #then it names the plan input and its role keys", () => {
+    const delegation = TaskToolParams.properties.delegation
+    expect(delegation).toBeDefined()
+    const properties = delegation.properties
+    expect(Object.keys(properties).sort()).toEqual([
+      "deadline_ms",
+      "max_nodes",
+      "objective",
+      "roles",
+      "working_directory",
+    ])
+    expect(properties.roles).toMatchObject({ minItems: 1 })
+    expect(properties.roles.items.properties.key).toBeDefined()
+    expect(properties.roles.items.properties.assignment).toBeDefined()
+  })
 })

@@ -37,6 +37,7 @@ const createRuntime = (server, overrides = {}) => {
     beginGuestServiceShutdown: vi.fn(),
     stopAllGuestServices: vi.fn(),
     getGuestSurfaceRuntime: () => null,
+    getTaskHostSupervisor: () => null,
     getRealtimeProxyRuntime: () => null,
     getDictationRuntime: () => null,
     getRelayService: () => null,
@@ -272,5 +273,27 @@ describe('graceful shutdown runtime', () => {
     expect(dictation.stop).toHaveBeenCalledTimes(1);
     expect(stopAllGuestServices).toHaveBeenCalledTimes(1);
     expect(process.exit).toHaveBeenCalledWith(0);
+  });
+});
+
+describe('task host drain', () => {
+  it('drains the supervised task host before the HTTP server closes', async () => {
+    const order = [];
+    const server = http.createServer((_request, response) => response.end('ok'));
+    server.listen(0);
+    await once(server, 'listening');
+    const closes = server.close.bind(server);
+    server.close = (callback) => {
+      order.push('server-close');
+      return closes(callback);
+    };
+    const runtime = createRuntime(server, {
+      getTaskHostSupervisor: () => ({ stop: async () => { order.push('host-stop'); } }),
+    });
+
+    await runtime.gracefulShutdown({ exitProcess: false });
+
+    expect(order[0]).toBe('host-stop');
+    expect(order).toContain('server-close');
   });
 });

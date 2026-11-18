@@ -276,7 +276,7 @@ describe("production knowledge activation", () => {
     fs.writeFileSync(
       script,
       [
-        `const { buildPlannerEvidence } = await import(${JSON.stringify(new URL("file:///" + join(process.cwd(), "packages/omo-engine/omo-opencode/src/cli/run/plan-evidence.ts").replace(/\\\\/g, "/")).href)})`,
+        `const { buildPlannerEvidence } = await import(${JSON.stringify(new URL("../../../omo-opencode/src/cli/run/plan-evidence.ts", import.meta.url).href)})`,
         `const directory = ${JSON.stringify(repo.directory)}`,
         `const knowledgeRoot = ${JSON.stringify(storeRoot)}`,
         `const projectId = ${JSON.stringify(projectId)}`,

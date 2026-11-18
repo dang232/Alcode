@@ -77,8 +77,10 @@ const GraphNodeButton: React.FC<{
         {icon && <Icon name={icon} className="h-3.5 w-3.5 shrink-0" />}
         <span className="truncate">{node.label}</span>
       </span>
-      <span className="typography-micro opacity-80">
+      <span className="typography-micro opacity-80" data-repair-state={node.repair?.state}>
         {t(`activity.graph.state.${node.state}`)}
+        {node.state === 'completed' ? ` · ${t(`activity.verification.${node.verificationStatus ?? 'unverified'}`)}` : null}
+        {node.repair ? ` · ${t('activity.repair.label')} ${t(`activity.repair.state.${node.repair.state}`)}` : null}
         {selected ? ` · ${t('activity.graph.selected')}` : ''}
       </span>
     </button>

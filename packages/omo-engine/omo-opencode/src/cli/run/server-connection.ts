@@ -56,7 +56,6 @@ async function startServer<TClient>(
   )
 
   const client = deps.createEngineClient({ baseUrl: managed.baseUrl, password: managed.password })
-  console.log(pc.dim("Server listening at"), pc.cyan(managed.baseUrl))
   return { client, cleanup: () => { void managed.stop() } }
 }
 

@@ -8,7 +8,6 @@ const DEFAULT_POLL_INTERVAL_MS = 500
 const DEFAULT_REQUIRED_CONSECUTIVE = 1
 const ERROR_GRACE_CYCLES = 3
 const MIN_STABILIZATION_MS = 1_000
-const DEFAULT_EVENT_WATCHDOG_MS = 30_000 // 30 seconds
 const DEFAULT_SECONDARY_MEANINGFUL_WORK_TIMEOUT_MS = 60_000 // 60 seconds
 
 type SessionStatusMap = Record<string, { type?: string }>
@@ -48,8 +47,6 @@ export async function pollForCompletion(
     options.minStabilizationMs ?? MIN_STABILIZATION_MS
   const minStabilizationMs =
     rawMinStabilizationMs > 0 ? rawMinStabilizationMs : MIN_STABILIZATION_MS
-  const eventWatchdogMs =
-    options.eventWatchdogMs ?? DEFAULT_EVENT_WATCHDOG_MS
   const secondaryMeaningfulWorkTimeoutMs =
     options.secondaryMeaningfulWorkTimeoutMs ??
     DEFAULT_SECONDARY_MEANINGFUL_WORK_TIMEOUT_MS
@@ -95,32 +92,7 @@ export async function pollForCompletion(
       errorCycleCount = 0
     }
 
-    let mainSessionStatus: "idle" | "busy" | "retry" | null = null
-    if (eventState.lastEventTimestamp !== null) {
-      const timeSinceLastEvent = now() - eventState.lastEventTimestamp
-      if (timeSinceLastEvent > eventWatchdogMs) {
-        console.log(
-          pc.yellow(
-            `\n  No events for ${Math.round(
-              timeSinceLastEvent / 1000
-            )}s, verifying session status...`
-          )
-        )
-
-        mainSessionStatus = await getMainSessionStatus(ctx)
-        if (mainSessionStatus === "idle") {
-          eventState.mainSessionIdle = true
-        } else if (mainSessionStatus === "busy" || mainSessionStatus === "retry") {
-          eventState.mainSessionIdle = false
-        }
-
-        eventState.lastEventTimestamp = now()
-      }
-    }
-
-    if (mainSessionStatus === null) {
-      mainSessionStatus = await getMainSessionStatus(ctx)
-    }
+    const mainSessionStatus = await getMainSessionStatus(ctx)
     if (mainSessionStatus === "busy" || mainSessionStatus === "retry") {
       eventState.mainSessionIdle = false
     } else if (mainSessionStatus === "idle") {

@@ -165,10 +165,6 @@ export function createRoutingRuntime({
   const permissionDecisions = new Map();
   // Sessions the user put on Auto. The sentinel never reaches OpenCode, so
   // nothing upstream remembers the choice for us.
-  // TODO(v2): this is process memory. A server restart drops the mark and the
-  // session silently runs on whatever model it was last switched to while the
-  // composer still shows Auto. Either persist it next to `routing.json` or have
-  // the client resend the sentinel with every send.
   const autoSessions = new Map();
   const AUTO_SESSION_LIMIT = 1000;
 

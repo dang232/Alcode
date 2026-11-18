@@ -490,7 +490,6 @@ export function useServerTTS(
       // Resume if suspended (required for iOS Safari)
       if (ctx.state === 'suspended') {
         await ctx.resume();
-        console.log('[useServerTTS] AudioContext resumed');
       }
       
       // Play a tiny silent buffer to fully unlock
@@ -499,8 +498,6 @@ export function useServerTTS(
       source.buffer = buffer;
       source.connect(ctx.destination);
       source.start(0);
-      
-      console.log('[useServerTTS] Audio unlocked for mobile playback');
     } catch (err) {
       console.error('[useServerTTS] Failed to unlock audio:', err);
     }
@@ -526,7 +523,6 @@ export function useServerTTS(
       const ctx = getAudioContext();
       if (ctx.state === 'suspended') {
         await ctx.resume();
-        console.log('[useServerTTS] AudioContext resumed');
       }
       
       // Play a silent buffer to fully unlock audio on iOS
@@ -544,13 +540,6 @@ export function useServerTTS(
           currentProviderId,
           currentModelId,
         };
-        console.log(
-          '[useServerTTS] Speaking with voice:',
-          options?.voice || 'nova',
-          'options:',
-          options,
-        );
-
         // Chunked (sentence-by-sentence) synthesis is a user setting; when disabled,
       // always take the single-request fast path.
       const chunks = ttsChunkedMode ? splitSentencesForTTS(text) : [text.trim()];
@@ -570,16 +559,12 @@ export function useServerTTS(
       
       // Set up event handlers
       source.onended = () => {
-        console.log('[useServerTTS] Audio playback ended');
         setIsPlaying(false);
             audioSourcesRef.current = [];
         options?.onEnd?.();
       };
       
       // Start playback
-          console.log(
-            '[useServerTTS] Starting audio playback via Web Audio API...',
-          );
       setIsPlaying(true);
       options?.onStart?.();
           return;
@@ -612,14 +597,10 @@ export function useServerTTS(
             sources.push(source);
           },
           onFirstScheduled: () => {
-            console.log(
-              '[useServerTTS] Starting chunked audio playback via Web Audio API...',
-            );
             setIsPlaying(true);
             options?.onStart?.();
           },
           onAllEnded: () => {
-            console.log('[useServerTTS] Chunked playback finished');
             setIsPlaying(false);
             audioSourcesRef.current = [];
             sendOnEnd();

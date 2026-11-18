@@ -27,6 +27,10 @@
  * must spawn without an injected client is refused with a plain error
  * telling the caller to pass `workerSessionId` per goal instead. Tests
  * inject the fake host client; production fan-out arrives with the client.
+ *
+ * `runId` also accepts the session scope of a CLI `create-goals` plan. That
+ * plan is adopted as the native run with the same id, so the id the CLI
+ * returned dispatches here instead of answering `Unknown ULW run`.
  */
 
 import { z } from "zod"
@@ -45,12 +49,13 @@ import type { TeamBounds } from "../../team/runtime.ts"
 import { invalidInputError, runNotActiveError, runNotFoundError } from "../../ulw/errors.ts"
 import { UlwStore } from "../../ulw/store.ts"
 import { NonEmptyText, refuseArgs, runIdOf } from "./args.ts"
+import { resolveDispatchRunRef } from "./run-ref.ts"
 import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_DISPATCH_NAME = "ulw_dispatch"
 
 const ULW_DISPATCH_DESCRIPTION =
-  "Dispatch ULW goals: record worker sessions, or spawn them through the team pool."
+  "Dispatch ULW goals: record worker sessions, or spawn them through the team pool. A create-goals session id resolves to the plan under .omo/ulw-loop/<sessionId>/."
 
 /** Pool bounds in the team runtime's vocabulary; `createTeam` defaults are 4 members and 120 minutes. */
 type UlwDispatchPoolBounds = Pick<TeamBounds, "maxParallelMembers" | "maxWallClockMinutes">
@@ -206,9 +211,10 @@ export function createUlwDispatchTool(deps: UlwDispatchDeps = {}): OmoToolDefini
         if (!parsed.success) {
           refuseArgs(runIdOf(toolArgs), "ULW goalId and workerSessionId must be non-empty strings.")
         }
-        const workers = store.dispatchGoal(parsed.data.runId, parsed.data.goalId, parsed.data.workerSessionId)
+        const runId = resolveDispatchRunRef(store, context.directory, parsed.data.runId)
+        const workers = store.dispatchGoal(runId, parsed.data.goalId, parsed.data.workerSessionId)
         return JSON.stringify({
-          runId: parsed.data.runId,
+          runId,
           goalId: parsed.data.goalId,
           workerSessionId: parsed.data.workerSessionId,
           workers,
@@ -218,7 +224,7 @@ export function createUlwDispatchTool(deps: UlwDispatchDeps = {}): OmoToolDefini
       if (!parsed.success) {
         refuseArgs(runIdOf(toolArgs), "ULW goals must be a non-empty array of { goalId, workerSessionId?, prompt?, agent? }.")
       }
-      const runId = parsed.data.runId
+      const runId = resolveDispatchRunRef(store, context.directory, parsed.data.runId)
       const used = new Set<string>()
       const entries: UlwDispatchEntry[] = parsed.data.goals.map((goal) => {
         const memberName = memberNameFor(goal.goalId, used)

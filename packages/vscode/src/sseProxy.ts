@@ -199,8 +199,6 @@ export const openSseProxy = async ({
 
   const connect = async (): Promise<Response> => {
     try {
-      console.log(`[SSE] Connecting to ${OPENCODE_EVENT_PATH} (attempt ${reconnectAttempts + 1}/${MAX_RECONNECTS + 1})`);
-
       const result = await fetchSseResponse(manager, path, headers, signal);
       reconnectAttempts = 0;
       return result;

@@ -27,6 +27,7 @@ import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import type { ToolPopupContent } from '../types';
 import { PlainDiffFallback } from './PlainDiffFallback';
+import ExecuteToolCallRows from './ExecuteToolCallRows';
 import { isToolDiffPreviewOversized } from './toolDiffPreview';
 import { lazyWithChunkRecovery } from '@/lib/chunkLoadRecovery';
 
@@ -1735,6 +1736,10 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
         return isWriteTool(normalizedPartTool) ? parseWriteLineCount(input) : null;
     }, [input, normalizedPartTool]);
     const isMultiFileApplyPatch = isPatchTool(normalizedPartTool) && Array.isArray(metadata?.files) && metadata.files.length > 1;
+    const executeCallRows = React.useMemo(
+        () => (isExecuteTool(normalizedPartTool) ? executeToolCalls(metadata) : []),
+        [metadata, normalizedPartTool],
+    );
     const normalizedPart = normalizedPartTool !== part.tool ? ({ ...part, tool: normalizedPartTool } as ToolPartType) : part;
     const descriptionPath = getToolDescriptionPath(normalizedPart, state, currentDirectory);
     const builtInDescription = getToolDescription(normalizedPart, state, currentDirectory, t);
@@ -2102,6 +2107,8 @@ const ToolPartContent: React.FC<ToolPartProps & { header?: ToolRowHeader; subage
                     </div>
                 )}
             </div>
+
+            <ExecuteToolCallRows calls={executeCallRows} />
 
             <div
                 ref={expandedContentRef}

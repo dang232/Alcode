@@ -22,6 +22,7 @@ import {
 } from "./scalar-read"
 import { IsolationBackendKindSchema } from "../../../omo-config-core/src/index.ts"
 import type { IsolationMergeResult, IsolationRecord, TaskIsolationSpec } from "../state"
+import { VERIFICATION_STATUSES, type VerificationStatus } from "../verification/completion-status"
 
 function parseIsolationSpec(value: unknown): TaskIsolationSpec {
   if (!isRecord(value)) throw new Error("isolation is not an object")
@@ -87,29 +88,35 @@ export function parseOptionalIsolation(record: Record<string, unknown>): Isolati
 // Parsers for the nested blocks of a persisted task record: ownership, spawn spec, prelaunch
 // steering queue, resolved-model chain, notification epochs, host session identity, and runner kind.
 
-function readOptionalLiteral(
+function readOptionalLiteral<T extends string>(
   record: Record<string, unknown>,
   key: string,
-  validValues: readonly string[],
-): string | undefined {
+  validValues: readonly T[],
+): T | undefined {
   const value = record[key]
   if (value === undefined) return undefined
   if (typeof value !== "string") throw new Error(`${key} is not a string`)
-  if (!validValues.includes(value)) throw new Error(`${key} has an invalid value: ${value}`)
-  return value
+  const matched = validValues.find((candidate) => candidate === value)
+  if (matched === undefined) throw new Error(`${key} has an invalid value: ${value}`)
+  return matched
 }
 
 export function readOptionalRunnerKind(
   record: Record<string, unknown>,
 ): RunnerKind | undefined {
-  const val = readOptionalLiteral(record, "runner_kind", RUNNER_KINDS)
-  return val as RunnerKind | undefined
+  return readOptionalLiteral(record, "runner_kind", RUNNER_KINDS)
 }
 
 export function readOptionalSuspensionReason(
   record: Record<string, unknown>,
 ): SuspensionReason | undefined {
-  return readOptionalLiteral(record, "suspension_reason", SUSPENSION_REASONS) as SuspensionReason | undefined
+  return readOptionalLiteral(record, "suspension_reason", SUSPENSION_REASONS)
+}
+
+export function readOptionalVerificationStatus(
+  record: Record<string, unknown>,
+): VerificationStatus | undefined {
+  return readOptionalLiteral(record, "verification_status", VERIFICATION_STATUSES)
 }
 
 export function parseOptionalHostSession(

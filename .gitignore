@@ -85,3 +85,4 @@ packages/ui/.tsbuild/
 *.tsbuildinfo
 /.omo
 /.algraph/
+/.audit-r1.12

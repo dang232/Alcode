@@ -145,7 +145,7 @@ require('node:http').createServer((request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify(body));
   });
-}).listen(9000, '0.0.0.0', () => console.log('upstream listening'));
+}).listen(9000, '0.0.0.0');
 `;
       await docker([
         'run', '--detach', '--name', name, ...helperLabels,

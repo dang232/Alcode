@@ -19,6 +19,7 @@ export const CodeGraphArgsSchema = z.object({
   depth: z.number().int().min(1).max(3).optional(),
   limit: z.number().int().min(1).max(50).optional(),
   maxBytes: z.number().int().min(512).max(16384).optional(),
+  refresh: z.boolean().optional(),
 })
 
 export type CodeGraphArgs = z.infer<typeof CodeGraphArgsSchema>

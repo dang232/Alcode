@@ -2,6 +2,10 @@
 export { CHILD_PERMISSION_EVENT, TASK_CHILD_EXTENSION_EVENT, parseChildExtensionEvent } from "./runners/child-extension-events"
 export type { ChildExtensionEvent, ChildExtensionListener } from "./runners/child-extension-events"
 export { createWorkpoolTool, createWorkpoolWorkerTool, buildWorkpoolExecute } from "./tools/workpool"
+export { resolveWorkerVerificationContext } from "./verification/worker-context"
+export type { WorkerContextSource, WorkerVerificationBinding, WorkerVerificationContext } from "./verification/worker-context"
+export { VERIFY_TOOL_NAME, createVerificationWorkerTool, VerifyParams } from "./verification/verify-tool"
+export type { VerifyTool, VerifyToolResult } from "./verification/verify-tool"
 export { WorkpoolParams, WorkpoolYieldParams } from "./tools/workpool-schema"
 export { WorkpoolCommandSchema, WorkpoolCreateSchema } from "./workpool/schema"
 export { createWorkpoolStore } from "./workpool/store"
@@ -305,6 +309,18 @@ export type {
   ManagedChildListener,
   ManagedRunner,
   ManagedStartSpec,
+  ManagerAdmissionChild,
+  ManagerAdmissionNodeTarget,
+  ManagerAdmissionPort,
+  ManagerAdmissionRun,
+  ManagerAdmissionRunRecord,
+  ManagerAdmissionRunSpec,
+  ManagerAdmissionTerminal,
+  ManagerAdmissionWaitOptions,
+  ManagerDelegatedStartResult,
+  ManagerDelegationSpec,
+  ManagerDelegationStartRequest,
+  ManagerDelegationStartResult,
   ManagerStartSpec,
   NameRegistration,
   ParentModelRegistryResolver,
@@ -317,6 +333,7 @@ export type {
   TaskConcurrencyConfig,
   TaskManager,
   TaskManagerOptions,
+  TerminalTaskRecord,
   TrustedRespawnLaunch,
   TrustedRespawnLaunchResolver,
 } from "./manager"

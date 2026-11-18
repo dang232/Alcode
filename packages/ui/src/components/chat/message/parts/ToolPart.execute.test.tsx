@@ -128,6 +128,13 @@ test('a Code Mode call shows its script, the tools it called, and the truncation
     expect(container.textContent).toContain('{"teamId":"OPE"}');
     expect(container.textContent).toContain('Output was truncated');
     expect(container.textContent).toContain('/tmp/oc-script-output.json');
+
+    // Each call the script made is also its own row under the Script row, so a
+    // file change or a search is never hidden behind the aggregated suffix.
+    const callRows = container.querySelectorAll('[data-testid="execute-tool-calls"] [data-tool-call]');
+    expect(callRows.length).toBe(3);
+    expect(container.querySelector('[data-tool-call="list_issues"]')).not.toBeNull();
+    expect(container.querySelector('[data-tool-call="get_workspace"]')).not.toBeNull();
   } finally {
     await act(async () => { root.unmount(); });
     await happyWindow.happyDOM.abort();

@@ -1,19 +1,20 @@
 import { createHash } from "node:crypto"
-import { mkdirSync } from "node:fs"
+import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { log } from "../../../utils/src/index.ts"
 
 import type { DagTaskOwner, DagTaskOwnerKey, OwnedStartResult } from "../dag/owner"
+import type { DagNodeId, DagRunId } from "../dag/types"
 import { endFallbackHandoff, forgetClosedChild, handOffToNextRung, isFallbackHandoff } from "../lifecycle/fallback-handoff"
 import { registerLifecycleReattachPorts, type ReattachResult, type RespawnResult } from "../lifecycle/port"
 import { RunnerError } from "../runners/in-process/runner-error"
 import { RpcProcessRunner } from "../runners/rpc-process"
 import type { RpcChildHandle, RpcRunnerSpec } from "../runners/types"
-import { createTaskRecord, isSpawnSpecV1, nextRunEpoch, parseTaskId, syncTaskIdFloor } from "../state"
+import { createTaskRecord, isSpawnSpecV1, nextRunEpoch, parseTaskId, syncTaskIdFloor, transitionTaskRecord } from "../state"
 import { resolvedReasoningFields } from "../state/resolved-reasoning"
 import { TaskIdSpaceExhaustedError } from "../state/id"
-import type { ResolvedModelRecord, TaskRecord, TaskRunStats } from "../state"
+import type { ResolvedModelRecord, TaskRecord, TaskRunStats, TaskTransition, TaskTransitionResult } from "../state"
 import { reopenSelfResumedTurn, type SelfResumedTurnPorts } from "./self-resumed-turn"
 import { createSteeringEngine } from "../steering"
 import type { CancelOptions, CancelOutcome, DestructionPort, InterruptOutcome, SendInput, SendOutcome, SteeringEngine, SteeringPort } from "../steering"
@@ -24,8 +25,39 @@ import { runtimeFallbackCandidates } from "./credential-failure"
 import { createWorkpoolAdmission } from "./workpool-admission"
 import { withResidentStart } from "./resident-start"
 import { createWorkpoolEngine, type WorkpoolEngine } from "../workpool/engine"
+import { CURATED_READONLY_AGENT_NAMES } from "../agents/builtin"
 import { createWorkpoolWorkerTool } from "../tools/workpool"
+import { approvalAuthorityFor } from "../verification/approval-authority"
+import { readApprovals } from "../verification/approval-store"
+import { resolveCatalogue, WORKSPACE_ID } from "../verification/resolution"
+import { runRepairAttempt, type RepairDiagnosisInvoker as RepairAttemptInvoker, type RepairEditExecutor } from "../repair/orchestrator"
+import { applyRepairEdits } from "../repair/edit-executor"
+import { createHostDiagnosisInvoker } from "../repair/model-diagnosis"
+import { createFileEvidenceStore, workspaceRevision } from "../verification/evidence-store"
+import { isVerificationAccepting, parseVerificationRecord, runVerificationCommand, type DagVerificationRecord, type DagVerifyCheck } from "../dag/verification"
+import type { VerificationRunner } from "../verification/contract"
+import type { ChildSpec } from "../runners/in-process"
+import { evaluateOrdinaryCompletion, type CompletionGatePreconditions } from "../verification/completion-gate"
+import { completionBlockedMessage, type CompletionGateVerdict, type VerificationStatus } from "../verification/completion-status"
+import { catalogueChecks, type OrdinaryCatalogue } from "../verification/catalogue"
+import { createOrdinaryVerificationCapture } from "../verification/ordinary-capture"
+import {
+  deleteDelegatedVerificationIntent,
+  listDelegatedVerificationIntents,
+  verificationIntentPath,
+  writeDelegatedVerificationIntent,
+  type DelegatedVerificationIntent,
+} from "../verification/intents"
+import { changedPathsSince, snapshotWorkspace, type WorkspaceBaseline } from "../verification/run-provenance"
 import { admitSpill } from "./spill-admission"
+import { buildEngineeringDelegationPlan, collectDelegationResults, type DelegationNodeOutcome, type DelegationPlan, type DelegationPlanRejection } from "../delegation/plan"
+import {
+  compareDelegationNodeSets,
+  DelegationRunError,
+  type DelegationUnresolvedReason,
+  type EngineeringDelegationDeadlineUnavailable,
+  type EngineeringDelegationRunCompletion,
+} from "../delegation/run"
 import { decideDepthPolicy } from "./depth-policy"
 import { onceOnly } from "./once-only"
 import { ResidencySignal } from "./residency-signal"
@@ -61,10 +93,16 @@ import { createRunStatsTracker, type RunStatsTracker } from "../run-stats"
 import { subscribeChildFacts } from "./child-facts"
 import type {
   ContinueResult,
+  DelegatedVerificationResumeOutcome,
   ListScope,
   ListedTask,
   ManagedRunner,
   ManagedStartSpec,
+  ManagerAdmissionPort,
+  ManagerDelegatedStartResult,
+  ManagerDelegationSpec,
+  ManagerDelegationStartRequest,
+  ManagerDelegationStartResult,
   ManagerStartSpec,
   ResolvedChildPlan,
   StartResult,
@@ -90,10 +128,142 @@ type LaunchContext = {
   readonly model: string
 }
 
+type DelegationObservation =
+  | {
+      readonly outcomes: readonly DelegationNodeOutcome[]
+      readonly unresolved: false
+      readonly unresolvedReason: undefined
+      readonly missingNodeIds: readonly []
+      readonly foreignNodeIds: readonly []
+    }
+  | {
+      readonly outcomes: readonly DelegationNodeOutcome[]
+      readonly unresolved: true
+      // A record that could not be read is its own reason; a settled record names the set mismatch.
+      readonly unresolvedReason: DelegationUnresolvedReason
+      readonly missingNodeIds: readonly DagNodeId[]
+      readonly foreignNodeIds: readonly DagNodeId[]
+    }
+
+// A settled run plus its observation. Structurally assignable to the run seam's completion, so the
+// ordinary fold keeps receiving exactly the fields it already used.
+type DelegationSettled = DelegationObservation & {
+  readonly ok: true
+  readonly runId: DagRunId
+}
+
+// The plan builder brands node ids and the definition widens them back to string for persistence.
+// The brand carries no runtime value, so a non-empty persisted id restores exactly the value the
+// plan builder produced; an empty one could never have been a plan node.
+function plannedNodeIdsFromPersisted(values: readonly string[]): readonly DagNodeId[] {
+  return values.filter((value): value is DagNodeId => value.length > 0)
+}
+
+// Every way the host-side capture can end before a check runs, named. These used to be five
+// indistinguishable `return`s, which forced the gate to describe an attribution failure as a
+// worker-shaped "no evidence". The outcome is telemetry for the event that follows; the gate
+// remains the only judge of acceptance.
+type DelegatedCaptureCode =
+  | "captured"
+  | "catalogue_not_configured"
+  | "no_approved_checks"
+  | "baseline_unavailable"
+  | "parent_missing"
+  | "change_scope_unavailable"
+  | "capture_failed"
+
+type DelegatedCaptureSelection = {
+  readonly required: number
+  readonly omitted: number
+}
+
+type DelegatedCaptureOutcome = {
+  readonly code: DelegatedCaptureCode
+  readonly evidenceRoot: string
+  readonly records: readonly DagVerificationRecord[]
+  readonly receiptPath: string | null
+  readonly dagRunId: string
+  readonly catalogueStatus: OrdinaryCatalogue["status"]
+  readonly selection: DelegatedCaptureSelection
+  readonly detail?: string
+}
+
+// The payload the existing verification events carry. `code`/`reason` keep their old meaning; the
+// capture fields say WHY the host produced no evidence when it produced none, instead of leaving
+// the gate's generic "missing" as the only story.
+type VerificationEventPayload = {
+  readonly code?: CompletionGateVerdict["code"]
+  readonly reason?: string
+  readonly verification_status: VerificationStatus
+  readonly capture_outcome: DelegatedCaptureCode
+  readonly evidence_root: string
+  readonly records: number
+  readonly receipt_path: string | null
+  readonly dag_run_id: string
+  readonly catalogue_status: OrdinaryCatalogue["status"]
+  readonly selection: DelegatedCaptureSelection
+  readonly capture_detail?: string
+}
+
+// How the terminal fold ended. A deadline that elapses during the host-side capture is reported
+// separately so the caller receives the typed refusal instead of reading a failed parent as a
+// delegated success.
+type DelegatedFoldOutcome =
+  | { readonly kind: "folded" }
+  | { readonly kind: "deadline"; readonly budgetMs: number }
+
+// Whether a deadline actually stopped the run. The three cases are reported verbatim: a port with
+// no cancel never gets read as a cancellation, and a throwing cancel is a failure, not a stop.
+type AdmissionCancelOutcome = "cancelled" | "unavailable" | "failed"
+
+type DeadlineTimer = {
+  readonly budgetMs: number
+  readonly expired: Promise<{ readonly kind: "deadline"; readonly budgetMs: number }>
+  // The deadline elapsed. The verification capture reads this so a check that has not started yet
+  // is skipped; a check already running still reports `cancelled` and can never be read as a pass.
+  readonly elapsed: () => boolean
+  readonly clear: () => void
+}
+
+// The fenced terminal write reports both the transition audit and the record it published. A
+// named owner contract keeps the binding's type explicit without discarding evidence at the use.
+type FencedTerminal = {
+  audit?: TaskTransitionResult["audit"]
+  terminal?: TaskRecord
+}
+
+// Every way the admission drive can end: a settled run, a run-scoped deadline, or a deadline that
+// elapsed before the port reported any run identity to fence the refusal to.
+type DelegationDriveResult =
+  | DelegationSettled
+  | EngineeringDelegationDeadlineUnavailable
+  | Extract<ManagerDelegationStartResult, { readonly kind: "delegation_start_failed" }>
+
 type TaskWaiter = {
   readonly resolve: (record: TaskRecord) => void
   readonly reject: (reason: unknown) => void
   readonly cleanup: () => void
+}
+
+type RepairEligibility = {
+  readonly eligible: boolean
+  readonly reason: string
+}
+
+type RepairEvidenceCollection = {
+  readonly failedCheckIds: readonly string[]
+  readonly failedEvidenceIds: readonly string[]
+}
+
+type RepairFinishedPayload = {
+  readonly reason: string
+  readonly attempt_id: string
+  readonly final_state: string
+  readonly gate_verdict: string
+  readonly verification_status: VerificationStatus
+  readonly changed_files: readonly string[]
+  readonly gate_code?: string
+  readonly detail?: string
 }
 
 type RpcRespawnRunner = {
@@ -113,8 +283,17 @@ type LaunchOutcome =
     readonly failure_reason?: Extract<StartResult, { kind: "start_failed" }>["failure_reason"]
   }
 
-type ReattachingTaskManager = TaskManager & {
+type ReattachingTaskManager = Omit<TaskManager, "start"> & {
   readonly workpools: WorkpoolEngine
+  // Required on the concrete manager: the late-binding seam is how the composition root installs a
+  // port after construction, so a caller never has to probe for it. `TaskManager` keeps it optional
+  // for structural fakes.
+  setAdmissionPort(port: ManagerAdmissionPort): void
+  // The ordinary start() path accepts a delegated request (a spec carrying objective/roles) and
+  // owns the whole run. The non-delegated signature keeps every existing caller unchanged.
+  start(spec: ManagerStartSpec & { readonly delegation: ManagerDelegationSpec }): Promise<ManagerDelegatedStartResult>
+  start(spec: ManagerStartSpec): Promise<StartResult>
+  startDelegated(request: ManagerDelegationStartRequest): Promise<ManagerDelegationStartResult>
   respawn(record: TaskRecord, resumeSessionPath?: string): Promise<RespawnResult>
   reattach(record: TaskRecord, handle: ManagedChildHandle): Promise<ReattachResult>
   waiterKeyCount(): number
@@ -122,6 +301,55 @@ type ReattachingTaskManager = TaskManager & {
 }
 
 const NOOP_DESTRUCTION: DestructionPort = { destroyResidentTask: () => Promise.resolve() }
+
+// The deadline reason text is part of the result a caller reads, so it states which cancel outcome
+// actually happened rather than a generic "deadline" claim.
+const DEADLINE_CANCEL_REASON = {
+  cancelled: "the run was cancelled through the admission port, so no admitted child is left running",
+  unavailable: "the admission port exposes no run cancel, so the run was left running rather than reported as completed",
+  failed: "the admission port's run cancel failed, so the run may still be running",
+} satisfies Readonly<Record<AdmissionCancelOutcome, string>>
+
+function admissionUnavailable(): Extract<ManagerDelegationStartResult, { readonly kind: "admission_unavailable" }> {
+  return {
+    kind: "admission_unavailable",
+    reason: "admission_unavailable",
+    message:
+      "a delegated start requires an admission port supplied through TaskManagerOptions.admission " +
+      "or setAdmissionPort before the first delegated start",
+  }
+}
+
+function delegationPlanRejected(
+  plan: DelegationPlanRejection,
+): Extract<ManagerDelegationStartResult, { readonly kind: "delegation_plan_rejected" }> {
+  return {
+    kind: "delegation_plan_rejected",
+    code: plan.code,
+    message: plan.message,
+    roleKeys: plan.roleKeys,
+  }
+}
+
+// The public delegated seam must not answer a success-shaped `delegated` with no cause when the
+// run record is unreadable or its terminal node set is not this plan's result. The message names
+// the actual condition and ids; the ordinary start path still folds and fails the parent instead.
+function unresolvedDelegationMessage(
+  driven: Extract<DelegationSettled, { readonly unresolved: true }>,
+): string {
+  if (driven.unresolvedReason === "run_record_unreadable") {
+    return `delegated run ${driven.runId} did not settle: its run record could not be read, so no node outcome is reported`
+  }
+  const parts: string[] = []
+  if (driven.missingNodeIds.length > 0) {
+    parts.push(`planned node(s) ${driven.missingNodeIds.join(", ")} had no terminal outcome`)
+  }
+  if (driven.foreignNodeIds.length > 0) {
+    parts.push(`unplanned node(s) ${driven.foreignNodeIds.join(", ")} produced an outcome`)
+  }
+  return `delegated run ${driven.runId} did not settle: ${parts.join("; ")}`
+}
+
 function ownerLockPath(stateDir: string, owner: DagTaskOwnerKey): string {
   const ownerKey = `${owner.kind}\0${owner.runId}\0${owner.nodeId}`
   const digest = createHash("sha256").update(ownerKey).digest("hex")
@@ -135,6 +363,10 @@ function ownerLockPath(stateDir: string, owner: DagTaskOwnerKey): string {
 class TaskManagerImpl implements TaskManager {
   readonly workpools: WorkpoolEngine
   readonly #options: TaskManagerImplOptions
+  // Construction-time port, replaceable by setAdmissionPort before the first delegated start. It is
+  // deliberately not on `#options` after construction: the composition root builds this manager
+  // first and only then has a DAG runtime to wrap, and the port must call back into this manager.
+  #admission: ManagerAdmissionPort | undefined
   readonly #now: () => number
   readonly #runStats = new Map<string, RunStatsTracker>()
   readonly #hostPid: number
@@ -143,6 +375,16 @@ class TaskManagerImpl implements TaskManager {
   readonly #names = new NameRegistry()
   readonly #taskSequence = new TaskSequence()
   readonly #live = new Map<string, LiveTask>()
+  // Spawn-time catalogue per ordinary child: the completion gate's immutable required set.
+  readonly #verificationCatalogue = new Map<string, OrdinaryCatalogue>()
+  // Spawn-time workspace baseline per ordinary child: the host's attribution of the change set the
+  // completion capture runs against. Null is a real value (an unattributable tree) and must stay
+  // distinguishable from "this run has no snapshot", so the read uses has()/get() together.
+  readonly #verificationBaseline = new Map<string, WorkspaceBaseline | null>()
+  // Repair attempts in flight, keyed by task id to the run_epoch they were started for. Exactly
+  // one attempt runs per (task, epoch): a second blocked completion for the same epoch reuses
+  // the guard instead of starting a second model call. Cleared on settle and on forget().
+  readonly #repairInFlight = new Map<string, number>()
   // Children whose teardown rejected and that have no pid or daemon session for the orphan path. They
   // are resident for the lifecycle (eviction, idle reclaim, shutdown and TTL see them and retry their
   // teardown) but are not live children: steering never reaches them, and only a teardown that
@@ -172,6 +414,7 @@ class TaskManagerImpl implements TaskManager {
 
   constructor(options: TaskManagerImplOptions) {
     this.#options = options
+    this.#admission = options.admission
     try {
       const listed = options.store.list()
       if (listed.diagnostics.length > 0) {
@@ -246,6 +489,8 @@ class TaskManagerImpl implements TaskManager {
       settleWaiters: (taskId, terminal) => this.#settleWaiters(taskId, terminal),
       tryRuntimeFallback: (input) => this.#tryRuntimeFallback(input),
       stopSettlement: (taskId) => this.#stopsPending.settlement(taskId),
+      // The ordinary-completion gate: consulted before any 'completed' is published.
+      verifyCompletion: (taskId, owned) => this.#verifyOrdinaryCompletion(taskId, owned),
     })
     this.workpools = createWorkpoolEngine(options.store.stateDir, createWorkpoolAdmission({
       options, concurrency: this.#concurrency, hostPid: this.#hostPid,
@@ -269,14 +514,997 @@ class TaskManagerImpl implements TaskManager {
     })
   }
 
-  async start(spec: ManagerStartSpec): Promise<StartResult> {
+  async start(spec: ManagerStartSpec & { readonly delegation: ManagerDelegationSpec }): Promise<ManagerDelegatedStartResult>
+  async start(spec: ManagerStartSpec): Promise<StartResult>
+  async start(spec: ManagerStartSpec): Promise<StartResult | ManagerDelegatedStartResult> {
     const refused = memberKernelToolRefusal(spec)
     if (refused !== undefined) return refused
+    // The ordinary path is untouched: only a spec that carries a delegation request branches. A
+    // delegated parent is a coordinator, not a spawned child, so it deliberately does NOT take a
+    // residency slot (a 1-slot cap would otherwise deadlock the nodes it admits).
+    if (spec.delegation !== undefined) return this.#startDelegatedSpec(spec, spec.delegation)
     const resolution = this.#options.planner(spec)
     if (resolution.kind === "error") return { kind: "plan_unresolved", error: resolution.error }
 
     return withResidentStart(this.#options, spec.parent_session_id,
       release => this.#startResolved(spec, resolution.plan, undefined, release))
+  }
+
+  // Late-bound admission seam (p27 todo 7). The composition root constructs this manager before the
+  // DAG runtime exists, and the port it installs drives delegated starts through this same manager's
+  // startOwned; taking the port at construction would therefore need the manager before it exists.
+  // The setter only replaces the reference: it creates no run, scheduler, manager, or store, and
+  // calling it again replaces the previous port instead of stacking one. Before it is called, a
+  // delegated start still refuses as `admission_unavailable`.
+  setAdmissionPort(port: ManagerAdmissionPort): void {
+    this.#admission = port
+  }
+
+  // Manager-owned delegated start. The admission port is the seam that keeps the DAG runtime out of
+  // this class; a construction without it must refuse, never quietly admit no child (a bare
+  // manager.start creates a run but admits nothing - see delegation/run.ts:46-50 - and treating that
+  // as success is exactly the fabricated outcome this seam exists to prevent).
+  async startDelegated(request: ManagerDelegationStartRequest): Promise<ManagerDelegationStartResult> {
+    const port = this.#admission
+    if (port === undefined) return admissionUnavailable()
+
+    const plan = buildEngineeringDelegationPlan(request)
+    if (!plan.ok) return delegationPlanRejected(plan)
+
+    const workingDirectory = request.workingDirectory ?? this.#options.cwd
+
+    // Resolve the spawn-time catalogue before claiming a parent, so an unreadable authority
+    // fails closed before a record is claimed (mirroring #startDelegatedSpec). The seam still
+    // does not fold: the caller owns the terminal fold via resumeDelegatedVerifications or the
+    // production start() path. A successful return therefore never implies completion.
+    let catalogue: OrdinaryCatalogue
+    try {
+      catalogue = this.#delegationCatalogue(workingDirectory)
+    } catch (error) {
+      return {
+        kind: "delegation_start_failed",
+        reason: "verification_catalogue_unavailable",
+        message: error instanceof Error ? error.message : String(error),
+      }
+    }
+
+    let baseline: WorkspaceBaseline | null = null
+    if (catalogue.status === "configured" && catalogue.checks.length > 0) {
+      try { baseline = snapshotWorkspace(workingDirectory) } catch { baseline = null }
+    }
+
+    const spec: ManagerStartSpec = {
+      prompt: request.objective,
+      parent_session_id: request.parent_session_id,
+      root_session_id: request.root_session_id ?? request.parent_session_id,
+      depth: 0,
+      cwd: workingDirectory,
+    }
+
+    const resolution = this.#options.planner(spec)
+    if (resolution.kind === "error") return { kind: "plan_unresolved", error: resolution.error }
+
+    this.#requireValidDeadline(request.deadlineMs)
+    // ONE timer for the whole admission sequence, owned by the caller that finishes the request.
+    const deadline = this.#armDeadline(request.deadlineMs)
+
+    const modeBase = { configMode: this.#options.config.default_execution_mode }
+    const executionMode = resolveExecutionMode(
+      resolution.plan.agentExecutionMode === undefined
+        ? modeBase
+        : { ...modeBase, agentMode: resolution.plan.agentExecutionMode },
+    )
+
+    const claimed = this.#claimDelegatedParent(spec, resolution.plan, executionMode)
+    if (!claimed.ok) {
+      return { kind: "delegation_start_failed", reason: "record_claim_failed", message: claimed.message }
+    }
+    const parent = claimed.record
+    const epoch = parent.notification.run_epoch
+    const entered = this.#options.store.transition(parent.task_id, {
+      type: "start",
+      timestamp: nowIso(this.#now),
+    })
+    if (!entered.applied) {
+      return {
+        kind: "delegation_start_failed",
+        reason: "record_claim_failed",
+        message: `delegated parent ${parent.task_id} could not enter the running state: ${entered.audit.type}`,
+      }
+    }
+
+    try {
+      const driven = await this.#driveAdmission(
+        port,
+        plan,
+        request.parent_session_id,
+        request.root_session_id ?? request.parent_session_id,
+        workingDirectory,
+        deadline,
+      )
+      if (!("ok" in driven)) {
+        this.#failDelegatedParent(parent.task_id, epoch, driven.message)
+        return driven
+      }
+      if (!driven.ok) {
+        this.#failDelegatedParent(parent.task_id, epoch, driven.reason)
+        return driven
+      }
+      if (driven.unresolved) {
+        return {
+          kind: "delegation_unresolved",
+          task_id: parent.task_id,
+          runId: driven.runId,
+          reason: driven.unresolvedReason,
+          message: unresolvedDelegationMessage(driven),
+          outcomes: driven.outcomes,
+          missingNodeIds: driven.missingNodeIds,
+          foreignNodeIds: driven.foreignNodeIds,
+        }
+      }
+      return {
+        kind: "delegated",
+        task_id: parent.task_id,
+        runId: driven.runId,
+        outcomes: driven.outcomes,
+        unresolved: false,
+      }
+    } finally {
+      deadline?.clear()
+    }
+  }
+
+  // Re-drive delegated parents whose host-side verification was interrupted. The intent file is
+  // the only durable marker of "children settled, verdict not published": it is written before the
+  // capture and removed only after THIS writer publishes a terminal. A restart therefore finds
+  // either a terminal record (nothing to publish) or a non-terminal one with a complete run (fold
+  // it again through the same capture + gate + fenced terminal). Every value comes from the
+  // persisted intent and the run record; nothing is re-derived from a fresh catalogue, and no
+  // verdict is ever restored from disk. A session-scoped call never touches another session's
+  // parent, and an intent whose epoch no longer matches the record is discarded, never delivered.
+  async resumeDelegatedVerifications(sessionId?: string): Promise<readonly DelegatedVerificationResumeOutcome[]> {
+    const port = this.#admission
+    if (port === undefined) return []
+    const listing = listDelegatedVerificationIntents(this.#options.store.stateDir)
+    for (const invalid of listing.invalid) {
+      log("senpi-task delegated verification intent unreadable", { file: invalid })
+    }
+    const outcomes: DelegatedVerificationResumeOutcome[] = []
+    for (const intent of listing.intents) {
+      const record = this.#tryLoad(intent.taskId)
+      if (record === null) {
+        this.#discardDelegatedIntent(intent)
+        outcomes.push({ taskId: intent.taskId, epoch: intent.epoch, outcome: "record_missing" })
+        continue
+      }
+      if (sessionId !== undefined && record.parent_session_id !== sessionId) continue
+      if (isTerminalRecord(record)) {
+        // Exactly-once: the terminal already exists, so this delivery publishes nothing. The
+        // intent is removed here because no further fold can add a second terminal for this epoch.
+        this.#discardDelegatedIntent(intent)
+        outcomes.push({
+          taskId: intent.taskId,
+          epoch: intent.epoch,
+          outcome: "already_terminal",
+          status: record.status,
+          ...(record.verification_status === undefined ? {} : { verification_status: record.verification_status }),
+        })
+        continue
+      }
+      if (record.notification.run_epoch !== intent.epoch) {
+        // The epoch fence at the re-drive boundary: an outcome produced for another run of this
+        // task id is never delivered into this one.
+        this.#discardDelegatedIntent(intent)
+        outcomes.push({ taskId: intent.taskId, epoch: intent.epoch, outcome: "stale_epoch", status: record.status })
+        continue
+      }
+      const observed = this.#observeDelegation(port, intent.dagRunId, plannedNodeIdsFromPersisted(intent.plannedNodeIds))
+      const incomplete = observed.unresolved || observed.outcomes.some((outcome) => outcome.outcome !== "completed")
+      if (incomplete) {
+        // A run whose children have not all settled is never verified. The intent stays so a later
+        // re-drive can finish; nothing is published for an incomplete run.
+        outcomes.push({
+          taskId: intent.taskId,
+          epoch: intent.epoch,
+          outcome: observed.unresolvedReason === "run_record_unreadable" ? "run_record_unreadable" : "run_not_completed",
+          status: record.status,
+        })
+        continue
+      }
+      await this.#foldDelegatedTerminal(
+        intent.taskId,
+        intent.epoch,
+        { ok: true, runId: intent.dagRunId, ...observed },
+        intent.catalogue,
+        intent.workspaceDir,
+        intent.baseline,
+        undefined,
+        intent.plannedNodeIds,
+      )
+      const settled = this.#tryLoad(intent.taskId)
+      outcomes.push({
+        taskId: intent.taskId,
+        epoch: intent.epoch,
+        outcome: "folded",
+        ...(settled === null
+          ? {}
+          : {
+              status: settled.status,
+              ...(settled.verification_status === undefined ? {} : { verification_status: settled.verification_status }),
+            }),
+      })
+    }
+    return outcomes
+  }
+
+  #discardDelegatedIntent(intent: DelegatedVerificationIntent): void {
+    try {
+      deleteDelegatedVerificationIntent(verificationIntentPath(this.#options.store.stateDir, intent.taskId, intent.epoch))
+    } catch (error) { // no-excuse-ok: catch - the intent is host bookkeeping; a failed delete is reported, never turned into a verdict.
+      log("senpi-task delegated verification intent not removed", { taskId: intent.taskId, epoch: intent.epoch, error: String(error) })
+    }
+  }
+
+  // The ordinary start() path's delegated branch: plan -> startRun -> admit -> wait -> collect ->
+  // fold -> terminal. The manager owns the parent TaskRecord and the terminal fold; the admission
+  // port owns run identity, dependency gating, and child admission. A production port admits each
+  // node through this same manager's startOwned, so no second spawn mechanism exists here.
+  async #startDelegatedSpec(
+    spec: ManagerStartSpec,
+    delegation: ManagerDelegationSpec,
+  ): Promise<ManagerDelegatedStartResult> {
+    const port = this.#admission
+    if (port === undefined) return admissionUnavailable()
+
+    const workingDirectory = delegation.workingDirectory ?? spec.cwd ?? this.#options.cwd
+    const planInput = {
+      objective: delegation.objective,
+      workingDirectory,
+      roles: delegation.roles,
+    }
+    const plan = buildEngineeringDelegationPlan(
+      delegation.maxNodes === undefined ? planInput : { ...planInput, maxNodes: delegation.maxNodes },
+    )
+    if (!plan.ok) return delegationPlanRejected(plan)
+
+    const resolution = this.#options.planner(spec)
+    if (resolution.kind === "error") return { kind: "plan_unresolved", error: resolution.error }
+
+    // Validate BEFORE any record is claimed, so an invalid budget leaves no running parent behind.
+    this.#requireValidDeadline(delegation.deadlineMs)
+
+    // The catalogue is resolved BEFORE any child runs, the same spawn-time snapshot ordinary workers
+    // get. Nothing can relax it mid-run, and an unreadable authority fails closed before a record is
+    // claimed. The gate remains the only judge of the run's verification claim.
+    let catalogue: OrdinaryCatalogue
+    try {
+      catalogue = this.#delegationCatalogue(workingDirectory)
+    } catch (error) {
+      return {
+        kind: "delegation_start_failed",
+        reason: "verification_catalogue_unavailable",
+        message: error instanceof Error ? error.message : String(error),
+      }
+    }
+
+    // The change-scope baseline must predate every admitted node: a snapshot taken after the run
+    // would treat the nodes' edits as the baseline and select checks for an empty change set. A
+    // tree the host cannot snapshot stays null, and the gate fails closed instead of inventing [].
+    let baseline: WorkspaceBaseline | null = null
+    if (catalogue.status === "configured" && catalogue.checks.length > 0) {
+      try {
+        baseline = snapshotWorkspace(workingDirectory)
+      } catch {
+        baseline = null
+      }
+    }
+
+    const modeBase = { configMode: this.#options.config.default_execution_mode }
+    const modeWithSpec = spec.execution_mode === undefined ? modeBase : { ...modeBase, specMode: spec.execution_mode }
+    const executionMode = resolveExecutionMode(
+      resolution.plan.agentExecutionMode === undefined
+        ? modeWithSpec
+        : { ...modeWithSpec, agentMode: resolution.plan.agentExecutionMode },
+    )
+    const claimed = this.#claimDelegatedParent(spec, resolution.plan, executionMode)
+    if (!claimed.ok) {
+      return { kind: "delegation_start_failed", reason: "record_claim_failed", message: claimed.message }
+    }
+    const parent = claimed.record
+    const epoch = parent.notification.run_epoch
+    const entered = this.#options.store.transition(parent.task_id, {
+      type: "start",
+      timestamp: nowIso(this.#now),
+    })
+    if (!entered.applied) {
+      return {
+        kind: "delegation_start_failed",
+        reason: "record_claim_failed",
+        message: `delegated parent ${parent.task_id} could not enter the running state: ${entered.audit.type}`,
+      }
+    }
+
+    // ONE timer for admission AND the terminal fold. The fold's host-side verification capture
+    // races the SAME budget, so a slow approved check fails the parent at the deadline instead of
+    // completing it after the caller-observable budget. The caller owns disposal.
+    const deadline = this.#armDeadline(delegation.deadlineMs)
+    try {
+      const driven = await this.#driveAdmission(
+        port,
+        plan,
+        spec.parent_session_id,
+        spec.root_session_id ?? spec.parent_session_id,
+        workingDirectory,
+        deadline,
+      )
+      if (!("ok" in driven)) {
+        // The deadline elapsed before the port reported a run identity; no node was admitted.
+        this.#failDelegatedParent(parent.task_id, epoch, driven.message)
+        return driven
+      }
+      if (!driven.ok) {
+        // A deadline is never a completion: the parent is failed with the typed reason and the
+        // checkbox-16 error travels to the caller unchanged.
+        this.#failDelegatedParent(parent.task_id, epoch, driven.reason)
+        return driven
+      }
+      const folded = await this.#foldDelegatedTerminal(
+        parent.task_id,
+        epoch,
+        driven,
+        catalogue,
+        workingDirectory,
+        baseline,
+        deadline,
+        plan.definition.nodes.map((node) => node.id),
+      )
+      if (folded.kind === "deadline") {
+        // The run settled, but the host-side capture outlived the budget. The fold already failed
+        // the parent; report the same typed refusal so no caller can read this as success.
+        return {
+          ok: false,
+          kind: "deadline_unavailable_at_manager_seam",
+          reason:
+            `${this.#deadlineReason(folded.budgetMs)} during the host-side verification capture; ` +
+            "the delegated parent was failed instead of completed past its deadline",
+          runId: driven.runId,
+          outcomes: driven.outcomes,
+          unresolved: driven.unresolved,
+        }
+      }
+      return {
+        kind: "delegated",
+        task_id: parent.task_id,
+        runId: driven.runId,
+        outcomes: driven.outcomes,
+        unresolved: driven.unresolved,
+      }
+    } catch (error) {
+      this.#failDelegatedParent(
+        parent.task_id,
+        epoch,
+        `delegated run failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      throw error
+    } finally {
+      deadline?.clear()
+    }
+  }
+
+  // Drive the port through the planned node set under the CALLER-owned deadline. The port owns
+  // dependency gating: admit resolves each node's child (waiting for readiness where the node is
+  // not yet admissible), so admitting the planned set together adds no ordering of this class's own.
+  // startRun, admit, and wait all race the SAME budget: a port that parks in any phase can never
+  // keep the caller past its caller-observable deadline, and an already-admitted run is cancelled
+  // through the port before the typed refusal is returned. The timer is NOT disposed here: the
+  // ordinary start path carries it into the terminal fold so the verification capture is bounded
+  // by the same budget instead of receiving a fresh one.
+  async #driveAdmission(
+    port: ManagerAdmissionPort,
+    plan: DelegationPlan,
+    parentSessionId: string,
+    rootSessionId: string,
+    workingDirectory: string,
+    deadline: DeadlineTimer | undefined,
+  ): Promise<DelegationDriveResult> {
+    // SAFETY: every node id in this definition was branded by delegationNodeId() inside the plan
+    // builder; DagNodeInput widens ids back to string, so the plan owns this narrowing.
+    const plannedNodeIds = plan.definition.nodes.map((node) => node.id as DagNodeId)
+    const startPromise = port.startRun({
+      definition: plan.definition,
+      parentSessionId,
+      rootSessionId,
+      workingDirectory,
+    })
+    const started = await this.#settleBeforeDeadline(startPromise, deadline)
+    if (started.kind === "deadline") {
+      // No run identity exists yet, so a run-scoped deadline refusal would have to invent one.
+      // Cancel the run the moment the port reports it: a late creation must not run unowned.
+      const reason = this.#deadlineReason(started.budgetMs)
+      void startPromise.then(
+        (run) => this.#cancelAdmittedRun(port, run.runId, reason),
+        () => undefined,
+      )
+      return {
+        kind: "delegation_start_failed",
+        reason: "admission_start_timeout",
+        message:
+          `${reason} while the admission port was creating the run; no node was admitted, ` +
+          "and any run the port reports after the deadline is cancelled",
+      }
+    }
+
+    const run = started.value
+    // SAFETY: every node id in this definition was branded by delegationNodeId() inside the plan
+    // builder; DagNodeInput widens ids back to string, so the plan owns this narrowing.
+    const admits = await this.#settleBeforeDeadline(
+      Promise.all(plan.definition.nodes.map((node) =>
+        port.admit({ runId: run.runId, nodeId: node.id as DagNodeId }))),
+      deadline,
+    )
+    if (admits.kind === "deadline") {
+      return this.#deadlineAdmission(port, run.runId, plannedNodeIds, admits.budgetMs, "while nodes were being admitted")
+    }
+
+    const waited = await this.#settleBeforeDeadline(
+      Promise.all(admits.value.map((child) => port.wait(child.taskId))),
+      deadline,
+    )
+    if (waited.kind === "deadline") {
+      return this.#deadlineAdmission(port, run.runId, plannedNodeIds, waited.budgetMs, "while admitted children were running")
+    }
+
+    const observed = this.#observeDelegation(port, run.runId, plannedNodeIds)
+    return { ok: true, runId: run.runId, ...observed }
+  }
+
+  // The run identity exists, so the deadline is a run-scoped refusal. Cancel through the port when
+  // it exposes one BEFORE reporting, so a parent terminal failure never leaves admitted children
+  // editing the workspace after the caller returned.
+  async #deadlineAdmission(
+    port: ManagerAdmissionPort,
+    runId: DagRunId,
+    plannedNodeIds: readonly DagNodeId[],
+    deadlineMs: number,
+    phase: string,
+  ): Promise<EngineeringDelegationDeadlineUnavailable> {
+    const cancel = await this.#cancelAdmittedRun(port, runId, this.#deadlineReason(deadlineMs))
+    const observed = this.#observeDelegation(port, runId, plannedNodeIds)
+    return {
+      ok: false,
+      kind: "deadline_unavailable_at_manager_seam",
+      reason:
+        `${this.#deadlineReason(deadlineMs)} ${phase} before run ${runId} reached a terminal state; ` +
+        DEADLINE_CANCEL_REASON[cancel],
+      runId,
+      outcomes: observed.outcomes,
+      unresolved: observed.unresolved,
+    }
+  }
+
+  #deadlineReason(deadlineMs: number): string {
+    return `deadline of ${deadlineMs}ms elapsed`
+  }
+
+  // Best-effort cancellation at the seam's last authority. Absence is reported as `unavailable` so
+  // the deadline text never claims a stop that never happened; a rejection is reported as `failed`.
+  async #cancelAdmittedRun(
+    port: ManagerAdmissionPort,
+    runId: DagRunId,
+    reason: string,
+  ): Promise<AdmissionCancelOutcome> {
+    if (port.cancel === undefined) return "unavailable"
+    try {
+      await port.cancel(runId, reason)
+      return "cancelled"
+    } catch (error) { // no-excuse-ok: catch - the cancel is the seam's last action; a rejection is reported, not trusted as a stop.
+      log("senpi-task delegated run cancel failed", { runId, error: String(error) })
+      return "failed"
+    }
+  }
+
+  #requireValidDeadline(deadlineMs: number | undefined): void {
+    if (deadlineMs !== undefined && (!Number.isFinite(deadlineMs) || deadlineMs < 0)) {
+      throw new DelegationRunError(
+        "invalid_deadline",
+        `deadlineMs must be a finite non-negative number, received ${deadlineMs}`,
+      )
+    }
+  }
+
+  // ONE timer for the WHOLE delegated start: time spent in startRun, admit, and the waits is
+  // charged to the same budget as the host-side verification capture, so a slow phase cannot hand
+  // the next phase a fresh deadline. Ownership sits with the caller that finishes the request - it
+  // disposes in its own finally - never with a phase that returns early.
+  #armDeadline(deadlineMs: number | undefined): DeadlineTimer | undefined {
+    if (deadlineMs === undefined) return undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let fired = false
+    const expired = new Promise<{ readonly kind: "deadline"; readonly budgetMs: number }>((resolve) => {
+      timer = setTimeout(() => {
+        fired = true
+        resolve({ kind: "deadline", budgetMs: deadlineMs })
+      }, deadlineMs)
+    })
+    return {
+      budgetMs: deadlineMs,
+      expired,
+      elapsed: () => fired,
+      clear: () => {
+        if (timer !== undefined) clearTimeout(timer)
+      },
+    }
+  }
+
+  async #settleBeforeDeadline<T>(
+    work: Promise<T>,
+    deadline: DeadlineTimer | undefined,
+  ): Promise<{ readonly kind: "settled"; readonly value: T } | { readonly kind: "deadline"; readonly budgetMs: number }> {
+    if (deadline === undefined) return { kind: "settled", value: await work }
+    // The settle handler is attached to the SAME promise the deadline races, so a late rejection
+    // can never surface as an unhandled rejection after the deadline won.
+    const settled = work.then((value) => ({ kind: "settled", value } as const))
+    return Promise.race([settled, deadline.expired])
+  }
+
+  #observeDelegation(
+    port: ManagerAdmissionPort,
+    runId: DagRunId,
+    plannedNodeIds: readonly DagNodeId[],
+  ): DelegationObservation {
+    try {
+      const { results } = collectDelegationResults(port.record(runId).nodes)
+      // Explicit planned-id sets, never a count: a reused/amended record carrying one extra terminal
+      // node and missing one planned node has the same length but is NOT this plan's result.
+      const comparison = compareDelegationNodeSets(plannedNodeIds, results)
+      if (comparison.mismatch === undefined) {
+        return {
+          outcomes: results,
+          unresolved: false,
+          unresolvedReason: undefined,
+          missingNodeIds: [],
+          foreignNodeIds: [],
+        }
+      }
+      return {
+        outcomes: results,
+        unresolved: true,
+        unresolvedReason: comparison.mismatch,
+        missingNodeIds: comparison.missingNodeIds,
+        foreignNodeIds: comparison.foreignNodeIds,
+      }
+    } catch (error) {
+      // A record read that fails is not evidence of a completed run: report the nodes as unresolved
+      // with the typed cause, rather than inventing outcomes the persisted record never carried.
+      log("senpi-task delegated run record read failed", { runId, error: String(error) })
+      return {
+        outcomes: [],
+        unresolved: true,
+        unresolvedReason: "run_record_unreadable",
+        missingNodeIds: [],
+        foreignNodeIds: [],
+      }
+    }
+  }
+
+  // The coordinator record is NOT a spawned child: it is created non-resident so it can never hold
+  // a residency slot the admitted nodes need. It still travels the same claim/name machinery and
+  // carries the same durable terminal fields an ordinary task does.
+  #claimDelegatedParent(
+    spec: ManagerStartSpec,
+    plan: ResolvedChildPlan,
+    executionMode: ExecutionMode,
+  ): { readonly ok: true; readonly record: TaskRecord } | { readonly ok: false; readonly message: string } {
+    const trimmed = spec.name?.trim()
+    const requestedName = trimmed === undefined || trimmed.length === 0 ? undefined : trimmed
+    const requestedRegistration = requestedName === undefined
+      ? undefined
+      : this.#names.register(spec.parent_session_id, requestedName)
+    try {
+      const draft = createTaskRecord(buildRecordInput({
+        spec,
+        plan,
+        name: "",
+        executionMode,
+        taskSeq: this.#taskSequence.next(spec.parent_session_id),
+      }), this.#now())
+      const claimOptions = requestedRegistration === undefined
+        ? {
+            nameFollowsId: true,
+            nameAvailable: (name: string) => this.#names.isAvailable(spec.parent_session_id, name),
+          }
+        : { nameFollowsId: false }
+      const claimed = claimTaskRecord(this.#options.store, {
+        ...draft,
+        name: requestedRegistration?.name ?? draft.task_id,
+        host_pid: this.#hostPid,
+        residency_state: "disposed",
+      }, claimOptions)
+      if (requestedRegistration === undefined) {
+        this.#names.register(spec.parent_session_id, undefined, claimed.task_id)
+      }
+      return { ok: true, record: claimed }
+    } catch (error) {
+      if (!(error instanceof TaskRecordCollisionError) && !(error instanceof TaskIdSpaceExhaustedError)) throw error
+      if (requestedRegistration !== undefined) this.#names.release(spec.parent_session_id, requestedRegistration.name)
+      return { ok: false, message: "task id allocation failed under contention; retry the spawn" }
+    }
+  }
+
+  #delegationCatalogue(workspaceDir: string): OrdinaryCatalogue {
+    const authority = approvalAuthorityFor(workspaceDir, this.#options.verificationAuthorityRoot)
+    const approvals = readApprovals(authority, WORKSPACE_ID)
+    return resolveCatalogue({ projectRoot: workspaceDir, workspaceId: WORKSPACE_ID, changedFiles: null, authority, approvals })
+  }
+
+  // Fold the run's terminal evidence into the parent record. A non-completed node, an unresolved
+  // node, or a blocked gate verdict is a terminal failure - never a completed parent. A child's
+  // success is never treated as verification: only evaluateOrdinaryCompletion may stamp a
+  // verification claim, and only its "verified" verdict ever writes "verified".
+  async #foldDelegatedTerminal(
+    taskId: string,
+    epoch: number,
+    driven: EngineeringDelegationRunCompletion,
+    catalogue: OrdinaryCatalogue,
+    workspaceDir: string,
+    baseline: WorkspaceBaseline | null,
+    deadline: DeadlineTimer | undefined,
+    plannedNodeIds: readonly string[],
+  ): Promise<DelegatedFoldOutcome> {
+    // Durability marker: written BEFORE any verification work and removed only after THIS writer
+    // publishes a terminal. A process that dies in between leaves exactly the state a later
+    // resumeDelegatedVerifications re-drives, and a second fold that finds a terminal publishes
+    // nothing. The intent is host state only - it carries no verdict, exit code, or check result.
+    const intentPath = writeDelegatedVerificationIntent(this.#options.store.stateDir, {
+      taskId,
+      epoch,
+      dagRunId: driven.runId,
+      workspaceDir,
+      catalogue,
+      baseline,
+      plannedNodeIds,
+      createdAt: nowIso(this.#now),
+    })
+    const discardIntent = (): void => {
+      try {
+        deleteDelegatedVerificationIntent(intentPath)
+      } catch (error) { // no-excuse-ok: catch - the terminal is already published; a dangling intent is cleaned by the next re-drive.
+        log("senpi-task delegated verification intent not removed", { taskId, epoch, error: String(error) })
+      }
+    }
+    // Epoch fence: the folded results belong to THIS run of the parent record. If the epoch moved
+    // (or another writer already terminalized it) while the nodes ran, this writer no longer owns
+    // the record and must not stamp a terminal or a verification claim onto it.
+    if (!this.#delegatedParentStillOwned(taskId, epoch)) {
+      log("senpi-task delegated parent moved before fold; terminal not written", { taskId, epoch })
+      return { kind: "folded" }
+    }
+    const notCompleted = driven.outcomes.filter((outcome) => outcome.outcome !== "completed")
+    if (driven.unresolved || notCompleted.length > 0) {
+      const detail = driven.unresolved
+        ? "the run record did not carry exactly the planned node set when it was read"
+        : notCompleted.map((outcome) => `${outcome.nodeId} ended ${outcome.outcome}`).join("; ")
+      this.#failDelegatedParent(taskId, epoch, `delegation run ${driven.runId} did not complete: ${detail}`)
+      discardIntent()
+      return { kind: "folded" }
+    }
+
+    // Host-side verification: the approved catalogue runs HERE, against the settled workspace, and
+    // its evidence lands in the namespace the gate reads. DAG-owned children never receive the
+    // worker verification tool (the DAG gate owns that path), so the parent cannot inherit a claim
+    // from them; it must produce the evidence itself or the gate honestly blocks.
+    //
+    // The capture races the SAME budget admission used. A check that outlives it can no longer
+    // produce a completed parent: the timeout wins, the parent is failed as deadline-exceeded, and
+    // the late evidence (marked cancelled) is never consulted because no gate evaluation runs here.
+    // ONE requirement set is computed here from the spawn-time catalogue and handed to BOTH the
+    // capture and the gate: the two sides can never disagree about which checks are required.
+    const required = catalogueChecks(catalogue)
+    // ONE revision for the whole capture. It is taken AFTER the delegated writes settled and
+    // BEFORE the first approved check runs, then stamped on every record and handed to the gate
+    // unchanged - the same safe shape repair/execute.ts already uses. A per-check re-read would
+    // stamp records against several trees, so a check's own write would invalidate the evidence
+    // that check just produced.
+    let pinnedRevision: string | null = null
+    if (baseline !== null && required.length > 0) {
+      try {
+        pinnedRevision = workspaceRevision(workspaceDir)
+      } catch {
+        // The host cannot describe the settled tree. The capture must not run checks against a tree
+        // it cannot attribute; the gate reports provenance_unknown below.
+        pinnedRevision = null
+      }
+    }
+    const capture = this.#captureDelegatedVerification(
+      taskId,
+      epoch,
+      driven.runId,
+      catalogue,
+      required,
+      workspaceDir,
+      baseline,
+      pinnedRevision,
+      deadline,
+    )
+    const settledCapture = await this.#settleBeforeDeadline(capture, deadline)
+    if (settledCapture.kind === "deadline") {
+      this.#failDelegatedParent(
+        taskId,
+        epoch,
+        `${this.#deadlineReason(settledCapture.budgetMs)} while the host-side verification capture ran; ` +
+        "the delegated parent was failed instead of completed past its deadline",
+      )
+      discardIntent()
+      return { kind: "deadline", budgetMs: settledCapture.budgetMs }
+    }
+    const captureOutcome = settledCapture.value
+    // The capture executes real commands and therefore yields. If the parent moved to another run
+    // while it ran, this writer no longer owns the record: stamp nothing. The intent stays for the
+    // next re-drive, which publishes the honest terminal or reports the moved record.
+    if (!this.#delegatedParentStillOwned(taskId, epoch)) {
+      log("senpi-task delegated parent moved during verification capture; terminal not written", { taskId, epoch })
+      return { kind: "folded" }
+    }
+
+    // A check that writes the tree (or any concurrent edit) leaves the records describing a tree
+    // that no longer exists. Compare ONCE, after the checks, against the SAME pinned revision the
+    // records carry; acceptance is never evaluated for a moved tree.
+    if (pinnedRevision !== null) {
+      let postCaptureRevision: string | null = null
+      try {
+        postCaptureRevision = workspaceRevision(workspaceDir)
+      } catch {
+        postCaptureRevision = null
+      }
+      if (postCaptureRevision !== pinnedRevision) {
+        const stale: CompletionGateVerdict = {
+          verification: "blocked",
+          code: "verification_stale",
+          reason:
+            "the workspace revision changed while the approved checks ran: " +
+            `pinned ${pinnedRevision}, observed ${postCaptureRevision ?? "unavailable"}`,
+        }
+        this.#options.store.appendEvent(taskId, {
+          type: "verification_blocked",
+          payload: this.#verificationEventPayload(stale, captureOutcome),
+        })
+        const terminal = this.#transitionDelegatedParent(taskId, epoch, {
+          type: "fail",
+          timestamp: nowIso(this.#now),
+          error_message: completionBlockedMessage(stale),
+        }, "blocked")
+        discardIntent()
+        if (terminal !== undefined) this.#settleWaiters(taskId, terminal)
+        return { kind: "folded" }
+      }
+    }
+
+    const verdict = evaluateOrdinaryCompletion({
+      // Evidence is keyed by the PARENT task record id, never by the reusable DAG run id: reusing a
+      // run (same definition fingerprint) must never let a second parent read the first one's
+      // evidence. The DAG run id stays in the capture binding and receipt for traceability only.
+      taskId,
+      catalogue,
+      requirements: required,
+      evidenceRoot: captureOutcome.evidenceRoot,
+      workspaceDir,
+      epoch,
+      // The gate judges the SAME revision the records were stamped with. When the host could not
+      // pin one, the baseline itself was unavailable: provenance, not missing evidence.
+      ...(pinnedRevision !== null
+        ? { sourceRevision: pinnedRevision }
+        : { preconditions: { baseline: "unavailable" } }),
+    })
+    const timestamp = nowIso(this.#now)
+    if (verdict.verification === "blocked") {
+      this.#options.store.appendEvent(taskId, {
+        type: "verification_blocked",
+        payload: this.#verificationEventPayload(verdict, captureOutcome),
+      })
+      const terminal = this.#transitionDelegatedParent(taskId, epoch, {
+        type: "fail",
+        timestamp,
+        error_message: completionBlockedMessage(verdict),
+      }, "blocked")
+      discardIntent()
+      if (terminal !== undefined) this.#settleWaiters(taskId, terminal)
+      return { kind: "folded" }
+    }
+    if (verdict.verification === "unverified") {
+      this.#options.store.appendEvent(taskId, {
+        type: "verification_unverified",
+        payload: this.#verificationEventPayload(verdict, captureOutcome),
+      })
+    }
+    const finalResponse = JSON.stringify({
+      run_id: driven.runId,
+      outcomes: driven.outcomes.map((outcome) => ({
+        node_id: outcome.nodeId,
+        role: outcome.role,
+        outcome: outcome.outcome,
+        output_bytes: outcome.outputBytes,
+      })),
+    })
+    const terminal = this.#transitionDelegatedParent(taskId, epoch, {
+      type: "complete",
+      timestamp,
+      final_response: finalResponse,
+    }, verdict.verification)
+    discardIntent()
+    if (terminal !== undefined) this.#settleWaiters(taskId, terminal)
+    return { kind: "folded" }
+  }
+
+  // Run the approved catalogue through the SAME ordinary capture the worker tool uses, into the
+  // SAME evidence root the completion gate reads. The model supplies nothing: the run id, epoch,
+  // workspace, change scope and check set all come from host state. A capture failure is logged and
+  // left to the gate, which fails closed when the evidence it requires is absent or malformed -
+  // never a manager-computed verdict.
+  // The deadline predicate stops the capture from starting another check once the budget elapsed
+  // and marks an in-flight check `cancelled`; its command is still bounded by its own timeoutMs,
+  // but a cancelled record can never be read as a pass by any later gate evaluation.
+  // One event shape for both verification events. The verdict stays exactly as the gate produced
+  // it; the capture fields add the host's own account of what it could and did run.
+  #verificationEventPayload(
+    verdict: CompletionGateVerdict,
+    capture: DelegatedCaptureOutcome,
+  ): VerificationEventPayload {
+    return {
+      code: verdict.code,
+      reason: verdict.reason,
+      verification_status: verdict.verification,
+      capture_outcome: capture.code,
+      evidence_root: capture.evidenceRoot,
+      records: capture.records.length,
+      receipt_path: capture.receiptPath,
+      dag_run_id: capture.dagRunId,
+      catalogue_status: capture.catalogueStatus,
+      selection: capture.selection,
+      ...(capture.detail === undefined ? {} : { capture_detail: capture.detail }),
+    }
+  }
+
+  // Run the approved catalogue through the SAME ordinary capture the worker tool uses, into the
+  // SAME evidence root the completion gate reads. The model supplies nothing: the run id, epoch,
+  // workspace, change scope, pinned revision and check set all come from host state. Every early
+  // exit returns a NAMED outcome instead of a silent `void`, so the gate's "no evidence" can be
+  // read next to the host's actual reason. No verdict is computed here.
+  // The deadline predicate stops the capture from starting another check once the budget elapsed
+  // and marks an in-flight check `cancelled`; its command is still bounded by its own timeoutMs,
+  // but a cancelled record can never be read as a pass by any later gate evaluation.
+  async #captureDelegatedVerification(
+    taskId: string,
+    epoch: number,
+    runId: string,
+    catalogue: OrdinaryCatalogue,
+    required: readonly DagVerifyCheck[],
+    workspaceDir: string,
+    baseline: WorkspaceBaseline | null,
+    pinnedRevision: string | null,
+    deadline: DeadlineTimer | undefined,
+  ): Promise<DelegatedCaptureOutcome> {
+    const evidenceRoot = join(this.#options.store.stateDir, "verifications")
+    const selection: DelegatedCaptureSelection = { required: required.length, omitted: 0 }
+    const notCaptured = (
+      code: Exclude<DelegatedCaptureCode, "captured">,
+      detail?: string,
+    ): DelegatedCaptureOutcome => ({
+      code,
+      evidenceRoot,
+      records: [],
+      receiptPath: null,
+      dagRunId: runId,
+      catalogueStatus: catalogue.status,
+      selection,
+      ...(detail === undefined ? {} : { detail }),
+    })
+
+    if (catalogue.status !== "configured") return notCaptured("catalogue_not_configured")
+    if (required.length === 0) return notCaptured("no_approved_checks")
+    // A baseline or a pinned revision the host could not produce is an attribution failure, not an
+    // empty change set: run no check, and let the gate name provenance_unknown.
+    if (baseline === null || pinnedRevision === null) return notCaptured("baseline_unavailable")
+    const parent = this.#tryLoad(taskId)
+    if (parent === null) return notCaptured("parent_missing")
+    let changedFiles: readonly string[]
+    try {
+      changedFiles = changedPathsSince(workspaceDir, baseline)
+    } catch (error) {
+      log("senpi-task delegated change scope unavailable; verification not captured", {
+        taskId,
+        error: String(error),
+      })
+      return notCaptured("change_scope_unavailable", String(error))
+    }
+    const revision = pinnedRevision
+    try {
+      const capture = createOrdinaryVerificationCapture({
+        store: createFileEvidenceStore(evidenceRoot),
+        projectDir: workspaceDir,
+        // The fold pinned this ONCE, after the delegated writes settled and before the first check.
+        // Every record and the gate use this same value; a check's own write cannot move it.
+        currentRevision: () => revision,
+        ...(deadline === undefined ? {} : { isCancelled: () => deadline.elapsed() }),
+      })
+      const captured = await capture.capture({
+        // Identity is (parent task id, epoch, attempt). A late writer for a lower epoch lands at a
+        // lower attempt and can never overwrite the newer epoch's record; the DAG run id is carried
+        // only as traceability metadata on the record and receipt.
+        binding: { taskId, dagRunId: runId, sessionId: parent.parent_session_id, epoch },
+        changedFiles,
+        available: required,
+        required,
+        attempt: epoch + 1,
+      })
+      return {
+        code: "captured",
+        evidenceRoot,
+        records: captured.records,
+        receiptPath: captured.receiptPath,
+        dagRunId: runId,
+        catalogueStatus: catalogue.status,
+        selection: {
+          required: captured.selection.required.length,
+          omitted: captured.selection.omitted.length,
+        },
+      }
+    } catch (error) {
+      // A staging failure is not a pass: the gate reads what actually landed and decides.
+      log("senpi-task delegated verification capture failed", { taskId, runId, error: String(error) })
+      return notCaptured("capture_failed", String(error))
+    }
+  }
+
+  #failDelegatedParent(taskId: string, epoch: number, message: string): void {
+    const terminal = this.#transitionDelegatedParent(taskId, epoch, {
+      type: "fail",
+      timestamp: nowIso(this.#now),
+      error_message: message,
+    })
+    if (terminal !== undefined) this.#settleWaiters(taskId, terminal)
+  }
+
+  #delegatedParentStillOwned(taskId: string, epoch: number): boolean {
+    const record = this.#tryLoad(taskId)
+    return record !== null && record !== undefined &&
+      !isTerminalRecord(record) && record.notification.run_epoch === epoch
+  }
+
+  // The delegated parent's terminal write, fenced on its run epoch. The fence check and the write
+  // happen inside ONE store.mutate critical section - the same per-record lock store.transition()
+  // takes - so a revival that moves the epoch can never slip between the check and the write. The
+  // gate's verification claim, when present, lands in that SAME write: a terminal from a gated run
+  // can never exist without the verdict that belongs to it. Returns the terminal record only when
+  // THIS writer applied the transition; a moved/fenced record and a rejected transition write
+  // nothing and settle nothing.
+  #transitionDelegatedParent(
+    taskId: string,
+    epoch: number,
+    transition: TaskTransition,
+    verification?: VerificationStatus,
+  ): TaskRecord | undefined {
+    const observed: FencedTerminal = {}
+    this.#options.store.mutate(taskId, (record) => {
+      if (isTerminalRecord(record) || record.notification.run_epoch !== epoch) return record
+      const result = transitionTaskRecord(record, transition)
+      observed.audit = result.audit
+      if (!result.applied) return record
+      const stamped: TaskRecord = verification === undefined
+        ? result.record
+        : { ...result.record, verification_status: verification }
+      observed.terminal = stamped
+      return stamped
+    })
+    // The transition audit keeps the same event the store's own transition() appends. Bookkeeping
+    // must never change the terminal this writer already published.
+    if (observed.audit !== undefined) {
+      try {
+        this.#options.store.appendEvent(taskId, { type: observed.audit.type, payload: observed.audit })
+      } catch (error) {
+        log("senpi-task delegated parent transition audit not appended", { taskId, error: String(error) })
+      }
+    }
+    return observed.terminal
   }
 
   async startOwned(spec: ManagerStartSpec, owner: DagTaskOwner): Promise<OwnedStartResult> {
@@ -609,6 +1837,9 @@ class TaskManagerImpl implements TaskManager {
     // never reaches its own release: free its lane now or every suspension leaks a slot (#8973).
     this.#releaseSlotForTask(taskId)
     this.#outcome.release(taskId)
+    this.#verificationCatalogue.delete(taskId)
+    this.#verificationBaseline.delete(taskId)
+    this.#repairInFlight.delete(taskId)
     this.#live.get(taskId)?.unsubscribe()
     this.#live.delete(taskId)
     const subscribers = this.#childSubscribers.get(taskId)
@@ -675,6 +1906,10 @@ class TaskManagerImpl implements TaskManager {
       stateDir: this.#options.store.stateDir,
       runners: this.#options.runners,
       rpcRunner: this.#rpcRespawnRunner,
+      // A revived ordinary child gets the same spawn-time verification snapshot a fresh launch
+      // takes (catalogue + baseline), so the host can still capture evidence at its completion.
+      // No child, revived or initial, carries a verification tool (see #verificationSnapshotFor).
+      attachVerification: (spec) => this.#verificationSnapshotFor(record, spec),
       beforeLaunch: () => {
         // Respawn bypasses start's status transition; persist the same durable launch boundary
         // without changing the status or epoch that lifecycle reattachment owns. It is also the last
@@ -773,7 +2008,7 @@ class TaskManagerImpl implements TaskManager {
       return { ok: false, error: "task was cancelled before launch" }
     }
 
-    let context = initial
+    let context = this.#withVerificationSnapshot(initial)
     let handle: ManagedChildHandle
     for (;;) {
       const { record, managedSpec, runner, model } = context
@@ -794,7 +2029,10 @@ class TaskManagerImpl implements TaskManager {
             this.#settleWaiters(record.task_id)
             return { ok: false, error: "task stopped during launch" }
           }
-          context = advanced.context
+          // The next chain rung is a fresh launch: take the spawn-time verification snapshot again
+          // so a child that starts after an admission-refusal fallback is captured host-side under
+          // the run it actually became.
+          context = this.#withVerificationSnapshot(advanced.context)
           continue
         }
         const failure = describeStartFailure(error)
@@ -842,6 +2080,472 @@ class TaskManagerImpl implements TaskManager {
       run_epoch: record.notification.run_epoch,
       ...(record.resolved_model === undefined ? {} : { resolved_model: record.resolved_model }),
     }
+  }
+
+  /**
+   * Take the spawn-time verification snapshot for an ordinary run. Ordinary means NOT a DAG node
+   * (the DAG gate owns that path) and NOT a team member (out-of-process, unreachable from a live
+   * host closure). The snapshot is retaken on every launch — start, queued promotion, runtime
+   * fallback, revival — so the completion capture runs the catalogue and baseline of the run that
+   * actually started. It is HOST state: never the store, never the spawn_spec, never JSONL.
+   */
+  #withVerificationSnapshot(context: LaunchContext): LaunchContext {
+    return { ...context, managedSpec: this.#verificationSnapshotFor(context.record, context.managedSpec) }
+  }
+
+  // The single trust decision for ordinary verification. DAG nodes (the DAG gate owns that path),
+  // team members (out-of-process, unreachable from a live host closure) and curated read-only
+  // children (a command-executing capability would widen their documented contract) take no
+  // snapshot at all. EVERY child - ordinary included - leaves this method without a verification
+  // tool: verification authority is the host's, and only the host capture at completion may write
+  // evidence or a verdict. The returned spec is the one that was passed in.
+  #verificationSnapshotFor(record: TaskRecord, managedSpec: ManagedStartSpec): ManagedStartSpec {
+    if (record.owner?.kind === "dag" || record.team_role === "member") return managedSpec
+    if (record.agent_type !== undefined && CURATED_READONLY_AGENT_NAMES.has(record.agent_type)) return managedSpec
+    // A tree the host cannot snapshot must fail closed as verification_provenance_unknown, never
+    // as an invented empty change set.
+    let baseline: WorkspaceBaseline | null
+    try {
+      baseline = snapshotWorkspace(managedSpec.cwd)
+    } catch {
+      baseline = null
+    }
+    const taskId = record.task_id
+    const authority = approvalAuthorityFor(managedSpec.cwd, this.#options.verificationAuthorityRoot)
+    // ONE approval snapshot for both halves of the gate: the catalogue the host capture executes
+    // and the completion gate that accepts. Reading twice would let a mid-run write reach one.
+    const approvals = readApprovals(authority, WORKSPACE_ID)
+    // The catalogue is resolved once, at spawn, from that snapshot: the required set cannot be
+    // relaxed later by deleting an approval record the run can write to.
+    this.#verificationCatalogue.set(
+      taskId,
+      resolveCatalogue({ projectRoot: managedSpec.cwd, workspaceId: WORKSPACE_ID, changedFiles: null, authority, approvals }),
+    )
+    this.#verificationBaseline.set(taskId, baseline)
+    return managedSpec
+  }
+
+  // The ordinary-completion gate. Only runs the host actually equipped (a catalogue snapshot exists)
+  // are gated; a DAG node, a team member or a curated child never reaches this map and keeps its own
+  // path. A run without a catalogue keeps its historical behaviour - it still publishes success -
+  // but honestly marked "unverified": only a gate verdict of "verified" may ever write "verified".
+  //
+  // Authority boundary: the host runs the approved catalogue HERE, through the SAME capture and
+  // evidence/receipt machinery the delegated fold uses, BEFORE the gate is asked. No child can
+  // produce this evidence (no child has a verification tool), so a configured run either verifies
+  // from host-written evidence or blocks honestly. The gate remains the sole decider; this method
+  // only stages evidence and never computes a verdict of its own.
+  // Repair wiring: when the verdict is "blocked" AND the block is attributable to a failed
+  // approved check, exactly one repair attempt starts (fire-and-forget) for this (task, epoch).
+  // Every other block keeps its current behaviour and gains an explicit repair_skipped reason.
+  async #verifyOrdinaryCompletion(taskId: string, owned: TaskRecord, captureEvidence = true): Promise<CompletionGateVerdict> {
+    const catalogue = this.#verificationCatalogue.get(taskId)
+    if (catalogue === undefined) {
+      return { verification: "unverified", reason: "this run carried no verification catalogue, so no verification is claimed" }
+    }
+    const epoch = owned.notification.run_epoch
+    const evidenceRoot = join(this.#options.store.stateDir, "verifications")
+    const workspaceDir = this.#repairWorkspaceDir(owned)
+    // ONE requirement set from the spawn-time catalogue, shared by the capture and the gate (the
+    // delegated fold's rule): the two sides can never disagree about which checks are required.
+    const required = catalogueChecks(catalogue)
+    const baseline = this.#verificationBaseline.get(taskId) ?? null
+    // ONE pinned revision for the whole capture, taken after the child settled and before the first
+    // approved check runs. Every record and the gate use this value, so a check's own write cannot
+    // invalidate the evidence it just produced. An unattributable tree is left unpinned and the
+    // gate names provenance_unknown instead of this method inventing a verdict.
+    let pinnedRevision: string | null = null
+    let staleVerdict: CompletionGateVerdict | null = null
+    if (captureEvidence && catalogue.status === "configured" && required.length > 0 && baseline !== null) {
+      let revision: string | null = null
+      try {
+        revision = workspaceRevision(workspaceDir)
+      } catch (error) {
+        log("senpi-task ordinary verification revision unavailable", { taskId, error: String(error) })
+        revision = null
+      }
+      if (revision !== null) {
+        pinnedRevision = revision
+        try {
+          const capture = createOrdinaryVerificationCapture({
+            store: createFileEvidenceStore(evidenceRoot),
+            projectDir: workspaceDir,
+            currentRevision: () => revision,
+            isCancelled: () => this.#tryLoad(taskId)?.status === "cancelled",
+          })
+          await capture.capture({
+            // Identity is (parent task id, epoch, attempt). The attempt advances with the epoch so
+            // a late writer from an older run cannot overwrite a newer run's evidence.
+            binding: { taskId, sessionId: owned.parent_session_id, epoch },
+            changedFiles: changedPathsSince(workspaceDir, baseline),
+            available: required,
+            required,
+            attempt: epoch + 1,
+          })
+        } catch (error) {
+          // A staging failure is not a pass: the gate reads what actually landed and reports the
+          // missing evidence. No fallback and no second runner.
+          log("senpi-task ordinary verification capture failed", { taskId, error: String(error) })
+        }
+        // Compare ONCE, after the checks, against the SAME pinned revision the records carry. A
+        // check that writes the tree (or a concurrent edit) leaves records describing a tree that
+        // no longer exists; acceptance is never evaluated for a moved tree.
+        let postCaptureRevision: string | null = null
+        try {
+          postCaptureRevision = workspaceRevision(workspaceDir)
+        } catch {
+          postCaptureRevision = null
+        }
+        if (postCaptureRevision !== revision) {
+          staleVerdict = {
+            verification: "blocked",
+            code: "verification_stale",
+            reason:
+              "the workspace revision changed while the approved checks ran: " +
+              `pinned ${revision}, observed ${postCaptureRevision ?? "unavailable"}`,
+          }
+        }
+      }
+    }
+    const provenanceUnavailable = catalogue.status === "configured" && required.length > 0 && baseline === null
+    const preconditions: CompletionGatePreconditions | undefined = provenanceUnavailable
+      ? { baseline: "unavailable" }
+      : undefined
+    const verdict = staleVerdict ?? evaluateOrdinaryCompletion({
+      taskId,
+      catalogue,
+      requirements: required,
+      evidenceRoot,
+      workspaceDir,
+      epoch,
+      ...(pinnedRevision === null ? {} : { sourceRevision: pinnedRevision }),
+      ...(preconditions === undefined ? {} : { preconditions }),
+    })
+    this.#maybeStartRepair(taskId, owned, verdict, catalogue)
+    return verdict
+  }
+
+  // Repair eligibility: only a failed approved check is repairable. Cancellation, an invalid
+  // catalogue, malformed/foreign/untrusted evidence (missing/stale/malformed), and
+  // verification_provenance_unknown all keep their current blocked behaviour plus an explicit
+  // reason. Only verification_failed on a configured catalogue may start a repair attempt.
+  #isRepairEligible(
+    owned: TaskRecord,
+    verdict: CompletionGateVerdict,
+    catalogue: OrdinaryCatalogue,
+  ): RepairEligibility {
+    if (verdict.verification !== "blocked") return { eligible: false, reason: "not_blocked" }
+    if (owned.status === "cancelled" || owned.cancel_requested !== undefined) return { eligible: false, reason: "cancelled" }
+    if (catalogue.status === "invalid") return { eligible: false, reason: "invalid_catalogue" }
+    if (catalogue.status !== "configured") return { eligible: false, reason: `catalogue_not_configured:${catalogue.status}` }
+    switch (verdict.code) {
+      case "verification_failed":
+        return { eligible: true, reason: "failed_approved_check" }
+      case "verification_provenance_unknown":
+        return { eligible: false, reason: "verification_provenance_unknown" }
+      case "verification_evidence_malformed":
+        return { eligible: false, reason: "verification_evidence_malformed" }
+      case "verification_evidence_missing":
+        return { eligible: false, reason: "verification_evidence_missing" }
+      case "verification_stale":
+        return { eligible: false, reason: "verification_stale" }
+      default:
+        return { eligible: false, reason: `non_repairable:${verdict.code ?? "unknown"}` }
+    }
+  }
+
+  #repairWorkspaceDir(record: TaskRecord): string {
+    const spec = record.spawn_spec
+    if (spec !== undefined && Object.prototype.toString.call(spec.cwd) === "[object String]" && spec.cwd.length > 0) return spec.cwd
+    return this.#options.cwd
+  }
+
+  // Workspace identity derived from the spawn spec cwd. The repair attempt id forbids path
+  // separators, so the cwd is hashed to a safe segment instead of being stored verbatim; the
+  // hash still attributes the attempt to exactly the tree the run executed in.
+  #repairWorkspaceIdentity(workspaceDir: string): string {
+    return createHash("sha256").update(workspaceDir).digest("hex").slice(0, 16)
+  }
+
+  // Original failed evidence for attributability: the failed check ids and evidence file names
+  // for this epoch. Malformed/unreadable files are skipped (the gate already judged them); when
+  // nothing failed is found the lists stay empty and the orchestrator fails closed as
+  // diagnosis_unavailable instead of inventing a failure.
+  #collectRepairEvidence(
+    taskId: string,
+    epoch: number,
+    evidenceRoot: string,
+  ): RepairEvidenceCollection {
+    let listed: readonly string[]
+    try {
+      listed = createFileEvidenceStore(evidenceRoot).listVerifications(taskId)
+    } catch {
+      return { failedCheckIds: [], failedEvidenceIds: [] }
+    }
+    const failedCheckIds = new Set<string>()
+    const failedEvidenceIds = new Set<string>()
+    for (const file of listed) {
+      if (!file.endsWith(".json")) continue
+      let text: string
+      try {
+        text = readFileSync(join(evidenceRoot, taskId, file), "utf8")
+      } catch {
+        continue
+      }
+      const record = parseVerificationRecord(text)
+      if (record === null) continue
+      if (record.workerAttempt !== undefined && record.workerAttempt !== epoch) continue
+      if (isVerificationAccepting(record.status)) continue
+      failedCheckIds.add(record.checkId)
+      failedEvidenceIds.add(file)
+    }
+    return { failedCheckIds: [...failedCheckIds].sort(), failedEvidenceIds: [...failedEvidenceIds].sort() }
+  }
+
+  // Injectable invoker seam: tests supply a scripted orchestrator invoker; production defaults
+  // to the real host adapter from src/repair/model-diagnosis.ts. Without a live model the adapter
+  // throws typed model_unavailable before any model call, so the attempt settles repair_failed
+  // and the task stays blocked - a diagnosis is never fabricated.
+  #resolveRepairInvoker(workspaceDir: string): RepairAttemptInvoker {
+    const injected = this.#options.repair?.invoker
+    if (injected !== undefined) return injected
+    return async (request) => {
+      const raw = createHostDiagnosisInvoker({
+        runner: {
+          start: async () => {
+            throw new RunnerError({
+              kind: "model_unavailable",
+              message: "model_unavailable: repair diagnosis has no live model in this host; no diagnosis child was started",
+            })
+          },
+        },
+        childSpecFor: (prompt) => {
+          // SAFETY: the host builds the same launch fields toChildSpec sets; ChildSpec names that closed shape.
+          const childSpec = {
+            taskId: request.diagnosis.taskId,
+            cwd: workspaceDir,
+            sessionDir: join(this.#options.store.stateDir, "children", request.diagnosis.taskId, "sessions", request.diagnosis.taskId),
+            depth: 1,
+            parentSessionId: "",
+            rootSessionId: "",
+            prompt,
+          } as ChildSpec;
+          return childSpec;
+        },
+      })
+      await raw({
+        systemInstructions: "Repair diagnosis host context: cite only the host-observed diagnosis JSON.",
+        diagnosisContextJson: JSON.stringify(request.diagnosis),
+        outputContract: "No plan is synthesized by the default host adapter.",
+      }).catch((error) => {
+        // Preserve the production adapter's typed model_unavailable failure with the code in the
+        // message, so the attempt settles repair_failed naming model_unavailable explicitly.
+        if (RunnerError.is(error) && error.failure.kind === "model_unavailable") {
+          throw new RunnerError({
+            kind: "model_unavailable",
+            message: `model_unavailable: ${error.failure.message}`,
+          })
+        }
+        throw error
+      })
+      return {
+        status: "no_defensible_diagnosis",
+        reason: "model_unavailable: default host adapter produced no plan; refusing to fabricate a repair",
+      }
+    }
+  }
+
+  // Default repair applier: the real authorized executor over the run's own workspace and the
+  // pre-repair revision baseline the manager snapshotted for this attempt. The plan's file set is
+  // the closed write allowlist (applyRepairEdits enforces it), and a rejected receipt - revision
+  // conflict, out-of-plan path, protected path, no on-disk change, edit failure - throws so the
+  // orchestrator settles repair_failed. A rejection is never reported as a successful empty change
+  // set. An injected executor still overrides the whole seam for tests.
+  #resolveRepairEditExecutor(workspaceDir: string, baselineRevision: string): RepairEditExecutor {
+    const injected = this.#options.repair?.editExecutor
+    if (injected !== undefined) return injected
+    return async (request) => {
+      const receipt = await applyRepairEdits({
+        plan: request.plan,
+        workspaceDir,
+        baselineRevision,
+        edits: request.edits,
+      })
+      if (receipt.status !== "applied") {
+        const failures = receipt.failures
+          .map((failure) =>
+            failure.path === undefined
+              ? `${failure.code}: ${failure.message}`
+              : `${failure.code}(${failure.path}): ${failure.message}`,
+          )
+          .join("; ")
+        throw new Error(`repair edits rejected: ${failures.length > 0 ? failures : "no failure detail"}`)
+      }
+      return { changedFiles: receipt.files.map((file) => file.path) }
+    }
+  }
+
+  #resolveRepairRunner(): VerificationRunner {
+    return this.#options.repair?.runner ?? runVerificationCommand
+  }
+
+  // Fire-and-forget entry from the sync gate path. Starts exactly one attempt per (task, epoch);
+  // non-repairable blocks keep current behaviour and gain an explicit repair_skipped reason.
+  #maybeStartRepair(taskId: string, owned: TaskRecord, verdict: CompletionGateVerdict, catalogue: OrdinaryCatalogue): void {
+    const epoch = owned.notification.run_epoch
+    if (verdict.verification !== "blocked") return
+    const eligibility = this.#isRepairEligible(owned, verdict, catalogue)
+    if (!eligibility.eligible) {
+      try {
+        this.#options.store.appendEvent(taskId, {
+          type: "repair_skipped",
+          payload: { reason: eligibility.reason, code: verdict.code, verification_status: "blocked" },
+        })
+      } catch {
+        // The event log must never change gate behaviour.
+      }
+      return
+    }
+    const live = this.#tryLoad(taskId)
+    if (live?.status === "cancelled" || live?.cancel_requested !== undefined) {
+      try {
+        this.#options.store.appendEvent(taskId, {
+          type: "repair_skipped",
+          payload: { reason: "cancelled", code: verdict.code, verification_status: "blocked" },
+        })
+      } catch {
+        // The event log must never change gate behaviour.
+      }
+      return
+    }
+    if (this.#repairInFlight.get(taskId) === epoch) return
+    this.#repairInFlight.set(taskId, epoch)
+    const pending = this.#runRepairForBlocked(taskId, epoch, verdict, catalogue)
+    void pending.then(
+      () => {
+        if (this.#repairInFlight.get(taskId) === epoch) this.#repairInFlight.delete(taskId)
+      },
+      (error) => {
+        if (this.#repairInFlight.get(taskId) === epoch) this.#repairInFlight.delete(taskId)
+        log("senpi-task repair attempt failed", { taskId, error: String(error) })
+      },
+    )
+  }
+
+  // One repair attempt for a blocked run. Persists task id, epoch, attempt id, workspace identity
+  // and the original failed evidence (via runRepairAttempt's durable save) before any model call.
+  // A stale epoch publishes nothing: when the record moved on, no event is appended and no record
+  // field is touched. On repair_failed/blocked the task stays blocked and the repair_finished
+  // event says so; only a re-asked gate verdict of "verified" may correct the terminal (see
+  // #publishVerifiedRepair) - never the repair state or a model claim.
+  async #runRepairForBlocked(
+    taskId: string,
+    epoch: number,
+    verdict: CompletionGateVerdict,
+    catalogue: OrdinaryCatalogue,
+  ): Promise<void> {
+    const live = this.#tryLoad(taskId)
+    if (live === null || live.notification.run_epoch !== epoch) return
+    if (live.status === "cancelled" || live.cancel_requested !== undefined) return
+    const workspaceDir = this.#repairWorkspaceDir(live)
+    const evidenceRoot = join(this.#options.store.stateDir, "verifications")
+    const repairStoreRoot = join(this.#options.store.stateDir, "repairs")
+    const { failedCheckIds, failedEvidenceIds } = this.#collectRepairEvidence(taskId, epoch, evidenceRoot)
+    let diagnosisRevision: string
+    try {
+      diagnosisRevision = workspaceRevision(workspaceDir)
+    } catch {
+      diagnosisRevision = "unknown"
+    }
+    const outcome = await runRepairAttempt({
+      taskId,
+      runEpoch: epoch,
+      workspaceId: this.#repairWorkspaceIdentity(workspaceDir),
+      catalogue,
+      evidenceRoot,
+      workspaceDir,
+      repairStoreRoot,
+      failedCheckIds,
+      failedEvidenceIds,
+      diagnosisRevision,
+      invoker: this.#resolveRepairInvoker(workspaceDir),
+      editExecutor: this.#resolveRepairEditExecutor(workspaceDir, diagnosisRevision),
+      runner: this.#resolveRepairRunner(),
+      isCancelled: () => {
+        const current = this.#tryLoad(taskId)
+        return current?.status === "cancelled" || current?.cancel_requested !== undefined
+      },
+    })
+    // Stale epoch guard: the record moved on while the attempt ran - publish nothing.
+    const current = this.#tryLoad(taskId)
+    if (current === null || current.notification.run_epoch !== epoch) return
+    // CANONICAL TERMINAL-RECORD SEMANTICS
+    // - status is the run's lifecycle fact (the terminal transition that ended the run).
+    // - verification_status is the completion gate's final word about the CURRENT evidence.
+    // - error_message is the CURRENT terminal error only; it is absent on a clean success.
+    // A gate-verified repair upgrades the gate-blocked terminal IN PLACE through the same
+    // store.mutate primitive and the same epoch fence, clearing the error text the block wrote.
+    // The original verification failure is HISTORY and stays readable elsewhere: the pre-repair
+    // evidence file (attempt 1) stays on disk, the repair attempt store keeps failedCheckIds /
+    // failedEvidenceIds / outcome, and the task event log keeps verification_blocked and
+    // repair_finished. History is never re-used as the live error_message.
+    // Re-ask the gate over the fresh evidence - never trusting the repair state or the model - and
+    // only a verified verdict reaches the correction. Anything short of verified leaves the
+    // existing terminal untouched, so a failed repair is still reported as the failure it is.
+    let publishedVerification: RepairFinishedPayload["verification_status"] = "blocked"
+    if (outcome.finalState === "repaired") {
+      // The repair already ran the shared capture over the fresh tree; this re-ask only judges its
+      // evidence, so it must not execute the catalogue a second time.
+      const fresh = await this.#verifyOrdinaryCompletion(taskId, current, false)
+      if (fresh.verification === "verified" && this.#publishVerifiedRepair(taskId, epoch, verdict)) {
+        publishedVerification = "verified"
+      }
+    }
+    let finishedPayload: RepairFinishedPayload = {
+      reason: outcome.reason ?? outcome.gateCode ?? outcome.finalState,
+      attempt_id: outcome.attemptId,
+      final_state: outcome.finalState,
+      gate_verdict: outcome.gateVerdict ?? "blocked",
+      verification_status: publishedVerification,
+      changed_files: [...outcome.changedFiles],
+    };
+    if (outcome.gateCode !== undefined) finishedPayload = { ...finishedPayload, gate_code: outcome.gateCode };
+    if (outcome.detail !== undefined) finishedPayload = { ...finishedPayload, detail: outcome.detail };
+    try {
+      this.#options.store.appendEvent(taskId, {
+        type: "repair_finished",
+        payload: finishedPayload,
+      })
+    } catch {
+      // Bookkeeping must never change the published terminal.
+    }
+  }
+
+  // The ONLY path that upgrades a gate-blocked terminal to a verified success, and only for the
+  // run that produced the block. It runs inside the repair's own epoch fence and the store's own
+  // mutate lock, so there is no second completion authority and no write around the gate:
+  // - the caller re-asked the gate over fresh evidence and only its "verified" verdict gets here;
+  // - the record must still carry the gate's failed terminal for this epoch, identified by the
+  //   exact blocked message the gate wrote. An infrastructure failure, a cancellation, a repair
+  //   failure, and another epoch's terminal never match, so their real error text is never cleared;
+  // - clearing error_message is the point: the gate block it described is no longer the outcome.
+  #publishVerifiedRepair(taskId: string, epoch: number, blocked: CompletionGateVerdict): boolean {
+    const expectedError = completionBlockedMessage(blocked)
+    let published = false
+    this.#options.store.mutate(taskId, (record) => {
+      if (record.notification.run_epoch !== epoch) return record
+      if (record.status !== "error" && record.status !== "completed") return record
+      if (record.error_message !== expectedError) return record
+      published = true
+      return {
+        ...record,
+        status: "completed",
+        error_message: undefined,
+        verification_status: "verified",
+        updated_at: nowIso(this.#now),
+      }
+    })
+    return published
   }
 
   /**
@@ -1338,7 +3042,10 @@ class TaskManagerImpl implements TaskManager {
     }
   }
 
-  async #launchRuntimeFallback(context: LaunchContext): Promise<void> {
+  async #launchRuntimeFallback(initial: LaunchContext): Promise<void> {
+    // A fallback relaunch is still a launch: without this the new rung would lose its spawn-time
+    // verification snapshot (catalogue + baseline), so its completion could not be captured.
+    const context = this.#withVerificationSnapshot(initial)
     this.#options.store.mutate(context.record.task_id, (fresh) => {
       if (fresh.start_queued === undefined) return fresh
       const { start_queued: _granted, ...rest } = fresh

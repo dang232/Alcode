@@ -674,3 +674,23 @@ describe('worker wrapper-kind jobs (spawn and relay)', () => {
     expect(readFileSync(receiptFile, 'utf8')).toBe('got-sigterm');
   }, 30000);
 });
+
+describe('worker native-kind product-run marker', () => {
+  it('sets OMO_PRODUCT_RUN=1 before the barrel import', async () => {
+    const markerDir = trackDir('omo-worker-marker-');
+    const markerFile = join(markerDir, 'marker.txt');
+    const barrel = `export async function run(): Promise<number> {
+  const fs = await import("node:fs");
+  fs.writeFileSync(${JSON.stringify(markerFile)}, String(process.env.OMO_PRODUCT_RUN ?? ""));
+  return 0;
+}
+`;
+    const { root, barrelPath } = makeEngineRoot(barrel);
+    const result = await runWorker(
+      ['--engine-root', root, '--barrel-path', barrelPath],
+      `${JSON.stringify({ message: 'hi' })}\n`,
+    );
+    expect(result.code).toBe(0);
+    expect(readFileSync(markerFile, 'utf8')).toBe('1');
+  });
+});

@@ -949,6 +949,16 @@ export const createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExe
   };
 
   let buildSeq = 0;
+  /**
+   * Raises the local counter to a generation that was already published for this
+   * scope, so the next build mints the following number. Without this a rebuild
+   * after a revision miss restarted at 1 and republished a number a client had
+   * already seen for different content.
+   */
+  const adoptPublishedSeq = (seq) => {
+    const published = Number(seq);
+    if (Number.isFinite(published) && published > buildSeq) buildSeq = published;
+  };
 
   /** Distinct query answers kept per snapshot build; FIFO-evicted, never shared across builds. */
   const MAX_CACHED_QUERIES = 200;
@@ -1055,9 +1065,16 @@ export const createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExe
     const env = readWatcherEnv();
     if (env.CODEGRAPH_NO_WATCHER === '1' || env.CODEGRAPH_NO_WATCHER === 'true') return false;
     if (env.CODEGRAPH_NO_DAEMON === '1' || env.CODEGRAPH_SYNC_DISABLED === '1') return false;
-    if (runtimeOptions.watcherEnabled === true) return true;
-    const flag = env.ALCODE_CODE_GRAPH_WATCHER ?? env.CODEGRAPH_WATCHER_ENABLED ?? null;
-    return flag === '1' || flag === 'true';
+    // An explicitly set flag decides in BOTH directions: `=0` must survive a
+    // host that enables watching by default, exactly like `=1` enables a host
+    // that does not ask. Only an unset flag falls through to the host option,
+    // so an operator's env var is never silently overridden.
+    const raw = env.ALCODE_CODE_GRAPH_WATCHER ?? env.CODEGRAPH_WATCHER_ENABLED ?? null;
+    if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
+      const text = String(raw).trim().toLowerCase();
+      return text === '1' || text === 'true' || text === 'yes' || text === 'on';
+    }
+    return runtimeOptions.watcherEnabled === true;
   };
 
   const watcherDebounceMs = (() => {
@@ -2673,7 +2690,16 @@ const buildSnapshot = async (key, requestedKey, scopeRoot, mode, maxEntryFiles, 
       emitProgress(requestedKey, { state: 'discovering', storeReadFailed: error instanceof Error ? error.message : String(error) });
       return shareWalk ? { miss: true, walk } : null;
     }
-    if (read.status !== 'hit') return shareWalk ? { miss: true, walk } : null;
+    if (read.status !== 'hit') {
+      // A stale manifest is this scope's own last published generation: the
+      // store read the manifest out of the directory derived from this
+      // projectId/worktreeId, and only its revision/fingerprint disagreed. Adopt
+      // its number so the rebuild that follows mints the NEXT generation
+      // instead of republishing an old one. Misses that carry no manifest
+      // (no-store, corrupt, incompatible version) adopt nothing and stay safe.
+      adoptPublishedSeq(read.manifest?.buildSeq);
+      return shareWalk ? { miss: true, walk } : null;
+    }
     // Restores are complete by construction: truncated builds never persist
     // (persistEntry skips them so a partial can neither overwrite nor pose
     // as a complete generation), and a cap-truncated walk misses restore
@@ -3523,6 +3549,15 @@ const buildSnapshot = async (key, requestedKey, scopeRoot, mode, maxEntryFiles, 
       freshness: entry.freshness,
       observedAtMs: entry.observedAtMs,
       staleAfterMs: entry.staleAfterMs,
+      // Freshness driver, carried on every envelope so a client can tell
+      // "updates by itself" from "re-checks when you return" - two different
+      // promises the panel must not blur. Cheap: no I/O, just the resolved
+      // option, the live watcher count and the debounce.
+      watcher: {
+        enabled: isWatcherEnabled(),
+        watchedScopes: watchers.size,
+        debounceMs: watcherDebounceMs,
+      },
       // Published generation: the monotonic build identity, so a client
       // holding rows from one build can discard them when a newer build
       // answers. Every query envelope rides the same field via this helper.
@@ -4319,5 +4354,15 @@ const buildSnapshot = async (key, requestedKey, scopeRoot, mode, maxEntryFiles, 
     // single-flight sync) plus its test seam. Closing never throws.
     closeWatchers,
     watcherState,
+    // One disposal point for an in-process consumer: watchers and their timers
+    // release here. A forked worker host disposes by ending the process, so
+    // this is additive and never required by the production path.
+    close: () => {
+      try {
+        closeWatchers();
+      } catch {
+        // Cleanup is best-effort and must never throw at shutdown.
+      }
+    },
   };
 };

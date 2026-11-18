@@ -215,7 +215,6 @@ export const startGlobalEventWatcher = async (
             // A healthy connection clears the backoff, so a long-lived watcher
             // does not carry a 30s delay into its next reconnect.
             attempt = 0;
-            console.log('[VSCode:Activity] connected');
           }
 
           const activity = deriveSessionActivity(event);

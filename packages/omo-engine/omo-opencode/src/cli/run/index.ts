@@ -1,4 +1,9 @@
 export { run } from "./runner"
+export {
+  buildRunDeliveryInput,
+  createRunDeliveryRecorder,
+  shouldRecordRunDelivery,
+} from "./run-delivery-record"
 export { resolveRunAgent } from "./agent-resolver"
 export { resolveRunModel } from "./model-resolver"
 export { createServerConnection } from "./server-connection"

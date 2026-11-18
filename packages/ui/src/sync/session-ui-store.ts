@@ -723,7 +723,6 @@ export type SessionUIState = {
   getDirectoryForSession: (sessionId: string) => string | null
   getLastUserChoice: (sessionId: string) => { agent?: string; providerID?: string; modelID?: string; variant?: string } | null
   getCurrentAgent: (sessionId: string) => string | undefined
-  debugSessionMessages: (sessionId: string) => Promise<void>
   pollForTokenUpdates: () => void
   setSessionDirectory: (sessionId: string, directory: string | null) => void
   /**
@@ -2608,21 +2607,6 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
 
   getCurrentAgent: (sessionId) => {
     return useSelectionStore.getState().sessionAgentSelections.get(sessionId) ?? undefined
-  },
-
-  debugSessionMessages: async (sessionId) => {
-    const msgs = getSyncMessages(sessionId)
-    const sessions = getSyncSessions()
-    const session = sessions.find((s) => s.id === sessionId)
-    console.log(`Debug session ${sessionId}:`, {
-      session,
-      messageCount: msgs.length,
-      messages: msgs.map((m) => ({
-        id: m.id,
-        role: m.role,
-        tokens: m.role === "assistant" ? m.tokens : undefined,
-      })),
-    })
   },
 
   pollForTokenUpdates: () => {

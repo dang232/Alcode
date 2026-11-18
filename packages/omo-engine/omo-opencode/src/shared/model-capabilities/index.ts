@@ -1,3 +1,1 @@
-import {
-} from "../../../../model-core/src/index.ts"
-
+export * from "../../../../model-core/src/model-capabilities/index.ts"

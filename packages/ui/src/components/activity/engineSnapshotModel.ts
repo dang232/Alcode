@@ -1,9 +1,12 @@
+import type { RepairEntry, SnapshotRepairIndex } from '@/lib/runGraphApi';
 import { type SnapshotDoc } from './snapshotDoc';
 import {
   NODE_HEIGHT,
   NODE_WIDTH,
+  buildRepairView,
   type ActivityNodeState,
   type ActivityTreeRow,
+  type RepairView,
   type RunGraph,
 } from './activityModel';
 
@@ -11,19 +14,90 @@ export type EngineSnapshotSource = {
   /** Parsed engine snapshot, or null when no snapshot exists. */
   doc: SnapshotDoc | null;
   conversationId: string;
+  /** Current-epoch repair projection keyed by run id and task id. */
+  repairIndex?: SnapshotRepairIndex;
+};
+
+/**
+ * Repair projection for one node: the merged view when the attempt is readable,
+ * or the read error that stands in for it.
+ */
+type NodeRepairProjection = { repair?: RepairView; repairError?: string };
+
+/**
+ * Repair view for one node id. The run and task projections of the same
+ * attempt are merged, so a repeated block never renders twice. A read error
+ * stays an error unless the other projection supplied a usable block.
+ */
+const repairFor = (
+  id: string,
+  index: SnapshotRepairIndex | undefined,
+): NodeRepairProjection => {
+  if (!index) return {};
+  const entries = [index.tasks[id], index.runs[id]].filter((entry): entry is RepairEntry => entry !== undefined);
+  if (entries.length === 0) return {};
+  const repair = buildRepairView(entries.flatMap((entry) => (entry.repair ? [entry.repair] : [])));
+  if (repair) return { repair };
+  const repairError = entries.find((entry) => entry.repairError !== undefined)?.repairError;
+  return repairError ? { repairError } : {};
 };
 
 const toActivityState = (state: string): ActivityNodeState => {
   switch (state) {
     case 'completed': return 'completed';
+    // A canonical task ends `error`; the graph vocabulary calls that failed, and reporting a failed task as unknown
+    // would hide the one outcome the reader exists to surface.
+    case 'error':
     case 'failed': return 'failed';
-    case 'cancelled': return 'cancelled';
+    case 'cancelled':
+    case 'interrupted': return 'cancelled';
     case 'running': return 'running';
     case 'pending': return 'pending';
+    case 'lost': return 'unknown';
     case 'blocked':
     case 'parked': return 'blocked';
     default: return 'unknown';
   }
+};
+
+/**
+ * A conversation that exists only as canonical records: no run was ever snapshotted, so there are no waves and no
+ * edges. Each task becomes one node keyed by its own task id, which is the same identity the API and the pane use.
+ * Nothing is invented: a task without a record is simply not in this list.
+ */
+const tasksOnlyView = (source: EngineSnapshotSource): EngineRunView | null => {
+  const tasks = source.doc?.tasks ?? [];
+  if (tasks.length === 0) return null;
+  const rows: ActivityTreeRow[] = tasks.map((task) => ({
+    id: task.taskId,
+    kind: 'task',
+    label: task.name ?? task.taskId,
+    detail: task.summary || null,
+    state: toActivityState(task.status),
+    verificationStatus: task.verificationStatus,
+    agent: null,
+    progress: null,
+    ...repairFor(task.taskId, source.repairIndex),
+  }));
+  return {
+    rows,
+    graph: {
+      nodes: tasks.map((task, index) => ({
+        id: task.taskId,
+        label: task.name ?? task.taskId,
+        state: toActivityState(task.status),
+        verificationStatus: task.verificationStatus,
+        wave: 0,
+        x: 0,
+        y: index * (NODE_HEIGHT + ROW_GAP_Y),
+        ...repairFor(task.taskId, source.repairIndex),
+      })),
+      edges: [],
+      width: NODE_WIDTH,
+      height: Math.max(NODE_HEIGHT, tasks.length * NODE_HEIGHT + (tasks.length - 1) * ROW_GAP_Y),
+    },
+    runLabel: 'Canonical tasks',
+  };
 };
 
 const WAVE_GAP_X = 72;
@@ -45,7 +119,7 @@ export type EngineRunView = {
 export const engineSnapshotToView = (source: EngineSnapshotSource): EngineRunView | null => {
   if (!source.doc) return null;
   const run = source.doc.runs.find((entry) => entry.runId === source.conversationId) ?? source.doc.runs[0] ?? null;
-  if (!run) return null;
+  if (!run) return tasksOnlyView(source);
   const stateOf = (id: string): ActivityNodeState => {
     const node = run.nodes.find((entry) => entry.id === id);
     return node ? toActivityState(node.state) : 'unknown';
@@ -56,8 +130,10 @@ export const engineSnapshotToView = (source: EngineSnapshotSource): EngineRunVie
     label: node.label,
     detail: node.prompt || null,
     state: toActivityState(node.state),
+    verificationStatus: node.verificationStatus ?? (node.id === run.runId ? run.verificationStatus : undefined),
     agent: null,
     progress: null,
+    ...repairFor(node.id, source.repairIndex),
   }));
   const waveIndex = new Map<string, number>();
   for (const wave of run.waves) {
@@ -81,9 +157,11 @@ export const engineSnapshotToView = (source: EngineSnapshotSource): EngineRunVie
       id: node.id,
       label: node.label,
       state: toActivityState(node.state),
+      verificationStatus: node.verificationStatus ?? (node.id === run.runId ? run.verificationStatus : undefined),
       wave,
       x: wave * (NODE_WIDTH + WAVE_GAP_X),
       y: Math.max(0, order) * (NODE_HEIGHT + ROW_GAP_Y),
+      ...repairFor(node.id, source.repairIndex),
     };
   });
   const edges = run.edges

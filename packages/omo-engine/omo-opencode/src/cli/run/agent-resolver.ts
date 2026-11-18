@@ -1,4 +1,3 @@
-import pc from "picocolors"
 import type { RunOptions } from "./types"
 import type { OhMyOpenCodeConfig } from "../../config"
 import { getAgentConfigKey, getAgentDisplayName } from "../../shared/agent-display-names"
@@ -65,23 +64,7 @@ export const resolveRunAgent = (
     }
 
   if (isAgentDisabled(resolved.configKey, pluginConfig)) {
-    const fallback = pickFallbackAgent(pluginConfig)
-    const fallbackDisplayName = getAgentDisplayName(fallback)
-    const fallbackDisabled = isAgentDisabled(fallback, pluginConfig)
-    if (fallbackDisabled) {
-      console.log(
-        pc.yellow(
-          `Requested agent "${resolved.resolvedName}" is disabled and no enabled core agent was found. Proceeding with "${fallbackDisplayName}".`
-        )
-      )
-      return fallback
-    }
-    console.log(
-      pc.yellow(
-        `Requested agent "${resolved.resolvedName}" is disabled. Falling back to "${fallbackDisplayName}".`
-      )
-    )
-    return fallback
+    return pickFallbackAgent(pluginConfig)
   }
 
   return resolved.resolvedName

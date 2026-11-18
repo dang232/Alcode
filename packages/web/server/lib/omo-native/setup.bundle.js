@@ -15072,6 +15072,7 @@ var _parse = (_Err) => {
   };
   return fn;
 };
+var parse = /* @__PURE__ */ _parse($ZodRealError);
 var _parseAsync = (_Err) => {
   const fn = async (schema, value, _ctx, params) => {
     const ctx = _ctx ? { ..._ctx, async: true } : { async: true };
@@ -15087,6 +15088,7 @@ var _parseAsync = (_Err) => {
   };
   return fn;
 };
+var parseAsync = /* @__PURE__ */ _parseAsync($ZodRealError);
 var _safeParse = (_Err) => (schema, value, _ctx) => {
   const ctx = _ctx ? { ..._ctx, async: false } : { async: false };
   const result = schema._zod.run({ value, issues: [] }, ctx);
@@ -16805,6 +16807,129 @@ function handleIntersectionResults(result, left, right) {
   result.value = merged.data;
   return result;
 }
+var $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
+  $ZodType.init(inst, def);
+  const items = def.items;
+  const memo = globalConfig.memoizer;
+  memo?.attach(inst);
+  inst._zod.parse = (payload, ctx) => {
+    const input = payload.value;
+    if (!Array.isArray(input)) {
+      payload.issues.push({
+        input,
+        inst,
+        expected: "tuple",
+        code: "invalid_type"
+      });
+      return payload;
+    }
+    payload.value = memo ? memo.alloc(inst, payload, [], ctx) : [];
+    const proms = [];
+    const optinStart = getTupleOptStart(items, "optin");
+    const optoutStart = getTupleOptStart(items, "optout");
+    if (!def.rest) {
+      if (input.length < optinStart) {
+        payload.issues.push({
+          code: "too_small",
+          minimum: optinStart,
+          inclusive: true,
+          input,
+          inst,
+          origin: "array"
+        });
+        return payload;
+      }
+      if (input.length > items.length) {
+        payload.issues.push({
+          code: "too_big",
+          maximum: items.length,
+          inclusive: true,
+          input,
+          inst,
+          origin: "array"
+        });
+      }
+    }
+    const itemResults = new Array(items.length);
+    const abortEarly = def.rest ? ctx?.abortEarly : undefined;
+    let itemAborted = false;
+    for (let i = 0;i < items.length; i++) {
+      const r = items[i]._zod.run({ value: input[i], issues: [] }, ctx);
+      if (r instanceof Promise) {
+        proms.push(r.then((rr) => {
+          itemResults[i] = rr;
+        }));
+      } else {
+        itemResults[i] = r;
+        if (abortEarly && !itemAborted && r.issues.length)
+          itemAborted = aborted(r);
+      }
+    }
+    if (def.rest && !itemAborted) {
+      let i = items.length - 1;
+      const rest = input.slice(items.length);
+      let seen = payload.issues.length;
+      for (const el of rest) {
+        if (abortEarly && payload.issues.length !== seen) {
+          if (aborted(payload, seen))
+            break;
+          seen = payload.issues.length;
+        }
+        i++;
+        const result = def.rest._zod.run({ value: el, issues: [] }, ctx);
+        if (result instanceof Promise) {
+          proms.push(result.then((r) => handleTupleResult(r, payload, i)));
+        } else {
+          handleTupleResult(result, payload, i);
+        }
+      }
+    }
+    if (proms.length) {
+      return Promise.all(proms).then(() => handleTupleResults(itemResults, payload, items, input, optoutStart));
+    }
+    return handleTupleResults(itemResults, payload, items, input, optoutStart);
+  };
+});
+function getTupleOptStart(items, key) {
+  for (let i = items.length - 1;i >= 0; i--) {
+    const omittable = key === "optin" ? items[i]._zod.optin !== undefined : items[i]._zod.optout === "optional";
+    if (!omittable)
+      return i + 1;
+  }
+  return 0;
+}
+function handleTupleResult(result, final, index) {
+  if (result.issues.length) {
+    final.issues.push(...prefixIssues(index, result.issues));
+  }
+  final.value[index] = result.value;
+}
+function handleTupleResults(itemResults, final, items, input, optoutStart) {
+  for (let i = 0;i < items.length; i++) {
+    const r = itemResults[i];
+    const isPresent = i < input.length;
+    if (!isPresent && i >= optoutStart && items[i]._zod.optin === "optional") {
+      final.value.length = i;
+      break;
+    }
+    if (r.issues.length) {
+      if (!isPresent && i >= optoutStart) {
+        final.value.length = i;
+        break;
+      }
+      final.issues.push(...prefixIssues(i, r.issues));
+    }
+    final.value[i] = r.value;
+  }
+  for (let i = final.value.length - 1;i >= input.length; i--) {
+    if (items[i]._zod.optout === "optional" && final.value[i] === undefined) {
+      final.value.length = i;
+    } else {
+      break;
+    }
+  }
+  return final;
+}
 var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
   $ZodType.init(inst, def);
   const memo = globalConfig.memoizer;
@@ -17231,6 +17356,83 @@ function handleReadonlyResult(payload) {
     payload.value = Object.freeze(payload.value);
   return payload;
 }
+var $ZodFunction = /* @__PURE__ */ $constructor("$ZodFunction", (inst, def) => {
+  $ZodType.init(inst, def);
+  Object.defineProperty(inst, "_def", { value: def });
+  inst._zod.def = def;
+  inst.implement = (func) => {
+    if (typeof func !== "function") {
+      throw new Error("implement() must be called with a function");
+    }
+    return Object.defineProperty(function(...args) {
+      const parsedArgs = inst._def.input ? parse(inst._def.input, args) : args;
+      const result = Reflect.apply(func, this, parsedArgs);
+      if (inst._def.output) {
+        return parse(inst._def.output, result);
+      }
+      return result;
+    }, "_zod", { value: inst._zod, enumerable: false });
+  };
+  inst.implementAsync = (func) => {
+    if (typeof func !== "function") {
+      throw new Error("implementAsync() must be called with a function");
+    }
+    return Object.defineProperty(async function(...args) {
+      const parsedArgs = inst._def.input ? await parseAsync(inst._def.input, args) : args;
+      const result = await Reflect.apply(func, this, parsedArgs);
+      if (inst._def.output) {
+        return await parseAsync(inst._def.output, result);
+      }
+      return result;
+    }, "_zod", { value: inst._zod, enumerable: false });
+  };
+  inst._zod.parse = (payload, _ctx) => {
+    if (typeof payload.value !== "function") {
+      payload.issues.push({
+        code: "invalid_type",
+        expected: "function",
+        input: payload.value,
+        inst
+      });
+      return payload;
+    }
+    const hasPromiseOutput = inst._def.output && inst._def.output._zod.def.type === "promise";
+    if (hasPromiseOutput) {
+      payload.value = inst.implementAsync(payload.value);
+    } else {
+      payload.value = inst.implement(payload.value);
+    }
+    return payload;
+  };
+  inst.input = (...args) => {
+    const F = inst.constructor;
+    if (Array.isArray(args[0])) {
+      return new F({
+        type: "function",
+        input: new $ZodTuple({
+          type: "tuple",
+          items: args[0],
+          rest: args[1]
+        }),
+        output: inst._def.output
+      });
+    }
+    return new F({
+      type: "function",
+      input: args[0],
+      output: inst._def.output
+    });
+  };
+  inst.output = (output) => {
+    const F = inst.constructor;
+    return new F({
+      type: "function",
+      input: inst._def.input,
+      output
+    });
+  };
+  return inst;
+});
 var $ZodCustom = /* @__PURE__ */ $constructor("$ZodCustom", (inst, def) => {
   $ZodCheck.init(inst, def);
   $ZodType.init(inst, def);
@@ -18918,6 +19120,9 @@ var literalProcessor = (schema, ctx, json, params) => {
 var customProcessor = (schema, ctx, json, params) => {
   handleUnrepresentable(schema, ctx, json, params, "Custom types cannot be represented in JSON Schema");
 };
+var functionProcessor = (schema, ctx, json, params) => {
+  handleUnrepresentable(schema, ctx, json, params, "Function types cannot be represented in JSON Schema");
+};
 var transformProcessor = (schema, ctx, json, params) => {
   handleUnrepresentable(schema, ctx, json, params, "Transforms cannot be represented in JSON Schema");
 };
@@ -19013,6 +19218,70 @@ var intersectionProcessor = (schema, ctx, json, params) => {
   ];
   json.allOf = allOf;
   ctx.intersections.push(allOf);
+};
+var tupleProcessor = (schema, ctx, _json, params) => {
+  const json = _json;
+  const def = schema._zod.def;
+  json.type = "array";
+  const prefixPath = ctx.target === "draft-2020-12" ? "prefixItems" : "items";
+  const restPath = ctx.target === "draft-2020-12" ? "items" : ctx.target === "openapi-3.0" ? "items" : "additionalItems";
+  const prefixItems = def.items.map((x, i) => processSchema(x, ctx, {
+    ...params,
+    path: [...params.path, prefixPath, i]
+  }));
+  const rest = def.rest ? processSchema(def.rest, ctx, {
+    ...params,
+    path: [...params.path, restPath, ...ctx.target === "openapi-3.0" ? [def.items.length] : []]
+  }) : null;
+  let minItems = def.items.length;
+  while (minItems > 0) {
+    const item = def.items[minItems - 1];
+    const optional = ctx.io === "input" ? inputOptin(item) !== undefined : item._zod.optout === "optional";
+    if (!optional)
+      break;
+    minItems--;
+  }
+  const maxItems = def.items.length;
+  const isClosed = !def.rest;
+  if (ctx.target === "draft-2020-12") {
+    json.prefixItems = prefixItems;
+    if (isClosed) {
+      json.items = false;
+    } else if (rest) {
+      json.items = rest;
+    }
+    if (minItems > 0)
+      json.minItems = minItems;
+    if (isClosed)
+      json.maxItems = maxItems;
+  } else if (ctx.target === "openapi-3.0") {
+    json.items = {
+      anyOf: prefixItems
+    };
+    if (rest) {
+      json.items.anyOf.push(rest);
+    }
+    if (minItems > 0)
+      json.minItems = minItems;
+    if (isClosed)
+      json.maxItems = maxItems;
+  } else {
+    json.items = prefixItems;
+    if (isClosed) {
+      json.additionalItems = false;
+    } else if (rest) {
+      json.additionalItems = rest;
+    }
+    if (minItems > 0)
+      json.minItems = minItems;
+    if (isClosed)
+      json.maxItems = maxItems;
+  }
+  const { minimum, maximum } = aggregateChecks(schema);
+  if (typeof minimum === "number")
+    json.minItems = minimum;
+  if (typeof maximum === "number")
+    json.maxItems = maximum;
 };
 function stringifyKeyNames(bySchema, json, visited) {
   if (json.$ref) {
@@ -19252,8 +19521,8 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, undefi
 });
 
 // ../../../../../node_modules/.bun/zod@4.6.7/node_modules/zod/v4/classic/parse.js
-var parse2 = /* @__PURE__ */ _parse(ZodRealError);
-var parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
+var parse3 = /* @__PURE__ */ _parse(ZodRealError);
+var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
 var safeParseAsync = /* @__PURE__ */ _safeParseAsync(ZodRealError);
 var encode = /* @__PURE__ */ _encode(ZodRealError);
@@ -19388,10 +19657,10 @@ var ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
     own(this, "~standard", value);
   },
   parse: function _parse(data, params) {
-    return parse2(this, data, params, { callee: _parse });
+    return parse3(this, data, params, { callee: _parse });
   },
   parseAsync: async function _parseAsync(data, params) {
-    return await parseAsync(this, data, params, { callee: _parseAsync });
+    return await parseAsync2(this, data, params, { callee: _parseAsync });
   },
   safeParse(data, params) {
     return safeParse(this, data, params);
@@ -19903,6 +20172,39 @@ function intersection(left, right) {
     right
   });
 }
+var ZodTuple = /* @__PURE__ */ $constructor("ZodTuple", (inst, def) => {
+  _ensureDefaultMemoizer();
+  $ZodTuple.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json, params) => tupleProcessor(inst, ctx, json, params);
+}, {
+  rest(rest) {
+    return this.clone({
+      ...this._zod.def,
+      rest
+    });
+  },
+  partial() {
+    const def = this._zod.def;
+    if (def.checks?.length)
+      throw new Error(".partial() cannot be used on tuple schemas containing refinements");
+    return this.clone({
+      ...def,
+      items: def.items.map((item) => new ZodOptional({ type: "optional", innerType: item }))
+    });
+  }
+});
+function tuple(items, _paramsOrRest, _params) {
+  const hasRest = _paramsOrRest instanceof $ZodType;
+  const params = hasRest ? _params : _paramsOrRest;
+  const rest = hasRest ? _paramsOrRest : null;
+  return new ZodTuple({
+    type: "tuple",
+    items,
+    rest,
+    ...normalizeParams(params)
+  });
+}
 var ZodRecord = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
   _ensureDefaultMemoizer();
   $ZodRecord.init(inst, def);
@@ -20156,6 +20458,18 @@ function readonly(innerType) {
   return new ZodReadonly({
     type: "readonly",
     innerType
+  });
+}
+var ZodFunction = /* @__PURE__ */ $constructor("ZodFunction", (inst, def) => {
+  $ZodFunction.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json, params) => functionProcessor(inst, ctx, json, params);
+});
+function _function(params) {
+  return new ZodFunction({
+    type: "function",
+    input: Array.isArray(params?.input) ? tuple(params?.input) : params?.input ?? array(unknown()),
+    output: params?.output ?? unknown()
   });
 }
 var ZodCustom = /* @__PURE__ */ $constructor("ZodCustom", (inst, def) => {
@@ -21814,7 +22128,7 @@ var ParseOptions;
     allowTrailingComma: false
   };
 })(ParseOptions || (ParseOptions = {}));
-function parse3(text, errors = [], options = ParseOptions.DEFAULT) {
+function parse4(text, errors = [], options = ParseOptions.DEFAULT) {
   let currentProperty = null;
   let currentParent = [];
   const previousParents = [];
@@ -22394,7 +22708,7 @@ var SyntaxKind;
   SyntaxKind[SyntaxKind["Unknown"] = 16] = "Unknown";
   SyntaxKind[SyntaxKind["EOF"] = 17] = "EOF";
 })(SyntaxKind || (SyntaxKind = {}));
-var parse4 = parse3;
+var parse5 = parse4;
 var ParseErrorCode;
 (function(ParseErrorCode) {
   ParseErrorCode[ParseErrorCode["InvalidSymbol"] = 1] = "InvalidSymbol";
@@ -22914,7 +23228,7 @@ function resolveOmoConfigView(options) {
 // ../../../../omo-engine/omo-config-core/src/loader/loader.ts
 function parseJsoncSafe(content) {
   const errors = [];
-  const data = parse4(content.charCodeAt(0) === 65279 ? content.slice(1) : content, errors, {
+  const data = parse5(content.charCodeAt(0) === 65279 ? content.slice(1) : content, errors, {
     allowTrailingComma: true,
     disallowComments: false
   });
@@ -26309,7 +26623,7 @@ function stripBom2(content) {
 }
 function parseJsoncSafe2(content) {
   const errors = [];
-  const data = parse4(stripBom2(content), errors, {
+  const data = parse5(stripBom2(content), errors, {
     allowTrailingComma: true,
     disallowComments: false
   });
@@ -42454,7 +42768,7 @@ function buildAgentContext(input) {
   const queryServable = input.status?.queryServable ?? source !== undefined;
   const reasons = input.status?.reasons ?? (source === undefined ? ["no-envelope"] : []);
   let unavailable;
-  if (source === undefined) {
+  if (source === undefined && input.op !== "status") {
     unavailable = {
       code: "GRAPH_UNAVAILABLE",
       message: reasons.length > 0 ? `no query envelope provided (${reasons.join("; ")})` : "no query envelope provided"
@@ -46742,7 +47056,8 @@ var CodeGraphArgsSchema = object({
   to: string2().trim().min(1).optional(),
   depth: number2().int().min(1).max(3).optional(),
   limit: number2().int().min(1).max(50).optional(),
-  maxBytes: number2().int().min(512).max(16384).optional()
+  maxBytes: number2().int().min(512).max(16384).optional(),
+  refresh: boolean2().optional()
 });
 
 // ../../../../omo-engine/omo-opencode/src/tools/code-graph/canonical-runtime.ts
@@ -47744,6 +48059,11 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
     return result;
   };
   let buildSeq = 0;
+  const adoptPublishedSeq = (seq) => {
+    const published = Number(seq);
+    if (Number.isFinite(published) && published > buildSeq)
+      buildSeq = published;
+  };
   const MAX_CACHED_QUERIES = 200;
   const snapshots = new Map;
   const completeSnapshots = new Map;
@@ -47791,10 +48111,12 @@ var createCodeGraphRuntime = ({ fsPromises, path, execFile: injectedExecFile }, 
       return false;
     if (env.CODEGRAPH_NO_DAEMON === "1" || env.CODEGRAPH_SYNC_DISABLED === "1")
       return false;
-    if (runtimeOptions.watcherEnabled === true)
-      return true;
-    const flag = env.ALCODE_CODE_GRAPH_WATCHER ?? env.CODEGRAPH_WATCHER_ENABLED ?? null;
-    return flag === "1" || flag === "true";
+    const raw = env.ALCODE_CODE_GRAPH_WATCHER ?? env.CODEGRAPH_WATCHER_ENABLED ?? null;
+    if (raw !== null && raw !== undefined && String(raw).trim() !== "") {
+      const text = String(raw).trim().toLowerCase();
+      return text === "1" || text === "true" || text === "yes" || text === "on";
+    }
+    return runtimeOptions.watcherEnabled === true;
   };
   const watcherDebounceMs = (() => {
     const env = readWatcherEnv();
@@ -49091,8 +49413,10 @@ ${sizeLine}`), binding: "content", dirtyLines: [] };
       emitProgress(requestedKey, { state: "discovering", storeReadFailed: error instanceof Error ? error.message : String(error) });
       return shareWalk ? { miss: true, walk } : null;
     }
-    if (read.status !== "hit")
+    if (read.status !== "hit") {
+      adoptPublishedSeq(read.manifest?.buildSeq);
       return shareWalk ? { miss: true, walk } : null;
+    }
     const built = assembleEntry({
       snapshot: read.snapshot,
       scope: { projectId, worktreeId, revision, fingerprint, scopeRoot, scopeMode: mode, requestedDir: requestedKey },
@@ -49686,6 +50010,11 @@ ${sizeLine}`), binding: "content", dirtyLines: [] };
       freshness: entry.freshness,
       observedAtMs: entry.observedAtMs,
       staleAfterMs: entry.staleAfterMs,
+      watcher: {
+        enabled: isWatcherEnabled(),
+        watchedScopes: watchers.size,
+        debounceMs: watcherDebounceMs
+      },
       generation: entry.buildSeq,
       indexTruncated: entry.indexTruncated === true,
       truncationReason: entry.truncationReason ?? null,
@@ -50345,7 +50674,12 @@ ${sizeLine}`), binding: "content", dirtyLines: [] };
     awaitIndex,
     seedSnapshot,
     closeWatchers,
-    watcherState
+    watcherState,
+    close: () => {
+      try {
+        closeWatchers();
+      } catch {}
+    }
   };
 };
 
@@ -50401,7 +50735,8 @@ var toCanonicalSummary = (raw) => {
     edgeCount: countOrZero(wire["edgeCount"]),
     entryCount: countOrZero(wire["entryCount"]),
     entryCap: countOrZero(wire["entryCap"]),
-    indexState: indexState === null ? null : stringOrNull(indexState["state"])
+    indexState: indexState === null ? null : stringOrNull(indexState["state"]),
+    indexStateError: indexState === null ? null : stringOrNull(indexState["error"])
   };
 };
 var toCanonicalAnswer = (raw) => {
@@ -50564,6 +50899,23 @@ function mergedImpactEnvelope(summary, directory, paths, parts) {
     ...completenessExtraOf(complete)
   };
 }
+var INDEX_RECOVERY = "recovery: rerun this op with refresh:true after clearing the named cause; the panel's Refresh retries the same build";
+var indexStateReasons = (summary) => {
+  const reasons = [];
+  if (summary.indexState !== null)
+    reasons.push(`index-state:${summary.indexState}`);
+  if (summary.indexStateError !== null)
+    reasons.push(`index-error:${summary.indexStateError}`);
+  if (summary.indexState === "failed" || summary.indexStateError !== null)
+    reasons.push(INDEX_RECOVERY);
+  return reasons;
+};
+var thrownFailureReasons = (failure) => [
+  "index-failed",
+  `index-error:${failure.message}`,
+  INDEX_RECOVERY
+];
+var asError = (caught) => caught instanceof Error ? caught : new Error(String(caught));
 function inferSubjectKind(subject) {
   if (subject.includes("@") || subject.startsWith("fn:") || subject.startsWith("file:"))
     return "symbol";
@@ -50965,16 +51317,23 @@ function createCodeGraphTool(deps = {}) {
           description: "Graph operation: status, context, search, trace, impact, tests, or explore.",
           allowedValues: ["status", "context", "search", "trace", "impact", "tests", "explore"]
         },
-        subject: { type: "string", description: "Symbol id, file path, or search text; required except for status." },
+        subject: {
+          type: "string",
+          description: "Symbol id, file path, or search text; required except for status and subjectKind: changes."
+        },
         subjectKind: {
           type: "string",
-          description: "How to read subject; inferred when omitted.",
+          description: "How to read subject; inferred when omitted. 'changes' answers the working-tree view for context/impact and needs no subject.",
           allowedValues: ["file", "symbol", "changes", "query"]
         },
         to: { type: "string", description: "Destination symbol id for trace." },
         depth: { type: "number", description: "Traversal depth, 1-3; defaults to 2." },
         limit: { type: "number", description: "Result cap, 1-50; defaults to 20." },
-        maxBytes: { type: "number", description: "Rendered budget, 512-16384; defaults to 8192." }
+        maxBytes: { type: "number", description: "Rendered budget, 512-16384; defaults to 8192." },
+        refresh: {
+          type: "boolean",
+          description: "Retry the index build now instead of serving the last generation; recovery for a failed build."
+        }
       },
       required: ["op"]
     },
@@ -50982,7 +51341,7 @@ function createCodeGraphTool(deps = {}) {
       const directory = resolveDirectory(deps, context);
       const parsed = CodeGraphArgsSchema.safeParse(toolArgs);
       if (!parsed.success) {
-        refuseArgs("", "code_graph needs op status|context|search|trace|impact|tests|explore, optional subject/subjectKind/to, depth 1-3, limit 1-50, maxBytes 512-16384.");
+        refuseArgs("", "code_graph needs op status|context|search|trace|impact|tests|explore, optional subject/subjectKind/to, depth 1-3, limit 1-50, maxBytes 512-16384, refresh.");
       }
       const args = parsed.data;
       const op = args.op;
@@ -50991,8 +51350,8 @@ function createCodeGraphTool(deps = {}) {
       if (op === "status") {
         let summary;
         try {
-          summary = await runtime.readIndex(directory);
-        } catch {
+          summary = await runtime.readIndex(directory, { refresh: args.refresh === true });
+        } catch (error) {
           return stringifyEnvelope(buildAgentContext({
             op,
             level: 0,
@@ -51012,7 +51371,12 @@ function createCodeGraphTool(deps = {}) {
               entryCap: 0,
               indexState: null
             }, directory),
-            status: { freshness: "unindexed", coverage: "unindexed", queryServable: false, reasons: ["index-failed"] },
+            status: {
+              freshness: "unindexed",
+              coverage: "unindexed",
+              queryServable: false,
+              reasons: thrownFailureReasons(asError(error))
+            },
             maxBytes
           }));
         }
@@ -51021,7 +51385,7 @@ function createCodeGraphTool(deps = {}) {
         const reasons = [
           `generation:${summary.generation ?? "none"}`,
           `freshness:${summary.freshness}`,
-          ...summary.indexState !== null ? [`index-state:${summary.indexState}`] : [],
+          ...indexStateReasons(summary),
           ...servable ? [`nodes:${summary.nodeCount}`, `edges:${summary.edgeCount}`] : [],
           ...summary.indexTruncated ? ["index-truncated"] : []
         ];
@@ -51042,9 +51406,10 @@ function createCodeGraphTool(deps = {}) {
         return stringifyEnvelope(envelope);
       }
       const subject = args.subject;
-      const changesMode = op === "impact" && (args.subjectKind === "changes" || inferSubjectKind(subject ?? "") === "changes");
+      const changesCapable = op === "context" || op === "impact";
+      const changesMode = changesCapable && args.subjectKind === "changes";
       if (subject === undefined && !changesMode) {
-        refuseArgs("", `code_graph op '${op}' needs a subject string.`);
+        refuseArgs("", changesCapable ? `code_graph op '${op}' needs a subject string, or subjectKind: changes for the working-tree view.` : `code_graph op '${op}' needs a subject string.`);
       }
       if (op === "explore" && args.subjectKind === "changes") {
         refuseArgs("", "code_graph op 'explore' needs a subject symbol, name, or file path.");
@@ -51080,9 +51445,9 @@ function createCodeGraphTool(deps = {}) {
       }));
       let summary;
       try {
-        summary = await runtime.readIndex(directory, { block: true });
-      } catch {
-        return unavailable(["index-failed"]);
+        summary = await runtime.readIndex(directory, { block: true, refresh: args.refresh === true });
+      } catch (error) {
+        return unavailable(thrownFailureReasons(asError(error)));
       }
       if (!summary.ready) {
         return stringifyEnvelope(buildAgentContext({
@@ -51095,10 +51460,7 @@ function createCodeGraphTool(deps = {}) {
             coverage: summary.generation !== null ? "partial" : "unindexed",
             ...summaryStatusExtrasOf(summary.generation, summary.revision),
             queryServable: false,
-            reasons: [
-              `generation:${summary.generation ?? "none"}`,
-              ...summary.indexState !== null ? [`index-state:${summary.indexState}`] : []
-            ]
+            reasons: [`generation:${summary.generation ?? "none"}`, ...indexStateReasons(summary)]
           },
           maxBytes
         }));
@@ -51126,14 +51488,34 @@ function createCodeGraphTool(deps = {}) {
       };
       const limit = args.limit;
       const depth = args.depth;
+      const impactSubjectsForFile = async (rel) => {
+        const view = track(await runtime.query(directory, { kind: "file", file: rel, limit }));
+        const symbols = view.envelope.items.map((item) => item.id).filter((id) => !id.startsWith("file:"));
+        const subjects = symbols.length > 0 ? symbols : [`file:${rel}`];
+        const parts = [];
+        for (const symbol of subjects) {
+          parts.push(track(await runtime.query(directory, { kind: "impact", symbol, limit, depth })));
+        }
+        return parts;
+      };
+      const changesView = async () => {
+        const changed = await collectChangedPaths(directory);
+        const parts = [];
+        for (const file of changed) {
+          parts.push(...await impactSubjectsForFile(normalizeRel(file)));
+        }
+        return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] };
+      };
       const runOp = async () => {
+        if (changesMode)
+          return changesView();
         if (op === "search") {
           const answer = track(await runtime.query(directory, { kind: "search", query: subjectText, limit }));
           return { envelope: answer.envelope, extraUnresolved: [] };
         }
         if (op === "context") {
           const kind = args.subjectKind ?? inferSubjectKind(subjectText);
-          if (kind === "file" || kind === "changes" || kind === "query") {
+          if (kind === "file" || kind === "query") {
             const answer = track(await runtime.query(directory, { kind: "search", query: subjectText, limit }));
             return { envelope: answer.envelope, extraUnresolved: [] };
           }
@@ -51151,26 +51533,8 @@ function createCodeGraphTool(deps = {}) {
           return { envelope: answer.envelope, extraUnresolved: [] };
         }
         if (op === "impact") {
-          const impactSubjectsForFile = async (rel) => {
-            const view = track(await runtime.query(directory, { kind: "file", file: rel, limit }));
-            const symbols = view.envelope.items.map((item) => item.id).filter((id) => !id.startsWith("file:"));
-            const subjects = symbols.length > 0 ? symbols : [`file:${rel}`];
-            const parts = [];
-            for (const symbol of subjects) {
-              parts.push(track(await runtime.query(directory, { kind: "impact", symbol, limit, depth })));
-            }
-            return parts;
-          };
-          if (changesMode) {
-            const changed = await collectChangedPaths(directory);
-            const parts = [];
-            for (const file of changed) {
-              parts.push(...await impactSubjectsForFile(normalizeRel(file)));
-            }
-            return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] };
-          }
           const kind = args.subjectKind ?? inferSubjectKind(subjectText);
-          if (kind === "file" || kind === "changes") {
+          if (kind === "file") {
             const rel = normalizeRel(subjectText);
             const parts = await impactSubjectsForFile(rel);
             return { envelope: mergedImpactEnvelope(summary, directory, [subjectText], parts), extraUnresolved: [] };
@@ -51186,23 +51550,32 @@ function createCodeGraphTool(deps = {}) {
         const answer = track(await runtime.query(directory, { kind: "tests", target: resolved, limit }));
         return { envelope: answer.envelope, extraUnresolved: [] };
       };
+      const attemptOp = async () => {
+        try {
+          return { answer: await runOp(), failure: [] };
+        } catch (error) {
+          return { answer: null, failure: thrownFailureReasons(asError(error)) };
+        }
+      };
       let pin = summary.generation;
-      let built = await runOp().catch(() => null);
-      if (built === null)
-        return unavailable(["index-failed"]);
+      let attempt = await attemptOp();
+      if (attempt.answer === null)
+        return unavailable(attempt.failure);
+      let built = attempt.answer;
       let restarted = false;
       if (pin !== null && generations.some((generation) => generation !== null && generation !== pin)) {
         restarted = true;
         generations.length = 0;
         try {
           summary = await runtime.readIndex(directory, { block: true });
-        } catch {
-          return unavailable(["index-failed"]);
+        } catch (error) {
+          return unavailable(thrownFailureReasons(asError(error)));
         }
         pin = summary.generation;
-        built = await runOp().catch(() => null);
-        if (built === null)
-          return unavailable(["index-failed"]);
+        attempt = await attemptOp();
+        if (attempt.answer === null)
+          return unavailable(attempt.failure);
+        built = attempt.answer;
       }
       const staleCarrier = staleCarrierOf(built.envelope);
       const envelope = buildAgentContext({
@@ -51252,6 +51625,1011 @@ function createCodeGraphTools(deps = {}) {
   };
 }
 
+// ../../../../omo-engine/omo-opencode/src/tools/delegation/host-capabilities.ts
+var HOST_CAPABILITY_VERSION = 1;
+var CapabilitySchema = object({
+  version: literal(HOST_CAPABILITY_VERSION),
+  allowedAgents: array(string2()).optional(),
+  childSessions: object({ createAndStart: _function() }).optional(),
+  tasks: object({ start: _function() }).optional()
+});
+var capabilitiesOf = (source) => {
+  if (source === undefined)
+    return { version: HOST_CAPABILITY_VERSION };
+  const parsed = CapabilitySchema.safeParse(source);
+  return parsed.success ? source : { version: HOST_CAPABILITY_VERSION };
+};
+var callerFromContext = (context) => {
+  if (context === undefined)
+    throw delegationError("UNAUTHENTICATED", "no host context was supplied");
+  if (context.authenticated !== true)
+    throw delegationError("UNAUTHENTICATED", "the host did not authenticate this call");
+  const sessionID = context.sessionID;
+  if (sessionID.length === 0 || sessionID === "unknown") {
+    throw delegationError("UNAUTHENTICATED", "the host supplied no usable session identity");
+  }
+  return {
+    sessionID,
+    messageID: context.messageID,
+    agent: context.agent,
+    directory: context.directory,
+    worktree: context.worktree
+  };
+};
+
+class DelegationError extends Error {
+  code;
+  constructor(code, message) {
+    super(`${code}: ${message}`);
+    this.name = "DelegationError";
+    this.code = code;
+  }
+}
+var delegationError = (code, message) => new DelegationError(code, message);
+
+// ../../../../omo-engine/omo-opencode/src/tools/delegation/delegation-tools.ts
+var TASK_TOOL_NAME = "task";
+var CALL_OMO_AGENT_TOOL_NAME = "call_omo_agent";
+var MAX_PROMPT_CHARS = 200000;
+var TaskArgs = object({
+  description: string2().trim().min(1).max(200),
+  prompt: string2().trim().min(1).max(MAX_PROMPT_CHARS),
+  agent: string2().trim().min(1).optional(),
+  category: string2().trim().min(1).optional(),
+  background: boolean2().optional()
+});
+var CallAgentArgs = object({
+  description: string2().trim().min(1).max(200),
+  prompt: string2().trim().min(1).max(MAX_PROMPT_CHARS),
+  agent: string2().trim().min(1).optional()
+});
+var FORBIDDEN_ARGUMENTS = [
+  "sessionID",
+  "sessionId",
+  "parentID",
+  "parentSessionId",
+  "parentSessionID",
+  "directory",
+  "worktree",
+  "projectId",
+  "projectID"
+];
+var rejectIdentityArguments = (raw) => {
+  for (const field of FORBIDDEN_ARGUMENTS) {
+    if (raw[field] !== undefined) {
+      throw delegationError("INVALID_ARGUMENT", `${field} is host-derived and may not be supplied by a tool call`);
+    }
+  }
+};
+var requireAgentAuthorized = (capabilities, agent, what) => {
+  if (agent === undefined)
+    return;
+  const allowed = capabilities.allowedAgents;
+  if (allowed === undefined) {
+    throw delegationError("FORBIDDEN", `${what} may not select an agent: this host publishes no authorized agent set`);
+  }
+  if (!allowed.includes(agent)) {
+    throw delegationError("FORBIDDEN", `${what} may not select agent ${agent}: it is not in the host-authorized set`);
+  }
+};
+var requireHostParent = (handle, caller) => {
+  if (handle.parentSessionID !== caller.sessionID) {
+    throw delegationError("PARENT_ATTRIBUTION_MISMATCH", `the host attributed this result to ${handle.parentSessionID}, not to the calling session`);
+  }
+  if (handle.childSessionID !== undefined && handle.childSessionID === caller.sessionID) {
+    throw delegationError("PARENT_ATTRIBUTION_MISMATCH", "the host returned the calling session as the child");
+  }
+};
+var parse6 = (schema, raw, what) => {
+  const result = schema.safeParse(raw);
+  if (!result.success) {
+    const first = result.error.issues[0];
+    const where = first === undefined ? "unexpected shape" : `${first.path.join(".") || "value"} ${first.message}`;
+    throw delegationError("INVALID_ARGUMENT", `${what} arguments are invalid: ${where}`);
+  }
+  return result.data;
+};
+var TASK_DESCRIPTION = "Launch a host-owned task through the canonical task manager. Requires host-authenticated context; the caller session is derived by the host, never from arguments.";
+var CALL_AGENT_DESCRIPTION = "Delegate bounded work to a named helper agent in a genuine native child session. The parent session is derived from host context; the result reports the real child identity and whether its first prompt was submitted.";
+var buildTaskRequest = (args) => {
+  const request = {
+    description: args.description,
+    prompt: args.prompt
+  };
+  if (args.agent !== undefined)
+    request.agent = args.agent;
+  if (args.category !== undefined)
+    request.category = args.category;
+  if (args.background !== undefined)
+    request.background = args.background;
+  return request;
+};
+var buildChildRequest = (args) => {
+  const request = { title: args.description, prompt: args.prompt };
+  if (args.agent !== undefined)
+    request.agent = args.agent;
+  return request;
+};
+var taskResult = (handle) => JSON.stringify({
+  taskID: handle.taskID,
+  parentSessionID: handle.parentSessionID,
+  state: handle.state,
+  capabilityVersion: handle.capabilityVersion
+});
+var childResult = (handle) => JSON.stringify({
+  childSessionID: handle.childSessionID,
+  parentSessionID: handle.parentSessionID,
+  started: handle.started,
+  capabilityVersion: handle.capabilityVersion
+});
+var createDelegationTools = (deps) => {
+  const capabilities = capabilitiesOf(deps.capabilities);
+  const task = {
+    description: TASK_DESCRIPTION,
+    args: {
+      properties: {
+        description: { type: "string", description: "Short label for the task." },
+        prompt: { type: "string", description: "Instructions for the task." },
+        agent: { type: "string", description: "Agent the host authorizes for this task." },
+        category: { type: "string", description: "Category the host routes the task through." },
+        background: { type: "boolean", description: "Return as soon as the host accepts the task." }
+      },
+      required: ["description", "prompt"]
+    },
+    execute: async (rawArgs, context) => {
+      const caller = callerFromContext(context);
+      if (context?.aborted() === true) {
+        throw delegationError("CANCELLED", "the caller was already aborted; no task was started");
+      }
+      rejectIdentityArguments(rawArgs);
+      const args = parse6(TaskArgs, rawArgs, "task");
+      requireAgentAuthorized(capabilities, args.agent, "task");
+      const tasks = capabilities.tasks;
+      if (tasks === undefined) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no task capability (host.tasks.start is missing), so no task was created");
+      }
+      const handle = await tasks.start(buildTaskRequest(args), caller);
+      requireHostParent(handle, caller);
+      return taskResult(handle);
+    }
+  };
+  const callOmoAgent = {
+    description: CALL_AGENT_DESCRIPTION,
+    args: {
+      properties: {
+        description: { type: "string", description: "Title for the child session." },
+        prompt: { type: "string", description: "Instructions for the child agent." },
+        agent: { type: "string", description: "Agent the host authorizes for the child." }
+      },
+      required: ["description", "prompt"]
+    },
+    execute: async (rawArgs, context) => {
+      const caller = callerFromContext(context);
+      if (context?.aborted() === true) {
+        throw delegationError("CANCELLED", "the caller was already aborted; no child session was created");
+      }
+      rejectIdentityArguments(rawArgs);
+      const args = parse6(CallAgentArgs, rawArgs, "call_omo_agent");
+      requireAgentAuthorized(capabilities, args.agent, "call_omo_agent");
+      const childSessions = capabilities.childSessions;
+      if (childSessions === undefined) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no child-session capability (session.create/session.prompt are missing), so no child was created");
+      }
+      const handle = await childSessions.createAndStart(buildChildRequest(args), caller);
+      requireHostParent(handle, caller);
+      return childResult(handle);
+    }
+  };
+  return { task, callOmoAgent };
+};
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/bash.ts
+import { spawn as spawn3 } from "node:child_process";
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/containment.ts
+import { existsSync as existsSync15, realpathSync as realpathSync5 } from "node:fs";
+import { dirname as dirname6, isAbsolute as isAbsolute3, relative as relative3, resolve as resolve7, sep } from "node:path";
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/errors.ts
+class WorkspaceToolError extends Error {
+  code;
+  path;
+  constructor(message, code, path) {
+    super(message);
+    this.name = "WorkspaceToolError";
+    this.code = code;
+    this.path = path;
+  }
+}
+function workspacePathRefused(path, reason) {
+  throw new WorkspaceToolError(`Refused '${path}': ${reason}.`, "PATH_OUTSIDE_WORKSPACE", path);
+}
+function workspaceInputRefused(path, reason) {
+  throw new WorkspaceToolError(`Invalid arguments for '${path}': ${reason}.`, "INVALID_INPUT", path);
+}
+function workspaceNotFound(path) {
+  throw new WorkspaceToolError(`Not found in the workspace: '${path}'.`, "NOT_FOUND", path);
+}
+function workspaceNotAFile(path) {
+  throw new WorkspaceToolError(`'${path}' is a directory, not a file.`, "NOT_A_FILE", path);
+}
+function workspaceTooLarge(path, bytes, limit) {
+  throw new WorkspaceToolError(`'${path}' is ${bytes} bytes; read at most ${limit} bytes by requesting a smaller range.`, "TOO_LARGE", path);
+}
+function workspaceBinary(path) {
+  throw new WorkspaceToolError(`'${path}' is not text; this tool returns text only.`, "BINARY_CONTENT", path);
+}
+function workspaceIoFailed(path, reason) {
+  throw new WorkspaceToolError(`Could not read '${path}': ${reason}.`, "IO_FAILED", path);
+}
+function workspaceUnauthenticated(tool) {
+  throw new WorkspaceToolError(`The host supplied no authenticated session for '${tool}'; refusing to act on an unidentified caller.`, "UNAUTHENTICATED", tool);
+}
+function workspaceApprovalDenied(tool, reason) {
+  throw new WorkspaceToolError(`The host did not approve '${tool}': ${reason}.`, "APPROVAL_DENIED", tool);
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/containment.ts
+var isInside = (root, target) => {
+  const rel = relative3(root, target);
+  if (rel.length === 0)
+    return true;
+  if (isAbsolute3(rel))
+    return false;
+  return rel !== ".." && !rel.startsWith(`..${sep}`);
+};
+var realOrNull = (path) => {
+  try {
+    return realpathSync5(path);
+  } catch {
+    return null;
+  }
+};
+var workspaceRootFor = (fallback, context) => {
+  const perCall = context?.directory;
+  return perCall !== undefined && perCall.trim().length > 0 ? perCall : fallback;
+};
+function resolveInsideWorkspace(root, candidate) {
+  const trimmed = candidate.trim();
+  if (trimmed.length === 0)
+    workspacePathRefused(candidate, "a path is required");
+  if (trimmed.includes("\x00"))
+    workspacePathRefused(candidate, "a path may not contain NUL");
+  const rootLexical = resolve7(root);
+  const targetLexical = isAbsolute3(trimmed) ? resolve7(trimmed) : resolve7(rootLexical, trimmed);
+  if (!isInside(rootLexical, targetLexical)) {
+    workspacePathRefused(candidate, "the path leaves the workspace");
+  }
+  const rootReal = realOrNull(rootLexical) ?? rootLexical;
+  const targetReal = realOrNull(targetLexical);
+  if (targetReal !== null && !isInside(rootReal, targetReal)) {
+    workspacePathRefused(candidate, "the path resolves outside the workspace through a link");
+  }
+  return targetLexical;
+}
+var deepestExisting = (path) => {
+  let probe = path;
+  while (!existsSync15(probe)) {
+    const parent = dirname6(probe);
+    if (parent === probe)
+      return probe;
+    probe = parent;
+  }
+  return probe;
+};
+function resolveForWrite(root, candidate) {
+  const target = resolveInsideWorkspace(root, candidate);
+  const rootReal = realOrNull(resolve7(root)) ?? resolve7(root);
+  const ancestor = deepestExisting(dirname6(target));
+  const ancestorReal = realOrNull(ancestor) ?? ancestor;
+  if (!isInside(rootReal, ancestorReal)) {
+    workspacePathRefused(candidate, "the path would be created outside the workspace through a link");
+  }
+  return target;
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/bash.ts
+var BASH_TOOL_NAME = "bash";
+var DEFAULT_TIMEOUT_MS = 120000;
+var MAX_TIMEOUT_MS = 600000;
+var OUTPUT_LIMIT_BYTES = 64 * 1024;
+var BASH_DESCRIPTION = "Run a shell command with the project workspace as its working directory. Returns the exit code with bounded stdout and stderr; a non-zero exit is reported as a failure.";
+var BashArgs = object({
+  command: string2().trim().min(1),
+  cwd: string2().trim().min(1).optional(),
+  timeoutMs: number2().int().min(1).max(MAX_TIMEOUT_MS).optional()
+});
+var capture = () => {
+  const chunks = [];
+  let bytes = 0;
+  let truncated = false;
+  return {
+    push: (chunk) => {
+      bytes += chunk.length;
+      if (bytes <= OUTPUT_LIMIT_BYTES)
+        chunks.push(chunk);
+      else
+        truncated = true;
+    },
+    result: () => ({
+      text: Buffer.concat(chunks).toString("utf8"),
+      truncated,
+      bytes
+    })
+  };
+};
+var killTree = async (pid, platform) => {
+  if (pid === undefined)
+    return;
+  if (platform === "win32") {
+    await new Promise((resolve) => {
+      const killer = spawn3("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+      const done = setTimeout(() => resolve(), 5000);
+      killer.on("close", () => {
+        clearTimeout(done);
+        resolve();
+      });
+      killer.on("error", () => {
+        clearTimeout(done);
+        resolve();
+      });
+    });
+    return;
+  }
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      return;
+    }
+  }
+};
+function createWorkspaceBashTool(options) {
+  return {
+    description: BASH_DESCRIPTION,
+    args: {
+      properties: {
+        command: { type: "string", description: "Command line to run through the platform shell." },
+        cwd: { type: "string", description: "Working directory inside the workspace; defaults to the project root." },
+        timeoutMs: { type: "number", description: `Deadline in milliseconds, 1-${MAX_TIMEOUT_MS}.` }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      if (context?.authenticated !== true)
+        workspaceUnauthenticated(BASH_TOOL_NAME);
+      const parsed = BashArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        const named = object({ command: string2() }).safeParse(toolArgs);
+        workspaceInputRefused(named.success ? named.data.command : "", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const cwd = resolveInsideWorkspace(workspaceRootFor(options.directory, context), parsed.data.cwd ?? ".");
+      const timeoutMs = parsed.data.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      let approval = "not offered by this runtime";
+      if (context?.ask !== undefined) {
+        try {
+          await context.ask({ permission: BASH_TOOL_NAME, patterns: [parsed.data.command], metadata: { cwd, sessionID: context.sessionID } });
+          approval = "granted by host";
+        } catch (error) {
+          workspaceApprovalDenied(BASH_TOOL_NAME, error instanceof Error ? error.message : String(error));
+        }
+      }
+      const platform = process.platform;
+      const argv = platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", parsed.data.command] : ["/bin/bash", "-lc", parsed.data.command];
+      const stdout = capture();
+      const stderr = capture();
+      const child = spawn3(argv[0], argv.slice(1), {
+        cwd,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: platform !== "win32"
+      });
+      child.stdout?.on("data", (chunk) => stdout.push(chunk));
+      child.stderr?.on("data", (chunk) => stderr.push(chunk));
+      const outcome = await new Promise((resolve) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled)
+            return;
+          settled = true;
+          killTree(child.pid, platform).then(() => resolve({ kind: "timeout", code: null, signal: null }));
+        }, timeoutMs);
+        child.on("error", (error) => {
+          if (settled)
+            return;
+          settled = true;
+          clearTimeout(timer);
+          resolve({ kind: "error", code: null, signal: null, message: error.message });
+        });
+        child.on("close", (code, signal) => {
+          if (settled)
+            return;
+          settled = true;
+          clearTimeout(timer);
+          resolve({ kind: "exit", code, signal });
+        });
+      });
+      const out = stdout.result();
+      const err = stderr.result();
+      const header = outcome.kind === "timeout" ? `timed out after ${timeoutMs}ms` : outcome.kind === "error" ? `could not start: ${outcome.message ?? "unknown error"}` : `exit ${outcome.code ?? "none"}${outcome.signal === null ? "" : ` (signal ${outcome.signal})`}`;
+      const parts = [header, `approval: ${approval}`];
+      parts.push(`stdout${out.truncated ? ` (truncated at ${OUTPUT_LIMIT_BYTES}B of ${out.bytes}B)` : ""}:`);
+      parts.push(out.text.length > 0 ? out.text.replace(/\s+$/, "") : "(empty)");
+      if (err.text.length > 0 || err.truncated) {
+        parts.push(`stderr${err.truncated ? ` (truncated at ${OUTPUT_LIMIT_BYTES}B of ${err.bytes}B)` : ""}:`);
+        parts.push(err.text.replace(/\s+$/, ""));
+      }
+      return parts.join(`
+`);
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/edit.ts
+import { createHash as createHash7 } from "node:crypto";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync8, renameSync as renameSync2, statSync as statSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname7, join as join11 } from "node:path";
+var EDIT_TOOL_NAME = "edit";
+var MAX_EDIT_BYTES = 512 * 1024;
+var BINARY_PROBE_BYTES = 8192;
+var EDIT_DESCRIPTION = "Replace one exact text span inside a project file. The old text must occur exactly once; ambiguous or missing anchors are refused.";
+var EditArgs = object({
+  path: string2().trim().min(1),
+  oldText: string2().min(1),
+  newText: string2(),
+  expectedDigest: string2().trim().regex(/^[0-9a-f]{64}$/).optional()
+});
+var digestOf = (buffer) => createHash7("sha256").update(buffer).digest("hex");
+var staleContent = (path, expected, actual) => {
+  throw new WorkspaceToolError(`'${path}' changed since it was read: expected sha256 ${expected}, found ${actual}. Re-read the file and retry.`, "INVALID_INPUT", path);
+};
+var occurrencesOf = (content, anchor) => {
+  let count = 0;
+  let from = 0;
+  while (true) {
+    const at = content.indexOf(anchor, from);
+    if (at === -1)
+      return count;
+    count += 1;
+    from = at + anchor.length;
+  }
+};
+function createWorkspaceEditTool(options) {
+  return {
+    description: EDIT_DESCRIPTION,
+    args: {
+      properties: {
+        path: { type: "string", description: "File to edit, relative to the project workspace." },
+        oldText: { type: "string", description: "Exact text to replace; it must occur exactly once in the file." },
+        newText: { type: "string", description: "Replacement text (may be empty to delete the span)." },
+        expectedDigest: {
+          type: "string",
+          description: "Optional sha256 of the current content; the edit is refused when the file differs."
+        }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      const parsed = EditArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        const named = object({ path: string2() }).safeParse(toolArgs);
+        workspaceInputRefused(named.success ? named.data.path : "", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const requested = parsed.data.path;
+      const target = resolveForWrite(workspaceRootFor(options.directory, context), requested);
+      let stat;
+      try {
+        stat = statSync4(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        if (code === "ENOENT" || code === "ENOTDIR")
+          workspaceNotFound(requested);
+        workspaceIoFailed(requested, code.length > 0 ? code : "stat failed");
+      }
+      if (stat.isDirectory()) {
+        throw new WorkspaceToolError(`'${requested}' is a directory.`, "NOT_A_FILE", requested);
+      }
+      if (stat.size > MAX_EDIT_BYTES)
+        workspaceTooLarge(requested, stat.size, MAX_EDIT_BYTES);
+      let buffer;
+      try {
+        buffer = readFileSync8(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        workspaceIoFailed(requested, code.length > 0 ? code : "read failed");
+      }
+      if (buffer.subarray(0, Math.min(buffer.length, BINARY_PROBE_BYTES)).includes(0))
+        workspaceBinary(requested);
+      const content = buffer.toString("utf8");
+      const expected = parsed.data.expectedDigest;
+      if (expected !== undefined && digestOf(buffer) !== expected) {
+        staleContent(requested, expected, digestOf(buffer));
+      }
+      const hits = occurrencesOf(content, parsed.data.oldText);
+      if (hits === 0) {
+        workspaceInputRefused(requested, "the old text does not occur in the file");
+      }
+      if (hits > 1) {
+        workspaceInputRefused(requested, `the old text occurs ${hits} times; it must occur exactly once`);
+      }
+      const next = Buffer.from(content.replace(parsed.data.oldText, parsed.data.newText), "utf8");
+      try {
+        mkdirSync3(dirname7(target), { recursive: true });
+        const temp = join11(dirname7(target), `.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`);
+        writeFileSync3(temp, next);
+        renameSync2(temp, target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        workspaceIoFailed(requested, code.length > 0 ? code : "write failed");
+      }
+      return `updated ${requested} (sha256 ${digestOf(next)}, ${next.length} bytes)`;
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/glob.ts
+import { lstatSync as lstatSync3, readdirSync as readdirSync7 } from "node:fs";
+import { join as join12, relative as relative4, sep as sep2 } from "node:path";
+var GLOB_TOOL_NAME = "glob";
+var DEFAULT_MAX_RESULTS = 100;
+var HARD_MAX_RESULTS = 500;
+var MAX_FILES_SCANNED = 5000;
+var SKIPPED_DIRECTORIES2 = new Set([
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  "dist",
+  "build",
+  "coverage",
+  "vendor",
+  ".next",
+  "out",
+  ".algraph",
+  ".audit-r1.12",
+  ".create-pr-proof",
+  ".exe"
+]);
+var GLOB_DESCRIPTION = "Find files by name pattern inside the project workspace. Supports * , ? and ** segments; returns paths relative to the search scope.";
+var GlobArgs = object({
+  pattern: string2().trim().min(1),
+  path: string2().trim().min(1).optional(),
+  maxResults: number2().int().min(1).max(HARD_MAX_RESULTS).optional()
+});
+var segmentToRegExp = (segment) => {
+  const source = segment.split("*").map((part) => part.split("?").map(escapeRegExp2).join("[^/\\\\]")).join("[^/\\\\]*");
+  return new RegExp(`^${source}$`);
+};
+function escapeRegExp2(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+var compileGlob = (pattern) => {
+  const normalized = pattern.split(sep2).join("/").replace(/^\/+/, "");
+  if (normalized.length === 0 || normalized.includes("\x00")) {
+    workspaceInputRefused(pattern, "the pattern must name something to match");
+  }
+  const segments = normalized.split("/");
+  const parts = segments.map((segment) => segment === "**" ? null : segmentToRegExp(segment));
+  return (candidate) => {
+    const pieces = candidate.split("/");
+    const match = (patternIndex, pieceIndex) => {
+      if (patternIndex === parts.length)
+        return pieceIndex === pieces.length;
+      if (parts[patternIndex] === null) {
+        for (let skip = pieceIndex;skip <= pieces.length; skip += 1) {
+          if (match(patternIndex + 1, skip))
+            return true;
+        }
+        return false;
+      }
+      if (pieceIndex >= pieces.length)
+        return false;
+      const test = parts[patternIndex];
+      if (test === null || !test.test(pieces[pieceIndex]))
+        return false;
+      return match(patternIndex + 1, pieceIndex + 1);
+    };
+    return match(0, 0);
+  };
+};
+var walk = (target, state, matches, limit) => {
+  const queue = [target];
+  while (queue.length > 0) {
+    if (state.paths.length >= limit || state.files >= MAX_FILES_SCANNED)
+      return;
+    const absolute = queue.shift();
+    let entries;
+    try {
+      entries = readdirSync7(absolute, { withFileTypes: true });
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : "";
+      workspaceIoFailed(relative4(state.root, absolute) || ".", code.length > 0 ? code : "read failed");
+    }
+    const names = entries.map((entry) => entry.name).sort();
+    for (const name of names) {
+      if (state.paths.length >= limit || state.files >= MAX_FILES_SCANNED)
+        return;
+      if (SKIPPED_DIRECTORIES2.has(name))
+        continue;
+      const child = join12(absolute, name);
+      let link;
+      try {
+        link = lstatSync3(child);
+      } catch {
+        continue;
+      }
+      if (link.isSymbolicLink()) {
+        state.skippedLinks += 1;
+        continue;
+      }
+      if (link.isDirectory()) {
+        queue.push(child);
+        continue;
+      }
+      if (!link.isFile())
+        continue;
+      state.files += 1;
+      const display = relative4(state.scope, child).split(sep2).join("/");
+      if (matches(display))
+        state.paths.push(display);
+    }
+  }
+};
+function createWorkspaceGlobTool(options) {
+  return {
+    description: GLOB_DESCRIPTION,
+    args: {
+      properties: {
+        pattern: { type: "string", description: "File name pattern with * , ? and ** segments, relative to the search scope." },
+        path: { type: "string", description: "Directory to search, relative to the project workspace; defaults to the root." },
+        maxResults: { type: "number", description: `Maximum paths to return, 1-${HARD_MAX_RESULTS}.` }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      const parsed = GlobArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        workspaceInputRefused("", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const limit = parsed.data.maxResults ?? DEFAULT_MAX_RESULTS;
+      const matches = compileGlob(parsed.data.pattern);
+      const root = workspaceRootFor(options.directory, context);
+      const target = resolveInsideWorkspace(root, parsed.data.path ?? ".");
+      const canonicalRoot = resolveInsideWorkspace(root, ".");
+      const state = { root: canonicalRoot, scope: target, paths: [], files: 0, skippedLinks: 0, fileCapReached: false };
+      let targetStat;
+      try {
+        targetStat = lstatSync3(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        if (code === "ENOENT" || code === "ENOTDIR")
+          workspaceNotFound(parsed.data.path ?? ".");
+        workspaceIoFailed(parsed.data.path ?? ".", code.length > 0 ? code : "stat failed");
+      }
+      if (!targetStat.isDirectory()) {
+        workspaceInputRefused(parsed.data.path ?? ".", "the search scope must be a directory");
+      }
+      walk(target, state, matches, limit);
+      if (state.files >= MAX_FILES_SCANNED)
+        state.fileCapReached = true;
+      const header = `${state.paths.length} path(s)` + (state.skippedLinks > 0 ? `, ${state.skippedLinks} link(s) skipped` : "") + (state.fileCapReached ? `, stopped at the ${MAX_FILES_SCANNED}-file scan cap` : "");
+      return `${header}
+${state.paths.join(`
+`)}`;
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/grep.ts
+import { lstatSync as lstatSync4, readdirSync as readdirSync8, readFileSync as readFileSync9, statSync as statSync5 } from "node:fs";
+import { join as join13, relative as relative5 } from "node:path";
+var GREP_TOOL_NAME = "grep";
+var DEFAULT_MAX_RESULTS2 = 100;
+var HARD_MAX_RESULTS2 = 500;
+var MAX_FILE_BYTES = 512 * 1024;
+var MAX_FILES_SCANNED2 = 5000;
+var MAX_LINE_CHARS = 1000;
+var BINARY_PROBE_BYTES2 = 8192;
+var OUTPUT_LIMIT_BYTES2 = 64 * 1024;
+var SKIPPED_DIRECTORIES3 = new Set(["node_modules", ".git", ".hg", ".svn", "dist", "build", "coverage", "vendor", ".next", "out"]);
+var GREP_DESCRIPTION = "Search file contents for a text pattern inside the project workspace. Returns path:line matches with a header stating the bounds.";
+var GrepArgs = object({
+  pattern: string2().trim().min(1),
+  path: string2().trim().min(1).optional(),
+  literal: boolean2().optional(),
+  maxResults: number2().int().min(1).max(HARD_MAX_RESULTS2).optional()
+});
+var escapeRegExp3 = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var toPattern = (pattern, literal) => {
+  try {
+    return new RegExp(literal ? escapeRegExp3(pattern) : pattern, "m");
+  } catch {
+    workspaceInputRefused(pattern, "the pattern is not a valid regular expression");
+  }
+};
+var isBinary = (buffer) => buffer.subarray(0, Math.min(buffer.length, BINARY_PROBE_BYTES2)).includes(0);
+var scanFile = (absolute, display, pattern, limit, state) => {
+  let stat;
+  try {
+    stat = statSync5(absolute);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "";
+    workspaceIoFailed(display, code.length > 0 ? code : "stat failed");
+  }
+  if (stat.size > MAX_FILE_BYTES) {
+    state.skippedFiles += 1;
+    return;
+  }
+  let buffer;
+  try {
+    buffer = readFileSync9(absolute);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "";
+    workspaceIoFailed(display, code.length > 0 ? code : "read failed");
+  }
+  if (isBinary(buffer)) {
+    state.skippedFiles += 1;
+    return;
+  }
+  state.files += 1;
+  const lines = buffer.toString("utf8").split(`
+`);
+  for (let index = 0;index < lines.length; index += 1) {
+    if (state.matches.length >= limit)
+      return;
+    pattern.lastIndex = 0;
+    if (!pattern.test(lines[index]))
+      continue;
+    const text = lines[index].length > MAX_LINE_CHARS ? `${lines[index].slice(0, MAX_LINE_CHARS)}…` : lines[index];
+    state.matches.push(`${display}:${index + 1}: ${text}`);
+  }
+};
+var walk2 = (absolute, state, pattern, limit) => {
+  let entries;
+  try {
+    entries = readdirSync8(absolute, { withFileTypes: true });
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "";
+    workspaceIoFailed(relative5(state.root, absolute) || ".", code.length > 0 ? code : "read failed");
+  }
+  const names = entries.map((entry) => entry.name).sort();
+  for (const name of names) {
+    if (state.matches.length >= limit || state.files >= MAX_FILES_SCANNED2)
+      return;
+    if (SKIPPED_DIRECTORIES3.has(name))
+      continue;
+    const child = join13(absolute, name);
+    let link;
+    try {
+      link = lstatSync4(child);
+    } catch {
+      continue;
+    }
+    if (link.isSymbolicLink() || !link.isDirectory() && !link.isFile()) {
+      if (link.isSymbolicLink())
+        state.skippedLinks += 1;
+      continue;
+    }
+    if (link.isDirectory()) {
+      walk2(child, state, pattern, limit);
+      continue;
+    }
+    if (link.isFile()) {
+      scanFile(child, relative5(state.root, child), pattern, limit, state);
+    }
+  }
+};
+function createWorkspaceGrepTool(options) {
+  return {
+    description: GREP_DESCRIPTION,
+    args: {
+      properties: {
+        pattern: { type: "string", description: "Regular expression matched per line (or a literal string when literal is true)." },
+        path: { type: "string", description: "File or directory to search, relative to the project workspace; defaults to the root." },
+        literal: { type: "boolean", description: "Match the pattern literally instead of as a regular expression." },
+        maxResults: { type: "number", description: `Maximum matches to return, 1-${HARD_MAX_RESULTS2}.` }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      const parsed = GrepArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        workspaceInputRefused("", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const limit = parsed.data.maxResults ?? DEFAULT_MAX_RESULTS2;
+      const pattern = toPattern(parsed.data.pattern, parsed.data.literal ?? false);
+      const scope = parsed.data.path ?? ".";
+      const root = workspaceRootFor(options.directory, context);
+      const target = resolveInsideWorkspace(root, scope);
+      let targetStat;
+      try {
+        targetStat = statSync5(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        if (code === "ENOENT" || code === "ENOTDIR")
+          workspaceNotFound(scope);
+        workspaceIoFailed(scope, code.length > 0 ? code : "stat failed");
+      }
+      const canonicalRoot = resolveInsideWorkspace(root, ".");
+      const state = { root: canonicalRoot, matches: [], files: 0, skippedFiles: 0, skippedLinks: 0, fileCapReached: false };
+      if (targetStat.isDirectory()) {
+        walk2(target, state, pattern, limit);
+      } else if (targetStat.isFile()) {
+        scanFile(target, scope, pattern, limit, state);
+      } else {
+        workspaceBinary(scope);
+      }
+      if (state.files >= MAX_FILES_SCANNED2 && state.matches.length >= limit)
+        state.fileCapReached = true;
+      const header = `${state.matches.length} match(es) in ${state.files} file(s)` + (state.skippedFiles > 0 ? `, ${state.skippedFiles} file(s) skipped` : "") + (state.skippedLinks > 0 ? `, ${state.skippedLinks} link(s) skipped` : "") + (state.fileCapReached ? `, stopped at the ${MAX_FILES_SCANNED2}-file scan cap` : "");
+      const joined = state.matches.join(`
+`);
+      const capped = Buffer.from(joined, "utf8").subarray(0, OUTPUT_LIMIT_BYTES2).toString("utf8");
+      return `${header}
+${capped}`;
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/read.ts
+import { readFileSync as readFileSync10, statSync as statSync6 } from "node:fs";
+var READ_TOOL_NAME = "read";
+var MAX_BYTES = 512 * 1024;
+var HARD_MAX_BYTES = 8 * 1024 * 1024;
+var MAX_LINES = 5000;
+var BINARY_PROBE_BYTES3 = 8192;
+var READ_DESCRIPTION = "Read a UTF-8 text file from the project workspace. Returns the requested line range and states which lines were returned.";
+var ReadArgs = object({
+  path: string2().trim().min(1),
+  offset: number2().int().min(0).optional(),
+  limit: number2().int().min(1).max(MAX_LINES).optional()
+});
+var looksBinary = (buffer) => {
+  const probe = buffer.subarray(0, Math.min(buffer.length, BINARY_PROBE_BYTES3));
+  return probe.includes(0);
+};
+function createWorkspaceReadTool(options) {
+  return {
+    description: READ_DESCRIPTION,
+    args: {
+      properties: {
+        path: { type: "string", description: "File to read, relative to the project workspace." },
+        offset: { type: "number", description: "Zero-based line to start at; defaults to the first line." },
+        limit: { type: "number", description: `Maximum lines to return, 1-${MAX_LINES}.` }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      const parsed = ReadArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        const named = object({ path: string2() }).safeParse(toolArgs);
+        workspaceInputRefused(named.success ? named.data.path : "", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const requested = parsed.data.path;
+      const target = resolveInsideWorkspace(workspaceRootFor(options.directory, context), requested);
+      let stat;
+      try {
+        stat = statSync6(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        if (code === "ENOENT" || code === "ENOTDIR")
+          workspaceNotFound(requested);
+        workspaceIoFailed(requested, code.length > 0 ? code : "stat failed");
+      }
+      if (stat.isDirectory())
+        workspaceNotAFile(requested);
+      const size = stat.size;
+      const offset = parsed.data.offset ?? 0;
+      const limit = parsed.data.limit ?? MAX_LINES;
+      if (size > HARD_MAX_BYTES)
+        workspaceTooLarge(requested, size, HARD_MAX_BYTES);
+      if (parsed.data.offset === undefined && parsed.data.limit === undefined && size > MAX_BYTES) {
+        workspaceTooLarge(requested, size, MAX_BYTES);
+      }
+      let buffer;
+      try {
+        buffer = readFileSync10(target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        workspaceIoFailed(requested, code.length > 0 ? code : "read failed");
+      }
+      if (looksBinary(buffer))
+        workspaceBinary(requested);
+      const lines = buffer.toString("utf8").split(`
+`);
+      const bodyLines = lines.length > 0 && lines[lines.length - 1] === "" ? lines.slice(0, -1) : lines;
+      if (offset > bodyLines.length) {
+        workspaceInputRefused(requested, `offset ${offset} is past the last line (${bodyLines.length})`);
+      }
+      const from = offset;
+      const slice = bodyLines.slice(from, from + limit);
+      const lastLine = from + slice.length;
+      const header = `lines ${from + 1}-${lastLine} of ${bodyLines.length}`;
+      const joined = slice.join(`
+`);
+      const capped = Buffer.from(joined, "utf8").subarray(0, MAX_BYTES).toString("utf8");
+      return `${header}
+${capped}`;
+    }
+  };
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/workspace/write.ts
+import { createHash as createHash8 } from "node:crypto";
+import { existsSync as existsSync16, mkdirSync as mkdirSync4, readFileSync as readFileSync11, renameSync as renameSync3, statSync as statSync7, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname8, join as join14 } from "node:path";
+var WRITE_TOOL_NAME = "write";
+var MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+var WRITE_DESCRIPTION = "Write a UTF-8 text file inside the project workspace. Refuses paths that leave the workspace and, when expectedDigest is given, refuses to overwrite different content.";
+var WriteArgs = object({
+  path: string2().trim().min(1),
+  content: string2(),
+  expectedDigest: string2().trim().regex(/^[0-9a-f]{64}$/).optional()
+});
+var digestOf2 = (buffer) => createHash8("sha256").update(buffer).digest("hex");
+var staleContent2 = (path, expected, actual) => {
+  throw new WorkspaceToolError(`'${path}' changed since it was read: expected sha256 ${expected}, found ${actual}. Re-read the file and retry.`, "INVALID_INPUT", path);
+};
+function createWorkspaceWriteTool(options) {
+  return {
+    description: WRITE_DESCRIPTION,
+    args: {
+      properties: {
+        path: { type: "string", description: "File to write, relative to the project workspace." },
+        content: { type: "string", description: "Full UTF-8 content to write." },
+        expectedDigest: {
+          type: "string",
+          description: "Optional sha256 of the current content; the write is refused when the file differs."
+        }
+      }
+    },
+    execute: async (toolArgs, context) => {
+      const parsed = WriteArgs.safeParse(toolArgs);
+      if (!parsed.success) {
+        const named = object({ path: string2() }).safeParse(toolArgs);
+        workspaceInputRefused(named.success ? named.data.path : "", parsed.error.issues[0]?.message ?? "invalid arguments");
+      }
+      const requested = parsed.data.path;
+      const bytes = Buffer.from(parsed.data.content, "utf8");
+      if (bytes.length > MAX_CONTENT_BYTES) {
+        workspaceInputRefused(requested, `content is ${bytes.length} bytes; the limit is ${MAX_CONTENT_BYTES}`);
+      }
+      const target = resolveForWrite(workspaceRootFor(options.directory, context), requested);
+      const existed = existsSync16(target);
+      let previous = null;
+      if (existed) {
+        if (statSync7(target).isDirectory()) {
+          throw new WorkspaceToolError(`'${requested}' is a directory.`, "NOT_A_FILE", requested);
+        }
+        try {
+          previous = digestOf2(readFileSync11(target));
+        } catch (error) {
+          const code = error instanceof Error && "code" in error ? String(error.code) : "";
+          workspaceIoFailed(requested, code.length > 0 ? code : "read failed");
+        }
+      }
+      const expected = parsed.data.expectedDigest;
+      if (expected !== undefined) {
+        if (previous === null)
+          staleContent2(requested, expected, "(file did not exist)");
+        if (previous !== expected)
+          staleContent2(requested, expected, previous);
+      }
+      const next = digestOf2(bytes);
+      if (previous === next) {
+        return `unchanged ${requested} (sha256 ${next}, ${bytes.length} bytes)`;
+      }
+      try {
+        mkdirSync4(dirname8(target), { recursive: true });
+        const temp = join14(dirname8(target), `.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`);
+        writeFileSync4(temp, bytes);
+        renameSync3(temp, target);
+      } catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "";
+        workspaceIoFailed(requested, code.length > 0 ? code : "write failed");
+      }
+      return `${existed ? "updated" : "created"} ${requested} (sha256 ${next}, ${bytes.length} bytes)`;
+    }
+  };
+}
+
 // ../../../../omo-engine/omo-opencode/src/ulw/checkpoint.ts
 function gateCheckpoint(store, runId, scope = { kind: "run" }) {
   const goalIds = scope.kind === "run" ? undefined : [...scope.goalIds];
@@ -51263,8 +52641,67 @@ function gateCheckpoint(store, runId, scope = { kind: "run" }) {
   return { runId, checkedGoalIds, missingGoalIds: missing };
 }
 
-// ../../../../omo-engine/omo-opencode/src/tools/ulw/store-instance.ts
+// ../../../../omo-engine/omo-opencode/src/ulw/plan-store.ts
 import nodeFs from "node:fs";
+import { join as join15 } from "node:path";
+var UlwLoopPlanFile = object({
+  brief: string2().optional(),
+  goals: array(object({ id: string2().trim().min(1) })).min(1)
+});
+function normalizeSessionId(value) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0)
+    return null;
+  const segments = trimmed.split(/[\\/]+/).filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+  const candidate = (segments.length > 0 ? segments.join("-") : trimmed).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^\.+/, "").replace(/^[.-]+|[.-]+$/g, "");
+  return candidate.length > 0 ? candidate : null;
+}
+function readUlwLoopPlan(directory, runRef) {
+  const sessionId = normalizeSessionId(runRef);
+  if (sessionId === null)
+    return;
+  const planPath = join15(directory, ".omo", "ulw-loop", sessionId, "goals.json");
+  let raw;
+  try {
+    raw = nodeFs.readFileSync(planPath, "utf8");
+  } catch {
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  const plan = UlwLoopPlanFile.safeParse(parsed);
+  if (!plan.success)
+    return;
+  const brief = plan.data.brief?.trim() || `ULW plan ${sessionId}`;
+  return { sessionId, brief, goalIds: plan.data.goals.map((goal) => goal.id) };
+}
+function adoptUlwLoopPlanRun(store, directory, runRef) {
+  const plan = readUlwLoopPlan(directory, runRef);
+  if (plan === undefined)
+    return;
+  if (store.getRun(plan.sessionId) !== undefined)
+    return plan.sessionId;
+  store.createRun({ id: plan.sessionId, brief: plan.brief, sessionScope: plan.sessionId });
+  return plan.sessionId;
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/ulw/run-ref.ts
+function resolveExistingRunRef(store, runRef) {
+  return store.resolveRunId(runRef) ?? runRef;
+}
+function resolveDispatchRunRef(store, directory, runRef) {
+  const resolved = store.resolveRunId(runRef);
+  if (resolved !== undefined)
+    return resolved;
+  return adoptUlwLoopPlanRun(store, directory, runRef) ?? runRef;
+}
+
+// ../../../../omo-engine/omo-opencode/src/tools/ulw/store-instance.ts
+import nodeFs2 from "node:fs";
 
 // ../../../../omo-engine/omo-opencode/src/ulw/persistence.ts
 var STATUS_PRIORITY = ["active", "complete", "blocked", "failed"];
@@ -51599,6 +53036,18 @@ class UlwStore {
   runIdForSubmission(submissionId) {
     return this.submissionClaims.get(submissionId);
   }
+  resolveRunId(runRef) {
+    const ref = runRef.trim();
+    if (ref.length === 0)
+      return;
+    if (this.runs.has(ref))
+      return ref;
+    const claimed = this.submissionClaims.get(ref);
+    if (claimed !== undefined && this.runs.has(claimed))
+      return claimed;
+    const scoped = [...this.runs.values()].filter((state) => state.record.sessionScope === ref);
+    return scoped.length === 1 ? scoped[0].record.id : undefined;
+  }
   openRun(input) {
     const submissionId = input.submissionId?.trim();
     if (submissionId === undefined || submissionId.length === 0) {
@@ -51712,23 +53161,45 @@ class UlwStore {
   recordChildResult(runId, goalId, input) {
     const state = this.requireActiveState(runId);
     const goal = requireText(goalId, "goalId", runId);
-    if (!state.roster.has(goal)) {
-      throw goalNotDispatchedError(runId, goal);
-    }
     const childSessionId = requireText(input.childSessionId, "childSessionId", runId);
-    const dispatched = state.roster.get(goal) ?? [];
-    if (!dispatched.includes(childSessionId)) {
+    const resolvedGoal = this.receiptGoalId(state, goal, childSessionId);
+    if (resolvedGoal === undefined) {
+      if (!this.hasDispatchForGoal(state, goal)) {
+        throw goalNotDispatchedError(runId, goal);
+      }
       throw goalSessionMismatchError(runId, goal, childSessionId);
     }
     const receipt = finishReceipt({
-      goalId: goal,
+      goalId: resolvedGoal,
       childSessionId,
       status: input.status ?? "completed",
       recordedAt: isoNow(input.now ?? this.now)
     }, input.resultRef?.trim() || undefined, input.reason?.trim() || undefined);
-    state.receipts.set(goal, receipt);
+    state.receipts.set(resolvedGoal, receipt);
     this.save();
     return receipt;
+  }
+  receiptGoalId(state, goalId, childSessionId) {
+    const exact = state.roster.get(goalId);
+    if (exact !== undefined)
+      return exact.includes(childSessionId) ? goalId : undefined;
+    const aliases = this.rosterGoalIds(state, goalId);
+    if (aliases.length > 0) {
+      return aliases.find((candidate) => (state.roster.get(candidate) ?? []).includes(childSessionId));
+    }
+    const workerGoals = [...state.roster.entries()].filter(([, workers]) => workers.includes(childSessionId)).map(([candidate]) => candidate);
+    return workerGoals.length === 1 ? workerGoals[0] : undefined;
+  }
+  rosterGoalIds(state, goalId) {
+    if (state.roster.has(goalId))
+      return [goalId];
+    return [...state.roster.keys()].filter((candidate) => this.isGoalAlias(candidate, goalId));
+  }
+  hasDispatchForGoal(state, goalId) {
+    return this.rosterGoalIds(state, goalId).length > 0;
+  }
+  isGoalAlias(left, right) {
+    return left.startsWith(`${right}-`) || right.startsWith(`${left}-`);
   }
   receiptFor(runId, goalId) {
     return this.requireState(runId).receipts.get(goalId);
@@ -51742,7 +53213,7 @@ class UlwStore {
   }
   missingReceipts(runId, goalIds) {
     const state = this.requireState(runId);
-    const candidates = goalIds === undefined ? [...state.roster.keys()] : goalIds.filter((goalId) => state.roster.has(goalId));
+    const candidates = goalIds === undefined ? [...state.roster.keys()] : [...new Set(goalIds.flatMap((goalId) => this.rosterGoalIds(state, goalId)))];
     return candidates.filter((goalId) => !state.receipts.has(goalId)).sort();
   }
   snapshotState() {
@@ -51864,7 +53335,7 @@ var shared;
 function getUlwStore() {
   if (shared === undefined) {
     const filePath = process.env[ULW_STORE_FILE_ENV]?.trim();
-    shared = filePath !== undefined && filePath.length > 0 ? new UlwStore({ persistence: new FileUlwPersistence({ fs: nodeFs, filePath }) }) : new UlwStore;
+    shared = filePath !== undefined && filePath.length > 0 ? new UlwStore({ persistence: new FileUlwPersistence({ fs: nodeFs2, filePath }) }) : new UlwStore;
   }
   return shared;
 }
@@ -51890,12 +53361,12 @@ function createUlwCheckpointTool(deps = {}) {
       },
       required: ["runId"]
     },
-    execute: async (toolArgs) => {
+    execute: async (toolArgs, context) => {
       const parsed = UlwCheckpointArgs.safeParse(toolArgs);
       if (!parsed.success)
         refuseArgs(runIdOf(toolArgs), "ULW runId must be a non-empty string.");
       const goalIds = parsed.data.goalIds;
-      const result = gateCheckpoint(store, parsed.data.runId, goalIds === undefined ? { kind: "run" } : { kind: "goals", goalIds: [...goalIds] });
+      const result = gateCheckpoint(store, resolveExistingRunRef(store, parsed.data.runId), goalIds === undefined ? { kind: "run" } : { kind: "goals", goalIds: [...goalIds] });
       return JSON.stringify(result);
     }
   };
@@ -51923,14 +53394,15 @@ function createUlwCompleteTool(deps = {}) {
       },
       required: ["runId", "status"]
     },
-    execute: async (toolArgs) => {
+    execute: async (toolArgs, context) => {
       const parsed = UlwCompleteArgs.safeParse(toolArgs);
       if (!parsed.success)
         refuseArgs(runIdOf(toolArgs), "ULW runId must be non-empty and status one of complete, failed, blocked.");
+      const runId = resolveExistingRunRef(store, parsed.data.runId);
       if (parsed.data.status === "complete") {
-        gateCheckpoint(store, parsed.data.runId);
+        gateCheckpoint(store, runId);
       }
-      return JSON.stringify(store.setRunStatus(parsed.data.runId, parsed.data.status));
+      return JSON.stringify(store.setRunStatus(runId, parsed.data.status));
     }
   };
 }
@@ -55250,7 +56722,7 @@ function buildMemberPrompt(spec, member) {
 
 // ../../../../omo-engine/omo-opencode/src/tools/ulw/dispatch.ts
 var ULW_DISPATCH_NAME = "ulw_dispatch";
-var ULW_DISPATCH_DESCRIPTION = "Dispatch ULW goals: record worker sessions, or spawn them through the team pool.";
+var ULW_DISPATCH_DESCRIPTION = "Dispatch ULW goals: record worker sessions, or spawn them through the team pool. A create-goals session id resolves to the plan under .omo/ulw-loop/<sessionId>/.";
 var DEFAULT_POOL_BOUNDS = {
   maxParallelMembers: 4,
   maxWallClockMinutes: 120
@@ -55344,9 +56816,10 @@ function createUlwDispatchTool(deps = {}) {
         if (!parsed.success) {
           refuseArgs(runIdOf(toolArgs), "ULW goalId and workerSessionId must be non-empty strings.");
         }
-        const workers = store.dispatchGoal(parsed.data.runId, parsed.data.goalId, parsed.data.workerSessionId);
+        const runId = resolveDispatchRunRef(store, context.directory, parsed.data.runId);
+        const workers = store.dispatchGoal(runId, parsed.data.goalId, parsed.data.workerSessionId);
         return JSON.stringify({
-          runId: parsed.data.runId,
+          runId,
           goalId: parsed.data.goalId,
           workerSessionId: parsed.data.workerSessionId,
           workers
@@ -55356,7 +56829,7 @@ function createUlwDispatchTool(deps = {}) {
       if (!parsed.success) {
         refuseArgs(runIdOf(toolArgs), "ULW goals must be a non-empty array of { goalId, workerSessionId?, prompt?, agent? }.");
       }
-      const runId = parsed.data.runId;
+      const runId = resolveDispatchRunRef(store, context.directory, parsed.data.runId);
       const used = new Set;
       const entries = parsed.data.goals.map((goal) => {
         const memberName = memberNameFor(goal.goalId, used);
@@ -55482,7 +56955,7 @@ function createUlwEvidenceTool(deps = {}) {
       },
       required: ["runId", "goalId", "childSessionId"]
     },
-    execute: async (toolArgs) => {
+    execute: async (toolArgs, context) => {
       const parsed = UlwEvidenceArgs.safeParse(toolArgs);
       if (!parsed.success) {
         refuseArgs(runIdOf(toolArgs), "ULW runId, goalId, and childSessionId must be non-empty strings.");
@@ -55493,7 +56966,8 @@ function createUlwEvidenceTool(deps = {}) {
         resultRef: parsed.data.resultRef,
         reason: parsed.data.reason
       };
-      return JSON.stringify(store.recordChildResult(parsed.data.runId, parsed.data.goalId, input));
+      const runId = resolveExistingRunRef(store, parsed.data.runId);
+      return JSON.stringify(store.recordChildResult(runId, parsed.data.goalId, input));
     }
   };
 }
@@ -55563,7 +57037,8 @@ function createUlwStatusTool(deps = {}) {
       if (!parsed.success)
         refuseArgs(runIdOf(toolArgs), "ULW runId must be a non-empty string when provided.");
       const submissionId = parsed.data.submissionId;
-      const runId = submissionId === undefined ? parsed.data.runId : store.runIdForSubmission(submissionId);
+      const requestedRunId = submissionId === undefined ? parsed.data.runId : store.runIdForSubmission(submissionId);
+      const runId = requestedRunId === undefined ? undefined : resolveExistingRunRef(store, requestedRunId);
       if (runId === undefined) {
         if (submissionId === undefined) {
           return JSON.stringify({ runs: store.listRuns() });
@@ -55690,27 +57165,199 @@ async function createTools(ctx, pluginConfig, managers) {
     getRestrictions: (agentName) => getAgentToolRestrictions(agentName)
   });
   const filteredTools = {};
-  for (const [name, entry] of Object.entries(registry)) {
-    filteredTools[name] = {
-      description: entry.description,
-      args: { properties: {} },
-      execute: async () => "tool unavailable in this context"
-    };
-  }
+  const install = (name, tool) => {
+    if (registry[name] !== undefined)
+      filteredTools[name] = tool;
+  };
   const ulwTools = createUlwTools();
-  for (const [name, tool] of Object.entries(ulwTools)) {
-    if (registry[name] !== undefined) {
-      filteredTools[name] = tool;
-    }
-  }
+  for (const [name, tool] of Object.entries(ulwTools))
+    install(name, tool);
   const codeGraphTools = createCodeGraphTools({ directory: ctx.directory });
-  for (const [name, tool] of Object.entries(codeGraphTools)) {
-    if (registry[name] !== undefined) {
-      filteredTools[name] = tool;
-    }
-  }
+  for (const [name, tool] of Object.entries(codeGraphTools))
+    install(name, tool);
+  const workspaceTools = {
+    [READ_TOOL_NAME]: createWorkspaceReadTool({ directory: ctx.directory }),
+    [WRITE_TOOL_NAME]: createWorkspaceWriteTool({ directory: ctx.directory }),
+    [BASH_TOOL_NAME]: createWorkspaceBashTool({ directory: ctx.directory }),
+    [GREP_TOOL_NAME]: createWorkspaceGrepTool({ directory: ctx.directory }),
+    [EDIT_TOOL_NAME]: createWorkspaceEditTool({ directory: ctx.directory }),
+    [GLOB_TOOL_NAME]: createWorkspaceGlobTool({ directory: ctx.directory })
+  };
+  const delegation = createDelegationTools({ directory: ctx.directory, capabilities: ctx.hostCapabilities });
+  const delegationTools = {
+    [TASK_TOOL_NAME]: delegation.task,
+    [CALL_OMO_AGENT_TOOL_NAME]: delegation.callOmoAgent
+  };
+  for (const [name, tool] of Object.entries(workspaceTools))
+    install(name, tool);
+  for (const [name, tool] of Object.entries(delegationTools))
+    install(name, tool);
   return { filteredTools, mergedSkills, availableSkills };
 }
+
+// ../../../../omo-engine/omo-opencode/src/tools/delegation/host-provider.ts
+var requireAgent = (allowedAgents, agent) => {
+  if (agent === undefined)
+    return;
+  if (allowedAgents === undefined) {
+    throw delegationError("FORBIDDEN", "this host publishes no authorized agent set, so a delegated agent may not be selected");
+  }
+  if (!allowedAgents.includes(agent)) {
+    throw delegationError("FORBIDDEN", `agent ${agent} is not in the host-authorized set`);
+  }
+};
+var createChildSessions = (runtime) => ({
+  version: HOST_CAPABILITY_VERSION,
+  createAndStart: async (request, caller) => {
+    const { createSession, startSession } = runtime;
+    if (createSession === undefined || startSession === undefined) {
+      throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no session operations");
+    }
+    requireAgent(runtime.allowedAgents, request.agent);
+    const created = await createSession({ parentID: caller.sessionID, title: request.title, directory: caller.directory });
+    if (created.error !== undefined) {
+      throw delegationError("SESSION_CREATE_FAILED", created.error);
+    }
+    const childSessionID = created.sessionID;
+    if (childSessionID === undefined || childSessionID.length === 0) {
+      throw delegationError("SESSION_CREATE_FAILED", "the host returned no session identity");
+    }
+    if (created.parentID !== undefined && created.parentID !== caller.sessionID) {
+      throw delegationError("PARENT_ATTRIBUTION_MISMATCH", `the host created ${childSessionID} under ${created.parentID}, not the calling session`);
+    }
+    const start = { sessionID: childSessionID, prompt: request.prompt, directory: caller.directory };
+    if (request.agent !== undefined)
+      start.agent = request.agent;
+    const started = await startSession(start);
+    if (started.outcome === "refused") {
+      throw delegationError("PROMPT_SUBMIT_FAILED", `session ${childSessionID} exists but its first prompt was refused: ${started.error ?? "no reason given by the host"}`);
+    }
+    if (started.outcome !== "accepted") {
+      throw delegationError("CHILD_STATUS_UNKNOWN", `session ${childSessionID} exists; whether its first prompt reached the host is unproven, so no completion is claimed`);
+    }
+    return { childSessionID, parentSessionID: caller.sessionID, started: true, capabilityVersion: HOST_CAPABILITY_VERSION };
+  }
+});
+var createTasks = (manager) => ({
+  version: HOST_CAPABILITY_VERSION,
+  start: async (request, caller) => {
+    if (!_function().safeParse(manager.start).success) {
+      throw delegationError("CAPABILITY_UNAVAILABLE", "this host's task seam exposes no start operation");
+    }
+    const started = await manager.start({ ...request, parentSessionID: caller.sessionID });
+    if (started.taskID.length === 0) {
+      throw delegationError("INTERNAL", "the canonical task manager returned no task identity");
+    }
+    return {
+      taskID: started.taskID,
+      parentSessionID: caller.sessionID,
+      state: started.state,
+      capabilityVersion: HOST_CAPABILITY_VERSION
+    };
+  }
+});
+var createHostCapabilities = (runtime) => {
+  const capabilities = { version: HOST_CAPABILITY_VERSION };
+  if (runtime.createSession !== undefined && runtime.startSession !== undefined) {
+    capabilities.childSessions = createChildSessions(runtime);
+  }
+  if (runtime.allowedAgents !== undefined)
+    capabilities.allowedAgents = runtime.allowedAgents;
+  if (runtime.taskManager !== undefined)
+    capabilities.tasks = createTasks(runtime.taskManager);
+  return capabilities;
+};
+
+// ../../../../omo-engine/omo-opencode/src/tools/delegation/capability-descriptor.ts
+var OutcomeSchema = _enum(["accepted", "refused", "unknown"]);
+var HostCapabilityOptions = object({
+  hostCapabilities: object({
+    version: literal(1),
+    url: string2().url().refine((value) => value.startsWith("http://") || value.startsWith("https://"), {
+      message: "the host capability url must be http or https"
+    }),
+    token: string2().min(1),
+    allowedAgents: array(string2()).optional()
+  })
+});
+var CreateResponse = object({ sessionID: string2().min(1), parentID: string2().optional() });
+var StartResponse = object({ outcome: OutcomeSchema, error: string2().optional() });
+var TaskResponse = object({ taskID: string2().min(1), state: _enum(["accepted", "running", "completed", "failed", "cancelled", "unknown"]) });
+var TIMEOUT_MS = 30000;
+var post = async (descriptor, path, bodyJson) => {
+  try {
+    const response = await fetch(`${descriptor.url}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${descriptor.token}` },
+      body: bodyJson,
+      redirect: "error",
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    });
+    if (!response.ok)
+      return { ok: false, error: `host capability endpoint returned ${response.status}` };
+    return { ok: true, payload: AnyPayload.parse(await response.json()) };
+  } catch (cause) {
+    return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
+  }
+};
+var AnyPayload = union([record(string2(), unknown()), array(unknown())]);
+var readCapabilityDescriptor = (options) => {
+  const parsed = HostCapabilityOptions.safeParse(options);
+  return parsed.success ? parsed.data.hostCapabilities : undefined;
+};
+var readCapabilityDescriptorFromEnv = (env) => {
+  const url = env.OMO_CAPABILITY_URL;
+  const token = env.OMO_CAPABILITY_TOKEN;
+  if (url === undefined || token === undefined)
+    return;
+  const allowed = env.OMO_CAPABILITY_ALLOWED_AGENTS;
+  if (allowed === undefined || allowed.trim().length === 0) {
+    return readCapabilityDescriptor({ hostCapabilities: { version: 1, url, token } });
+  }
+  const allowedAgents = allowed.split(",").map((name) => name.trim()).filter((name) => name.length > 0);
+  return readCapabilityDescriptor({ hostCapabilities: { version: 1, url, token, allowedAgents } });
+};
+var createOperationsFromDescriptor = (descriptor) => {
+  const operations = {
+    createSession: async (input) => {
+      const sent = await post(descriptor, "/capability/session", JSON.stringify({ parentID: input.parentID, title: input.title, directory: input.directory }));
+      if (!sent.ok)
+        return { error: sent.error };
+      const parsed = CreateResponse.safeParse(sent.payload);
+      if (!parsed.success)
+        return { error: "the host returned no usable session identity" };
+      return parsed.data.parentID === undefined ? { sessionID: parsed.data.sessionID } : { sessionID: parsed.data.sessionID, parentID: parsed.data.parentID };
+    },
+    startSession: async (input) => {
+      const body = { sessionID: input.sessionID, prompt: input.prompt, directory: input.directory };
+      if (input.agent !== undefined)
+        body.agent = input.agent;
+      const sent = await post(descriptor, "/capability/session/start", JSON.stringify(body));
+      if (!sent.ok)
+        return { outcome: "unknown", error: sent.error };
+      const parsed = StartResponse.safeParse(sent.payload);
+      if (!parsed.success)
+        return { outcome: "unknown", error: "the host returned an unusable start outcome" };
+      return parsed.data.error === undefined ? { outcome: parsed.data.outcome } : { outcome: parsed.data.outcome, error: parsed.data.error };
+    }
+  };
+  if (descriptor.allowedAgents !== undefined)
+    operations.allowedAgents = descriptor.allowedAgents;
+  return operations;
+};
+var createTaskOperationsFromDescriptor = (descriptor) => ({
+  taskManager: {
+    start: async (request) => {
+      const sent = await post(descriptor, "/capability/task", JSON.stringify(request));
+      if (!sent.ok)
+        throw new Error(`TASK_MANAGER_UNAVAILABLE: ${sent.error}`);
+      const parsed = TaskResponse.safeParse(sent.payload);
+      if (!parsed.success)
+        throw new Error("INTERNAL: the host returned no usable task identity");
+      return parsed.data;
+    }
+  }
+});
 
 // ../../../../omo-engine/omo-opencode/src/plugin-dispose.ts
 var createPluginDispose = (parts) => {
@@ -55927,9 +57574,9 @@ ${notes.join(`
 import * as fs5 from "node:fs";
 import * as path7 from "node:path";
 // ../../../../omo-engine/omo-opencode/src/shared/opencode-config-dir.ts
-import { existsSync as existsSync15, realpathSync as realpathSync5 } from "node:fs";
+import { existsSync as existsSync17, realpathSync as realpathSync6 } from "node:fs";
 import { homedir as homedir5 } from "node:os";
-import { join as join11, posix as posix2, resolve as resolve7, win32 } from "node:path";
+import { join as join16, posix as posix2, resolve as resolve8, win32 } from "node:path";
 var TAURI_APP_IDENTIFIER = "ai.opencode.desktop";
 var TAURI_APP_IDENTIFIER_DEV = "ai.opencode.desktop.dev";
 function isDevBuild(version) {
@@ -55941,15 +57588,15 @@ function getTauriConfigDir(identifier) {
   const platform = process.platform;
   switch (platform) {
     case "darwin":
-      return join11(homedir5(), "Library", "Application Support", identifier);
+      return join16(homedir5(), "Library", "Application Support", identifier);
     case "win32": {
-      const appData = process.env.APPDATA || join11(homedir5(), "AppData", "Roaming");
+      const appData = process.env.APPDATA || join16(homedir5(), "AppData", "Roaming");
       return win32.join(appData, identifier);
     }
     case "linux":
     default: {
-      const xdgConfig = process.env.XDG_CONFIG_HOME || join11(homedir5(), ".config");
-      return join11(xdgConfig, identifier);
+      const xdgConfig = process.env.XDG_CONFIG_HOME || join16(homedir5(), ".config");
+      return join16(xdgConfig, identifier);
     }
   }
 }
@@ -55957,11 +57604,11 @@ function resolveConfigPath(pathValue) {
   if (isWslEnvironment() && pathValue.startsWith("/")) {
     return posix2.normalize(pathValue);
   }
-  const resolvedPath = resolve7(pathValue);
-  if (!existsSync15(resolvedPath))
+  const resolvedPath = resolve8(pathValue);
+  if (!existsSync17(resolvedPath))
     return resolvedPath;
   try {
-    return realpathSync5(resolvedPath);
+    return realpathSync6(resolvedPath);
   } catch (error) {
     if (error instanceof Error) {
       return resolvedPath;
@@ -55992,8 +57639,8 @@ function getWslLinuxHomeDir(windowsConfigRoot) {
 function getCliDefaultConfigDir() {
   const envXdgConfig = process.env.XDG_CONFIG_HOME?.trim();
   const shouldIgnoreWindowsXdg = envXdgConfig !== undefined && envXdgConfig.length > 0 && isWslEnvironment() && isWindowsUserConfigRoot(envXdgConfig);
-  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join11(homedir5(), ".config");
-  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join11(xdgConfig, "opencode");
+  const xdgConfig = shouldIgnoreWindowsXdg ? posix2.join(getWslLinuxHomeDir(envXdgConfig) ?? "/home", ".config") : envXdgConfig || join16(homedir5(), ".config");
+  const configDir = isWslEnvironment() ? posix2.join(xdgConfig, "opencode") : join16(xdgConfig, "opencode");
   return resolveConfigPath(configDir);
 }
 function getCliCustomConfigDir() {
@@ -56026,9 +57673,9 @@ function getOpenCodeConfigDir(options) {
   const tauriDir = process.platform === "win32" ? win32.isAbsolute(tauriDirBase) ? win32.normalize(tauriDirBase) : win32.resolve(tauriDirBase) : resolveConfigPath(tauriDirBase);
   if (checkExisting) {
     const legacyDir = getCliConfigDir();
-    const legacyConfig = join11(legacyDir, "opencode.json");
-    const legacyConfigC = join11(legacyDir, "opencode.jsonc");
-    if (existsSync15(legacyConfig) || existsSync15(legacyConfigC)) {
+    const legacyConfig = join16(legacyDir, "opencode.json");
+    const legacyConfigC = join16(legacyDir, "opencode.jsonc");
+    if (existsSync17(legacyConfig) || existsSync17(legacyConfigC)) {
       return legacyDir;
     }
   }
@@ -56038,9 +57685,9 @@ function getOpenCodeConfigPaths(options) {
   const configDir = getOpenCodeConfigDir(options);
   return {
     configDir,
-    configJson: join11(configDir, "opencode.json"),
-    configJsonc: join11(configDir, "opencode.jsonc"),
-    packageJson: join11(configDir, "package.json")
+    configJson: join16(configDir, "opencode.json"),
+    configJsonc: join16(configDir, "opencode.jsonc"),
+    packageJson: join16(configDir, "package.json")
   };
 }
 
@@ -56165,8 +57812,8 @@ Multiple ${PLUGIN_NAME} instances can inject internal prompts into the same live
 }
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
-import { existsSync as existsSync17, readFileSync as readFileSync9 } from "node:fs";
-import { join as join13 } from "node:path";
+import { existsSync as existsSync19, readFileSync as readFileSync13 } from "node:fs";
+import { join as join18 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/plugin-entry-shape.ts
 function isPluginTupleEntry(entry) {
@@ -56182,18 +57829,18 @@ function withPluginEntryName(entry, name) {
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-plugin-warning.ts
 function getOpenCodeConfigPath(overrideConfigDir) {
   if (overrideConfigDir) {
-    const jsonPath = join13(overrideConfigDir, "opencode.json");
-    const jsoncPath = join13(overrideConfigDir, "opencode.jsonc");
-    if (existsSync17(jsoncPath))
+    const jsonPath = join18(overrideConfigDir, "opencode.json");
+    const jsoncPath = join18(overrideConfigDir, "opencode.jsonc");
+    if (existsSync19(jsoncPath))
       return jsoncPath;
-    if (existsSync17(jsonPath))
+    if (existsSync19(jsonPath))
       return jsonPath;
     return null;
   }
   const { configJsonc, configJson } = getOpenCodeConfigPaths({ binary: "opencode", version: null });
-  if (existsSync17(configJsonc))
+  if (existsSync19(configJsonc))
     return configJsonc;
-  if (existsSync17(configJson))
+  if (existsSync19(configJson))
     return configJson;
   return null;
 }
@@ -56211,7 +57858,7 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
     return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath: null };
   }
   try {
-    const content = readFileSync9(configPath, "utf-8");
+    const content = readFileSync13(configPath, "utf-8");
     const parseResult = parseJsoncSafe2(content);
     if (!parseResult.data) {
       return { hasLegacyEntry: false, hasCanonicalEntry: false, legacyEntries: [], configPath };
@@ -56233,49 +57880,49 @@ function checkForLegacyPluginEntry(overrideConfigDir) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
-import { existsSync as existsSync20, readdirSync as readdirSync8 } from "node:fs";
-import { join as join15 } from "node:path";
+import { existsSync as existsSync22, readdirSync as readdirSync10 } from "node:fs";
+import { join as join20 } from "node:path";
 
 // ../../../../omo-engine/omo-opencode/src/shared/legacy-workspace-migration.ts
-import { copyFileSync, existsSync as existsSync18, lstatSync as lstatSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync7 } from "node:fs";
-import { dirname as dirname6, join as join14, relative as relative3 } from "node:path";
+import { copyFileSync, existsSync as existsSync20, lstatSync as lstatSync5, mkdirSync as mkdirSync5, readdirSync as readdirSync9 } from "node:fs";
+import { dirname as dirname9, join as join19, relative as relative6 } from "node:path";
 var LEGACY_WORKSPACE_DIR = ".sisyphus";
 var WORKSPACE_DIR = ".omo";
 function copyMissingEntries(legacyPath, targetPath, targetRoot, skipped) {
-  const legacyStat = lstatSync3(legacyPath);
+  const legacyStat = lstatSync5(legacyPath);
   if (legacyStat.isSymbolicLink()) {
-    skipped.push(join14(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join19(WORKSPACE_DIR, relative6(targetRoot, targetPath)));
     return false;
   }
-  if (existsSync18(targetPath)) {
-    if (legacyStat.isDirectory() && lstatSync3(targetPath).isDirectory()) {
+  if (existsSync20(targetPath)) {
+    if (legacyStat.isDirectory() && lstatSync5(targetPath).isDirectory()) {
       let copiedChild = false;
-      for (const entry of readdirSync7(legacyPath)) {
-        copiedChild = copyMissingEntries(join14(legacyPath, entry), join14(targetPath, entry), targetRoot, skipped) || copiedChild;
+      for (const entry of readdirSync9(legacyPath)) {
+        copiedChild = copyMissingEntries(join19(legacyPath, entry), join19(targetPath, entry), targetRoot, skipped) || copiedChild;
       }
       return copiedChild;
     }
-    skipped.push(join14(WORKSPACE_DIR, relative3(targetRoot, targetPath)));
+    skipped.push(join19(WORKSPACE_DIR, relative6(targetRoot, targetPath)));
     return false;
   }
   if (legacyStat.isDirectory()) {
-    mkdirSync3(targetPath, { recursive: true });
+    mkdirSync5(targetPath, { recursive: true });
     let copiedChild = false;
-    for (const entry of readdirSync7(legacyPath)) {
-      copiedChild = copyMissingEntries(join14(legacyPath, entry), join14(targetPath, entry), targetRoot, skipped) || copiedChild;
+    for (const entry of readdirSync9(legacyPath)) {
+      copiedChild = copyMissingEntries(join19(legacyPath, entry), join19(targetPath, entry), targetRoot, skipped) || copiedChild;
     }
     return copiedChild;
   }
-  mkdirSync3(dirname6(targetPath), { recursive: true });
+  mkdirSync5(dirname9(targetPath), { recursive: true });
   copyFileSync(legacyPath, targetPath);
   return true;
 }
 function migrateLegacyWorkspaceDirectory(directory) {
-  const legacyDirectory = join14(directory, LEGACY_WORKSPACE_DIR);
-  if (!existsSync18(legacyDirectory)) {
+  const legacyDirectory = join19(directory, LEGACY_WORKSPACE_DIR);
+  if (!existsSync20(legacyDirectory)) {
     return { migrated: false, skipped: [] };
   }
-  const targetDirectory = join14(directory, WORKSPACE_DIR);
+  const targetDirectory = join19(directory, WORKSPACE_DIR);
   const skipped = [];
   try {
     const migrated = copyMissingEntries(legacyDirectory, targetDirectory, targetDirectory, skipped);
@@ -56381,6 +58028,34 @@ function migrateLegacyPluginEntry(configPath) {
 }
 
 // ../../../../omo-engine/omo-opencode/src/plugin-setup.ts
+function resolveV2Capabilities(ctx) {
+  if (ctx.hostCapabilities !== undefined)
+    return ctx.hostCapabilities;
+  const runtime = {};
+  if (ctx.delegation !== undefined) {
+    runtime.createSession = ctx.delegation.createSession;
+    runtime.startSession = ctx.delegation.startSession;
+    if (ctx.delegation.allowedAgents !== undefined)
+      runtime.allowedAgents = ctx.delegation.allowedAgents;
+  }
+  if (ctx.tasks !== undefined)
+    runtime.taskManager = ctx.tasks;
+  const descriptor = readCapabilityDescriptor(ctx.options) ?? readCapabilityDescriptorFromEnv(process.env);
+  if (descriptor !== undefined) {
+    const operations = createOperationsFromDescriptor(descriptor);
+    if (runtime.createSession === undefined) {
+      runtime.createSession = operations.createSession;
+      runtime.startSession = operations.startSession;
+    }
+    if (runtime.allowedAgents === undefined && operations.allowedAgents !== undefined)
+      runtime.allowedAgents = operations.allowedAgents;
+    if (runtime.taskManager === undefined)
+      runtime.taskManager = createTaskOperationsFromDescriptor(descriptor).taskManager;
+  }
+  if (runtime.createSession === undefined && runtime.taskManager === undefined)
+    return;
+  return createHostCapabilities(runtime);
+}
 function isRecord15(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -56415,10 +58090,10 @@ function planArtifactTouched(directory) {
   try {
     if (!directory)
       return false;
-    const plansDir = join15(directory, ".omo", "plans");
-    if (!existsSync20(plansDir))
+    const plansDir = join20(directory, ".omo", "plans");
+    if (!existsSync22(plansDir))
       return false;
-    return readdirSync8(plansDir).some((entry) => entry.endsWith(".md"));
+    return readdirSync10(plansDir).some((entry) => entry.endsWith(".md"));
   } catch {
     return false;
   }
@@ -56558,7 +58233,7 @@ function createPluginSetup() {
     }
     const pluginConfig = loadPluginConfig(directory, { directory });
     const managers = createManagers({ directory, pluginConfig });
-    const createdTools = await createTools({ directory, pluginConfig }, pluginConfig, managers);
+    const createdTools = await createTools({ directory, pluginConfig, hostCapabilities: resolveV2Capabilities(ctx) }, pluginConfig, managers);
     const disabled = new Set(pluginConfig.disabled_hooks ?? []);
     const hooks = createHooks({ directory, pluginConfig }, {
       isHookEnabled: (name) => !disabled.has(name),
@@ -56589,12 +58264,28 @@ function createPluginSetup() {
               description: tool.description,
               input: toJsonSchemaInput(tool.args),
               execute: async (rawArgs, toolContext) => {
+                const hostSession = textOf(toolContext["sessionID"]);
+                const authenticated = hostSession.length > 0 && hostSession !== "unknown";
+                const ask = toolContext["ask"];
+                const callDirectory = textOf(toolContext["directory"]);
+                const callWorktree = textOf(toolContext["worktree"]);
                 const outcome = await tool.execute(toJsonObject(rawArgs), {
-                  sessionID: textOf(toolContext["sessionID"]) || "unknown",
+                  sessionID: hostSession,
                   messageID: textOf(toolContext["messageID"]),
                   agent: textOf(toolContext["agent"]),
-                  directory,
-                  worktree,
+                  directory: callDirectory.length > 0 ? callDirectory : directory,
+                  worktree: callWorktree.length > 0 ? callWorktree : worktree,
+                  authenticated,
+                  ...typeof ask === "function" ? {
+                    ask: async (input) => {
+                      await ask.call(toolContext, {
+                        permission: input.permission,
+                        patterns: [...input.patterns],
+                        always: [...input.always ?? []],
+                        metadata: { ...input.metadata ?? {} }
+                      });
+                    }
+                  } : {},
                   aborted: () => {
                     const signal = toolContext["signal"];
                     return typeof AbortSignal !== "undefined" && signal instanceof AbortSignal && signal.aborted;

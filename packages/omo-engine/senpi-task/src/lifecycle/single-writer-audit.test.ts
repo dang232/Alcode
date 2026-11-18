@@ -22,6 +22,7 @@ const INVOCATION_ALLOWLIST = [
   "src/runners/rpc/start-cleanup.ts",
   "src/runners/in-process/child-handle.ts",
   "src/manager/child-handle.ts",
+  "src/repair/model-diagnosis.ts",
 ]
 
 const FORBIDDEN_PATTERNS = [".dispose(", ".terminate(", "process.kill("]

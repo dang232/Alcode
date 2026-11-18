@@ -144,7 +144,6 @@ export function useSayTTS(options: UseSayTTSOptions = {}): UseSayTTSReturn {
       // Resume if suspended (required for iOS Safari)
       if (ctx.state === 'suspended') {
         await ctx.resume();
-        console.log('[useSayTTS] AudioContext resumed');
       }
       
       // Play a tiny silent buffer to fully unlock
@@ -154,7 +153,6 @@ export function useSayTTS(options: UseSayTTSOptions = {}): UseSayTTSReturn {
       source.connect(ctx.destination);
       source.start(0);
       
-      console.log('[useSayTTS] Audio unlocked for mobile playback');
     } catch (err) {
       console.error('[useSayTTS] Failed to unlock audio:', err);
     }
@@ -244,7 +242,6 @@ export function useSayTTS(options: UseSayTTSOptions = {}): UseSayTTSReturn {
       // Get audio data from response
       const audioBlob = await response.blob();
       const arrayBuffer = await audioBlob.arrayBuffer();
-      console.log('[useSayTTS] Received audio:', audioBlob.size, 'bytes');
       
       // Use Web Audio API for playback (same as useServerTTS)
       const ctx = getAudioContext();
@@ -252,11 +249,9 @@ export function useSayTTS(options: UseSayTTSOptions = {}): UseSayTTSReturn {
       // Resume context if suspended
       if (ctx.state === 'suspended') {
         await ctx.resume();
-        console.log('[useSayTTS] AudioContext resumed before playback');
       }
       
       // Decode audio data
-      console.log('[useSayTTS] Decoding audio data...');
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
       
       // Create source node
@@ -267,14 +262,12 @@ export function useSayTTS(options: UseSayTTSOptions = {}): UseSayTTSReturn {
       
       // Set up event handlers
       source.onended = () => {
-        console.log('[useSayTTS] Audio playback ended');
         setIsPlaying(false);
         audioSourceRef.current = null;
         options?.onEnd?.();
       };
       
       // Start playback
-      console.log('[useSayTTS] Starting audio playback via Web Audio API...');
       setIsPlaying(true);
       options?.onStart?.();
       source.start(0);

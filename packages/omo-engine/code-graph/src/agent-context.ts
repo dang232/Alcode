@@ -207,7 +207,7 @@ export function buildAgentContext(input: {
     input.status?.reasons ?? (source === undefined ? ["no-envelope"] : []);
 
   let unavailable: { readonly code: string; readonly message: string } | undefined;
-  if (source === undefined) {
+  if (source === undefined && input.op !== "status") {
     unavailable = {
       code: "GRAPH_UNAVAILABLE",
       message: reasons.length > 0

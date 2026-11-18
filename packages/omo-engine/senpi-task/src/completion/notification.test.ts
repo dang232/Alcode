@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { DagNodeId, DagRunId } from "../dag/types"
 import { DAG_VERIFICATION_DIRECTIVE } from "./dag-verification-directive"
-import { buildCompletionDetails, buildCompletionMessage } from "./notification"
+import { buildCompletionDetails, buildCompletionMessage, completionMessageLines } from "./notification"
 import type { TaskRecord } from "../state"
 
 const tempDirs: string[] = []
@@ -321,5 +321,45 @@ describe("completion run stats", () => {
 
     // then
     expect(details.tokens).toBe(42)
+  })
+})
+
+describe("buildCompletionDetails verification claim", () => {
+  test("#given a verified terminal record #when details built #then the claim is carried and rendered as verified", () => {
+    // given
+    const record = completedRecord({ verification_status: "verified" })
+
+    // when
+    const details = buildCompletionDetails(record)
+    const line = completionMessageLines([details]).join("\n")
+
+    // then
+    expect(details.verification_status).toBe("verified")
+    expect(line).toContain("verification:verified")
+  })
+
+  test("#given a completed record with no claim #when details built #then it reads unverified, never verified", () => {
+    // given: a record written before the gate existed, or one the gate never saw
+    const record = completedRecord()
+
+    // when
+    const details = buildCompletionDetails(record)
+    const line = completionMessageLines([details]).join("\n")
+
+    // then
+    expect(details.verification_status).toBeUndefined()
+    expect(line).toContain("verification:unverified")
+    expect(line).not.toContain("verification:verified")
+  })
+
+  test("#given a blocked claim #when details built #then the blocked word is rendered", () => {
+    // given
+    const record = completedRecord({ status: "error", verification_status: "blocked" })
+
+    // when
+    const line = completionMessageLines([buildCompletionDetails(record)]).join("\n")
+
+    // then
+    expect(line).toContain("verification:blocked")
   })
 })

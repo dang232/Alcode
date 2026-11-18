@@ -7,30 +7,6 @@ const matchesEntry = (value, pluginDirectory) => (
 );
 
 /**
- * Append a managed Alcode plugin to the `plugins` list of an
- * `OPENCODE_CONFIG_CONTENT` value.
- *
- * OpenCode 2 loads a configured plugin from a DIRECTORY that carries a
- * `package.json` resolving an entrypoint; a path to a single `.js` file is
- * rejected with "configured plugin path must be a directory". So the value
- * merged here is an absolute directory path, not a `file://` URL.
- *
- * Existing entries are preserved and an earlier entry for the same directory is
- * dropped, so a restart never registers the same plugin twice. A legacy
- * `plugin` key is folded into `plugins` and removed: OpenCode still decodes it,
- * but keeping two keys would mean two places to dedupe against.
- *
- * This is the FALLBACK path only, taken when the user's own environment owns
- * `OPENCODE_CONFIG`. Otherwise managed plugins are published through the
- * watched config file in `managed-config-file.js`, which is what makes a
- * managed-tool toggle apply without a restart.
- *
- * @param {string | undefined} rawConfig the current `OPENCODE_CONFIG_CONTENT`, JSONC or unset
- * @param {string} pluginDirectory absolute path of the materialized plugin directory
- * @param {string} purpose short noun phrase for the error message, e.g. "managed tool"
- * @returns {string} the merged config as JSON
- */
-/**
  * Merge a managed MCP server into the `mcp.servers` map of an
  * `OPENCODE_CONFIG_CONTENT` value.
  *
@@ -100,7 +76,82 @@ export const mergeManagedAgents = (rawConfig, agentMap, purpose) => {
   return JSON.stringify(parsed);
 };
 
-export const appendManagedPlugin = (rawConfig, pluginDirectory, purpose) => {
+const isHttpUrl = (value) => {
+  if (typeof value !== 'string') return false;
+  if (!value.startsWith('http://') && !value.startsWith('https://')) return false;
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The plugin options a host capability descriptor becomes, or null when there
+ * is no descriptor to publish. The descriptor arrives from the caller as an
+ * object or its JSON text; anything that would write a broken tuple (wrong
+ * shape, a version other than the literal 1, a non-http(s) url, an empty
+ * token, a malformed `allowedAgents`) answers null so the entry stays the bare
+ * directory path.
+ */
+const parseHostCapabilityDescriptor = (descriptor) => {
+  if (descriptor === undefined || descriptor === null) return null;
+  let options = descriptor;
+  if (typeof options === 'string') {
+    try {
+      options = JSON.parse(options);
+    } catch {
+      return null;
+    }
+  }
+  if (!isJsonObject(options)) return null;
+  const capabilities = options.hostCapabilities;
+  if (!isJsonObject(capabilities)) return null;
+  if (capabilities.version !== 1) return null;
+  if (!isHttpUrl(capabilities.url)) return null;
+  if (typeof capabilities.token !== 'string' || capabilities.token.length === 0) return null;
+  if (capabilities.allowedAgents !== undefined
+    && (!Array.isArray(capabilities.allowedAgents)
+      || capabilities.allowedAgents.some((agent) => typeof agent !== 'string' || agent.length === 0))) {
+    return null;
+  }
+  const hostCapabilities = { version: 1, url: capabilities.url, token: capabilities.token };
+  if (capabilities.allowedAgents !== undefined) hostCapabilities.allowedAgents = capabilities.allowedAgents;
+  return { hostCapabilities };
+};
+
+/**
+ * Append a managed Alcode plugin to the `plugins` list of an
+ * `OPENCODE_CONFIG_CONTENT` value.
+ *
+ * OpenCode 2 loads a configured plugin from a DIRECTORY that carries a
+ * `package.json` resolving an entrypoint; a path to a single `.js` file is
+ * rejected with "configured plugin path must be a directory". So the value
+ * merged here names an absolute directory, not a `file://` URL. With a host
+ * capability descriptor the entry is the tuple `[directory, { hostCapabilities }]`
+ * that OpenCode 2 hands the plugin as its options; without one the entry is the
+ * bare directory path.
+ *
+ * Existing entries are preserved and an earlier entry for the same directory is
+ * dropped, so a restart never registers the same plugin twice. A legacy
+ * `plugin` key is folded into `plugins` and removed: OpenCode still decodes it,
+ * but keeping two keys would mean two places to dedupe against.
+ *
+ * This is the FALLBACK path only, taken when the user's own environment owns
+ * `OPENCODE_CONFIG`. Otherwise managed plugins are published through the
+ * watched config file in `managed-config-file.js`, which is what makes a
+ * managed-tool toggle apply without a restart.
+ *
+ * @param {string | undefined} rawConfig the current `OPENCODE_CONFIG_CONTENT`, JSONC or unset
+ * @param {string} pluginDirectory absolute path of the materialized plugin directory
+ * @param {string} purpose short noun phrase for the error message, e.g. "managed tool"
+ * @param {string | object | undefined} descriptor host capability descriptor as
+ *   `{ hostCapabilities: { version: 1, url, token, allowedAgents? } }`, either an
+ *   object or its JSON text; an invalid descriptor falls back to the bare path
+ * @returns {string} the merged config as JSON
+ */
+export const appendManagedPlugin = (rawConfig, pluginDirectory, purpose, descriptor) => {
   const errors = [];
   const text = (rawConfig ?? '').trim();
   const parsed = text ? parseJsonc(text, errors, { allowTrailingComma: true }) : {};
@@ -117,9 +168,10 @@ export const appendManagedPlugin = (rawConfig, pluginDirectory, purpose) => {
     ...(Array.isArray(parsed.plugins) ? parsed.plugins : []),
   ];
   delete parsed.plugin;
+  const options = parseHostCapabilityDescriptor(descriptor);
   parsed.plugins = [
     ...configured.filter((value) => !matchesEntry(value, pluginDirectory)),
-    pluginDirectory,
+    options === null ? pluginDirectory : [pluginDirectory, options],
   ];
   return JSON.stringify(parsed);
 };

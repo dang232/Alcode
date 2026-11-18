@@ -38,6 +38,7 @@ export const createGracefulShutdownRuntime = (dependencies) => {
     beginGuestServiceShutdown,
     stopAllGuestServices,
     getGuestSurfaceRuntime,
+    getTaskHostSupervisor,
     getRealtimeProxyRuntime,
     getDictationRuntime,
     getRelayService,
@@ -83,6 +84,9 @@ export const createGracefulShutdownRuntime = (dependencies) => {
       () => getSpacesHost()?.close(),
       () => getRelayService()?.stop(),
       () => getDictationRuntime()?.stop(),
+      // The supervised task host holds the canonical manager: drain it here, while the
+      // manager can still reconcile, rather than orphaning it at process exit.
+      () => getTaskHostSupervisor()?.stop(),
       () => openCodeWatcherRuntime.stop(),
       () => sessionRuntime.dispose(),
       () => sessionAssistRuntime?.stop?.(),

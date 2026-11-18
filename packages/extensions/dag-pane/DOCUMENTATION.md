@@ -69,8 +69,9 @@ exists for this guest.
   route report refining the label when present), `POST /steer` (invoke
   attached to the live session, handle kept for cancel; on settle the
   service records a completion snapshot — pending shape flipped to
-  completed/failed with the observed outcome — unless richer snapshot
-  data already landed, never on cancel), `POST /cancel`
+  completed/failed with the observed outcome — unless the temp path already
+  holds a snapshot or an engine document exists at either path, never on
+  cancel), `POST /cancel`
   (provisional kill receipt). `GET /history?directory=` lists past runs:
   completed snapshots plus terminal loop rows, newest first, capped;
   malformed snapshots counted as skipped; live runs never listed.
@@ -104,8 +105,11 @@ so the host posts the run model it builds from engine session data to
 `POST /snapshot`, and the service persists it project-scoped under
 `<project>/.omo/dag-runs/<sessionId>.snapshot.json` (live file) plus capped
 immutable terminal records in `<project>/.omo/dag-runs/history/<sessionId>/`
-(newest 20). `GET /snapshot` reads the temp file first, then the live file
-when the caller names its directory; `GET /history` with a directory filter
+(newest 20). `GET /snapshot` ranks candidates, never writes: temp engine
+document, project engine document, temp steer/live fallback, project
+document, then a malformed candidate (422) and none (404). A malformed temp
+write never masks a valid project engine document, and age is not authority:
+an older engine document still beats a newer synthetic fallback. `GET /history` with a directory filter
 merges temp snapshots, loop rows, and project-scoped records, deduped by
 (session, updatedAt, status). Project-scoped entries appear only under their
 own directory filter. The panel's History covers the followed conversation
@@ -137,3 +141,18 @@ entries). A fresh install shows the DAG rail icon with no Settings →
 Extensions folder install. The guest ships enabled with exactly the
 `service` grant (its only declaration) and no approval dialog; disable
 stops the service while retaining data and credentials.
+
+## Decisions
+
+### Why engine documents outrank the temp steer fallback and not the newest write
+
+The reader ranks engine documents above the synthetic steer document in both
+locations, then the temp fallback above the project document, and only then a
+malformed candidate. The alternative, newest-mtime-wins, let the synthetic
+completion record written by `settleSteer` mask a project-scoped engine run;
+the synthetic record exists only to keep a finished steer visible, so it must
+never decide what the pane believes about a real run. Engine evidence is the
+non-empty `tasks.tasks` array; no new schema tag or discriminator is added, so
+existing engine documents need no migration. `settleSteer` keeps writing the
+marked fallback (`run_key: steer:<session>`, `tasks: null`, no
+`verification_status`) only when no engine document exists at either path.

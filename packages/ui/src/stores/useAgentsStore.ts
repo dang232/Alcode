@@ -751,8 +751,6 @@ export const useAgentsStore = create<AgentsStore>()(
 
         createAgent: async (config: AgentConfig, requestedDirectory?: string | null) => {
           try {
-            console.log('[AgentsStore] Creating agent:', config.name);
-
             const agentConfig: Record<string, unknown> = {
               mode: config.mode || 'subagent',
             };
@@ -766,8 +764,6 @@ export const useAgentsStore = create<AgentsStore>()(
             if (config.request) agentConfig.request = config.request;
             if (config.permissions?.length) agentConfig.permissions = config.permissions;
             if (config.scope) agentConfig.scope = config.scope;
-
-            console.log('[AgentsStore] Agent config to save:', agentConfig);
 
             const configDirectory = resolveDirectory(requestedDirectory);
             const queryParams = configDirectory ? `?directory=${encodeURIComponent(configDirectory)}` : '';

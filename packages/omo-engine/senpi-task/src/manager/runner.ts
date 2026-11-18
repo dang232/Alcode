@@ -84,7 +84,7 @@ export function createRpcManagedRunner(runner: RpcRunnerLike): ManagedRunner {
 }
 
 function toChildSpec(spec: ManagedStartSpec, context: InProcessSessionContext): ChildSpec {
-  return {
+  const childSpec: ChildSpec = {
     taskId: spec.taskId,
     cwd: spec.cwd,
     // ManagedStartSpec.stateDir is already join(stateDir, "children", taskId); the session dir
@@ -114,4 +114,6 @@ function toChildSpec(spec: ManagedStartSpec, context: InProcessSessionContext): 
     ...(spec.memberScopedTools !== undefined ? { memberScopedTools: spec.memberScopedTools } : {}),
     ...(spec.kernelTools !== undefined ? { kernelTools: spec.kernelTools } : {}),
   }
+  if (spec.verificationTool === undefined) return childSpec
+  return { ...childSpec, verificationTool: spec.verificationTool }
 }

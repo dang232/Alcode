@@ -34,6 +34,18 @@ owns the `activity.*` strings.
   timeline with their receipt ids. The panel never presents text as
   model reasoning.
 - Fetch failure is an error state with a retry path, never an empty list.
+- Repair state and the completion-gate verdict are separate facts. A row or
+  inspector line may show `Repaired` beside `Blocked`; neither rewrites the
+  other, and only the persisted gate record supplies the verification status.
+- Only the current epoch's repair attempt renders. Repeating one attempt on
+  the run and task projections, or repeating a lifecycle event, never adds a
+  row; attempts order by epoch, then attempt id.
+- A failed or cancelled repair attempt names only the earlier milestones its
+  own block evidences. No stage is filled in from the canonical path when the
+  block cannot prove it.
+- With no repair attempt the inspector renders exactly as before, with no
+  empty repair shell. An unreadable repair store renders an explicit error,
+  never the absence state.
 - Node positions come from the model (snapshot waves or layered waves),
   keyed by id, so live updates never jump the layout or drop selection.
 
@@ -67,6 +79,14 @@ without messages yet re-renders forever (React #185: maximum update
 depth exceeded). The module constants keep the empty case
 referentially stable; the stored slices already are.
 
+### Why completed runs name their verification instead of reading success off the terminal state
+
+A completed transition alone is not proof of verification, so completed rows, graph nodes,
+and settlement lines render the terminal record's `verification_status` next to the state:
+Verified, Unverified, or Blocked as text, never a color alone. The claim travels with the
+snapshot node (older records have none) and defaults to Unverified, never Verified. The
+panel never derives the claim itself: the engine's ordinary-completion gate owns the verdict.
+
 ### Why file links come only from the selected transcript's file tools
 
 `taskAssociatedFiles` reads `read`/`edit`/`write`/`patch` inputs from
@@ -93,6 +113,33 @@ rationale, which Slice 8.1 verified from the recorded run. The card answers
 the rationale question with that absence in the open, so a reader never
 mistakes a summary for a reason; the `rationale` field is where recorded
 rationale lands if the engine ever emits it.
+
+### Why the repair lifecycle and the gate verdict are two rows
+
+The repair state says what the attempt did, and the completion gate says what
+the workspace proved. A `repaired` attempt can still be `blocked` by the gate,
+so rendering one value would hide the failure the gate reported. The inspector
+lists the milestones in order, then the gate verdict in its own row with its
+own tone, and the explorer and graph append the repair state after the row's
+own state. Nothing derives a verification word from a repair state.
+
+### Why failed repair attempts show only evidenced milestones
+
+The repair block projects one current state, not a stored history. A repaired
+attempt must have passed diagnosing, planning, repairing, and re-verifying, so
+those rows are safe. A failed or cancelled attempt can stop at any stage, so
+the panel shows only the stages the block proves: changed files prove a repair
+ran, and rerun checks prove re-verification ran. Filling in the rest from the
+canonical path would report work the attempt never did.
+
+### Why the run and task projections merge before rendering
+
+The server attaches the same attempt to both the run record and the task
+record. Rendering each projection would duplicate every row, so the view model
+keeps the latest write per attempt id, orders attempts by epoch then id, and
+fences everything below the fence epoch out of the current view. The fence is
+the record's epoch when the caller knows it, otherwise the newest epoch the
+blocks carry. A repeated lifecycle event therefore collapses to one row.
 
 ### Why the graph refits on node-set change and never on state updates
 

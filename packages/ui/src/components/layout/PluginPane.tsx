@@ -413,7 +413,9 @@ export const PluginPane: React.FC<PluginPaneProps> = ({
     const previous = dagPersistRef.current;
     if (payload === previous.json) return;
     const status = dagRunSnapshotStatus(dagRunDoc.snapshot);
-    const terminal = status === 'completed' || status === 'failed';
+    // A cancelled run is as terminal as a failed one: nothing will change it later, so it flushes now instead of
+    // waiting for the running-state throttle.
+    const terminal = status === 'completed' || status === 'failed' || status === 'cancelled';
     if (!terminal && Date.now() - previous.at < 30_000) return;
     dagPersistRef.current = { json: payload, at: Date.now() };
     const guestId = guestIdRef.current;

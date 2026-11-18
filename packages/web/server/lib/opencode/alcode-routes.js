@@ -453,10 +453,6 @@ export const registerAlcodeRoutes = (app, dependencies) => {
       });
 
         setTimeout(() => {
-          console.log(`\nInstalling update using ${pm}...`);
-          console.log(`Running: ${updateCmd}`);
-          console.log(logPreamble);
-
           const script = isWindows
             ? windowsScriptPath
           : `

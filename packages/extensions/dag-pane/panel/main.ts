@@ -19,10 +19,10 @@ import { mountEmpty } from '@alcode/sdk/ui';
 import { mountSpinner } from '@alcode/sdk/ui';
 import { mountTextField } from '@alcode/sdk/ui';
 
-import { isWireRecord, keepStoredRunModel, mergeRunModelPost, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave } from './dag-view.ts';
+import { isWireRecord, keepStoredRunModel, mergeRunModelPost, parseSnapshotDoc, wireString, type DagRunView, type DagNodeView, type DagRunWave, type DagTaskView, type DagRecordNotice } from './dag-view.ts';
 import { buildFileQuery, buildSearchQuery, buildSymbolQueries, buildCodeGraphModel, classifyCodeItemId, codeGraphLayoutSpec, formatFreshnessChip, resolveCodeIndexStatus, resolveCodeQueryStatus, taskToCodeSource } from './code-view.ts';
 import { buildRationaleProjectsQuery, buildRationaleQuery, formatRationaleProvenance, rationaleBadgesFor, resolveRationaleStatus, shouldRenderRationale } from './rationale-view.ts';
-import { buildActivityTimeline, formatClock, formatDuration, rowNodeId } from './activity-view.ts';
+import { buildActivityTimeline, formatClock, formatDuration, rowNodeId, type ActivityRow } from './activity-view.ts';
 import { stringsFor, type DagPaneStrings } from './strings.ts';
 import { anchorView, computeFit, defaultView, dragDistanceExceeded, nextZoomScale, panView, viewTransform, type View } from './viewport.ts';
 
@@ -90,6 +90,103 @@ export const resolveDetailsSelection = (
   }
   return { id: runningId ?? nodeIds[0] ?? null, autoSelected: true };
 };
+
+/**
+ * Details-card rows for one node. Attribution ids are rendered only from the
+ * parsed node: a node without a child task or owning DAG node shows an em
+ * dash, so a missing attribution is never mistaken for an empty string.
+ */
+export const formatDetailsRows = (node: DagNodeView): [string, string][] => {
+  const rows: [string, string][] = [
+    ['id', node.id],
+    // The child task that actually ran this node. A node without one shows
+    // an em dash: attribution is never guessed.
+    ['task_id', node.taskId ?? '—'],
+    // The DAG node that owns that child task, under the same rule.
+    ['node_id', node.nodeId ?? '—'],
+    ['label', node.label],
+    ['state', node.state],
+    ['attempt', String(node.attempt)],
+    ['prompt', node.prompt],
+    ['depends_on', node.dependsOn.join(', ') || '—'],
+    ['started', node.startedAt ?? '—'],
+    ['completed', node.completedAt ?? '—'],
+  ];
+  // Legacy rows carry no delivery block, and their details stay exactly as they
+  // were; a delivery-bearing node gains one explicit, text-readable row.
+  if (node.delivery !== null && node.delivery !== undefined) {
+    const at = rows.findIndex(([key]) => key === 'state');
+    rows.splice(at + 1, 0, ['verification', node.delivery.verificationStatus ?? 'unknown']);
+  }
+  return rows;
+};
+
+/** Visible text of one activity row, in render order. */
+export type ActivityRowText = { className: string; text: string };
+
+/**
+ * An activity row must SHOW the id it carries: the data attribute alone let
+ * the pane claim an attribution the user could not read, and a repair row
+ * keyed by a task id was rendered under `node_id`. Node lifecycle rows show
+ * `node_id`; repair rows show the `task_id` they are keyed by, so the label
+ * and the value always agree.
+ */
+const activityIdentityText = (row: ActivityRow): string => (
+  row.kind === 'repair' ? `task_id ${row.nodeId}` : `node_id ${row.nodeId}`
+);
+
+export const formatActivityRowTexts = (row: ActivityRow): ActivityRowText[] => [
+  { className: 'dag-activity-time', text: formatClock(row.at) },
+  { className: 'dag-activity-node', text: row.nodeLabel },
+  { className: 'dag-activity-node-id', text: activityIdentityText(row) },
+  { className: 'dag-activity-kind', text: row.kind === 'node-started' ? 'started' : row.state },
+  { className: 'dag-activity-duration', text: formatDuration(row.durationMs) },
+];
+
+/** Visible text of one task row, in render order. */
+export type TaskRowText = { className: string; text: string };
+
+/**
+ * A task row must SHOW the DAG node the snapshot served for it, beside its
+ * task id: the parsed `DagTaskView.nodeId` is rendered as `node <id>`, and a
+ * task the wire gives no node renders an em dash. The value is never derived
+ * from the task id, session id, or name.
+ */
+export const formatTaskRowTexts = (task: DagTaskView): TaskRowText[] => [
+  { className: 'dag-task-name', text: task.name },
+  { className: 'dag-task-id', text: `task_id ${task.taskId}` },
+  { className: 'dag-task-node', text: task.nodeId === null ? '\u2014' : `node ${task.nodeId}` },
+  { className: 'dag-task-status', text: task.status },
+  // Verification is a second dimension, never folded into the lifecycle text above: a completed task that was never
+  // verified must read as unverified beside its status, not as a success.
+  ...(task.verificationStatus === null
+    ? []
+    : [{ className: 'dag-task-verification', text: task.verificationStatus }]),
+  // The record's failure text is the only place the reason exists. Dropping it made a failed row read as "failed"
+  // with no cause even though the store had one.
+  ...(task.errorMessage === null
+    ? []
+    : [{ className: 'dag-task-error', text: task.errorMessage }]),
+  // The failure class and the free-text reason are separate facts; a row can carry one without the other.
+  ...(task.failureKind === null && task.failureReason === null
+    ? []
+    : [{
+      className: 'dag-task-failure',
+      text: [task.failureKind, task.failureReason].filter((part): part is string => part !== null).join(': '),
+    }]),
+  ...(task.durationMs === null
+    ? []
+    : [{ className: 'dag-task-duration', text: formatDuration(task.durationMs) }]),
+  ...(task.model === null
+    ? []
+    : [{ className: 'dag-task-model', text: task.model }]),
+  ...(task.executionMode === null
+    ? []
+    : [{ className: 'dag-task-mode', text: task.executionMode }]),
+  ...(task.runStats === null
+    ? []
+    : [{ className: 'dag-task-stats', text: task.runStats }]),
+];
 
 const el = (tag: string, className: string): HTMLElement => {
   const node = document.createElement(tag);
@@ -445,7 +542,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
         fill: selected ? 'var(--oc-selection-fg)' : 'var(--oc-muted)',
         'font-size': '10',
       });
-      state.textContent = node.state;
+      state.textContent = node.delivery === null || node.delivery === undefined
+        ? node.state
+        : `${node.state} · ${node.delivery.verificationStatus ?? 'verification unknown'}`;
       group.append(label, state);
       // A drag that moved past the threshold owns the gesture: its trailing
       // click never picks the node. Taps and still drags pick as before.
@@ -521,6 +620,13 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   };
 
   let currentRuns: DagRunView[] = [];
+  // Session-scoped task rows carried beside the runs. Their node attribution
+  // is a served field (DagTaskView.nodeId), parsed and rendered as-is.
+  let currentTasks: DagTaskView[] = [];
+  let currentUnscoped = false;
+  // What the last painted snapshot declared about the record store: painted as a notice so a partial
+  // task list is never read as the whole store.
+  let currentRecord: DagRecordNotice = { error: null, absent: false, truncated: false };
   // Render-on-change: the 4s poll calls paintContent every tick, so identical
   // frames must skip the teardown/rebuild (layout thrash reads as stutter).
   // The key covers both inputs of the painted output: run data and selection.
@@ -546,16 +652,10 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       badgeRow.append(text('span', 'dag-badge dag-details-auto', 'auto-selected'));
       card.append(badgeRow);
     }
-    const rows: [string, string][] = [
-      ['id', node.id],
-      ['label', node.label],
-      ['state', node.state],
-      ['attempt', String(node.attempt)],
-      ['output', node.prompt],
-      ['depends_on', node.dependsOn.join(', ') || '—'],
-      ['started', node.startedAt ?? '—'],
-      ['completed', node.completedAt ?? '—'],
-    ];
+    // The wire node carries no node output (the engine persists a bounded preview, but the panel
+    // payload does not include it), so this row shows the PROMPT. Labelling it "output" made the
+    // panel assert something false about what a node produced.
+    const rows = formatDetailsRows(node);
     const list = el('dl', 'dag-details-list');
     for (const [term, value] of rows) {
       list.append(text('dt', 'dag-details-term', term), text('dd', 'dag-details-value', value));
@@ -564,8 +664,58 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     content.append(card);
   };
 
-  const paintContent = (runs: DagRunView[]): void => {
-    const sectionKey = `runs:${JSON.stringify(runs)}|selected:${selectedNodeId ?? ''}`;
+  // Task rows: the attribution surface the snapshot already carries. Each
+  // row reads the parsed node id; absence is an explicit em dash.
+  const paintTasks = (tasks: DagTaskView[]): void => {
+    if (tasks.length === 0) {
+      return;
+    }
+    const section = el('section', 'dag-details dag-tasks');
+    section.append(text('h2', 'dag-details-title', 'tasks'));
+    const list = el('div', 'dag-tasks-list');
+    for (const task of tasks) {
+      const row = el('div', 'dag-task-row');
+      row.dataset['taskId'] = task.taskId;
+      if (task.nodeId !== null) {
+        row.dataset['nodeId'] = task.nodeId;
+      }
+      formatTaskRowTexts(task).forEach((part, index) => {
+        if (index > 0) {
+          row.append(text('span', 'dag-task-sep', ' · '));
+        }
+        row.append(text('span', part.className, part.text));
+      });
+      list.append(row);
+    }
+    section.append(list);
+    content.append(section);
+  };
+
+  // A partial record read is a fact about the task list, not a failure of the graph. Name the missing part
+  // above the tasks it affects, so a short list is never painted as the whole store.
+  const paintRecordNotice = (record: DagRecordNotice): void => {
+    const lines: string[] = [];
+    if (record.error !== null) {
+      lines.push(`Canonical task records could not be read (${record.error}). Tasks below are the snapshot's own.`);
+    } else if (record.absent) {
+      lines.push("No canonical task record store exists for this project yet. Tasks below are the snapshot's own.");
+    }
+    if (record.truncated) {
+      lines.push('The record store is larger than one bounded read; tasks past the limit are not shown.');
+    }
+    if (lines.length === 0) {
+      return;
+    }
+    const notice = el('div', 'dag-record-notice');
+    notice.setAttribute('role', 'note');
+    for (const line of lines) {
+      notice.append(text('p', 'dag-record-notice-line', line));
+    }
+    content.append(notice);
+  };
+
+  const paintContent = (runs: DagRunView[], tasks: DagTaskView[], unscoped = false): void => {
+    const sectionKey = `runs:${JSON.stringify(runs)}|tasks:${JSON.stringify(tasks)}|selected:${selectedNodeId ?? ''}|unscoped:${unscoped}|record:${currentRecord.error ?? ''}:${currentRecord.absent}:${currentRecord.truncated}`;
     if (sectionKey === lastSectionKey) {
       return;
     }
@@ -575,10 +725,17 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
     worldEls = [];
     lastGraphSizes = [];
     currentRuns = runs;
+    paintRecordNotice(currentRecord);
     if (runs.length === 0) {
       lastFitExtents = null;
-      sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
-      return;
+      if (tasks.length === 0) {
+        // Without a project directory the pane never asked for canonical records: say that, instead of claiming the
+        // session ran nothing.
+        const title = unscoped ? strings.unscopedTitle ?? 'No project bound' : strings.emptyTitle;
+        const body = unscoped ? strings.unscopedBody ?? 'Open a session inside a project: without a project directory this pane cannot look for tasks.' : strings.emptyBody;
+        sectionHandles.push(mountEmpty(content, { title, body }));
+        return;
+      }
     }
     for (const run of runs) {
       const head = el('div', 'dag-run-head');
@@ -597,6 +754,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       paintGraph(run);
       paintDetails(run);
     }
+    paintTasks(tasks);
     // The view survives data refresh: fit only on first paint or when the
     // graph extents changed, otherwise re-apply the surviving transform to
     // the rebuilt world layers. The view never joins the section key above.
@@ -610,9 +768,14 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
   // Paint one run list with the live indicator derived from its states.
   // In Code view the same tick re-renders the Code root from cache (no
   // refetch: the Code loaders fire only on directory/label change or retry).
-  const paintRunList = (runs: DagRunView[]): void => {
+  const paintRunList = (runs: DagRunView[], tasks: DagTaskView[], unscoped = false, record: DagRecordNotice | null = null): void => {
+    currentUnscoped = unscoped;
+    if (record !== null) {
+      currentRecord = record;
+    }
     headerLive = runs.some((run) => run.status === 'running' || run.status === 'pending');
     paintFollowHeader();
+    currentTasks = tasks;
     if (activeView === 'code') {
       currentRuns = runs;
       paintCodeRoot();
@@ -623,7 +786,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       paintActivityRoot();
       return;
     }
-    paintContent(runs);
+    paintContent(runs, tasks, unscoped);
   };
 
   const refreshRuns = async (gen: number): Promise<void> => {
@@ -678,7 +841,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       const outcome = parseSnapshotDoc(runModelDoc);
       if (!current()) return;
       if (outcome.ok) {
-        paintRunList(outcome.view.runs);
+        paintRunList(outcome.view.runs, outcome.view.tasks, outcome.view.recordUnscoped, outcome.view.record);
         return;
       }
       // A malformed host doc is a loud error card, never a silent fallback
@@ -689,7 +852,11 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       sectionHandles.push(mountBanner(content, {
         tone: 'error',
         title: strings.errorTitle,
-        body: outcome.error.field,
+        // A service error names its own reason. The parser's field only ever said where the envelope check
+        // failed, so every 5xx painted the literal word "schemaVersion".
+        body: isWireRecord(answer.body)
+          ? (wireString(answer.body.message) ?? wireString(answer.body.error) ?? wireString(answer.body.code) ?? outcome.error.field)
+          : outcome.error.field,
         action: { label: strings.retry, onClick: () => void refresh() },
       }));
       return;
@@ -726,7 +893,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       if (loopAnswer.status === 200) {
         const loopOutcome = parseSnapshotDoc(loopAnswer.body);
         if (loopOutcome.ok) {
-          paintRunList(loopOutcome.view.runs);
+          paintRunList(loopOutcome.view.runs, loopOutcome.view.tasks);
           return;
         }
       }
@@ -745,6 +912,16 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       headerLive = false;
       paintFollowHeader();
       clearSection();
+      // Without a project the service cannot look for canonical records. Say that instead of claiming the
+      // conversation ran nothing; the flag rides the 404 body because there is no snapshot to carry it.
+      const unscopedNoProject = isWireRecord(answer.body) && isWireRecord(answer.body.tasks) && answer.body.tasks.recordUnscoped === true;
+      if (unscopedNoProject) {
+        sectionHandles.push(mountEmpty(content, {
+          title: strings.unscopedTitle ?? 'No project bound',
+          body: strings.unscopedBody ?? 'Open a session inside a project: without a project directory this pane cannot look for tasks.',
+        }));
+        return;
+      }
       sectionHandles.push(mountEmpty(content, { title: strings.emptyTitle, body: strings.emptyBody }));
       return;
     }
@@ -757,12 +934,16 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       sectionHandles.push(mountBanner(content, {
         tone: 'error',
         title: strings.errorTitle,
-        body: outcome.error.field,
+        // A service error names its own reason. The parser's field only ever said where the envelope check
+        // failed, so every 5xx painted the literal word "schemaVersion".
+        body: isWireRecord(answer.body)
+          ? (wireString(answer.body.message) ?? wireString(answer.body.error) ?? wireString(answer.body.code) ?? outcome.error.field)
+          : outcome.error.field,
         action: { label: strings.retry, onClick: () => void refresh() },
       }));
       return;
     }
-    paintRunList(outcome.view.runs);
+    paintRunList(outcome.view.runs, outcome.view.tasks, outcome.view.recordUnscoped, outcome.view.record);
   };
 
   // Code view: one content area shared with the Run view, switched by the
@@ -785,7 +966,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       sectionHandles.push(mountEmpty(content, { title: strings.activityEmptyTitle, body: strings.activityEmptyBody }));
       return;
     }
-    const timeline = buildActivityTimeline({ runs: currentRuns }, run.runId);
+    const timeline = buildActivityTimeline({ runs: currentRuns, tasks: currentTasks }, run.runId);
     const head = el('div', 'dag-run-head');
     head.append(text('h2', 'dag-run-name', strings.activityTitle));
     const badgeSlot = el('span', 'dag-run-badge');
@@ -801,10 +982,9 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
         item.type = 'button';
         item.dataset['activityRow'] = row.id;
         item.dataset['nodeId'] = row.nodeId;
-        item.append(text('span', 'dag-activity-time', formatClock(row.at)));
-        item.append(text('span', 'dag-activity-node', row.nodeLabel));
-        item.append(text('span', 'dag-activity-kind', row.kind === 'node-started' ? 'started' : row.state));
-        item.append(text('span', 'dag-activity-duration', formatDuration(row.durationMs)));
+        for (const part of formatActivityRowTexts(row)) {
+          item.append(text('span', part.className, part.text));
+        }
         item.addEventListener('click', () => {
           selectedNodeId = rowNodeId(row);
           switchView('run');
@@ -832,7 +1012,7 @@ export const startDagPane = (host: HostClient, doc: Document = document): void =
       paintActivityRoot();
       return;
     }
-    paintContent(currentRuns);
+    paintContent(currentRuns, currentTasks, currentUnscoped);
   };
 
   const switchView = (next: 'run' | 'activity' | 'code'): void => {

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { buildNativeAgentConfigMap, getNativeAgentModelGaps, NATIVE_AGENT_MODEL_CHAINS, OMO_NATIVE_AGENT_CONFIG } from '../agents/omo-native-catalog.bundle.js';
 import { isRecord, toMcpEntity } from './config-v2.js';
 import { appendManagedMcpServer, appendManagedPlugin, mergeManagedAgents } from './managed-plugin-config.js';
+import { buildCapabilityDescriptor, descriptorForDirectory, resolveCapabilityToken } from '../capability-api/runtime.js';
 
 export const MANAGED_CONFIG_FILE_NAME = 'opencode.managed.json';
 
@@ -79,6 +80,7 @@ export const createManagedConfigRuntime = ({
   dataDir = null,
   env = process.env,
   versions = process.versions,
+  capabilityBaseUrl = null,
   agentToolRuntime = null,
   omoNativeRuntime = null,
   readSettings,
@@ -178,20 +180,42 @@ export const createManagedConfigRuntime = ({
     }
   };
 
-  const writeConfigFile = async (pluginDirectories) => {
-    await fsPromises.mkdir(instanceDir, { recursive: true });
-    // User-global `.md` agents ride along (user wins on collision): the
-    // config-level map replaces those files in the child, so shipping only
-    // the statics would hide every custom agent from the runtime.
+  const managedConfigJson = async (pluginEntries) => {
     const userAgents = await readUserAgentMap();
-    const text = `${JSON.stringify({
-      plugins: [...DISABLED_BUILTIN_PLUGINS, ...pluginDirectories],
+    return `${JSON.stringify({
+      plugins: [...DISABLED_BUILTIN_PLUGINS, ...pluginEntries],
       mcp: { servers: { [ULW_MCP_SERVER_NAME]: resolveUlwMcpEntry() } },
       // The V2 agent editor has no add(), so custom agents cannot register
       // via transform: they ship here as static entries keyed by lowercase
       // config-key ids (never display names).
       agent: { ...(await resolveNativeAgentMap()), ...userAgents },
     }, null, 2)}\n`;
+  };
+
+  // OpenCode 2.x accepts only string plugin entries and skips a `[directory, options]` tuple as malformed, in the file
+  // and in the inline config alike. The managed plugin therefore reads the same descriptor from its environment.
+  const capabilityEnv = () => {
+    const descriptor = buildCapabilityDescriptor({
+      url: env.ALCODE_CAPABILITY_URL ?? capabilityBaseUrl,
+      token: resolveCapabilityToken(env),
+    });
+    if (descriptor === null) return {};
+    // One allowlist value, published under both keys the consumers read today: the plugin and the router use
+    // OMO_CAPABILITY_ALLOWED_AGENTS, the host's capability mount reads OMO_CAPABILITY_AGENTS. Converging the host on one
+    // name is a host-side change; until then a single source here keeps the two from disagreeing.
+    const allowed = (env.OMO_CAPABILITY_ALLOWED_AGENTS ?? '').trim();
+    return {
+      OMO_CAPABILITY_URL: descriptor.hostCapabilities.url,
+      OMO_CAPABILITY_TOKEN: descriptor.hostCapabilities.token,
+      ...(allowed.length === 0 ? {} : { OMO_CAPABILITY_ALLOWED_AGENTS: allowed, OMO_CAPABILITY_AGENTS: allowed }),
+    };
+  };
+
+  const writeConfigFile = async (pluginDirectories) => {
+    await fsPromises.mkdir(instanceDir, { recursive: true });
+    // A tuple is refused here: OpenCode logs "configuration normalization diagnostic" at `$.plugin` and drops the
+    // plugin, so the file always carries bare strings. The descriptor rides in OPENCODE_CONFIG_CONTENT instead.
+    const text = await managedConfigJson(pluginDirectories);
     // Temp + rename: OpenCode reacts to the write immediately, and a partial
     // read would make it drop every managed plugin until the next change.
     const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
@@ -254,15 +278,16 @@ export const createManagedConfigRuntime = ({
     const childEnv = agentToolRuntime ? agentToolRuntime.createChildEnv() : {};
     if (ownsConfigFile()) {
       await writeConfigFile(directories);
-      return { ...childEnv, OPENCODE_CONFIG: filePath, ...ulwStoreEnv() };
+      return { ...childEnv, ...capabilityEnv(), OPENCODE_CONFIG: filePath, ...ulwStoreEnv() };
     }
     let content = env.OPENCODE_CONFIG_CONTENT;
     for (const directory of [...DISABLED_BUILTIN_PLUGINS, ...directories]) {
-      content = appendManagedPlugin(content, directory, 'managed plugin');
+      // A tuple is skipped as malformed by OpenCode in this channel too, so the descriptor rides in the environment.
+      content = appendManagedPlugin(content, directory, 'managed plugin', undefined);
     }
     content = appendManagedMcpServer(content, ULW_MCP_SERVER_NAME, resolveUlwMcpEntry(), 'managed MCP server');
     content = mergeManagedAgents(content, { ...(await resolveNativeAgentMap()), ...(await readUserAgentMap()) }, 'managed agents');
-    return { ...childEnv, OPENCODE_CONFIG_CONTENT: content, ...ulwStoreEnv() };
+    return { ...childEnv, ...capabilityEnv(), OPENCODE_CONFIG_CONTENT: content, ...ulwStoreEnv() };
   };
 
   /**

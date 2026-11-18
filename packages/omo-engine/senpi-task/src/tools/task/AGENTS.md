@@ -13,6 +13,7 @@ Single or `tasks:[...]` batch spawn of child tasks routed by category or agent. 
 | `categories.ts` / `description.ts` | Category/agent discovery and prompt description builders (plan-gated names get their own line). |
 | `execute.ts` | Entry: shape validation -> item resolution -> single/batch dispatch. |
 | `execute-single.ts` / `execute-batch.ts` / `execute-spec.ts` | Single spawn, batch aggregation (start/error/background/foreground), start-spec construction. |
+| `delegated-start.ts` | `delegation` branch: starts ONE parent through `manager.start(spec + delegation)`, then projects the persisted terminal record's gate claim. The admission port is supplied where the manager is constructed; this module never imports dag/scheduler and never computes a verdict. The typed record lane parses `verification_status`, so `manager.get` carries the claim in-process; `TaskToolDeps.readTerminalRecord` remains the cross-process authority for a claim written by another store instance. Without either carrier, a completed parent reads as `unverified` (fail-closed). |
 | `batch-item-details.ts` / `batch-progress.ts` | Per-item result details for batches; throttled per-child progress partials for a foreground batch (one status row per child). |
 | `foreground-wait.ts` | Foreground wait surface. |
 | `invocation-gate.ts` / `plan-review-contract.ts` | plan-consultant/plan-reviewer plan-gate consult before `manager.start` (single: `denied`; batch item: `plan_unresolved` / `invalid_target`). |
@@ -27,6 +28,7 @@ Single or `tasks:[...]` batch spawn of child tasks routed by category or agent. 
 - Every effective spawn has exactly one target after batch inheritance; an effective category item carries no own or inherited model.
 - `run_in_background` is batch-wide: the top-level value and every item-level mirror must agree (`resolveRunInBackground`); agreement is hoisted, disagreement is `invalid_arguments`.
 - Validation hard-fails invalid targets with the fix named in the message; fields are never silently ignored.
+- A delegated start is a separate top-level branch (`delegation` present) and leaves the ordinary spawn path untouched. Its tool status is gate-aware: a completed-but-unverified parent is reported as `unverified`, never `completed`. `tasks`, `tools`, `run_in_background`, and isolation fields are rejected with `delegation`.
 
 ## Anti-patterns
 

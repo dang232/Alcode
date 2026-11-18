@@ -30,6 +30,10 @@ import { createHooks } from "./create-hooks";
 import { createManagers } from "./create-managers";
 import { createTools } from "./create-tools";
 import { loadPluginConfig } from "./plugin-config";
+import type { OmoHostCapabilities } from "./tools/delegation/host-capabilities.ts";
+import type { OmoJsonValue } from "./plugin-types.ts";
+import { createHostCapabilities, type OmoDelegationOperations, type OmoDelegationRuntimeDraft, type OmoTaskManagerSeam } from "./tools/delegation/host-provider.ts";
+import { createOperationsFromDescriptor, createTaskOperationsFromDescriptor, readCapabilityDescriptor, readCapabilityDescriptorFromEnv } from "./tools/delegation/capability-descriptor.ts";
 import { createPluginDispose } from "./plugin-dispose";
 import { createPluginInterface } from "./plugin-interface";
 import { applyCommandConfig } from "./plugin-handlers/command-config-handler";
@@ -120,7 +124,12 @@ export interface V2SetupContext {
     readonly directory: string;
     readonly project?: { readonly id?: string; readonly directory?: string };
   };
-  readonly options?: unknown;
+  readonly options?: OmoJsonValue;
+  readonly hostCapabilities?: OmoHostCapabilities;
+  /** Narrow, host-authorized session operations. The SDK client is never handed to the plugin. */
+  readonly delegation?: OmoDelegationOperations;
+  /** The canonical, host-owned task manager seam. */
+  readonly tasks?: OmoTaskManagerSeam;
   readonly agent: {
     transform(callback: V2TransformCallback<V2AgentEditor>): Promise<V2Registration>;
     reload?(): Promise<void>;
@@ -151,9 +160,34 @@ export interface V2SetupContext {
   };
 }
 
+function resolveV2Capabilities(ctx: V2SetupContext): OmoHostCapabilities | undefined {
+  if (ctx.hostCapabilities !== undefined) return ctx.hostCapabilities;
+  const runtime: OmoDelegationRuntimeDraft = {};
+  if (ctx.delegation !== undefined) {
+    runtime.createSession = ctx.delegation.createSession;
+    runtime.startSession = ctx.delegation.startSession;
+    if (ctx.delegation.allowedAgents !== undefined) runtime.allowedAgents = ctx.delegation.allowedAgents;
+  }
+  if (ctx.tasks !== undefined) runtime.taskManager = ctx.tasks;
+  // The engine carries the host-issued descriptor as plugin options; it names a
+  // narrow token-authenticated endpoint, never an SDK client. A managed OpenCode child cannot carry options at all
+  // (OpenCode skips a tuple entry as malformed), so the same host publishes them as environment too.
+  const descriptor = readCapabilityDescriptor(ctx.options) ?? readCapabilityDescriptorFromEnv(process.env);
+  if (descriptor !== undefined) {
+    const operations = createOperationsFromDescriptor(descriptor);
+    if (runtime.createSession === undefined) {
+      runtime.createSession = operations.createSession;
+      runtime.startSession = operations.startSession;
+    }
+    if (runtime.allowedAgents === undefined && operations.allowedAgents !== undefined) runtime.allowedAgents = operations.allowedAgents;
+    if (runtime.taskManager === undefined) runtime.taskManager = createTaskOperationsFromDescriptor(descriptor).taskManager;
+  }
+  if (runtime.createSession === undefined && runtime.taskManager === undefined) return undefined;
+  return createHostCapabilities(runtime);
+}
+
 /* ------------------------------------------------------------------ */
 /* Small structural helpers (same tolerance as the V1 entry boundary). */
-/* ------------------------------------------------------------------ */
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -399,7 +433,11 @@ export function createPluginSetup(): (ctx: V2SetupContext) => Promise<() => Prom
 
     // Same stage functions, same order as the V1 server chain.
     const managers = createManagers({ directory, pluginConfig });
-    const createdTools = await createTools({ directory, pluginConfig }, pluginConfig, managers);
+    const createdTools = await createTools(
+      { directory, pluginConfig, hostCapabilities: resolveV2Capabilities(ctx) },
+      pluginConfig,
+      managers,
+    );
     const disabled = new Set(pluginConfig.disabled_hooks ?? []);
     const hooks = createHooks(
       { directory, pluginConfig },
@@ -450,12 +488,43 @@ export function createPluginSetup(): (ctx: V2SetupContext) => Promise<() => Prom
               description: tool.description,
               input: toJsonSchemaInput(tool.args),
               execute: async (rawArgs: unknown, toolContext: V2HookEvent) => {
+                // The host decides who the caller is. A missing session is passed as an
+                // empty identity with `authenticated: false`, so a tool that needs
+                // authority fails closed instead of acting as a plausible "unknown".
+                const hostSession = textOf(toolContext["sessionID"]);
+                // "unknown" was the old sentinel for a missing identity; it must never
+                // count as authenticated just because it is a non-empty string.
+                const authenticated = hostSession.length > 0 && hostSession !== "unknown";
+                const ask = toolContext["ask"];
+                // The caller's own directory wins when the host supplies one: a tool
+                // acting for a session in another project must not fall back to the
+                // directory this plugin instance was loaded for.
+                const callDirectory = textOf(toolContext["directory"]);
+                const callWorktree = textOf(toolContext["worktree"]);
                 const outcome = await tool.execute(toJsonObject(rawArgs), {
-                  sessionID: textOf(toolContext["sessionID"]) || "unknown",
+                  sessionID: hostSession,
                   messageID: textOf(toolContext["messageID"]),
                   agent: textOf(toolContext["agent"]),
-                  directory,
-                  worktree,
+                  directory: callDirectory.length > 0 ? callDirectory : directory,
+                  worktree: callWorktree.length > 0 ? callWorktree : worktree,
+                  authenticated,
+                  ...(typeof ask === "function"
+                    ? {
+                        ask: async (input: {
+                          readonly permission: string;
+                          readonly patterns: readonly string[];
+                          readonly always?: readonly string[];
+                          readonly metadata?: Readonly<Record<string, string>>;
+                        }) => {
+                          await (ask as (value: unknown) => Promise<void>).call(toolContext, {
+                            permission: input.permission,
+                            patterns: [...input.patterns],
+                            always: [...(input.always ?? [])],
+                            metadata: { ...(input.metadata ?? {}) },
+                          });
+                        },
+                      }
+                    : {}),
                   aborted: () => {
                     const signal = toolContext["signal"];
                     return (

@@ -23,6 +23,7 @@ import { createManagerResidencyRegistry } from "../../../test-vendor/host-task-c
 import { runTaskSend } from "../../tools/control/send"
 import type { ColdReviveTrace } from "./cold-revive-trace"
 import { NO_HOST_ENDPOINT } from "../host-session"
+import { VERIFY_TOOL_NAME } from "../../verification/verify-tool"
 
 // A source-graph Bun child started in a sandbox writes Bun's runtime transpiler cache into a cold
 // location. On Windows those writes block the child for seconds (measured: 13-14 s with ~2.4 s CPU, 2 of 20
@@ -180,6 +181,10 @@ export async function realColdRevive(mode: "in-process" | "process", misleading 
     if (mode === "in-process") {
       assert.equal(toolSurfaces.length, 2)
       assert.deepEqual(toolSurfaces[1], toolSurfaces[0])
+      // Policy C: verification authority is the host's. Neither the initial nor the revived child
+      // may mount the verification tool, so resume cannot re-add a capability start withheld.
+      assert(!toolSurfaces[0]?.includes(VERIFY_TOOL_NAME))
+      assert(!toolSurfaces[1]?.includes(VERIFY_TOOL_NAME))
       assert(toolSurfaces[1]?.includes("fixture_read"))
       assert(!toolSurfaces[1]?.includes("write"))
       assert(request.includes("INSTRUCTIONS_SENTINEL"))

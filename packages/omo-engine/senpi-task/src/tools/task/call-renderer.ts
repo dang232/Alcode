@@ -19,6 +19,8 @@ export type TaskCallArgs = {
   readonly category?: string
   readonly subagent_type?: string
   readonly run_in_background?: boolean
+  // A delegated call has no prompt of its own: the objective is what the user is delegating.
+  readonly delegation?: { readonly objective?: string }
 }
 
 export function formatTaskTarget(args: Pick<TaskCallArgs, "category" | "subagent_type">): string {
@@ -49,7 +51,9 @@ export function renderTaskCallLines(
 // that the excerpt needs. The task_summary, when present, replaces the truncated prompt so the row
 // reads as WHAT was delegated instead of the prompt's first words.
 function callRowText(args: TaskCallArgs): string | undefined {
-  return optionalRendererText(args.task_summary) ?? optionalRendererText(args.prompt)
+  return optionalRendererText(args.task_summary) ??
+    optionalRendererText(args.prompt) ??
+    optionalRendererText(args.delegation?.objective)
 }
 
 function taskCallLine(args: TaskCallArgs, mode: string): string {

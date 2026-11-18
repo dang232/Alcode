@@ -45,6 +45,7 @@ type ParsedEnvelope = {
   subjects: readonly { kind: string }[]
   items: readonly { id: string; name?: string; confidence?: number; evidence: readonly { ref: string }[] }[]
   unanswered: readonly string[]
+  unavailable?: { readonly code: string; readonly message: string }
   unresolved: readonly { reason: string }[]
   text: string
   budget: { readonly maxBytes: number; readonly bytes: number; readonly estimatedTokens: number; readonly truncatedBy: string }
@@ -88,6 +89,7 @@ const fakeSummary = (overrides: Partial<CanonicalSummary> = {}): CanonicalSummar
   entryCount: 1,
   entryCap: 5000,
   indexState: "ready",
+  indexStateError: null,
   ...overrides,
 })
 
@@ -126,9 +128,10 @@ const fakeAnswer = (ids: readonly string[], generation: number | null = 5, cover
 /** Refusal details the tool raises through refuseArgs. */
 interface RefusalDetails {
   readonly code?: string
+  readonly message?: string
 }
 
-const RefusalDetailsSchema = z.object({ code: z.string().optional() })
+const RefusalDetailsSchema = z.object({ code: z.string().optional(), message: z.string().optional() })
 
 async function rejectionOf(promise: Promise<OmoToolOutcome>): Promise<RefusalDetails | undefined> {
   try {
@@ -204,6 +207,27 @@ describe("code_graph tool", () => {
     }
   })
 
+  it("#given an indexed graph #when status runs #then it reports the index without claiming unavailability", async () => {
+    const dir = await makeTempRepo()
+    const storeDir = await makeIsolatedStore()
+    try {
+      const tool = createCodeGraphTool({ directory: dir, storeDir })
+      await tool.execute({ op: "search", subject: "add", refresh: true })
+
+      const parsed = parseEnvelope(await tool.execute({ op: "status" }))
+
+      // A status reports the index itself and has no query envelope by design;
+      // treating that absence as unavailability made a healthy index answer
+      // GRAPH_UNAVAILABLE, which is the whole reported defect.
+      expect(parsed.status.queryServable).toBe(true)
+      expect(parsed.unavailable).toBeUndefined()
+      expect(parsed.unanswered).not.toContain("GRAPH_UNAVAILABLE")
+    } finally {
+      await dispose(storeDir)
+      await dispose(dir)
+    }
+  }, TEST_TIMEOUT_MS)
+
   it("#given a bare symbol name #when context runs #then the name resolves to a node id with evidence", async () => {
     const dir = await makeTempRepo()
     const storeDir = await makeIsolatedStore()
@@ -219,7 +243,7 @@ describe("code_graph tool", () => {
     }
   })
 
-  it("#given a changed file #when impact runs with subjectKind changes #then callers are found without a subject", async () => {
+  it("#given a changed file #when context runs with subjectKind changes #then the changes view answers without a subject", async () => {
     const dir = await makeTempRepo()
     const storeDir = await makeIsolatedStore()
     try {
@@ -228,14 +252,27 @@ describe("code_graph tool", () => {
       await Bun.$`git add -A`.cwd(dir).quiet()
       await writeFile(join(dir, "caller.ts"), "import { add } from './math'\nexport const total = add(2, 3)\n")
       const tool = createCodeGraphTool({ directory: dir, storeDir })
-      const parsed = parseEnvelope(await tool.execute({ op: "impact", subjectKind: "changes", depth: 1 }))
-      expect(parsed.status.queryServable).toBe(true)
-      expect(parsed.subjects[0]?.kind).toBe("changes")
-      expect(parsed.items.length).toBeGreaterThan(0)
+      const impact = parseEnvelope(await tool.execute({ op: "impact", subjectKind: "changes", depth: 1 }))
+      expect(impact.status.queryServable).toBe(true)
+      expect(impact.subjects[0]?.kind).toBe("changes")
+      expect(impact.items.length).toBeGreaterThan(0)
+      // The same working-tree view is reachable from context, with no subject:
+      // a working tree has no single one to name.
+      const context = parseEnvelope(await tool.execute({ op: "context", subjectKind: "changes", depth: 1 }))
+      expect(context.status.queryServable).toBe(true)
+      expect(context.subjects[0]?.kind).toBe("changes")
+      expect(context.items.map((item) => item.id).sort()).toEqual(impact.items.map((item) => item.id).sort())
     } finally {
       await dispose(storeDir)
       await dispose(dir)
     }
+  })
+
+  it("#given no subject and no changes kind #when context runs #then it is refused and names the changes kind", async () => {
+    const tool = createCodeGraphTool({ directory: "/nonexistent" })
+    const error = await rejectionOf(tool.execute({ op: "context" }))
+    expect(error?.code).toBe("INVALID_INPUT")
+    expect(error?.message).toContain("subjectKind: changes")
   })
 
   it("#given one indexed repo #when search runs twice #then both answers ride the same reused generation", async () => {
@@ -334,7 +371,7 @@ describe("code_graph tool", () => {
     expect(parsed.status.generation).toBe(5)
   })
 
-  it("#given a failing canonical service #when search runs #then the answer is unavailable, never empty", async () => {
+  it("#given a failing canonical service #when search runs #then the answer names the failure and the recovery, never empty", async () => {
     const runtime: CanonicalRuntime = {
       readIndex: async () => {
         throw new Error("store gone")
@@ -348,6 +385,42 @@ describe("code_graph tool", () => {
     expect(parsed.status.queryServable).toBe(false)
     expect(parsed.items).toEqual([])
     expect(parsed.unanswered).toEqual(["GRAPH_UNAVAILABLE"])
+    expect(parsed.status.reasons).toContain("index-error:store gone")
+    expect(parsed.unavailable?.message).toContain("store gone")
+    expect(parsed.unavailable?.message).toContain("recovery: rerun this op with refresh:true")
+  })
+
+  it("#given a remembered index failure #when an op runs #then its recorded cause and the retry are named", async () => {
+    const reads: (boolean | undefined)[] = []
+    const runtime: CanonicalRuntime = {
+      readIndex: async (_directory, options) => {
+        reads.push(options?.refresh)
+        return fakeSummary({
+          ready: false,
+          generation: null,
+          projectId: null,
+          worktreeId: null,
+          revision: null,
+          fingerprint: null,
+          freshness: "unindexed",
+          nodeCount: 0,
+          edgeCount: 0,
+          entryCount: 0,
+          indexState: "failed",
+          indexStateError: "no readable source files",
+        })
+      },
+      query: async () => fakeAnswer([]),
+    }
+    const tool = createCodeGraphTool({ directory: "/nonexistent", runtime })
+    const parsed = parseEnvelope(await tool.execute({ op: "search", subject: "add", refresh: true }))
+    expect(parsed.status.queryServable).toBe(false)
+    expect(parsed.status.reasons).toContain("index-state:failed")
+    expect(parsed.status.reasons).toContain("index-error:no readable source files")
+    expect(parsed.unavailable?.message).toContain("no readable source files")
+    expect(parsed.unavailable?.message).toContain("recovery: rerun this op with refresh:true")
+    // The named recovery is real: the flag reaches the canonical read.
+    expect(reads[0]).toBe(true)
   })
 
   it("#given a real repo #when explore runs #then one call returns bodies plus paths plus blast radius", async () => {

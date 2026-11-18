@@ -6,13 +6,17 @@
  * `context`/`search`/`trace`/`impact`/`tests` query the one canonical
  * Code Graph service (the same runtime, store directory, and persisted
  * generations the panel serves) and wrap the canonical answer through
- * `buildAgentContext`. The tool returns one JSON string carrying both the
+ * `buildAgentContext`. `context` and `impact` with `subjectKind: changes`
+ * answer the working-tree view without a subject, because a working tree
+ * has no single one. The tool returns one JSON string carrying both the
  * rendered text and the structured envelope. Repeated queries against an
  * unchanged repository reuse its generation instead of rebuilding.
  *
  * Every caller-fixable problem is refused with the shared `refuseArgs`
- * usage error; service failures (no sources, index failure) answer as an
- * honest unavailable envelope, never a raw throw.
+ * usage error; service failures (no sources, a failed build, an unreadable
+ * store) answer as an honest unavailable envelope that keeps the runtime's
+ * recorded cause (`index-state`, `index-error`) and the retry that clears it
+ * (`refresh: true`), never a raw throw and never a bare "failed".
  */
 
 import { execFile } from "node:child_process"
@@ -234,6 +238,39 @@ function mergedImpactEnvelope(
   }
 }
 
+/**
+ * Recovery the runtime actually supports: an explicit refresh reaches
+ * `readIndex` and retries the build immediately (the panel's Refresh button
+ * calls the same path), while a plain read only retries after the failure
+ * cooldown an agent here cannot observe.
+ */
+const INDEX_RECOVERY =
+  "recovery: rerun this op with refresh:true after clearing the named cause; the panel's Refresh retries the same build"
+
+/**
+ * The runtime's terminal-index facts, kept whole: the state, the recorded
+ * failure text (the only place a cause is stated), and how to retry. A state
+ * without an error is not a failure - it is a build still in flight.
+ */
+const indexStateReasons = (summary: CanonicalSummary): string[] => {
+  const reasons: string[] = []
+  if (summary.indexState !== null) reasons.push(`index-state:${summary.indexState}`)
+  if (summary.indexStateError !== null) reasons.push(`index-error:${summary.indexStateError}`)
+  if (summary.indexState === "failed" || summary.indexStateError !== null) reasons.push(INDEX_RECOVERY)
+  return reasons
+}
+
+/** A thrown read or query failure keeps its message: an unexplained failure is the defect. */
+const thrownFailureReasons = (failure: Error): string[] => [
+  "index-failed",
+  `index-error:${failure.message}`,
+  INDEX_RECOVERY,
+]
+
+/** A caught value is normalized once, here, so the reason builder takes a real Error. */
+const asError = (caught: Error | string | null | undefined): Error =>
+  caught instanceof Error ? caught : new Error(String(caught))
+
 function inferSubjectKind(subject: string): CodeGraphArgs["subjectKind"] {
   if (subject.includes("@") || subject.startsWith("fn:") || subject.startsWith("file:")) return "symbol"
   if (subject.includes("/") || subject.includes("\\") || subject.includes(".")) return "file"
@@ -439,6 +476,13 @@ interface ExplorePayload {
   readonly paths: readonly ExploreToolPath[]
   readonly impacted: readonly QueryItem[]
   readonly blastRadius: ExploreToolBlastRadius
+}
+
+/** One op's canonical answer plus the notes the tool attaches beside it. */
+interface OpAnswer {
+  readonly envelope: QueryEnvelope
+  readonly extraUnresolved: string[] | readonly string[]
+  readonly explore?: ExplorePayload
 }
 
 /** The explore rows the tool reads from merged impact answers; structural, never asserted. */
@@ -769,16 +813,24 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
           description: "Graph operation: status, context, search, trace, impact, tests, or explore.",
           allowedValues: ["status", "context", "search", "trace", "impact", "tests", "explore"],
         },
-        subject: { type: "string", description: "Symbol id, file path, or search text; required except for status." },
+        subject: {
+          type: "string",
+          description: "Symbol id, file path, or search text; required except for status and subjectKind: changes.",
+        },
         subjectKind: {
           type: "string",
-          description: "How to read subject; inferred when omitted.",
+          description:
+            "How to read subject; inferred when omitted. 'changes' answers the working-tree view for context/impact and needs no subject.",
           allowedValues: ["file", "symbol", "changes", "query"],
         },
         to: { type: "string", description: "Destination symbol id for trace." },
         depth: { type: "number", description: "Traversal depth, 1-3; defaults to 2." },
         limit: { type: "number", description: "Result cap, 1-50; defaults to 20." },
         maxBytes: { type: "number", description: "Rendered budget, 512-16384; defaults to 8192." },
+        refresh: {
+          type: "boolean",
+          description: "Retry the index build now instead of serving the last generation; recovery for a failed build.",
+        },
       },
       required: ["op"],
     },
@@ -786,7 +838,7 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
       const directory = resolveDirectory(deps, context)
       const parsed = CodeGraphArgsSchema.safeParse(toolArgs)
       if (!parsed.success) {
-        refuseArgs("", "code_graph needs op status|context|search|trace|impact|tests|explore, optional subject/subjectKind/to, depth 1-3, limit 1-50, maxBytes 512-16384.")
+        refuseArgs("", "code_graph needs op status|context|search|trace|impact|tests|explore, optional subject/subjectKind/to, depth 1-3, limit 1-50, maxBytes 512-16384, refresh.")
       }
       const args = parsed.data
       const op = args.op
@@ -796,8 +848,8 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
       if (op === "status") {
         let summary: CanonicalSummary
         try {
-          summary = await runtime.readIndex(directory)
-        } catch {
+          summary = await runtime.readIndex(directory, { refresh: args.refresh === true })
+        } catch (error) {
           return stringifyEnvelope(
             buildAgentContext({
               op,
@@ -811,7 +863,12 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
                 },
                 directory,
               ),
-              status: { freshness: "unindexed", coverage: "unindexed", queryServable: false, reasons: ["index-failed"] },
+              status: {
+                freshness: "unindexed",
+                coverage: "unindexed",
+                queryServable: false,
+                reasons: thrownFailureReasons(asError(error)),
+              },
               maxBytes,
             }),
           )
@@ -823,7 +880,7 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
         const reasons = [
           `generation:${summary.generation ?? "none"}`,
           `freshness:${summary.freshness}`,
-          ...(summary.indexState !== null ? [`index-state:${summary.indexState}`] : []),
+          ...indexStateReasons(summary),
           ...(servable ? [`nodes:${summary.nodeCount}`, `edges:${summary.edgeCount}`] : []),
           ...(summary.indexTruncated ? ["index-truncated"] : []),
         ]
@@ -845,9 +902,18 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
       }
 
       const subject = args.subject
-      const changesMode = op === "impact" && (args.subjectKind === "changes" || inferSubjectKind(subject ?? "") === "changes")
+      // Only the working-tree view answers without a subject: the tree is not
+      // one symbol, and `toSubjects` already names it `changes:working-tree`.
+      // Every other op (and every other subjectKind) still needs one.
+      const changesCapable = op === "context" || op === "impact"
+      const changesMode = changesCapable && args.subjectKind === "changes"
       if (subject === undefined && !changesMode) {
-        refuseArgs("", `code_graph op '${op}' needs a subject string.`)
+        refuseArgs(
+          "",
+          changesCapable
+            ? `code_graph op '${op}' needs a subject string, or subjectKind: changes for the working-tree view.`
+            : `code_graph op '${op}' needs a subject string.`,
+        )
       }
       if (op === "explore" && args.subjectKind === "changes") {
         refuseArgs("", "code_graph op 'explore' needs a subject symbol, name, or file path.")
@@ -856,7 +922,7 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
         refuseArgs("", "code_graph op 'trace' needs both subject and to symbol ids.")
       }
       // Guarded above: subject is defined on every path that reads it except
-      // impact-with-changes (which never reads subjectText), and to is defined
+      // the changes view (which never reads subjectText), and to is defined
       // for trace. The empty fallbacks never surface.
       const subjectText = subject ?? ""
       const toText = args.to ?? ""
@@ -888,9 +954,9 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
 
       let summary: CanonicalSummary
       try {
-        summary = await runtime.readIndex(directory, { block: true })
-      } catch {
-        return unavailable(["index-failed"])
+        summary = await runtime.readIndex(directory, { block: true, refresh: args.refresh === true })
+      } catch (error) {
+        return unavailable(thrownFailureReasons(asError(error)))
       }
       if (!summary.ready) {
         return stringifyEnvelope(
@@ -904,10 +970,7 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
               coverage: summary.generation !== null ? "partial" : "unindexed",
               ...summaryStatusExtrasOf(summary.generation, summary.revision),
               queryServable: false,
-              reasons: [
-                `generation:${summary.generation ?? "none"}`,
-                ...(summary.indexState !== null ? [`index-state:${summary.indexState}`] : []),
-              ],
+              reasons: [`generation:${summary.generation ?? "none"}`, ...indexStateReasons(summary)],
             },
             maxBytes,
           }),
@@ -940,18 +1003,45 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
       const limit = args.limit
       const depth = args.depth
 
-      const runOp = async (): Promise<{
-        envelope: QueryEnvelope
-        extraUnresolved: string[] | readonly string[]
-        explore?: ExplorePayload
-      }> => {
+      // Files expand to the symbols they define before impact runs: the engine
+      // walks from symbol subjects, and a bare file id answers empty. The file
+      // view names those symbols over the same generation, so the expansion
+      // never mixes generations.
+      const impactSubjectsForFile = async (rel: string): Promise<CanonicalAnswer[]> => {
+        const view = track(await runtime.query(directory, { kind: "file", file: rel, limit }))
+        const symbols = view.envelope.items.map((item) => item.id).filter((id) => !id.startsWith("file:"))
+        const subjects = symbols.length > 0 ? symbols : [`file:${rel}`]
+        const parts: CanonicalAnswer[] = []
+        for (const symbol of subjects) {
+          parts.push(track(await runtime.query(directory, { kind: "impact", symbol, limit, depth })))
+        }
+        return parts
+      }
+
+      /**
+       * The working-tree changes view: every changed entry file expands to the
+       * symbols it defines, and their dependents merge into one envelope over
+       * one generation. It is the same view for `context` and `impact` because
+       * the tree has no single subject for either to centre on.
+       */
+      const changesView = async (): Promise<OpAnswer> => {
+        const changed = await collectChangedPaths(directory)
+        const parts: CanonicalAnswer[] = []
+        for (const file of changed) {
+          parts.push(...(await impactSubjectsForFile(normalizeRel(file))))
+        }
+        return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] }
+      }
+
+      const runOp = async (): Promise<OpAnswer> => {
+        if (changesMode) return changesView()
         if (op === "search") {
           const answer = track(await runtime.query(directory, { kind: "search", query: subjectText, limit }))
           return { envelope: answer.envelope, extraUnresolved: [] }
         }
         if (op === "context") {
           const kind = args.subjectKind ?? inferSubjectKind(subjectText)
-          if (kind === "file" || kind === "changes" || kind === "query") {
+          if (kind === "file" || kind === "query") {
             const answer = track(await runtime.query(directory, { kind: "search", query: subjectText, limit }))
             return { envelope: answer.envelope, extraUnresolved: [] }
           }
@@ -971,30 +1061,8 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
           return { envelope: answer.envelope, extraUnresolved: [] }
         }
         if (op === "impact") {
-          // Files expand to the symbols they define before impact runs: the
-          // engine walks from symbol subjects, and a bare file id answers
-          // empty. The file view names those symbols over the same
-          // generation, so the expansion never mixes generations.
-          const impactSubjectsForFile = async (rel: string): Promise<CanonicalAnswer[]> => {
-            const view = track(await runtime.query(directory, { kind: "file", file: rel, limit }))
-            const symbols = view.envelope.items.map((item) => item.id).filter((id) => !id.startsWith("file:"))
-            const subjects = symbols.length > 0 ? symbols : [`file:${rel}`]
-            const parts: CanonicalAnswer[] = []
-            for (const symbol of subjects) {
-              parts.push(track(await runtime.query(directory, { kind: "impact", symbol, limit, depth })))
-            }
-            return parts
-          }
-          if (changesMode) {
-            const changed = await collectChangedPaths(directory)
-            const parts: CanonicalAnswer[] = []
-            for (const file of changed) {
-              parts.push(...(await impactSubjectsForFile(normalizeRel(file))))
-            }
-            return { envelope: mergedImpactEnvelope(summary, directory, changed, parts), extraUnresolved: [] }
-          }
           const kind = args.subjectKind ?? inferSubjectKind(subjectText)
-          if (kind === "file" || kind === "changes") {
+          if (kind === "file") {
             const rel = normalizeRel(subjectText)
             const parts = await impactSubjectsForFile(rel)
             return { envelope: mergedImpactEnvelope(summary, directory, [subjectText], parts), extraUnresolved: [] }
@@ -1011,21 +1079,32 @@ export function createCodeGraphTool(deps: CodeGraphToolDeps = {}): OmoToolDefini
         return { envelope: answer.envelope, extraUnresolved: [] }
       }
 
+      // A thrown op keeps its message: an unexplained failure is the defect.
+      const attemptOp = async (): Promise<{ answer: OpAnswer | null; failure: readonly string[] }> => {
+        try {
+          return { answer: await runOp(), failure: [] }
+        } catch (error) {
+          return { answer: null, failure: thrownFailureReasons(asError(error)) }
+        }
+      }
+
       let pin = summary.generation
-      let built = await runOp().catch((): null => null)
-      if (built === null) return unavailable(["index-failed"])
+      let attempt = await attemptOp()
+      if (attempt.answer === null) return unavailable(attempt.failure)
+      let built = attempt.answer
       let restarted = false
       if (pin !== null && generations.some((generation) => generation !== null && generation !== pin)) {
         restarted = true
         generations.length = 0
         try {
           summary = await runtime.readIndex(directory, { block: true })
-        } catch {
-          return unavailable(["index-failed"])
+        } catch (error) {
+          return unavailable(thrownFailureReasons(asError(error)))
         }
         pin = summary.generation
-        built = await runOp().catch((): null => null)
-        if (built === null) return unavailable(["index-failed"])
+        attempt = await attemptOp()
+        if (attempt.answer === null) return unavailable(attempt.failure)
+        built = attempt.answer
       }
 
       const staleCarrier = staleCarrierOf(built.envelope)

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { RepairBlock } from '@/lib/runGraphApi';
 import { engineSnapshotToView } from './engineSnapshotModel';
 import type { SnapshotDoc } from './snapshotDoc';
 
@@ -43,6 +44,23 @@ describe('engine snapshot view', () => {
     expect(byId.get('synthesis')).toBe('pending');
   });
 
+  test('recorded verification claims ride rows and graph nodes', () => {
+    const fixture = doc();
+    fixture.runs[0].verificationStatus = 'verified';
+    const completed = fixture.runs[0].nodes.find((node) => node.id === 'ses_child01');
+    if (!completed) throw new Error('fixture must hold the completed node');
+    completed.verificationStatus = 'blocked';
+    fixture.runs[0].nodes.push({ id: 'ses_parent01', label: 'Run anchor', state: 'completed', prompt: '', dependsOn: [] });
+    const view = engineSnapshotToView({ doc: fixture, conversationId: 'ses_parent01' });
+    const rows = new Map((view?.rows ?? []).map((row) => [row.id, row]));
+    expect(rows.get('ses_parent01')?.verificationStatus).toBe('verified');
+    expect(rows.get('ses_child01')?.verificationStatus).toBe('blocked');
+    expect(rows.get('ses_child02')?.verificationStatus).toBeUndefined();
+    const nodes = new Map((view?.graph.nodes ?? []).map((node) => [node.id, node]));
+    expect(nodes.get('ses_parent01')?.verificationStatus).toBe('verified');
+    expect(nodes.get('ses_child01')?.verificationStatus).toBe('blocked');
+  });
+
   test('graph places waves left to right with blocking edges into unsettled nodes', () => {
     const view = engineSnapshotToView({ doc: doc(), conversationId: 'ses_parent01' });
     const byId = new Map((view?.graph.nodes ?? []).map((node) => [node.id, node]));
@@ -53,5 +71,115 @@ describe('engine snapshot view', () => {
     expect(byId.get('ses_child02')?.y).toBeGreaterThan(byId.get('ses_child01')?.y ?? 0);
     expect(view?.graph.edges.some((edge) => edge.from === 'ses_child02' && edge.to === 'synthesis' && edge.blocking)).toBe(true);
     expect(view?.graph.edges.some((edge) => edge.from === 'parent' && edge.to === 'ses_child01' && !edge.blocking)).toBe(true);
+  });
+
+  test('current-epoch repair state rides rows and graph nodes', () => {
+    const block: RepairBlock = {
+      attemptId: 'st_a.e2.r1',
+      taskId: 'ses_child01',
+      epoch: 2,
+      state: 'repaired',
+      failedChecks: ['unit'],
+      rerunChecks: ['unit'],
+      changedFiles: ['src/a.ts'],
+      verificationStatus: 'blocked',
+      hostFacts: [],
+      modelHypotheses: [],
+      updatedAt: 2,
+    };
+    const view = engineSnapshotToView({
+      doc: doc(),
+      conversationId: 'ses_parent01',
+      repairIndex: {
+        runs: { ses_child01: { repair: block } },
+        tasks: { ses_child01: { repair: block } },
+      },
+    });
+    const row = view?.rows.find((entry) => entry.id === 'ses_child01');
+    expect(row?.repair?.attemptId).toBe('st_a.e2.r1');
+    expect(row?.repair?.verificationStatus).toBe('blocked');
+    const node = view?.graph.nodes.find((entry) => entry.id === 'ses_child01');
+    expect(node?.repair?.lifecycle.map((step) => step.state)).toEqual([
+      'diagnosing',
+      'repair_planned',
+      'repairing',
+      'reverifying',
+      'repaired',
+    ]);
+  });
+
+  test('unreadable repair state stays an explicit error on the row', () => {
+    const view = engineSnapshotToView({
+      doc: doc(),
+      conversationId: 'ses_parent01',
+      repairIndex: {
+        runs: { ses_child01: { repairError: 'repair attempt store unreadable for ses_child01: boom' } },
+        tasks: {},
+      },
+    });
+    const row = view?.rows.find((entry) => entry.id === 'ses_child01');
+    expect(row?.repair).toBeUndefined();
+    expect(row?.repairError).toContain('unreadable');
+  });
+});
+
+
+describe('a conversation that exists only as canonical task records', () => {
+  const recordsOnly = (tasks: SnapshotDoc['tasks']): SnapshotDoc => ({ sessionId: 'ses_record01', runs: [], tasks });
+
+  test('renders each record as a node keyed by its own task id', () => {
+    const view = engineSnapshotToView({
+      conversationId: 'ses_record01',
+      doc: recordsOnly([
+        { taskId: 'st_01a1dd99', status: 'completed', name: 'st_01a1dd99', verificationStatus: 'unverified' },
+        { taskId: 'st_other', status: 'error', name: 'build' },
+      ]),
+    });
+
+    expect(view?.rows.map((row) => row.id)).toEqual(['st_01a1dd99', 'st_other']);
+    expect(view?.graph.nodes.map((node) => node.id)).toEqual(['st_01a1dd99', 'st_other']);
+    expect(view?.graph.edges).toEqual([]);
+    expect(view?.rows[0].verificationStatus).toBe('unverified');
+  });
+
+  test('calls a failed record failed, never unknown', () => {
+    const view = engineSnapshotToView({ conversationId: 'ses_record01', doc: recordsOnly([{ taskId: 'st_1', status: 'error' }]) });
+
+    expect(view?.rows[0].state).toBe('failed');
+  });
+
+  test('keeps a cancelled record cancelled and a completed one completed', () => {
+    const view = engineSnapshotToView({
+      conversationId: 'ses_record01',
+      doc: recordsOnly([{ taskId: 'st_1', status: 'cancelled' }, { taskId: 'st_2', status: 'completed' }]),
+    });
+
+    expect(view?.rows.map((row) => row.state)).toEqual(['cancelled', 'completed']);
+  });
+
+  test('answers null when neither a run nor a record exists', () => {
+    expect(engineSnapshotToView({ conversationId: 'ses_record01', doc: recordsOnly([]) })).toBeNull();
+    expect(engineSnapshotToView({ conversationId: 'ses_record01', doc: { sessionId: 'ses_record01', runs: [] } })).toBeNull();
+  });
+
+  test('carries the repair projection of a record-only task', () => {
+    const view = engineSnapshotToView({
+      conversationId: 'ses_record01',
+      doc: recordsOnly([{ taskId: 'st_1', status: 'completed' }]),
+      repairIndex: {
+        tasks: {
+          st_1: {
+            repair: {
+              attemptId: 'a1', taskId: 'st_1', epoch: 0, state: 'repaired',
+              failedChecks: [], rerunChecks: [], changedFiles: [], verificationStatus: 'verified',
+              hostFacts: [], modelHypotheses: [], updatedAt: 0,
+            },
+          },
+        },
+        runs: {},
+      },
+    });
+
+    expect(view?.rows[0].repair).toBeDefined();
   });
 });

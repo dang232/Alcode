@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import type { Message, Part, Session, SyntheticMessage, TextPart, ToolPart } from '@/lib/opencode/model';
+import type { RepairBlock } from '@/lib/runGraphApi';
 import { buildDagRunModel, type DagRunModel } from '@/lib/dagRunModel';
 import {
   buildActivityTree,
   buildExplanationCard,
   buildInspectorSummaries,
   buildInspectorTimeline,
+  buildRepairView,
   buildRunGraph,
   taskAssociatedFiles,
 } from './activityModel';
@@ -213,6 +215,49 @@ describe('taskAssociatedFiles', () => {
   });
 });
 
+describe('verification labels', () => {
+  const settledMessages: Message[] = [
+    {
+      id: 'm2', sessionID: 'ses_parent01', role: 'assistant', time: { created: 1500, completed: 1600 },
+      agent: 'a', providerID: 'p', modelID: 'm',
+    },
+    report('m3', 'ses_child01', 'Found three callers.'),
+  ];
+  const settledParts = {
+    m2: [textPart('p2', 'm2', 'Starting the analysis now')],
+  } satisfies Record<string, Part[]>;
+
+  test('completed settlement lines name the looked-up claim', () => {
+    const model = modelOf();
+    const verificationLabel = (taskId: string) => (taskId === 'ses_child01' ? 'Verified' : null);
+    const timeline = buildInspectorTimeline({ model, messages: settledMessages, parts: settledParts, selectedId: 'ses_child01', verificationLabel });
+    expect(timeline.map((event) => event.label)).toContain('Settled: completed · Verified');
+    const card = buildExplanationCard({ model, messages: settledMessages, parts: settledParts, selectedId: 'ses_child01', verificationLabel });
+    expect(card?.outcome?.text).toBe('Settled: completed · Verified');
+  });
+
+  test('tasks the lookup does not know render exactly as before', () => {
+    const model = modelOf();
+    const timeline = buildInspectorTimeline({ model, messages: settledMessages, parts: settledParts, selectedId: 'ses_child01' });
+    expect(timeline.map((event) => event.label)).toContain('Settled: completed');
+    const card = buildExplanationCard({ model, messages: settledMessages, parts: settledParts, selectedId: 'ses_child01' });
+    expect(card?.outcome?.text).toBe('Settled: completed');
+  });
+
+  test('failed settlements never earn a verification suffix', () => {
+    const model = modelOf();
+    const failed: Message[] = [{
+      id: 'm3', sessionID: 'ses_parent01', role: 'synthetic', time: { created: 8500 },
+      text: 'It broke.', description: 'Subagent ses_child01 finished',
+      metadata: { source: 'subagent', childID: 'ses_child01', agent: 'explore', state: 'error' },
+    }];
+    const verificationLabel = () => 'Blocked';
+    const timeline = buildInspectorTimeline({ model, messages: failed, parts: {}, selectedId: 'ses_child01', verificationLabel });
+    expect(timeline.map((event) => event.label)).toContain('Settled: error');
+    expect(timeline.map((event) => event.label).some((label) => label.includes('Blocked'))).toBe(false);
+  });
+});
+
 describe('buildExplanationCard', () => {
   test('null model yields no card, never a fabricated one', () => {
     expect(buildExplanationCard({ model: null, messages: [], parts: {}, selectedId: 'ses_child01' })).toBeNull();
@@ -257,5 +302,93 @@ describe('buildExplanationCard', () => {
     const card = buildExplanationCard({ model, messages, parts, selectedId: 'ses_child01' });
     expect(card?.evidence).toHaveLength(1);
     expect(card?.evidence[0]?.receiptId).toBe('t1');
+  });
+});
+
+describe('repair view', () => {
+  const block = (overrides: Partial<RepairBlock> = {}): RepairBlock => ({
+    attemptId: 'st_a.e2.r1',
+    taskId: 'st_a',
+    epoch: 2,
+    state: 'repaired',
+    failedChecks: ['typecheck'],
+    rerunChecks: ['typecheck'],
+    changedFiles: ['src/a.ts'],
+    verificationStatus: 'verified',
+    hostFacts: ['The workspace has no uncommitted changes.'],
+    modelHypotheses: ['The failure came from a stale cache.'],
+    updatedAt: 2,
+    ...overrides,
+  });
+
+  test('a repaired attempt lists every reached milestone and keeps the gate verdict', () => {
+    const view = buildRepairView([block()]);
+    expect(view?.lifecycle.map((step) => step.state)).toEqual([
+      'diagnosing',
+      'repair_planned',
+      'repairing',
+      'reverifying',
+      'repaired',
+    ]);
+    expect(view?.lifecycle.filter((step) => step.current).map((step) => step.state)).toEqual(['repaired']);
+    expect(view?.verificationStatus).toBe('verified');
+  });
+
+  test('repair state repaired never rewrites a blocked gate verdict', () => {
+    const view = buildRepairView([block({ verificationStatus: 'blocked' })]);
+    expect(view?.state).toBe('repaired');
+    expect(view?.verificationStatus).toBe('blocked');
+  });
+
+  test('a stale epoch attempt is fenced out, not shown as current', () => {
+    const stale = block({ attemptId: 'st_a.e1.r1', epoch: 1 });
+    const current = block({
+      attemptId: 'st_a.e2.r1',
+      epoch: 2,
+      state: 'diagnosing',
+      failedChecks: ['lint'],
+      rerunChecks: [],
+      changedFiles: [],
+      verificationStatus: null,
+    });
+    const view = buildRepairView([current, stale]);
+    expect(view?.attemptId).toBe('st_a.e2.r1');
+    expect(view?.epoch).toBe(2);
+    expect(view?.lifecycle.map((step) => step.state)).toEqual(['diagnosing']);
+    expect(buildRepairView([current, stale], 3)).toBeNull();
+  });
+
+  test('repeated projections and lifecycle events collapse to one current attempt', () => {
+    const repeated = block({ state: 'reverifying' });
+    const view = buildRepairView([repeated, repeated, { ...repeated, updatedAt: 9 }]);
+    const states = view?.lifecycle.map((step) => step.state) ?? [];
+    expect(states).toEqual(['diagnosing', 'repair_planned', 'repairing', 'reverifying']);
+    expect(new Set(states).size).toBe(states.length);
+  });
+
+  test('same-epoch attempts order by attempt id and the last is current', () => {
+    const early = block({ attemptId: 'st_a.e2.r1', state: 'repairing' });
+    const late = block({ attemptId: 'st_a.e2.r2', state: 'reverifying' });
+    const view = buildRepairView([late, early]);
+    expect(view?.attemptId).toBe('st_a.e2.r2');
+    expect(view?.state).toBe('reverifying');
+  });
+
+  test('a failed attempt names only the earlier milestones its own data proves', () => {
+    const unknownStage = buildRepairView([block({
+      state: 'repair_failed',
+      changedFiles: [],
+      rerunChecks: [],
+      verificationStatus: 'blocked',
+    })]);
+    expect(unknownStage?.lifecycle.map((step) => step.state)).toEqual(['diagnosing', 'repair_failed']);
+    const reachedReverify = buildRepairView([block({ state: 'repair_failed' })]);
+    expect(reachedReverify?.lifecycle.map((step) => step.state)).toEqual([
+      'diagnosing',
+      'repair_planned',
+      'repairing',
+      'reverifying',
+      'repair_failed',
+    ]);
   });
 });

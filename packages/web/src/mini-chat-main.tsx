@@ -1,7 +1,6 @@
 import { createConfiguredWebAPIs } from './runtimeConfig';
 import type { RuntimeAPIs } from '@alcode/ui/lib/api/types';
 import '@alcode/ui/index.css';
-import '@alcode/ui/styles/fonts';
 import '@alcode/ui/styles/katex-css';
 
 declare global {

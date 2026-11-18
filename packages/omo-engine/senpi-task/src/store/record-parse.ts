@@ -17,6 +17,7 @@ import {
   parseOptionalSpawnSpec,
   readOptionalRunnerKind,
   readOptionalSuspensionReason,
+  readOptionalVerificationStatus,
   validateHostSessionConsistency,
 } from "./record-blocks-parse"
 import {
@@ -62,6 +63,9 @@ export function parseTaskRecord(value: unknown, path: string, warnings?: string[
   const startedAt = readOptionalString(value, "started_at")
   const terminalAt = readOptionalString(value, "terminal_at")
   const killed = readOptionalBoolean(value, "killed")
+  // The completion gate's terminal claim. Optional: records written before the gate existed carry
+  // none, and absence stays undefined so a completed record still reads as unverified downstream.
+  const verificationStatus = readOptionalVerificationStatus(value)
   // Legacy records predate the field: they never asked for a terminal notification, so false.
   const notifyOnTerminal = readOptionalBoolean(value, "notify_on_terminal") ?? false
   const requestedModel = parseOptionalResolvedModel(value, "requested_model")
@@ -135,6 +139,7 @@ export function parseTaskRecord(value: unknown, path: string, warnings?: string[
     ...(failureKind === undefined ? {} : { failure_kind: failureKind }),
     ...(failureReason === undefined ? {} : { failure_reason: failureReason }),
     ...(killed === undefined ? {} : { killed }),
+    ...(verificationStatus === undefined ? {} : { verification_status: verificationStatus }),
     ...(runStats === undefined ? {} : { run_stats: runStats }),
     ...(taskSeq === undefined ? {} : { task_seq: taskSeq }),
     ...(configGeneration === undefined ? {} : { config_generation: configGeneration }),

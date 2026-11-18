@@ -40,6 +40,10 @@ import { createTrackedItemReaders } from '../tracked-items/readers.js';
 import { createTrackedItemsPersistence } from '../tracked-items/persistence.js';
 import { registerTrackedItemsRoutes } from '../tracked-items/routes.js';
 import { registerAlcodeSessionRoutes } from '../alcode-sessions/routes.js';
+import { createOpenCodeClient } from '../alcode-sessions/opencode-client.js';
+import { registerCapabilityRoutes } from '../capability-api/index.js';
+import { createTaskHostProxy } from '../capability-api/task-proxy.js';
+import { resolveCapabilityToken } from '../capability-api/runtime.js';
 import { registerAlcodeControlRoutes } from '../alcode-control/routes.js';
 import { registerMarkdownImageGrantRoutes } from '../markdown-image-grants/routes.js';
 import { registerSkillRoutes } from './skill-routes.js';
@@ -96,6 +100,7 @@ import { createSourceControlAuditStore } from '../source-control/audit-storage.j
 export const createFeatureRoutesRuntime = (dependencies) => {
   const {
     clientReloadDelayMs,
+    resolveTaskHost,
   } = dependencies;
   const gitRuntimeIdentity = Object.freeze({
     id: `server_${crypto.randomUUID()}`,
@@ -348,6 +353,37 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     });
 
     registerAlcodeControlRoutes(app, { controlService: alcodeControlService });
+
+    const taskHostNow = () => resolveTaskHost?.() ?? (process.env.ALCODE_TASK_HOST_URL
+      ? { url: process.env.ALCODE_TASK_HOST_URL, token: resolveCapabilityToken() }
+      : undefined);
+    // The bearer the plugin sends is the capability token this server publishes in the descriptor. A resolver keeps the
+    // surface mounted from boot (401 until a token exists) and authorizes against that same token; without `token` the
+    // registration returns early and every capability route answers 404.
+    const capabilityClient = ({ directory }) => createOpenCodeClient({
+      baseUrl: buildOpenCodeUrl(),
+      headers: getOpenCodeAuthHeaders(),
+      directory,
+    });
+    const configuredAgents = (process.env.OMO_CAPABILITY_ALLOWED_AGENTS ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0);
+    registerCapabilityRoutes(app, {
+      token: () => resolveCapabilityToken(),
+      ...(configuredAgents.length === 0 ? {} : { allowedAgents: configuredAgents }),
+      boundParent: () => taskHostNow()?.sessionId,
+      hostState: () => taskHostNow()?.state,
+      ensureHostLive: () => taskHostNow()?.ensureLive?.(),
+      resolveDefaultModel: () => taskHostNow()?.defaultModel?.(),
+      waitReady: () => taskHostNow()?.waitReady?.(),
+      taskStarter: async (request) => {
+        const host = taskHostNow();
+        if (host === undefined) throw new Error('no task host is available');
+        return createTaskHostProxy({ url: host.url, token: host.token, ...(host.sessionId === undefined ? {} : { parentSessionID: host.sessionId }) })(request);
+      },
+      createClient: capabilityClient,
+    });
 
     registerMarkdownImageGrantRoutes(app, {
       fsPromises,

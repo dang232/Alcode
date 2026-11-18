@@ -1,4 +1,5 @@
 import type { DagTaskOwner } from "../dag/owner"
+import type { VerificationStatus } from "../verification/completion-status"
 import type { TaskStartFailureRecordFields } from "./start-failure"
 import type {
   BackgroundMode,
@@ -105,6 +106,13 @@ export type TaskRecord = TaskRecordInput & TaskStartFailureRecordFields & {
   readonly updated_at: string
   readonly started_at?: string
   readonly terminal_at?: string
+  // The completion gate's claim for this run, stamped onto the terminal record. The ordinary
+  // completion writer is manager/manager-outcome.ts stampVerificationStatus (line 135); the
+  // delegated parent's terminal write in manager/manager.ts (#transitionDelegatedParent) stamps the
+  // same field. Optional because records written before the gate existed carry no claim: absence
+  // means no verification was ever claimed, and it must stay undefined, never default to
+  // "verified". Only ever "verified" when the gate returned that verdict for this run.
+  readonly verification_status?: VerificationStatus
   readonly pid?: number
   readonly host_pid?: number
   readonly child_session_id?: string

@@ -9,6 +9,10 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
+    "./verification-approval": {
+      "types": "./src/verification/approval-service.ts",
+      "import": "./dist/verification/approval-service.js"
+    },
     "./agents-builtin": {
       "types": "./src/agents/builtin/index.ts",
       "import": "./src/agents/builtin/index.ts"
@@ -52,6 +56,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
+    "build": "bun build src/index.ts src/verification/approval-service.ts --outdir dist --format esm --target node --external '@oh-my-opencode/*'",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "bun test src/*.test.ts src/**/*.test.ts"
   },

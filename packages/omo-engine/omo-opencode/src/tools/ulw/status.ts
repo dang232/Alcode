@@ -14,6 +14,7 @@ import type { OmoJsonObject, OmoToolDefinition } from "../../plugin-types.ts"
 import { runNotFoundError } from "../../ulw/errors.ts"
 import { UlwStore } from "../../ulw/store.ts"
 import { NonEmptyText, refuseArgs, runIdOf } from "./args.ts"
+import { resolveExistingRunRef } from "./run-ref.ts"
 import { getUlwStore } from "./store-instance.ts"
 
 export const ULW_STATUS_NAME = "ulw_status"
@@ -44,7 +45,8 @@ export function createUlwStatusTool(deps: UlwStatusDeps = {}): OmoToolDefinition
       const parsed = UlwStatusArgs.safeParse(toolArgs)
       if (!parsed.success) refuseArgs(runIdOf(toolArgs), "ULW runId must be a non-empty string when provided.")
       const submissionId = parsed.data.submissionId
-      const runId = submissionId === undefined ? parsed.data.runId : store.runIdForSubmission(submissionId)
+      const requestedRunId = submissionId === undefined ? parsed.data.runId : store.runIdForSubmission(submissionId)
+      const runId = requestedRunId === undefined ? undefined : resolveExistingRunRef(store, requestedRunId)
       if (runId === undefined) {
         if (submissionId === undefined) {
           return JSON.stringify({ runs: store.listRuns() })

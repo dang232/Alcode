@@ -16,7 +16,7 @@ import type { JsonValue } from '@alcode/sdk';
 import type { Message, Part, Session, SessionStatus } from '@/lib/opencode/model';
 
 export type DagChildState = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type DagParentState = 'running' | 'completed' | 'failed';
+export type DagParentState = 'running' | 'completed' | 'failed' | 'cancelled';
 
 // Narrowing follows the panel's isWireRecord idiom (no typeof operators on
 // the value itself): only a real record passes, arrays never do.
@@ -221,10 +221,15 @@ export const buildDagRunModel = (input: DagRunModelInput): DagRunModel | null =>
   const parentBusy = isBusyStatus(statuses, parent.id);
   const anyRunning = children.some((child) => child.state === 'running' || child.state === 'pending');
   const allFailed = children.length > 0 && children.every((child) => child.state === 'failed');
+  const allCancelled = children.length > 0 && children.every((child) => child.state === 'cancelled');
   let state: DagParentState;
+  // A run that did not succeed is never reported as completed: the ladder used to end in an unconditional
+  // `completed`, so an interrupted parent and an all-cancelled child set both persisted as a green run.
   if (parent.outcome === 'failed') state = 'failed';
   else if (anyRunning || parentBusy) state = 'running';
+  else if (parent.outcome === 'interrupted') state = 'cancelled';
   else if (allFailed && parent.outcome !== 'succeeded') state = 'failed';
+  else if (allCancelled) state = 'cancelled';
   else state = 'completed';
 
   const userText = firstUserText(messages, parts);
@@ -267,8 +272,49 @@ export const buildDagRunModel = (input: DagRunModelInput): DagRunModel | null =>
   };
 };
 
-/** A snapshot document carrying the run model, shaped for parseSnapshotDoc. */
-export const dagRunModelToSnapshotDoc = (model: DagRunModel): JsonValue => {
+/**
+ * One child session's attribution claim, projected from the project's task
+ * records. `nodeId` is present only for a record whose owner is a DAG node; a
+ * record without that owner contributes only `taskId`.
+ */
+export type DagAttributionClaim = {
+  taskId: string;
+  nodeId?: string;
+};
+
+/**
+ * Attribution slice the producer reads: child session id -> persisted claim.
+ * It is a projection of the engine's task records, never a second source of
+ * truth; a session the index does not name gets no attribution at all.
+ */
+export type DagAttributionIndex = Readonly<Record<string, DagAttributionClaim>>;
+
+/**
+ * A snapshot document carrying the run model, shaped for parseSnapshotDoc.
+ *
+ * `attribution` is an optional slice of the project's task-record index. A
+ * child node whose id equals a known `child_session_id` gains `task_id` (and
+ * `node_id` when the record carries a DAG owner); every other node, and every
+ * node when the index is absent or empty, serializes exactly as before.
+ */
+// Wire shape of one child node: optional attribution fields are added only when claimed.
+type DagSnapshotNode = {
+  id: string;
+  label: string;
+  state: DagChildState;
+  attempt: number;
+  prompt: string;
+  depends_on: string[];
+  started_at: string | null;
+  completed_at: string | null;
+  task_id?: string;
+  node_id?: string;
+};
+
+export const dagRunModelToSnapshotDoc = (
+  model: DagRunModel,
+  attribution?: DagAttributionIndex | null,
+): JsonValue => {
   const parentNode = {
     id: 'parent',
     label: model.label,
@@ -279,18 +325,26 @@ export const dagRunModelToSnapshotDoc = (model: DagRunModel): JsonValue => {
     started_at: new Date(model.startedAt).toISOString(),
     completed_at: model.endedAt === null ? null : new Date(model.endedAt).toISOString(),
   };
-  const childNodes = model.children.map((child) => ({
-    id: child.sessionId,
-    label: child.agent ? `${child.agent} — ${child.label}` : child.label,
-    state: child.state,
-    attempt: 1,
-    prompt: child.output
-      ? `${child.description ?? child.label}\n\nResult:\n${child.output}`
-      : (child.description ?? child.label),
-    depends_on: ['parent'],
-    started_at: child.startedAt === null ? null : new Date(child.startedAt).toISOString(),
-    completed_at: child.endedAt === null ? null : new Date(child.endedAt).toISOString(),
-  }));
+  const childNodes = model.children.map((child) => {
+    const node: DagSnapshotNode = {
+      id: child.sessionId,
+      label: child.agent ? `${child.agent} — ${child.label}` : child.label,
+      state: child.state,
+      attempt: 1,
+      prompt: child.output
+        ? `${child.description ?? child.label}\n\nResult:\n${child.output}`
+        : (child.description ?? child.label),
+      depends_on: ['parent'],
+      started_at: child.startedAt === null ? null : new Date(child.startedAt).toISOString(),
+      completed_at: child.endedAt === null ? null : new Date(child.endedAt).toISOString(),
+    };
+    const claim = attribution?.[child.sessionId];
+    if (claim !== undefined) {
+      node.task_id = claim.taskId;
+      if (claim.nodeId !== undefined) node.node_id = claim.nodeId;
+    }
+    return node;
+  });
   const synthesisNode = {
     id: 'synthesis',
     label: 'Synthesis',

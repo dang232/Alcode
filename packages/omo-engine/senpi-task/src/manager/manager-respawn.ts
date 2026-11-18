@@ -11,7 +11,7 @@ import type { TaskRecord } from "../state"
 import { adaptRpcHandle, discardManagedHandle, discardRpcHandle, type ManagedChildHandle } from "./child-handle"
 import { sessionTailFinishedText, sessionTailNeedsContinuation } from "./interrupted-turn"
 import { buildRespawnManagedSpec, isTerminalRecord } from "./manager-helpers"
-import type { ManagedRunner, TrustedRespawnLaunchResolver } from "./types"
+import type { ManagedRunner, ManagedStartSpec, TrustedRespawnLaunchResolver } from "./types"
 import { modelSelector } from "../runners/in-process/runtime-fallback-settings"
 
 const CONTINUATION_MESSAGE =
@@ -28,6 +28,11 @@ export async function respawnManagedTask(input: {
   readonly runners: Readonly<Record<"in-process" | "process", ManagedRunner>>
   readonly rpcRunner: RpcRespawnRunner
   readonly trustedLaunch?: TrustedRespawnLaunchResolver
+  // Optional host-owned augmentation of the rebuilt spec (the ordinary worker's verification
+  // tool). Applied after the persisted-safe rebuild and before start/resume, so a revived child
+  // carries the same live tool a fresh launch would mount. The hook owns the trust decision; this
+  // module only applies it, and the rebuild itself stays plain data.
+  readonly attachVerification?: (spec: ManagedStartSpec) => ManagedStartSpec
 }): Promise<RespawnResult> {
   if (input.sessionPath === undefined) return respawnFresh(input)
   if (input.record.execution_mode === "in-process") return respawnInProcess({ ...input, sessionPath: input.sessionPath })
@@ -41,14 +46,16 @@ async function respawnFresh(input: {
   readonly runners: Readonly<Record<"in-process" | "process", ManagedRunner>>
   readonly rpcRunner: RpcRespawnRunner
   readonly trustedLaunch?: TrustedRespawnLaunchResolver
+  readonly attachVerification?: (spec: ManagedStartSpec) => ManagedStartSpec
 }): Promise<RespawnResult> {
   const rebuilt = buildRespawnManagedSpec(input.record, input.stateDir)
   if (!rebuilt.ok) return failure("unrecoverable", rebuilt.code, rebuilt.reason)
+  const spec = input.attachVerification === undefined ? rebuilt.spec : input.attachVerification(rebuilt.spec)
   if (input.record.execution_mode === "in-process") {
     let handle: ManagedChildHandle | undefined
     try {
       input.beforeLaunch()
-      handle = await input.runners["in-process"].start(rebuilt.spec)
+      handle = await input.runners["in-process"].start(spec)
       return { ok: true, handle }
     } catch (error) {
       if (handle !== undefined) await discardManagedHandleBestEffort(handle)
@@ -62,9 +69,9 @@ async function respawnFresh(input: {
     input.beforeLaunch()
     handle = await input.rpcRunner.start({
       task_id: input.record.task_id,
-      cwd: rebuilt.spec.cwd,
-      state_dir: rebuilt.spec.stateDir,
-      prompt: rebuilt.spec.prompt,
+      cwd: spec.cwd,
+      state_dir: spec.stateDir,
+      prompt: spec.prompt,
       model: input.record.model,
       ...(input.record.resolved_model?.variant === undefined ? {} : { variant: input.record.resolved_model.variant }),
       ...(input.record.fallback_models === undefined ? {} : { fallbackModels: input.record.fallback_models.map(modelSelector) }),
@@ -91,16 +98,18 @@ async function respawnInProcess(input: {
   readonly record: TaskRecord
   readonly sessionPath: string
   readonly stateDir: string
+  readonly attachVerification?: (spec: ManagedStartSpec) => ManagedStartSpec
   readonly runners: Readonly<Record<"in-process" | "process", ManagedRunner>>
 }): Promise<RespawnResult> {
   const rebuilt = buildRespawnManagedSpec(input.record, input.stateDir)
   if (!rebuilt.ok) return failure("unrecoverable", rebuilt.code, rebuilt.reason)
   const resume = input.runners["in-process"].resume
   if (resume === undefined) return failure("unrecoverable", "respawn_failed", "in-process runner cannot resume sessions")
+  const spec = input.attachVerification === undefined ? rebuilt.spec : input.attachVerification(rebuilt.spec)
   let handle: ManagedChildHandle | undefined
   try {
     input.beforeLaunch()
-    handle = await resume(rebuilt.spec, input.sessionPath)
+    handle = await resume(spec, input.sessionPath)
     await continueInterruptedTurn(input.record, input.sessionPath, handle)
     return { ok: true, handle }
   } catch (error) {

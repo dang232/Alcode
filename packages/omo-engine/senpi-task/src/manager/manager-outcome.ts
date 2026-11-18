@@ -21,6 +21,10 @@ type ErrorOutcomeInput = {
 // Live manager state the tracker reads through, so every ownership verdict is computed from the
 // freshest handles and the freshest on-disk record rather than facts captured when the tracking
 // cycle was armed.
+import { completionBlockedMessage } from "../verification/completion-status"
+import type { CompletionGateVerdict, VerificationStatus } from "../verification/completion-status"
+import type { TerminalTaskRecord } from "./types"
+
 export type OutcomeTrackerPorts = {
   readonly store: TaskRecordStore
   readonly now: () => number
@@ -41,6 +45,14 @@ export type OutcomeTrackerPorts = {
   // one record that already carries merge_result. A late merge would publish "done" before the
   // parent checkout actually holds the work.
   readonly settleIsolation?: (taskId: string, merge: boolean) => Promise<void>
+  // The ordinary-completion gate. Consulted before a run may publish `completed`; a "blocked" verdict
+  // turns the terminal into a typed failure instead, while a "verified"/"unverified" verdict publishes
+  // success carrying that verification_status. The host capture that stages the evidence runs before
+  // the gate decides, so the port is async: awaiting it is the authority boundary between a settled
+  // child and any terminal publication. Absent means the wiring cannot verify (no verification
+  // authority at all), and the caller keeps the historical behaviour - publish success as
+  // "unverified" - rather than blocking every run.
+  readonly verifyCompletion?: (taskId: string, owned: TaskRecord) => CompletionGateVerdict | Promise<CompletionGateVerdict>
 }
 
 export type OutcomeTracker = {
@@ -107,6 +119,24 @@ function errnoField(error: unknown, key: "code" | "syscall" | "path"): string | 
   if (!(error instanceof Error) || !(key in error)) return undefined
   const value = (error as Error & Record<typeof key, unknown>)[key]
   return typeof value === "string" ? value : undefined
+}
+
+// Stamps the gate's verification claim onto the terminal record. Runs AFTER persistTerminal: the
+// terminal write re-reads the record, so only a stamp after it survives on disk. Guarded to a
+// terminal record of this same run, so a concurrent move - or a terminal write that never landed -
+// never stamps a live record. Only ever called with the verdict of this run, so "verified" is
+// written here solely on a gate verdict of "verified".
+function stampVerificationStatus(
+  ports: OutcomeTrackerPorts,
+  taskId: string,
+  epoch: number,
+  verification: VerificationStatus,
+): void {
+  ports.store.mutate(taskId, (fresh) => {
+    if (!STOPPED_RUN_TERMINAL.has(fresh.status) || fresh.notification.run_epoch !== epoch) return fresh
+    const stamped: TerminalTaskRecord = { ...fresh, verification_status: verification }
+    return stamped
+  })
 }
 
 export function createOutcomeTracker(ports: OutcomeTrackerPorts): OutcomeTracker {
@@ -236,7 +266,43 @@ export function createOutcomeTracker(ports: OutcomeTrackerPorts): OutcomeTracker
         if (settling !== undefined) await settling
         const runStatsField = runStats === undefined ? {} : { run_stats: runStats }
         if (outcome.status === "completed" && outcome.finalResponse.length > 0) {
-          persistTerminal(taskId, owned, timestamp, { type: "complete", timestamp, final_response: outcome.finalResponse, ...runStatsField })
+          // The one publication point for ordinary success. A "blocked" verdict is a real terminal
+          // failure with the gate's code in error_message, never a "completed" the parent would
+          // trust; a "verified"/"unverified" verdict publishes success carrying that claim, so the
+          // terminal record and the emitted event state it explicitly. The awaited call is the host
+          // capture plus gate: no terminal may land before the host has produced/read its evidence.
+          const verdict: CompletionGateVerdict = (await ports.verifyCompletion?.(taskId, owned)) ?? {
+            verification: "unverified",
+            reason: "no verification authority wired",
+          }
+          // The capture executes real commands and therefore yields. A stop that arrived while it
+          // ran wins over the verdict, and a run this tracker no longer owns (revival moved the
+          // epoch, teardown released the handle) publishes no terminal from here.
+          const stoppedAfterVerification = ports.stopSettlement?.(taskId)
+          if (stoppedAfterVerification !== undefined) return await settleStopped(taskId, handle, model, epoch, stoppedAfterVerification)
+          if (ownedRecord(ports, taskId, handle, epoch) === null) return
+          if (verdict.verification === "blocked") {
+            ports.store.appendEvent(taskId, {
+              type: "verification_blocked",
+              payload: { code: verdict.code, reason: verdict.reason, verification_status: "blocked" },
+            })
+            persistTerminal(taskId, owned, timestamp, {
+              type: "fail",
+              timestamp,
+              error_message: completionBlockedMessage(verdict),
+              ...runStatsField,
+            })
+            stampVerificationStatus(ports, taskId, epoch, "blocked")
+          } else {
+            if (verdict.verification === "unverified") {
+              ports.store.appendEvent(taskId, {
+                type: "verification_unverified",
+                payload: { reason: verdict.reason, verification_status: "unverified" },
+              })
+            }
+            persistTerminal(taskId, owned, timestamp, { type: "complete", timestamp, final_response: outcome.finalResponse, ...runStatsField })
+            stampVerificationStatus(ports, taskId, epoch, verdict.verification)
+          }
         } else if (outcome.status === "completed") {
           // A clean runner exit is not evidence that the child actually started. A session with
           // only its initiating user prompt can be reported as an empty completion; never publish

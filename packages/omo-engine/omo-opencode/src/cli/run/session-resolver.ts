@@ -45,7 +45,6 @@ export async function resolveSession(options: {
 
       if (attempt < SESSION_CREATE_MAX_RETRIES) {
         const delay = retryDelayMs * attempt
-        console.log(pc.dim(`  Retrying in ${delay}ms...`))
         await new Promise((resolve) => setTimeout(resolve, delay))
       }
       continue
@@ -63,7 +62,6 @@ export async function resolveSession(options: {
 
     if (attempt < SESSION_CREATE_MAX_RETRIES) {
       const delay = retryDelayMs * attempt
-      console.log(pc.dim(`  Retrying in ${delay}ms...`))
       await new Promise((resolve) => setTimeout(resolve, delay))
     }
   }

@@ -12,6 +12,34 @@ const MIGRATION_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 const ENGINE_PKGS = path.join(MIGRATION_ROOT, "oh-my-openAlcore", "packages");
 const TARGET = path.join(MIGRATION_ROOT, "Alcode-wt", "wave1", "packages", "omo-engine");
 
+// Refuse to run when the resolved roots do not exist. The roots are NOT
+// corrected here on purpose: this script's source of truth has not been
+// decided, and a wrong-but-plausible target would wipe a real tree. A dry run
+// is refused too, because its output would describe a copy that cannot happen.
+const resolvedRoots = [
+  ["ENGINE_PKGS", ENGINE_PKGS],
+  ["TARGET", TARGET],
+];
+const missingRoots = resolvedRoots.filter(([, dir]) => {
+  try {
+    return !fs.statSync(dir).isDirectory();
+  } catch {
+    return true;
+  }
+});
+if (missingRoots.length > 0) {
+  const lines = [
+    "vendor-omo-engine: refusing to run, resolved roots do not exist.",
+    `  MIGRATION_ROOT = ${MIGRATION_ROOT}`,
+    ...resolvedRoots.map(([name, dir]) => `  ${name} = ${dir}`),
+    ...missingRoots.map(([name]) => `  missing: ${name}`),
+    `  mode: ${APPLY ? "--apply" : "dry run"}`,
+    "Nothing was copied. Fix the roots deliberately, do not patch this guard.",
+  ];
+  console.error(lines.join("\n"));
+  process.exit(1);
+}
+
 // Full packages vendored whole.
 const WHOLE = [
   "senpi-task",

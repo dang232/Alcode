@@ -45,24 +45,179 @@ const resolveLoopCli = () => {
 // the same state `status` reports, and `revise-goals` steers the active
 // plan, which is the `steer` mutation entry: neither has a same-named
 // subcommand, so both ride the closest one.
+//
+// Every tool declares the flags its subcommand actually reads, because an
+// undeclared argument used to reach the CLI as a flag and silently became
+// positional brief text. `additionalProperties: false` plus the check in
+// validateArgs turns such a call into a named error instead.
+const scopeProperty = {
+  sessionId: { type: 'string', description: 'ULW loop session scope. Omit to use the default scope.' },
+};
+
+const schema = (properties, required) => {
+  const built = { type: 'object', properties, additionalProperties: false };
+  if (required !== undefined && required.length > 0) built.required = required;
+  return built;
+};
+
 const TOOLS = [
-  { name: 'create-goals', subcommand: 'create-goals', description: 'Create ULW goals from a brief. Pass taskKind readonly for surveys with no code changes.' },
-  { name: 'status', subcommand: 'status', description: 'Report ULW plan and goal status.' },
-  { name: 'complete', subcommand: 'complete-goals', description: 'Complete finished ULW goals.' },
-  { name: 'dispatch', subcommand: 'dispatch', description: 'Dispatch pending ULW goals to workers.' },
-  { name: 'record-child-result', subcommand: 'record-child-result', description: 'Record a ULW child completion.' },
-  { name: 'record-child-failure', subcommand: 'record-child-failure', description: 'Record a ULW child failure.' },
-  { name: 'record-evidence', subcommand: 'record-evidence', description: 'Record evidence for a success criterion (pass, fail, or blocked).' },
-  { name: 'checkpoint', subcommand: 'checkpoint', description: 'Write a ULW checkpoint.' },
-  { name: 'inspect', subcommand: 'status', description: 'Read-only view of ULW plan state.' },
-  { name: 'revise-goals', subcommand: 'steer', description: 'Revise ULW goals by steering the active plan.' },
+  {
+    name: 'create-goals',
+    subcommand: 'create-goals',
+    description: 'Create ULW goals from a brief. Pass brief or briefFile. taskKind readonly is for surveys with no code changes.',
+    inputSchema: schema({
+      brief: { type: 'string', description: 'The brief text the goals are derived from.' },
+      briefFile: { type: 'string', description: 'Path to a file holding the brief; used when brief is absent.' },
+      taskKind: { type: 'string', description: 'Task kind the plan is created for, e.g. readonly.' },
+      codexGoalMode: { type: 'string', description: 'Codex goal mode for the created plan.' },
+      force: { type: 'boolean', description: 'Replace an existing plan instead of refusing.' },
+      validationBatchJson: { anyOf: [{ type: 'string' }, { type: 'object' }], description: 'Validation batches, as a JSON string or an object.' },
+      ...scopeProperty,
+    }),
+  },
+  {
+    name: 'status',
+    subcommand: 'status',
+    description: 'Report ULW plan and goal status.',
+    inputSchema: schema({ ...scopeProperty }),
+  },
+  {
+    name: 'complete',
+    subcommand: 'complete-goals',
+    description: 'Complete finished ULW goals.',
+    inputSchema: schema({
+      retryFailed: { type: 'boolean', description: 'Retry goals that failed earlier instead of stopping.' },
+      ...scopeProperty,
+    }),
+  },
+  {
+    name: 'dispatch',
+    subcommand: 'dispatch',
+    description: 'Dispatch pending ULW goals to workers.',
+    inputSchema: schema({
+      goalId: { type: 'array', items: { type: 'string' }, description: 'Goal ids to dispatch; repeat for each goal.' },
+      childRole: { type: 'string', description: 'Role name recorded for the child worker.' },
+      ...scopeProperty,
+    }),
+  },
+  {
+    name: 'record-child-result',
+    subcommand: 'record-child-result',
+    description: 'Record a ULW child completion.',
+    inputSchema: schema({
+      goalId: { type: 'string', description: 'Goal the child was working on.' },
+      childId: { type: 'string', description: 'Identifier of the child worker.' },
+      resultRef: { type: 'string', description: 'Reference to where the child result lives.' },
+      childRole: { type: 'string', description: 'Role name recorded for the child worker.' },
+      ...scopeProperty,
+    }, ['goalId', 'childId', 'resultRef']),
+  },
+  {
+    name: 'record-child-failure',
+    subcommand: 'record-child-failure',
+    description: 'Record a ULW child failure.',
+    inputSchema: schema({
+      goalId: { type: 'string', description: 'Goal the child was working on.' },
+      childId: { type: 'string', description: 'Identifier of the child worker.' },
+      reason: { type: 'string', description: 'Why the child failed.' },
+      noRetry: { type: 'boolean', description: 'Mark the failure as not retryable.' },
+      childRole: { type: 'string', description: 'Role name recorded for the child worker.' },
+      ...scopeProperty,
+    }, ['goalId', 'childId', 'reason']),
+  },
+  {
+    name: 'record-evidence',
+    subcommand: 'record-evidence',
+    description: 'Record evidence for a success criterion (pass, fail, or blocked).',
+    inputSchema: schema({
+      goalId: { type: 'string', description: 'Goal the criterion belongs to.' },
+      criterionId: { type: 'string', description: 'Criterion the evidence is recorded against.' },
+      status: { type: 'string', description: 'Evidence verdict: pass, fail, or blocked.' },
+      evidence: { type: 'string', description: 'What was observed.' },
+      notes: { type: 'string', description: 'Optional notes beside the evidence.' },
+      ...scopeProperty,
+    }, ['goalId', 'criterionId', 'status', 'evidence']),
+  },
+  {
+    name: 'checkpoint',
+    subcommand: 'checkpoint',
+    description: 'Write a ULW checkpoint.',
+    inputSchema: schema({
+      goalId: { type: 'string', description: 'Goal the checkpoint belongs to.' },
+      status: { type: 'string', description: 'Checkpoint status to record.' },
+      evidence: { type: 'string', description: 'Evidence supporting the checkpoint.' },
+      noAdvance: { type: 'boolean', description: 'Write the checkpoint without advancing the plan.' },
+      printTemplate: { type: 'boolean', description: 'Print the checkpoint template instead of writing one.' },
+      codexGoalJson: { anyOf: [{ type: 'string' }, { type: 'object' }], description: 'Codex goal payload, as a JSON string or an object.' },
+      qualityGateJson: { anyOf: [{ type: 'string' }, { type: 'object' }], description: 'Quality gate payload, as a JSON string or an object.' },
+      ...scopeProperty,
+    }),
+  },
+  {
+    name: 'inspect',
+    subcommand: 'status',
+    description: 'Read-only view of ULW plan state.',
+    inputSchema: schema({ ...scopeProperty }),
+  },
+  {
+    name: 'revise-goals',
+    subcommand: 'steer',
+    description: 'Revise ULW goals by steering the active plan. Pass kind, evidence and rationale, plus the flags that kind needs (or proposalsJson for a batch).',
+    inputSchema: schema({
+      kind: { type: 'string', description: 'Steering mutation kind, e.g. add_subgoal, split_subgoal, reorder_pending, revise_pending_wording, revise_criterion, annotate_ledger, mark_blocked_superseded.' },
+      evidence: { type: 'string', description: 'What was observed that motivates the steer.' },
+      rationale: { type: 'string', description: 'Why the steer is correct.' },
+      source: { type: 'string', description: 'Steering source.' },
+      idempotencyKey: { type: 'string', description: 'Key that makes a repeated steer replay instead of duplicating.' },
+      proposalsJson: { anyOf: [{ type: 'string' }, { type: 'array' }], description: 'Proposals for a batch steer, as a JSON string or an array; mutually exclusive with kind.' },
+      goalId: { type: 'string', description: 'Goal the steer targets.' },
+      title: { type: 'string', description: 'New or added goal title.' },
+      objective: { type: 'string', description: 'New or added goal objective.' },
+      criterionId: { type: 'string', description: 'Criterion the steer revises.' },
+      scenario: { type: 'string', description: 'Revised criterion scenario.' },
+      expectedEvidence: { type: 'string', description: 'Revised expected evidence.' },
+      userModel: { type: 'string', description: 'Revised user-model note.' },
+      children: { type: 'array', items: { type: 'string' }, description: 'Child goals for split_subgoal.' },
+      order: { type: 'array', items: { type: 'string' }, description: 'Pending goal order for reorder_pending.' },
+      replacements: { type: 'array', items: { type: 'string' }, description: 'Replacement goals for mark_blocked_superseded.' },
+      ...scopeProperty,
+    }, ['evidence', 'rationale']),
+  },
 ];
 
 const toolRecord = (tool) => ({
   name: tool.name,
   description: tool.description,
-  inputSchema: { type: 'object', additionalProperties: true },
+  inputSchema: tool.inputSchema,
 });
+
+const validateArgs = (tool, params) => {
+  const declared = Object.keys(tool.inputSchema.properties ?? {});
+  const supplied = Object.keys(Object(params ?? {}));
+  const unknown = supplied.filter((key) => !declared.includes(key));
+  if (unknown.length > 0) {
+    return `Unknown argument(s) for ${tool.name}: ${unknown.join(', ')}. Allowed: ${declared.join(', ') || '(none)'}.`;
+  }
+  const missing = (tool.inputSchema.required ?? []).filter((key) => {
+    const value = params?.[key];
+    return value === undefined || value === null || value === '';
+  });
+  if (missing.length > 0) {
+    return `Missing required argument(s) for ${tool.name}: ${missing.join(', ')}.`;
+  }
+  if (tool.name === 'revise-goals') {
+    const filled = (value) => value !== undefined && value !== null && String(value).trim().length > 0;
+    const hasKind = filled(params?.kind);
+    const hasBatch = filled(params?.proposalsJson);
+    if (!hasKind && !hasBatch) {
+      return 'Missing required argument(s) for revise-goals: kind (or proposalsJson for a batch).';
+    }
+    if (hasKind && hasBatch) {
+      return 'kind and proposalsJson are mutually exclusive for revise-goals.';
+    }
+  }
+  return null;
+};
 
 const toKebab = (key) => String(key).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 
@@ -93,6 +248,10 @@ const callTool = (name, params) => {
   const tool = TOOLS.find((entry) => entry.name === name);
   if (!tool) {
     return { isError: true, content: [{ type: 'text', text: `Unknown ULW tool: ${name}.` }] };
+  }
+  const invalid = validateArgs(tool, params);
+  if (invalid !== null) {
+    return { isError: true, content: [{ type: 'text', text: invalid }] };
   }
   let cli;
   try {

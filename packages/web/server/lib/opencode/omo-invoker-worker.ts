@@ -322,6 +322,9 @@ if (kind === "wrapper") {
 if (!engineRoot) fail(`missing ${ENGINE_ROOT_FLAG} <dir>`);
 // SAFETY: fail() above exits the process, so engineRoot is a string here.
 const barrelSpecifier = resolveBarrelSpecifier(engineRoot as string);
+// Native-kind jobs are product runs, and the barrel records delivery state at
+// that seam; wrapper-kind jobs never reach this line.
+process.env.OMO_PRODUCT_RUN = "1";
 // SAFETY: narrowed by the undefined/null check immediately below; self-test prints the real export names.
 const barrel = await loadBarrel(barrelSpecifier);
 // SAFETY: narrowed by the undefined/null check immediately below; self-test prints the real export names.

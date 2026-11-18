@@ -1,0 +1,474 @@
+{
+  "schemaVersion": 1,
+  "phase": "code-graph-production-freshness",
+  "generatedAt": "2026-11-05",
+  "repository": {
+    "path": "I:/migration/Alwork",
+    "branch": "main",
+    "baseCommit": "f0c6b70cc8d76401c8c84c9c22376bcf62117957",
+    "baseTag": "v0.2.3",
+    "worktree": "uncommitted phase-1 changes (5 modified, 3 new test files, docs)"
+  },
+  "environment": {
+    "os": "win32 x64 (Windows 11)",
+    "cpu": "12th Gen Intel(R) Core(TM) i5-12400F, 12 cores",
+    "runtime": "Bun 1.4.2",
+    "concurrentLoad": "Alcode desktop app running during the real-scope measurement",
+    "measuredOn": "Windows only"
+  },
+  "rootCause": {
+    "classification": "EXECUTED_SOURCE_INSPECTION",
+    "statement": "Production constructed the code-graph host without watcherEnabled, so isWatcherEnabled() fell through to an unset env flag and the watcher never started.",
+    "evidence": [
+      {
+        "file": "packages/web/server/index.js",
+        "line": 679,
+        "before": "createCodeGraphHost({ storeDir: ... })",
+        "after": "createCodeGraphHost({ storeDir: ..., watcherEnabled: true })"
+      },
+      {
+        "file": "packages/web/server/lib/code-graph/runtime.js",
+        "symbol": "isWatcherEnabled",
+        "note": "explicit env flag now decides both directions"
+      },
+      {
+        "file": "packages/web/server/lib/code-graph/host.js",
+        "symbol": "resolveWatcherEnv",
+        "note": "exported pure decision; never overwrites an operator-set flag"
+      }
+    ]
+  },
+  "tests": [
+    {
+      "suite": "production wiring, precedence, lifecycle, payload",
+      "file": "packages/web/server/lib/code-graph/runtime.watcher-default.test.js",
+      "command": "cd packages/web && bunx vitest run server/lib/code-graph/runtime.watcher-default.test.js",
+      "result": "16 passed / 0 failed",
+      "executedBy": "orchestrator (this session)",
+      "classification": "EXECUTED_TEST_OUTPUT",
+      "names": [
+        "the server constructs the code-graph host with watcherEnabled enabled",
+        "defaults the worker env to watching when the host asks and nothing is set",
+        "never overwrites a watcher flag the operator set explicitly",
+        "carries an explicit disable down as the kill switch",
+        "passes a finite debounce through and ignores a non-finite one",
+        "an explicit =0 flag beats a host that enables watching by default",
+        "an explicit =1 flag enables a runtime that was not asked to watch",
+        "stays disabled when nothing asks: the revision gate remains the default",
+        "the settings sync gate beats a host that enables watching",
+        "the kill switch beats a host that enables watching",
+        "repeated reads on one scope start exactly one watcher",
+        "close() disposes every watcher and its timers",
+        "a watcher that cannot start leaves the revision gate instead of throwing",
+        "a factory that returns no usable handle is ignored",
+        "the index summary carries the resolved watcher state",
+        "reports watching off when it is off, so the panel cannot claim otherwise"
+      ]
+    },
+    {
+      "suite": "filesystem correctness against a clean full-build reference",
+      "file": "packages/web/server/lib/code-graph/runtime.watcher-fs.test.js",
+      "command": "cd packages/web && bunx vitest run server/lib/code-graph/runtime.watcher-fs.test.js",
+      "result": "10 passed / 0 failed",
+      "executedBy": "orchestrator (this session); authored by a delegated lane and audited line by line before execution",
+      "classification": "EXECUTED_TEST_OUTPUT",
+      "names": [
+        "file create",
+        "file edit",
+        "file delete",
+        "file rename (single identity, old path absent)",
+        "directory create",
+        "directory delete",
+        "atomic save (tmp + rename)",
+        "rapid consecutive saves (generation exactly base+1)",
+        "bulk change (10 files)",
+        "events during an active build join the sync and settle correctly (exactly one new generation)"
+      ],
+      "referenceMethod": "second runtime, fresh store dir, ALCODE_CODE_GRAPH_NO_ALGRAPH=1, clean build of the same tree; entry/node/edge counts must match"
+    },
+    {
+      "suite": "code-graph panel watcher line",
+      "file": "packages/ui/src/components/code-graph/CodeGraphPanel.watcher.test.tsx",
+      "command": "cd packages/ui && bun test src/components/code-graph/",
+      "result": "133 passed / 0 failed across 12 files (includes 5 new watcher tests)",
+      "executedBy": "orchestrator (this session); authored by a delegated lane and audited before execution",
+      "classification": "EXECUTED_TEST_OUTPUT"
+    },
+    {
+      "suite": "full code-graph server suite",
+      "command": "cd packages/web && bunx vitest run server/lib/code-graph/",
+      "result": "21 files passed / 183 tests passed / 0 failed",
+      "executedBy": "orchestrator (this session)",
+      "classification": "EXECUTED_TEST_OUTPUT",
+      "note": "includes the previously load-flaky freshness/partial-publish/contract tests, which passed on a quiet machine"
+    },
+    {
+      "suite": "changed-files gate",
+      "command": "node scripts/check-changed.mjs",
+      "result": "All checks passed (exit 0)",
+      "executedBy": "orchestrator (this session)",
+      "classification": "EXECUTED_COMMAND",
+      "gateLog": "C:/Users/dangq/AppData/Local/Temp/ulw-fresh/gate2.log",
+      "findingsFixedDuringVerification": [
+        "anti-slop(no-unsafe-dictionary-type) x4 and anti-slop(no-known-value-widening) x1 in CodeGraphPanel.watcher.test.tsx: the delegated fixture used Record<string, unknown>; replaced with the owner contract Partial<CodeGraphIndexSummary> / CodeGraphIndexSummary and a concrete ExploreBody shape.",
+        "react-hooks(exhaustive-deps) warning in CodeGraphPanel.tsx: watcherLine memo depended on arrays rebuilt every render; the pending count is now a primitive dep.",
+        "TS2353 in the same fixture: the explore envelope carried a coverage field absent from the index summary; typed as its own concrete shape."
+      ]
+    }
+  ],
+  "measurements": {
+    "classification": "EXECUTED_RUNTIME_MEASUREMENT",
+    "keptSeparate": true,
+    "coldIndex": [
+      {
+        "scope": "I:/migration/Alwork",
+        "entries": 7198,
+        "nodes": 517410,
+        "edges": 541071,
+        "ms": 365728,
+        "generation": 26,
+        "freshness": "fresh",
+        "truncated": false
+      },
+      {
+        "scope": "sdk-copy (68 files, real TypeScript git repo)",
+        "entries": 68,
+        "nodes": 6508,
+        "edges": 6695,
+        "msRange": [
+          3372,
+          3824
+        ]
+      }
+    ],
+    "sameSessionEditToVisibleWithWatcher": [
+      {
+        "scope": "I:/migration/Alwork",
+        "change": "create one .ts file",
+        "ms": 17326,
+        "generationBefore": 26,
+        "generationAfter": 30,
+        "entriesBefore": 7198,
+        "entriesAfter": 7201
+      },
+      {
+        "scope": "I:/migration/Alwork",
+        "change": "delete that file",
+        "ms": 4883,
+        "generationBefore": 30,
+        "generationAfter": 31,
+        "entriesBefore": 7201,
+        "entriesAfter": 7200
+      }
+    ],
+    "freshProcessRestore": [
+      {
+        "scope": "sdk-copy",
+        "ms": 387,
+        "entries": 68,
+        "nodes": 6508,
+        "edges": 6695
+      },
+      {
+        "scope": "sdk-copy",
+        "ms": 440,
+        "entries": 68,
+        "nodes": 6508,
+        "edges": 6695
+      }
+    ],
+    "freshProcessRecoveryAfterOffSessionChanges": [
+      {
+        "scope": "sdk-copy",
+        "msRange": [
+          3081,
+          3648
+        ],
+        "mode": "rebuild (revision miss)",
+        "result": "added symbol present, deleted symbol absent"
+      }
+    ],
+    "convergence": [
+      {
+        "scope": "sdk-copy",
+        "stored": {
+          "entries": 68,
+          "nodes": 6508,
+          "edges": 6695
+        },
+        "cleanBuild": {
+          "entries": 68,
+          "nodes": 6508,
+          "edges": 6695
+        },
+        "equal": true
+      }
+    ],
+    "notMeasured": [
+      "warm restore on the 7,198-entry scope (probe cancelled)",
+      "real-monorepo convergence (tree moved during the run; convergence proven on the frozen-tree repo and the 10-scenario suite instead)"
+    ]
+  },
+  "restartRecovery": {
+    "classification": "EXECUTED_CROSS_PROCESS",
+    "sequence": [
+      {
+        "step": 1,
+        "process": "A",
+        "action": "index",
+        "ms": 3372,
+        "entries": 68,
+        "nodes": 6508,
+        "generation": 1,
+        "manifestScope": "restart-repo-54a78134--restart-repo"
+      },
+      {
+        "step": 2,
+        "process": "none",
+        "action": "mutate while closed: add file, rename file, commit"
+      },
+      {
+        "step": 3,
+        "process": "B",
+        "action": "reopen",
+        "ms": 3648,
+        "entries": 69,
+        "nodes": 6511,
+        "addedSymbol": [
+          "zzRestartProbe"
+        ],
+        "mode": "rebuild (revision miss)"
+      },
+      {
+        "step": 4,
+        "process": "C",
+        "action": "restart again",
+        "ms": 440,
+        "entries": 69,
+        "nodes": 6511,
+        "mode": "restore (persisted)"
+      },
+      {
+        "step": 5,
+        "process": "none",
+        "action": "delete file outright, commit"
+      },
+      {
+        "step": 6,
+        "process": "D",
+        "action": "reopen",
+        "ms": 3081,
+        "entries": 68,
+        "nodes": 6508,
+        "deletedSymbol": [],
+        "mode": "rebuild"
+      },
+      {
+        "step": 7,
+        "process": "E",
+        "action": "restart",
+        "ms": 387,
+        "entries": 68,
+        "nodes": 6508,
+        "mode": "restore (persisted)"
+      }
+    ],
+    "conclusion": "Off-session changes are detected automatically on the next open and converge to a clean build; the resulting generation persists and is restored by the following process without any manual action."
+  },
+  "branchSwitch": {
+    "classification": "EXECUTED_RUNTIME_MEASUREMENT",
+    "scope": "sdk-copy real TypeScript repo (69 entries)",
+    "method": "exact symbol membership (name === query); the graph search is fuzzy and returns near-matches, so substring hits were discarded",
+    "results": [
+      {
+        "checkedOut": "master",
+        "zzBranchOnly": "absent",
+        "zzMainOnly": "present"
+      },
+      {
+        "checkedOut": "feature/branch-probe",
+        "zzBranchOnly": "present",
+        "zzMainOnly": "absent"
+      }
+    ],
+    "caveat": "each check ran in a fresh process; a branch switch under a live watcher was not measured"
+  },
+  "liveQa": {
+    "status": "PENDING_MAINTAINER",
+    "reason": "the running Alcode instance predates this source change; a packaged rebuild is required to see the panel line live",
+    "checklist": "docs/architecture/code-graph-production-freshness.md section 11",
+    "serverBootProbe": {
+      "command": "ALCODE_DATA_DIR=<temp> ALCODE_RELAY_HOST=off ALCODE_ALLOW_DEV_ORIGINS=1 bun server/index.js --port 3987",
+      "result": "booted and listened on 127.0.0.1:3987; /api/code-graph/index returned HTTP 401 (auth gate), so watcher.enabled could not be read over HTTP in this pass",
+      "classification": "EXECUTED_COMMAND"
+    }
+  },
+  "knownLimitations": [
+    "Generation numbers can repeat across restarts after a revision miss (buildSeq starts at 0 per runtime, adopted only on restore). Pre-existing; measured as manifest buildSeq=1 with nodeCount 6508->6511->6508 across three processes.",
+    "Branch switch is proven on a fresh process, not under a live watcher.",
+    "Warm restore on the 7,198-entry scope not measured.",
+    "Panel copy is literal English, consistent with adjacent status lines; no i18n keys added.",
+    "Windows-only measurement.",
+    "Watcher reacts to documentation writes as well as source edits."
+  ],
+  "filesChanged": [
+    "packages/web/server/index.js",
+    "packages/web/server/lib/code-graph/runtime.js",
+    "packages/web/server/lib/code-graph/host.js",
+    "packages/ui/src/lib/codeGraphApi.ts",
+    "packages/ui/src/components/code-graph/CodeGraphPanel.tsx",
+    "packages/web/server/lib/code-graph/runtime.watcher-default.test.js (new)",
+    "packages/web/server/lib/code-graph/runtime.watcher-fs.test.js (new)",
+    "packages/ui/src/components/code-graph/CodeGraphPanel.watcher.test.tsx (new)"
+  ],
+  "nonDestruction": {
+    "committed": false,
+    "gitStateChangingCommandsRun": false,
+    "preExistingUntrackedPreserved": "docs/architecture/ audit reports from the previous task"
+  },
+  "phase11": {
+    "generatedAt": "2026-11-05",
+    "repository": {
+      "rev": "f0c6b70cc8d76401c8c84c9c22376bcf62117957",
+      "note": "uncommitted Phase 1 + Phase 1.1 working tree"
+    },
+    "generationIdentity": {
+      "classification": "EXECUTED_CROSS_PROCESS",
+      "fix": "runtime.js adoptPublishedSeq adopts the stale manifest buildSeq on a revision miss",
+      "sequence": [
+        {
+          "step": "cold build",
+          "generation": 1
+        },
+        {
+          "step": "restart + restore",
+          "generation": 1,
+          "ms": 159
+        },
+        {
+          "step": "modify while closed",
+          "generation": null
+        },
+        {
+          "step": "restart + rebuild",
+          "generation": 2,
+          "note": "was 1 before the fix"
+        },
+        {
+          "step": "restart + restore",
+          "generation": 2,
+          "ms": 190
+        }
+      ],
+      "arithmeticProbe": {
+        "forcedStored": 26,
+        "rebuilt": 27,
+        "persisted": 27
+      },
+      "tests": {
+        "file": "runtime.generation-monotonic.test.js",
+        "result": "6 passed / 0 failed"
+      }
+    },
+    "frozenEquivalence": {
+      "classification": "EXECUTED_CONTENT_COMPARISON",
+      "frozenRev": "f0c6b70cc8d76401c8c84c9c22376bcf62117957",
+      "method": "manifest-published content-addressed shard hash sets + node id sets (never directory listing, never counts alone)",
+      "live": {
+        "generation": 53,
+        "shards": 7274,
+        "files": 7274,
+        "records": 517916,
+        "uniqueIds": 517916,
+        "repeatedIds": 0
+      },
+      "clean": {
+        "entries": 7203,
+        "shards": 7274,
+        "files": 7274,
+        "records": 517916,
+        "uniqueIds": 517916,
+        "repeatedIds": 0,
+        "ms": 399554
+      },
+      "verdict": {
+        "shardsEqual": true,
+        "filesEqual": true,
+        "idsEqual": true,
+        "onlyLive": 0,
+        "onlyClean": 0
+      },
+      "harnessCorrections": [
+        "first run omitted storeDir so nothing persisted and a 6-hour-old store was compared; fixed",
+        "first run listed the shard directory instead of the manifest list, miscounting 6 orphaned shards as 1137 duplicate identities; fixed"
+      ]
+    },
+    "branchSwitch": {
+      "classification": "EXECUTED_TEST_OUTPUT",
+      "file": "runtime.branch-switch.test.js",
+      "result": "6 passed / 0 failed"
+    },
+    "eventEfficiency": {
+      "classification": "EXECUTED_INSTRUMENTATION",
+      "osEventsPerFileCreate": 3,
+      "events": [
+        "rename:<file>",
+        "change:<dir>",
+        "change:<file>"
+      ],
+      "readyEventsForSameGeneration": 2,
+      "generationDelta": 1,
+      "filtering": {
+        "mdWriteDelta": 0,
+        "tmpWriteDelta": 0,
+        "tsWriteDelta": 1
+      }
+    },
+    "crossPlatform": {
+      "classification": "EXECUTED",
+      "windows": "verified on host",
+      "linux": {
+        "kernel": "6.6.114.1-microsoft-standard-WSL2",
+        "recursiveWatch": "supported (2 nested events; non-recursive control 0)",
+        "suites": "32/32 on Linux-native vitest",
+        "executedBy": "delegated lane; recursive probe re-verified by orchestrator"
+      },
+      "macos": "UNVERIFIED - no macOS host available"
+    },
+    "knownLimitations": [
+      "macOS watcher behaviour unverified",
+      "a burst coalesces to one generation, so large-scope edits take seconds not milliseconds",
+      "orphaned shard files can accumulate on disk after a killed build (published graph unaffected)",
+      "live in-app UI observation remains the maintainer pass"
+    ],
+    "testSuiteFlakiness": {
+      "classification": "EXECUTED_TEST_OUTPUT",
+      "observation": "directory-level runs of server/lib/code-graph/ are load-sensitive; file-level runs are stable",
+      "measurements": [
+        {
+          "run": "full directory (23 files)",
+          "result": "194/195 passed, 1 failed: runtime.watcher-fs \"events during an active build\"",
+          "followedBy": "same file alone: 10/10 passed"
+        },
+        {
+          "run": "full directory x2 more",
+          "result": "1 pass, 1 fail: runtime.freshness \"a burst of writes coalesces to exactly one background sync\""
+        },
+        {
+          "run": "each affected file alone",
+          "result": "both pass"
+        }
+      ],
+      "knownFlakyTests": [
+        "runtime.freshness.test.js > S4 native watcher freshness driver > a burst of writes coalesces to exactly one background sync (pre-existing)",
+        "runtime.watcher-fs.test.js > watcher filesystem consistency > events during an active build join the sync and settle correctly (added in Phase 1.1)"
+      ],
+      "followUp": "both assert timing under parallel load; they need deterministic synchronization (injected clock or a configurable debounce) rather than a wider timeout",
+      "notHidden": true
+    },
+    "gate": {
+      "command": "node scripts/check-changed.mjs",
+      "result": "All checks passed (exit 0)"
+    }
+  }
+}

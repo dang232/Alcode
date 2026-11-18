@@ -3,7 +3,8 @@
  *
  * Single-writer rule: native tools are the only writers of this store. The
  * CLI-owned loop files under `<repoRoot>/.omo/ulw-loop` stay CLI-written;
- * nothing here reads or writes them.
+ * the native plan-store adapter reads one only to adopt a run id and never
+ * writes it. Dispatch resolves a CLI session id through that adapter.
  *
  * The store module itself is owned by the a2-store node of this run. This
  * file re-checks its exports exist before use: when the store lane failed,
