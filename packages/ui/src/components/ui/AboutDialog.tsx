@@ -11,6 +11,7 @@ import { Icon } from "@/components/icon/Icon";
 import { useI18n } from '@/lib/i18n';
 import { getDesktopAppVersion } from '@/lib/desktopNative';
 import { runtimeFetch } from '@/lib/runtime-fetch';
+import { CHECK_FOR_UPDATES_EVENT } from '@/hooks/useMenuActions';
 
 interface AboutDialogProps {
   open: boolean;
@@ -196,25 +197,14 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
                 <Icon name="github-fill" className="h-4 w-4" />
                 <span>GitHub</span>
               </a>
-              <a
-                href="https://discord.gg/ZYRSdnwwKA"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 typography-meta text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Icon name="discord-fill" className="h-4 w-4" />
-                <span>Discord</span>
-              </a>
             </div>
-            <a
-              href="https://x.com/openchamber_dev"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 typography-meta text-muted-foreground hover:text-foreground transition-colors"
+            <button
+              type="button"
+              onClick={() => { window.dispatchEvent(new Event(CHECK_FOR_UPDATES_EVENT)); }}
+              className="typography-meta text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
             >
-              <Icon name="twitter-xfill" className="h-4 w-4" />
-              <span>@openchamber_dev</span>
-            </a>
+              {t('settings.alcode.about.actions.checkForUpdates')}
+            </button>
           </div>
 
           <p className="typography-meta text-muted-foreground/60 pt-2">

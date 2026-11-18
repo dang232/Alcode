@@ -58,7 +58,7 @@ const copyCurrentSelectionFallback = async (): Promise<boolean> => {
 };
 
 const MENU_ACTION_EVENT = 'alcode:menu-action';
-const CHECK_FOR_UPDATES_EVENT = 'alcode:check-for-updates';
+export const CHECK_FOR_UPDATES_EVENT = 'alcode:check-for-updates';
 // The update dialog lives in the sidebar; this event is how a check triggered
 // from the application menu opens it once an update is actually available.
 export const UPDATE_AVAILABLE_EVENT = 'alcode:update-available';
