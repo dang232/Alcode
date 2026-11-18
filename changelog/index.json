@@ -7047,6 +7047,26 @@
     "vscode": null
   },
   {
+    "version": "0.3.3",
+    "date": "2026-11-18",
+    "title": "Your session survives a restart",
+    "intro": null,
+    "app": {
+      "new": [],
+      "improvements": [],
+      "fixes": [
+        "**The account panel keeps your identity after a force quit or restart:** the profile bound to the desktop session is stored next to the token store instead of only in memory, so quota reads keep a subject and the app stops asking you to sign in again."
+      ],
+      "misc": []
+    },
+    "vscode": {
+      "new": [],
+      "improvements": [],
+      "fixes": [],
+      "misc": []
+    }
+  },
+  {
     "version": "0.3.2",
     "date": "2026-11-18",
     "title": "The update check answers again",

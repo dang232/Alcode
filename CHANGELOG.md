@@ -4113,6 +4113,12 @@
 - Added GitHub Actions release pipeline with macOS signing/notarization, npm publish, and release asset uploads.
 - Introduced OpenCode agent chat experience with section-based navigation, theming, and session persistence.
 
+## [0.3.3] - 2026-11-18
+
+### Fixes
+
+- **The account panel keeps your identity after a force quit or restart:** the profile bound to the desktop session is stored next to the token store instead of only in memory, so quota reads keep a subject and the app stops asking you to sign in again.
+
 ## [0.3.2] - 2026-11-18
 
 ### Fixes
