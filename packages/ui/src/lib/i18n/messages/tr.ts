@@ -3955,4 +3955,8 @@ export const dict: Record<I18nKey, string> = {
   'instanceMode.vps': "VPS sunucum",
   'instanceMode.hint': "O sunucunun adresini ve gösterdiği istemci jetonunu yapıştırın.",
   'instanceMode.error.invalid': "Bu adres sunucu olarak kullanılamaz",
+  'instanceMode.localActive': "Bu bilgisayarda çalışır. Hiçbir şey bu makineden çıkmaz.",
+  'instanceMode.guide.lan': "O makinede `alcode connect-url --lan` çalıştırın, ardından adresi ve gösterilen istemci jetonunu yapıştırın.",
+  'instanceMode.guide.vps': "Sunucunda `alcode connect-url` çalıştır, kendi https adresinin arkasına al, sonra o adresi ve istemci jetonunu yapıştır.",
+  'instanceMode.guide.dismiss': "Anladım",
 };

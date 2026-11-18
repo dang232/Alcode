@@ -951,6 +951,13 @@ interface UIStore {
 
   // Settings IA (new shell)
   settingsPage: string;
+  /**
+   * Which self-hosted mode the instance switcher sent the user to set up. The
+   * Remote Instances page reads it once to show the matching guide, so choosing
+   * "my LAN server" or "my VPS" lands on instructions instead of a blank form.
+   */
+  remoteInstancesIntent: 'lan' | 'vps' | null;
+  setRemoteInstancesIntent: (intent: 'lan' | 'vps' | null) => void;
   settingsHasOpenedOnce: boolean;
   settingsProjectsSelectedId: string | null;
   /**
@@ -1527,6 +1534,7 @@ export const useUIStore = create<UIStore>()(
         isModelSelectorOpen: false,
         sidebarSection: 'sessions',
         settingsPage: 'home',
+        remoteInstancesIntent: null,
         settingsHasOpenedOnce: false,
         settingsProjectsSelectedId: null,
         settingsProjectPath: null,
@@ -2597,6 +2605,10 @@ export const useUIStore = create<UIStore>()(
 
         setSettingsPage: (slug) => {
           set({ settingsPage: slug });
+        },
+
+        setRemoteInstancesIntent: (intent) => {
+          set({ remoteInstancesIntent: intent });
         },
 
         setSettingsProvidersClassificationRequested: (requested) => {

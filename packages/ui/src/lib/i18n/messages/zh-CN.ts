@@ -3957,4 +3957,8 @@ export const dict: Record<I18nKey, string> = {
   'instanceMode.vps': "我的 VPS",
   'instanceMode.hint': "粘贴该服务器的地址和它显示的客户端令牌。",
   'instanceMode.error.invalid': "该地址不能用作服务器",
+  'instanceMode.localActive': "在这台电脑上运行。不会离开这台机器。",
+  'instanceMode.guide.lan': "在那台机器上运行 `alcode connect-url --lan`，然后粘贴地址和它显示的客户端令牌。",
+  'instanceMode.guide.vps': "在你的服务器上运行 `alcode connect-url`，放到你自己的 https 地址后面，然后粘贴该地址和客户端令牌。",
+  'instanceMode.guide.dismiss': "知道了",
 };

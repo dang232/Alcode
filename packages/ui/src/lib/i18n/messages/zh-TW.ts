@@ -3956,4 +3956,8 @@ export const dict: Record<I18nKey, string> = {
   'instanceMode.vps': "我的 VPS",
   'instanceMode.hint': "貼上該伺服器的位址和它顯示的用戶端權杖。",
   'instanceMode.error.invalid': "該位址不能作為伺服器使用",
+  'instanceMode.localActive': "在這台電腦上執行。不會離開這台機器。",
+  'instanceMode.guide.lan': "在那台機器上執行 `alcode connect-url --lan`，然後貼上位址和它顯示的用戶端權杖。",
+  'instanceMode.guide.vps': "在你的伺服器上執行 `alcode connect-url`，放到你自己的 https 位址後面，然後貼上該位址和用戶端權杖。",
+  'instanceMode.guide.dismiss': "知道了",
 };

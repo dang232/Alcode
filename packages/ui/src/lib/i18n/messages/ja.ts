@@ -3956,4 +3956,8 @@ export const dict: Record<I18nKey, string> = {
   'instanceMode.vps': "自分のVPS",
   'instanceMode.hint': "そのサーバーのアドレスと表示されたクライアントトークンを貼り付けます。",
   'instanceMode.error.invalid': "このアドレスはサーバーとして使えません",
+  'instanceMode.localActive': "このコンピューターで実行されます。このマシンの外には出ません。",
+  'instanceMode.guide.lan': "そのマシンで `alcode connect-url --lan` を実行し、表示されたアドレスとクライアントトークンを貼り付けます。",
+  'instanceMode.guide.vps': "サーバーで `alcode connect-url` を実行し、自分の https アドレスの背後に置いて、そのアドレスとクライアントトークンを貼り付けます。",
+  'instanceMode.guide.dismiss': "了解",
 };

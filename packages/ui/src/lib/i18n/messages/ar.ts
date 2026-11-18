@@ -3981,4 +3981,8 @@ export const dict = {
   'instanceMode.vps': "خادم VPS الخاص بي",
   'instanceMode.hint': "الصق عنوان ذلك الخادم ورمز العميل الذي يعرضه.",
   'instanceMode.error.invalid': "لا يمكن استخدام هذا العنوان كخادم",
+  'instanceMode.localActive': "يعمل على هذا الحاسوب. لا شيء يغادر هذا الجهاز.",
+  'instanceMode.guide.lan': "على ذلك الجهاز شغّل `alcode connect-url --lan` ثم الصق العنوان ورمز العميل.",
+  'instanceMode.guide.vps': "على خادمك شغّل `alcode connect-url` ثم ضعه خلف عنوان https الخاص بك، والصق ذلك العنوان ورمز العميل.",
+  'instanceMode.guide.dismiss': "فهمت",
 };

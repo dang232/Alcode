@@ -253,6 +253,7 @@ export function DesktopHostSwitcherDialog({
   const { t } = useI18n();
   const setSettingsDialogOpen = useUIStore((state) => state.setSettingsDialogOpen);
   const setSettingsPage = useUIStore((state) => state.setSettingsPage);
+  const setRemoteInstancesIntent = useUIStore((state) => state.setRemoteInstancesIntent);
   const isRuntimeConnected = useConfigStore((state) => state.isConnected);
 
   const [configHosts, setConfigHosts] = React.useState<DesktopHost[]>([]);
@@ -337,11 +338,15 @@ export function DesktopHostSwitcherDialog({
     }
   }, [t]);
 
-  const openRemoteInstancesSettings = React.useCallback(() => {
+  // "My LAN server" and "My VPS" land on the guide for that mode instead of the
+  // same blank form, so the user reads how to start the server and where the
+  // token comes from before typing anything.
+  const openRemoteInstancesGuide = React.useCallback((intent: 'lan' | 'vps') => {
+    setRemoteInstancesIntent(intent);
     setSettingsPage('remote-instances');
     setSettingsDialogOpen(true);
     onOpenChange(false);
-  }, [onOpenChange, setSettingsDialogOpen, setSettingsPage]);
+  }, [onOpenChange, setRemoteInstancesIntent, setSettingsDialogOpen, setSettingsPage]);
 
   // Tells the user which of the three self-hosted modes the address they typed
   // belongs to, and names the reason before it reaches the host list.
@@ -1150,20 +1155,33 @@ export function DesktopHostSwitcherDialog({
         )}
 
         <div className="flex-shrink-0 border-t border-[var(--interactive-border)]">
-          {(['local', 'lan', 'vps'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className="w-full flex items-start gap-2 px-2 py-2 text-start text-muted-foreground hover:text-foreground hover:bg-interactive-hover/30 transition-colors"
-              onClick={openRemoteInstancesSettings}
-            >
-              <Icon name={mode === 'local' ? 'computer' : mode === 'lan' ? 'global' : 'cloud'} className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="flex flex-col">
-                <span className="typography-ui-label">{t(instanceModeLabelKey(mode))}</span>
-                <span className="typography-meta text-muted-foreground">{t('instanceMode.hint')}</span>
-              </span>
-            </button>
-          ))}
+          {(['local', 'lan', 'vps'] as const).map((mode) =>
+            mode === 'local' ? (
+              <div
+                key={mode}
+                className="w-full flex items-start gap-2 px-2 py-2 text-muted-foreground"
+              >
+                <Icon name="computer" className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="flex flex-col">
+                  <span className="typography-ui-label">{t(instanceModeLabelKey(mode))}</span>
+                  <span className="typography-meta text-muted-foreground">{t('instanceMode.localActive')}</span>
+                </span>
+              </div>
+            ) : (
+              <button
+                key={mode}
+                type="button"
+                className="w-full flex items-start gap-2 px-2 py-2 text-start text-muted-foreground hover:text-foreground hover:bg-interactive-hover/30 transition-colors"
+                onClick={() => openRemoteInstancesGuide(mode)}
+              >
+                <Icon name={mode === 'lan' ? 'global' : 'cloud'} className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="flex flex-col">
+                  <span className="typography-ui-label">{t(instanceModeLabelKey(mode))}</span>
+                  <span className="typography-meta text-muted-foreground">{t('instanceMode.hint')}</span>
+                </span>
+              </button>
+            ),
+          )}
         </div>
 
         {error && (

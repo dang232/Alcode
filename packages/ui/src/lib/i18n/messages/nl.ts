@@ -3956,4 +3956,8 @@ export const dict = {
   'instanceMode.vps': "Mijn VPS",
   'instanceMode.hint': "Plak het adres van die server en het clienttoken dat hij toont.",
   'instanceMode.error.invalid': "Dat adres kan niet als server dienen",
+  'instanceMode.localActive': "Draait op deze computer. Niets verlaat deze machine.",
+  'instanceMode.guide.lan': "Voer op die machine `alcode connect-url --lan` uit en plak daarna het adres en het getoonde clienttoken.",
+  'instanceMode.guide.vps': "Voer op je server `alcode connect-url` uit, zet hem achter je eigen https-adres en plak dat adres plus clienttoken.",
+  'instanceMode.guide.dismiss': "Begrepen",
 } as const;

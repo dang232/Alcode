@@ -3981,4 +3981,8 @@ export const dict = {
   'instanceMode.vps': "ה-VPS שלי",
   'instanceMode.hint': "הדבק את כתובת השרת ואת אסימון הלקוח שהוא מציג.",
   'instanceMode.error.invalid': "לא ניתן להשתמש בכתובת הזו כשרת",
+  'instanceMode.localActive': "פועל על המחשב הזה. שום דבר לא יוצא מהמכונה הזו.",
+  'instanceMode.guide.lan': "במכונה הזו הרץ `alcode connect-url --lan` ואז הדבק את הכתובת ואת אסימון הלקוח.",
+  'instanceMode.guide.vps': "בשרת שלך הרץ `alcode connect-url`, הצב אותו מאחורי כתובת ה-https שלך, ואז הדבק את הכתובת ואת אסימון הלקוח.",
+  'instanceMode.guide.dismiss': "הבנתי",
 };

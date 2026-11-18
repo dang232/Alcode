@@ -3955,4 +3955,8 @@ export const dict = {
   'instanceMode.vps': "Mon VPS",
   'instanceMode.hint': "Collez l’adresse de ce serveur et le jeton client qu’il affiche.",
   'instanceMode.error.invalid': "Cette adresse ne peut pas servir de serveur",
+  'instanceMode.localActive': "Fonctionne sur cet ordinateur. Rien ne quitte cette machine.",
+  'instanceMode.guide.lan': "Sur cette machine, lancez `alcode connect-url --lan`, puis collez l’adresse et le jeton client affiché.",
+  'instanceMode.guide.vps': "Sur votre serveur, lancez `alcode connect-url`, placez-le derrière votre adresse https, puis collez cette adresse et le jeton client.",
+  'instanceMode.guide.dismiss': "Compris",
 } as const;

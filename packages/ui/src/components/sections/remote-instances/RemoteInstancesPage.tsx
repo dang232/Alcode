@@ -31,6 +31,7 @@ import {
   SETTINGS_NUMBER_INPUT_CLASS,
 } from '@/components/sections/shared/SettingsSection';
 import { SettingsInfoHint } from '@/components/sections/shared/SettingsInfoHint';
+import { instanceModeLabelKey } from '@/lib/instanceMode';
 import { useDesktopSshStore } from '@/stores/useDesktopSshStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { toast } from '@/components/ui';
@@ -440,6 +441,8 @@ const normalizeForSave = (instance: DesktopSshInstance): DesktopSshInstance => {
 
 export const RemoteInstancesPage: React.FC = () => {
   const { t } = useI18n();
+  const remoteInstancesIntent = useUIStore((state) => state.remoteInstancesIntent);
+  const setRemoteInstancesIntent = useUIStore((state) => state.setRemoteInstancesIntent);
   const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
   const { clientAuth } = useRuntimeAPIs();
   const showInstanceManagement = isDesktopShell();
@@ -1559,6 +1562,24 @@ export const RemoteInstancesPage: React.FC = () => {
   if (!draft) {
     return (
       <SettingsPageLayout title={t('settings.page.remoteInstances.title')}>
+        {remoteInstancesIntent !== null && (
+          <div className="rounded-lg border border-[var(--interactive-border)] bg-muted/20 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Icon name={remoteInstancesIntent === 'lan' ? 'global' : 'cloud'} className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="space-y-1">
+                  <div className="typography-ui-label text-foreground">{t(instanceModeLabelKey(remoteInstancesIntent))}</div>
+                  <div className="typography-meta text-muted-foreground">
+                    {t(remoteInstancesIntent === 'lan' ? 'instanceMode.guide.lan' : 'instanceMode.guide.vps')}
+                  </div>
+                </div>
+              </div>
+              <Button type="button" variant="outline" size="xs" className="!font-normal" onClick={() => setRemoteInstancesIntent(null)}>
+                {t('instanceMode.guide.dismiss')}
+              </Button>
+            </div>
+          </div>
+        )}
         {clientAuth ? (
           <SettingsSection
             title={t('settings.remoteInstances.clientAuth.title')}

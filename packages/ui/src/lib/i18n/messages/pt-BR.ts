@@ -3957,4 +3957,8 @@ export const dict: Record<I18nKey, string> = {
   'instanceMode.vps': "Meu VPS",
   'instanceMode.hint': "Cole o endereço desse servidor e o token de cliente que ele exibe.",
   'instanceMode.error.invalid': "Esse endereço não pode ser usado como servidor",
+  'instanceMode.localActive': "Roda neste computador. Nada sai desta máquina.",
+  'instanceMode.guide.lan': "Naquela máquina execute `alcode connect-url --lan` e cole o endereço e o token de cliente.",
+  'instanceMode.guide.vps': "No seu servidor execute `alcode connect-url`, coloque-o atrás do seu endereço https e cole esse endereço e o token de cliente.",
+  'instanceMode.guide.dismiss': "Entendi",
 };

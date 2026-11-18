@@ -3954,4 +3954,8 @@ export const dict = {
   'instanceMode.vps': "Mein VPS",
   'instanceMode.hint': "Adresse dieses Servers und das ausgegebene Client-Token einfügen.",
   'instanceMode.error.invalid': "Diese Adresse kann nicht als Server dienen",
+  'instanceMode.localActive': "Läuft auf diesem Computer. Nichts verlässt diese Maschine.",
+  'instanceMode.guide.lan': "Auf dieser Maschine `alcode connect-url --lan` ausführen, dann Adresse und ausgegebenes Client-Token einfügen.",
+  'instanceMode.guide.vps': "Auf deinem Server `alcode connect-url` ausführen, hinter deine eigene https-Adresse stellen und diese Adresse plus Client-Token einfügen.",
+  'instanceMode.guide.dismiss': "Verstanden",
 };
