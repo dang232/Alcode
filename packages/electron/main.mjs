@@ -2608,8 +2608,12 @@ const applyDesktopQuakeModeShortcut = () => {
 };
 
 const dispatchCheckForUpdates = () => {
-  // Preload dispatches this IPC notification as a DOM event.
-  emitToAllWindows('openchamber:check-for-updates');
+  // Same dual IPC + DOM delivery as the other menu actions: the renderer listens
+  // on the current channel name, and the pre-rename name reached nobody.
+  const target = getMenuTargetWindow();
+  if (!target) return;
+  emitToWindow(target, 'alcode:check-for-updates');
+  dispatchDomEventToWindow(target, 'alcode:check-for-updates');
 };
 
 const reloadMenuTargetWindow = () => {

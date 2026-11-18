@@ -19,6 +19,7 @@ import { useSessionProjectViewState } from './sidebar/projects/useSessionProject
 import { useProjectRepoStatus } from './sidebar/projects/useProjectRepoStatus';
 import { ProjectEditDialog } from '@/components/layout/ProjectEditDialog';
 import { UpdateDialog } from '@/components/ui/UpdateDialog';
+import { UPDATE_AVAILABLE_EVENT } from '@/hooks/useMenuActions';
 import { SidebarHeader } from './sidebar/shell/SidebarHeader';
 import { SidebarFooter } from './sidebar/shell/SidebarFooter';
 import { SidebarSearchEmptyState } from './sidebar/shell/SidebarSearchEmptyState';
@@ -99,6 +100,11 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
   const newWorktreeDialogOpen = useUIStore((state) => state.isNewWorktreeDialogOpen);
   const setNewWorktreeDialogOpen = useUIStore((state) => state.setNewWorktreeDialogOpen);
   const [updateDialogOpen, setUpdateDialogOpen] = React.useState(false);
+  React.useEffect(() => {
+    const onUpdateAvailable = () => setUpdateDialogOpen(true);
+    window.addEventListener(UPDATE_AVAILABLE_EVENT, onUpdateAvailable);
+    return () => window.removeEventListener(UPDATE_AVAILABLE_EVENT, onUpdateAvailable);
+  }, []);
   const initialActiveSessionByProject = React.useMemo<Map<string, string>>(() => {
     try {
       const raw = safeStorage.getItem(PROJECT_ACTIVE_SESSION_STORAGE_KEY);
