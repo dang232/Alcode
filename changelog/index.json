@@ -7047,6 +7047,27 @@
     "vscode": null
   },
   {
+    "version": "0.3.2",
+    "date": "2026-11-18",
+    "title": "The update check answers again",
+    "intro": null,
+    "app": {
+      "new": [],
+      "improvements": [],
+      "fixes": [
+        "**Check for Updates works from the menu:** the item emitted a channel the window no longer listened to, so it did nothing while the hourly check kept finding new versions. It now runs the check and opens the update dialog when one is available.",
+        "**About shows Alcode's own links:** the upstream project's Discord invite and handle are gone, and About carries a Check for updates action of its own."
+      ],
+      "misc": []
+    },
+    "vscode": {
+      "new": [],
+      "improvements": [],
+      "fixes": [],
+      "misc": []
+    }
+  },
+  {
     "version": "0.3.1",
     "date": "2026-11-18",
     "title": "Signing in survives a restart",

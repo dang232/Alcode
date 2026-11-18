@@ -4113,6 +4113,13 @@
 - Added GitHub Actions release pipeline with macOS signing/notarization, npm publish, and release asset uploads.
 - Introduced OpenCode agent chat experience with section-based navigation, theming, and session persistence.
 
+## [0.3.2] - 2026-11-18
+
+### Fixes
+
+- **Check for Updates works from the menu:** the item emitted a channel the window no longer listened to, so it did nothing while the hourly check kept finding new versions. It now runs the check and opens the update dialog when one is available.
+- **About shows Alcode's own links:** the upstream project's Discord invite and handle are gone, and About carries a Check for updates action of its own.
+
 ## [0.3.1] - 2026-11-18
 
 ### Fixes
