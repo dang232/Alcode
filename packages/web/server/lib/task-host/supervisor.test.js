@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 
 import { createTaskHostSupervisor, defaultProbe, engineCandidates, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir } from "./supervisor"
@@ -294,10 +295,24 @@ describe("plugin dir resolution", () => {
   })
 
   it("probes the sibling checkout and resolves the real plugin path", () => {
-    const resolved = resolvePluginDir({ env: {}, moduleUrl: new URL("./supervisor.js", import.meta.url).href })
-    // The real oracle: the path must exist on this machine. A suffix-matching stub hid a wrong depth before.
-    expect(resolved.replace(/\\/g, "/")).toBe("I:/migration/oh-my-openAlcore/packages/omo-senpi/plugin")
-    expect(existsSync(resolved)).toBe(true)
+    // A real directory tree at the real depth, not a stub: the sibling lookup walks six levels up from this
+    // module, and a suffix-matching stub hid a wrong depth before. Built under the temp dir so the oracle is
+    // the filesystem on any host, instead of whatever absolute path the machine that wrote the test had.
+    const root = mkdtempSync(join(tmpdir(), "task-host-sibling-"))
+    roots.push(root)
+    const repo = join(root, "Alwork")
+    const plugin = join(root, "oh-my-openAlcore", "packages", "omo-senpi", "plugin")
+    mkdirSync(join(repo, "packages", "web", "server", "lib", "task-host"), { recursive: true })
+    mkdirSync(join(plugin, "extensions"), { recursive: true })
+    writeFileSync(join(plugin, "extensions", "omo.js"), "", "utf8")
+
+    const resolved = resolvePluginDir({
+      env: {},
+      moduleUrl: pathToFileURL(join(repo, "packages", "web", "server", "lib", "task-host", "supervisor.js")).href,
+    })
+
+    expect(resolved.replace(/\\/g, "/")).toBe(plugin.replace(/\\/g, "/"))
+    expect(existsSync(join(resolved, "extensions", "omo.js"))).toBe(true)
   })
 
   it("prefers a packaged resource over the staged tree and the sibling checkout", () => {
