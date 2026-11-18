@@ -632,6 +632,32 @@ const ALCODE_DATA_DIR = process.env.ALCODE_DATA_DIR
   ? path.resolve(process.env.ALCODE_DATA_DIR)
   : path.join(os.homedir(), '.config', 'alcode');
 const JWT_SECRET_FILE = path.join(ALCODE_DATA_DIR, 'jwt-secret');
+// The desktop session binds a display profile to the client token, which is the
+// durable half of that session. Without a persisted copy a restart answers
+// `{ authenticated: true, scope: 'client' }` with no identity, and the account
+// panel reads that as "sign in again". Only display fields live here, keyed by a
+// hash of the binding so the token itself never reaches the file; nothing on a
+// validation path reads it.
+const SESSION_PROFILE_FILE = path.join(ALCODE_DATA_DIR, 'session-profiles.json');
+const SESSION_PROFILE_FILE_MAX_ENTRIES = 8;
+const sessionProfileBindingKey = (binding) => crypto.createHash('sha256').update(binding).digest('hex');
+const readPersistedSessionProfiles = () => {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(SESSION_PROFILE_FILE, 'utf8'));
+    return parsed !== null && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+const writePersistedSessionProfiles = (entries) => {
+  try {
+    fs.mkdirSync(ALCODE_DATA_DIR, { recursive: true });
+    fs.writeFileSync(SESSION_PROFILE_FILE, JSON.stringify(entries), { mode: 0o600 });
+  } catch {
+    // A read-only or locked data dir must never fail a login: the in-memory
+    // binding keeps serving for this process.
+  }
+};
 
 function getOrCreateJwtSecret() {
   const envSecret = process.env.OPENCODE_JWT_SECRET;
@@ -758,6 +784,16 @@ export const createUiAuth = ({
     sweepSessionProfiles(at);
     const entry = { record, expiresAt: at + ttlMs };
     for (const binding of bindings) sessionProfiles.set(binding, entry);
+    // Persist the binding so a restart still knows which Alcore identity this
+    // desktop session belongs to. Bounded by count and by the same expiry.
+    const persisted = readPersistedSessionProfiles();
+    for (const binding of bindings) persisted[sessionProfileBindingKey(binding)] = entry;
+    const live = Object.entries(persisted)
+      .filter(([, candidate]) => candidate !== null && typeof candidate === 'object'
+        && typeof candidate.expiresAt === 'number' && candidate.expiresAt > at)
+      .sort((left, right) => right[1].expiresAt - left[1].expiresAt)
+      .slice(0, SESSION_PROFILE_FILE_MAX_ENTRIES);
+    writePersistedSessionProfiles(Object.fromEntries(live));
   };
 
   const readSessionProfileFor = (binding) => {
@@ -767,7 +803,16 @@ export const createUiAuth = ({
       // that passed jwtVerify are in this map, so this is the same trust level
       // as the binding above and survives a process restart.
       const claims = verifiedSessionClaims.get(binding);
-      return claims === undefined ? null : sessionProfileFromClaims(claims);
+      if (claims !== undefined) return sessionProfileFromClaims(claims);
+      // Last resort: the persisted binding, so a desktop client token keeps its
+      // identity after the process that bound it is gone.
+      const persisted = readPersistedSessionProfiles()[sessionProfileBindingKey(binding)];
+      if (persisted === null || typeof persisted !== 'object') return null;
+      const record = persisted.record;
+      if (record === null || typeof record !== 'object' || typeof record.sub !== 'string' || record.sub === '') return null;
+      if (typeof persisted.expiresAt !== 'number' || persisted.expiresAt <= Date.now()) return null;
+      sessionProfiles.set(binding, { record, expiresAt: persisted.expiresAt });
+      return record;
     }
     if (entry.expiresAt <= Date.now()) {
       sessionProfiles.delete(binding);

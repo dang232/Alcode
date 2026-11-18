@@ -667,6 +667,36 @@ describe('ui auth session profile read-through', () => {
     });
   });
 
+  it('keeps the desktop identity across a restart', async () => {
+    const createUiAuth = await loadCreateUiAuth();
+    const clientAuthController = {
+      createClient: async () => ({ token: 'oc_client_restart', client: { id: 'device-r' } }),
+      authenticateBearerToken: async (token) => token === 'oc_client_restart' ? { ok: true, clientId: 'device-r' } : null,
+    };
+    const before = createUiAuth({
+      alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER, clientAuthController,
+    });
+    const issued = await loginRes(before, {
+      alcoreToken: mintAlcoreToken({ sub: 'user-9' }),
+      issueClientToken: true,
+      clientLabel: 'Alcode Desktop',
+      profile: PROFILE,
+    });
+    expect(issued.body.clientToken).toBe('oc_client_restart');
+
+    // A fresh controller has empty in-memory maps: this is the restart, and the
+    // client token still has to answer with the identity it was bound to.
+    const after = createUiAuth({
+      alcoreSecret: ALCORE_TEST_SECRET, alcoreIssuer: ALCORE_TEST_ISSUER, clientAuthController,
+    });
+    const status = await statusRes(after, { authorization: 'Bearer oc_client_restart' });
+    expect(status.body).toEqual({
+      authenticated: true,
+      scope: 'client',
+      alcore: { sub: 'user-9', email: 'ada@example.test', name: 'Ada Lovelace', picture: 'https://example.test/ada.png' },
+    });
+  });
+
   it('keeps the client status shape when no profile was bound', async () => {
     const createUiAuth = await loadCreateUiAuth();
     const auth = createUiAuth({

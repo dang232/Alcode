@@ -27,6 +27,7 @@ const USER_DIR_FLAT_FILES = Object.freeze([
   'apns-tokens.json',
   'remote-clients.json',
   'client-pairing-sessions.json',
+  'session-profiles.json',
   'cloudflare-managed-remote-tunnels.json',
   'cloudflare-named-tunnels.json',
   'git-worktree-bootstrap.json',
