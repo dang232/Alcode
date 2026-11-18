@@ -384,13 +384,23 @@ export const createOpenCodeLifecycleRuntime = (deps) => {
     return parts.length > 0 ? parts.join('\n\n') : 'No stdout/stderr captured';
   };
 
+  // The packaged desktop UI is served from its own scheme, so every API call
+  // it makes is cross-site to the loopback server. The runtime answers those
+  // with 403 "Cross-site requests to the API are not allowed" unless the origin
+  // is allowlisted at launch; a browser page served over http is same-site and
+  // never needs this. Both the current and the legacy scheme are listed, and
+  // both CLI lines that ship (2.x bundled and newer) accept `--cors` repeatably.
+  const PACKAGED_UI_ORIGINS = ['alcode-ui://app', 'openchamber-ui://app'];
+
+  const runtimeCorsArgs = () => PACKAGED_UI_ORIGINS.flatMap((origin) => ['--cors', origin]);
+
   const createManagedOpenCodeServerProcess = async ({ resolvedBinary, hostname, port, timeout, cwd, env: processEnv, shellEnvKeysCount = 0, attempt }) => {
     let binary = (resolvedBinary || process.env.OPENCODE_BINARY || 'opencode').trim() || 'opencode';
     const sourceBinary = binary;
     // Windows teardown stops OpenCode by closing its stdin lease, which only
     // `serve --stdio` holds (see managed-process-stop.js).
     const stdinLease = process.platform === 'win32';
-    let args = ['serve', ...(stdinLease ? ['--stdio'] : []), '--hostname', hostname, '--port', String(port)];
+    let args = ['serve', ...(stdinLease ? ['--stdio'] : []), '--hostname', hostname, '--port', String(port), ...runtimeCorsArgs()];
     let launchWrapperType = null;
 
     if (process.platform === 'win32' && state.useWslForOpencode) {

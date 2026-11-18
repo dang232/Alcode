@@ -67,6 +67,10 @@ afterEach(() => {
   }
 });
 
+// Windows teardown stops OpenCode by closing its stdin lease, so the managed
+// launch carries --stdio there and only there.
+const windowsStdinLease = () => (process.platform === 'win32' ? ['--stdio'] : []);
+
 const createMockChild = () => {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
@@ -993,7 +997,10 @@ describe('OpenCode lifecycle', () => {
     const [binary, args, options] = spawnMock.mock.calls[0];
 
     expect(binary).toBe('opencode');
-    expect(args).toEqual(['serve', '--hostname', '127.0.0.1', '--port', '45678']);
+    expect(args).toEqual([
+      'serve', ...windowsStdinLease(), '--hostname', '127.0.0.1', '--port', '45678',
+      '--cors', 'alcode-ui://app', '--cors', 'openchamber-ui://app',
+    ]);
     expect(options.env.PATH).toBe('/home/user/.bun/bin:/usr/local/bin:/usr/bin');
     expect(options.env.SHELL_ONLY).toBe('yes');
     expect(options.env.OPENCODE_PASSWORD).toBe('password');
@@ -1020,10 +1027,37 @@ describe('OpenCode lifecycle', () => {
     const [binary, args] = spawnMock.mock.calls[0];
 
     expect(binary).toBe('opencode');
-    expect(args).toEqual(['serve', '--hostname', '0.0.0.0', '--port', '45678']);
+    expect(args).toEqual([
+      'serve', ...windowsStdinLease(), '--hostname', '0.0.0.0', '--port', '45678',
+      '--cors', 'alcode-ui://app', '--cors', 'openchamber-ui://app',
+    ]);
 
     await server.close();
     expect(server.signalCode).toBe('SIGTERM');
+  });
+
+  it('allowlists the packaged UI origins so their cross-site API calls are not refused', async () => {
+    delete process.env.OPENCODE_BINARY;
+    const child = createMockChild();
+    spawnMock.mockImplementationOnce(() => {
+      queueMicrotask(() => {
+        child.stdout.emit('data', 'opencode server listening on http://127.0.0.1:45678\n');
+      });
+      return child;
+    });
+
+    const runtime = createRuntime();
+    const server = await runtime.startOpenCode();
+    const [, args] = spawnMock.mock.calls[0];
+    const allowed = args.reduce((acc, arg, index) => (arg === '--cors' ? [...acc, args[index + 1]] : acc), []);
+
+    // The packaged renderer is served from its own scheme, so every API call it
+    // makes is cross-site; without these the runtime answers 403 and the UI
+    // reports the server as unreachable.
+    expect(allowed).toContain('alcode-ui://app');
+    expect(allowed).toContain('openchamber-ui://app');
+
+    await server.close();
   });
 
   it('removes AppImage launcher entries from the managed OpenCode launch env', async () => {

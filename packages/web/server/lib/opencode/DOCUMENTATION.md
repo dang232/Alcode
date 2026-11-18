@@ -393,6 +393,13 @@ health-probe errors close that child before retrying. Shutdown cancels further
 startup attempts. Closing a process is single-flight and unregisters it only
 after it exits.
 
+Every managed launch also passes `--cors` for the packaged desktop UI origins
+(`alcode-ui://app`, `openchamber-ui://app`). The packaged renderer is served from
+its own scheme, so each of its API calls is cross-site to the loopback server, and
+the runtime answers those with `403 Cross-site requests to the API are not allowed`
+unless the origin is allowlisted at launch. A UI served over loopback http is
+same-site and never needs the flag.
+
 On Windows, the managed OpenCode runs as `opencode serve --stdio` with a piped
 stdin, and teardown first closes that stdin (`managed-process-stop.js`).
 OpenCode reads EOF as the end of its ownership lease and shuts down the way
