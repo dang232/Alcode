@@ -40,6 +40,30 @@ alcode connect-url --port 3000 --server http://your-host:3000 --qr
 
 The generated link contains a single-use pairing secret. Once imported, the device holds its own client token — separate from the browser UI password — which survives server restarts until you revoke it on the issuing server.
 
+## Three ways to reach a server
+
+The instance switcher in the desktop app answers three modes, and only the first
+one is local:
+
+| Mode | What runs where | How to connect |
+|---|---|---|
+| **This computer** | The server inside this app, bound to loopback | Nothing to do - it is the default |
+| **My LAN server** | Alcode on another machine of yours on the same network | Start it there with `alcode connect-url --lan`, then paste its address and client token |
+| **My VPS** | Alcode on a server you run, reachable over the internet | Start it there, put it behind your own HTTPS endpoint, then paste that address and its client token |
+
+The switcher labels the address you type with its mode and refuses an address
+that cannot be a server (wrong scheme, credentials, fragment) before it reaches
+the list. A remote instance still needs its client token - there is no way to add
+a host that skips authentication.
+
+The token comes from the server you run: `connect-url` prints a single-use
+pairing link, and the device that imports it keeps its own client token from
+then on. Revoke a device on the server that issued it.
+
+Exposing a server to a network is a deliberate step: the desktop app binds
+loopback unless LAN access is enabled for it, and a VPS should terminate TLS in
+front of Alcode rather than expose it directly.
+
 ## Related
 
 - [Connect a Device](/connect-devices/) — pairing links, QR codes, and managing devices
