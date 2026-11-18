@@ -4113,6 +4113,14 @@
 - Added GitHub Actions release pipeline with macOS signing/notarization, npm publish, and release asset uploads.
 - Introduced OpenCode agent chat experience with section-based navigation, theming, and session persistence.
 
+## [0.3.1] - 2026-11-18
+
+### Fixes
+
+- **A restart keeps you signed in:** the shared login pair is refreshed from its durable copy before it is presented, and two Alcode windows serialise the refresh, so a force quit or a second window no longer spends a token the other one needed.
+- **The installed build reaches the runtime:** the managed runtime is launched with the packaged UI origin allowlisted, so sessions, models and agents answer instead of the 403 that left the app looking half loaded.
+- **A valid login no longer reads as signed out:** when the identity service cannot confirm the captured pair, the platform catalog confirms it with the same token, and anything unconfirmed still fails closed.
+
 ## [0.3.0] - 2026-11-18
 
 ### New
