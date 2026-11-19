@@ -42,6 +42,9 @@
     "prepare:ripgrep": "node ./scripts/prepare-ripgrep.mjs",
     "prepare:typescript": "node ./scripts/prepare-typescript.mjs",
     "prepare:ulw-loop-cli": "node ./scripts/prepare-ulw-loop-cli.mjs",
+    "prepare:senpi-plugin": "node ./scripts/prepare-senpi-plugin.mjs",
+    "verify:senpi-plugin": "node ./scripts/verify-senpi-plugin.mjs --staged",
+    "verify:senpi-plugin:packaged": "node ./scripts/verify-senpi-plugin.mjs --packaged",
     "verify:opencode-cli": "node ./scripts/verify-opencode-cli.mjs --staged",
     "verify:opencode-cli:packaged": "node ./scripts/verify-opencode-cli.mjs --packaged",
     "verify:ulw-loop-cli": "node ./scripts/verify-ulw-loop-cli.mjs --staged",
@@ -58,7 +61,7 @@
     "test:linux-desktop": "node --test ./linux-autostart.test.mjs ./linux-desktop-entry.test.mjs && node ./scripts/smoke-linux-app-discovery.mjs && node ./scripts/smoke-path-open-utils.mjs",
     "updater:e2e:fixture": "node ./scripts/updater-e2e-fixture.mjs",
     "verify:update-manifest": "node ./scripts/verify-update-manifest.mjs",
-    "package": "bun run build:web-assets && bun run prepare:opencode-cli && bun run prepare:ripgrep && bun run prepare:ulw-loop-cli && bun run prepare:typescript && bun run verify:opencode-cli && bun run verify:ulw-loop-cli && bun run verify:dag-engine && bun run bundle:main && bun run rebuild:native && node ./scripts/package.mjs && bun run verify:opencode-cli:packaged && bun run verify:ulw-loop-cli:packaged && bun run verify:dag-engine:packaged",
+    "package": "bun run build:web-assets && bun run prepare:opencode-cli && bun run prepare:ripgrep && bun run prepare:ulw-loop-cli && bun run prepare:senpi-plugin && bun run prepare:typescript && bun run verify:opencode-cli && bun run verify:ulw-loop-cli && bun run verify:senpi-plugin && bun run verify:dag-engine && bun run bundle:main && bun run rebuild:native && node ./scripts/package.mjs && bun run verify:opencode-cli:packaged && bun run verify:ulw-loop-cli:packaged && bun run verify:senpi-plugin:packaged && bun run verify:dag-engine:packaged",
     "finalize:latest-yml": "node ./scripts/finalize-latest-yml.mjs",
     "type-check": "node --check ./entry.mjs && node --check ./early-startup.mjs && node --check ./main.mjs && node --check ./preload.mjs && node --check ./browser-panel-preload.cjs",
     "lint": "node -e \"process.exit(0)\""
@@ -119,6 +122,10 @@
       {
         "from": "resources/ulw-loop-cli",
         "to": "ulw-loop-cli"
+      },
+      {
+        "from": "resources/senpi-plugin",
+        "to": "senpi-plugin"
       },
       {
         "from": "../omo-engine",

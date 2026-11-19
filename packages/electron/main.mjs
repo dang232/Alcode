@@ -1609,6 +1609,11 @@ const spawnLocalServer = async () => {
     delete process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
   }
   process.env.ALCODE_DIST_DIR = resolveWebDistDir();
+  // The supervised task host resolves its plugin from <resources>/senpi-plugin
+  // first (supervisor.js resolvePluginDir). Without this the packaged app has no
+  // sibling checkout to fall back to and every task dies on a missing
+  // extensions/omo.js, so the resources root is exported explicitly.
+  process.env.ALCODE_RESOURCES_PATH = resourceRoot();
   process.env.ALCODE_RUNTIME = 'desktop';
   // Staged internal ulw-loop CLI (prepare:ulw-loop-cli): loop agents spawned
   // under the app inherit this and resolve internal-first via the skill doc's
