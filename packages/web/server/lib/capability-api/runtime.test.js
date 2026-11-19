@@ -80,7 +80,10 @@ describe('allowed agents', () => {
     expect(descriptorForDirectory('/data/omo-native/omo-native', env).hostCapabilities.allowedAgents).toEqual(['explore', 'librarian']);
 
     const unset = resolveCapabilityDescriptor({ ALCODE_CAPABILITY_URL: 'http://127.0.0.1:3901', ALCODE_CAPABILITY_TOKEN: 't' });
-    expect(unset.hostCapabilities).not.toHaveProperty('allowedAgents');
+    expect(unset.hostCapabilities.allowedAgents).toEqual(expect.arrayContaining(['sisyphus', 'explore', 'librarian']));
+
+    const refused = resolveCapabilityDescriptor({ ALCODE_CAPABILITY_URL: 'http://127.0.0.1:3901', ALCODE_CAPABILITY_TOKEN: 't', OMO_CAPABILITY_ALLOWED_AGENTS: '' });
+    expect(refused.hostCapabilities.allowedAgents).toEqual([]);
   });
 });
 

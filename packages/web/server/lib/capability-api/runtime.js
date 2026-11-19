@@ -38,14 +38,8 @@ export const resolveCapabilityToken = (env = process.env) => {
  * normalized, and a set-but-empty value stays an empty list so every named
  * agent is refused instead of silently allowed.
  */
-export const resolveAllowedAgents = (env = process.env) => {
-  const configured = env.OMO_CAPABILITY_ALLOWED_AGENTS;
-  if (configured === undefined) return undefined;
-  return configured
-    .split(',')
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0);
-};
+export { nativeAgentIds, resolveAllowedAgents, resolveEffectiveAllowedAgents } from './allowed-agents.js';
+import { resolveEffectiveAllowedAgents } from './allowed-agents.js';
 
 export const buildCapabilityDescriptor = ({ url, token, allowedAgents } = {}) => {
   const base = asNonEmptyString(url);
@@ -61,7 +55,7 @@ export const resolveCapabilityDescriptor = (env = process.env) =>
   buildCapabilityDescriptor({
     url: env.ALCODE_CAPABILITY_URL ?? configuredBaseUrl,
     token: resolveCapabilityToken(env),
-    allowedAgents: resolveAllowedAgents(env),
+    allowedAgents: resolveEffectiveAllowedAgents(env),
   });
 
 const NATIVE_PLUGIN_SUFFIX = /(^|[\\/])omo-native[\\/]omo-native$/;
@@ -73,6 +67,6 @@ export const descriptorForDirectory = (directory, env = process.env, baseUrl = n
   return buildCapabilityDescriptor({
     url: asNonEmptyString(env.ALCODE_CAPABILITY_URL) ?? asNonEmptyString(baseUrl) ?? configuredBaseUrl,
     token: resolveCapabilityToken(env),
-    allowedAgents: resolveAllowedAgents(env),
+    allowedAgents: resolveEffectiveAllowedAgents(env),
   });
 };

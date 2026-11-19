@@ -160,7 +160,7 @@ import { createDevServerScanner } from './lib/dev-servers/routes.js';
 import { createDevTunnelRuntime } from './lib/dev-tunnel/runtime.js';
 import { registerBrowserControlRoutes } from './lib/browser-control/routes.js';
 import { createManagedConfigRuntime } from './lib/opencode/managed-config-file.js';
-import { configureCapabilityBaseUrl, resolveAllowedAgents } from './lib/capability-api/runtime.js';
+import { configureCapabilityBaseUrl, resolveEffectiveAllowedAgents } from './lib/capability-api/runtime.js';
 import { prepareInstanceDir } from './lib/opencode/instance-dir.js';
 import { createAlcodeSessionService } from './lib/alcode-sessions/routes.js';
 import { createSessionMetadataStore, createOpenCodeSessionMetadata } from './lib/alcode-sessions/session-metadata-store.js';
@@ -690,7 +690,7 @@ const taskHostSupervisor = createTaskHostSupervisor({
   pluginDir: resolvePluginDir(),
   stateDir: path.join(ALCODE_DATA_DIR, 'task-host'),
   // The same allowlist the gateway enforces, handed to the host it launches.
-  allowedAgents: resolveAllowedAgents(process.env),
+  allowedAgents: resolveEffectiveAllowedAgents(process.env),
   // Scoped to the app's active project, so records land in the store that project's DAG reads.
   // An explicit override exists for tests and for a headless run; the request-scoped resolver cannot
   // be used here because it needs an Express request.

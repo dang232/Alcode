@@ -43,7 +43,7 @@ import { registerAlcodeSessionRoutes } from '../alcode-sessions/routes.js';
 import { createOpenCodeClient } from '../alcode-sessions/opencode-client.js';
 import { registerCapabilityRoutes } from '../capability-api/index.js';
 import { createTaskHostProxy } from '../capability-api/task-proxy.js';
-import { resolveAllowedAgents, resolveCapabilityToken } from '../capability-api/runtime.js';
+import { resolveAllowedAgents, resolveCapabilityToken, resolveEffectiveAllowedAgents } from '../capability-api/runtime.js';
 import { registerAlcodeControlRoutes } from '../alcode-control/routes.js';
 import { registerMarkdownImageGrantRoutes } from '../markdown-image-grants/routes.js';
 import { registerSkillRoutes } from './skill-routes.js';
@@ -365,7 +365,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       headers: getOpenCodeAuthHeaders(),
       directory,
     });
-    const allowedAgents = resolveAllowedAgents(process.env);
+    const allowedAgents = resolveEffectiveAllowedAgents(process.env);
     const capabilityOptions = {
       token: () => resolveCapabilityToken(),
       boundParent: () => taskHostNow()?.sessionId,
