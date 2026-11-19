@@ -1,6 +1,6 @@
 {
   "name": "@alcode/sdk",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Contract for Alcode guests: manifest parse and iframe host bridge.",
   "private": false,
   "license": "MIT",
