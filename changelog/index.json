@@ -7047,6 +7047,28 @@
     "vscode": null
   },
   {
+    "version": "0.3.4",
+    "date": "2026-11-19",
+    "title": "Instances say where they point",
+    "intro": null,
+    "app": {
+      "new": [
+        "**Three ways to reach a server:** the instance switcher names this computer, your own LAN server, and your own VPS. Choosing one explains what to run on that machine and where its client token comes from, and the address field says which mode the address belongs to before it is saved."
+      ],
+      "improvements": [],
+      "fixes": [
+        "**The local instance is no longer labelled Incompatible:** the host probe rejected any server with a version major below 2, a rule that predates Alcode's own 0.x line. It now trusts the capability and API version the server reports."
+      ],
+      "misc": []
+    },
+    "vscode": {
+      "new": [],
+      "improvements": [],
+      "fixes": [],
+      "misc": []
+    }
+  },
+  {
     "version": "0.3.3",
     "date": "2026-11-18",
     "title": "Your session survives a restart",

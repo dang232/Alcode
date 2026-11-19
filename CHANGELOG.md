@@ -4113,6 +4113,16 @@
 - Added GitHub Actions release pipeline with macOS signing/notarization, npm publish, and release asset uploads.
 - Introduced OpenCode agent chat experience with section-based navigation, theming, and session persistence.
 
+## [0.3.4] - 2026-11-19
+
+### New
+
+- **Three ways to reach a server:** the instance switcher names this computer, your own LAN server, and your own VPS. Choosing one explains what to run on that machine and where its client token comes from, and the address field says which mode the address belongs to before it is saved.
+
+### Fixes
+
+- **The local instance is no longer labelled Incompatible:** the host probe rejected any server with a version major below 2, a rule that predates Alcode's own 0.x line. It now trusts the capability and API version the server reports.
+
 ## [0.3.3] - 2026-11-18
 
 ### Fixes
