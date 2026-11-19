@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto"
+import { spawnSync } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { createConnection, createServer } from "node:net"
 import { createRequire } from "node:module"
@@ -393,6 +394,26 @@ export const releaseDaemonState = ({ agentDir, socket, kill = (pid) => process.k
  * its plugin from one whose process answers but whose listener is gone, so it must never fail silently: a missing
  * default made every readiness check return false against a perfectly healthy host.
  */
+export const defaultRun = (argv, env, options = {}) => {
+  const [candidate, ...args] = Array.isArray(argv) ? argv : []
+  const file = (candidate ?? "").trim?.() ?? ""
+  if (file.length === 0) return { code: 1, stdout: "task host runner received no command" }
+  const result = spawnSync(file, args, {
+    cwd: options?.cwd,
+    env,
+    encoding: "utf8",
+    shell: false,
+    windowsHide: true,
+  })
+  const code = Number.isInteger(result.status) ? result.status : 1
+  const stdout = String(result.stdout ?? "")
+  if (code === 0) return { code, stdout }
+  const stderr = String(result.stderr ?? "").trim()
+  if (stderr.length === 0) return { code, stdout }
+  const separator = stdout.length === 0 || stdout.endsWith("\n") ? "" : "\n"
+  return { code, stdout: `${stdout}${separator}${stderr}` }
+}
+
 export const defaultProbe = async (url, timeoutMs = 2000) => {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
@@ -418,7 +439,7 @@ export function createTaskHostSupervisor(options) {
     engines,
     waitForSecret = waitForHostSecret,
     exists = existsSync,
-    run,
+    run = defaultRun,
     probe = defaultProbe,
     resolveProjectDir,
     resolveModel,
