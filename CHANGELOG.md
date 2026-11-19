@@ -4113,6 +4113,16 @@
 - Added GitHub Actions release pipeline with macOS signing/notarization, npm publish, and release asset uploads.
 - Introduced OpenCode agent chat experience with section-based navigation, theming, and session persistence.
 
+## [0.3.5] - 2026-11-19
+
+### Improvements
+
+- **One agent allowlist instead of three:** `OMO_CAPABILITY_ALLOWED_AGENTS` is now read by a single helper whose result reaches the gateway, the capability descriptor the managed child publishes, and the host launch spec. It used to be read inline in two places that both dropped an empty value, so "refuse every agent" silently became "allow every agent"; now an empty list refuses every named agent at each layer with `403 AGENT_NOT_ALLOWED`, and the host is launched with the same list the gateway enforces.
+
+### Fixes
+
+- **A release that fails to publish now fails the run:** a new `verify-release-publication` job asserts that the release exists, is not a draft or a prerelease, carries the Windows x64 installer built from the tag, and that the live `latest.yml` reports the same version. 0.3.3 slipped past every check as a draft with 17 assets while the updater manifest still served the previous version; that shape is now a red run instead of a silent one.
+
 ## [0.3.4] - 2026-11-19
 
 ### New
