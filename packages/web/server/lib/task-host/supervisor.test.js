@@ -729,7 +729,7 @@ describe("host default model", () => {
 })
 
 describe("launch spec", () => {
-  it("writes a launch spec the engine's schema accepts", async () => {
+  const launchSpecFor = async (overrides = {}) => {
     const { pluginDir, stateDir, projectDir } = dirs()
     mkdirSync(join(pluginDir, "extensions"), { recursive: true })
     writeFileSync(join(pluginDir, "extensions", "omo.js"), "", "utf8")
@@ -750,9 +750,14 @@ describe("launch spec", () => {
       probe: async () => true,
       warm: async () => true,
       waitForSecret: async () => {},
+      ...overrides,
     })
     await sup.ensure()
-    const spec = written[0]
+    return written[0]
+  }
+
+  it("writes a launch spec the engine's schema accepts", async () => {
+    const spec = await launchSpecFor()
     // The engine's schema is strict: a spec missing idleExitMs is rejected and the host silently runs a transient
     // default, exiting while idle (~45 s) and taking its capability listener with it.
     expect(spec.spec_version).toBe(1)
@@ -761,6 +766,14 @@ describe("launch spec", () => {
     expect(spec.tunables.idleExitMs).toBeGreaterThan(60_000)
     expect(spec.core.session_runtime).toBe("in-process")
     expect(spec.core.multi_session).toBe(true)
+    // No allowlist configured means no host policy, not an empty one.
+    expect(spec.env.OMO_CAPABILITY_AGENTS).toBeUndefined()
+  })
+
+  it("publishes the same comma-joined allowlist the gateway uses into the launch spec", async () => {
+    expect((await launchSpecFor({ allowedAgents: ["explore", "librarian"] })).env.OMO_CAPABILITY_AGENTS).toBe("explore,librarian")
+    // A set-but-empty gateway list must reach the host as an empty list, not disappear.
+    expect((await launchSpecFor({ allowedAgents: [] })).env.OMO_CAPABILITY_AGENTS).toBe("")
   })
 })
 

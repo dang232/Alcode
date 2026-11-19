@@ -33,16 +33,36 @@ export const resolveCapabilityToken = (env = process.env) => {
   return generatedToken;
 };
 
-export const buildCapabilityDescriptor = ({ url, token } = {}) => {
+/**
+ * The one agent allowlist. Unset means "no policy"; a set value is split and
+ * normalized, and a set-but-empty value stays an empty list so every named
+ * agent is refused instead of silently allowed.
+ */
+export const resolveAllowedAgents = (env = process.env) => {
+  const configured = env.OMO_CAPABILITY_ALLOWED_AGENTS;
+  if (configured === undefined) return undefined;
+  return configured
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+};
+
+export const buildCapabilityDescriptor = ({ url, token, allowedAgents } = {}) => {
   const base = asNonEmptyString(url);
   const secret = asNonEmptyString(token);
   if (!base || !secret) return null;
   if (!base.startsWith('http://') && !base.startsWith('https://')) return null;
-  return { hostCapabilities: { version: 1, url: base, token: secret } };
+  const hostCapabilities = { version: 1, url: base, token: secret };
+  if (allowedAgents !== undefined) hostCapabilities.allowedAgents = allowedAgents;
+  return { hostCapabilities };
 };
 
 export const resolveCapabilityDescriptor = (env = process.env) =>
-  buildCapabilityDescriptor({ url: env.ALCODE_CAPABILITY_URL ?? configuredBaseUrl, token: resolveCapabilityToken(env) });
+  buildCapabilityDescriptor({
+    url: env.ALCODE_CAPABILITY_URL ?? configuredBaseUrl,
+    token: resolveCapabilityToken(env),
+    allowedAgents: resolveAllowedAgents(env),
+  });
 
 const NATIVE_PLUGIN_SUFFIX = /(^|[\\/])omo-native[\\/]omo-native$/;
 
@@ -53,5 +73,6 @@ export const descriptorForDirectory = (directory, env = process.env, baseUrl = n
   return buildCapabilityDescriptor({
     url: asNonEmptyString(env.ALCODE_CAPABILITY_URL) ?? asNonEmptyString(baseUrl) ?? configuredBaseUrl,
     token: resolveCapabilityToken(env),
+    allowedAgents: resolveAllowedAgents(env),
   });
 };

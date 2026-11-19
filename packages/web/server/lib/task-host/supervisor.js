@@ -427,6 +427,8 @@ export function createTaskHostSupervisor(options) {
     startTimeoutMs = DEFAULT_START_TIMEOUT_MS,
     healthTimeoutMs = DEFAULT_HEALTH_TIMEOUT_MS,
     maxRestarts = DEFAULT_MAX_RESTARTS,
+    // The gateway's one allowlist, published into the launch spec under the name the host mount reads.
+    allowedAgents,
     userProfile = process.env.USERPROFILE ?? "",
     recoveryWaitMs = 3000,
     // The caller aborts its own request at 30 s (capability-descriptor TIMEOUT_MS), so the wait must fit inside that;
@@ -523,6 +525,8 @@ export function createTaskHostSupervisor(options) {
       const model = (resolveModel?.() ?? "").trim()
       mkdirSync(dirname(socketPathFor(stateDir)), { recursive: true })
       mkdirSync(dirname(specPath), { recursive: true })
+      const specEnv = { OMO_CAPABILITY_TOKEN: token, OMO_CAPABILITY_PORT: String(port) }
+      if (allowedAgents !== undefined) specEnv.OMO_CAPABILITY_AGENTS = allowedAgents.join(",")
       writeFileSync(
         specPath,
         JSON.stringify(
@@ -533,7 +537,7 @@ export function createTaskHostSupervisor(options) {
             // on a default transient policy, exiting while idle — which presents as a capability listener that stops
             // answering ~45 s after a healthy start.
             tunables: { coldStart: "persistent", idleExitMs: HOST_IDLE_EXIT_MS },
-            env: { OMO_CAPABILITY_TOKEN: token, OMO_CAPABILITY_PORT: String(port) },
+            env: specEnv,
           },
           null,
           2,
