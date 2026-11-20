@@ -140,11 +140,13 @@ export const parseSenpiBin = (raw) => {
   return parts.length === 0 ? undefined : parts
 }
 
-const launchOf = (bin) => {
+export const launchOf = (bin, execPath = process.execPath) => {
   if (Array.isArray(bin)) return [...bin]
   if (!bin.toLowerCase().endsWith('.js')) return [bin]
-  const asNode = /electron/i.test(process.execPath)
-  return asNode ? [process.execPath, '--js-flags=--no-experimental-config', bin] : [process.execPath, bin]
+  // Electron refuses `--js-flags` before it ever becomes Node (`bad option:`, exit 9), so the
+  // staged engine is started with ELECTRON_RUN_AS_NODE alone: a host launched through this
+  // branch must reach the engine, and an argument the runtime rejects reaches nothing.
+  return [execPath, bin]
 }
 
 const WINDOWS_PIPE_PREFIX = '\\\\.\\pipe\\senpi-rpc-'

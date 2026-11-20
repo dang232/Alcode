@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { createTaskHostSupervisor, defaultProbe, engineCandidates, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir } from "./supervisor"
+import { createTaskHostSupervisor, defaultProbe, engineCandidates, launchOf, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir } from "./supervisor"
 
 const roots = []
 
@@ -16,6 +16,22 @@ function dirs() {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe("launchOf", () => {
+  it("starts a staged engine with the runtime and the script only", () => {
+    const argv = launchOf("C:/app/resources/senpi-engine/dist/bundle/cli.js", "C:/app/Alcode.exe")
+    expect(argv).toEqual(["C:/app/Alcode.exe", "C:/app/resources/senpi-engine/dist/bundle/cli.js"])
+  })
+
+  it("passes no runtime flag: Electron answers `bad option: --js-flags` and exits 9 before Node starts", () => {
+    const argv = launchOf("C:/app/resources/senpi-engine/dist/bundle/cli.js", "C:/app/Alcode.exe")
+    expect(argv.some((part) => part.startsWith("--js-flags"))).toBe(false)
+  })
+
+  it("keeps an explicit multi-part command verbatim", () => {
+    expect(launchOf(["bun", "C:/x/cli.js"])).toEqual(["bun", "C:/x/cli.js"])
+  })
 })
 
 function supervisor(overrides = {}) {
