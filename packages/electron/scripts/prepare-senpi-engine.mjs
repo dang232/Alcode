@@ -32,9 +32,35 @@ const ENGINE_NAME = '@code-yeongyu/senpi';
 const REQUIRED_DEPENDENCY = '@earendil-works/chord';
 const MAX_DEPTH = 4;
 
-const sourceDir = process.env.OMO_SENPI_ENGINE_SRC
-  ? path.resolve(process.env.OMO_SENPI_ENGINE_SRC)
-  : path.join(repoRoot, 'node_modules', ENGINE_NAME);
+const sourceCandidates = [
+  process.env.OMO_SENPI_ENGINE_SRC ? path.resolve(process.env.OMO_SENPI_ENGINE_SRC) : undefined,
+  path.join(repoRoot, 'node_modules', ENGINE_NAME),
+  process.env.APPDATA
+    ? path.join(process.env.APPDATA, 'npm', 'node_modules', 'omo-ai', 'node_modules', ENGINE_NAME)
+    : undefined,
+].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
+
+// A source is usable only if its own dependency closure resolves: the workspace engine declares 29 dependencies
+// that this checkout never installs, so copying it produces a host that cannot import itself.
+const sourceResolves = (candidate) => {
+  const manifest = path.join(candidate, 'package.json');
+  if (!fs.existsSync(manifest)) return false;
+  try {
+    createRequire(manifest).resolve(`${REQUIRED_DEPENDENCY}/package.json`);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const sourceDir = sourceCandidates.find(sourceResolves);
+if (sourceDir === undefined) {
+  console.error(
+    `[prepare-senpi-engine] no engine source can import ${REQUIRED_DEPENDENCY}; tried ${sourceCandidates.join(', ')}. ` +
+      'Set OMO_SENPI_ENGINE_SRC to an engine package whose dependencies are installed.',
+  );
+  process.exit(1);
+}
 
 const fail = (message) => {
   console.error(`[prepare-senpi-engine] ${message}`);
