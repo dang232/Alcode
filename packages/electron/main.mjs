@@ -1631,7 +1631,7 @@ const spawnLocalServer = async () => {
   // so without this the supervisor falls back to a globally installed omo-ai
   // build, whose own startup phases time out (phase=public_verified, 10 s budget)
   // and every delegation ends in TASK_MANAGER_UNAVAILABLE after a relaunch loop.
-  const stagedSenpiEngine = path.join(resourceRoot(), 'senpi-engine', 'dist', 'bundle', 'cli.js');
+  const stagedSenpiEngine = path.join(resourceRoot(), 'senpi-engine', 'node_modules', '@code-yeongyu', 'senpi', 'dist', 'bundle', 'cli.js');
   if (fs.existsSync(stagedSenpiEngine)) {
     process.env.ALCODE_TASK_HOST_SENPI = stagedSenpiEngine;
   }

@@ -1,67 +1,66 @@
 /**
- * Stage the senpi engine the supervised task host runs on.
+ * Stage the senpi engine the supervised task host runs on, together with its dependency closure.
  *
- * The task host is spawned as `<this install> <engine cli.js> host` (see
- * packages/web/server/lib/task-host/supervisor.js engineCandidates). In a
- * checkout `require.resolve("@code-yeongyu/senpi/dist/bundle/cli.js")` finds
- * the workspace engine, but a packaged install carries no such node_modules, so
- * the supervisor silently falls through to the globally installed `omo-ai`
- * engine. That foreign build runs its own startup phases against this app's
- * plugin, reports
- *   `RPC host startup timed out: phase=public_verified; phase_budget_ms=10000`
- * exits 1, and every delegation ends in TASK_MANAGER_UNAVAILABLE after a
- * relaunch loop. Staging this app's own engine removes the fallback.
+ * Two failures shaped this script:
  *
- * The copy is bounded to what the bundle needs at runtime (package.json plus
- * dist/bundle: cli.js, its chunks and the skill document). It fails closed when
- * the source or the entry is missing, so a stage can never ship a host that
- * only looks present.
+ * 1. A packaged install carries no node_modules, so `require.resolve("@code-yeongyu/senpi/dist/bundle/cli.js")`
+ *    fails inside the asar and supervisor.engineCandidates falls through to a globally installed engine, which
+ *    runs its own startup phases and dies (`phase=public_verified`).
+ * 2. Staging `dist/bundle` alone is not enough either: the engine hands itself off to
+ *    `<agent dir>/runtime/<hash>/dist/bundle/` and its bare imports resolve by walking up from there, so a
+ *    bundle-only stage dies with `ERR_MODULE_NOT_FOUND: @earendil-works/chord` and retries forever.
  *
- * Override the source with OMO_SENPI_ENGINE_SRC when the engine lives outside
- * the workspace node_modules.
+ * The engine is therefore staged in a real package layout,
+ * `<out>/node_modules/@code-yeongyu/senpi/{package.json,dist}` with every declared dependency copied beside it
+ * into `<out>/node_modules/`, so resolution from
+ * `…/node_modules/@code-yeongyu/senpi/dist/bundle/chunks/` walks up into the staged tree. The script fails closed
+ * unless `@earendil-works/chord` — the package that actually crashed the host — resolves from the staged engine.
+ *
+ * Sources: the workspace engine by default, or `OMO_SENPI_ENGINE_SRC` (the engine package directory, e.g. a
+ * complete global install) when the workspace copy has no installed dependencies.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(electronRoot, '..', '..');
 const outputDir = path.join(electronRoot, 'resources', 'senpi-engine');
-const BUNDLE_RELATIVE = path.join('dist', 'bundle');
-const ENTRY_RELATIVE = path.join(BUNDLE_RELATIVE, 'cli.js');
-const MIN_ENTRY_BYTES = 10_000;
+const ENGINE_NAME = '@code-yeongyu/senpi';
+const REQUIRED_DEPENDENCY = '@earendil-works/chord';
+const MAX_DEPTH = 4;
 
 const sourceDir = process.env.OMO_SENPI_ENGINE_SRC
   ? path.resolve(process.env.OMO_SENPI_ENGINE_SRC)
-  : path.join(repoRoot, 'node_modules', '@code-yeongyu', 'senpi');
+  : path.join(repoRoot, 'node_modules', ENGINE_NAME);
 
 const fail = (message) => {
   console.error(`[prepare-senpi-engine] ${message}`);
   process.exit(1);
 };
 
-if (!fs.existsSync(sourceDir)) {
-  fail(`engine source not found: ${sourceDir} (set OMO_SENPI_ENGINE_SRC)`);
+const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+if (!fs.existsSync(path.join(sourceDir, 'package.json'))) {
+  fail(`engine source has no package.json: ${sourceDir} (set OMO_SENPI_ENGINE_SRC)`);
 }
-const sourceEntry = path.join(sourceDir, ENTRY_RELATIVE);
-if (!fs.existsSync(sourceEntry)) {
-  fail(`engine entry missing in source: ${sourceEntry}`);
-}
-if (fs.statSync(sourceEntry).size < MIN_ENTRY_BYTES) {
-  fail(`engine entry implausibly small: ${sourceEntry}`);
-}
+const sourceEntry = path.join(sourceDir, 'dist', 'bundle', 'cli.js');
+if (!fs.existsSync(sourceEntry)) fail(`engine entry missing in source: ${sourceEntry}`);
 
 fs.rmSync(outputDir, { recursive: true, force: true });
-fs.mkdirSync(outputDir, { recursive: true });
+const stagedModules = path.join(outputDir, 'node_modules');
+const stagedEngine = path.join(stagedModules, ENGINE_NAME);
+fs.mkdirSync(stagedEngine, { recursive: true });
 
 let files = 0;
 let bytes = 0;
-const copyTree = (from, to) => {
+const copyPath = (from, to) => {
   const stats = fs.statSync(from);
   if (stats.isDirectory()) {
     fs.mkdirSync(to, { recursive: true });
-    for (const name of fs.readdirSync(from)) copyTree(path.join(from, name), path.join(to, name));
+    for (const name of fs.readdirSync(from)) copyPath(path.join(from, name), path.join(to, name));
     return;
   }
   fs.mkdirSync(path.dirname(to), { recursive: true });
@@ -70,19 +69,60 @@ const copyTree = (from, to) => {
   bytes += stats.size;
 };
 
-copyTree(path.join(sourceDir, 'package.json'), path.join(outputDir, 'package.json'));
-copyTree(path.join(sourceDir, BUNDLE_RELATIVE), path.join(outputDir, BUNDLE_RELATIVE));
+// The engine itself: manifest plus the bundle it runs from.
+copyPath(path.join(sourceDir, 'package.json'), path.join(stagedEngine, 'package.json'));
+copyPath(path.join(sourceDir, 'dist', 'bundle'), path.join(stagedEngine, 'dist', 'bundle'));
 for (const name of ['LICENSE', 'LICENSE.md', 'NOTICE', 'NOTICE.md']) {
   const candidate = path.join(sourceDir, name);
-  if (fs.existsSync(candidate)) copyTree(candidate, path.join(outputDir, name));
+  if (fs.existsSync(candidate)) copyPath(candidate, path.join(stagedEngine, name));
 }
 
-const stagedEntry = path.join(outputDir, ENTRY_RELATIVE);
-if (!fs.existsSync(stagedEntry)) fail(`staged entry missing after copy: ${stagedEntry}`);
-const stagedEntryBytes = fs.statSync(stagedEntry).size;
-if (stagedEntryBytes < MIN_ENTRY_BYTES) fail(`staged entry implausibly small: ${stagedEntryBytes} bytes`);
-const chunks = path.join(outputDir, BUNDLE_RELATIVE, 'chunks');
-const chunkCount = fs.existsSync(chunks) ? fs.readdirSync(chunks).length : 0;
-if (chunkCount === 0) fail(`staged engine has no chunks: ${chunks}`);
+// The closure: every declared dependency, copied beside the engine, then its own dependencies.
+const staged = new Set();
+let dependencies = 0;
+let unresolved = [];
+const stageDependencies = (fromPackageJson, depth) => {
+  if (depth > MAX_DEPTH) return;
+  let declared = {};
+  try {
+    declared = readJson(fromPackageJson)?.dependencies ?? {};
+  } catch {
+    return;
+  }
+  const requireFrom = createRequire(fromPackageJson);
+  for (const name of Object.keys(declared)) {
+    const target = path.join(stagedModules, name);
+    if (staged.has(name)) continue;
+    let resolved;
+    try {
+      resolved = requireFrom.resolve(`${name}/package.json`);
+    } catch {
+      unresolved.push(name);
+      continue;
+    }
+    staged.add(name);
+    copyPath(path.dirname(resolved), target);
+    dependencies += 1;
+    stageDependencies(path.join(target, 'package.json'), depth + 1);
+  }
+};
+stageDependencies(path.join(sourceDir, 'package.json'), 0);
 
-console.log(`[prepare-senpi-engine] staged ${files} files (${bytes} bytes), entry ${stagedEntryBytes} bytes, ${chunkCount} chunks -> ${outputDir}`);
+// The staged engine must be able to import the package that actually crashed the host.
+const stagedRequire = createRequire(path.join(stagedEngine, 'package.json'));
+let requiredCopy = 'missing';
+try {
+  stagedRequire.resolve(`${REQUIRED_DEPENDENCY}/package.json`);
+  requiredCopy = 'resolves';
+} catch {
+  fail(
+    `staged engine cannot import ${REQUIRED_DEPENDENCY}; source ${sourceDir} declares ${unresolved.length} unresolved ` +
+      `dependenc${unresolved.length === 1 ? 'y' : 'ies'}${unresolved.length > 0 ? `: ${unresolved.slice(0, 6).join(', ')}` : ''}`,
+  );
+}
+
+console.log(
+  `[prepare-senpi-engine] staged ${files} files (${bytes} bytes) in ${dependencies} dependencies -> ${outputDir}; ` +
+    `${REQUIRED_DEPENDENCY} ${requiredCopy}` +
+    (unresolved.length > 0 ? `; unresolved (optional or absent): ${unresolved.slice(0, 8).join(', ')}` : ''),
+);

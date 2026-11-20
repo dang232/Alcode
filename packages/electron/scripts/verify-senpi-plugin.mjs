@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -61,7 +62,7 @@ for (const candidate of candidates) {
   const { entry, entryBytes } = assertPluginDir(candidate);
   console.log(`[electron] packaged task host plugin ok: ${entry} (${entryBytes} bytes)`);
   const engineDir = path.join(path.dirname(candidate), 'senpi-engine');
-  const engineEntry = path.join(engineDir, 'dist', 'bundle', 'cli.js');
+  const engineEntry = path.join(engineDir, 'node_modules', '@code-yeongyu', 'senpi', 'dist', 'bundle', 'cli.js');
   if (!fs.existsSync(engineEntry)) {
     fail(`packaged senpi engine missing beside the plugin: ${engineEntry}`);
   }
@@ -69,10 +70,17 @@ for (const candidate of candidates) {
   if (engineBytes < 10_000) {
     fail(`packaged senpi engine entry implausibly small: ${engineEntry} (${engineBytes} bytes)`);
   }
-  const engineChunks = path.join(engineDir, 'dist', 'bundle', 'chunks');
+  const engineChunks = path.join(engineDir, 'node_modules', '@code-yeongyu', 'senpi', 'dist', 'bundle', 'chunks');
   const engineChunkCount = fs.existsSync(engineChunks) ? fs.readdirSync(engineChunks).length : 0;
   if (engineChunkCount === 0) {
     fail(`packaged senpi engine carries no chunks: ${engineDir}`);
   }
-  console.log(`[electron] packaged senpi engine ok: ${engineEntry} (${engineBytes} bytes, ${engineChunkCount} chunks)`);
+  // A staged bundle that cannot import its own dependencies crash-loops the host at module resolution.
+  const engineRequire = createRequire(path.join(engineDir, 'node_modules', '@code-yeongyu', 'senpi', 'package.json'));
+  try {
+    engineRequire.resolve('@earendil-works/chord/package.json');
+  } catch {
+    fail(`packaged senpi engine cannot import @earendil-works/chord: ${engineDir}`);
+  }
+  console.log(`[electron] packaged senpi engine ok: ${engineEntry} (${engineBytes} bytes, ${engineChunkCount} chunks, closure resolves)`);
 }
