@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { createTaskHostSupervisor, defaultProbe, engineCandidates, launchOf, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir, unresolvedEngineDependencies } from "./supervisor"
+import { createTaskHostSupervisor, defaultProbe, engineCandidates, engineDependencyClosure, launchOf, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir } from "./supervisor"
 
 const roots = []
 
@@ -18,7 +18,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-describe("unresolvedEngineDependencies", () => {
+describe("engineDependencyClosure", () => {
   const writeEngine = (root, dependencies, present) => {
     const engineDir = join(root, "engine")
     mkdirSync(join(engineDir, "dist", "bundle"), { recursive: true })
@@ -30,27 +30,40 @@ describe("unresolvedEngineDependencies", () => {
     return join(engineDir, "dist", "bundle", "cli.js")
   }
 
-  it("names a declared dependency the engine cannot import", () => {
+  it("reports a bundle-only stage as having none of its closure", () => {
     const root = mkdtempSync(join(tmpdir(), "engine-deps-"))
     roots.push(root)
-    const script = writeEngine(root, { "@earendil-works/chord": "1.0.0" }, [])
-    expect(unresolvedEngineDependencies(script)).toEqual(["@earendil-works/chord"])
+    const script = writeEngine(root, { "@earendil-works/chord": "1.0.0", typebox: "1.0.0" }, [])
+    const closure = engineDependencyClosure(script)
+    expect(closure.declared).toBe(2)
+    expect(closure.missing).toEqual(["@earendil-works/chord", "typebox"])
   })
 
-  it("reports nothing when every declared dependency resolves from the engine", () => {
+  it("reports a partial closure without claiming it is empty", () => {
     const root = mkdtempSync(join(tmpdir(), "engine-deps-"))
     roots.push(root)
-    const script = writeEngine(root, { "@earendil-works/chord": "1.0.0" }, ["@earendil-works/chord"])
-    expect(unresolvedEngineDependencies(script)).toEqual([])
+    const script = writeEngine(root, { "@earendil-works/chord": "1.0.0", typebox: "1.0.0" }, ["@earendil-works/chord"])
+    const closure = engineDependencyClosure(script)
+    expect(closure.declared).toBe(2)
+    expect(closure.missing).toEqual(["typebox"])
   })
 
-  it("keeps engineCandidates from offering an engine that cannot start", () => {
+  it("drops a script candidate whose whole closure is missing, whatever shape it arrives in", () => {
     const candidates = engineCandidates({
-      env: { ALCODE_TASK_HOST_SENPI: "C:/app/Alcode.exe|C:/app/engine/dist/bundle/cli.js" },
+      env: { ALCODE_TASK_HOST_SENPI: "C:/app/engine/dist/bundle/cli.js" },
       exists: () => true,
-      probe: () => ["@earendil-works/chord"],
+      probe: () => ({ declared: 33, missing: new Array(33).fill("x") }),
     })
-    expect(candidates).not.toContainEqual(["C:/app/Alcode.exe", "C:/app/engine/dist/bundle/cli.js"])
+    expect(candidates).not.toContain("C:/app/engine/dist/bundle/cli.js")
+  })
+
+  it("keeps a candidate that resolves most of its closure, because optional gaps still run", () => {
+    const candidates = engineCandidates({
+      env: { ALCODE_TASK_HOST_SENPI: "C:/app/Alcode.exe|C:/app/engine/cli.js" },
+      exists: () => true,
+      probe: () => ({ declared: 34, missing: ["@earendil-works/pi-ai"] }),
+    })
+    expect(candidates).toContainEqual(["C:/app/Alcode.exe", "C:/app/engine/cli.js"])
   })
 })
 

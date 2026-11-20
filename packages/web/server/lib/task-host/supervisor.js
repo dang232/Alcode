@@ -43,12 +43,13 @@ const DEFAULT_SENPI_BIN = (() => {
 })()
 
 /**
- * An engine can only run if it can import its own declared dependencies. The engine hands itself off to a runtime copy
- * under the agent dir, and its bare imports then resolve by walking up from that copy: a bundle staged without its
- * closure dies at module resolution (`ERR_MODULE_NOT_FOUND: @earendil-works/chord`), retries, and reads as a broken
- * plugin. A script whose package.json declares dependencies that do not resolve from it must not be started.
+ * How much of an engine's declared dependency closure it can actually import. The engine hands itself off to a runtime
+ * copy under the agent dir, where bare imports resolve by walking up from that copy, so a bundle staged without its
+ * closure dies at module resolution (`ERR_MODULE_NOT_FOUND: @earendil-works/chord`) and retries forever. A complete
+ * install can still miss optional packages and run fine, so the caller decides: none resolvable means a bundle-only
+ * stage that must not be started.
  */
-export const unresolvedEngineDependencies = (scriptPath) => {
+export const engineDependencyClosure = (scriptPath) => {
   let dir = dirname(scriptPath)
   for (let depth = 0; depth < 6; depth += 1) {
     const packagePath = join(dir, "package.json")
@@ -57,10 +58,11 @@ export const unresolvedEngineDependencies = (scriptPath) => {
       try {
         declared = JSON.parse(readFileSync(packagePath, "utf8"))?.dependencies ?? {}
       } catch {
-        return []
+        return { declared: 0, missing: [] }
       }
       const requireFrom = createRequire(packagePath)
-      return Object.keys(declared).filter((name) => {
+      const names = Object.keys(declared)
+      const missing = names.filter((name) => {
         try {
           requireFrom.resolve(`${name}/package.json`)
           return false
@@ -68,27 +70,29 @@ export const unresolvedEngineDependencies = (scriptPath) => {
           return true
         }
       })
+      return { declared: names.length, missing }
     }
     const parent = dirname(dir)
     if (parent === dir) break
     dir = parent
   }
-  return []
+  return { declared: 0, missing: [] }
 }
 
 /**
  * Engines worth trying, best first: an explicit choice, then the runtime this install can resolve, then the global
  * omo-ai install (where dev machines keep the CLI the app itself uses), then the sibling checkout's shim.
  */
-export const engineCandidates = ({ env = process.env, exists = existsSync, appdata = process.env.APPDATA, probe = unresolvedEngineDependencies } = {}) => {
+export const engineCandidates = ({ env = process.env, exists = existsSync, appdata = process.env.APPDATA, probe = engineDependencyClosure } = {}) => {
   const list = []
   const push = (candidate) => {
     if (candidate === undefined) return
     if (list.some((existing) => JSON.stringify(existing) === JSON.stringify(candidate))) return
-    const script = Array.isArray(candidate) ? candidate[candidate.length - 1] : undefined
+    // `ALCODE_TASK_HOST_SENPI` may name the script directly, so both shapes are probed.
+    const script = Array.isArray(candidate) ? candidate[candidate.length - 1] : candidate
     if (typeof script === "string" && script.endsWith(".js")) {
-      const missing = probe(script)
-      if (missing.length > 0) return
+      const closure = probe(script)
+      if (closure.declared > 0 && closure.missing.length === closure.declared) return
     }
     list.push(candidate)
   }
