@@ -1393,6 +1393,17 @@ const focusForegroundWindow = () => {
   // unless app.focus runs first.
   if (process.platform === 'darwin') app.focus({ steal: true });
   if (target.isMinimized()) target.restore();
+  if (process.platform === 'win32') {
+    // Windows refuses SetForegroundWindow from a process that is not already in the
+    // foreground: a second launch therefore exited after raising nothing, which reads as the
+    // app opening and immediately vanishing. Claiming topmost for the duration of the focus
+    // call is the sanctioned way to come forward without taking keystrokes from another app.
+    target.show();
+    target.setAlwaysOnTop(true);
+    target.focus();
+    target.setAlwaysOnTop(false);
+    return;
+  }
   target.show();
   target.focus();
   if (typeof target.moveTop === 'function') target.moveTop();
