@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { createTaskHostSupervisor, defaultProbe, engineCandidates, launchOf, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir } from "./supervisor"
+import { createTaskHostSupervisor, defaultProbe, engineCandidates, launchOf, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir, unresolvedEngineDependencies } from "./supervisor"
 
 const roots = []
 
@@ -16,6 +16,42 @@ function dirs() {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe("unresolvedEngineDependencies", () => {
+  const writeEngine = (root, dependencies, present) => {
+    const engineDir = join(root, "engine")
+    mkdirSync(join(engineDir, "dist", "bundle"), { recursive: true })
+    writeFileSync(join(engineDir, "package.json"), JSON.stringify({ name: "engine", version: "1.0.0", dependencies }))
+    for (const name of present) {
+      mkdirSync(join(engineDir, "node_modules", name), { recursive: true })
+      writeFileSync(join(engineDir, "node_modules", name, "package.json"), JSON.stringify({ name, version: "1.0.0" }))
+    }
+    return join(engineDir, "dist", "bundle", "cli.js")
+  }
+
+  it("names a declared dependency the engine cannot import", () => {
+    const root = mkdtempSync(join(tmpdir(), "engine-deps-"))
+    roots.push(root)
+    const script = writeEngine(root, { "@earendil-works/chord": "1.0.0" }, [])
+    expect(unresolvedEngineDependencies(script)).toEqual(["@earendil-works/chord"])
+  })
+
+  it("reports nothing when every declared dependency resolves from the engine", () => {
+    const root = mkdtempSync(join(tmpdir(), "engine-deps-"))
+    roots.push(root)
+    const script = writeEngine(root, { "@earendil-works/chord": "1.0.0" }, ["@earendil-works/chord"])
+    expect(unresolvedEngineDependencies(script)).toEqual([])
+  })
+
+  it("keeps engineCandidates from offering an engine that cannot start", () => {
+    const candidates = engineCandidates({
+      env: { ALCODE_TASK_HOST_SENPI: "C:/app/Alcode.exe|C:/app/engine/dist/bundle/cli.js" },
+      exists: () => true,
+      probe: () => ["@earendil-works/chord"],
+    })
+    expect(candidates).not.toContainEqual(["C:/app/Alcode.exe", "C:/app/engine/dist/bundle/cli.js"])
+  })
 })
 
 describe("launchOf", () => {
