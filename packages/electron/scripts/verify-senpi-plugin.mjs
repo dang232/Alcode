@@ -61,7 +61,7 @@ if (candidates.length === 0) {
 for (const candidate of candidates) {
   const { entry, entryBytes } = assertPluginDir(candidate);
   console.log(`[electron] packaged task host plugin ok: ${entry} (${entryBytes} bytes)`);
-  const engineDir = path.join(path.dirname(candidate), 'senpi-engine');
+  const engineDir = path.join(path.dirname(candidate), 'senpi-engine', 'engine');
   const engineEntry = path.join(engineDir, 'node_modules', '@code-yeongyu', 'senpi', 'dist', 'bundle', 'cli.js');
   if (!fs.existsSync(engineEntry)) {
     fail(`packaged senpi engine missing beside the plugin: ${engineEntry}`);

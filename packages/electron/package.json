@@ -130,7 +130,10 @@
       },
       {
         "from": "resources/senpi-engine",
-        "to": "senpi-engine"
+        "to": "senpi-engine",
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../omo-engine",

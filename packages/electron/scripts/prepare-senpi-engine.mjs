@@ -76,7 +76,7 @@ const sourceEntry = path.join(sourceDir, 'dist', 'bundle', 'cli.js');
 if (!fs.existsSync(sourceEntry)) fail(`engine entry missing in source: ${sourceEntry}`);
 
 fs.rmSync(outputDir, { recursive: true, force: true });
-const stagedModules = path.join(outputDir, 'node_modules');
+const stagedModules = path.join(outputDir, 'engine', 'node_modules');
 const stagedEngine = path.join(stagedModules, ENGINE_NAME);
 fs.mkdirSync(stagedEngine, { recursive: true });
 
