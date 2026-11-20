@@ -43,6 +43,7 @@ import { registerAlcodeSessionRoutes } from '../alcode-sessions/routes.js';
 import { createOpenCodeClient } from '../alcode-sessions/opencode-client.js';
 import { registerCapabilityRoutes } from '../capability-api/index.js';
 import { createTaskHostProxy } from '../capability-api/task-proxy.js';
+import { createTaskOutputProxy } from '../capability-api/task-output-proxy.js';
 import { resolveAllowedAgents, resolveCapabilityToken, resolveEffectiveAllowedAgents } from '../capability-api/runtime.js';
 import { registerAlcodeControlRoutes } from '../alcode-control/routes.js';
 import { registerMarkdownImageGrantRoutes } from '../markdown-image-grants/routes.js';
@@ -377,6 +378,11 @@ export const createFeatureRoutesRuntime = (dependencies) => {
         const host = taskHostNow();
         if (host === undefined) throw new Error('no task host is available');
         return createTaskHostProxy({ url: host.url, token: host.token, ...(host.sessionId === undefined ? {} : { parentSessionID: host.sessionId }) })(request);
+      },
+      taskOutput: async (request) => {
+        const host = taskHostNow();
+        if (host === undefined) throw new Error('no task host is available');
+        return createTaskOutputProxy({ url: host.url, token: host.token, ...(host.sessionId === undefined ? {} : { parentSessionID: host.sessionId }) })(request);
       },
       createClient: capabilityClient,
     };

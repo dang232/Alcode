@@ -49,7 +49,7 @@ const agentAllowed = (allowedAgents, agent) => {
   return allowedAgents.includes(agent);
 };
 
-export const createCapabilityRouter = ({ createClient, taskStarter, authorize, allowedAgents, boundParent, hostState, ensureHostLive, resolveDefaultModel, waitReady } = {}) => {
+export const createCapabilityRouter = ({ createClient, taskStarter, taskOutput, authorize, allowedAgents, boundParent, hostState, ensureHostLive, resolveDefaultModel, waitReady } = {}) => {
   // The supervisor's bound session is the only parent the host can actually run a task under.
   const boundParentOf = () => (typeof boundParent === 'function' ? boundParent() : boundParent);
   const router = express.Router();
@@ -230,6 +230,40 @@ export const createCapabilityRouter = ({ createClient, taskStarter, authorize, a
         return
       }
       response.status(503).json(NO_MANAGER_BODY);
+    }
+  });
+
+  router.post('/task/output', async (request, response) => {
+    const body = bodyOf(request);
+    const taskID = asNonEmptyString(body.taskID) ?? asNonEmptyString(body.task_id);
+    const boundParentID = asNonEmptyString(boundParentOf());
+    const parentSessionID = boundParentID ?? asNonEmptyString(body.parentSessionID);
+    if (!taskID || !parentSessionID) {
+      fail(response, 400, 'INVALID_ARGUMENT', 'taskID and parentSessionID are required strings.');
+      return;
+    }
+    if (!(await allowed(authorize, { token: request.capabilityToken, parentID: parentSessionID }))) {
+      fail(response, 403, 'FORBIDDEN', 'This token may not read a task under that parent session.');
+      return;
+    }
+    if (taskOutput === undefined) {
+      response.status(503).json(NO_MANAGER_BODY);
+      return;
+    }
+    try {
+      const output = await taskOutput({ taskID, parentSessionID });
+      response.status(200).json(output);
+    } catch (error) {
+      const code = asNonEmptyString(error?.code);
+      if (code === 'TASK_MANAGER_UNAVAILABLE') {
+        response.status(503).json(NO_MANAGER_BODY);
+        return;
+      }
+      if (code === 'INVALID_ARGUMENT') {
+        fail(response, 400, 'INVALID_ARGUMENT', asNonEmptyString(error?.message) ?? 'taskID is required.');
+        return;
+      }
+      fail(response, 502, code ?? 'TASK_OUTPUT_REFUSED', asNonEmptyString(error?.message) ?? 'the task host refused the read');
     }
   });
 
