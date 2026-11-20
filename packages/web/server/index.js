@@ -160,7 +160,7 @@ import { createDevServerScanner } from './lib/dev-servers/routes.js';
 import { createDevTunnelRuntime } from './lib/dev-tunnel/runtime.js';
 import { registerBrowserControlRoutes } from './lib/browser-control/routes.js';
 import { createManagedConfigRuntime } from './lib/opencode/managed-config-file.js';
-import { configureCapabilityBaseUrl } from './lib/capability-api/runtime.js';
+import { configureCapabilityBaseUrl, resolveEffectiveAllowedAgents } from './lib/capability-api/runtime.js';
 import { prepareInstanceDir } from './lib/opencode/instance-dir.js';
 import { createAlcodeSessionService } from './lib/alcode-sessions/routes.js';
 import { createSessionMetadataStore, createOpenCodeSessionMetadata } from './lib/alcode-sessions/session-metadata-store.js';
@@ -689,6 +689,8 @@ const codeGraphRuntime = createCodeGraphHost({ storeDir: path.join(ALCODE_DATA_D
 const taskHostSupervisor = createTaskHostSupervisor({
   pluginDir: resolvePluginDir(),
   stateDir: path.join(ALCODE_DATA_DIR, 'task-host'),
+  // The same allowlist the gateway enforces, handed to the host it launches.
+  allowedAgents: resolveEffectiveAllowedAgents(process.env),
   // Scoped to the app's active project, so records land in the store that project's DAG reads.
   // An explicit override exists for tests and for a headless run; the request-scoped resolver cannot
   // be used here because it needs an Express request.
@@ -2483,7 +2485,7 @@ async function main(options = {}) {
       // The packaged desktop UI (alcode-ui://) and the dev UI sit on a
       // different origin, so every custom request header must be listed here or
       // the browser refuses the request at preflight, before it reaches a route.
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,X-Requested-With,Cache-Control,X-OpenCode-Directory,X-OpenCode-Directory-Encoding,Ngrok-Skip-Browser-Warning,X-Alcode-Surface,X-Alcode-Provider,X-Alcode-Model');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,X-Requested-With,Cache-Control,X-OpenCode-Directory,X-OpenCode-Directory-Encoding,Ngrok-Skip-Browser-Warning,X-Openchamber-Part-Shells,X-Alcode-Surface,X-Alcode-Provider,X-Alcode-Model');
       res.setHeader('Access-Control-Expose-Headers', 'x-next-cursor');
       res.setHeader('Vary', 'Origin');
       if (req.method === 'OPTIONS') {

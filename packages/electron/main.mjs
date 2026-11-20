@@ -1393,6 +1393,17 @@ const focusForegroundWindow = () => {
   // unless app.focus runs first.
   if (process.platform === 'darwin') app.focus({ steal: true });
   if (target.isMinimized()) target.restore();
+  if (process.platform === 'win32') {
+    // Windows refuses SetForegroundWindow from a process that is not already in the
+    // foreground: a second launch therefore exited after raising nothing, which reads as the
+    // app opening and immediately vanishing. Claiming topmost for the duration of the focus
+    // call is the sanctioned way to come forward without taking keystrokes from another app.
+    target.show();
+    target.setAlwaysOnTop(true);
+    target.focus();
+    target.setAlwaysOnTop(false);
+    return;
+  }
   target.show();
   target.focus();
   if (typeof target.moveTop === 'function') target.moveTop();
@@ -1609,7 +1620,21 @@ const spawnLocalServer = async () => {
     delete process.env.ALCODE_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
   }
   process.env.ALCODE_DIST_DIR = resolveWebDistDir();
+  // The supervised task host resolves its plugin from <resources>/senpi-plugin
+  // first (supervisor.js resolvePluginDir). Without this the packaged app has no
+  // sibling checkout to fall back to and every task dies on a missing
+  // extensions/omo.js, so the resources root is exported explicitly.
+  process.env.ALCODE_RESOURCES_PATH = resourceRoot();
   process.env.ALCODE_RUNTIME = 'desktop';
+  // Staged senpi engine (prepare:senpi-engine): the supervised task host must run
+  // on this install's own engine. require.resolve cannot see it inside the asar,
+  // so without this the supervisor falls back to a globally installed omo-ai
+  // build, whose own startup phases time out (phase=public_verified, 10 s budget)
+  // and every delegation ends in TASK_MANAGER_UNAVAILABLE after a relaunch loop.
+  const stagedSenpiEngine = path.join(resourceRoot(), 'senpi-engine', 'engine', 'node_modules', '@code-yeongyu', 'senpi', 'dist', 'bundle', 'cli.js');
+  if (fs.existsSync(stagedSenpiEngine)) {
+    process.env.ALCODE_TASK_HOST_SENPI = stagedSenpiEngine;
+  }
   // Staged internal ulw-loop CLI (prepare:ulw-loop-cli): loop agents spawned
   // under the app inherit this and resolve internal-first via the skill doc's
   // OMO_ULW_LOOP_CLI override — no download, no PATH, no drive search.

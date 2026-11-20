@@ -14,6 +14,8 @@ resources/ripgrep/*
 !resources/ripgrep/.gitkeep
 resources/ulw-loop-cli/*
 !resources/ulw-loop-cli/.gitkeep
+resources/senpi-plugin/
+resources/senpi-engine/
 .cache/
 
 # OS-specific

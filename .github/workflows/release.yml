@@ -811,3 +811,25 @@ jobs:
             }
           }
           JSON
+
+  verify-release-publication:
+    needs: [create-release, finalize-release]
+    # Runs even when finalize-release was skipped or failed: a release left as
+    # a draft must fail this run instead of sitting there unpublished while
+    # releases/latest/download/latest.yml keeps serving the previous version.
+    if: ${{ !cancelled() && needs.create-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Verify release is published
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: node packages/electron/scripts/verify-release-publication.mjs "v$VERSION" "$REPOSITORY"

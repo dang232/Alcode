@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { createTaskHostSupervisor, defaultProbe, engineCandidates, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir } from "./supervisor"
+import { createTaskHostSupervisor, defaultProbe, engineCandidates, engineDependencyClosure, launchOf, openRootSession, releaseDaemonState, resolvePluginDir, retainedRootSessionCount, seedAgentDir } from "./supervisor"
 
 const roots = []
 
@@ -16,6 +16,71 @@ function dirs() {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe("engineDependencyClosure", () => {
+  const writeEngine = (root, dependencies, present) => {
+    const engineDir = join(root, "engine")
+    mkdirSync(join(engineDir, "dist", "bundle"), { recursive: true })
+    writeFileSync(join(engineDir, "package.json"), JSON.stringify({ name: "engine", version: "1.0.0", dependencies }))
+    for (const name of present) {
+      mkdirSync(join(engineDir, "node_modules", name), { recursive: true })
+      writeFileSync(join(engineDir, "node_modules", name, "package.json"), JSON.stringify({ name, version: "1.0.0" }))
+    }
+    return join(engineDir, "dist", "bundle", "cli.js")
+  }
+
+  it("reports a bundle-only stage as having none of its closure", () => {
+    const root = mkdtempSync(join(tmpdir(), "engine-deps-"))
+    roots.push(root)
+    const script = writeEngine(root, { "@earendil-works/chord": "1.0.0", typebox: "1.0.0" }, [])
+    const closure = engineDependencyClosure(script)
+    expect(closure.declared).toBe(2)
+    expect(closure.missing).toEqual(["@earendil-works/chord", "typebox"])
+  })
+
+  it("reports a partial closure without claiming it is empty", () => {
+    const root = mkdtempSync(join(tmpdir(), "engine-deps-"))
+    roots.push(root)
+    const script = writeEngine(root, { "@earendil-works/chord": "1.0.0", typebox: "1.0.0" }, ["@earendil-works/chord"])
+    const closure = engineDependencyClosure(script)
+    expect(closure.declared).toBe(2)
+    expect(closure.missing).toEqual(["typebox"])
+  })
+
+  it("drops a script candidate whose whole closure is missing, whatever shape it arrives in", () => {
+    const candidates = engineCandidates({
+      env: { ALCODE_TASK_HOST_SENPI: "C:/app/engine/dist/bundle/cli.js" },
+      exists: () => true,
+      probe: () => ({ declared: 33, missing: new Array(33).fill("x") }),
+    })
+    expect(candidates).not.toContain("C:/app/engine/dist/bundle/cli.js")
+  })
+
+  it("keeps a candidate that resolves most of its closure, because optional gaps still run", () => {
+    const candidates = engineCandidates({
+      env: { ALCODE_TASK_HOST_SENPI: "C:/app/Alcode.exe|C:/app/engine/cli.js" },
+      exists: () => true,
+      probe: () => ({ declared: 34, missing: ["@earendil-works/pi-ai"] }),
+    })
+    expect(candidates).toContainEqual(["C:/app/Alcode.exe", "C:/app/engine/cli.js"])
+  })
+})
+
+describe("launchOf", () => {
+  it("starts a staged engine with the runtime and the script only", () => {
+    const argv = launchOf("C:/app/resources/senpi-engine/dist/bundle/cli.js", "C:/app/Alcode.exe")
+    expect(argv).toEqual(["C:/app/Alcode.exe", "C:/app/resources/senpi-engine/dist/bundle/cli.js"])
+  })
+
+  it("passes no runtime flag: Electron answers `bad option: --js-flags` and exits 9 before Node starts", () => {
+    const argv = launchOf("C:/app/resources/senpi-engine/dist/bundle/cli.js", "C:/app/Alcode.exe")
+    expect(argv.some((part) => part.startsWith("--js-flags"))).toBe(false)
+  })
+
+  it("keeps an explicit multi-part command verbatim", () => {
+    expect(launchOf(["bun", "C:/x/cli.js"])).toEqual(["bun", "C:/x/cli.js"])
+  })
 })
 
 function supervisor(overrides = {}) {
@@ -729,7 +794,7 @@ describe("host default model", () => {
 })
 
 describe("launch spec", () => {
-  it("writes a launch spec the engine's schema accepts", async () => {
+  const launchSpecFor = async (overrides = {}) => {
     const { pluginDir, stateDir, projectDir } = dirs()
     mkdirSync(join(pluginDir, "extensions"), { recursive: true })
     writeFileSync(join(pluginDir, "extensions", "omo.js"), "", "utf8")
@@ -750,9 +815,14 @@ describe("launch spec", () => {
       probe: async () => true,
       warm: async () => true,
       waitForSecret: async () => {},
+      ...overrides,
     })
     await sup.ensure()
-    const spec = written[0]
+    return written[0]
+  }
+
+  it("writes a launch spec the engine's schema accepts", async () => {
+    const spec = await launchSpecFor()
     // The engine's schema is strict: a spec missing idleExitMs is rejected and the host silently runs a transient
     // default, exiting while idle (~45 s) and taking its capability listener with it.
     expect(spec.spec_version).toBe(1)
@@ -761,6 +831,28 @@ describe("launch spec", () => {
     expect(spec.tunables.idleExitMs).toBeGreaterThan(60_000)
     expect(spec.core.session_runtime).toBe("in-process")
     expect(spec.core.multi_session).toBe(true)
+    // No allowlist configured means no host policy, not an empty one.
+    expect(spec.env.OMO_CAPABILITY_AGENTS).toBeUndefined()
+  })
+
+  it("publishes the same comma-joined allowlist the gateway uses into the launch spec", async () => {
+    expect((await launchSpecFor({ allowedAgents: ["explore", "librarian"] })).env.OMO_CAPABILITY_AGENTS).toBe("explore,librarian")
+    // A set-but-empty gateway list must reach the host as an empty list, not disappear.
+    expect((await launchSpecFor({ allowedAgents: [] })).env.OMO_CAPABILITY_AGENTS).toBe("")
+  })
+
+  it("pins one private agent dir for the host, overriding an inherited omo install", async () => {
+    const envs = []
+    await launchSpecFor({
+      run: async (argv, env) => {
+        envs.push(env)
+        return { code: 0, stdout: JSON.stringify({ action: "start", pid: 1 }) }
+      },
+    })
+    const env = envs[0]
+    expect(env.OMO_CODING_AGENT_DIR).toBe(env.SENPI_CODING_AGENT_DIR)
+    expect(env.OMO_CODING_AGENT_DIR).toBe(env.PI_CODING_AGENT_DIR)
+    expect(env.OMO_CODING_AGENT_DIR.endsWith("agent")).toBe(true)
   })
 })
 

@@ -72,4 +72,33 @@ describe('allowlist at the composition boundary', () => {
       await stop();
     }
   });
+
+  it('refuses every named agent when the set list is empty', async () => {
+    const started = [];
+    const { mounted, base, stop } = await startApp({
+      token: () => 'resolved-token',
+      allowedAgents: [],
+      createClient: async () => ({ session: { get: async () => ({ data: { id: 'ses_parent_1' } }) } }),
+      taskStarter: async () => {
+        started.push('task');
+        return { taskID: 'st_1', state: 'accepted' };
+      },
+    });
+    try {
+      for (const agent of ['explore', 'librarian']) {
+        const response = await fetch(`${base}/task`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: 'Bearer resolved-token' },
+          body: JSON.stringify({ description: 'd', prompt: 'p', parentSessionID: 'ses_parent_1', agent }),
+        });
+
+        expect(response.status).toBe(403);
+        expect((await response.json()).error).toBe('AGENT_NOT_ALLOWED');
+      }
+      expect(mounted).toBe(true);
+      expect(started).toEqual([]);
+    } finally {
+      await stop();
+    }
+  });
 });

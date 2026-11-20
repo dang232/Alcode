@@ -7047,6 +7047,45 @@
     "vscode": null
   },
   {
+    "version": "0.3.5",
+    "date": "2026-11-19",
+    "title": "One allowlist, one release gate",
+    "intro": null,
+    "app": {
+      "new": [],
+      "improvements": [
+        "**One agent allowlist instead of three:** `OMO_CAPABILITY_ALLOWED_AGENTS` is now read by a single helper whose result reaches the gateway, the capability descriptor the managed child publishes, and the host launch spec. It used to be read inline in two places that both dropped an empty value, so \"refuse every agent\" silently became \"allow every agent\"; now an empty list refuses every named agent at each layer with `403 AGENT_NOT_ALLOWED`, and the host is launched with the same list the gateway enforces."
+      ],
+      "fixes": [
+        "**A release that fails to publish now fails the run:** a new `verify-release-publication` job asserts that the release exists, is not a draft or a prerelease, carries the Windows x64 installer built from the tag, and that the live `latest.yml` reports the same version. 0.3.3 slipped past every check as a draft with 17 assets while the updater manifest still served the previous version; that shape is now a red run instead of a silent one."
+      ],
+      "misc": []
+    },
+    "vscode": null
+  },
+  {
+    "version": "0.3.4",
+    "date": "2026-11-19",
+    "title": "Instances say where they point",
+    "intro": null,
+    "app": {
+      "new": [
+        "**Three ways to reach a server:** the instance switcher names this computer, your own LAN server, and your own VPS. Choosing one explains what to run on that machine and where its client token comes from, and the address field says which mode the address belongs to before it is saved."
+      ],
+      "improvements": [],
+      "fixes": [
+        "**The local instance is no longer labelled Incompatible:** the host probe rejected any server with a version major below 2, a rule that predates Alcode's own 0.x line. It now trusts the capability and API version the server reports."
+      ],
+      "misc": []
+    },
+    "vscode": {
+      "new": [],
+      "improvements": [],
+      "fixes": [],
+      "misc": []
+    }
+  },
+  {
     "version": "0.3.3",
     "date": "2026-11-18",
     "title": "Your session survives a restart",

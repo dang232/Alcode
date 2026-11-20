@@ -2,7 +2,7 @@
   "name": "alcode",
   "displayName": "Alcode",
   "description": "%extension.description%",
-  "version": "0.3.3",
+  "version": "0.3.5",
   "publisher": "fedaykindev",
   "private": true,
   "repository": {

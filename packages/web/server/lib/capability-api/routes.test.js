@@ -471,3 +471,47 @@ describe('task start when the host lost its listener', () => {
     }
   })
 })
+
+describe('task output route', () => {
+  const startWith = (options) => startServer({ authorize: async () => true, ...options })
+
+  it('returns the host answer for an authorized read', async () => {
+    const calls = []
+    const server = await startWith({
+      taskOutput: async (request) => {
+        calls.push(request)
+        return { taskID: 'st_1', output: { kind: 'ok', text: 'READY' } }
+      },
+    })
+    try {
+      const response = await post(server.base, '/task/output', { taskID: 'st_1', parentSessionID: 'ses_parent_1' })
+      expect(response.status).toBe(200)
+      expect((await response.json()).output.text).toBe('READY')
+      expect(calls[0]).toEqual({ taskID: 'st_1', parentSessionID: 'ses_parent_1' })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('refuses with 503 when this server hosts no task manager', async () => {
+    const server = await startWith({})
+    try {
+      const response = await post(server.base, '/task/output', { taskID: 'st_1', parentSessionID: 'ses_parent_1' })
+      expect(response.status).toBe(503)
+      expect((await response.json()).error).toBe('TASK_MANAGER_UNAVAILABLE')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('requires a task id and a parent session', async () => {
+    const server = await startWith({ taskOutput: async () => ({}) })
+    try {
+      const response = await post(server.base, '/task/output', { parentSessionID: 'ses_parent_1' })
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe('INVALID_ARGUMENT')
+    } finally {
+      await server.stop()
+    }
+  })
+})

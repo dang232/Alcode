@@ -123,6 +123,16 @@ describe('capability descriptor wired into the managed plugin tuple', () => {
     }
   });
 
+  it('publishes the allowlist from the environment into the tuple', () => {
+    const descriptor = descriptorForDirectory(NATIVE_PLUGIN_DIRECTORY, {
+      ALCODE_CAPABILITY_TOKEN: 't',
+      OMO_CAPABILITY_ALLOWED_AGENTS: 'explore,librarian',
+    }, 'http://127.0.0.1:57123');
+    const options = ENTRY_OPTIONS(pluginsOf('', descriptor));
+
+    expect(options.hostCapabilities.allowedAgents).toEqual(['explore', 'librarian']);
+  });
+
   it('lets an explicit deployment url win over both', () => {
     const descriptor = descriptorForDirectory(NATIVE_PLUGIN_DIRECTORY, { ALCODE_CAPABILITY_URL: 'https://fronted.example', ALCODE_CAPABILITY_TOKEN: 't' }, 'http://127.0.0.1:57123');
     const options = ENTRY_OPTIONS(pluginsOf('', descriptor));

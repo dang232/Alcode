@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCapabilityDescriptor, configureCapabilityBaseUrl, descriptorForDirectory, resolveCapabilityDescriptor, resolveCapabilityToken } from './runtime.js';
+import { buildCapabilityDescriptor, configureCapabilityBaseUrl, descriptorForDirectory, resolveAllowedAgents, resolveCapabilityDescriptor, resolveCapabilityToken } from './runtime.js';
 
 describe('capability token', () => {
   it('uses the configured token when one is supplied', () => {
@@ -42,6 +42,48 @@ describe('capability descriptor', () => {
   it('publishes the descriptor when both url and token are configured', () => {
     const descriptor = resolveCapabilityDescriptor({ ALCODE_CAPABILITY_URL: 'http://127.0.0.1:3901', ALCODE_CAPABILITY_TOKEN: 't' });
     expect(descriptor?.hostCapabilities.url).toBe('http://127.0.0.1:3901');
+  });
+});
+
+describe('allowed agents', () => {
+  it('leaves the policy undefined when the environment names none', () => {
+    expect(resolveAllowedAgents({})).toBeUndefined();
+  });
+
+  it('splits, trims and drops empty entries', () => {
+    expect(resolveAllowedAgents({ OMO_CAPABILITY_ALLOWED_AGENTS: ' explore , librarian ,, ' })).toEqual(['explore', 'librarian']);
+  });
+
+  it('keeps a set-but-empty list as an empty policy', () => {
+    expect(resolveAllowedAgents({ OMO_CAPABILITY_ALLOWED_AGENTS: '' })).toEqual([]);
+    expect(resolveAllowedAgents({ OMO_CAPABILITY_ALLOWED_AGENTS: ',' })).toEqual([]);
+  });
+
+  it('carries the list in the descriptor only when it is defined', () => {
+    const named = buildCapabilityDescriptor({ url: 'http://127.0.0.1:3901', token: 't', allowedAgents: ['explore'] });
+    const empty = buildCapabilityDescriptor({ url: 'http://127.0.0.1:3901', token: 't', allowedAgents: [] });
+    const absent = buildCapabilityDescriptor({ url: 'http://127.0.0.1:3901', token: 't' });
+
+    expect(named.hostCapabilities.allowedAgents).toEqual(['explore']);
+    expect(empty.hostCapabilities.allowedAgents).toEqual([]);
+    expect(absent.hostCapabilities).not.toHaveProperty('allowedAgents');
+  });
+
+  it('reads the list into both descriptor entry points', () => {
+    const env = {
+      ALCODE_CAPABILITY_URL: 'http://127.0.0.1:3901',
+      ALCODE_CAPABILITY_TOKEN: 't',
+      OMO_CAPABILITY_ALLOWED_AGENTS: 'explore,librarian',
+    };
+
+    expect(resolveCapabilityDescriptor(env).hostCapabilities.allowedAgents).toEqual(['explore', 'librarian']);
+    expect(descriptorForDirectory('/data/omo-native/omo-native', env).hostCapabilities.allowedAgents).toEqual(['explore', 'librarian']);
+
+    const unset = resolveCapabilityDescriptor({ ALCODE_CAPABILITY_URL: 'http://127.0.0.1:3901', ALCODE_CAPABILITY_TOKEN: 't' });
+    expect(unset.hostCapabilities.allowedAgents).toEqual(expect.arrayContaining(['sisyphus', 'explore', 'librarian']));
+
+    const refused = resolveCapabilityDescriptor({ ALCODE_CAPABILITY_URL: 'http://127.0.0.1:3901', ALCODE_CAPABILITY_TOKEN: 't', OMO_CAPABILITY_ALLOWED_AGENTS: '' });
+    expect(refused.hostCapabilities.allowedAgents).toEqual([]);
   });
 });
 

@@ -43,7 +43,8 @@ import { registerAlcodeSessionRoutes } from '../alcode-sessions/routes.js';
 import { createOpenCodeClient } from '../alcode-sessions/opencode-client.js';
 import { registerCapabilityRoutes } from '../capability-api/index.js';
 import { createTaskHostProxy } from '../capability-api/task-proxy.js';
-import { resolveCapabilityToken } from '../capability-api/runtime.js';
+import { createTaskOutputProxy } from '../capability-api/task-output-proxy.js';
+import { resolveAllowedAgents, resolveCapabilityToken, resolveEffectiveAllowedAgents } from '../capability-api/runtime.js';
 import { registerAlcodeControlRoutes } from '../alcode-control/routes.js';
 import { registerMarkdownImageGrantRoutes } from '../markdown-image-grants/routes.js';
 import { registerSkillRoutes } from './skill-routes.js';
@@ -365,13 +366,9 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       headers: getOpenCodeAuthHeaders(),
       directory,
     });
-    const configuredAgents = (process.env.OMO_CAPABILITY_ALLOWED_AGENTS ?? '')
-      .split(',')
-      .map((name) => name.trim())
-      .filter((name) => name.length > 0);
-    registerCapabilityRoutes(app, {
+    const allowedAgents = resolveEffectiveAllowedAgents(process.env);
+    const capabilityOptions = {
       token: () => resolveCapabilityToken(),
-      ...(configuredAgents.length === 0 ? {} : { allowedAgents: configuredAgents }),
       boundParent: () => taskHostNow()?.sessionId,
       hostState: () => taskHostNow()?.state,
       ensureHostLive: () => taskHostNow()?.ensureLive?.(),
@@ -382,8 +379,18 @@ export const createFeatureRoutesRuntime = (dependencies) => {
         if (host === undefined) throw new Error('no task host is available');
         return createTaskHostProxy({ url: host.url, token: host.token, ...(host.sessionId === undefined ? {} : { parentSessionID: host.sessionId }) })(request);
       },
+      taskOutput: async (request) => {
+        const host = taskHostNow();
+        if (host === undefined) throw new Error('no task host is available');
+        const options = { url: host.url, token: host.token };
+        if (host.sessionId !== undefined) options.parentSessionID = host.sessionId;
+        return createTaskOutputProxy(options)(request);
+      },
       createClient: capabilityClient,
-    });
+    };
+    // An empty list is a policy (refuse every named agent), not an absent one.
+    if (allowedAgents !== undefined) capabilityOptions.allowedAgents = allowedAgents;
+    registerCapabilityRoutes(app, capabilityOptions);
 
     registerMarkdownImageGrantRoutes(app, {
       fsPromises,

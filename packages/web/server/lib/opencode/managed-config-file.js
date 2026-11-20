@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { buildNativeAgentConfigMap, getNativeAgentModelGaps, NATIVE_AGENT_MODEL_CHAINS, OMO_NATIVE_AGENT_CONFIG } from '../agents/omo-native-catalog.bundle.js';
 import { isRecord, toMcpEntity } from './config-v2.js';
 import { appendManagedMcpServer, appendManagedPlugin, mergeManagedAgents } from './managed-plugin-config.js';
-import { buildCapabilityDescriptor, descriptorForDirectory, resolveCapabilityToken } from '../capability-api/runtime.js';
+import { buildCapabilityDescriptor, descriptorForDirectory, resolveAllowedAgents, resolveCapabilityToken, resolveEffectiveAllowedAgents } from '../capability-api/runtime.js';
 
 export const MANAGED_CONFIG_FILE_NAME = 'opencode.managed.json';
 
@@ -195,20 +195,25 @@ export const createManagedConfigRuntime = ({
   // OpenCode 2.x accepts only string plugin entries and skips a `[directory, options]` tuple as malformed, in the file
   // and in the inline config alike. The managed plugin therefore reads the same descriptor from its environment.
   const capabilityEnv = () => {
+    const allowedAgents = resolveEffectiveAllowedAgents(env);
     const descriptor = buildCapabilityDescriptor({
       url: env.ALCODE_CAPABILITY_URL ?? capabilityBaseUrl,
       token: resolveCapabilityToken(env),
+      allowedAgents,
     });
     if (descriptor === null) return {};
     // One allowlist value, published under both keys the consumers read today: the plugin and the router use
     // OMO_CAPABILITY_ALLOWED_AGENTS, the host's capability mount reads OMO_CAPABILITY_AGENTS. Converging the host on one
-    // name is a host-side change; until then a single source here keeps the two from disagreeing.
-    const allowed = (env.OMO_CAPABILITY_ALLOWED_AGENTS ?? '').trim();
-    return {
+    // name is a host-side change; until then a single source here keeps the two from disagreeing. A set-but-empty list
+    // is published as an empty string, because dropping it would turn "refuse every agent" into "allow all".
+    const allowed = allowedAgents.join(',');
+    const published = {
       OMO_CAPABILITY_URL: descriptor.hostCapabilities.url,
       OMO_CAPABILITY_TOKEN: descriptor.hostCapabilities.token,
-      ...(allowed.length === 0 ? {} : { OMO_CAPABILITY_ALLOWED_AGENTS: allowed, OMO_CAPABILITY_AGENTS: allowed }),
     };
+    published.OMO_CAPABILITY_ALLOWED_AGENTS = allowed;
+    published.OMO_CAPABILITY_AGENTS = allowed;
+    return published;
   };
 
   const writeConfigFile = async (pluginDirectories) => {
