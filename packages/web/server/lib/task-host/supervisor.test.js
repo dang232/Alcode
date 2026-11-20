@@ -775,6 +775,20 @@ describe("launch spec", () => {
     // A set-but-empty gateway list must reach the host as an empty list, not disappear.
     expect((await launchSpecFor({ allowedAgents: [] })).env.OMO_CAPABILITY_AGENTS).toBe("")
   })
+
+  it("pins one private agent dir for the host, overriding an inherited omo install", async () => {
+    const envs = []
+    await launchSpecFor({
+      run: async (argv, env) => {
+        envs.push(env)
+        return { code: 0, stdout: JSON.stringify({ action: "start", pid: 1 }) }
+      },
+    })
+    const env = envs[0]
+    expect(env.OMO_CODING_AGENT_DIR).toBe(env.SENPI_CODING_AGENT_DIR)
+    expect(env.OMO_CODING_AGENT_DIR).toBe(env.PI_CODING_AGENT_DIR)
+    expect(env.OMO_CODING_AGENT_DIR.endsWith("agent")).toBe(true)
+  })
 })
 
 describe("waitReady", () => {

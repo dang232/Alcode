@@ -570,7 +570,7 @@ export function createTaskHostSupervisor(options) {
       // never logged) so a task can actually run.
       const agentDir = join(stateDir, "agent")
       seedAgentDir({ agentDir, pluginDir, userProfile: process.env.USERPROFILE ?? "" })
-      commandEnv = { ...process.env, SENPI_CODING_AGENT_DIR: agentDir }
+      commandEnv = { ...process.env, OMO_CODING_AGENT_DIR: agentDir, SENPI_CODING_AGENT_DIR: agentDir, PI_CODING_AGENT_DIR: agentDir }
       // In the desktop app process.execPath is electron.exe: the engine is a node script, so the host must be started
       // with Electron acting as node, or the child inherits no tool runtime at all.
       if (process.versions?.electron !== undefined) commandEnv.ELECTRON_RUN_AS_NODE = "1"

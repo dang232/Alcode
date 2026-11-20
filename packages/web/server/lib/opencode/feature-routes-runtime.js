@@ -382,7 +382,9 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       taskOutput: async (request) => {
         const host = taskHostNow();
         if (host === undefined) throw new Error('no task host is available');
-        return createTaskOutputProxy({ url: host.url, token: host.token, ...(host.sessionId === undefined ? {} : { parentSessionID: host.sessionId }) })(request);
+        const options = { url: host.url, token: host.token };
+        if (host.sessionId !== undefined) options.parentSessionID = host.sessionId;
+        return createTaskOutputProxy(options)(request);
       },
       createClient: capabilityClient,
     };
