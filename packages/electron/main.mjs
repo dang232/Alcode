@@ -1615,6 +1615,15 @@ const spawnLocalServer = async () => {
   // extensions/omo.js, so the resources root is exported explicitly.
   process.env.ALCODE_RESOURCES_PATH = resourceRoot();
   process.env.ALCODE_RUNTIME = 'desktop';
+  // Staged senpi engine (prepare:senpi-engine): the supervised task host must run
+  // on this install's own engine. require.resolve cannot see it inside the asar,
+  // so without this the supervisor falls back to a globally installed omo-ai
+  // build, whose own startup phases time out (phase=public_verified, 10 s budget)
+  // and every delegation ends in TASK_MANAGER_UNAVAILABLE after a relaunch loop.
+  const stagedSenpiEngine = path.join(resourceRoot(), 'senpi-engine', 'dist', 'bundle', 'cli.js');
+  if (fs.existsSync(stagedSenpiEngine)) {
+    process.env.ALCODE_TASK_HOST_SENPI = stagedSenpiEngine;
+  }
   // Staged internal ulw-loop CLI (prepare:ulw-loop-cli): loop agents spawned
   // under the app inherit this and resolve internal-first via the skill doc's
   // OMO_ULW_LOOP_CLI override — no download, no PATH, no drive search.
