@@ -529,6 +529,11 @@ export function createTaskHostSupervisor(options) {
     // visible, not inferred from a later timeout.
     logger.info?.(`[task-host] ${command.slice(-2).join(" ")} -> ${said.slice(0, 200)}`)
     if (result.code !== 0) {
+      // The engine reports a crash as a Node fatal footer, whose cause sits many lines above it. Two lines of tail
+      // turned that into `} | Node.js v24.22.0` and cost a whole diagnosis round, so a failed step carries the whole
+      // captured stack into the log while a successful step still reports its one-line answer.
+      const detail = String(result.stdout ?? "").trim().split(/\r?\n/).filter(Boolean).slice(-40).join(" | ")
+      logger.warn?.(`[task-host] ${command.slice(0, 3).join(" ")} failed with code ${result.code}: ${detail.slice(0, 4000)}`)
       throw new Error(`${command.slice(0, 3).join(" ")} exited ${result.code}${said.length > 0 ? `: ${said}` : ""}`)
     }
     return result
