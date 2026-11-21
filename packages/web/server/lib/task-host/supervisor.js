@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { createConnection, createServer } from "node:net"
 import { createRequire } from "node:module"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 /**
@@ -52,7 +52,7 @@ const DEFAULT_SENPI_BIN = (() => {
 export const engineDependencyClosure = (scriptPath) => {
   let dir = dirname(scriptPath)
   for (let depth = 0; depth < 6; depth += 1) {
-    const packagePath = join(dir, "package.json")
+    const packagePath = resolve(dir, "package.json")
     if (existsSync(packagePath)) {
       let declared = {}
       try {

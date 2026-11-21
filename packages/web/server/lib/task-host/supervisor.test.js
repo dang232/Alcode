@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, relative } from "node:path"
 import { pathToFileURL } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 
@@ -37,6 +37,14 @@ describe("engineDependencyClosure", () => {
     const closure = engineDependencyClosure(script)
     expect(closure.declared).toBe(2)
     expect(closure.missing).toEqual(["@earendil-works/chord", "typebox"])
+  })
+
+  it("reports a relative script path without failing on createRequire", () => {
+    const root = mkdtempSync(join(tmpdir(), "engine-deps-"))
+    roots.push(root)
+    const script = writeEngine(root, { typebox: "1.0.0" }, ["typebox"])
+    const relativeScript = relative(process.cwd(), script)
+    expect(engineDependencyClosure(relativeScript).declared).toBe(1)
   })
 
   it("reports a partial closure without claiming it is empty", () => {
