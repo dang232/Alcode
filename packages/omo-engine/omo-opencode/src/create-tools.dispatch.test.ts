@@ -57,6 +57,15 @@ describe("native tool dispatch", () => {
     expect(tools.not_a_tool).toBeUndefined()
   })
 
+  it("registers the delegation reader beside task and call_omo_agent, and it refuses without host context", async () => {
+    const tools = await dispatched()
+    expect(tools.task).toBeDefined()
+    expect(tools.call_omo_agent).toBeDefined()
+    expect(tools.task_output).toBeDefined()
+    expect(tools.monitor).toBeDefined()
+    await expect(tools.task_output?.execute({ task_id: "st_probe" })).rejects.toThrow(/UNAUTHENTICATED/)
+  })
+
   it("gives grep, edit and glob their real argument schemas instead of an empty one", async () => {
     const tools = await dispatched()
     expect(Object.keys(tools.grep?.args.properties ?? {})).toEqual(["pattern", "path", "literal", "maxResults"])

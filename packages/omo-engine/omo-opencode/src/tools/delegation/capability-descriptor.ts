@@ -31,11 +31,12 @@ const HostCapabilityOptions = z.object({
   }),
 })
 
-export type OmoCapabilityDescriptor = z.infer<typeof HostCapabilityOptions>["hostCapabilities"]
+type OmoCapabilityDescriptor = z.infer<typeof HostCapabilityOptions>["hostCapabilities"]
 
 const CreateResponse = z.object({ sessionID: z.string().min(1), parentID: z.string().optional() })
 const StartResponse = z.object({ outcome: OutcomeSchema, error: z.string().optional() })
 const TaskResponse = z.object({ taskID: z.string().min(1), state: z.enum(["accepted", "running", "completed", "failed", "cancelled", "unknown"]) })
+const TaskOutputResponse = z.object({ taskID: z.string().min(1), output: z.unknown() })
 
 const TIMEOUT_MS = 30_000
 
@@ -86,6 +87,25 @@ export const readCapabilityDescriptorFromEnv = (
 interface OperationsDraft {
   createSession: (input: OmoCreateSessionInput) => Promise<OmoCreateSessionResult>
   startSession: (input: OmoStartSessionInput) => Promise<OmoStartSessionResult>
+  readonly monitor?: {
+    readonly version: number
+    readonly start: (
+      request: { readonly command: string; readonly filter?: string; readonly timeoutMs?: number },
+      caller: { readonly sessionID: string },
+    ) => Promise<{ readonly accepted: boolean }>
+  }
+  readSession?: (input: { readonly sessionID: string; readonly directory: string }) => Promise<{
+    readonly kind: "status" | "missing"
+    readonly messages?: readonly { readonly role: string; readonly text: string }[]
+    readonly tools?: readonly {
+      readonly name: string
+      readonly status?: string
+      readonly input: string
+      readonly output: string
+    }[]
+    readonly finalResponse?: string
+    readonly reason?: string
+  }>
   allowedAgents?: readonly string[]
 }
 
@@ -94,6 +114,21 @@ interface StartBodyDraft {
   prompt: string
   directory: string
   agent?: string
+}
+
+interface SessionReadDraft {
+  kind: "status" | "missing"
+  messages?: readonly { readonly role: string; readonly text: string }[]
+  tools?: readonly { readonly name: string; readonly status?: string; readonly input: string; readonly output: string }[]
+  finalResponse?: string
+  reason?: string
+}
+
+interface MonitorRequestBody {
+  sessionID: string
+  command: string
+  filter?: string
+  timeoutMs?: number
 }
 
 export const createOperationsFromDescriptor = (descriptor: OmoCapabilityDescriptor): OmoDelegationOperations => {
@@ -115,16 +150,69 @@ export const createOperationsFromDescriptor = (descriptor: OmoCapabilityDescript
       return parsed.data.error === undefined ? { outcome: parsed.data.outcome } : { outcome: parsed.data.outcome, error: parsed.data.error }
     },
   }
+  operations.readSession = async (input) => {
+    const sent = await post(descriptor, "/capability/session/read", JSON.stringify({ sessionID: input.sessionID, directory: input.directory }))
+    if (!sent.ok) throw new Error(`SESSION_READ_FAILED: ${sent.error}`)
+    const body = sent.payload
+    const messages = Array.isArray(body["messages"])
+      ? body["messages"].flatMap((raw) => {
+          if (typeof raw !== "object" || raw === null) return []
+          const role = raw["role"]
+          const text = raw["text"]
+          return typeof role === "string" && typeof text === "string" ? [{ role, text }] : []
+        })
+      : undefined
+    const tools = Array.isArray(body["tools"])
+      ? body["tools"].flatMap((raw) => {
+          if (typeof raw !== "object" || raw === null) return []
+          const name = raw["name"]
+          const input = raw["input"]
+          const output = raw["output"]
+          const status = raw["status"]
+          if (typeof name !== "string") return []
+          return [
+            {
+              name,
+              input: typeof input === "string" ? input : "",
+              output: typeof output === "string" ? output : "",
+              ...(typeof status === "string" ? { status } : {}),
+            },
+          ]
+        })
+      : undefined
+    const finalResponse = typeof body["final_response"] === "string" ? body["final_response"] : undefined
+    const reason = typeof body["reason"] === "string" ? body["reason"] : undefined
+    const draft: SessionReadDraft = {
+      kind: body["kind"] === "missing" ? "missing" : "status",
+    }
+    if (messages !== undefined) draft.messages = messages
+    if (tools !== undefined) draft.tools = tools
+    if (finalResponse !== undefined) draft.finalResponse = finalResponse
+    if (reason !== undefined) draft.reason = reason
+    return draft
+  }
+  operations.monitor = {
+    version: 1,
+    start: async (request, caller) => {
+      const body: MonitorRequestBody = { sessionID: caller.sessionID, command: request.command }
+      if (request.filter !== undefined) body.filter = request.filter
+      if (request.timeoutMs !== undefined) body.timeoutMs = request.timeoutMs
+      const sent = await post(descriptor, "/capability/monitor", JSON.stringify(body))
+      if (!sent.ok) throw new Error(`MONITOR_FAILED: ${sent.error}`)
+      return { accepted: sent.payload["accepted"] === true }
+    },
+  }
   if (descriptor.allowedAgents !== undefined) operations.allowedAgents = descriptor.allowedAgents
   return operations
 }
 
-export interface OmoInjectedTaskOperations {
+interface OmoInjectedTaskOperations {
   readonly taskManager: {
     start: (request: { description: string; prompt: string; agent?: string; category?: string; background?: boolean; parentSessionID: string }) => Promise<{
       taskID: string
       state: "accepted" | "running" | "completed" | "failed" | "cancelled" | "unknown"
     }>
+    readOutput: (request: { taskID: string; parentSessionID: string }) => Promise<{ taskID: string; output: unknown }>
   }
 }
 
@@ -135,6 +223,13 @@ export const createTaskOperationsFromDescriptor = (descriptor: OmoCapabilityDesc
       if (!sent.ok) throw new Error(`TASK_MANAGER_UNAVAILABLE: ${sent.error}`)
       const parsed = TaskResponse.safeParse(sent.payload)
       if (!parsed.success) throw new Error("INTERNAL: the host returned no usable task identity")
+      return parsed.data
+    },
+    readOutput: async (request) => {
+      const sent = await post(descriptor, "/capability/task/output", JSON.stringify({ taskID: request.taskID }))
+      if (!sent.ok) throw new Error(`TASK_OUTPUT_UNAVAILABLE: ${sent.error}`)
+      const parsed = TaskOutputResponse.safeParse(sent.payload)
+      if (!parsed.success) throw new Error("INTERNAL: the host returned no usable task output")
       return parsed.data
     },
   },

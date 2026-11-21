@@ -13,7 +13,7 @@ import type { OhMyOpenCodeConfig } from "./config/schema/oh-my-opencode-config";
 import { buildToolRegistry } from "./plugin/tool-registry";
 import { getAgentToolRestrictions } from "./shared/agent-tool-restrictions";
 import { createCodeGraphTools } from "./tools/code-graph/index.ts";
-import { createDelegationTools, CALL_OMO_AGENT_TOOL_NAME, TASK_TOOL_NAME } from "./tools/delegation/delegation-tools.ts";
+import { createDelegationTools, CALL_OMO_AGENT_TOOL_NAME, MONITOR_TOOL_NAME, TASK_OUTPUT_TOOL_NAME, TASK_TOOL_NAME } from "./tools/delegation/delegation-tools.ts";
 import { createWorkspaceBashTool, BASH_TOOL_NAME } from "./tools/workspace/bash.ts";
 import { createWorkspaceEditTool, EDIT_TOOL_NAME } from "./tools/workspace/edit.ts";
 import { createWorkspaceGlobTool, GLOB_TOOL_NAME } from "./tools/workspace/glob.ts";
@@ -193,6 +193,8 @@ export async function createTools(
   const delegationTools: Record<string, ReturnType<typeof createDelegationTools>["task"]> = {
     [TASK_TOOL_NAME]: delegation.task,
     [CALL_OMO_AGENT_TOOL_NAME]: delegation.callOmoAgent,
+    [TASK_OUTPUT_TOOL_NAME]: delegation.taskOutput,
+    [MONITOR_TOOL_NAME]: delegation.monitor,
   };
   for (const [name, tool] of Object.entries(workspaceTools)) install(name, tool);
   for (const [name, tool] of Object.entries(delegationTools)) install(name, tool);

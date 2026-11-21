@@ -27,6 +27,8 @@ const BASE_TOOLS: RegistryMap = {
   write: { description: "Create or overwrite a file." },
   edit: { description: "Apply a targeted edit to an existing file." },
   task: { description: "Launch a follow-up sub-task." },
+  task_output: { description: "Read a launched task's persisted output by its task id." },
+  monitor: { description: "Watch a condition and wake the session instead of polling." },
   call_omo_agent: { description: "Delegate work to a named helper agent." },
   teammate: { description: "Hand work to a teammate session." },
   todo_write: { description: "Record and update the task checklist." },
@@ -45,10 +47,12 @@ const BASE_TOOLS: RegistryMap = {
  * Names that are never exposed. Matches the families the host cannot safely
  * offer: app-search helpers, nested task dispatchers, language-server tools,
  * the teammate handoff, and todo trackers (matched without case sensitivity).
+ * A task READ is not a dispatcher: `task_output` reports what a task already
+ * returned and cannot start, cancel, or steer one, so it stays exposable.
  */
 export function isForceDisabledTool(toolName: string): boolean {
   if (toolName.startsWith("grep_app_")) return true;
-  if (toolName.startsWith("task_")) return true;
+  if (toolName.startsWith("task_") && toolName !== "task_output") return true;
   if (toolName.startsWith("Lsp")) return true;
   if (toolName === "LspHover") return true;
   if (toolName === "teammate") return true;

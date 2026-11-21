@@ -53,8 +53,23 @@ export interface OmoStartSessionResult {
 export interface OmoDelegationRuntime {
   readonly createSession?: (input: OmoCreateSessionInput) => Promise<OmoCreateSessionResult>
   readonly startSession?: (input: OmoStartSessionInput) => Promise<OmoStartSessionResult>
+  /** Reads a delegated child's own messages, so the parent can report what it actually said. */
+  readonly readSession?: (input: { readonly sessionID: string; readonly directory: string }) => Promise<{
+    readonly kind: "status" | "missing"
+    readonly messages?: readonly { readonly role: string; readonly text: string }[]
+    readonly tools?: readonly {
+      readonly name: string
+      readonly status?: string
+      readonly input: string
+      readonly output: string
+    }[]
+    readonly finalResponse?: string
+    readonly reason?: string
+  }>
   readonly allowedAgents?: readonly string[]
   readonly taskManager?: OmoTaskManagerSeam
+  /** Present when the host can run a watch and post its match back into the session. */
+  readonly monitor?: OmoHostCapabilities["monitor"]
 }
 
 /** Mutable builder shape for `OmoDelegationRuntime`; optionals are set only when present. */
@@ -69,6 +84,18 @@ export interface OmoDelegationRuntimeDraft {
 export interface OmoDelegationOperations {
   readonly createSession: (input: OmoCreateSessionInput) => Promise<OmoCreateSessionResult>
   readonly startSession: (input: OmoStartSessionInput) => Promise<OmoStartSessionResult>
+  readonly readSession?: (input: { readonly sessionID: string; readonly directory: string }) => Promise<{
+    readonly kind: "status" | "missing"
+    readonly messages?: readonly { readonly role: string; readonly text: string }[]
+    readonly tools?: readonly {
+      readonly name: string
+      readonly status?: string
+      readonly input: string
+      readonly output: string
+    }[]
+    readonly finalResponse?: string
+    readonly reason?: string
+  }>
   readonly allowedAgents?: readonly string[]
 }
 
@@ -77,6 +104,11 @@ export interface OmoTaskManagerSeam {
   readonly start: (request: OmoTaskRequest & { readonly parentSessionID: string }) => Promise<{
     readonly taskID: string
     readonly state: OmoTaskHandle["state"]
+  }>
+  /** Present only when the host can read a task back; absent leaves the tool refusing by name. */
+  readonly readOutput?: (request: { readonly taskID: string; readonly parentSessionID: string }) => Promise<{
+    readonly taskID: string
+    readonly output: unknown
   }>
 }
 
@@ -93,6 +125,10 @@ interface ChildSessionsDraft {
     request: OmoChildSessionRequest,
     caller: OmoAuthenticatedCaller,
   ) => Promise<OmoChildSessionHandle>
+  readOutput?: (
+    request: { readonly childSessionID: string },
+    caller: OmoAuthenticatedCaller,
+  ) => Promise<{ readonly kind: "status" | "missing"; readonly sessionID: string; readonly messages?: readonly { readonly role: string; readonly text: string }[]; readonly tools?: readonly { readonly name: string; readonly status?: string; readonly input: string; readonly output: string }[]; readonly finalResponse?: string; readonly reason?: string }>
 }
 
 interface CapabilitiesDraft {
@@ -100,6 +136,7 @@ interface CapabilitiesDraft {
   allowedAgents?: readonly string[]
   childSessions?: OmoHostCapabilities["childSessions"]
   tasks?: OmoHostTasks
+  monitor?: OmoHostCapabilities["monitor"]
 }
 
 const requireAgent = (allowedAgents: readonly string[] | undefined, agent: string | undefined): void => {
@@ -112,7 +149,8 @@ const requireAgent = (allowedAgents: readonly string[] | undefined, agent: strin
   }
 }
 
-export const createChildSessions = (runtime: OmoDelegationRuntime): ChildSessionsDraft => ({
+export const createChildSessions = (runtime: OmoDelegationRuntime): ChildSessionsDraft => {
+  const draft: ChildSessionsDraft = {
   version: HOST_CAPABILITY_VERSION,
   createAndStart: async (request, caller) => {
     const { createSession, startSession } = runtime
@@ -148,9 +186,20 @@ export const createChildSessions = (runtime: OmoDelegationRuntime): ChildSession
     }
     return { childSessionID, parentSessionID: caller.sessionID, started: true, capabilityVersion: HOST_CAPABILITY_VERSION }
   },
-})
+  }
+  const readSeam = runtime.readSession
+  if (readSeam !== undefined) {
+    draft.readOutput = async (request, caller) => {
+      const read = await readSeam({ sessionID: request.childSessionID, directory: caller.directory })
+      return { ...read, sessionID: request.childSessionID }
+    }
+  }
+  return draft
+}
 
-const createTasks = (manager: OmoTaskManagerSeam): OmoHostTasks => ({
+const createTasks = (manager: OmoTaskManagerSeam): OmoHostTasks => {
+  const readSeam = manager.readOutput
+  const tasks: OmoHostTasks = {
   version: HOST_CAPABILITY_VERSION,
   start: async (request: OmoTaskRequest, caller: OmoAuthenticatedCaller): Promise<OmoTaskHandle> => {
     if (!z.function().safeParse(manager.start).success) {
@@ -167,7 +216,12 @@ const createTasks = (manager: OmoTaskManagerSeam): OmoHostTasks => ({
       capabilityVersion: HOST_CAPABILITY_VERSION,
     }
   },
-})
+  }
+  if (readSeam !== undefined) {
+    tasks.readOutput = async (request, caller) => readSeam({ taskID: request.taskID, parentSessionID: caller.sessionID })
+  }
+  return tasks
+}
 
 export const createHostCapabilities = (runtime: OmoDelegationRuntime): OmoHostCapabilities => {
   const capabilities: CapabilitiesDraft = { version: HOST_CAPABILITY_VERSION }
@@ -176,5 +230,6 @@ export const createHostCapabilities = (runtime: OmoDelegationRuntime): OmoHostCa
   }
   if (runtime.allowedAgents !== undefined) capabilities.allowedAgents = runtime.allowedAgents
   if (runtime.taskManager !== undefined) capabilities.tasks = createTasks(runtime.taskManager)
+  if (runtime.monitor !== undefined) capabilities.monitor = runtime.monitor
   return capabilities
 }

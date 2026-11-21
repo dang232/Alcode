@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { WorkspaceToolError } from "./errors.ts"
-import { BASH_TOOL_NAME, createWorkspaceBashTool } from "./bash.ts"
+import { BASH_TOOL_NAME, bashInvocation, createWorkspaceBashTool } from "./bash.ts"
 
 const roots: string[] = []
 
@@ -52,6 +52,26 @@ const failing = isWindows ? "exit 3" : "exit 3"
 const slow = isWindows ? "ping -n 6 127.0.0.1 > NUL" : "sleep 5"
 const listing = isWindows ? "dir" : "pwd"
 
+describe("platform invocation", () => {
+  it("uses cmd.exe on Windows without a detached process", () => {
+    expect(bashInvocation("win32", "echo hi")).toEqual({
+      shell: "cmd.exe",
+      argv: ["cmd.exe", "/d", "/s", "/c", "echo hi"],
+      detached: false,
+    })
+  })
+
+  it("uses /bin/bash with a detached process on Linux and macOS", () => {
+    for (const platform of ["linux", "darwin"] as const) {
+      expect(bashInvocation(platform, "echo hi")).toEqual({
+        shell: "/bin/bash",
+        argv: ["/bin/bash", "-lc", "echo hi"],
+        detached: true,
+      })
+    }
+  })
+})
+
 describe("native bash tool", () => {
   it("is advertised under the name the catalog publishes", () => {
     expect(BASH_TOOL_NAME).toBe("bash")
@@ -63,6 +83,7 @@ describe("native bash tool", () => {
     const result = await run(root, { command: echo })
     expect(result).toContain("exit 0")
     expect(result).toContain("hello")
+    expect(result).toContain(process.platform === "win32" ? "shell: cmd.exe" : "shell: /bin/bash")
   })
 
   it("reports a non-zero exit as a failure instead of an empty success", async () => {

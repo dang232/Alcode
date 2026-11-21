@@ -180,6 +180,8 @@ function resolveV2Capabilities(ctx: V2SetupContext): OmoHostCapabilities | undef
       runtime.startSession = operations.startSession;
     }
     if (runtime.allowedAgents === undefined && operations.allowedAgents !== undefined) runtime.allowedAgents = operations.allowedAgents;
+    if (runtime.readSession === undefined && operations.readSession !== undefined) runtime.readSession = operations.readSession;
+    if (runtime.monitor === undefined && operations.monitor !== undefined) runtime.monitor = operations.monitor;
     if (runtime.taskManager === undefined) runtime.taskManager = createTaskOperationsFromDescriptor(descriptor).taskManager;
   }
   if (runtime.createSession === undefined && runtime.taskManager === undefined) return undefined;

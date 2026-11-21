@@ -25,6 +25,8 @@ import {
 
 export const TASK_TOOL_NAME = "task"
 export const CALL_OMO_AGENT_TOOL_NAME = "call_omo_agent"
+export const TASK_OUTPUT_TOOL_NAME = "task_output"
+export const MONITOR_TOOL_NAME = "monitor"
 
 const MAX_PROMPT_CHARS = 200_000
 
@@ -40,6 +42,16 @@ const CallAgentArgs = z.object({
   description: z.string().trim().min(1).max(200),
   prompt: z.string().trim().min(1).max(MAX_PROMPT_CHARS),
   agent: z.string().trim().min(1).optional(),
+})
+
+const TaskOutputArgs = z.object({
+  task_id: z.string().trim().min(1).max(256),
+})
+
+const MonitorArgs = z.object({
+  command: z.string().trim().min(1).max(2000),
+  filter: z.string().trim().min(1).max(512).optional(),
+  timeout_ms: z.number().int().min(1000).max(1800000).optional(),
 })
 
 const FORBIDDEN_ARGUMENTS = [
@@ -97,6 +109,12 @@ const TASK_DESCRIPTION =
 const CALL_AGENT_DESCRIPTION =
   "Delegate bounded work to a named helper agent in a genuine native child session. The parent session is derived from host context; the result reports the real child identity and whether its first prompt was submitted."
 
+const TASK_OUTPUT_DESCRIPTION =
+  "Read a task's persisted output by its task id. Read-only: the parent session is derived from host context, and a host that publishes no reader is reported rather than answered with an empty result."
+
+const MONITOR_DESCRIPTION =
+  "Watch for a condition instead of polling. Runs one command (or waits on a line) and posts the matching line back into this session as a message, which is what ends the wait. Call it once and end your turn - never sleep-loop."
+
 export interface DelegationToolDeps {
   readonly directory: string
   readonly capabilities?: OmoHostCapabilities
@@ -105,6 +123,8 @@ export interface DelegationToolDeps {
 export interface DelegationTools {
   readonly task: OmoToolDefinition
   readonly callOmoAgent: OmoToolDefinition
+  readonly taskOutput: OmoToolDefinition
+  readonly monitor: OmoToolDefinition
 }
 
 const buildTaskRequest = (args: z.infer<typeof TaskArgs>): OmoTaskRequest => {
@@ -163,6 +183,20 @@ export const createDelegationTools = (deps: DelegationToolDeps): DelegationTools
       rejectIdentityArguments(rawArgs)
       const args = parse(TaskArgs, rawArgs, "task")
       requireAgentAuthorized(capabilities, args.agent, "task")
+      // Native first: a delegated child is a normal session in this runtime, so it keeps the parent's plugin,
+      // hooks, skills and tool surface. The agent is host-derived unless the caller named an authorized one.
+      const sessions = capabilities.childSessions
+      if (sessions !== undefined) {
+        const childRequest: OmoChildSessionRequestDraft = { title: args.description, prompt: args.prompt, agent: args.agent ?? caller.agent }
+        const handle = await sessions.createAndStart(childRequest, caller)
+        requireHostParent(handle, caller)
+        return JSON.stringify({
+          taskID: handle.childSessionID,
+          parentSessionID: handle.parentSessionID,
+          state: handle.started ? "running" : "unknown",
+          capabilityVersion: handle.capabilityVersion,
+        })
+      }
       const tasks = capabilities.tasks
       if (tasks === undefined) {
         throw delegationError(
@@ -207,5 +241,116 @@ export const createDelegationTools = (deps: DelegationToolDeps): DelegationTools
     },
   }
 
-  return { task, callOmoAgent }
+  const taskOutput: OmoToolDefinition = {
+    description: TASK_OUTPUT_DESCRIPTION,
+    args: {
+      properties: {
+        task_id: {
+          type: "string",
+          description:
+            "Id returned by the task tool: a child session id (ses_...) for the native path, or a legacy st_... task id.",
+        },
+      },
+      required: ["task_id"],
+    },
+    execute: async (rawArgs: OmoJsonObject, context?: OmoToolContext): Promise<string> => {
+      const caller: OmoAuthenticatedCaller = callerFromContext(context)
+      if (context?.aborted() === true) {
+        throw delegationError("CANCELLED", "the caller was already aborted; no task output was read")
+      }
+      rejectIdentityArguments(rawArgs)
+      const args = parse(TaskOutputArgs, rawArgs, TASK_OUTPUT_TOOL_NAME)
+      // A child session id reads the child's own messages; a legacy task id reads the task host record.
+      const sessions = capabilities.childSessions
+      if (args.task_id.startsWith("ses_") && sessions?.readOutput !== undefined) {
+        const read = await sessions.readOutput({ childSessionID: args.task_id }, caller)
+        if (read.kind === "missing") {
+          throw delegationError(
+            "TASK_NOT_FOUND",
+            `no child session ${args.task_id}: ${read.reason ?? "not readable in this workspace"}`,
+          )
+        }
+        return JSON.stringify({
+          taskID: args.task_id,
+          output: {
+            kind: read.kind,
+            sessionID: read.sessionID,
+            messages: read.messages ?? [],
+            tools: read.tools ?? [],
+            ...(read.finalResponse === undefined ? {} : { final_response: read.finalResponse }),
+          },
+        })
+      }
+      const tasks = capabilities.tasks
+      if (tasks === undefined) {
+        throw delegationError(
+          "CAPABILITY_UNAVAILABLE",
+          "this host exposes no task capability, so no task output can be read",
+        )
+      }
+      const readOutput = tasks.readOutput
+      if (readOutput === undefined) {
+        throw delegationError(
+          "CAPABILITY_UNAVAILABLE",
+          "this host publishes no task-output reader (host.tasks.readOutput is missing), so the task was not read",
+        )
+      }
+      const read = await readOutput({ taskID: args.task_id }, caller)
+      if (read.taskID !== args.task_id) {
+        throw delegationError(
+          "TASK_ATTRIBUTION_MISMATCH",
+          `the host answered for task ${read.taskID}, not for the requested ${args.task_id}`,
+        )
+      }
+      return JSON.stringify({ taskID: read.taskID, output: read.output })
+    },
+  }
+
+  const monitor: OmoToolDefinition = {
+    description: MONITOR_DESCRIPTION,
+    args: {
+      properties: {
+        command: {
+          type: "string",
+          description:
+            "Command to run once, under the platform shell (cmd.exe on Windows: use && or &, never ; for sequencing).",
+        },
+        filter: {
+          type: "string",
+          description: "Optional regular expression; the first matching line wakes this session.",
+        },
+        timeout_ms: { type: "number", description: "Give up after this many milliseconds (max 30 minutes)." },
+      },
+      required: ["command"],
+    },
+    execute: async (rawArgs: OmoJsonObject, context?: OmoToolContext): Promise<string> => {
+      const caller: OmoAuthenticatedCaller = callerFromContext(context)
+      if (context?.aborted() === true) {
+        throw delegationError("CANCELLED", "the caller was already aborted; nothing was watched")
+      }
+      rejectIdentityArguments(rawArgs)
+      const args = parse(MonitorArgs, rawArgs, MONITOR_TOOL_NAME)
+      const capability = capabilities.monitor
+      if (capability === undefined) {
+        throw delegationError(
+          "CAPABILITY_UNAVAILABLE",
+          "this host publishes no monitor (host.monitor is missing), so nothing could be watched",
+        )
+      }
+      const started = await capability.start(
+        {
+          command: args.command,
+          ...(args.filter === undefined ? {} : { filter: args.filter }),
+          ...(args.timeout_ms === undefined ? {} : { timeoutMs: args.timeout_ms }),
+        },
+        caller,
+      )
+      return JSON.stringify({
+        accepted: started.accepted,
+        note: "the matching line is posted into this session as a message; end your turn instead of polling",
+      })
+    },
+  }
+
+  return { task, callOmoAgent, taskOutput, monitor }
 }
