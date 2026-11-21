@@ -110,6 +110,24 @@ describe("tool row description", () => {
       .toEqual({ kind: "text", value: "Explore" })
   })
 
+  test("Alcode's delegation rows describe the same way", () => {
+    expect(toolDescription("task", { agent: "explore", description: "Capture refresh" }, undefined))
+      .toEqual({ kind: "text", value: "explore · Capture refresh" })
+    expect(toolDescription("call_omo_agent", { description: "Alive check" }, undefined))
+      .toEqual({ kind: "text", value: "Alive check" })
+    expect(toolDescription("task_output", { task_id: "ses_abc123" }, undefined))
+      .toEqual({ kind: "text", value: "ses_abc123" })
+  })
+
+  test("a watch shows the command it runs and the line it waits for", () => {
+    expect(toolDescription("monitor", { command: "bun run type-check:web", filter: "TYPECHECK_OK" }, undefined))
+      .toEqual({ kind: "text", value: "bun run type-check:web · TYPECHECK_OK" })
+    expect(toolDescription("monitor", { command: "sleep 5\necho done" }, undefined))
+      .toEqual({ kind: "text", value: "sleep 5" })
+    expect(toolDescription("monitor", { filter: "READY" }, undefined))
+      .toEqual({ kind: "text", value: "READY" })
+  })
+
   test("file tools show their path, patch shows its files", () => {
     expect(toolDescription("edit", { path: "src/a.ts" }, undefined)).toEqual({ kind: "path", value: "src/a.ts" })
     expect(toolDescription("read", { path: "src/a.ts" }, undefined)).toEqual({ kind: "path", value: "src/a.ts" })
