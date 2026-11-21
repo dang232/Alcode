@@ -52101,6 +52101,7 @@ var killTree = async (pid, platform) => {
     }
   }
 };
+var bashInvocation = (platform, command) => platform === "win32" ? { shell: "cmd.exe", argv: ["cmd.exe", "/d", "/s", "/c", command], detached: false } : { shell: "/bin/bash", argv: ["/bin/bash", "-lc", command], detached: true };
 function createWorkspaceBashTool(options) {
   return {
     description: BASH_DESCRIPTION,
@@ -52131,15 +52132,14 @@ function createWorkspaceBashTool(options) {
         }
       }
       const platform = process.platform;
-      const shell = platform === "win32" ? "cmd.exe" : "/bin/bash";
-      const argv = platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", parsed.data.command] : ["/bin/bash", "-lc", parsed.data.command];
+      const invocation = bashInvocation(platform, parsed.data.command);
       const stdout = capture();
       const stderr = capture();
-      const child = spawn3(argv[0], argv.slice(1), {
+      const child = spawn3(invocation.argv[0], invocation.argv.slice(1), {
         cwd,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
-        detached: platform !== "win32"
+        detached: invocation.detached
       });
       child.stdout?.on("data", (chunk) => stdout.push(chunk));
       child.stderr?.on("data", (chunk) => stderr.push(chunk));
@@ -52169,7 +52169,7 @@ function createWorkspaceBashTool(options) {
       const out = stdout.result();
       const err = stderr.result();
       const header = outcome.kind === "timeout" ? `timed out after ${timeoutMs}ms` : outcome.kind === "error" ? `could not start: ${outcome.message ?? "unknown error"}` : `exit ${outcome.code ?? "none"}${outcome.signal === null ? "" : ` (signal ${outcome.signal})`}`;
-      const parts = [header, `shell: ${shell}`, `approval: ${approval}`];
+      const parts = [header, `shell: ${invocation.shell}`, `approval: ${approval}`];
       parts.push(`stdout${out.truncated ? ` (truncated at ${OUTPUT_LIMIT_BYTES}B of ${out.bytes}B)` : ""}:`);
       parts.push(out.text.length > 0 ? out.text.replace(/\s+$/, "") : "(empty)");
       if (err.text.length > 0 || err.truncated) {
