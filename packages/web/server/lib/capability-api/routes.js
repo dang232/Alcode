@@ -49,7 +49,7 @@ const agentAllowed = (allowedAgents, agent) => {
   return allowedAgents.includes(agent);
 };
 
-export const createCapabilityRouter = ({ createClient, taskStarter, taskOutput, authorize, allowedAgents, boundParent, hostState, ensureHostLive, resolveDefaultModel, waitReady } = {}) => {
+export const createCapabilityRouter = ({ createClient, taskStarter, taskOutput, readSession, runMonitor, authorize, allowedAgents, boundParent, hostState, ensureHostLive, resolveDefaultModel, waitReady } = {}) => {
   // The supervisor's bound session is the only parent the host can actually run a task under.
   const boundParentOf = () => (typeof boundParent === 'function' ? boundParent() : boundParent);
   const router = express.Router();
@@ -84,17 +84,115 @@ export const createCapabilityRouter = ({ createClient, taskStarter, taskOutput, 
       return;
     }
     const client = await createClient({ directory });
-    const created = await client.session.create({ body: { parentID, title }, query: { directory } });
-    if (created?.error !== undefined && created?.error !== null) {
+    // The child must run in the parent's environment, not the engine's default (which lands it in plan mode with
+    // the default tool catalog). The parent record is authority: copy its agent and model onto the create, and
+    // never invent one when the parent cannot be read.
+    let inheritedAgent = asNonEmptyString(body.agent) ?? undefined;
+    let inheritedModel = isPlainObject(body.model) ? body.model : undefined;
+    if (inheritedAgent === undefined || inheritedModel === undefined) {
+      try {
+        const parent = await client.session.get({ sessionID: parentID });
+        if (inheritedAgent === undefined) inheritedAgent = asNonEmptyString(parent?.agent) ?? undefined;
+        if (inheritedModel === undefined && isPlainObject(parent?.model)) inheritedModel = parent.model;
+      } catch {
+        inheritedAgent = inheritedAgent ?? undefined;
+        inheritedModel = inheritedModel ?? undefined;
+      }
+    }
+    // The v2 client throws on a refused create instead of returning an { error } envelope.
+    let created;
+    try {
+      created = await client.session.create({
+        location: { directory },
+        parentID,
+        title,
+        ...(inheritedAgent === undefined ? {} : { agent: inheritedAgent }),
+        ...(inheritedModel === undefined ? {} : { model: inheritedModel }),
+      });
+    } catch {
       fail(response, 502, 'SESSION_CREATE_FAILED', 'The engine rejected the session request.');
       return;
     }
-    const sessionID = asNonEmptyString(created?.data?.id);
+    const sessionID = asNonEmptyString(created?.id);
     if (!sessionID) {
       fail(response, 502, 'SESSION_CREATE_FAILED', 'The engine returned no session identity.');
       return;
     }
     response.status(200).json({ sessionID, parentID });
+  });
+
+  // One watch, one wake: the caller names a command (and an optional line filter) and the server posts the matching
+  // line back into the session. This exists so an agent never has to poll with sleeps.
+  router.post('/monitor', async (request, response) => {
+    const body = bodyOf(request);
+    const sessionID = asNonEmptyString(body.sessionID);
+    const command = asNonEmptyString(body.command);
+    if (!sessionID || !command) {
+      fail(response, 400, 'INVALID_ARGUMENT', 'sessionID and command are required strings.');
+      return;
+    }
+    if (runMonitor === undefined) {
+      fail(response, 503, 'MONITOR_UNAVAILABLE', 'This server exposes no monitor runner.');
+      return;
+    }
+    try {
+      const accepted = await runMonitor({
+        sessionID,
+        command,
+        filter: asNonEmptyString(body.filter) ?? undefined,
+        timeoutMs: typeof body.timeoutMs === 'number' ? body.timeoutMs : undefined,
+        directory: asNonEmptyString(body.directory) ?? undefined,
+      });
+      response.status(202).json({ accepted: accepted?.accepted === true });
+    } catch (error) {
+      fail(response, 502, 'MONITOR_FAILED', asNonEmptyString(error?.message) ?? 'the monitor could not start');
+    }
+  });
+
+  // A delegated child is a normal session, so the parent reads it the same way the UI reads any session: through
+  // the authenticated engine call. `readSession` is injected because only the route assembly owns the base URL and
+  // auth headers; this router never builds an engine URL of its own.
+  router.post('/session/read', async (request, response) => {
+    const body = bodyOf(request);
+    const sessionID = asNonEmptyString(body.sessionID) ?? asNonEmptyString(body.sessionId);
+    if (!sessionID) {
+      fail(response, 400, 'INVALID_ARGUMENT', 'sessionID is required.');
+      return;
+    }
+    const directory = asNonEmptyString(body.directory) ?? undefined;
+    // Reads are scoped by session existence, not by parent: the bearer middleware already refused a caller without the
+    // capability token, and a session id the workspace does not hold answers kind:"missing" instead of posing as an
+    // authorization decision (which is what a 403 here used to do). Creation stays parent-scoped above.
+    if (readSession === undefined) {
+      fail(response, 503, 'SESSION_CAPABILITY_UNAVAILABLE', 'This server exposes no session reader.');
+      return;
+    }
+    try {
+      const read = await readSession({ sessionID, directory });
+      if (read.kind === 'missing') {
+        response.status(200).json({ kind: 'missing', sessionID, reason: read.reason ?? 'No such session.' });
+        return;
+      }
+      const messages = Array.isArray(read.messages) ? read.messages : [];
+      const assistant = messages.filter(
+        (message) => message.role === 'assistant' && typeof message.text === 'string' && message.text.trim().length > 0,
+      );
+      // A child narrates while it works; only a turn finished with "stop" carries its answer. Prefer the last
+      // stop, fall back to the last text so an engine that omits the marker still answers something.
+      const terminal = assistant.filter((message) => message.finish === 'stop');
+      const finalResponse = (terminal.at(-1) ?? assistant.at(-1))?.text.trim();
+      const tools = Array.isArray(read.tools) ? read.tools : [];
+      response.status(200).json({
+        kind: 'status',
+        sessionID,
+        status: read.status ?? (finalResponse === undefined ? 'running' : 'completed'),
+        messages,
+        tools,
+        ...(finalResponse === undefined ? {} : { final_response: finalResponse }),
+      });
+    } catch (error) {
+      fail(response, 502, 'SESSION_READ_FAILED', asNonEmptyString(error?.message) ?? 'the engine refused the read');
+    }
   });
 
   router.post('/session/start', async (request, response) => {
@@ -120,13 +218,11 @@ export const createCapabilityRouter = ({ createClient, taskStarter, taskOutput, 
       return;
     }
     const client = await createClient({ directory });
-    const parts = [{ type: 'text', text: prompt }];
+    // The 2.x client takes the message itself: `{ path, body, query }` is the raw generated shape and throws
+    // here, and a thrown dispatch reads as `unknown` - which is how call_omo_agent lost every prompt after the
+    // session was created. Repo precedent: alcode-sessions/routes.js session.prompt({ sessionID, text }).
     try {
-      const sent = await client.session.promptAsync({
-        path: { id: sessionID },
-        body: agent === undefined ? { parts } : { parts, agent },
-        query: { directory },
-      });
+      const sent = await client.session.prompt({ sessionID, text: prompt });
       if (sent?.error !== undefined && sent?.error !== null) {
         response.status(200).json({ outcome: 'refused' });
         return;

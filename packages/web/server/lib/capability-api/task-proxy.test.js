@@ -27,7 +27,7 @@ const stubHost = (handler) => {
 const jsonHost = (payload) => stubHost((_body, response) => response.json(payload));
 const failingHost = (status) => stubHost((_body, response) => response.status(status).send('nope'));
 
-const existingSessionClient = async () => ({ session: { get: async ({ path }) => ({ data: { id: path.id } }) } });
+const existingSessionClient = async () => ({ session: { get: async ({ sessionID }) => ({ id: sessionID }) } });
 
 const listeningApp = async (taskStarter) => {
   const app = express();

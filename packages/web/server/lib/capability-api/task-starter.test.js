@@ -52,7 +52,7 @@ describe('task starter seam', () => {
   });
 });
 
-const existingSessionClient = async () => ({ session: { get: async ({ path }) => ({ data: { id: path.id } }) } });
+const existingSessionClient = async () => ({ session: { get: async ({ sessionID }) => ({ id: sessionID }) } });
 
 describe('route wired to the seam', () => {
   const post = (base) =>

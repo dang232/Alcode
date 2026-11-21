@@ -859,9 +859,14 @@ describe("launch spec", () => {
 describe("waitReady", () => {
   const readyHost = (overrides = {}) => {
     const commands = []
+    const openSessions = []
     let listen = true
     const sup = createTaskHostSupervisor({
-      openSession: async () => "ses_ready",
+      // A distinct id per call, so a relaunch shows up as a rotated root session.
+      openSession: async () => {
+        openSessions.push(`ses_ready_${openSessions.length + 1}`)
+        return openSessions.at(-1)
+      },
       pluginDir: "C:/plugin",
       stateDir: mkdtempSync(join(tmpdir(), "task-host-ready-")),
       senpiBin: "senpi",
@@ -880,7 +885,7 @@ describe("waitReady", () => {
       startTimeoutMs: 300,
       ...overrides,
     })
-    return { sup, die: () => { listen = false } }
+    return { sup, commands, openSessions, die: () => { listen = false } }
   }
 
   it("starts a stopped host when asked to become ready", async () => {
@@ -888,6 +893,29 @@ describe("waitReady", () => {
     const { sup } = readyHost()
     expect(await sup.waitReady({ budgetMs: 5000 })).toBe(true)
     expect(sup.state()).toBe("ready")
+    await sup.stop()
+  })
+
+  it("keeps its bound root session when a second task becomes ready", async () => {
+    const { sup, commands, openSessions, die } = readyHost()
+    expect(await sup.waitReady({ budgetMs: 5000 })).toBe(true)
+    const firstSession = sup.sessionId()
+    expect(sup.state()).toBe("ready")
+
+    // The gateway awaits waitReady on every task start. Launching again while ready mints a new port, token, host
+    // generation and root session, which orphans every task the previous generation started.
+    expect(await sup.waitReady({ budgetMs: 5000 })).toBe(true)
+    expect(sup.sessionId()).toBe(firstSession)
+    expect(openSessions).toHaveLength(1)
+    expect(commands.filter((c) => c.includes("host stop"))).toHaveLength(0)
+    expect(commands.filter((c) => c.includes("host ensure"))).toHaveLength(1)
+
+    // The guard must not mask a real loss: a dead listener still relaunches from waitReady.
+    die()
+    expect(await sup.waitReady({ budgetMs: 5000 })).toBe(true)
+    expect(commands.filter((c) => c.includes("host stop"))).toHaveLength(1)
+    expect(commands.filter((c) => c.includes("host ensure"))).toHaveLength(2)
+    expect(openSessions).toHaveLength(2)
     await sup.stop()
   })
 

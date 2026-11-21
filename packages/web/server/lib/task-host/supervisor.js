@@ -809,6 +809,10 @@ export function createTaskHostSupervisor(options) {
       if (state === "ready" || state === "stopped" || state === "failed" || state === "degraded") {
         const projectDir = scopedProjectDir ?? (await resolveProjectDir())
         if (typeof projectDir !== "string" || projectDir.trim().length === 0) return undefined
+        // A host already bound to this project serves the next task from the root session it opened. Starting again
+        // here minted a new port, token, host generation and root session per task start, orphaning every task the
+        // previous generation started. A real listener loss is still handled by ensureLiveFn below.
+        if (state === "ready" && hostSessionId !== undefined && scopedProjectDir === projectDir) return undefined
         if (inflight === undefined) {
           inflight = start(projectDir).finally(() => {
             inflight = undefined
