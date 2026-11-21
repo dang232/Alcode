@@ -936,6 +936,24 @@ describe('desktop login keychain capture', () => {
     ]);
   });
 
+  test('email login keychains the nested IDE refresh, not the session refresh', async () => {
+    const access = jwtAccess('user-1');
+    const h = createHarness({
+      serviceImpl: async () =>
+        h.serviceJson(200, {
+          ...SERVICE_PAIR,
+          access_token: access,
+          refresh_token: 'session-refresh',
+          user_token: { access_token: access, refresh_token: 'ide-refresh' },
+        }),
+    });
+    const { res } = await h.call('POST', '/api/auth/desktop/email/login', {
+      body: { email: 'a@example.test', password: 's3cret!!' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(h.tokenSaves).toEqual([{ sub: 'user-1', pair: { accessToken: access, refreshToken: 'ide-refresh' } }]);
+  });
+
   test('opaque access tokens complete the login with no keychain save', async () => {
     const h = createHarness({
       serviceImpl: async () => h.serviceJson(200, SERVICE_PAIR),
