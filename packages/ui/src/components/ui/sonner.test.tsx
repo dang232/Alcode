@@ -17,6 +17,16 @@ describe('Toaster', () => {
     });
   };
 
+  const waitForPinnedToast = async () => {
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const element = document.querySelector<HTMLElement>('[data-sonner-toast]');
+      if (element?.style.getPropertyPriority('box-shadow') === 'important') return element;
+      await settle();
+    }
+    return document.querySelector<HTMLElement>('[data-sonner-toast]');
+  };
+
   beforeEach(() => {
     windowInstance = new Window();
     Object.assign(globalThis, {
@@ -51,7 +61,7 @@ describe('Toaster', () => {
     });
     await settle();
 
-    const toastElement = document.querySelector<HTMLElement>('[data-sonner-toast]');
+    const toastElement = await waitForPinnedToast();
     expect(toastElement).not.toBeNull();
     expect(toastElement?.style.getPropertyPriority('box-shadow')).toBe('important');
     expect(toastElement?.style.getPropertyPriority('outline')).toBe('important');
