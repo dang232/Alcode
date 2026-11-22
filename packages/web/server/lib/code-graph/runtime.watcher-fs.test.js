@@ -405,6 +405,8 @@ describe('watcher filesystem consistency', () => {
       const dir = makeRepo({ 'a.ts': 'export const alpha = 1;\n' });
       const readyGenerations = [];
       const { runtime, box, first } = await openWatched(dir, {
+        // Two synchronous writes must land inside one debounce window even on a loaded CI runner.
+        watcherDebounceMs: 2_000,
         onProgress: (progress) => {
           if (progress?.state === 'ready' && Number.isFinite(progress?.generation)) {
             readyGenerations.push(progress.generation);
