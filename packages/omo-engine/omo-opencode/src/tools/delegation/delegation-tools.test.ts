@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import type { OmoJsonObject, OmoToolContext, OmoToolDefinition } from "../../plugin-types.ts"
-import { CALL_OMO_AGENT_TOOL_NAME, TASK_TOOL_NAME, createDelegationTools, type DelegationTools } from "./delegation-tools.ts"
+import { CALL_OMO_AGENT_TOOL_NAME, TASK_OUTPUT_TOOL_NAME, TASK_TOOL_NAME, createDelegationTools, type DelegationTools } from "./delegation-tools.ts"
 import {
   HOST_CAPABILITY_VERSION,
   type OmoChildSessionRequest,
@@ -24,12 +24,14 @@ interface HostRecorder {
   readonly capabilities: OmoHostCapabilities
   readonly childRequests: OmoChildSessionRequest[]
   readonly taskRequests: OmoTaskRequest[]
+  readonly outputRequests: string[]
   readonly parents: string[]
 }
 
 const recordingHost = (over: Partial<OmoHostCapabilities> = {}): HostRecorder => {
   const childRequests: OmoChildSessionRequest[] = []
   const taskRequests: OmoTaskRequest[] = []
+  const outputRequests: string[] = []
   const parents: string[] = []
   const capabilities: OmoHostCapabilities = {
     version: HOST_CAPABILITY_VERSION,
@@ -40,6 +42,19 @@ const recordingHost = (over: Partial<OmoHostCapabilities> = {}): HostRecorder =>
         parents.push(caller.sessionID)
         return { childSessionID: "ses_child_0001", parentSessionID: caller.sessionID, started: true, capabilityVersion: HOST_CAPABILITY_VERSION }
       },
+      readOutput: async (request) => {
+        outputRequests.push(request.childSessionID)
+        if (request.childSessionID === "ses_missing_0001") {
+          return { kind: "missing", sessionID: request.childSessionID, reason: "No such session." }
+        }
+        return {
+          kind: "status",
+          sessionID: request.childSessionID,
+          messages: [{ role: "assistant", text: "CHILD-OK" }],
+          tools: [{ name: "shell", status: "completed", input: '{"command":"dir"}', output: "DRIVE_MISSING" }],
+          finalResponse: "CHILD-OK",
+        }
+      },
     },
     tasks: {
       version: HOST_CAPABILITY_VERSION,
@@ -48,10 +63,19 @@ const recordingHost = (over: Partial<OmoHostCapabilities> = {}): HostRecorder =>
         parents.push(caller.sessionID)
         return { taskID: "task_0001", parentSessionID: caller.sessionID, state: "accepted", capabilityVersion: HOST_CAPABILITY_VERSION }
       },
+      readOutput: async (request) => ({
+        taskID: request.taskID,
+        output: { status: "completed", final_response: "DELEGATION-OK" },
+      }),
+      readOutput: async (request, caller) => {
+        outputRequests.push(request.taskID)
+        parents.push(caller.sessionID)
+        return { taskID: request.taskID, output: { status: "completed", final_response: "READY" } }
+      },
     },
     ...over,
   }
-  return { capabilities, childRequests, taskRequests, parents }
+  return { capabilities, childRequests, taskRequests, outputRequests, parents }
 }
 
 const tools = (capabilities?: OmoHostCapabilities): DelegationTools => createDelegationTools({ directory: "/workspace", capabilities })
@@ -59,12 +83,15 @@ const tools = (capabilities?: OmoHostCapabilities): DelegationTools => createDel
 const execute = async (tool: OmoToolDefinition, args: OmoJsonObject, ctx?: OmoToolContext): Promise<string> => String(await tool.execute(args, ctx))
 
 describe("tool identities", () => {
-  it("exposes both catalog names", () => {
+  it("exposes the catalog names", () => {
     expect(TASK_TOOL_NAME).toBe("task")
     expect(CALL_OMO_AGENT_TOOL_NAME).toBe("call_omo_agent")
+    expect(TASK_OUTPUT_TOOL_NAME).toBe("task_output")
     const built = tools()
     expect(built.task).toBeDefined()
     expect(built.callOmoAgent).toBeDefined()
+    expect(built.taskOutput).toBeDefined()
+    expect(built.monitor).toBeDefined()
   })
 })
 
@@ -75,11 +102,12 @@ describe("task tool", () => {
     )
   })
 
-  it("runs through the host task capability with the host-derived parent", async () => {
+  it("creates a native child with the host-derived parent and the caller's agent", async () => {
     const host = recordingHost()
     const out = JSON.parse(await execute(tools(host.capabilities).task, { description: "d", prompt: "p", background: true }, context()))
-    expect(out).toEqual({ taskID: "task_0001", parentSessionID: "ses_host_0001", state: "accepted", capabilityVersion: 1 })
-    expect(host.taskRequests).toEqual([{ description: "d", prompt: "p", background: true }])
+    expect(out).toEqual({ taskID: "ses_child_0001", parentSessionID: "ses_host_0001", state: "running", capabilityVersion: 1 })
+    expect(host.childRequests).toEqual([{ title: "d", prompt: "p", agent: "build" }])
+    expect(host.taskRequests).toEqual([])
     expect(host.parents).toEqual(["ses_host_0001"])
   })
 
@@ -124,7 +152,8 @@ describe("task tool", () => {
   it("accepts an agent the host authorizes", async () => {
     const host = recordingHost({ allowedAgents: ["explore"] })
     const out = JSON.parse(await execute(tools(host.capabilities).task, { description: "d", prompt: "p", agent: "explore" }, context()))
-    expect(out.taskID).toBe("task_0001")
+    expect(out.taskID).toBe("ses_child_0001")
+    expect(host.childRequests).toEqual([{ title: "d", prompt: "p", agent: "explore" }])
   })
 
   it("refuses a host that attributes the task to another session", async () => {
@@ -136,6 +165,128 @@ describe("task tool", () => {
       },
     }
     await expect(execute(tools(foreign).task, { description: "d", prompt: "p" }, context())).rejects.toThrow(/PARENT_ATTRIBUTION_MISMATCH/)
+  })
+})
+
+describe("task_output tool", () => {
+  it("reads a completed task through the host reader and reports the host output", async () => {
+    const host = recordingHost()
+    const out = JSON.parse(await execute(tools(host.capabilities).taskOutput, { task_id: "task_0001" }, context()))
+    expect(out).toEqual({ taskID: "task_0001", output: { status: "completed", final_response: "READY" } })
+    expect(host.outputRequests).toEqual(["task_0001"])
+    expect(host.parents).toEqual(["ses_host_0001"])
+  })
+
+  it("reports an unavailable capability instead of inventing output", async () => {
+    await expect(execute(tools().taskOutput, { task_id: "task_0001" }, context())).rejects.toThrow(
+      /CAPABILITY_UNAVAILABLE: this host exposes no task capability/,
+    )
+  })
+
+  it("names the missing reader when the host publishes start but no read", async () => {
+    const host = recordingHost({ tasks: { version: HOST_CAPABILITY_VERSION, start: async (_request, caller) => ({ taskID: "task_0001", parentSessionID: caller.sessionID, state: "accepted", capabilityVersion: HOST_CAPABILITY_VERSION }) } })
+    await expect(execute(tools(host.capabilities).taskOutput, { task_id: "task_0001" }, context())).rejects.toThrow(
+      /CAPABILITY_UNAVAILABLE: this host publishes no task-output reader/,
+    )
+  })
+
+  it("refuses an answer attributed to another task", async () => {
+    const host = recordingHost({
+      tasks: {
+        version: HOST_CAPABILITY_VERSION,
+        start: async (_request, caller) => ({ taskID: "task_0001", parentSessionID: caller.sessionID, state: "accepted", capabilityVersion: HOST_CAPABILITY_VERSION }),
+        readOutput: async () => ({ taskID: "task_other", output: { status: "completed" } }),
+      },
+    })
+    await expect(execute(tools(host.capabilities).taskOutput, { task_id: "task_0001" }, context())).rejects.toThrow(
+      /TASK_ATTRIBUTION_MISMATCH/,
+    )
+  })
+
+  it("rejects a missing task id", async () => {
+    const host = recordingHost()
+    await expect(execute(tools(host.capabilities).taskOutput, {}, context())).rejects.toThrow(/INVALID_ARGUMENT/)
+    expect(host.outputRequests).toEqual([])
+  })
+
+  it("declares exactly one argument: task_id", () => {
+    const built = tools()
+    expect(Object.keys(built.taskOutput.args.properties)).toEqual(["task_id"])
+    expect(built.taskOutput.args.required).toEqual(["task_id"])
+  })
+
+  it("refuses a parent identity smuggled through arguments", async () => {
+    const host = recordingHost()
+    await expect(
+      execute(tools(host.capabilities).taskOutput, { task_id: "task_0001", parentSessionID: "ses_other" }, context()),
+    ).rejects.toThrow(/INVALID_ARGUMENT/)
+    expect(host.outputRequests).toEqual([])
+  })
+
+  it("refuses when the caller was already aborted", async () => {
+    const host = recordingHost()
+    await expect(
+      execute(tools(host.capabilities).taskOutput, { task_id: "task_0001" }, context({ aborted: () => true })),
+    ).rejects.toThrow(/CANCELLED/)
+    expect(host.outputRequests).toEqual([])
+  })
+
+  it("refuses without host authentication and never reaches the host", async () => {
+    const host = recordingHost()
+    await expect(
+      execute(tools(host.capabilities).taskOutput, { task_id: "task_0001" }, context({ authenticated: false })),
+    ).rejects.toThrow(/UNAUTHENTICATED/)
+    expect(host.outputRequests).toEqual([])
+  })
+})
+
+describe("task_output through native and legacy ids", () => {
+  it("reads a child session and returns its final response", async () => {
+    const host = recordingHost()
+    const out = JSON.parse(await execute(tools(host.capabilities).taskOutput, { task_id: "ses_child_0001" }, context()))
+    expect(out.output.final_response).toBe("CHILD-OK")
+    expect(out.output.messages).toEqual([{ role: "assistant", text: "CHILD-OK" }])
+    expect(out.output.tools).toEqual([
+      { name: "shell", status: "completed", input: '{"command":"dir"}', output: "DRIVE_MISSING" },
+    ])
+    expect(host.outputRequests).toEqual(["ses_child_0001"])
+  })
+
+  it("refuses a missing child session by name instead of returning an empty answer", async () => {
+    const host = recordingHost()
+    await expect(execute(tools(host.capabilities).taskOutput, { task_id: "ses_missing_0001" }, context())).rejects.toThrow(
+      /TASK_NOT_FOUND/,
+    )
+  })
+
+  it("still reads a legacy task id through the task host", async () => {
+    const host = recordingHost()
+    const out = JSON.parse(await execute(tools(host.capabilities).taskOutput, { task_id: "task_0001" }, context()))
+    expect(out.taskID).toBe("task_0001")
+    expect(out.output.status).toBe("completed")
+  })
+})
+
+describe("monitor tool", () => {
+  it("refuses when the host publishes no monitor", async () => {
+    await expect(execute(tools().monitor, { command: "echo hi" }, context())).rejects.toThrow(/CAPABILITY_UNAVAILABLE/)
+  })
+
+  it("starts one watch for the calling session and names the wake instead of polling", async () => {
+    const calls = []
+    const host = recordingHost({
+      monitor: {
+        version: HOST_CAPABILITY_VERSION,
+        start: async (request, caller) => {
+          calls.push({ request, sessionID: caller.sessionID })
+          return { accepted: true }
+        },
+      },
+    })
+    const out = JSON.parse(await execute(tools(host.capabilities).monitor, { command: "echo READY", filter: "READY" }, context()))
+    expect(calls).toEqual([{ request: { command: "echo READY", filter: "READY" }, sessionID: "ses_host_0001" }])
+    expect(out.accepted).toBe(true)
+    expect(String(out.note)).toMatch(/end your turn/)
   })
 })
 

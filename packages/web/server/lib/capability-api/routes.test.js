@@ -22,13 +22,13 @@ const post = (base, path, body, { token = TOKEN } = {}) => {
 
 const SESSION_BODY = { parentID: 'ses_parent_1', title: 'child', directory: '/workspace' };
 
-const clientFactory = (calls, { failCreate = false, failPrompt = false, throwPrompt = false } = {}) => async ({ directory }) => ({
+const clientFactory = (calls, { failPrompt = false, throwPrompt = false } = {}) => async ({ directory }) => ({
   session: {
     create: async (input) => {
       calls.push({ op: 'create', input, directory });
-      return failCreate ? { error: 'engine said no' } : { data: { id: 'ses_child_1', parentID: input.body.parentID } };
+      return { id: 'ses_child_1' };
     },
-    promptAsync: async (input) => {
+    prompt: async (input) => {
       calls.push({ op: 'prompt', input, directory });
       if (throwPrompt) throw new Error('socket hang up');
       return failPrompt ? { error: 'rejected' } : { data: {} };
@@ -66,8 +66,25 @@ describe('capability routes', () => {
       const response = await post(own.base, '/session', SESSION_BODY);
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ sessionID: 'ses_child_1', parentID: 'ses_parent_1' });
-      expect(calls[0].input.body.parentID).toBe('ses_parent_1');
+      expect(calls[0].input.parentID).toBe('ses_parent_1');
       expect(calls[0].directory).toBe('/workspace');
+    } finally {
+      await own.stop();
+    }
+  });
+
+  it('creates the child under the named parent with the v2 input shape', async () => {
+    const calls = [];
+    const own = await startServer({ createClient: clientFactory(calls), authorize: async () => true });
+    try {
+      const response = await post(own.base, '/session', SESSION_BODY);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ sessionID: 'ses_child_1', parentID: 'ses_parent_1' });
+      expect(calls[0]).toEqual({
+        op: 'create',
+        input: { location: { directory: '/workspace' }, parentID: 'ses_parent_1', title: 'child' },
+        directory: '/workspace',
+      });
     } finally {
       await own.stop();
     }
@@ -174,7 +191,7 @@ describe('agent allowlist', () => {
     const own = await startServer({
       authorize: async () => true,
       allowedAgents: ['explore'],
-      createClient: () => ({ session: { promptAsync: async () => ({}) } }),
+      createClient: () => ({ session: { prompt: async () => ({}) } }),
       taskStarter: async () => ({ taskID: 'st_1', state: 'accepted' }),
     });
     try {
@@ -194,7 +211,7 @@ describe('agent allowlist', () => {
     const own = await startServer({
       authorize: async () => true,
       allowedAgents: ['explore'],
-      createClient: () => ({ session: { promptAsync: async () => ({}) } }),
+      createClient: () => ({ session: { prompt: async () => ({}) } }),
     });
     try {
       const started = await post(own.base, '/session/start', { sessionID: 'ses_1', prompt: 'p', directory: '/w', agent: 'explore' });
@@ -471,3 +488,183 @@ describe('task start when the host lost its listener', () => {
     }
   })
 })
+
+describe('task output route', () => {
+  const startWith = (options) => startServer({ authorize: async () => true, ...options })
+
+  it('returns the host answer for an authorized read', async () => {
+    const calls = []
+    const server = await startWith({
+      taskOutput: async (request) => {
+        calls.push(request)
+        return { taskID: 'st_1', output: { kind: 'ok', text: 'READY' } }
+      },
+    })
+    try {
+      const response = await post(server.base, '/task/output', { taskID: 'st_1', parentSessionID: 'ses_parent_1' })
+      expect(response.status).toBe(200)
+      expect((await response.json()).output.text).toBe('READY')
+      expect(calls[0]).toEqual({ taskID: 'st_1', parentSessionID: 'ses_parent_1' })
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('refuses with 503 when this server hosts no task manager', async () => {
+    const server = await startWith({})
+    try {
+      const response = await post(server.base, '/task/output', { taskID: 'st_1', parentSessionID: 'ses_parent_1' })
+      expect(response.status).toBe(503)
+      expect((await response.json()).error).toBe('TASK_MANAGER_UNAVAILABLE')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('requires a task id and a parent session', async () => {
+    const server = await startWith({ taskOutput: async () => ({}) })
+    try {
+      const response = await post(server.base, '/task/output', { parentSessionID: 'ses_parent_1' })
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe('INVALID_ARGUMENT')
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
+describe('monitor route', () => {
+  it('accepts one watch for a session and answers 202', async () => {
+    const seen = [];
+    const own = await startServer({
+      createClient: async () => ({ session: {} }),
+      authorize: async () => true,
+      runMonitor: async (request) => {
+        seen.push(request);
+        return { accepted: true };
+      },
+    });
+    try {
+      const response = await post(own.base, '/monitor', { sessionID: 'ses_1', command: 'echo READY', filter: 'READY', directory: '/w' });
+      expect(response.status).toBe(202);
+      expect(await response.json()).toEqual({ accepted: true });
+      expect(seen).toEqual([{ sessionID: 'ses_1', command: 'echo READY', filter: 'READY', timeoutMs: undefined, directory: '/w' }]);
+    } finally {
+      await own.stop();
+    }
+  });
+
+  it('refuses a watch with no command', async () => {
+    const own = await startServer({ createClient: async () => ({ session: {} }), authorize: async () => true, runMonitor: async () => ({ accepted: true }) });
+    try {
+      const response = await post(own.base, '/monitor', { sessionID: 'ses_1' });
+      expect(response.status).toBe(400);
+    } finally {
+      await own.stop();
+    }
+  });
+});
+
+describe('native delegation: inheritance and read', () => {
+  const inheriting = (calls, parent) => async ({ directory }) => ({
+    session: {
+      get: async (input) => {
+        calls.push({ op: 'get', input, directory });
+        return parent;
+      },
+      create: async (input) => {
+        calls.push({ op: 'create', input, directory });
+        return { id: 'ses_child_2' };
+      },
+    },
+  });
+
+  it('copies the parent agent and model onto the child it creates', async () => {
+    const calls = [];
+    const own = await startServer({
+      createClient: inheriting(calls, { agent: 'sisyphus', model: { providerID: 'alcore', id: 'al-1-4' } }),
+      authorize: async () => true,
+    });
+    try {
+      const response = await post(own.base, '/session', SESSION_BODY);
+      expect(response.status).toBe(200);
+      expect(calls.find((call) => call.op === 'get')?.input).toEqual({ sessionID: 'ses_parent_1' });
+      expect(calls.find((call) => call.op === 'create')?.input).toMatchObject({
+        agent: 'sisyphus',
+        model: { providerID: 'alcore', id: 'al-1-4' },
+      });
+    } finally {
+      await own.stop();
+    }
+  });
+
+  it('reads a delegated child and returns its assistant text', async () => {
+    const own = await startServer({
+      createClient: async () => ({ session: {} }),
+      authorize: async () => true,
+      readSession: async () => ({
+        kind: 'status',
+        messages: [
+          { role: 'user', text: 'Reply with CHILD-OK' },
+          { role: 'assistant', text: 'CHILD-OK' },
+        ],
+      }),
+    });
+    try {
+      const response = await post(own.base, '/session/read', { sessionID: 'ses_child_9' });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ kind: 'status', sessionID: 'ses_child_9', final_response: 'CHILD-OK' });
+    } finally {
+      await own.stop();
+    }
+  });
+
+  it('reports a missing session by name instead of an empty success', async () => {
+    const own = await startServer({
+      createClient: async () => ({ session: {} }),
+      authorize: async () => true,
+      readSession: async () => ({ kind: 'missing', reason: 'No such session.' }),
+    });
+    try {
+      const response = await post(own.base, '/session/read', { sessionID: 'ses_nope' });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ kind: 'missing', sessionID: 'ses_nope' });
+    } finally {
+      await own.stop();
+    }
+  });
+
+  it('reports a session with no assistant text as running with an empty list', async () => {
+    const own = await startServer({
+      createClient: async () => ({ session: {} }),
+      authorize: async () => true,
+      readSession: async () => ({ kind: 'status', messages: [{ role: 'user', text: 'hi' }] }),
+    });
+    try {
+      const response = await post(own.base, '/session/read', { sessionID: 'ses_child_10' });
+      const body = await response.json();
+      expect(body).toMatchObject({ kind: 'status', status: 'running', messages: [{ role: 'user', text: 'hi' }] });
+      expect(body.tools).toEqual([]);
+      expect(body.final_response).toBeUndefined();
+    } finally {
+      await own.stop();
+    }
+  });
+
+  it('returns the tool calls with their input and output as evidence', async () => {
+    const tools = [{ name: 'shell', callID: 'call_1', status: 'completed', input: '{"command":"cd I:\\x"}', output: 'DRIVE_MISSING' }];
+    const own = await startServer({
+      createClient: async () => ({ session: {} }),
+      authorize: async () => true,
+      readSession: async () => ({ kind: 'status', messages: [{ role: 'assistant', text: 'done', finish: 'stop' }], tools }),
+    });
+    try {
+      const response = await post(own.base, '/session/read', { sessionID: 'ses_child_11' });
+      const body = await response.json();
+      expect(body.tools).toEqual(tools);
+      expect(body.final_response).toBe('done');
+    } finally {
+      await own.stop();
+    }
+  });
+});

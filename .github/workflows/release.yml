@@ -231,6 +231,13 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
+      - name: Checkout task-host plugin source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dang232/oh-my-openAlcore
+          ref: dabd27003702fd8a50ae7e9419acb7d1a0eb9f46
+          path: oh-my-openAlcore
+
       - name: Build Electron app
         working-directory: packages/electron
         env:
@@ -243,14 +250,19 @@ jobs:
           # Unsigned when no certificate is configured, so electron-builder does
           # not fail looking for an identity that is not there.
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ env.APPLE_CERTIFICATE == '' && 'false' || 'true' }}
+          OMO_SENPI_PLUGIN_SRC: ${{ github.workspace }}/oh-my-openAlcore/packages/omo-senpi/plugin
         run: |
           bun run build:web-assets
           bun run prepare:opencode-cli
           bun run verify:opencode-cli
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
+          bun run prepare:senpi-plugin
+          npm install --prefix ../../node_modules/@code-yeongyu/senpi --omit=dev --no-save --ignore-scripts
+          bun run prepare:senpi-engine
           bun run prepare:typescript
           bun run verify:ulw-loop-cli
+          bun run verify:senpi-plugin
           bun run bundle:main
           # npmRebuild=false in package.json, so electron-builder won't
           # recompile native deps on its own — we must rebuild against the
@@ -259,6 +271,7 @@ jobs:
           bun run rebuild:native
           bunx electron-builder --mac --${{ matrix.arch }} --publish=never
           bun run verify:opencode-cli:packaged
+          bun run verify:senpi-plugin:packaged
 
       - name: Verify signature + entitlements + notarization
         if: ${{ env.APPLE_CERTIFICATE != '' }}
@@ -373,19 +386,31 @@ jobs:
         working-directory: packages/electron
         run: bun run build:web-assets
 
+      - name: Checkout task-host plugin source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dang232/oh-my-openAlcore
+          ref: dabd27003702fd8a50ae7e9419acb7d1a0eb9f46
+          path: oh-my-openAlcore
+
       - name: Prepare bundled OpenCode CLI
         working-directory: packages/electron
         shell: bash
         env:
           # Windows arm64 builds on an x64 runner; OpenCode and ripgrep need the target arch.
           OPENCHAMBER_TARGET_ARCH: ${{ matrix.arch }}
+          OMO_SENPI_PLUGIN_SRC: ${{ github.workspace }}/oh-my-openAlcore/packages/omo-senpi/plugin
         run: |
           bun run prepare:opencode-cli
           bun run verify:opencode-cli
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
+          bun run prepare:senpi-plugin
+          npm install --prefix ../../node_modules/@code-yeongyu/senpi --omit=dev --no-save --ignore-scripts
+          bun run prepare:senpi-engine
           bun run prepare:typescript
           bun run verify:ulw-loop-cli
+          bun run verify:senpi-plugin
 
       - name: Bundle main process
         working-directory: packages/electron
@@ -411,6 +436,7 @@ jobs:
         run: |
           node ./scripts/package.mjs --win --${{ matrix.arch }} --publish=never
           bun run verify:opencode-cli:packaged
+          bun run verify:senpi-plugin:packaged
 
       - name: Upload installer to release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
@@ -499,10 +525,18 @@ jobs:
           bun run test:architecture
           bun run test:updater
 
+      - name: Checkout task-host plugin source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dang232/oh-my-openAlcore
+          ref: dabd27003702fd8a50ae7e9419acb7d1a0eb9f46
+          path: oh-my-openAlcore
+
       - name: Build and package Linux AppImage, .deb and .rpm
         working-directory: packages/electron
         env:
           ALCODE_TARGET_ARCH: ${{ matrix.arch }}
+          OMO_SENPI_PLUGIN_SRC: ${{ github.workspace }}/oh-my-openAlcore/packages/omo-senpi/plugin
         run: |
           set -euo pipefail
           bun run build:web-assets
@@ -510,12 +544,17 @@ jobs:
           bun run verify:opencode-cli
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
+          bun run prepare:senpi-plugin
+          npm install --prefix ../../node_modules/@code-yeongyu/senpi --omit=dev --no-save --ignore-scripts
+          bun run prepare:senpi-engine
           bun run prepare:typescript
           bun run verify:ulw-loop-cli
+          bun run verify:senpi-plugin
           bun run bundle:main
           bun run rebuild:native
           node ./scripts/package.mjs --linux --${{ matrix.arch }} --publish=never
           bun run verify:opencode-cli:packaged
+          bun run verify:senpi-plugin:packaged
           bun run verify:linux-appimage
 
       - name: Validate Linux update manifest
@@ -811,3 +850,25 @@ jobs:
             }
           }
           JSON
+
+  verify-release-publication:
+    needs: [create-release, finalize-release]
+    # Runs even when finalize-release was skipped or failed: a release left as
+    # a draft must fail this run instead of sitting there unpublished while
+    # releases/latest/download/latest.yml keeps serving the previous version.
+    if: ${{ !cancelled() && needs.create-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Verify release is published
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: node packages/electron/scripts/verify-release-publication.mjs "v$VERSION" "$REPOSITORY" ${{ github.event.inputs.finish_published_release == 'true' && '--finish' || '' }}

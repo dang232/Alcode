@@ -78,6 +78,17 @@ export const getToolIcon = (toolName: string, presentation?: GuestToolRule | nul
     if (tool === 'subagent') {
         return <Icon name="ai-agent" className={iconClass} />;
     }
+    // Alcode's own delegation tools: same family, distinct rows, so a transcript reads consistently instead of
+    // falling back to the generic wrench for each of them.
+    if (tool === 'task' || tool === 'call_omo_agent') {
+        return <Icon name="ai-agent" className={iconClass} />;
+    }
+    if (tool === 'task_output') {
+        return <Icon name="file-list-2" className={iconClass} />;
+    }
+    if (tool === 'monitor') {
+        return <Icon name="notification-3" className={iconClass} />;
+    }
     if (tool === 'alcode') {
         return <Icon name="alcode" className={iconClass} />;
     }

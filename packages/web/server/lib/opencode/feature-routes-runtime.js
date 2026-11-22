@@ -43,7 +43,8 @@ import { registerAlcodeSessionRoutes } from '../alcode-sessions/routes.js';
 import { createOpenCodeClient } from '../alcode-sessions/opencode-client.js';
 import { registerCapabilityRoutes } from '../capability-api/index.js';
 import { createTaskHostProxy } from '../capability-api/task-proxy.js';
-import { resolveCapabilityToken } from '../capability-api/runtime.js';
+import { createTaskOutputProxy } from '../capability-api/task-output-proxy.js';
+import { resolveAllowedAgents, resolveCapabilityToken, resolveEffectiveAllowedAgents } from '../capability-api/runtime.js';
 import { registerAlcodeControlRoutes } from '../alcode-control/routes.js';
 import { registerMarkdownImageGrantRoutes } from '../markdown-image-grants/routes.js';
 import { registerSkillRoutes } from './skill-routes.js';
@@ -361,17 +362,15 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     // surface mounted from boot (401 until a token exists) and authorizes against that same token; without `token` the
     // registration returns early and every capability route answers 404.
     const capabilityClient = ({ directory }) => createOpenCodeClient({
-      baseUrl: buildOpenCodeUrl(),
+      // buildOpenCodeUrl requires a path; calling it bare throws inside the authorizer's try, which
+      // reads as FORBIDDEN for every parent. Same form the session metadata store uses.
+      baseUrl: buildOpenCodeUrl('/', '').replace(/\/$/, ''),
       headers: getOpenCodeAuthHeaders(),
       directory,
     });
-    const configuredAgents = (process.env.OMO_CAPABILITY_ALLOWED_AGENTS ?? '')
-      .split(',')
-      .map((name) => name.trim())
-      .filter((name) => name.length > 0);
-    registerCapabilityRoutes(app, {
+    const allowedAgents = resolveEffectiveAllowedAgents(process.env);
+    const capabilityOptions = {
       token: () => resolveCapabilityToken(),
-      ...(configuredAgents.length === 0 ? {} : { allowedAgents: configuredAgents }),
       boundParent: () => taskHostNow()?.sessionId,
       hostState: () => taskHostNow()?.state,
       ensureHostLive: () => taskHostNow()?.ensureLive?.(),
@@ -382,8 +381,133 @@ export const createFeatureRoutesRuntime = (dependencies) => {
         if (host === undefined) throw new Error('no task host is available');
         return createTaskHostProxy({ url: host.url, token: host.token, ...(host.sessionId === undefined ? {} : { parentSessionID: host.sessionId }) })(request);
       },
+      taskOutput: async (request) => {
+        const host = taskHostNow();
+        if (host === undefined) throw new Error('no task host is available');
+        const options = { url: host.url, token: host.token };
+        if (host.sessionId !== undefined) options.parentSessionID = host.sessionId;
+        return createTaskOutputProxy(options)(request);
+      },
       createClient: capabilityClient,
-    });
+      // One watch, one wake. The agent names a command and a filter; the server runs it, and the matching line is
+      // posted into the caller's session as a message, which is what ends the wait. Polling with sleeps is what this
+      // replaces: the model gets one tool call and one notification instead of a turn per interval.
+      runMonitor: async ({ sessionID, command, filter, timeoutMs, directory }) => {
+        if (typeof command !== 'string' || command.trim().length === 0) throw new Error('a monitor needs a command');
+        const { spawn } = await import('node:child_process');
+        const escaped = typeof filter === 'string' && filter.trim().length > 0 ? filter.trim() : null;
+        const child = spawn(command, { shell: true, windowsHide: true, cwd: directory });
+        let settled = false;
+        const deadline = setTimeout(() => finish('the monitor ran out of time without a match'), Math.min(Math.max(timeoutMs ?? 600000, 1000), 1800000));
+        const finish = async (line) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(deadline);
+          try { child.kill(); } catch {}
+          try {
+            const client = await capabilityClient({ directory });
+            await client.session.prompt({ sessionID, text: `[monitor] ${line}` });
+          } catch (error) {
+            console.warn('[capability] monitor wake failed', { sessionID, error: error instanceof Error ? error.message : String(error) });
+          }
+        };
+        const onLine = (chunk) => {
+          for (const line of String(chunk).split(/\r?\n/)) {
+            if (line.trim().length === 0) continue;
+            if (escaped === null || new RegExp(escaped).test(line)) void finish(line.slice(0, 500));
+          }
+        };
+        child.stdout?.on('data', onLine);
+        child.stderr?.on('data', onLine);
+        // 'close' (not 'exit') is when stdio has fully drained: on Windows 'exit' fires before the last
+        // chunk reaches us, which silently ate the matching line and surfaced only the exit notice.
+        let buffer = '';
+        child.stdout?.on('data', (chunk) => { buffer += String(chunk); });
+        child.on('close', (code) => {
+          if (settled) return;
+          for (const line of buffer.split(/\r?\n/)) {
+            if (line.trim().length === 0) continue;
+            if (escaped === null || new RegExp(escaped).test(line)) { void finish(line.slice(0, 500)); return; }
+          }
+          void finish(`the monitor command exited with code ${code ?? 'null'}`);
+        });
+        child.on('error', (error) => { if (!settled) void finish(`the monitor could not start: ${error.message}`); });
+        return { accepted: true };
+      },
+      // The parent reads a delegated child through the engine's own authenticated message endpoint, exactly the
+      // data the UI renders. A 404 means the session is gone; every other failure is reported, never read as empty.
+      readSession: async ({ sessionID, directory }) => {
+        // The engine's JSON API lives under /api; the bare /session path falls through to the app SPA and
+        // parsing that HTML is what surfaced as SESSION_READ_FAILED.
+        const url = buildOpenCodeUrl(`/session/${encodeURIComponent(sessionID)}/message`, 'api');
+        const headers = getOpenCodeAuthHeaders();
+        const response = await globalThis.fetch(url, { headers: directory === undefined ? headers : { ...headers, 'x-opencode-directory': directory } });
+        if (response.status === 404) return { kind: 'missing', reason: 'No such session.' };
+        if (!response.ok) throw new Error(`the engine answered ${response.status}`);
+        const payload = await response.json();
+        // Engine shape (measured 2026-11-20): { data: [{ type: "user"|"assistant"|"idle", text?, content? }], cursor }.
+        // Older wrappers have shipped the list bare or under items/messages, so accept those too.
+        const list = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload?.messages)
+                ? payload.messages
+                : [];
+        const textOf = (entry) => {
+          if (typeof entry?.text === 'string') return entry.text;
+          const content = entry?.content;
+          if (typeof content === 'string') return content;
+          if (Array.isArray(content)) {
+            return content
+              .filter((part) => typeof part?.text === 'string')
+              .map((part) => part.text)
+              .join('\n');
+          }
+          return '';
+        };
+        const messages = list
+          .map((entry) => {
+            const role = typeof entry?.type === 'string' ? entry.type : typeof entry?.role === 'string' ? entry.role : 'unknown';
+            // finish tells a completed turn ("stop") from mid-run narration ("tool-calls"); the answer is the
+            // last stop, not simply the last text.
+          const finish = typeof entry?.finish === 'string' ? entry.finish : undefined;
+          return finish === undefined ? { role, text: textOf(entry) } : { role, text: textOf(entry), finish };
+          })
+          .filter((message) => message.role === 'user' || message.role === 'assistant');
+        // A tool call carries its own evidence: the command it ran and what came back. Text alone cannot check a
+        // claim such as "the drive does not exist", so every tool part is returned with its input and output capped.
+        const clampText = (value, limit) => {
+          const text = String(value ?? '');
+          return text.length > limit ? `${text.slice(0, limit)}… [${text.length - limit} more characters]` : text;
+        };
+        const outputOf = (state) => {
+          if (Array.isArray(state?.content)) return state.content.map((part) => part?.text ?? '').join('\n');
+          return state?.content ?? state?.output ?? '';
+        };
+        const tools = [];
+        for (const entry of list) {
+          if (!Array.isArray(entry?.content)) continue;
+          for (const part of entry.content) {
+            if (part?.type !== 'tool') continue;
+            const state = part.state ?? {};
+            tools.push({
+              name: part.name ?? 'unknown',
+              callID: part.id,
+              status: state.status,
+              input: clampText(JSON.stringify(state.input ?? {}), 600),
+              output: clampText(outputOf(state), 2000),
+            });
+          }
+        }
+        return { kind: 'status', messages, tools };
+      },
+    };
+    // An empty list is a policy (refuse every named agent), not an absent one.
+    if (allowedAgents !== undefined) capabilityOptions.allowedAgents = allowedAgents;
+    registerCapabilityRoutes(app, capabilityOptions);
 
     registerMarkdownImageGrantRoutes(app, {
       fsPromises,

@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from "node:crypto"
+import { spawnSync } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { createConnection, createServer } from "node:net"
 import { createRequire } from "node:module"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 /**
@@ -42,14 +43,57 @@ const DEFAULT_SENPI_BIN = (() => {
 })()
 
 /**
+ * How much of an engine's declared dependency closure it can actually import. The engine hands itself off to a runtime
+ * copy under the agent dir, where bare imports resolve by walking up from that copy, so a bundle staged without its
+ * closure dies at module resolution (`ERR_MODULE_NOT_FOUND: @earendil-works/chord`) and retries forever. A complete
+ * install can still miss optional packages and run fine, so the caller decides: none resolvable means a bundle-only
+ * stage that must not be started.
+ */
+export const engineDependencyClosure = (scriptPath) => {
+  let dir = dirname(scriptPath)
+  for (let depth = 0; depth < 6; depth += 1) {
+    const packagePath = resolve(dir, "package.json")
+    if (existsSync(packagePath)) {
+      let declared = {}
+      try {
+        declared = JSON.parse(readFileSync(packagePath, "utf8"))?.dependencies ?? {}
+      } catch {
+        return { declared: 0, missing: [] }
+      }
+      const requireFrom = createRequire(packagePath)
+      const names = Object.keys(declared)
+      const missing = names.filter((name) => {
+        try {
+          requireFrom.resolve(`${name}/package.json`)
+          return false
+        } catch {
+          return true
+        }
+      })
+      return { declared: names.length, missing }
+    }
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return { declared: 0, missing: [] }
+}
+
+/**
  * Engines worth trying, best first: an explicit choice, then the runtime this install can resolve, then the global
  * omo-ai install (where dev machines keep the CLI the app itself uses), then the sibling checkout's shim.
  */
-export const engineCandidates = ({ env = process.env, exists = existsSync, appdata = process.env.APPDATA } = {}) => {
+export const engineCandidates = ({ env = process.env, exists = existsSync, appdata = process.env.APPDATA, probe = engineDependencyClosure } = {}) => {
   const list = []
   const push = (candidate) => {
     if (candidate === undefined) return
     if (list.some((existing) => JSON.stringify(existing) === JSON.stringify(candidate))) return
+    // `ALCODE_TASK_HOST_SENPI` may name the script directly, so both shapes are probed.
+    const script = Array.isArray(candidate) ? candidate[candidate.length - 1] : candidate
+    if (typeof script === "string" && script.endsWith(".js")) {
+      const closure = probe(script)
+      if (closure.declared > 0 && closure.missing.length === closure.declared) return
+    }
     list.push(candidate)
   }
   push(parseSenpiBin(env.ALCODE_TASK_HOST_SENPI))
@@ -139,11 +183,13 @@ export const parseSenpiBin = (raw) => {
   return parts.length === 0 ? undefined : parts
 }
 
-const launchOf = (bin) => {
+export const launchOf = (bin, execPath = process.execPath) => {
   if (Array.isArray(bin)) return [...bin]
   if (!bin.toLowerCase().endsWith('.js')) return [bin]
-  const asNode = /electron/i.test(process.execPath)
-  return asNode ? [process.execPath, '--js-flags=--no-experimental-config', bin] : [process.execPath, bin]
+  // Electron refuses `--js-flags` before it ever becomes Node (`bad option:`, exit 9), so the
+  // staged engine is started with ELECTRON_RUN_AS_NODE alone: a host launched through this
+  // branch must reach the engine, and an argument the runtime rejects reaches nothing.
+  return [execPath, bin]
 }
 
 const WINDOWS_PIPE_PREFIX = '\\\\.\\pipe\\senpi-rpc-'
@@ -393,6 +439,26 @@ export const releaseDaemonState = ({ agentDir, socket, kill = (pid) => process.k
  * its plugin from one whose process answers but whose listener is gone, so it must never fail silently: a missing
  * default made every readiness check return false against a perfectly healthy host.
  */
+export const defaultRun = (argv, env, options = {}) => {
+  const [candidate, ...args] = Array.isArray(argv) ? argv : []
+  const file = (candidate ?? "").trim?.() ?? ""
+  if (file.length === 0) return { code: 1, stdout: "task host runner received no command" }
+  const result = spawnSync(file, args, {
+    cwd: options?.cwd,
+    env,
+    encoding: "utf8",
+    shell: false,
+    windowsHide: true,
+  })
+  const code = Number.isInteger(result.status) ? result.status : 1
+  const stdout = String(result.stdout ?? "")
+  if (code === 0) return { code, stdout }
+  const stderr = String(result.stderr ?? "").trim()
+  if (stderr.length === 0) return { code, stdout }
+  const separator = stdout.length === 0 || stdout.endsWith("\n") ? "" : "\n"
+  return { code, stdout: `${stdout}${separator}${stderr}` }
+}
+
 export const defaultProbe = async (url, timeoutMs = 2000) => {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
@@ -418,7 +484,7 @@ export function createTaskHostSupervisor(options) {
     engines,
     waitForSecret = waitForHostSecret,
     exists = existsSync,
-    run,
+    run = defaultRun,
     probe = defaultProbe,
     resolveProjectDir,
     resolveModel,
@@ -427,6 +493,8 @@ export function createTaskHostSupervisor(options) {
     startTimeoutMs = DEFAULT_START_TIMEOUT_MS,
     healthTimeoutMs = DEFAULT_HEALTH_TIMEOUT_MS,
     maxRestarts = DEFAULT_MAX_RESTARTS,
+    // The gateway's one allowlist, published into the launch spec under the name the host mount reads.
+    allowedAgents,
     userProfile = process.env.USERPROFILE ?? "",
     recoveryWaitMs = 3000,
     // The caller aborts its own request at 30 s (capability-descriptor TIMEOUT_MS), so the wait must fit inside that;
@@ -504,6 +572,11 @@ export function createTaskHostSupervisor(options) {
     // visible, not inferred from a later timeout.
     logger.info?.(`[task-host] ${command.slice(-2).join(" ")} -> ${said.slice(0, 200)}`)
     if (result.code !== 0) {
+      // The engine reports a crash as a Node fatal footer, whose cause sits many lines above it. Two lines of tail
+      // turned that into `} | Node.js v24.22.0` and cost a whole diagnosis round, so a failed step carries the whole
+      // captured stack into the log while a successful step still reports its one-line answer.
+      const detail = String(result.stdout ?? "").trim().split(/\r?\n/).filter(Boolean).slice(-40).join(" | ")
+      logger.warn?.(`[task-host] ${command.slice(0, 3).join(" ")} failed with code ${result.code}: ${detail.slice(0, 4000)}`)
       throw new Error(`${command.slice(0, 3).join(" ")} exited ${result.code}${said.length > 0 ? `: ${said}` : ""}`)
     }
     return result
@@ -523,6 +596,8 @@ export function createTaskHostSupervisor(options) {
       const model = (resolveModel?.() ?? "").trim()
       mkdirSync(dirname(socketPathFor(stateDir)), { recursive: true })
       mkdirSync(dirname(specPath), { recursive: true })
+      const specEnv = { OMO_CAPABILITY_TOKEN: token, OMO_CAPABILITY_PORT: String(port) }
+      if (allowedAgents !== undefined) specEnv.OMO_CAPABILITY_AGENTS = allowedAgents.join(",")
       writeFileSync(
         specPath,
         JSON.stringify(
@@ -533,7 +608,7 @@ export function createTaskHostSupervisor(options) {
             // on a default transient policy, exiting while idle — which presents as a capability listener that stops
             // answering ~45 s after a healthy start.
             tunables: { coldStart: "persistent", idleExitMs: HOST_IDLE_EXIT_MS },
-            env: { OMO_CAPABILITY_TOKEN: token, OMO_CAPABILITY_PORT: String(port) },
+            env: specEnv,
           },
           null,
           2,
@@ -545,7 +620,7 @@ export function createTaskHostSupervisor(options) {
       // never logged) so a task can actually run.
       const agentDir = join(stateDir, "agent")
       seedAgentDir({ agentDir, pluginDir, userProfile: process.env.USERPROFILE ?? "" })
-      commandEnv = { ...process.env, SENPI_CODING_AGENT_DIR: agentDir }
+      commandEnv = { ...process.env, OMO_CODING_AGENT_DIR: agentDir, SENPI_CODING_AGENT_DIR: agentDir, PI_CODING_AGENT_DIR: agentDir }
       // In the desktop app process.execPath is electron.exe: the engine is a node script, so the host must be started
       // with Electron acting as node, or the child inherits no tool runtime at all.
       if (process.versions?.electron !== undefined) commandEnv.ELECTRON_RUN_AS_NODE = "1"
@@ -734,6 +809,10 @@ export function createTaskHostSupervisor(options) {
       if (state === "ready" || state === "stopped" || state === "failed" || state === "degraded") {
         const projectDir = scopedProjectDir ?? (await resolveProjectDir())
         if (typeof projectDir !== "string" || projectDir.trim().length === 0) return undefined
+        // A host already bound to this project serves the next task from the root session it opened. Starting again
+        // here minted a new port, token, host generation and root session per task start, orphaning every task the
+        // previous generation started. A real listener loss is still handled by ensureLiveFn below.
+        if (state === "ready" && hostSessionId !== undefined && scopedProjectDir === projectDir) return undefined
         if (inflight === undefined) {
           inflight = start(projectDir).finally(() => {
             inflight = undefined

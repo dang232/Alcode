@@ -27,6 +27,21 @@ const server = (): { url: string; calls: Recorded[]; stop: () => void } => {
       }
       if (url.pathname === "/capability/session/start") return Response.json({ outcome: "accepted" })
       if (url.pathname === "/capability/task") return Response.json({ taskID: "task_host_0001", state: "accepted" })
+      if (url.pathname === "/capability/task/output") {
+        return Response.json({ taskID: body["taskID"], output: { status: "completed", final_response: "READY" } })
+      }
+      if (url.pathname === "/capability/session/read") {
+        return Response.json({
+          kind: "status",
+          messages: [{ role: "assistant", text: "done" }],
+          final_response: "done",
+          tools: [
+            { name: "shell", status: "completed", input: '{"command":"cd I:\\\\x"}', output: "DRIVE_MISSING" },
+            { name: "execute", input: 7, output: null },
+            { input: "nameless calls are dropped" },
+          ],
+        })
+      }
       return new Response("not found", { status: 404 })
     },
   })
@@ -101,6 +116,44 @@ describe("host capability over the injected endpoint", () => {
     const call = host.calls[host.calls.length - 1]
     expect(call?.path).toBe("/capability/task")
     expect(call?.body["parentSessionID"]).toBe("ses_caller_0001")
+  })
+
+  it("reads a task's output through the host endpoint with the caller as parent", async () => {
+    const capabilities = createHostCapabilities(createTaskOperationsFromDescriptor(descriptor()))
+    const read = await capabilities.tasks!.readOutput!({ taskID: "task_host_0001" }, caller)
+    expect(read).toEqual({ taskID: "task_host_0001", output: { status: "completed", final_response: "READY" } })
+    const call = host.calls[host.calls.length - 1]
+    expect(call?.path).toBe("/capability/task/output")
+    expect(call?.authorization).toBe("Bearer t0ken")
+    expect(call?.body["taskID"]).toBe("task_host_0001")
+  })
+
+  it("returns a session's tool evidence so a claim about its shell can be checked", async () => {
+    const operations = createOperationsFromDescriptor(descriptor())
+    const read = await operations.readSession!({ sessionID: "ses_host_child_0001", directory: "/workspace" })
+    expect(read.finalResponse).toBe("done")
+    expect(read.tools).toEqual([
+      { name: "shell", status: "completed", input: '{"command":"cd I:\\\\x"}', output: "DRIVE_MISSING" },
+      { name: "execute", input: "", output: "" },
+    ])
+  })
+
+  it("reports a host that refuses the read instead of returning empty output", async () => {
+    const failing = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json({ error: "TASK_MANAGER_UNAVAILABLE", message: "no-manager" }, { status: 503 })
+      },
+    })
+    try {
+      const failingDescriptor = { version: 1 as const, url: `http://127.0.0.1:${failing.port}`, token: "t0ken" }
+      const capabilities = createHostCapabilities(createTaskOperationsFromDescriptor(failingDescriptor))
+      await expect(capabilities.tasks!.readOutput!({ taskID: "task_host_0001" }, caller)).rejects.toThrow(
+        /TASK_OUTPUT_UNAVAILABLE/,
+      )
+    } finally {
+      void failing.stop(true)
+    }
   })
 
   it("treats a redirect as a host failure rather than following it with the token", async () => {

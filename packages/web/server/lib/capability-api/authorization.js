@@ -38,9 +38,12 @@ export const createCapabilityAuthorizer = ({ token, createClient, boundParent } 
     if (createClient === undefined) return false;
     try {
       const client = await createClient({ directory: asNonEmptyString(directory) ?? undefined });
-      const found = await client.session.get({ path: { id: named }, query: { directory } });
-      return asNonEmptyString(found?.data?.id) === named;
-    } catch {
+      const found = await client.session.get({ sessionID: named });
+      return asNonEmptyString(found?.id) === named;
+    } catch (cause) {
+      // A wiring failure (for example a base URL that cannot be built) must not read as an authorization
+      // decision: say so once per refusal instead of swallowing it.
+      console.warn('[capability] parent authorization failed', { parent: named, error: cause instanceof Error ? cause.message : String(cause) });
       return false;
     }
   };

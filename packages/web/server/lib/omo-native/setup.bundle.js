@@ -46920,6 +46920,8 @@ var BASE_TOOLS = {
   write: { description: "Create or overwrite a file." },
   edit: { description: "Apply a targeted edit to an existing file." },
   task: { description: "Launch a follow-up sub-task." },
+  task_output: { description: "Read a launched task's persisted output by its task id." },
+  monitor: { description: "Watch a condition and wake the session instead of polling." },
   call_omo_agent: { description: "Delegate work to a named helper agent." },
   teammate: { description: "Hand work to a teammate session." },
   todo_write: { description: "Record and update the task checklist." },
@@ -46936,7 +46938,7 @@ var BASE_TOOLS = {
 function isForceDisabledTool(toolName) {
   if (toolName.startsWith("grep_app_"))
     return true;
-  if (toolName.startsWith("task_"))
+  if (toolName.startsWith("task_") && toolName !== "task_output")
     return true;
   if (toolName.startsWith("Lsp"))
     return true;
@@ -51630,8 +51632,9 @@ var HOST_CAPABILITY_VERSION = 1;
 var CapabilitySchema = object({
   version: literal(HOST_CAPABILITY_VERSION),
   allowedAgents: array(string2()).optional(),
-  childSessions: object({ createAndStart: _function() }).optional(),
-  tasks: object({ start: _function() }).optional()
+  childSessions: object({ createAndStart: _function(), readOutput: _function().optional() }).optional(),
+  tasks: object({ start: _function(), readOutput: _function().optional() }).optional(),
+  monitor: object({ start: _function() }).optional()
 });
 var capabilitiesOf = (source) => {
   if (source === undefined)
@@ -51670,6 +51673,8 @@ var delegationError = (code, message) => new DelegationError(code, message);
 // ../../../../omo-engine/omo-opencode/src/tools/delegation/delegation-tools.ts
 var TASK_TOOL_NAME = "task";
 var CALL_OMO_AGENT_TOOL_NAME = "call_omo_agent";
+var TASK_OUTPUT_TOOL_NAME = "task_output";
+var MONITOR_TOOL_NAME = "monitor";
 var MAX_PROMPT_CHARS = 200000;
 var TaskArgs = object({
   description: string2().trim().min(1).max(200),
@@ -51682,6 +51687,14 @@ var CallAgentArgs = object({
   description: string2().trim().min(1).max(200),
   prompt: string2().trim().min(1).max(MAX_PROMPT_CHARS),
   agent: string2().trim().min(1).optional()
+});
+var TaskOutputArgs = object({
+  task_id: string2().trim().min(1).max(256)
+});
+var MonitorArgs = object({
+  command: string2().trim().min(1).max(2000),
+  filter: string2().trim().min(1).max(512).optional(),
+  timeout_ms: number2().int().min(1000).max(1800000).optional()
 });
 var FORBIDDEN_ARGUMENTS = [
   "sessionID",
@@ -51731,6 +51744,8 @@ var parse6 = (schema, raw, what) => {
 };
 var TASK_DESCRIPTION = "Launch a host-owned task through the canonical task manager. Requires host-authenticated context; the caller session is derived by the host, never from arguments.";
 var CALL_AGENT_DESCRIPTION = "Delegate bounded work to a named helper agent in a genuine native child session. The parent session is derived from host context; the result reports the real child identity and whether its first prompt was submitted.";
+var TASK_OUTPUT_DESCRIPTION = "Read a task's persisted output by its task id. Read-only: the parent session is derived from host context, and a host that publishes no reader is reported rather than answered with an empty result.";
+var MONITOR_DESCRIPTION = "Watch for a condition instead of polling. Runs one command (or waits on a line) and posts the matching line back into this session as a message, which is what ends the wait. Call it once and end your turn - never sleep-loop.";
 var buildTaskRequest = (args) => {
   const request = {
     description: args.description,
@@ -51784,6 +51799,18 @@ var createDelegationTools = (deps) => {
       rejectIdentityArguments(rawArgs);
       const args = parse6(TaskArgs, rawArgs, "task");
       requireAgentAuthorized(capabilities, args.agent, "task");
+      const sessions = capabilities.childSessions;
+      if (sessions !== undefined) {
+        const childRequest = { title: args.description, prompt: args.prompt, agent: args.agent ?? caller.agent };
+        const handle = await sessions.createAndStart(childRequest, caller);
+        requireHostParent(handle, caller);
+        return JSON.stringify({
+          taskID: handle.childSessionID,
+          parentSessionID: handle.parentSessionID,
+          state: handle.started ? "running" : "unknown",
+          capabilityVersion: handle.capabilityVersion
+        });
+      }
       const tasks = capabilities.tasks;
       if (tasks === undefined) {
         throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no task capability (host.tasks.start is missing), so no task was created");
@@ -51820,7 +51847,95 @@ var createDelegationTools = (deps) => {
       return childResult(handle);
     }
   };
-  return { task, callOmoAgent };
+  const taskOutput = {
+    description: TASK_OUTPUT_DESCRIPTION,
+    args: {
+      properties: {
+        task_id: {
+          type: "string",
+          description: "Id returned by the task tool: a child session id (ses_...) for the native path, or a legacy st_... task id."
+        }
+      },
+      required: ["task_id"]
+    },
+    execute: async (rawArgs, context) => {
+      const caller = callerFromContext(context);
+      if (context?.aborted() === true) {
+        throw delegationError("CANCELLED", "the caller was already aborted; no task output was read");
+      }
+      rejectIdentityArguments(rawArgs);
+      const args = parse6(TaskOutputArgs, rawArgs, TASK_OUTPUT_TOOL_NAME);
+      const sessions = capabilities.childSessions;
+      if (args.task_id.startsWith("ses_") && sessions?.readOutput !== undefined) {
+        const read = await sessions.readOutput({ childSessionID: args.task_id }, caller);
+        if (read.kind === "missing") {
+          throw delegationError("TASK_NOT_FOUND", `no child session ${args.task_id}: ${read.reason ?? "not readable in this workspace"}`);
+        }
+        return JSON.stringify({
+          taskID: args.task_id,
+          output: {
+            kind: read.kind,
+            sessionID: read.sessionID,
+            messages: read.messages ?? [],
+            tools: read.tools ?? [],
+            ...read.finalResponse === undefined ? {} : { final_response: read.finalResponse }
+          }
+        });
+      }
+      const tasks = capabilities.tasks;
+      if (tasks === undefined) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no task capability, so no task output can be read");
+      }
+      const readOutput = tasks.readOutput;
+      if (readOutput === undefined) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host publishes no task-output reader (host.tasks.readOutput is missing), so the task was not read");
+      }
+      const read = await readOutput({ taskID: args.task_id }, caller);
+      if (read.taskID !== args.task_id) {
+        throw delegationError("TASK_ATTRIBUTION_MISMATCH", `the host answered for task ${read.taskID}, not for the requested ${args.task_id}`);
+      }
+      return JSON.stringify({ taskID: read.taskID, output: read.output });
+    }
+  };
+  const monitor = {
+    description: MONITOR_DESCRIPTION,
+    args: {
+      properties: {
+        command: {
+          type: "string",
+          description: "Command to run once, under the platform shell (cmd.exe on Windows: use && or &, never ; for sequencing)."
+        },
+        filter: {
+          type: "string",
+          description: "Optional regular expression; the first matching line wakes this session."
+        },
+        timeout_ms: { type: "number", description: "Give up after this many milliseconds (max 30 minutes)." }
+      },
+      required: ["command"]
+    },
+    execute: async (rawArgs, context) => {
+      const caller = callerFromContext(context);
+      if (context?.aborted() === true) {
+        throw delegationError("CANCELLED", "the caller was already aborted; nothing was watched");
+      }
+      rejectIdentityArguments(rawArgs);
+      const args = parse6(MonitorArgs, rawArgs, MONITOR_TOOL_NAME);
+      const capability = capabilities.monitor;
+      if (capability === undefined) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host publishes no monitor (host.monitor is missing), so nothing could be watched");
+      }
+      const started = await capability.start({
+        command: args.command,
+        ...args.filter === undefined ? {} : { filter: args.filter },
+        ...args.timeout_ms === undefined ? {} : { timeoutMs: args.timeout_ms }
+      }, caller);
+      return JSON.stringify({
+        accepted: started.accepted,
+        note: "the matching line is posted into this session as a message; end your turn instead of polling"
+      });
+    }
+  };
+  return { task, callOmoAgent, taskOutput, monitor };
 };
 
 // ../../../../omo-engine/omo-opencode/src/tools/workspace/bash.ts
@@ -51933,7 +52048,7 @@ var BASH_TOOL_NAME = "bash";
 var DEFAULT_TIMEOUT_MS = 120000;
 var MAX_TIMEOUT_MS = 600000;
 var OUTPUT_LIMIT_BYTES = 64 * 1024;
-var BASH_DESCRIPTION = "Run a shell command with the project workspace as its working directory. Returns the exit code with bounded stdout and stderr; a non-zero exit is reported as a failure.";
+var BASH_DESCRIPTION = "Run a shell command with the project workspace as its working directory. Returns the exit code with bounded stdout and stderr; a non-zero exit is reported as a failure. On Windows the command runs under cmd.exe, not PowerShell: use cmd syntax and single backslashes in paths.";
 var BashArgs = object({
   command: string2().trim().min(1),
   cwd: string2().trim().min(1).optional(),
@@ -51986,12 +52101,13 @@ var killTree = async (pid, platform) => {
     }
   }
 };
+var bashInvocation = (platform, command) => platform === "win32" ? { shell: "cmd.exe", argv: ["cmd.exe", "/d", "/s", "/c", command], detached: false } : { shell: "/bin/bash", argv: ["/bin/bash", "-lc", command], detached: true };
 function createWorkspaceBashTool(options) {
   return {
     description: BASH_DESCRIPTION,
     args: {
       properties: {
-        command: { type: "string", description: "Command line to run through the platform shell." },
+        command: { type: "string", description: "Command line to run through the platform shell (cmd.exe on Windows, /bin/bash elsewhere)." },
         cwd: { type: "string", description: "Working directory inside the workspace; defaults to the project root." },
         timeoutMs: { type: "number", description: `Deadline in milliseconds, 1-${MAX_TIMEOUT_MS}.` }
       }
@@ -52016,14 +52132,14 @@ function createWorkspaceBashTool(options) {
         }
       }
       const platform = process.platform;
-      const argv = platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", parsed.data.command] : ["/bin/bash", "-lc", parsed.data.command];
+      const invocation = bashInvocation(platform, parsed.data.command);
       const stdout = capture();
       const stderr = capture();
-      const child = spawn3(argv[0], argv.slice(1), {
+      const child = spawn3(invocation.argv[0], invocation.argv.slice(1), {
         cwd,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
-        detached: platform !== "win32"
+        detached: invocation.detached
       });
       child.stdout?.on("data", (chunk) => stdout.push(chunk));
       child.stderr?.on("data", (chunk) => stderr.push(chunk));
@@ -52053,7 +52169,7 @@ function createWorkspaceBashTool(options) {
       const out = stdout.result();
       const err = stderr.result();
       const header = outcome.kind === "timeout" ? `timed out after ${timeoutMs}ms` : outcome.kind === "error" ? `could not start: ${outcome.message ?? "unknown error"}` : `exit ${outcome.code ?? "none"}${outcome.signal === null ? "" : ` (signal ${outcome.signal})`}`;
-      const parts = [header, `approval: ${approval}`];
+      const parts = [header, `shell: ${invocation.shell}`, `approval: ${approval}`];
       parts.push(`stdout${out.truncated ? ` (truncated at ${OUTPUT_LIMIT_BYTES}B of ${out.bytes}B)` : ""}:`);
       parts.push(out.text.length > 0 ? out.text.replace(/\s+$/, "") : "(empty)");
       if (err.text.length > 0 || err.truncated) {
@@ -57186,7 +57302,9 @@ async function createTools(ctx, pluginConfig, managers) {
   const delegation = createDelegationTools({ directory: ctx.directory, capabilities: ctx.hostCapabilities });
   const delegationTools = {
     [TASK_TOOL_NAME]: delegation.task,
-    [CALL_OMO_AGENT_TOOL_NAME]: delegation.callOmoAgent
+    [CALL_OMO_AGENT_TOOL_NAME]: delegation.callOmoAgent,
+    [TASK_OUTPUT_TOOL_NAME]: delegation.taskOutput,
+    [MONITOR_TOOL_NAME]: delegation.monitor
   };
   for (const [name, tool] of Object.entries(workspaceTools))
     install(name, tool);
@@ -57206,56 +57324,73 @@ var requireAgent = (allowedAgents, agent) => {
     throw delegationError("FORBIDDEN", `agent ${agent} is not in the host-authorized set`);
   }
 };
-var createChildSessions = (runtime) => ({
-  version: HOST_CAPABILITY_VERSION,
-  createAndStart: async (request, caller) => {
-    const { createSession, startSession } = runtime;
-    if (createSession === undefined || startSession === undefined) {
-      throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no session operations");
+var createChildSessions = (runtime) => {
+  const draft = {
+    version: HOST_CAPABILITY_VERSION,
+    createAndStart: async (request, caller) => {
+      const { createSession, startSession } = runtime;
+      if (createSession === undefined || startSession === undefined) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host exposes no session operations");
+      }
+      requireAgent(runtime.allowedAgents, request.agent);
+      const created = await createSession({ parentID: caller.sessionID, title: request.title, directory: caller.directory });
+      if (created.error !== undefined) {
+        throw delegationError("SESSION_CREATE_FAILED", created.error);
+      }
+      const childSessionID = created.sessionID;
+      if (childSessionID === undefined || childSessionID.length === 0) {
+        throw delegationError("SESSION_CREATE_FAILED", "the host returned no session identity");
+      }
+      if (created.parentID !== undefined && created.parentID !== caller.sessionID) {
+        throw delegationError("PARENT_ATTRIBUTION_MISMATCH", `the host created ${childSessionID} under ${created.parentID}, not the calling session`);
+      }
+      const start = { sessionID: childSessionID, prompt: request.prompt, directory: caller.directory };
+      if (request.agent !== undefined)
+        start.agent = request.agent;
+      const started = await startSession(start);
+      if (started.outcome === "refused") {
+        throw delegationError("PROMPT_SUBMIT_FAILED", `session ${childSessionID} exists but its first prompt was refused: ${started.error ?? "no reason given by the host"}`);
+      }
+      if (started.outcome !== "accepted") {
+        throw delegationError("CHILD_STATUS_UNKNOWN", `session ${childSessionID} exists; whether its first prompt reached the host is unproven, so no completion is claimed`);
+      }
+      return { childSessionID, parentSessionID: caller.sessionID, started: true, capabilityVersion: HOST_CAPABILITY_VERSION };
     }
-    requireAgent(runtime.allowedAgents, request.agent);
-    const created = await createSession({ parentID: caller.sessionID, title: request.title, directory: caller.directory });
-    if (created.error !== undefined) {
-      throw delegationError("SESSION_CREATE_FAILED", created.error);
-    }
-    const childSessionID = created.sessionID;
-    if (childSessionID === undefined || childSessionID.length === 0) {
-      throw delegationError("SESSION_CREATE_FAILED", "the host returned no session identity");
-    }
-    if (created.parentID !== undefined && created.parentID !== caller.sessionID) {
-      throw delegationError("PARENT_ATTRIBUTION_MISMATCH", `the host created ${childSessionID} under ${created.parentID}, not the calling session`);
-    }
-    const start = { sessionID: childSessionID, prompt: request.prompt, directory: caller.directory };
-    if (request.agent !== undefined)
-      start.agent = request.agent;
-    const started = await startSession(start);
-    if (started.outcome === "refused") {
-      throw delegationError("PROMPT_SUBMIT_FAILED", `session ${childSessionID} exists but its first prompt was refused: ${started.error ?? "no reason given by the host"}`);
-    }
-    if (started.outcome !== "accepted") {
-      throw delegationError("CHILD_STATUS_UNKNOWN", `session ${childSessionID} exists; whether its first prompt reached the host is unproven, so no completion is claimed`);
-    }
-    return { childSessionID, parentSessionID: caller.sessionID, started: true, capabilityVersion: HOST_CAPABILITY_VERSION };
-  }
-});
-var createTasks = (manager) => ({
-  version: HOST_CAPABILITY_VERSION,
-  start: async (request, caller) => {
-    if (!_function().safeParse(manager.start).success) {
-      throw delegationError("CAPABILITY_UNAVAILABLE", "this host's task seam exposes no start operation");
-    }
-    const started = await manager.start({ ...request, parentSessionID: caller.sessionID });
-    if (started.taskID.length === 0) {
-      throw delegationError("INTERNAL", "the canonical task manager returned no task identity");
-    }
-    return {
-      taskID: started.taskID,
-      parentSessionID: caller.sessionID,
-      state: started.state,
-      capabilityVersion: HOST_CAPABILITY_VERSION
+  };
+  const readSeam = runtime.readSession;
+  if (readSeam !== undefined) {
+    draft.readOutput = async (request, caller) => {
+      const read = await readSeam({ sessionID: request.childSessionID, directory: caller.directory });
+      return { ...read, sessionID: request.childSessionID };
     };
   }
-});
+  return draft;
+};
+var createTasks = (manager) => {
+  const readSeam = manager.readOutput;
+  const tasks = {
+    version: HOST_CAPABILITY_VERSION,
+    start: async (request, caller) => {
+      if (!_function().safeParse(manager.start).success) {
+        throw delegationError("CAPABILITY_UNAVAILABLE", "this host's task seam exposes no start operation");
+      }
+      const started = await manager.start({ ...request, parentSessionID: caller.sessionID });
+      if (started.taskID.length === 0) {
+        throw delegationError("INTERNAL", "the canonical task manager returned no task identity");
+      }
+      return {
+        taskID: started.taskID,
+        parentSessionID: caller.sessionID,
+        state: started.state,
+        capabilityVersion: HOST_CAPABILITY_VERSION
+      };
+    }
+  };
+  if (readSeam !== undefined) {
+    tasks.readOutput = async (request, caller) => readSeam({ taskID: request.taskID, parentSessionID: caller.sessionID });
+  }
+  return tasks;
+};
 var createHostCapabilities = (runtime) => {
   const capabilities = { version: HOST_CAPABILITY_VERSION };
   if (runtime.createSession !== undefined && runtime.startSession !== undefined) {
@@ -57265,6 +57400,8 @@ var createHostCapabilities = (runtime) => {
     capabilities.allowedAgents = runtime.allowedAgents;
   if (runtime.taskManager !== undefined)
     capabilities.tasks = createTasks(runtime.taskManager);
+  if (runtime.monitor !== undefined)
+    capabilities.monitor = runtime.monitor;
   return capabilities;
 };
 
@@ -57283,6 +57420,7 @@ var HostCapabilityOptions = object({
 var CreateResponse = object({ sessionID: string2().min(1), parentID: string2().optional() });
 var StartResponse = object({ outcome: OutcomeSchema, error: string2().optional() });
 var TaskResponse = object({ taskID: string2().min(1), state: _enum(["accepted", "running", "completed", "failed", "cancelled", "unknown"]) });
+var TaskOutputResponse = object({ taskID: string2().min(1), output: unknown() });
 var TIMEOUT_MS = 30000;
 var post = async (descriptor, path, bodyJson) => {
   try {
@@ -57341,6 +57479,65 @@ var createOperationsFromDescriptor = (descriptor) => {
       return parsed.data.error === undefined ? { outcome: parsed.data.outcome } : { outcome: parsed.data.outcome, error: parsed.data.error };
     }
   };
+  operations.readSession = async (input) => {
+    const sent = await post(descriptor, "/capability/session/read", JSON.stringify({ sessionID: input.sessionID, directory: input.directory }));
+    if (!sent.ok)
+      throw new Error(`SESSION_READ_FAILED: ${sent.error}`);
+    const body = sent.payload;
+    const messages = Array.isArray(body["messages"]) ? body["messages"].flatMap((raw) => {
+      if (typeof raw !== "object" || raw === null)
+        return [];
+      const role = raw["role"];
+      const text = raw["text"];
+      return typeof role === "string" && typeof text === "string" ? [{ role, text }] : [];
+    }) : undefined;
+    const tools = Array.isArray(body["tools"]) ? body["tools"].flatMap((raw) => {
+      if (typeof raw !== "object" || raw === null)
+        return [];
+      const name = raw["name"];
+      const input = raw["input"];
+      const output = raw["output"];
+      const status = raw["status"];
+      if (typeof name !== "string")
+        return [];
+      return [
+        {
+          name,
+          input: typeof input === "string" ? input : "",
+          output: typeof output === "string" ? output : "",
+          ...typeof status === "string" ? { status } : {}
+        }
+      ];
+    }) : undefined;
+    const finalResponse = typeof body["final_response"] === "string" ? body["final_response"] : undefined;
+    const reason = typeof body["reason"] === "string" ? body["reason"] : undefined;
+    const draft = {
+      kind: body["kind"] === "missing" ? "missing" : "status"
+    };
+    if (messages !== undefined)
+      draft.messages = messages;
+    if (tools !== undefined)
+      draft.tools = tools;
+    if (finalResponse !== undefined)
+      draft.finalResponse = finalResponse;
+    if (reason !== undefined)
+      draft.reason = reason;
+    return draft;
+  };
+  operations.monitor = {
+    version: 1,
+    start: async (request, caller) => {
+      const body = { sessionID: caller.sessionID, command: request.command };
+      if (request.filter !== undefined)
+        body.filter = request.filter;
+      if (request.timeoutMs !== undefined)
+        body.timeoutMs = request.timeoutMs;
+      const sent = await post(descriptor, "/capability/monitor", JSON.stringify(body));
+      if (!sent.ok)
+        throw new Error(`MONITOR_FAILED: ${sent.error}`);
+      return { accepted: sent.payload["accepted"] === true };
+    }
+  };
   if (descriptor.allowedAgents !== undefined)
     operations.allowedAgents = descriptor.allowedAgents;
   return operations;
@@ -57354,6 +57551,15 @@ var createTaskOperationsFromDescriptor = (descriptor) => ({
       const parsed = TaskResponse.safeParse(sent.payload);
       if (!parsed.success)
         throw new Error("INTERNAL: the host returned no usable task identity");
+      return parsed.data;
+    },
+    readOutput: async (request) => {
+      const sent = await post(descriptor, "/capability/task/output", JSON.stringify({ taskID: request.taskID }));
+      if (!sent.ok)
+        throw new Error(`TASK_OUTPUT_UNAVAILABLE: ${sent.error}`);
+      const parsed = TaskOutputResponse.safeParse(sent.payload);
+      if (!parsed.success)
+        throw new Error("INTERNAL: the host returned no usable task output");
       return parsed.data;
     }
   }
@@ -58049,6 +58255,10 @@ function resolveV2Capabilities(ctx) {
     }
     if (runtime.allowedAgents === undefined && operations.allowedAgents !== undefined)
       runtime.allowedAgents = operations.allowedAgents;
+    if (runtime.readSession === undefined && operations.readSession !== undefined)
+      runtime.readSession = operations.readSession;
+    if (runtime.monitor === undefined && operations.monitor !== undefined)
+      runtime.monitor = operations.monitor;
     if (runtime.taskManager === undefined)
       runtime.taskManager = createTaskOperationsFromDescriptor(descriptor).taskManager;
   }

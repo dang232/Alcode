@@ -46,12 +46,31 @@ export interface OmoChildSessionHandle {
   readonly capabilityVersion: number
 }
 
+interface OmoChildOutput {
+  readonly kind: "status" | "missing"
+  readonly sessionID: string
+  readonly messages?: readonly { readonly role: string; readonly text: string }[]
+  readonly tools?: readonly {
+    readonly name: string
+    readonly status?: string
+    readonly input: string
+    readonly output: string
+  }[]
+  readonly finalResponse?: string
+  readonly reason?: string
+}
+
 export interface OmoHostChildSessions {
   readonly version: number
   readonly createAndStart: (
     request: OmoChildSessionRequest,
     caller: OmoAuthenticatedCaller,
   ) => Promise<OmoChildSessionHandle>
+  /** Reads a child's own messages. Absent means this host cannot read a child back. */
+  readonly readOutput?: (
+    request: { readonly childSessionID: string },
+    caller: OmoAuthenticatedCaller,
+  ) => Promise<OmoChildOutput>
 }
 
 export type OmoTaskState = "accepted" | "running" | "completed" | "failed" | "cancelled" | "unknown"
@@ -80,9 +99,33 @@ export interface OmoTaskHandle {
   readonly capabilityVersion: number
 }
 
+export interface OmoTaskOutputRequest {
+  readonly taskID: string
+}
+
+export interface OmoTaskOutput {
+  readonly taskID: string
+  readonly output: unknown
+}
+
 export interface OmoHostTasks {
   readonly version: number
   readonly start: (request: OmoTaskRequest, caller: OmoAuthenticatedCaller) => Promise<OmoTaskHandle>
+  /**
+   * Reads one task's persisted output. Absent means this host cannot read a task back, so the tool
+   * refuses by name instead of reporting an empty or invented result. The parent is derived from
+   * the caller, never from the request.
+   */
+  readonly readOutput?: (request: OmoTaskOutputRequest, caller: OmoAuthenticatedCaller) => Promise<OmoTaskOutput>
+}
+
+export interface OmoHostMonitor {
+  readonly version: number
+  /** Starts one watch and answers at once; the matching line is posted back into the caller's session. */
+  readonly start: (
+    request: { readonly command: string; readonly filter?: string; readonly timeoutMs?: number },
+    caller: OmoAuthenticatedCaller,
+  ) => Promise<{ readonly accepted: boolean }>
 }
 
 export interface OmoHostCapabilities {
@@ -91,13 +134,15 @@ export interface OmoHostCapabilities {
   readonly allowedAgents?: readonly string[]
   readonly childSessions?: OmoHostChildSessions
   readonly tasks?: OmoHostTasks
+  readonly monitor?: OmoHostMonitor
 }
 
 const CapabilitySchema = z.object({
   version: z.literal(HOST_CAPABILITY_VERSION),
   allowedAgents: z.array(z.string()).optional(),
-  childSessions: z.object({ createAndStart: z.function() }).optional(),
-  tasks: z.object({ start: z.function() }).optional(),
+  childSessions: z.object({ createAndStart: z.function(), readOutput: z.function().optional() }).optional(),
+  tasks: z.object({ start: z.function(), readOutput: z.function().optional() }).optional(),
+  monitor: z.object({ start: z.function() }).optional(),
 })
 
 /** A running host can only offer what it was built with; any other shape fails closed. */

@@ -8,12 +8,13 @@ const TOKEN = 'configured-secret';
 
 const makeClient = (sessions) => async ({ directory }) => ({
   session: {
-    get: async ({ path }) => {
-      const found = sessions.find((session) => session.id === path.id);
-      return found ? { data: found } : { error: 'not found' };
+    get: async ({ sessionID }) => {
+      const found = sessions.find((session) => session.id === sessionID);
+      if (!found) throw new Error('session not found');
+      return found;
     },
-    create: async () => ({ data: { id: 'ses_new', parentID: 'ses_parent' } }),
-    promptAsync: async () => ({ data: {} }),
+    create: async () => ({ id: 'ses_new' }),
+    prompt: async () => ({ data: {} }),
   },
   directory,
 });
@@ -49,6 +50,26 @@ describe('capability authorizer', () => {
   it('allows a correct token naming an existing session', async () => {
     expect(await authorizer([{ id: 'ses_parent' }])({ token: TOKEN, parentID: 'ses_parent', directory: '/workspace' })).toBe(true);
     expect(await authorizer([{ id: 'ses_child' }])({ token: TOKEN, sessionID: 'ses_child', directory: '/workspace' })).toBe(true);
+  });
+
+  it('looks the named parent up with the v2 input shape and authorizes a real id', async () => {
+    const seen = [];
+    const authorize = createCapabilityAuthorizer({
+      token: TOKEN,
+      // The supervisor binds a senpi id, so a ses_ parent only ever authorizes through this lookup.
+      boundParent: '01a1f8df-050f-7431-a76e-fa881455a719',
+      createClient: async () => ({
+        session: {
+          get: async (input) => {
+            seen.push(input);
+            return input.sessionID === 'ses_parent' ? { id: 'ses_parent' } : undefined;
+          },
+        },
+      }),
+    });
+
+    await expect(authorize({ token: TOKEN, parentID: 'ses_parent', directory: '/workspace' })).resolves.toBe(true);
+    expect(seen).toEqual([{ sessionID: 'ses_parent' }]);
   });
 
   it('denies when the client cannot answer', async () => {

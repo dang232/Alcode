@@ -98,11 +98,23 @@ const servicePairSchema = z.object({
   // (session creation + introspection), while the keychain MUST hold this
   // one (TokenPanel user-JWT reads). Preferred for capture when present.
   user_access_token: z.string().trim().min(1).max(4096).optional(),
+  // The user-scoped IDE pair, nested. Email and OTP login now return it too; the top-level pair stays the SESSION
+  // pair, so capturing the top-level refresh below pins the keychain to a token that /auth/token/refresh refuses.
+  user_token: z
+    .object({
+      access_token: z.string().trim().min(1).max(4096).optional(),
+      refresh_token: z.string().trim().min(1).max(4096).optional(),
+    })
+    .optional(),
 });
 // Keychain capture prefers the user-scoped access token over the session
 // token: presenting the session token to user-scoped reads 403s
 // (missing_scope) while the subject still matches, a silent dead end.
 const captureAccessOf = (data) => (data?.user_access_token?.trim() || data?.access_token?.trim() || '');
+// The refresh half needs the same preference: the nested IDE refresh rotates at /auth/token/refresh, while the
+// top-level one is the session family and answers 401 invalid_grant. Without this an email login works for 600 s
+// and then reports the session expired, which reads as "the email login is missing data".
+const captureRefreshOf = (data) => (data?.user_token?.refresh_token?.trim() || data?.refresh_token?.trim() || '');
 // Upstream error codes are named, not free text: only codes matching the
 // service's own machine-code shape pass through to the failure page.
 const serviceErrorSchema = z.object({ error: z.string().regex(/^[A-Za-z0-9_]{1,64}$/) });
@@ -423,7 +435,7 @@ export const createDesktopAuthRuntime = ({
     const parsedPair = servicePairSchema.safeParse(pair);
     const token = parsedPair.success ? parsedPair.data.access_token.trim() : '';
     const captureToken = parsedPair.success ? captureAccessOf(parsedPair.data) : '';
-    const refreshToken = parsedPair.success ? (parsedPair.data.refresh_token ?? '') : '';
+    const refreshToken = parsedPair.success ? captureRefreshOf(parsedPair.data) : '';
     if (token === '') {
       return res.status(502).json({ error: 'unavailable' });
     }

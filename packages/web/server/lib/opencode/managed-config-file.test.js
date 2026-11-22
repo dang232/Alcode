@@ -609,7 +609,7 @@ describe('allowlist publication', () => {
     const nativeDirectory = path.join(os.tmpdir(), 'alcode-native-agents', 'omo-native', 'omo-native');
     const { runtime } = await createHarness({
       settings: {},
-      env: { OMO_CAPABILITY_ALLOWED_AGENTS: 'explore, librarian' },
+      env: { OMO_CAPABILITY_ALLOWED_AGENTS: 'explore,librarian' },
       capabilityBaseUrl: 'http://127.0.0.1:57123',
       omoNativeRuntime: {
         pluginDirectory: nativeDirectory,
@@ -622,15 +622,37 @@ describe('allowlist publication', () => {
 
     const childEnv = await runtime.buildManagedChildEnv()
 
-    expect(childEnv.OMO_CAPABILITY_ALLOWED_AGENTS).toBe('explore, librarian')
-    expect(childEnv.OMO_CAPABILITY_AGENTS).toBe('explore, librarian')
+    expect(childEnv.OMO_CAPABILITY_ALLOWED_AGENTS).toBe('explore,librarian')
+    expect(childEnv.OMO_CAPABILITY_AGENTS).toBe('explore,librarian')
   })
 
-  it('publishes neither when no allowlist is configured', async () => {
+  it('publishes a set-but-empty allowlist as an empty string for both consumers', async () => {
+    const nativeDirectory = path.join(os.tmpdir(), 'alcode-native-empty-agents', 'omo-native', 'omo-native');
+    const { runtime } = await createHarness({
+      settings: {},
+      env: { OMO_CAPABILITY_ALLOWED_AGENTS: '' },
+      capabilityBaseUrl: 'http://127.0.0.1:57123',
+      omoNativeRuntime: {
+        pluginDirectory: nativeDirectory,
+        materializePlugin: vi.fn(async () => {
+          await fs.mkdir(nativeDirectory, { recursive: true });
+          return nativeDirectory;
+        }),
+      },
+    });
+
+    const childEnv = await runtime.buildManagedChildEnv()
+
+    expect(childEnv.OMO_CAPABILITY_ALLOWED_AGENTS).toBe('')
+    expect(childEnv.OMO_CAPABILITY_AGENTS).toBe('')
+  })
+
+  it('publishes this product\'s agent set when no allowlist is configured', async () => {
     const nativeDirectory = path.join(os.tmpdir(), 'alcode-native-noagents', 'omo-native', 'omo-native');
     const { runtime } = await createHarness({ settings: {}, capabilityBaseUrl: 'http://127.0.0.1:57123', omoNativeRuntime: { pluginDirectory: nativeDirectory, materializePlugin: vi.fn(async () => nativeDirectory) } })
     const childEnv = await runtime.buildManagedChildEnv()
-    expect(childEnv.OMO_CAPABILITY_ALLOWED_AGENTS).toBeUndefined()
-    expect(childEnv.OMO_CAPABILITY_AGENTS).toBeUndefined()
+    const published = childEnv.OMO_CAPABILITY_ALLOWED_AGENTS
+    expect(published.split(',')).toEqual(expect.arrayContaining(['sisyphus', 'explore', 'librarian']))
+    expect(childEnv.OMO_CAPABILITY_AGENTS).toBe(published)
   })
 })

@@ -121,6 +121,46 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
       { key: 'agent', label: 'Agent', type: 'text' }
     ]
   },
+  // Alcode's own delegation and watch tools. Without an entry the row falls back to a generated
+  // name and shows no fields, so a run reads as unnamed calls next to the built-ins.
+  task: {
+    displayName: 'Delegate Task',
+    category: 'ai',
+    outputLanguage: 'markdown',
+    inputFields: [
+      { key: 'description', label: 'Task', type: 'text' },
+      { key: 'prompt', label: 'Instructions', type: 'text' },
+      { key: 'agent', label: 'Agent', type: 'text' }
+    ]
+  },
+  task_output: {
+    displayName: 'Task Output',
+    category: 'ai',
+    outputLanguage: 'markdown',
+    inputFields: [
+      { key: 'task_id', label: 'Child Session', type: 'text' },
+      { key: 'wait_seconds', label: 'Wait', type: 'text' }
+    ]
+  },
+  call_omo_agent: {
+    displayName: 'Call Agent',
+    category: 'ai',
+    outputLanguage: 'markdown',
+    inputFields: [
+      { key: 'description', label: 'Task', type: 'text' },
+      { key: 'prompt', label: 'Instructions', type: 'text' }
+    ]
+  },
+  monitor: {
+    displayName: 'Watch Command',
+    category: 'system',
+    outputLanguage: 'text',
+    inputFields: [
+      { key: 'command', label: 'Command', type: 'command' },
+      { key: 'filter', label: 'Match', type: 'pattern' },
+      { key: 'timeout_ms', label: 'Timeout (ms)', type: 'text' }
+    ]
+  },
 
   webfetch: {
     displayName: 'Fetch URL',

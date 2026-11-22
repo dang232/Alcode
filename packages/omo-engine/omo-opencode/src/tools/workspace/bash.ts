@@ -28,7 +28,7 @@ const MAX_TIMEOUT_MS = 600_000
 const OUTPUT_LIMIT_BYTES = 64 * 1024
 
 const BASH_DESCRIPTION =
-  "Run a shell command with the project workspace as its working directory. Returns the exit code with bounded stdout and stderr; a non-zero exit is reported as a failure."
+  "Run a shell command with the project workspace as its working directory. Returns the exit code with bounded stdout and stderr; a non-zero exit is reported as a failure. On Windows the command runs under cmd.exe, not PowerShell: use cmd syntax and single backslashes in paths."
 
 const BashArgs = z.object({
   command: z.string().trim().min(1),
@@ -84,12 +84,18 @@ const killTree = async (pid: number | undefined, platform: NodeJS.Platform): Pro
   }
 }
 
+/** The exact invocation for a platform, kept separate from spawning so both branches can be tested anywhere. */
+export const bashInvocation = (platform: NodeJS.Platform, command: string) =>
+  platform === "win32"
+    ? { shell: "cmd.exe", argv: ["cmd.exe", "/d", "/s", "/c", command], detached: false }
+    : { shell: "/bin/bash", argv: ["/bin/bash", "-lc", command], detached: true }
+
 export function createWorkspaceBashTool(options: { readonly directory: string }): OmoToolDefinition {
   return {
     description: BASH_DESCRIPTION,
     args: {
       properties: {
-        command: { type: "string", description: "Command line to run through the platform shell." },
+        command: { type: "string", description: "Command line to run through the platform shell (cmd.exe on Windows, /bin/bash elsewhere)." },
         cwd: { type: "string", description: "Working directory inside the workspace; defaults to the project root." },
         timeoutMs: { type: "number", description: `Deadline in milliseconds, 1-${MAX_TIMEOUT_MS}.` },
       },
@@ -116,15 +122,15 @@ export function createWorkspaceBashTool(options: { readonly directory: string })
         }
       }
       const platform = process.platform
-      const argv = platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", parsed.data.command] : ["/bin/bash", "-lc", parsed.data.command]
+      const invocation = bashInvocation(platform, parsed.data.command)
 
       const stdout = capture()
       const stderr = capture()
-      const child = spawn(argv[0], argv.slice(1), {
+      const child = spawn(invocation.argv[0], invocation.argv.slice(1), {
         cwd,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
-        detached: platform !== "win32",
+        detached: invocation.detached,
       })
 
       child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk))
@@ -159,7 +165,7 @@ export function createWorkspaceBashTool(options: { readonly directory: string })
           : outcome.kind === "error"
             ? `could not start: ${outcome.message ?? "unknown error"}`
             : `exit ${outcome.code ?? "none"}${outcome.signal === null ? "" : ` (signal ${outcome.signal})`}`
-      const parts = [header, `approval: ${approval}`]
+      const parts = [header, `shell: ${invocation.shell}`, `approval: ${approval}`]
       parts.push(`stdout${out.truncated ? ` (truncated at ${OUTPUT_LIMIT_BYTES}B of ${out.bytes}B)` : ""}:`)
       parts.push(out.text.length > 0 ? out.text.replace(/\s+$/, "") : "(empty)")
       if (err.text.length > 0 || err.truncated) {

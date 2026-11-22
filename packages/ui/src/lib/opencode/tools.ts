@@ -136,6 +136,9 @@ const inputSchema = z
     query: optionalText,
     url: optionalText,
     code: optionalText,
+    // Alcode delegation rows: `task_id` names the child a read targets, `filter` the line a watch waits for.
+    task_id: optionalText,
+    filter: optionalText,
     questions: z.array(z.unknown()).optional().catch(undefined),
     // Alcode's own tools: one `action` plus its `parameters`.
     action: optionalText,
@@ -556,11 +559,23 @@ export function toolDescription(
     // "A short 3-5 word label for the task, displayed to the user".
     // The agent rides along so the row says who ran it ("explore · map
     // repo layout"); the name is a tool identifier, not chrome, so it
-    // stays literal.
-    case OPENCODE_TOOLS.subagent: {
+    // stays literal. Alcode's own delegation tools take the same shape.
+    case OPENCODE_TOOLS.subagent:
+    case "task":
+    case "call_omo_agent": {
       if (parsed.agent && parsed.description) return text(`${parsed.agent} · ${parsed.description}`)
       return text(parsed.description) ?? text(parsed.agent)
     }
+
+    // A watch is defined by what it waits for: the command, then its match.
+    case "monitor": {
+      const watched = parsed.command ? parsed.command.split("\n")[0].slice(0, MAX_COMMAND_LENGTH) : undefined
+      if (watched && parsed.filter) return text(`${watched} · ${parsed.filter}`)
+      return text(watched) ?? text(parsed.filter)
+    }
+
+    case "task_output":
+      return text(parsed.task_id) ?? text(parsed.description)
 
     case OPENCODE_TOOLS.patch: {
       const reported = toolFileDiffs(metadata).map((file) => file.file)
