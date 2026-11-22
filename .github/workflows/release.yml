@@ -235,7 +235,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: dang232/oh-my-openAlcore
-          ref: 05d977ddcaffbb454f876592eb8760451f2d2d30
+          ref: dabd27003702fd8a50ae7e9419acb7d1a0eb9f46
           path: oh-my-openAlcore
 
       - name: Build Electron app
@@ -389,7 +389,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: dang232/oh-my-openAlcore
-          ref: 05d977ddcaffbb454f876592eb8760451f2d2d30
+          ref: dabd27003702fd8a50ae7e9419acb7d1a0eb9f46
           path: oh-my-openAlcore
 
       - name: Prepare bundled OpenCode CLI
@@ -527,7 +527,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: dang232/oh-my-openAlcore
-          ref: 05d977ddcaffbb454f876592eb8760451f2d2d30
+          ref: dabd27003702fd8a50ae7e9419acb7d1a0eb9f46
           path: oh-my-openAlcore
 
       - name: Build and package Linux AppImage, .deb and .rpm
