@@ -258,6 +258,7 @@ jobs:
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
           bun run prepare:senpi-plugin
+          npm install --prefix ../../node_modules/@code-yeongyu/senpi --omit=dev --no-save --ignore-scripts
           bun run prepare:senpi-engine
           bun run prepare:typescript
           bun run verify:ulw-loop-cli
@@ -405,6 +406,7 @@ jobs:
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
           bun run prepare:senpi-plugin
+          npm install --prefix ../../node_modules/@code-yeongyu/senpi --omit=dev --no-save --ignore-scripts
           bun run prepare:senpi-engine
           bun run prepare:typescript
           bun run verify:ulw-loop-cli
@@ -543,6 +545,7 @@ jobs:
           bun run prepare:ripgrep
           bun run prepare:ulw-loop-cli
           bun run prepare:senpi-plugin
+          npm install --prefix ../../node_modules/@code-yeongyu/senpi --omit=dev --no-save --ignore-scripts
           bun run prepare:senpi-engine
           bun run prepare:typescript
           bun run verify:ulw-loop-cli
