@@ -4113,6 +4113,28 @@
 - Added GitHub Actions release pipeline with macOS signing/notarization, npm publish, and release asset uploads.
 - Introduced OpenCode agent chat experience with section-based navigation, theming, and session persistence.
 
+## [0.4.0] - 2026-11-22
+
+### New
+
+- A session can watch a command and keep working: when the command prints the line you asked for, that line is posted back into the session and the waiting step continues. No sleep loops, no repeated polling.
+- Chat can delegate a task to a named agent and read the child's answer back with `task_output`. A read now includes the child's tool calls, so you can see what its shell actually ran and returned.
+
+### Improvements
+
+- Delegation rows say what they do: task, task output, watch and agent calls now have their own icons and a subtitle taken from the call itself.
+- A shell command's result now names the shell that ran it, so a Windows `cmd.exe` syntax error is not mistaken for a missing drive.
+
+### Fixes
+
+- Email sign-in stays signed in past the first token refresh: the nested IDE refresh token is now the one stored.
+- A packaged app no longer fails delegation with "task host plugin not found"; release builds stage the task host plugin and engine and verify both.
+- A child session's final answer is chosen from its completed turn instead of the last line of mid-run narration.
+
+### Misc
+
+- Release builds check that the staged plugin and engine speak the same task-daemon protocol, and verify macOS app bundles as well as unpacked outputs.
+
 ## [0.3.5] - 2026-11-19
 
 ### Improvements
