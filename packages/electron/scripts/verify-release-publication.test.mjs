@@ -59,6 +59,15 @@ test('accepts a bare version and looks up the v-prefixed tag', async () => {
   assert.deepEqual(mocked.calls.release, [[repo, tag]]);
 });
 
+test('a finish run accepts an older release without comparing latest.yml', async () => {
+  const mocked = lookups({ latest: 'version: 0.0.1\n' });
+
+  const result = await verifyReleasePublication({ tag, repo, checkLatest: false, ...mocked });
+
+  assert.deepEqual(result, { tag, repo, version, asset });
+  assert.deepEqual(mocked.calls.latest, []);
+});
+
 test('fails when the release does not exist', async () => {
   const mocked = lookups({ releaseError: new Error('release not found') });
 

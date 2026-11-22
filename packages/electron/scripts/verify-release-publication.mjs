@@ -36,6 +36,7 @@ export const verifyReleasePublication = async ({
   repo,
   fetchRelease = ghReleaseLookup,
   fetchLatestYml = liveLatestYmlLookup,
+  checkLatest = true,
 }) => {
   const version = tag.replace(/^v/, '');
   const releaseTag = `v${version}`;
@@ -63,30 +64,33 @@ export const verifyReleasePublication = async ({
     );
   }
 
-  let latestYml;
-  try {
-    latestYml = await fetchLatestYml(repo);
-  } catch (error) {
-    throw new Error(`live latest.yml for ${repo} could not be read: ${error.message}`);
-  }
-  const reportedVersion = latestYml.match(/^version:\s*(\S+)\s*$/m)?.[1];
-  if (reportedVersion !== version) {
-    throw new Error(
-      `live latest.yml for ${repo} reports version ${reportedVersion || '(missing)'}, expected ${version} for ${releaseTag}`,
-    );
+  if (checkLatest) {
+    let latestYml;
+    try {
+      latestYml = await fetchLatestYml(repo);
+    } catch (error) {
+      throw new Error(`live latest.yml for ${repo} could not be read: ${error.message}`);
+    }
+    const reportedVersion = latestYml.match(/^version:\s*(\S+)\s*$/m)?.[1];
+    if (reportedVersion !== version) {
+      throw new Error(
+        `live latest.yml for ${repo} reports version ${reportedVersion || '(missing)'}, expected ${version} for ${releaseTag}`,
+      );
+    }
   }
 
   return { tag: releaseTag, repo, version, asset: expectedAsset };
 };
 
 const main = async () => {
-  const [tag, repo] = process.argv.slice(2);
+  const finish = process.argv.includes('--finish');
+  const [tag, repo] = process.argv.slice(2).filter((argument) => !argument.startsWith('--'));
   if (!tag || !repo) {
-    throw new Error('Usage: verify-release-publication.mjs <tag|version> <repo>');
+    throw new Error('Usage: verify-release-publication.mjs <tag|version> <repo> [--finish]');
   }
-  const result = await verifyReleasePublication({ tag, repo });
+  const result = await verifyReleasePublication({ tag, repo, checkLatest: !finish });
   console.log(
-    `release publication verified: ${result.tag} is public with ${result.asset} and live latest.yml reports ${result.version}`,
+    `release publication verified: ${result.tag} is public with ${result.asset}${finish ? ' (finish run: latest.yml not compared)' : ` and live latest.yml reports ${result.version}`}`,
   );
 };
 

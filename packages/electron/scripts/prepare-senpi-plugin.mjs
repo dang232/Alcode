@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findTaskDaemonContractMismatch } from './verify-senpi-plugin.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronRoot = path.resolve(__dirname, '..');
@@ -78,7 +79,20 @@ if (missingLicenses.length > 0) {
   fail(`staged plugin is missing ${missingLicenses.join(', ')}: ${outputDir}`);
 }
 
+// The engine is staged after this script, so a fresh build cannot compare yet; when a staged engine is
+// already present, refuse a plugin whose task-daemon protocol or capabilities it cannot serve.
+const stagedEnginePackage = path.join(
+  electronRoot, 'resources', 'senpi-engine', 'engine', 'node_modules', '@code-yeongyu', 'senpi',
+);
+let compatibility = 'engine not staged yet; verify:senpi-plugin checks the pair';
+if (fs.existsSync(stagedEnginePackage)) {
+  const mismatch = findTaskDaemonContractMismatch(outputDir, stagedEnginePackage);
+  if (mismatch !== undefined) fail(mismatch);
+  compatibility = 'task-daemon contract matches the staged engine';
+}
+
 const fileCount = countFiles(outputDir);
 console.log(
-  `[electron] staged senpi task-host plugin: ${outputDir} (${fileCount} files, entry ${entryBytes} bytes)`,
+  `[electron] staged senpi task-host plugin: ${outputDir} `
+  + `(${fileCount} files, entry ${entryBytes} bytes, ${compatibility})`,
 );
