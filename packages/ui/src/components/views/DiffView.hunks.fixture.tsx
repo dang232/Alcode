@@ -31,7 +31,7 @@ class FixtureHighlightWorker extends WorkerEventTarget {
       pendingHighlightRequests.delete(data.id);
       this.dispatchEvent(new WorkerMessageEvent('message', { data }));
     });
-    this.worker.on('error', (error) => workerFailures.push(error));
+    this.worker.on('error', (error) => workerFailures.push(error instanceof Error ? error : new Error(String(error))));
   }
 
   postMessage(request: WorkerRequest) {
