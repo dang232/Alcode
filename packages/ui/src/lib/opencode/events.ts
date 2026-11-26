@@ -877,6 +877,14 @@ export function translateWireEvent(event: OpenCodeEvent): SyncEvent[] {
     case "tui.prompt.append":
     case "tui.session.select":
     case "tui.toast.show":
+    case "artifact.updated":
+    case "experimental.job.updated":
+    case "experimental.mcp.event":
+    case "experimental.push.updated":
+    case "persistent-pty.updated":
+    case "session.archived":
+    case "session.step.first-token":
+    case "session.unarchived":
       return []
 
     default: {

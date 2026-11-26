@@ -30,12 +30,12 @@
     "start": "node bin/cli.js serve"
   },
   "dependencies": {
+    "@alcode/sdk": "workspace:*",
     "@clack/prompts": "^1.1.0",
     "@gitbeaker/rest": "43.8.0",
     "@octokit/rest": "^22.0.1",
-    "@alcode/sdk": "workspace:*",
-    "@opencode/client": "2.0.23",
-    "@opencode/schema": "2.0.23",
+    "@opencode/client": "2.4.2",
+    "@opencode/schema": "2.4.2",
     "@simplewebauthn/server": "13.3.3",
     "@vscode/ripgrep": "^1.18.0",
     "bun-pty": "0.5.1",
