@@ -89,7 +89,7 @@ beforeAll(async () => {
         },
       });
     }
-    if (url.pathname === '/api/experimental/generate') {
+    if (url.pathname === '/api/experimental/generate/text') {
       const error = state.generateErrors.shift();
       if (error) {
         res.writeHead(400, { 'content-type': 'application/json' });
@@ -132,7 +132,7 @@ afterEach(() => {
   setUnavailableRetryDelaysForTest();
 });
 
-const generateCalls = () => state.requests.filter((entry) => entry.path === '/api/experimental/generate');
+const generateCalls = () => state.requests.filter((entry) => entry.path === '/api/experimental/generate/text');
 
 const CHAIN = [
   { providers: ['anthropic'], model: 'claude-haiku-4-5' },
